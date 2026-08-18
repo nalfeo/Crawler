@@ -1,5 +1,9 @@
 # ADR 0085: Shared run-bundle telemetry boundary
 
+## Status
+
+Accepted
+
 ## Context
 
 RunStats was assembled only by the headless runner, while the human Phaser

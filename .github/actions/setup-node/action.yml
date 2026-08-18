@@ -44,7 +44,15 @@ runs:
 
     - name: Install Playwright system dependencies
       if: ${{ inputs.install-playwright == 'true' }}
-      run: npx playwright install-deps chromium
+      run: |
+        set +e
+        timeout --kill-after=30s 10m npx playwright install-deps chromium
+        status=$?
+        set -e
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "Playwright system dependency installation exceeded 10 minutes."
+        fi
+        exit "$status"
       shell: bash
 
     - name: Install Playwright browser
