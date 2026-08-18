@@ -1,5 +1,39 @@
 [
   {
+    "commit": "0f16b3a7fd22e9e57e002ca895a16c54ad962113",
+    "commitDate": "2026-08-18T04:17:47Z",
+    "commitSubject": "docs: record safe-room route recovery assessment (#3053)",
+    "capturedAt": "2026-08-18T05:42:52.207Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32099056715",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0f16b3a7fd22e9e57e002ca895a16c54ad962113.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/0f16b3a7fd22e9e57e002ca895a16c54ad962113.fun-report.json"
+    }
+  },
+  {
     "commit": "a6e32b6f35f4d72c538e8176654138c0be7225d9",
     "commitDate": "2026-08-17T22:07:57Z",
     "commitSubject": "Fix sprite editor switching and phantom saves (#3046)",
