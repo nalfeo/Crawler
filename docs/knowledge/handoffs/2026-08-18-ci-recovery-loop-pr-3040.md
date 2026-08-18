@@ -35,22 +35,26 @@ start a fresh session. The PR then sits "dispatched" per automation bookkeeping 
 new agent session actually starts, until the 2-attempt ceiling exhausts and the loop
 incident fires.
 
-Fix: extracted a `replaceAssignees(ids)` helper in `dispatchCopilot`, and when Copilot is
-already an assignee, issue an explicit unassign (`replaceAssignees` excluding Copilot)
-immediately followed by the existing reassign call (`replaceAssignees` including Copilot)
-— forcing a genuine two-step assignee-list transition. First-time assignment (Copilot not
-yet assigned) is unchanged (single mutation, as before). This mirrors the existing
-remove-then-add pattern already used in `pr-ready-reviewer-guard.mjs` (lines ~601-620,
-via `removeAssigneesFromAssignable`/`addAssigneesToAssignable`) specifically to force a
-genuine reassignment edge for linked-issue repairs — strong precedent this is a known,
-real GitHub platform behavior in this codebase.
+Fix: in `dispatchCopilot`, when Copilot is already an assignee, issue a targeted
+unassign via the shared `removeIssueAssignees` helper from `issue-intake-lib.mjs`
+(a `removeAssigneesFromAssignable` mutation scoped to Copilot's id only) immediately
+before the existing single `replaceActorsForAssignable` reassign mutation — forcing a
+genuine assignee-list transition. Removing only Copilot's id (rather than replacing the
+full list with a Copilot-filtered copy) leaves any other assignees untouched and avoids
+sending an empty `actorIds` array when Copilot is the sole assignee. First-time
+assignment (Copilot not yet assigned) is unchanged (single mutation, as before). This
+mirrors the existing remove-then-add pattern already used in `pr-ready-reviewer-guard.mjs`
+(lines ~601-620, via `removeAssigneesFromAssignable`/`addAssigneesToAssignable`)
+specifically to force a genuine reassignment edge for linked-issue repairs — strong
+precedent this is a known, real GitHub platform behavior in this codebase.
 
 Added a regression test in `reconcile.test.mjs` (`redispatch to a PR where Copilot is
 already assigned forces an unassign-then-reassign edge`) that simulates a stale
-automation retry where Copilot is already an assignee and asserts exactly 2
-`replaceActorsForAssignable` GraphQL mutations occur: the first excluding Copilot's id,
-the second including it. Ran the full `reconcile.test.mjs` suite (166 tests, was 165)
-— all passing.
+automation retry where Copilot is already an assignee and asserts exactly one
+`removeAssigneesFromAssignable` mutation targeting only Copilot's id, exactly one
+`replaceActorsForAssignable` mutation that re-adds Copilot, and that the removal is
+ordered before the reassignment. Ran the full `reconcile.test.mjs` suite (166 tests,
+was 165) — all passing.
 
 Verification: `node --experimental-vm-modules --test .github/scripts/ci-recovery/reconcile.test.mjs`
 (166/166 pass), `node -c reconcile.mjs` (syntax), `npx eslint` on both modified files
