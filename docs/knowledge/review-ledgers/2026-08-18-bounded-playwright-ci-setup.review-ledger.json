@@ -1,0 +1,74 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-18",
+  "session_slug": "bounded-playwright-ci-setup",
+  "task_title": "Bound Playwright CI setup",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Retained the separate cache-aware browser install; added explicit system-dependency timeout and contract coverage rather than treating command consolidation as a hang fix."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-sonnet-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "7ae9e6158155294344da5210028ed36fd6f00403",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/adr/0070-achievement-reward-content-tiers.md",
+          "detail": "ADR path fix was a pre-existing docs-check violation and is required by repository policy."
+        },
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/adr/0085-run-bundle-telemetry-boundary.md",
+          "detail": "Status heading repair was a pre-existing docs-check violation and is required by repository policy."
+        },
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/adr/2026-08-12-spell-broker-progression.md",
+          "detail": "Status heading repair was a pre-existing docs-check violation and is required by repository policy."
+        },
+        {
+          "severity": "minor",
+          "file": ".github/actions/setup-node/action.yml / tests/unit/e2e-visual-routing-wiring.test.ts",
+          "detail": "Workflow tests assert timeout wiring statically; this matches existing repository workflow-test practice."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 3,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 4,
+      "notes": "The task-specific CI hardening is correct and fully covered by deterministic workflow-contract tests. ADR repairs were mandated by pre-existing docs-check failures, and unrelated stacked commits were not authored by this session."
+    }
+  }
+}
