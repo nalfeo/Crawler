@@ -1,10 +1,10 @@
 {
-  "briefId": "cactusfolk-boss-v1",
-  "spriteName": "cactusfolk-boss-v1-var-2",
-  "assetPath": "generated/cactusfolk-boss-v1-var-2.png",
+  "briefId": "cactusfolk-boss",
+  "spriteName": "cactusfolk-boss-var-6",
+  "assetPath": "generated/cactusfolk-boss-var-6.png",
   "approvedAt": "2026-07-20T04:48:19.575Z",
   "sourceRun": "generated/runs/cactusfolk-boss-v1/imported-5a24960195ec",
-  "variantIndex": 2,
+  "variantIndex": 6,
   "anchor": {
     "x": 61,
     "y": 68,
@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "5",
   "type": "enemy",
-  "contentHash": "94bd924f9f5b0fc59cdf33130cfa8aaee5eed926537fa1fe9d02cd74c0a5052f",
+  "contentHash": "5a24960195ec78ed33dc94dd098f3b299d8f6ca78b5ebc1748a15ff2400aca28",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

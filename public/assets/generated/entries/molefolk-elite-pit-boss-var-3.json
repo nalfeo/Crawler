@@ -1,10 +1,10 @@
 {
-  "briefId": "molefolk-elite-pit-boss-v1",
-  "spriteName": "molefolk-elite-pit-boss-v1-var-0",
-  "assetPath": "generated/molefolk-elite-pit-boss-v1-var-0.png",
+  "briefId": "molefolk-elite-pit-boss",
+  "spriteName": "molefolk-elite-pit-boss-var-3",
+  "assetPath": "generated/molefolk-elite-pit-boss-var-3.png",
   "approvedAt": "2026-08-01T06:01:37.949Z",
   "sourceRun": "generated/runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241",
-  "variantIndex": 0,
+  "variantIndex": 3,
   "anchor": {
     "x": 265,
     "y": 307,
@@ -113,7 +113,7 @@
     }
   },
   "type": "enemy",
-  "contentHash": "f2ccdd91edfedc9b7555033a1ae267ecde25aae3411b3b8900f74f0498b06a9c",
+  "contentHash": "196842b5c3af95008951a80fb0a4dc51de285aa9963ad2219bc8994cc9f34fea",
   "opaqueBounds": {
     "x": 30,
     "y": 30,

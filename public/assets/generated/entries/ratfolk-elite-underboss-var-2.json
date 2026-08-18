@@ -1,10 +1,10 @@
 {
-  "briefId": "ratfolk-elite-underboss-v1",
-  "spriteName": "ratfolk-elite-underboss-v1-var-5",
-  "assetPath": "generated/ratfolk-elite-underboss-v1-var-5.png",
+  "briefId": "ratfolk-elite-underboss",
+  "spriteName": "ratfolk-elite-underboss-var-2",
+  "assetPath": "generated/ratfolk-elite-underboss-var-2.png",
   "approvedAt": "2026-08-01T05:07:31.488Z",
   "sourceRun": "generated/runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f",
-  "variantIndex": 5,
+  "variantIndex": 2,
   "anchor": {
     "x": 252,
     "y": 269,
@@ -176,7 +176,7 @@
     }
   },
   "type": "enemy",
-  "contentHash": "6b2f307b12fa3b33d94fa81cc6dfd8f1078a75b59e7f73bd856bfa42a3a3e2a8",
+  "contentHash": "5be0a31582c4f77135a414de03346614efce65f228251bf58b62e2d093b57be4",
   "opaqueBounds": {
     "x": 27,
     "y": 27,

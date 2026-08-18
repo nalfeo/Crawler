@@ -1,10 +1,10 @@
 {
-  "briefId": "warding-bell-v1",
-  "spriteName": "warding-bell-v1-var-0",
-  "assetPath": "generated/warding-bell-v1-var-0.png",
+  "briefId": "warding-bell",
+  "spriteName": "warding-bell-var-2",
+  "assetPath": "generated/warding-bell-var-2.png",
   "approvedAt": "2026-07-25T05:24:47.256Z",
   "sourceRun": "generated/runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22",
-  "variantIndex": 0,
+  "variantIndex": 2,
   "anchor": {
     "x": 31,
     "y": 60,
@@ -101,7 +101,7 @@
     }
   },
   "type": "item",
-  "contentHash": "226354dca0abbfb6e8b3065ee27e5a02b7ad24058107677edb00d64dc99931d3",
+  "contentHash": "9c78c8f6a6316e1703732ea1cd2d154d82f41e05c1e2ba235fcdb9692690e8b1",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {
