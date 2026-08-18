@@ -29,7 +29,7 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": true,
-          "notes": "Independent-grade pass (post-rebase, pre-publication) found: `if (halfWidth <= 0) fallback` does not catch NaN (every ordered comparison with NaN is false), unlike getBodyHalfWidth/getBodyHalfHeight's `if (v > 0) return v` guard, so a malformed NaN half-extent silently poisoned the spatial grid instead of falling back. Fixed by mirroring the helper's `v > 0` accept check exactly; added a regression test (`falls back to radius for a malformed NaN halfWidth/halfHeight instead of inserting NaN`) confirmed to fail against the unfixed code and pass against the fix. RunStats fingerprint re-verified byte-identical after the correction."
+          "notes": "Recovery code-review pass (post-rebase, pre-publication) found: `if (halfWidth <= 0) fallback` does not catch NaN (every ordered comparison with NaN is false), unlike getBodyHalfWidth/getBodyHalfHeight's `if (v > 0) return v` guard, so a malformed NaN half-extent silently poisoned the spatial grid instead of falling back. Fixed by mirroring the helper's `v > 0` accept check exactly; added a regression test (`falls back to radius for a malformed NaN halfWidth/halfHeight instead of inserting NaN`) confirmed to fail against the unfixed code and pass against the fix. RunStats fingerprint re-verified byte-identical after the correction."
         }
       ]
     },

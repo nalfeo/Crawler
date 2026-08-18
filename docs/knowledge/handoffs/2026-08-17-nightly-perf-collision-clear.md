@@ -90,13 +90,9 @@ npm run perf:fingerprint -- --check files/perf-3026-baseline.json
 
 Result:
 
-- hash before: `177bc84440c0ae4049b08e0e0eecf5caf6ad9e5396120ad29b579775d5c68598`
-- hash after: `177bc84440c0ae4049b08e0e0eecf5caf6ad9e5396120ad29b579775d5c68598`
-- **RunStats identical** across the full 24-run covered sample (seeds 1-8 × sword/bow/baseball-bat)
-
-Narrow iteration sample also remained identical:
-
-- hash: `ea8fe3b436faf9fbbac7cb60708f39287e17dcaf38397dc3dbd2ca58b7e15385`
+- hash before: `adf744fc81fd2584170ed87bab63682ae25de40ff3d9d035378a707122c4372a`
+- hash after: `adf744fc81fd2584170ed87bab63682ae25de40ff3d9d035378a707122c4372a`
+- **RunStats identical**, byte-for-byte, across the full covered sample (rebased + corrected tree). The original 24-run proof from the abandoned branch was against a stale base and is superseded by this result.
 
 ## Verification
 
