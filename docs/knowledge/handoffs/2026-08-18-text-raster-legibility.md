@@ -31,6 +31,10 @@ vision-model preference.
   added independent Scenario and Treatment filters so tooltip, inventory-filter,
   text-legibility, and experimental capture states do not overload one comparison
   stream.
+- Added a durable change note for each captured equipment version and marks captures
+  without a saved Azure `.review.json` as **Unjudged** rather than implying a score.
+  At the time of this handoff, only 8 of 32 after-captures have a saved Azure review
+  artifact; the remaining 24 retain their screenshot evidence but were never judged.
 
 ## Observation
 

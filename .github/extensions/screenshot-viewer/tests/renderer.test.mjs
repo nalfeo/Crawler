@@ -151,6 +151,8 @@ test('stacks lineage comparisons and labels each concrete variant', () => {
   assert.match(html, /pair-image-label/);
   assert.match(html, /Main/);
   assert.match(html, /taskLabel/);
+  assert.match(html, /pair\.descriptions\?\.\[side\]/);
+  assert.match(html, /pair-change/);
 });
 
 test('filters comparison rows by scenario and treatment without removing archive screenshots', () => {
@@ -160,6 +162,11 @@ test('filters comparison rows by scenario and treatment without removing archive
   assert.match(html, /pairTreatment\.addEventListener\('change'/);
   assert.match(html, /visiblePairs\.map/);
   assert.match(html, /screenshots\.map\(renderThumb\)/);
+});
+
+test('labels captures without an Azure review as unjudged instead of implying a score', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /Unjudged — no Azure review artifact was saved for this capture\./);
 });
 
 test('uses delegated image error handling instead of inline fallback markup', () => {

@@ -176,6 +176,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       .pair-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .pair-images figure { margin: 0; }
       .pair-image-label { color: var(--text-color-default, #c9d1d9); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+      .pair-change { color: var(--text-color-muted, #8b949e); font-size: 11px; line-height: 1.35; min-height: 30px; margin-bottom: 6px; }
       .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; cursor: zoom-in; }
       .pair-images img:focus-visible { outline: 2px solid var(--color-focus-outline, #58a6ff); outline-offset: 2px; }
       figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
@@ -541,10 +542,10 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         const pairHtml = visiblePairs.map((pair) => {
           const reviewMeta = (review) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/100</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
-            : '<div class="meta">No evaluator result attached.</div>';
+            : '<div class="meta">Unjudged — no Azure review artifact was saved for this capture.</div>';
           const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
+            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><div class="pair-change">' + escapeHtml(pair.descriptions?.[side] ?? 'No change note is available.') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
           const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);

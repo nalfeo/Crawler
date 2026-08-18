@@ -43,6 +43,18 @@ const FEEDBACK_TARGETS = new Set([
   'deterministic-eval',
   'workflow',
 ]);
+const VERSION_DESCRIPTIONS = Object.freeze({
+  main: 'Baseline equipment panel before the versioned UX iteration series.',
+  v1: 'Established the three-column equipment, stats, and bag paper-doll layout.',
+  v8: 'Tightened paper-doll slot geometry and aligned the inventory grid.',
+  v10: 'Refined panel spacing while retaining the full mixed-case label treatment.',
+  v11: 'Tested compact all-caps typography and denser three-panel composition.',
+  v13: 'Restored mixed-case labels and rebalanced equipment, stats, and bag panel proportions.',
+  current:
+    'Uses the local pixel font with integer-aligned text rasterization and deterministic text evidence.',
+  'text-raster-metadata':
+    'Captures the deterministic text-raster treatment for comparison with the visual review.',
+});
 
 /** Maximum depth when scanning a directory (1 = immediate children only). */
 const SCAN_MAX_DEPTH = 5;
@@ -176,6 +188,13 @@ function treatmentForState(state) {
   return state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function descriptionForState(state) {
+  return (
+    VERSION_DESCRIPTIONS[state] ??
+    `No recorded change note is available for ${state.replace(/[-_]+/g, ' ')}.`
+  );
+}
+
 function createPair(key, before, after, treatment) {
   return {
     key,
@@ -184,6 +203,10 @@ function createPair(key, before, after, treatment) {
     before: before?.screenshot ?? null,
     after: after?.screenshot ?? null,
     states: { before: before?.state ?? null, after: after?.state ?? null },
+    descriptions: {
+      before: before ? descriptionForState(before.state) : null,
+      after: after ? descriptionForState(after.state) : null,
+    },
     reviews: {
       before: before?.review ?? null,
       after: after?.review ?? null,
