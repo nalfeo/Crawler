@@ -49,7 +49,7 @@ function cloneDocument(value) {
  * keys: assigning `document.sprites[key] = annotation` for one of these
  * mutates the object's prototype/inherited members instead of creating an own
  * enumerable JSON property, silently dropping the annotation (and letting a
- * later lookup like `entries?.['__proto__']` spuriously resolve to an
+ * later lookup like `entries['__proto__']` spuriously resolve to an
  * inherited, non-`undefined` value instead of failing "not found").
  */
 const RESERVED_ANNOTATION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
