@@ -1021,6 +1021,189 @@ for (const attempt of [1, 2]) {
   });
 }
 
+// Regression (PR #3040 / incident #3064 "no progress after 2 attempts"):
+// dispatchCopilot computed actorIds as the union of existing assignees plus
+// Copilot's id, then issued a single replaceActorsForAssignable mutation. On
+// a redispatch of a PR that already carries Copilot as an assignee (exactly
+// the R33 stale-automation-retry scenario exercised above), that union set is
+// IDENTICAL to the currently-assigned set, so the mutation is a no-op
+// assignee-list transition that does not reliably signal a fresh Copilot
+// coding session. The fix forces a genuine unassign-then-reassign edge
+// whenever Copilot was already assigned, mirroring the remove-then-add
+// pattern already used for linked-issue reassignment in
+// pr-ready-reviewer-guard.mjs.
+test('redispatch to a PR where Copilot is already assigned forces an unassign-then-reassign edge', async (t) => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: failedCheck.html_url,
+    },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 8801,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9901 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('removeAssigneesFromAssignable')) {
+        return {
+          body: {
+            data: {
+              removeAssigneesFromAssignable: {
+                assignable: { assignees: { nodes: [] } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // Copilot is already an assignee, simulating a redispatch (as opposed to
+      // the first-ever dispatch, where assignees would be empty).
+      return {
+        body: {
+          data: {
+            repository: {
+              pullRequest: {
+                id: 'PR_test_id',
+                assignees: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                closingIssuesReferences: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [],
+                },
+                reviews: reviewConnection([substantiveCopilotReview()]),
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [],
+                },
+              },
+            },
+          },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  const removeMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      call.body?.query?.includes('removeAssigneesFromAssignable'),
+  );
+  assert.equal(
+    removeMutations.length,
+    1,
+    'expected exactly one unassign mutation to force a genuine unassign transition',
+  );
+  assert.deepEqual(
+    removeMutations[0].body.variables.assigneeIds,
+    ['BOT_copilot'],
+    'unassign mutation must target only Copilot, leaving other assignees untouched',
+  );
+
+  const replaceMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      call.body?.query?.includes('replaceActorsForAssignable'),
+  );
+  assert.equal(replaceMutations.length, 1, 'expected exactly one reassign mutation');
+  assert.ok(
+    replaceMutations[0].body.variables.actorIds.includes('BOT_copilot'),
+    'reassign mutation must re-add Copilot to force a genuine reassign transition',
+  );
+  assert.ok(
+    mutatingCalls.indexOf(removeMutations[0]) < mutatingCalls.indexOf(replaceMutations[0]),
+    'the unassign mutation must happen before the reassign mutation',
+  );
+});
+
 // Regression (deadlock fix): the automation stale-lock GC lives AFTER the
 // merge-train-owned / ci-conflict-order-wait / hasMergeConflict short-circuits,
 // so a stale automation lease on a CONFLICTED PR could never reach it and its

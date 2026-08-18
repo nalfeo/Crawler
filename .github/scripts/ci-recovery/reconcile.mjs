@@ -57,6 +57,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  removeIssueAssignees,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
 import {
@@ -3386,6 +3387,29 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     }
     const actorIds = [...new Set([...review.assignees.map((actor) => actor.id), copilot.id])];
     await assertExpectedMetadataUnchanged('assign-copilot');
+    // A redispatch (e.g. the R33 stale-automation-retry path) targets a PR
+    // that already carries Copilot as an assignee from a prior dispatch. In
+    // that case `actorIds` below is IDENTICAL to the currently-assigned set,
+    // so replacing the assignee list with the same members is a no-op
+    // transition that does not reliably signal GitHub's Copilot coding-agent
+    // platform to start a fresh session -- the PR sits reassigned-in-name-
+    // only while the automation believes it dispatched a new attempt (root
+    // cause of the PR #3040 / incident #3064 "no progress after 2 attempts"
+    // loop). Force a genuine unassign-then-reassign edge whenever Copilot was
+    // already an assignee by removing just Copilot's id first, mirroring the
+    // same remove-then-add pattern already used for linked-issue reassignment
+    // in pr-ready-reviewer-guard.mjs. Removing a single known-present actor id
+    // (rather than replacing with a filtered, potentially-empty full list)
+    // avoids relying on the API accepting an empty `actorIds` array.
+    const copilotAlreadyAssigned = review.assignees.some((actor) => actor.id === copilot.id);
+    if (copilotAlreadyAssigned) {
+      await removeIssueAssignees({
+        graphql,
+        token: pat,
+        assignableId: review.id,
+        actorIds: [copilot.id],
+      });
+    }
     await graphql(
       pat,
       `
