@@ -74,7 +74,7 @@ async function hideCaptureChrome(page: Page): Promise<void> {
 
 export type CapturePhase = 'before' | 'after';
 
-export function capturePhase(): CapturePhase {
+function capturePhase(): CapturePhase {
   return process.env.EQUIPMENT_CAPTURE_PHASE === 'before' ? 'before' : 'after';
 }
 
@@ -85,7 +85,7 @@ export function captureArtifactPath(name: string, phase: CapturePhase = captureP
   return resolve(process.cwd(), 'files', 'visual-review', statePath, `${name}.png`);
 }
 
-export function writeArtifact(buffer: Buffer, absolutePath: string): void {
+function writeArtifact(buffer: Buffer, absolutePath: string): void {
   mkdirSync(dirname(absolutePath), { recursive: true });
   writeFileSync(absolutePath, buffer);
 }
