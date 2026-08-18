@@ -92,7 +92,7 @@ slice adds real granting for `lootBox`, mirroring the Floor 2 equipment
 resolve/claim split **exactly** (see the reversed Alternative #3 below for why
 an earlier claim-time-only design was rejected mid-review):
 
-- **Resolution (unlock time only)** — `resolveLootBoxRewardBundle` (new
+- **Resolution (unlock time only)** — `resolveLootBoxRewardBundle` (in
   `src/game/lootbox-materials-reward-resolver.ts`) runs from `unlockAchievement`
   the moment a `lootBox` achievement unlocks, symmetric with
   `resolveEquipmentRewardBundle`'s Floor 2 call in the same function. It

@@ -45,6 +45,22 @@ describe('queue-commit-cli parseArgs', () => {
     ]);
   });
 
+  it('parses an annotation-only Sprite Editor save with all curation semantics', () => {
+    const annotation = {
+      key: 'foo-var-1',
+      favorite: false,
+      disliked: true,
+      comment: 'Needs a stronger silhouette.',
+    };
+    const parsed = parseArgs([
+      ...BASE,
+      '--annotation-json',
+      Buffer.from(JSON.stringify(annotation)).toString('base64url'),
+    ]);
+    expect(parsed.assets).toEqual([]);
+    expect(parsed.annotations).toEqual([annotation]);
+  });
+
   it('rejects an --asset that is missing its paired --manifest-key (concern #3)', () => {
     // Without this guard, copyArtSurface queues an orphan PNG with no manifest/
     // catalog entry — a silent authority split that the reviewer flagged.
@@ -80,7 +96,9 @@ describe('queue-commit-cli parseArgs', () => {
     expect(() =>
       parseArgs(['--repo-root', '/repo', '--asset', 'generated/a.png', '--manifest-key', 'a']),
     ).toThrow(/Missing required --message/);
-    expect(() => parseArgs([...BASE])).toThrow(/At least one --asset is required/);
+    expect(() => parseArgs([...BASE])).toThrow(
+      /At least one --asset or --annotation-json is required/,
+    );
   });
 
   it('throws on a value-less flag and on unknown arguments', () => {
