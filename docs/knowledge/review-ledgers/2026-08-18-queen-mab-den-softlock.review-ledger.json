@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-5",
+      "head_sha": "94c2e5496cad3f58052791e8bb12bd5fccfb230f",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly implements containment for Floor 2 den bosses to prevent softlocks by relocating them to their spawn tiles before the doors relock. The diff is tightly scoped, containing only the necessary gameplay logic and telemetry diagnostics. It includes comprehensive integration tests covering all critical edge cases, such as stray bosses, missing entities, and unstick fallback scenarios. The code strictly complies with determinism rules and layer boundaries, resulting in a robust and highly maintainable solution."
     }
   }
 }
