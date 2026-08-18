@@ -36,50 +36,25 @@ export type SimEventType =
   | 'control'
   | 'boss';
 
-/**
- * Per-boss-encounter diagnostic snapshot.
- *
- * Captures the state needed to diagnose den softlocks — where the boss actually
- * is relative to its den, whether the room's doors are relocked behind the
- * encounter flag, and whether the boss is on a tile the player can currently
- * see. A boss that is `started` and alive but sitting in a different room with
- * `doorsLocked` true is the sealed-room softlock reported on Floor 2 seed 42:
- * the HUD bar tracks a boss the player can damage through walls but never kill,
- * and the doors only unlock on the boss-death latch.
- */
+/** Per-boss-encounter diagnostic snapshot for Floor 2 den softlocks. */
 export interface BossEncounterSnapshot {
-  /** Family id owning this encounter (e.g. `faeries`). */
   familyId: string;
-  /** Boss display name as shown on the HUD bar. */
   displayName: string;
-  /** Boss entity id, or null once defeated/despawned. */
   bossEid: number | null;
-  /** Whether the boss entity exists in the ECS world this frame. */
   bossEntityExists: boolean;
-  /** True once the player entered the den and the fight latched. */
   started: boolean;
-  /** True once the boss-death latch fired. */
   defeated: boolean;
-  /** Room id of the boss's den. */
   denRoomId: number;
-  /** Room id the boss is actually standing in; -1 when outside any room. */
   bossRoomId: number | null;
-  /** True when the boss is inside its own den. The softlock invariant. */
   bossInDen: boolean | null;
-  /** Boss tile coordinates. */
   bossTileX: number | null;
   bossTileY: number | null;
-  /** Boss health. */
   bossHealth: number | null;
   bossHealthMax: number | null;
-  /** Whether the boss's tile is currently visible to the player (drives sprite visibility). */
   bossVisible: boolean | null;
-  /** The `floor2-den-<family>-boss-active` goal flag that gates the door relock. */
   activeGoalId: string;
   activeGoalValue: boolean;
-  /** Whether the den's doors are currently locked shut. */
   doorsLocked: boolean;
-  /** Whether the player is inside the den room this frame. */
   playerInDen: boolean;
 }
 
