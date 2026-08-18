@@ -14,8 +14,9 @@ ci-policy
 
 ## Apples
 
-3🍎 estimated, 2🍎 actual (📈 Over). The cited CI failure had already been
-retriggered successfully before this recovery session began.
+3🍎 estimated, 3🍎 actual (🎯 Exact). The cited CI failure had already been
+retriggered successfully before this recovery session began; the CI hardening
+work was added after its root cause was confirmed.
 
 ## Problem
 
@@ -32,11 +33,18 @@ cancelled dependency.
   with the same tree as the cancelled head.
 - Confirmed its replacement CI run `32094512050` completed the formerly
   cancelled Game/UI E2E job successfully; no workflow or application change was
-  warranted.
+  warranted at the time of initial inspection.
+- Added a ten-minute command-level bound to Playwright system-dependency
+  installation and a 20-minute job-level bound to each Playwright E2E job, so
+  unavailable package mirrors fail promptly instead of consuming GitHub's
+  six-hour default timeout.
 
 ## Files touched
 
 - `docs/knowledge/handoffs/2026-08-18-pr3042-cancelled-ci-recovery.md`
+- `.github/actions/setup-node/action.yml`
+- `.github/workflows/ci.yml`
+- `tests/unit/e2e-visual-routing-wiring.test.ts`
 
 ## Validation
 
@@ -45,6 +53,8 @@ cancelled dependency.
   cancellation only.
 - Replacement CI run `32094512050`: Game/UI E2E, unit, integration, headless,
   and security checks completed successfully before this handoff was written.
+- Deterministic workflow test covers all three E2E job timeouts and the bounded
+  Playwright dependency-install command.
 
 ## Unresolved issues
 

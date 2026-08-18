@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CI_YML = path.join(REPO_ROOT, '.github/workflows/ci.yml');
+const SETUP_NODE_ACTION_YML = path.join(REPO_ROOT, '.github/actions/setup-node/action.yml');
 
 interface WorkflowStep {
   name?: string;
@@ -34,11 +35,18 @@ interface WorkflowJob {
   name?: string;
   if?: string | boolean;
   needs?: string | string[];
+  'timeout-minutes'?: number;
   steps?: WorkflowStep[];
 }
 
 interface WorkflowDoc {
   jobs: Record<string, WorkflowJob>;
+}
+
+interface SetupNodeAction {
+  runs: {
+    steps: WorkflowStep[];
+  };
 }
 
 function loadCi(): { doc: WorkflowDoc; raw: string } {
@@ -50,6 +58,10 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
   const job = doc.jobs[name];
   if (!job) throw new Error(`job "${name}" not found in ci.yml`);
   return job;
+}
+
+function loadSetupNodeAction(): SetupNodeAction {
+  return parse(readFileSync(SETUP_NODE_ACTION_YML, 'utf8')) as SetupNodeAction;
 }
 
 const E2E_JOBS = [
@@ -102,6 +114,25 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     expect(runStep!.run, `${jobId} must invoke --project ${project}`).toContain(
       `--project ${project}`,
     );
+  });
+
+  it.each(E2E_JOBS)('$jobId has a 20-minute job timeout', ({ jobId }) => {
+    const { doc } = loadCi();
+    expect(getJob(doc, jobId)['timeout-minutes']).toBe(20);
+  });
+
+  it('bounds Playwright system dependency installation while retaining cache-aware browser installation', () => {
+    const steps = loadSetupNodeAction().runs.steps;
+    const dependencyInstall = steps.find(
+      (step) => step.name === 'Install Playwright system dependencies',
+    );
+    const browserInstall = steps.find((step) => step.name === 'Install Playwright browser');
+
+    expect(dependencyInstall?.run).toContain(
+      'timeout --foreground 10m npx playwright install-deps chromium',
+    );
+    expect(browserInstall?.if).toContain("steps.pw-cache.outputs.cache-hit != 'true'");
+    expect(browserInstall?.run).toBe('npx playwright install chromium');
   });
 
   it('merge-gate check calls each e2e job with allow_skipped semantics ("true")', () => {

@@ -973,6 +973,7 @@ jobs:
   test-e2e-game:
     name: E2E Visual — Game/UI
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1001,6 +1002,7 @@ jobs:
   test-e2e-assets:
     name: E2E Visual — Asset Smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.asset_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1029,6 +1031,7 @@ jobs:
   test-e2e-devtools:
     name: E2E Visual — Devtools
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.devtool_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
