@@ -1,5 +1,39 @@
 [
   {
+    "commit": "0fd134b4c4996dd5ab5d5c97dd518384b8dccb9d",
+    "commitDate": "2026-08-18T20:10:32Z",
+    "commitSubject": "fix(ai): gate boss-chest gear behind shopkeeper unlock (#3104)",
+    "capturedAt": "2026-08-18T21:29:42.920Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32182765734",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0fd134b4c4996dd5ab5d5c97dd518384b8dccb9d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2866666666666667,
+        "totalWins": 43,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.35333333333333333,
+        "totalWins": 53,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/0fd134b4c4996dd5ab5d5c97dd518384b8dccb9d.fun-report.json"
+    }
+  },
+  {
     "commit": "a36f7dd5056cfe11e06a2a297a213477728fdb04",
     "commitDate": "2026-08-18T16:47:20Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (20 art paths) (#3091)",
