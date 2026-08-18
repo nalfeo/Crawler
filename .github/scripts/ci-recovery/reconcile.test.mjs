@@ -11756,6 +11756,134 @@ test('a later top-level marker reply for the same fingerprint clears an earlier 
   );
 });
 
+test('review-ledger thread blockers include deterministic not-applicable guidance', async (t) => {
+  const threadId = 'PRRT_review_ledger_guidance';
+  const priorTaskFingerprint = '1f2e3d4c5b6a79888796959493929190ffeeddccbbaa99887766554433221100';
+  const originalConcern = 'The review ledger still needs a human escalation path.';
+  const priorBlockedReply =
+    'No ledger change needed: review:ledger validates and the finding appears to be a policy interpretation mismatch.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/knowledge/review-ledgers/2026-08-18-unified-den-boss-telemetry.review-ledger.json',
+    line: 41,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_ledger_guidance',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r11`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`${thread.path}:41\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  const priorTopLevelReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '',
+    priorBlockedReply,
+  ].join('\n');
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 11050,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+        {
+          id: 11051,
+          body: priorTopLevelReply,
+          user: { login: 'Copilot' },
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([thread]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1105 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the ledger review thread');
+  assert.match(
+    taskCommentCall.body.body,
+    /run `npm run review:ledger -- validate` on the current head/i,
+    'task body should include deterministic ledger-validation guidance',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /✅ Not applicable: review:ledger validates current head;/i,
+    'task body should recommend a marker-bearing not-applicable reply for disproven ledger findings',
+  );
+});
+
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
   const threadId = 'PRRT_collaborator_followup_thread';
   const priorTaskFingerprint = '38aca57540f447b85a082cf668dbbc3b09a0ee223c542434dbaddaaa7a553e3e';
