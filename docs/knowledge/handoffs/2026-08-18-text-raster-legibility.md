@@ -27,6 +27,10 @@ vision-model preference.
   authority boundary and documented evidence workflow.
 - Updated Screenshot Viewer lineage presentation and archive/error handling as part
   of the equipment UX evidence loop.
+- Ordered version lineage newest-first (`current | latest`, then `N | N-1`) and
+  added independent Scenario and Treatment filters so tooltip, inventory-filter,
+  text-legibility, and experimental capture states do not overload one comparison
+  stream.
 
 ## Observation
 

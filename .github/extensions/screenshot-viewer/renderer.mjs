@@ -166,6 +166,8 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       }
 
       .pair-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
+      .pair-filter { display: flex; align-items: center; gap: 8px; margin: 8px 0 12px; }
+      .pair-filter select { width: auto; min-width: 180px; }
       .pair-card, .feedback-panel {
         border: 1px solid var(--border-color-default, #30363d);
         border-radius: 8px;
@@ -329,6 +331,15 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
       <div class="error-box" id="error-box" hidden></div>
 
+      <div class="pair-filter" aria-label="Comparison filters">
+        <label for="pair-scenario">Scenario
+          <select id="pair-scenario"><option value="">All scenarios</option></select>
+        </label>
+        <label for="pair-treatment">Treatment
+          <select id="pair-treatment"><option value="">All treatments</option></select>
+        </label>
+      </div>
+      </label>
       <div id="pairs"></div>
       <section class="feedback-panel" aria-labelledby="feedback-heading">
         <strong id="feedback-heading">Capture review feedback</strong>
@@ -397,6 +408,9 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       const feedbackComment = document.getElementById('feedback-comment');
       const feedbackSubmit = document.getElementById('feedback-submit');
       const feedbackList = document.getElementById('feedback-list');
+      const pairScenario = document.getElementById('pair-scenario');
+      const pairTreatment = document.getElementById('pair-treatment');
+      let latestState = null;
 
       function escapeHtml(value) {
         return String(value)
@@ -480,6 +494,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       }
 
       function renderGallery(state) {
+        latestState = state;
         const screenshots = Array.isArray(state.screenshots) ? state.screenshots : [];
         const count = screenshots.length;
         const scannedAt = state.scannedAt ? formatTime(state.scannedAt) : null;
@@ -510,7 +525,20 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
 
         const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
-        const pairHtml = comparablePairs.map((pair) => {
+        const scenarios = [...new Set(comparablePairs.map((pair) => pair.scenario || 'Other'))].sort();
+        const treatments = [...new Set(comparablePairs.map((pair) => pair.treatment || 'Other'))].sort();
+        const selectedScenario = pairScenario.value;
+        const selectedTreatment = pairTreatment.value;
+        pairScenario.innerHTML = '<option value="">All scenarios</option>' + scenarios.map((scenario) => '<option value="' + escapeHtml(scenario) + '">' + escapeHtml(scenario) + '</option>').join('');
+        pairScenario.value = scenarios.includes(selectedScenario) ? selectedScenario : '';
+        pairTreatment.innerHTML = '<option value="">All treatments</option>' + treatments.map((treatment) => '<option value="' + escapeHtml(treatment) + '">' + escapeHtml(treatment) + '</option>').join('');
+        pairTreatment.value = treatments.includes(selectedTreatment) ? selectedTreatment : '';
+        const visiblePairs = comparablePairs.filter(
+          (pair) =>
+            (!pairScenario.value || (pair.scenario || 'Other') === pairScenario.value) &&
+            (!pairTreatment.value || (pair.treatment || 'Other') === pairTreatment.value),
+        );
+        const pairHtml = visiblePairs.map((pair) => {
           const reviewMeta = (review) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/100</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
@@ -520,7 +548,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
-          return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml(pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
+          return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml((pair.scenario || pair.treatment || 'Other') + ' · ' + pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
         galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
@@ -531,6 +559,12 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       feedbackScope.addEventListener('change', () => {
         feedbackTarget.hidden = feedbackScope.value !== 'reusable';
       });
+
+      const rerenderPairs = () => {
+        if (latestState) renderGallery(latestState);
+      };
+      pairScenario.addEventListener('change', rerenderPairs);
+      pairTreatment.addEventListener('change', rerenderPairs);
 
       feedbackSubmit.addEventListener('click', async () => {
         const comment = feedbackComment.value.trim();

@@ -151,6 +151,46 @@ function reviewResults() {
   return results;
 }
 
+function stateRank(state) {
+  if (state === 'current') return Number.MAX_SAFE_INTEGER;
+  const version = state.match(/^(?:v|iteration-?)(\d+)$/i);
+  return version ? Number(version[1]) : Number.NEGATIVE_INFINITY;
+}
+
+function compareStatesNewestFirst(a, b) {
+  const rankDifference = stateRank(b) - stateRank(a);
+  return rankDifference || b.localeCompare(a, undefined, { numeric: true });
+}
+
+function scenarioForKey(key) {
+  if (/tooltip/i.test(key)) return 'Tooltips';
+  if (/(?:slot-)?filtered|filter/i.test(key)) return 'Inventory filters';
+  if (/legibility/i.test(key)) return 'Text legibility';
+  return 'Equipment panel';
+}
+
+function treatmentForState(state) {
+  if (state === 'current' || /^v\d+$/i.test(state) || /^iteration-?\d+$/i.test(state)) {
+    return 'Version lineage';
+  }
+  return state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function createPair(key, before, after, treatment) {
+  return {
+    key,
+    scenario: scenarioForKey(key),
+    treatment,
+    before: before?.screenshot ?? null,
+    after: after?.screenshot ?? null,
+    states: { before: before?.state ?? null, after: after?.state ?? null },
+    reviews: {
+      before: before?.review ?? null,
+      after: after?.review ?? null,
+    },
+  };
+}
+
 function pairs(reviews = reviewResults()) {
   const byKey = new Map();
   for (const screenshot of sortedScreenshots()) {
@@ -171,38 +211,37 @@ function pairs(reviews = reviewResults()) {
 
   const result = [];
   for (const [key, group] of byKey) {
-    const afterStates = [...group.after.keys()].sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    );
+    const afterStates = [...group.after.keys()];
+    const versionStates = afterStates
+      .filter((state) => Number.isFinite(stateRank(state)))
+      .sort(compareStatesNewestFirst);
+    const treatmentStates = afterStates
+      .filter((state) => !Number.isFinite(stateRank(state)))
+      .sort(compareStatesNewestFirst);
     const beforeOnlyStates = [...group.before.keys()].filter(
-      (state) => !group.after.has(state) && !(state === 'main' && afterStates.length > 0),
+      (state) => !group.after.has(state) && !(state === 'main' && versionStates.length > 0),
     );
-    for (const [index, state] of afterStates.entries()) {
-      const before =
-        index > 0
-          ? (group.after.get(afterStates[index - 1]) ?? null)
-          : (group.before.get(state) ?? group.before.get('main') ?? null);
+
+    // Show the newest iteration first: current | latest, then latest | N-1.
+    for (const [index, state] of versionStates.entries()) {
+      const before = group.after.get(state) ?? null;
+      const after =
+        group.after.get(versionStates[index + 1]) ??
+        group.before.get(state) ??
+        group.before.get('main') ??
+        null;
+      if (after) result.push(createPair(key, before, after, 'Version lineage'));
+    }
+
+    // Non-version states are independent capture treatments, not a lineage step.
+    for (const state of treatmentStates) {
+      const before = group.before.get(state) ?? null;
       const after = group.after.get(state) ?? null;
-      result.push({
-        key: `${key} (${state})`,
-        before: before?.screenshot ?? null,
-        after: after?.screenshot ?? null,
-        states: { before: before?.state ?? null, after: after?.state ?? null },
-        reviews: {
-          before: before?.review ?? null,
-          after: after?.review ?? null,
-        },
-      });
+      if (before && after) result.push(createPair(key, before, after, treatmentForState(state)));
     }
     for (const state of beforeOnlyStates) {
       const before = group.before.get(state) ?? null;
-      result.push({
-        key: `${key} (${state})`,
-        before: before?.screenshot ?? null,
-        after: null,
-        states: { before: before?.state ?? null, after: null },
-        reviews: { before: before?.review ?? null, after: null },
-      });
+      result.push(createPair(key, before, null, treatmentForState(state)));
     }
   }
   return result;

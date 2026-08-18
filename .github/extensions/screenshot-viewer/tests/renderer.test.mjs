@@ -99,6 +99,10 @@ test('live badge element is present', () => {
 test('includes Before/After review and feedback controls', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /Before \/ After/);
+  assert.match(html, /id="pair-scenario"/);
+  assert.match(html, /id="pair-treatment"/);
+  assert.match(html, /All scenarios/);
+  assert.match(html, /All treatments/);
   assert.match(html, /id="feedback-pair"/);
   assert.match(html, /id="feedback-scope"/);
   assert.match(html, /Promote to reusable guidance/);
@@ -147,6 +151,15 @@ test('stacks lineage comparisons and labels each concrete variant', () => {
   assert.match(html, /pair-image-label/);
   assert.match(html, /Main/);
   assert.match(html, /taskLabel/);
+});
+
+test('filters comparison rows by scenario and treatment without removing archive screenshots', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /const visiblePairs = comparablePairs\.filter/);
+  assert.match(html, /pairScenario\.addEventListener\('change'/);
+  assert.match(html, /pairTreatment\.addEventListener\('change'/);
+  assert.match(html, /visiblePairs\.map/);
+  assert.match(html, /screenshots\.map\(renderThumb\)/);
 });
 
 test('uses delegated image error handling instead of inline fallback markup', () => {
