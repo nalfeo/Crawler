@@ -10,11 +10,13 @@ import { removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
+  DEN_BOSS_TRANSITION_ORDER,
   collectDenBossSnapshots,
   createDenBossTransitionTracker,
   denBossSnapshotPayload,
   denBossTransitionPayload,
   hasDenBossTelemetry,
+  type DenBossSnapshot,
   type DenBossTransition,
   type DenBossTransitionKind,
 } from '../../src/game/ai/den-boss-telemetry.js';
@@ -242,5 +244,53 @@ describe('den-boss telemetry — rollup', () => {
     expect(family.firstBossLeftDenMs).not.toBeNull();
     expect(family.final.encounterDefeated).toBe(true);
     expect(JSON.parse(JSON.stringify(diagnostics))).toEqual(diagnostics);
+  });
+});
+
+describe('den-boss telemetry — record stability', () => {
+  it('classify emits simultaneous transitions in DEN_BOSS_TRANSITION_ORDER', () => {
+    // The collector pushes kinds in source order rather than filtering the
+    // canonical list, so this pins the two orders together.
+    const fixture = createFloor2DenFixture();
+    const tracker = createDenBossTransitionTracker();
+    const seen: DenBossTransitionKind[][] = [];
+    driveDenLifecycle(fixture, (frame) => {
+      const transitions = tracker.poll(fixture.world, frame, fixture.playerEid);
+      const byFamily = new Map<string, DenBossTransitionKind[]>();
+      for (const transition of transitions) {
+        const kinds = byFamily.get(transition.familyId) ?? [];
+        kinds.push(transition.kind);
+        byFamily.set(transition.familyId, kinds);
+      }
+      seen.push(...byFamily.values());
+    });
+
+    expect(seen.some((kinds) => kinds.length > 1)).toBe(true);
+    for (const kinds of seen) {
+      if (kinds[0] === 'baseline') continue;
+      const canonical = DEN_BOSS_TRANSITION_ORDER.filter((kind) => kinds.includes(kind));
+      expect(kinds).toEqual(canonical);
+    }
+  });
+
+  it('never rewrites an already-emitted snapshot on a later frame', () => {
+    // The tracker reuses a scratch buffer and mutates `previous` in place on
+    // quiet frames; emitted records must be immune to that.
+    const fixture = createFloor2DenFixture();
+    const tracker = createDenBossTransitionTracker();
+    const emitted: { frozen: string; live: DenBossSnapshot }[] = [];
+    driveDenLifecycle(fixture, (frame) => {
+      for (const transition of tracker.poll(fixture.world, frame, fixture.playerEid)) {
+        emitted.push({ frozen: JSON.stringify(transition.after), live: transition.after });
+      }
+      for (const snapshot of tracker.getSnapshots()) {
+        emitted.push({ frozen: JSON.stringify(snapshot), live: snapshot });
+      }
+    });
+
+    expect(emitted.length).toBeGreaterThan(5);
+    for (const { frozen, live } of emitted) {
+      expect(JSON.stringify(live)).toBe(frozen);
+    }
   });
 });

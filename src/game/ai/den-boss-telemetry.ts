@@ -17,7 +17,6 @@ import type { GameWorld } from '../../core/world.js';
 import {
   DEN_BOSS_ROLLUP_TRANSITION_LIMIT,
   DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
-  DEN_BOSS_TRANSITION_ORDER,
   type DenBossDiagnostics,
   type DenBossEventPayload,
   type DenBossFamilyDiagnostics,
@@ -113,11 +112,18 @@ function isLiveBoss(world: GameWorld, eid: number | null): eid is number {
   );
 }
 
-function buildSnapshot(
+/**
+ * Fill `target` with the current state of one den. Writing into a caller-owned
+ * object keeps the per-frame diff allocation-free: the tracker reuses a single
+ * scratch snapshot per den and only materializes a durable object when a
+ * transition actually fires.
+ */
+function writeSnapshot(
   world: GameWorld,
   encounter: Floor2FamilyBossEncounterState,
   playerRoomId: number | null,
   lastKnownBossEid: number | null,
+  target: DenBossSnapshot,
 ): DenBossSnapshot {
   const bossEid = encounter.bossEid;
   const bossAlive = isLiveBoss(world, bossEid);
@@ -137,38 +143,91 @@ function buildSnapshot(
 
   const resolvedLastKnown = bossAlive ? bossEid : lastKnownBossEid;
 
+  // Field-by-field assignment, deliberately not `Object.assign(target, {...})`:
+  // an object literal there would allocate and immediately discard a snapshot
+  // on every frame, which is exactly what the scratch buffer exists to avoid.
+  target.schemaVersion = DEN_BOSS_TELEMETRY_SCHEMA_VERSION;
+  target.familyId = encounter.familyId;
+  target.displayName = encounter.displayName;
+  target.denRoomId = encounter.roomId;
+  target.bossEid = bossEid ?? null;
+  target.lastKnownBossEid = resolvedLastKnown;
+  target.bossAlive = bossAlive;
+  target.bossTileX = bossTile ? bossTile.x : null;
+  target.bossTileY = bossTile ? bossTile.y : null;
+  target.bossRoomId = bossRoomId;
+  target.bossInDen = bossAlive && bossRoomId === encounter.roomId;
+  target.bossVisible =
+    bossAlive && world.floorMap !== null
+      ? world.floorMap.isVisibleAt(
+          world.stores.position.x[bossEid] ?? 0,
+          world.stores.position.y[bossEid] ?? 0,
+        )
+      : false;
+  target.bossHealthCurrent = hasHealth ? (world.stores.health.current[bossEid] ?? null) : null;
+  target.bossHealthMax = hasHealth ? (world.stores.health.max[bossEid] ?? null) : null;
+  target.denUnlocked = world.goalFlags.get(denUnlockGoalId(encounter.familyId)) === true;
+  target.encounterStarted = encounter.started === true;
+  target.encounterDefeated = encounter.defeated === true;
+  target.encounterGoalActive = world.goalFlags.get(encounter.activeGoalId) === true;
+  target.denDoorsTotal = denDoorsTotal;
+  target.denDoorsLocked = denDoorsLocked;
+  target.denDoorsOpen = denDoorsOpen;
+  target.denSealed = denDoorsTotal > 0 && denDoorsLocked === denDoorsTotal;
+  target.playerRoomId = playerRoomId;
+  target.playerInDen = playerRoomId !== null && playerRoomId === encounter.roomId;
+  return target;
+}
+
+/**
+ * Blank snapshot with every field declared in contract order, so all snapshots
+ * share one object shape regardless of how they were produced.
+ */
+function blankSnapshot(): DenBossSnapshot {
   return {
     schemaVersion: DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
-    familyId: encounter.familyId,
-    displayName: encounter.displayName,
-    denRoomId: encounter.roomId,
-    bossEid: bossEid ?? null,
-    lastKnownBossEid: resolvedLastKnown,
-    bossAlive,
-    bossTileX: bossTile ? bossTile.x : null,
-    bossTileY: bossTile ? bossTile.y : null,
-    bossRoomId,
-    bossInDen: bossAlive && bossRoomId === encounter.roomId,
-    bossVisible:
-      bossAlive && world.floorMap !== null
-        ? world.floorMap.isVisibleAt(
-            world.stores.position.x[bossEid] ?? 0,
-            world.stores.position.y[bossEid] ?? 0,
-          )
-        : false,
-    bossHealthCurrent: hasHealth ? (world.stores.health.current[bossEid] ?? null) : null,
-    bossHealthMax: hasHealth ? (world.stores.health.max[bossEid] ?? null) : null,
-    denUnlocked: world.goalFlags.get(denUnlockGoalId(encounter.familyId)) === true,
-    encounterStarted: encounter.started === true,
-    encounterDefeated: encounter.defeated === true,
-    encounterGoalActive: world.goalFlags.get(encounter.activeGoalId) === true,
-    denDoorsTotal,
-    denDoorsLocked,
-    denDoorsOpen,
-    denSealed: denDoorsTotal > 0 && denDoorsLocked === denDoorsTotal,
-    playerRoomId,
-    playerInDen: playerRoomId !== null && playerRoomId === encounter.roomId,
+    familyId: '',
+    displayName: '',
+    denRoomId: -1,
+    bossEid: null,
+    lastKnownBossEid: null,
+    bossAlive: false,
+    bossTileX: null,
+    bossTileY: null,
+    bossRoomId: null,
+    bossInDen: false,
+    bossVisible: false,
+    bossHealthCurrent: null,
+    bossHealthMax: null,
+    denUnlocked: false,
+    encounterStarted: false,
+    encounterDefeated: false,
+    encounterGoalActive: false,
+    denDoorsTotal: 0,
+    denDoorsLocked: 0,
+    denDoorsOpen: 0,
+    denSealed: false,
+    playerRoomId: null,
+    playerInDen: false,
   };
+}
+
+/** Allocate a fresh snapshot for one den. */
+function buildSnapshot(
+  world: GameWorld,
+  encounter: Floor2FamilyBossEncounterState,
+  playerRoomId: number | null,
+  lastKnownBossEid: number | null,
+): DenBossSnapshot {
+  return writeSnapshot(world, encounter, playerRoomId, lastKnownBossEid, blankSnapshot());
+}
+
+/**
+ * Copy a snapshot. Emitted records must never alias the tracker's mutable
+ * scratch/working objects, or a later frame would rewrite history.
+ */
+function cloneSnapshot(source: DenBossSnapshot): DenBossSnapshot {
+  return { ...source };
 }
 
 /**
@@ -213,7 +272,10 @@ interface FamilyHistory {
   bossLeftDenCount: number;
   bossReturnedToDenCount: number;
   firstBossLeftDenMs: number | null;
+  /** Last durable observation. Mutated in place on frames with no transition. */
   previous: DenBossSnapshot;
+  /** Reused per-frame working buffer; never handed to a caller. */
+  scratch: DenBossSnapshot;
 }
 
 /**
@@ -243,6 +305,7 @@ export interface DenBossTransitionTracker {
 }
 
 const EMPTY_TRANSITIONS: DenBossTransition[] = [];
+const EMPTY_KINDS: DenBossTransitionKind[] = [];
 
 function toTransitionRecord(transition: DenBossTransition): DenBossTransitionRecord {
   const after = transition.after;
@@ -271,25 +334,31 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
   let transitionLog: DenBossTransitionRecord[] = [];
 
   function classify(before: DenBossSnapshot, after: DenBossSnapshot): DenBossTransitionKind[] {
-    const fired = new Set<DenBossTransitionKind>();
-    if (!before.denUnlocked && after.denUnlocked) fired.add('den-unlocked');
-    if (before.denSealed && !after.denSealed) fired.add('den-doors-unlocked');
-    if (!before.denSealed && after.denSealed) fired.add('den-doors-locked');
-    if (!before.playerInDen && after.playerInDen) fired.add('player-entered-den');
-    if (before.playerInDen && !after.playerInDen) fired.add('player-left-den');
-    if (!before.encounterStarted && after.encounterStarted) fired.add('encounter-started');
+    // The checks below are written in DEN_BOSS_TRANSITION_ORDER, so pushing as
+    // we go yields the contract order without a Set or a per-frame filter pass.
+    // `classify-emits-DEN_BOSS_TRANSITION_ORDER` in the unit tests pins this.
+    let fired: DenBossTransitionKind[] | null = null;
+    const push = (kind: DenBossTransitionKind): void => {
+      fired ??= [];
+      fired.push(kind);
+    };
+    if (!before.denUnlocked && after.denUnlocked) push('den-unlocked');
+    if (before.denSealed && !after.denSealed) push('den-doors-unlocked');
+    if (!before.denSealed && after.denSealed) push('den-doors-locked');
+    if (!before.playerInDen && after.playerInDen) push('player-entered-den');
+    if (before.playerInDen && !after.playerInDen) push('player-left-den');
+    if (!before.encounterStarted && after.encounterStarted) push('encounter-started');
     if (before.bossAlive && after.bossAlive) {
-      if (before.bossInDen && !after.bossInDen) fired.add('boss-left-den');
-      if (!before.bossInDen && after.bossInDen) fired.add('boss-returned-to-den');
+      if (before.bossInDen && !after.bossInDen) push('boss-left-den');
+      if (!before.bossInDen && after.bossInDen) push('boss-returned-to-den');
     }
-    if (before.bossAlive && !after.bossAlive) fired.add('boss-despawned');
-    if (!before.encounterDefeated && after.encounterDefeated) fired.add('encounter-defeated');
-    if (!before.encounterGoalActive && after.encounterGoalActive) fired.add('encounter-goal-set');
+    if (before.bossAlive && !after.bossAlive) push('boss-despawned');
+    if (!before.encounterDefeated && after.encounterDefeated) push('encounter-defeated');
+    if (!before.encounterGoalActive && after.encounterGoalActive) push('encounter-goal-set');
     if (before.encounterGoalActive && !after.encounterGoalActive) {
-      fired.add('encounter-goal-cleared');
+      push('encounter-goal-cleared');
     }
-    if (fired.size === 0) return [];
-    return DEN_BOSS_TRANSITION_ORDER.filter((kind) => fired.has(kind));
+    return fired ?? EMPTY_KINDS;
   }
 
   function record(
@@ -346,9 +415,9 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
       const encounter = encounters.get(familyId);
       if (!encounter) continue;
       const entry = history.get(familyId);
-      const after = buildSnapshot(world, encounter, playerRoomId, entry?.lastKnownBossEid ?? null);
 
       if (!entry) {
+        const after = buildSnapshot(world, encounter, playerRoomId, null);
         const created: FamilyHistory = {
           firstBossEid: after.bossAlive ? after.bossEid : null,
           lastKnownBossEid: after.lastKnownBossEid,
@@ -361,7 +430,8 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
           bossLeftDenCount: 0,
           bossReturnedToDenCount: 0,
           firstBossLeftDenMs: null,
-          previous: after,
+          previous: cloneSnapshot(after),
+          scratch: cloneSnapshot(after),
         };
         history.set(familyId, created);
         const baseline: DenBossTransition = {
@@ -382,14 +452,30 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
         continue;
       }
 
+      const scratch = writeSnapshot(
+        world,
+        encounter,
+        playerRoomId,
+        entry.lastKnownBossEid,
+        entry.scratch,
+      );
       const before = entry.previous;
-      const kinds = classify(before, after);
-      entry.previous = after;
-      if (after.bossAlive) {
-        entry.lastKnownBossEid = after.bossEid;
-        entry.firstBossEid ??= after.bossEid;
+      const kinds = classify(before, scratch);
+      if (scratch.bossAlive) {
+        entry.lastKnownBossEid = scratch.bossEid;
+        entry.firstBossEid ??= scratch.bossEid;
       }
-      if (kinds.length === 0) continue;
+      if (kinds.length === 0) {
+        // Nothing discrete happened: refresh the live state in place so the
+        // rollup stays current without allocating on a quiet frame.
+        Object.assign(before, scratch);
+        continue;
+      }
+      // A transition fired, so `before` is now history and must never be
+      // mutated again — emitted records hold it. Materialize two durable
+      // objects: the one records carry, and a fresh working copy.
+      const after = cloneSnapshot(scratch);
+      entry.previous = cloneSnapshot(scratch);
       for (const kind of kinds) {
         record(entry, kind, frame, gameMs, after);
         const transition: DenBossTransition = {
@@ -414,7 +500,9 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
   }
 
   function getSnapshots(): DenBossSnapshot[] {
-    return [...history.values()].map((entry) => entry.previous);
+    // Clone: `previous` is mutated in place on quiet frames, so handing it out
+    // directly would let a later frame rewrite an already-recorded event.
+    return [...history.values()].map((entry) => cloneSnapshot(entry.previous));
   }
 
   function getDiagnostics(): DenBossDiagnostics | undefined {
@@ -436,7 +524,7 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
         bossLeftDenCount: entry.bossLeftDenCount,
         bossReturnedToDenCount: entry.bossReturnedToDenCount,
         firstBossLeftDenMs: entry.firstBossLeftDenMs,
-        final: entry.previous,
+        final: cloneSnapshot(entry.previous),
       };
     }
     return {

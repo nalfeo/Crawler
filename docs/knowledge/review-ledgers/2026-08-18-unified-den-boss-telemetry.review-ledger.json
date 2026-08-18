@@ -14,8 +14,33 @@
       "notes": "Blockers: (1) bossEid nulled on defeat -> transitions now carry before/after snapshots + lastKnownBossEid; (2) DenBossDiagnostics rollup fully specified and accumulated independently of the optional recordEvent sink; (3) contract tests must cover both real factories (labs session-recorder-controls + bootstrap floor-main-scene-options), not one impl twice. Non-blocking: per-frame allocation -> scratch-based diff, snapshots materialized only on transition/cadence; EID reuse -> hasComponent validation for boss + doors; reset/baseline semantics -> baseline transition on first observation and after reset. Also: iterate presentFamilies for deterministic order, aggregate periodic den record instead of per-family, and use a fast deterministic seed-42 fixture instead of a second full Floor 2 headless run."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Per-frame allocation in the hot loop: poll() built a fresh DenBossSnapshot per den per frame and classify() allocated a Set + array. Fixed with a reused per-den scratch snapshot, in-place refresh on quiet frames, durable clones only when a transition fires, and a lazily-built ordered kinds array."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Follow-on of the same root cause: writeSnapshot still used Object.assign(target, {...}), which allocates and discards the literal every frame. Fixed with direct field assignment plus a blankSnapshot() factory so all snapshots share one object shape."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirmation round: no significant issues found. Aliasing/mutation hazards from the scratch refactor explicitly checked and pinned by two new regression tests (transition order, emitted-snapshot immutability)."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
