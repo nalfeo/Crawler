@@ -6457,6 +6457,241 @@ test('ci-only task body omits review-thread protocol and requires push-based pro
   );
 });
 
+test('aggregate CI failures survive a concrete failure in an unrelated workflow', async (t) => {
+  // The check-runs endpoint carries every workflow on the head SHA. A failed
+  // job in a different workflow (here: security scanning) does not explain the
+  // `ci` / `Merge gate` aggregates, so those must remain visible blockers.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/2`,
+          },
+          {
+            id: 3,
+            name: 'CodeQL scan',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/22/job/3`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          { id: 11, path: '.github/workflows/ci.yml', event: 'pull_request' },
+          { id: 22, path: '.github/workflows/security.yml', event: 'pull_request' },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `CodeQL scan`/,
+    'the concrete cross-workflow failure should remain actionable',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `ci`/,
+    'the ci aggregate should survive a failure in an unrelated workflow',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Merge gate`/,
+    'the Merge gate aggregate should survive a failure in an unrelated workflow',
+  );
+});
+
+test('aggregate CI failures are suppressed by a concrete failure in the same workflow', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/2`,
+          },
+          {
+            id: 4,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            // Re-dispatched ci.yml run: a different run id, same workflow path.
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/12/job/4`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          { id: 11, path: '.github/workflows/ci.yml', event: 'pull_request' },
+          { id: 12, path: '.github/workflows/ci.yml', event: 'pull_request' },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Lightweight Checks`/,
+    'the concrete same-workflow failure should remain actionable',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `(?:ci|Merge gate)`/,
+    'aggregates should be suppressed by a concrete failure from the same workflow',
+  );
+});
+
 test('merge-train-noop task body uses generic repair protocol, not ci-only or review-thread', async (t) => {
   // A merge-train-noop blocker means the PR squash diff is already in the
   // train base — neither a CI failure nor a review-thread.  The task body

@@ -5,6 +5,7 @@ import {
   automationProgressKey,
   automationStallAction,
   blockerFingerprint,
+  checkRunWorkflowRunId,
   collapseCheckRunsByName,
   isDuplicateDispatch,
   isLeaseExpired,
@@ -2413,19 +2414,40 @@ const actionableFailedChecks = checkRuns.filter((check) => {
     !isAdvisoryCheck(checkName)
   );
 });
-const hasConcreteCiFailure = actionableFailedChecks.some(
-  (check) =>
-    !AGGREGATE_CI_CHECK_NAMES.has(
-      String(check.name || '')
-        .trim()
-        .toLowerCase(),
-    ),
-);
-for (const check of actionableFailedChecks) {
-  const checkName = String(check.name || '')
+// An aggregate `ci` / `Merge gate` conclusion only restates the outcome of the
+// concrete jobs in its own workflow, so it may be suppressed only when a
+// concrete failure from that same workflow explains it. The check-runs endpoint
+// also carries security, reviewer and other workflows on the head SHA; grouping
+// by workflow keeps an unrelated failure from hiding a genuine aggregate
+// blocker. Workflow *path* (not run id) is the grouping key so a re-dispatched
+// run still matches the collapsed latest-attempt check from the same workflow.
+const workflowPathByRunId = new Map();
+for (const run of runs) {
+  const path = String(run.path ?? '')
     .trim()
     .toLowerCase();
-  if (hasConcreteCiFailure && AGGREGATE_CI_CHECK_NAMES.has(checkName)) continue;
+  if (path) workflowPathByRunId.set(Number(run.id), path);
+}
+const checkWorkflowKey = (check) => {
+  const runId = checkRunWorkflowRunId(check);
+  if (runId === null) return null;
+  return workflowPathByRunId.get(runId) ?? `run:${runId}`;
+};
+const aggregateCheckName = (check) =>
+  AGGREGATE_CI_CHECK_NAMES.has(
+    String(check.name || '')
+      .trim()
+      .toLowerCase(),
+  );
+const concreteFailureWorkflowKeys = new Set();
+for (const check of actionableFailedChecks) {
+  if (aggregateCheckName(check)) continue;
+  const key = checkWorkflowKey(check);
+  if (key) concreteFailureWorkflowKeys.add(key);
+}
+for (const check of actionableFailedChecks) {
+  const key = checkWorkflowKey(check);
+  if (aggregateCheckName(check) && key && concreteFailureWorkflowKeys.has(key)) continue;
   blockers.push({
     kind: 'ci-failure',
     id: check.name,
