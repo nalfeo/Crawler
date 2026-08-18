@@ -34,13 +34,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "266308700c27d61bd75b2ba2045f9b5d3492fce7",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly optimizes the spatial grid insertion hot-path by eagerly extracting component data from the ECS stores to avoid function call overhead. The fallback logic handles the tricky NaN edge case perfectly: by mapping any value where `stored > 0` is false (which includes NaN and negatives) to 0 first, the subsequent `<= 0` fallback trigger evaluates to true. This exactly mimics the early-exit behavior of the `getBodyHalfWidth`/`getBodyHalfHeight` helpers without risking NaN poisoning the grid. The fix is minimal, strictly scoped, and comes with a deterministic regression test that explicitly validates the NaN case."
     }
   }
 }
