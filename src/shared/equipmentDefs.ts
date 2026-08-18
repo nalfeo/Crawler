@@ -181,7 +181,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
 /**
  * Placeholder wearable gear covering every non-weapon, non-neck body slot so
  * the paper-doll is fully fillable and the equip-from-inventory flow is
- * testable across all 18 slots. Each `id` matches a `gear(...)` item slug in
+ * testable across the active slots. Each `id` matches a `gear(...)` item slug in
  * `items.ts`. Primary-stat bonuses are integers (the equipment validator
  * rejects fractional primaries); secondary stats (armor, moveSpeed, crit,
  * etc.) may be fractional. Rings are split into two distinct items because a
@@ -200,7 +200,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'iron-visor',
     name: 'Iron Visor',
-    slots: ['face'],
+    slots: ['head'],
     statBonuses: { armor: 1, critChance: 0.03 },
     rarity: 'common',
     weightLb: 2,
@@ -208,7 +208,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'steel-pauldrons',
     name: 'Steel Pauldrons',
-    slots: ['shoulders'],
+    slots: ['chest'],
     statBonuses: { armor: 2, strength: 1 },
     rarity: 'uncommon',
     weightLb: 6,
@@ -224,7 +224,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'travelers-cloak',
     name: "Traveler's Cloak",
-    slots: ['back'],
+    slots: ['neck'],
     statBonuses: { moveSpeed: 0.05, dodgeChance: 0.03 },
     rarity: 'uncommon',
     weightLb: 2,
@@ -232,7 +232,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'sturdy-belt',
     name: 'Sturdy Belt',
-    slots: ['belt'],
+    slots: ['legs'],
     statBonuses: { hpRegen: 0.5, constitution: 1 },
     rarity: 'common',
     weightLb: 1,
@@ -264,7 +264,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'bronze-vambrace',
     name: 'Bronze Vambrace',
-    slots: ['leftArm'],
+    slots: ['ring1'],
     statBonuses: { armor: 1, strength: 1 },
     rarity: 'common',
     weightLb: 2,
@@ -272,7 +272,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'iron-armguard',
     name: 'Iron Armguard',
-    slots: ['rightArm'],
+    slots: ['ring2'],
     statBonuses: { armor: 1, damageBonus: 2 },
     rarity: 'common',
     weightLb: 2,
@@ -280,7 +280,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'leather-bracer',
     name: 'Leather Bracer',
-    slots: ['leftWrist'],
+    slots: ['ring1'],
     statBonuses: { dexterity: 1, dodgeChance: 0.02 },
     rarity: 'common',
     weightLb: 0.5,
@@ -288,7 +288,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'beaded-bracelet',
     name: 'Beaded Bracelet',
-    slots: ['rightWrist'],
+    slots: ['gloves'],
     statBonuses: { critChance: 0.02, luck: 1 },
     rarity: 'uncommon',
     weightLb: 0.25,
@@ -296,7 +296,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'band-of-fortune',
     name: 'Band of Fortune',
-    slots: ['ringLeft'],
+    slots: ['ring1'],
     statBonuses: { luck: 1, xpBonus: 0.05 },
     rarity: 'rare',
     weightLb: 0.25,
@@ -304,7 +304,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'signet-of-focus',
     name: 'Signet of Focus',
-    slots: ['ringRight'],
+    slots: ['ring2'],
     statBonuses: { intelligence: 1, cooldownReduction: 0.03 },
     rarity: 'rare',
     weightLb: 0.25,

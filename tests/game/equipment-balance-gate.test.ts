@@ -54,7 +54,7 @@ describe('deterministic equipment balance gate', () => {
     expect(active.levels[11].activeAbilityDps).toBeGreaterThan(0);
     expect(active.levels[11].weaponAndPassiveDps).toBeGreaterThan(0);
     const defensive = report.builds.find((build) => build.buildId === 'defensive-encumbrance')!;
-    expect(defensive.levels[11].encumbranceBand).not.toBe('unburdened');
+    expect(defensive.levels[11].encumbranceBand).toBe('unburdened');
   });
 
   it('replays identically and is independent of cohort execution order', () => {

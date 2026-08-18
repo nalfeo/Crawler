@@ -171,14 +171,14 @@ describe('Equipment System', () => {
     const result = equip(
       world,
       hpEntity,
-      makeItem({ id: 'con-ring', slots: ['ringLeft'], statBonuses: { constitution: 1 } }),
+      makeItem({ id: 'con-ring', slots: ['ring1'], statBonuses: { constitution: 1 } }),
       { force: true },
     );
     expect(result.ok).toBe(true);
     expect(world.stores.health.max[hpEntity]).toBe(beforeMax + 10);
     expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent + 10);
 
-    const unequipResult = unequip(world, hpEntity, 'ringLeft', { force: true });
+    const unequipResult = unequip(world, hpEntity, 'ring1', { force: true });
     expect(unequipResult.ok).toBe(true);
     expect(world.stores.health.max[hpEntity]).toBe(beforeMax);
     expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent);
@@ -307,16 +307,16 @@ describe('Equipment System', () => {
 
   // 12. Duplicate item definitions (same id, different instances)
   it('handles duplicate item defs with independent instances', () => {
-    const ringDef = makeItem({ id: 'lucky-ring', slots: ['ringLeft'], statBonuses: { luck: 3 } });
+    const ringDef = makeItem({ id: 'lucky-ring', slots: ['ring1'], statBonuses: { luck: 3 } });
     equip(world, entity, ringDef, { force: true });
     equip(
       world,
       entity,
-      makeItem({ id: 'lucky-ring', slots: ['ringRight'], statBonuses: { luck: 3 } }),
+      makeItem({ id: 'lucky-ring', slots: ['ring2'], statBonuses: { luck: 3 } }),
       { force: true },
     );
     expect(getEffectiveStats(world, entity).luck).toBe(7); // base 1 + 3 + 3
-    unequip(world, entity, 'ringLeft', { force: true });
+    unequip(world, entity, 'ring1', { force: true });
     expect(getEffectiveStats(world, entity).luck).toBe(4); // base 1 + 3
   });
 
@@ -443,7 +443,7 @@ describe('Equipment System', () => {
 
   // 22. New slot added to registry — tested indirectly via slot registry length
   it('supports all registered slots', () => {
-    expect(SLOT_REGISTRY.length).toBe(18);
+    expect(SLOT_REGISTRY.length).toBe(10);
   });
 
   // 23. Unknown slot rejected
@@ -514,7 +514,7 @@ describe('Equipment System', () => {
     equip(
       world,
       entity,
-      makeItem({ id: 'a', slots: ['ringLeft'], statBonuses: { dodgeChance: 0.9 } }),
+      makeItem({ id: 'a', slots: ['ring1'], statBonuses: { dodgeChance: 0.9 } }),
       { force: true },
     );
     expect(getEffectiveStats(world, entity).dodgeChance).toBeCloseTo(0.75, 5); // capped
@@ -522,7 +522,7 @@ describe('Equipment System', () => {
     equip(
       world,
       entity,
-      makeItem({ id: 'b', slots: ['ringRight'], statBonuses: { cooldownReduction: 0.95 } }),
+      makeItem({ id: 'b', slots: ['ring2'], statBonuses: { cooldownReduction: 0.95 } }),
       { force: true },
     );
     expect(getEffectiveStats(world, entity).cooldownReduction).toBeCloseTo(0.8, 5); // capped
@@ -986,7 +986,7 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers the 15 non-hand, non-neck armor/accessory slots', () => {
+  it('GEAR_ITEM_IDS covers non-hand armor and accessory slots', () => {
     const gearSlots = new Set<string>();
     for (const id of equipmentDefsTestSeams.GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
@@ -996,6 +996,5 @@ describe('equippable slot coverage', () => {
     expect(equipmentDefsTestSeams.GEAR_ITEM_IDS).toHaveLength(15);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
-    expect(gearSlots.has('neck')).toBe(false);
   });
 });

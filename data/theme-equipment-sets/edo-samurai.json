@@ -43,12 +43,12 @@
     {
       "id": "hachimaki-headband",
       "displayName": "Hachimaki Headband",
-      "slots": ["face"]
+      "slots": ["head"]
     },
     {
       "id": "yoroi-shoulder-plates",
       "displayName": "Yoroi Shoulder Plates",
-      "slots": ["shoulders"]
+      "slots": ["chest"]
     },
     {
       "id": "tatami-dou",
@@ -63,12 +63,12 @@
     {
       "id": "haori-cloak",
       "displayName": "Haori Cloak",
-      "slots": ["back"]
+      "slots": ["neck"]
     },
     {
       "id": "obi-belt",
       "displayName": "Obi Belt",
-      "slots": ["belt"]
+      "slots": ["legs"]
     },
     {
       "id": "haidate-guards",
@@ -83,7 +83,7 @@
     {
       "id": "kao-ring",
       "displayName": "Kao Ring",
-      "slots": ["ringLeft", "ringRight"]
+      "slots": ["ring1", "ring2"]
     },
     {
       "id": "tasuki-cord",
@@ -93,12 +93,12 @@
     {
       "id": "tekko-bracers",
       "displayName": "Tekko Bracers",
-      "slots": ["leftWrist", "rightWrist"]
+      "slots": ["ring1"]
     },
     {
       "id": "sode-arm-guards",
       "displayName": "Sode Arm Guards",
-      "slots": ["leftArm", "rightArm"]
+      "slots": ["gloves"]
     }
   ]
 }

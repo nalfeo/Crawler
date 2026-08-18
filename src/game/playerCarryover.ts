@@ -9,7 +9,7 @@ import {
   initializeBaseStats,
 } from '../core/systems/equipmentSystem.js';
 import { statSystem } from '../core/systems/statSystem.js';
-import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { SLOT_REGISTRY, isValidSlotId, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
@@ -532,6 +532,11 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     lootBoxRewardBundles: readArrayField(
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
+    disabledEquipmentSlots: Array.isArray(legacy.disabledEquipmentSlots)
+      ? legacy.disabledEquipmentSlots.filter(
+          (slotId) => typeof slotId !== 'string' || isValidSlotId(slotId),
+        )
+      : legacy.disabledEquipmentSlots,
   };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
@@ -1486,6 +1491,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       );
     }
     for (const slotId of def.slots) {
+      if (!isValidSlotId(slotId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Equipped item ${itemId} references retired equipment slot ${slotId}`,
+        );
+      }
       const existing = occupiedSlots.get(slotId);
       if (existing) {
         throw new PlayerCarryoverSnapshotError(
@@ -1502,6 +1512,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       throw new PlayerCarryoverSnapshotError(`Dangling generated equipped reference: ${key}`);
     }
     for (const slotId of instance.frozen.slots) {
+      if (!isValidSlotId(slotId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Generated equipment ${key} references retired equipment slot ${slotId}`,
+        );
+      }
       const existing = occupiedSlots.get(slotId);
       if (existing) {
         throw new PlayerCarryoverSnapshotError(

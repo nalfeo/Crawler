@@ -48,22 +48,22 @@
     {
       "id": "cloth-cloak",
       "displayName": "Cloth Cloak",
-      "slots": ["back"]
+      "slots": ["neck"]
     },
     {
       "id": "leather-shoulder-pads",
       "displayName": "Leather Shoulder Pads",
-      "slots": ["shoulders"]
+      "slots": ["chest"]
     },
     {
       "id": "leather-arm-wraps",
       "displayName": "Leather Arm Wraps",
-      "slots": ["leftArm", "rightArm"]
+      "slots": ["gloves"]
     },
     {
       "id": "leather-bracers",
       "displayName": "Leather Bracers",
-      "slots": ["leftWrist", "rightWrist"]
+      "slots": ["ring1"]
     },
     {
       "id": "leather-tunic",
@@ -78,7 +78,7 @@
     {
       "id": "leather-belt",
       "displayName": "Leather Belt",
-      "slots": ["belt"]
+      "slots": ["legs"]
     },
     {
       "id": "leather-pants",
@@ -93,7 +93,7 @@
     {
       "id": "iron-ring",
       "displayName": "Iron Ring",
-      "slots": ["ringLeft", "ringRight"]
+      "slots": ["ring1", "ring2"]
     }
   ]
 }

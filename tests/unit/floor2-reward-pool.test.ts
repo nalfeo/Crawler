@@ -61,11 +61,11 @@ describe('Floor 2 central reward pool — derived counts and coverage', () => {
     expect(new Set(FLOOR2_REWARD_POOL_STABLE_IDS)).toEqual(manifestIds);
   });
 
-  it('reaches every one of the 16 real armor slots (excludes mainHand/offHand)', () => {
+  it('reaches every one of the 8 real armor slots (excludes mainHand/offHand)', () => {
     const expectedArmorSlots = SLOT_REGISTRY.filter(
       (slot) => slot.id !== 'mainHand' && slot.id !== 'offHand',
     ).map((slot) => slot.id);
-    expect(expectedArmorSlots).toHaveLength(16);
+    expect(expectedArmorSlots).toHaveLength(8);
     expect(new Set(FLOOR2_ARMOR_SLOT_IDS)).toEqual(new Set(expectedArmorSlots));
 
     const nonWeaponBaseIds = new Set(FLOOR2_REWARD_POOL_NON_WEAPON_IDS);

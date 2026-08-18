@@ -17,9 +17,9 @@
       "displayName": "Amulet of the Old Kings",
       "slots": ["neck"]
     },
-    { "id": "heraldic-cloak", "displayName": "Heraldic Cloak", "slots": ["back"] },
-    { "id": "iron-visor", "displayName": "Iron Visor", "slots": ["face"] },
-    { "id": "lion-pauldrons", "displayName": "Lion Pauldrons", "slots": ["shoulders"] },
+    { "id": "heraldic-cloak", "displayName": "Heraldic Cloak", "slots": ["neck"] },
+    { "id": "iron-visor", "displayName": "Iron Visor", "slots": ["head"] },
+    { "id": "lion-pauldrons", "displayName": "Lion Pauldrons", "slots": ["chest"] },
     { "id": "tabard-of-valor", "displayName": "Tabard of Valor", "slots": ["chest"] },
     {
       "id": "gauntlets-of-the-guard",
@@ -31,18 +31,18 @@
       "displayName": "Greaves of the Vanguard",
       "slots": ["legs"]
     },
-    { "id": "cinched-leather-belt", "displayName": "Cinched Leather Belt", "slots": ["belt"] },
+    { "id": "cinched-leather-belt", "displayName": "Cinched Leather Belt", "slots": ["legs"] },
     { "id": "steel-sabatons", "displayName": "Steel Sabatons", "slots": ["feet"] },
     {
       "id": "banded-vambraces",
       "displayName": "Banded Vambraces",
-      "slots": ["leftArm", "rightArm"]
+      "slots": ["gloves"]
     },
     {
       "id": "oiled-leather-bracers",
       "displayName": "Oiled Leather Bracers",
-      "slots": ["leftWrist", "rightWrist"]
+      "slots": ["ring1"]
     },
-    { "id": "signet-ring", "displayName": "Signet Ring", "slots": ["ringLeft", "ringRight"] }
+    { "id": "signet-ring", "displayName": "Signet Ring", "slots": ["ring1", "ring2"] }
   ]
 }

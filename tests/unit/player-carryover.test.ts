@@ -49,6 +49,24 @@ import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inve
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 describe('player floor carryover', () => {
+  it('drops retired disabled slots while migrating a saved snapshot', () => {
+    const source = createTestWorld({ seed: 7 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      disabledEquipmentSlots: ['ringLeft', 'ring1'],
+    };
+
+    const destination = createTestWorld({ seed: 7 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(getEquipmentState(destination, destinationPlayer)?.disabledSlots).toEqual(
+      new Set(['ring1']),
+    );
+  });
+
   it('restores run-wide progression without copying the previous floor modifier', () => {
     const source = createTestWorld({ seed: 42 });
     const sourcePlayer = spawnPlayer(source, 0, 0);

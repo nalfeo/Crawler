@@ -77,7 +77,7 @@ describe('theme equipment review command bridge', () => {
     expect(result).toMatchObject({
       id: 'classic-fantasy',
       stateRevision: 0,
-      coverage: { weaponTypeCount: 6, coveredSlotCount: 16 },
+      coverage: { weaponTypeCount: 6, coveredSlotCount: 8 },
       gate: { canAdvance: false },
     });
     expect(result.items).toHaveLength(19);

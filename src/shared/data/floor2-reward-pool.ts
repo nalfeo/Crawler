@@ -43,7 +43,7 @@ import type { Floor2EquipmentStableId } from './floor2-equipment-art.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../equipment-slots.js';
 
 /**
- * The 16 armor slot IDs — every {@link SLOT_REGISTRY} entry except the two
+ * The 8 armor slot IDs — every {@link SLOT_REGISTRY} entry except the two
  * weapon-hand slots (`mainHand`/`offHand`). Derived, never hand-copied, so a
  * future slot addition/removal in the registry is reflected here automatically.
  */
@@ -134,7 +134,7 @@ function validateRewardPool(): void {
     }
   }
 
-  // Every one of the 16 real armor slots must be reachable by at least one
+  // Every one of the 8 real armor slots must be reachable by at least one
   // non-weapon base in the pool. Weapon-hand slots (mainHand/offHand) are
   // intentionally excluded — some accessories legitimately occupy them, but
   // that is not "armor coverage".

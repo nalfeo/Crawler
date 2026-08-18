@@ -229,7 +229,7 @@ describe('previewEquipDelta', () => {
     const band: EquipmentItemDef = {
       id: 'str-band',
       name: 'Band of Might',
-      slots: ['ringLeft'],
+      slots: ['ring1'],
       statBonuses: { strength: 5 },
       weightLb: 0,
       rarity: 'common',
@@ -238,7 +238,7 @@ describe('previewEquipDelta', () => {
     equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'heavy-signet',
       name: 'Heavy Signet',
-      slots: ['ringLeft'],
+      slots: ['ring1'],
       statBonuses: { armor: 3 },
       weightLb: 0,
       rarity: 'rare',
@@ -259,7 +259,7 @@ describe('previewEquipDelta', () => {
     const band: EquipmentItemDef = {
       id: 'str-band',
       name: 'Band of Might',
-      slots: ['ringLeft'],
+      slots: ['ring1'],
       statBonuses: { strength: 5 },
       weightLb: 0,
       rarity: 'common',
@@ -268,7 +268,7 @@ describe('previewEquipDelta', () => {
     equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'light-signet',
       name: 'Light Signet',
-      slots: ['ringLeft'],
+      slots: ['ring1'],
       statBonuses: { armor: 1 },
       weightLb: 0,
       rarity: 'common',
