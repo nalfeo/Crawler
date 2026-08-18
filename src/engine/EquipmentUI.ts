@@ -538,11 +538,11 @@ export function createEquipmentUI(
   // lives in a reserved region below the grid, its content can never overlap a
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
-  const INSPECTOR_H = 86;
-  const INSPECTOR_GAP = 12;
+  const INSPECTOR_H = 96;
+  const INSPECTOR_GAP = 32;
   const inspectorX = dollX + 10;
   const inspectorW = dollW - 20;
-  const inspectorY = dollY + dollH - INSPECTOR_H - 10;
+  const inspectorY = dollY + dollH - INSPECTOR_H - 30;
   const inspectorBg = scene.add.rectangle(
     inspectorX + inspectorW / 2,
     inspectorY + INSPECTOR_H / 2,
@@ -1486,7 +1486,8 @@ export function createEquipmentUI(
       const px = spreadNorm(fill(slot.uiPosition.x, minX, maxX), SLOT_SPREAD_X);
       const py = spreadNorm(fill(slot.uiPosition.y, minY, maxY), SLOT_SPREAD_Y);
       const cx = dollX + innerPadX + gridOffsetX + SLOT_W / 2 + px * usableW;
-      const slotYOffset = slot.id === 'gloves' ? 10 : slot.id === 'feet' ? -10 : 0;
+      const slotYOffset =
+        slot.id === 'gloves' || slot.id === 'legs' ? 10 : slot.id === 'feet' ? -10 : 0;
       const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH + slotYOffset;
 
       const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
@@ -1611,6 +1612,15 @@ export function createEquipmentUI(
         : instance
           ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
           : createSlotPlaceholder(slot.id, cx, cy + 2);
+      const emptyCue = instance
+        ? null
+        : crispText(snap(cx), snap(cy + 18), 'Empty', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '9px',
+            color: hex(COLORS.textSecondary),
+            padding: { top: 1, bottom: 2 },
+          });
+      if (emptyCue) centerTextOnPixels(emptyCue, cx, cy + 18);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -1665,6 +1675,10 @@ export function createEquipmentUI(
       }
       container.add(iconObject);
       slotObjects.push(iconObject);
+      if (emptyCue) {
+        container.add(emptyCue);
+        slotObjects.push(emptyCue);
+      }
       if ('getBounds' in iconObject && typeof iconObject.getBounds === 'function') {
         const ib = iconObject.getBounds();
         slotIconBounds.set(slot.id, { x: ib.x, y: ib.y, width: ib.width, height: ib.height });
