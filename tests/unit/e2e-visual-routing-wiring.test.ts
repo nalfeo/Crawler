@@ -134,6 +134,7 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     expect(dependencyInstall?.run).toContain(
       'timeout --kill-after=30s 10m npx playwright install-deps chromium',
     );
+    expect(dependencyInstall?.run).toContain('[ "$status" -eq 124 ] || [ "$status" -eq 137 ]');
     expect(browserInstall?.if).toContain("steps.pw-cache.outputs.cache-hit != 'true'");
     expect(browserInstall?.run).toBe('npx playwright install chromium');
   });
