@@ -99,6 +99,30 @@ export function resolveRunBundleUploadConfig(): RunBundleUploadConfig {
   };
 }
 
+/**
+ * The Fetch Standard gives `keepalive` requests (and `navigator.sendBeacon`) a
+ * shared per-origin inflight body quota of 64 KiB. A larger body is rejected by
+ * the browser before any network activity happens, surfacing as an opaque
+ * `TypeError: Failed to fetch` that looks exactly like a CORS or DNS failure.
+ * Real dev-build run bundles run ~67 KB, so they tripped this every time while
+ * the same payload replayed fine outside the browser.
+ */
+const KEEPALIVE_BODY_LIMIT_BYTES = 64 * 1024;
+
+function bodyByteLength(body: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(body).length;
+  }
+  // Fall back to a conservative upper bound (UTF-16 code units cannot expand to
+  // more than 3 UTF-8 bytes each for the BMP, and surrogate pairs stay within
+  // 4 bytes across 2 units), so we only ever err toward disabling keepalive.
+  return body.length * 3;
+}
+
+function canUseKeepalive(body: string): boolean {
+  return bodyByteLength(body) <= KEEPALIVE_BODY_LIMIT_BYTES;
+}
+
 export interface RunBundleUploadResult {
   readonly ok: boolean;
   readonly used: 'fetch' | 'sendBeacon' | 'disabled';
@@ -120,13 +144,21 @@ export async function submitRunBundleUpload(
   }
   const payload = buildRunBundleUploadRequest(bundle);
   const body = JSON.stringify(payload);
+  const withinKeepaliveQuota = canUseKeepalive(body);
+  let beaconRefused = false;
   const useBeacon =
-    (options.endReason ?? bundle.meta.endReason) === 'quit' ||
-    (typeof document !== 'undefined' && document.visibilityState === 'hidden');
+    ((options.endReason ?? bundle.meta.endReason) === 'quit' ||
+      (typeof document !== 'undefined' && document.visibilityState === 'hidden')) &&
+    withinKeepaliveQuota;
   const nav = options.navigatorLike ?? (typeof navigator !== 'undefined' ? navigator : undefined);
   if (useBeacon && nav && typeof nav.sendBeacon === 'function') {
+    // sendBeacon shares the keepalive quota and returns false when the body is
+    // refused, so only report success when the browser actually queued it.
     const sent = nav.sendBeacon(config.endpoint, body);
-    return { ok: sent, used: 'sendBeacon' };
+    if (sent) {
+      return { ok: true, used: 'sendBeacon' };
+    }
+    beaconRefused = true;
   }
   if (typeof fetch === 'undefined' && !options.fetchImpl) {
     return { ok: false, used: 'disabled', reason: 'fetch is not available in this runtime.' };
@@ -137,7 +169,7 @@ export async function submitRunBundleUpload(
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Run-Upload-Mode': 'silent' },
       body,
-      keepalive: true,
+      keepalive: withinKeepaliveQuota && !beaconRefused,
     });
     return { ok: response.ok, used: 'fetch', status: response.status };
   } catch (error) {
@@ -166,6 +198,7 @@ export async function submitRunSurvey(
     return { ok: false, used: 'disabled', reason: config.reason ?? 'disabled' };
   }
   const payload = buildRunSurveyRequest(bundle, survey);
+  const body = JSON.stringify(payload);
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
     const response = await fetchImpl(config.endpoint, {
@@ -174,8 +207,8 @@ export async function submitRunSurvey(
         'content-type': 'application/json',
         'X-Run-Upload-Mode': 'survey',
       },
-      body: JSON.stringify(payload),
-      keepalive: true,
+      body,
+      keepalive: canUseKeepalive(body),
     });
     return { ok: response.ok, used: 'fetch', status: response.status };
   } catch (error) {
