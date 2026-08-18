@@ -75,6 +75,15 @@ import {
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
 import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
+// The Sprite Editor's queued-but-unpromoted annotation overlay lives beside
+// the extension (a `.mjs` cannot import TypeScript, so this is the one
+// direction that CAN be shared without duplicating logic). A sibling
+// `pending-annotation-overlay.d.mts` declares its types for `tsc` without
+// requiring `allowJs`.
+import {
+  resolvePendingAnnotationsPath,
+  readPendingDislikedSpriteNames,
+} from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -119,6 +128,17 @@ export interface GenerateOneOptions {
   readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
   /** Asset-level disliked annotation loader injection for reference hygiene. */
   readonly loadDislikedReferenceNames?: () => ReadonlySet<string>;
+  /**
+   * Queued-but-unpromoted Sprite Editor annotation overlay loader injection
+   * (tests). Defaults to reading the same per-worktree pending-overlay file
+   * the editor's `annotation-persistence.mjs` writes (see
+   * `pending-annotation-overlay.mjs`), so a sprite disliked and durably
+   * queued moments ago is still excluded from reference selection even
+   * though local cleanup already reset the tracked annotations file back to
+   * HEAD (`markDurable`). READ-ONLY: this never recreates a tracked diff
+   * after queueing -- it only reads the overlay the editor already wrote.
+   */
+  readonly loadPendingDislikedReferenceNames?: () => ReadonlySet<string>;
   /**
    * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
    * to pre-filter manifest entries to those whose PNG is actually on disk
@@ -341,6 +361,9 @@ export async function generateSheetCore(
       if (!existsSync(annotationsPath)) return new Set<string>();
       return loadDislikedSpriteNamesFromAnnotations(annotationsPath);
     });
+  const loadPendingDislikedReferenceNames =
+    options.loadPendingDislikedReferenceNames ??
+    (() => readPendingDislikedSpriteNames(resolvePendingAnnotationsPath(repoRoot)));
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
@@ -356,7 +379,13 @@ export async function generateSheetCore(
       briefType: brief.type,
       count: referenceCount,
       seed: referenceSelectorSeed(brief.name),
-      dislikedSpriteNames: loadDislikedReferenceNames(),
+      // Union the durably-tracked dislikes with anything queued-but-not-yet
+      // -promoted, so a sprite disliked moments ago cannot slip back in as a
+      // reference before the reconciler catches up.
+      dislikedSpriteNames: new Set([
+        ...loadDislikedReferenceNames(),
+        ...loadPendingDislikedReferenceNames(),
+      ]),
     });
     if (selection.selected.length === 0) {
       if (presentCandidates.length === 0 && brief.type === 'icon') {

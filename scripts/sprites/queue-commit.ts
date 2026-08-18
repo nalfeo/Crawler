@@ -53,12 +53,14 @@ export class QueueCommitError extends Error {
       | 'ci-refused'
       | 'destination-conflict'
       | 'invalid-asset-path'
+      | 'invalid-annotation'
       | 'invalid-brief-path'
       | 'git-failed'
       | 'push-retries-exhausted',
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'QueueCommitError';
   }
 }
@@ -71,6 +73,14 @@ export interface QueueCommitResult {
   readonly commit?: string;
   /** Number of push attempts made (1 on the happy path). */
   readonly attempts: number;
+}
+
+/** One normalized Sprite Editor curation update. */
+export interface SpriteAnnotationUpdate {
+  readonly key: string;
+  readonly favorite: boolean;
+  readonly disliked: boolean;
+  readonly comment: string;
 }
 
 export interface QueueCommitDeps {
@@ -97,6 +107,15 @@ export interface QueueCommitDeps {
     sourceRoot: string,
     worktree: string,
     briefPaths: readonly string[],
+  ) => Promise<void>;
+  /**
+   * Merge only the named sprite annotations into the aggregate annotations file
+   * already present in the freshly-fetched queue-tip worktree. This MUST be a
+   * per-key merge, never a whole-file copy from the caller's stale worktree.
+   */
+  readonly mergeSpriteAnnotations?: (
+    worktree: string,
+    updates: readonly SpriteAnnotationUpdate[],
   ) => Promise<void>;
   /** Create + return an empty temp directory for the throwaway worktree. */
   readonly makeTempDir: () => Promise<string>;
@@ -149,6 +168,12 @@ export interface QueueCommitOptions {
    * identical art bytes) still lands as `committed` rather than `noop`.
    */
   readonly briefs?: readonly string[];
+  /**
+   * Per-sprite annotation updates to merge into the fresh queue tip. The shared
+   * aggregate file is intentionally updated by key so concurrent, non-overlapping
+   * editor saves survive every CAS retry.
+   */
+  readonly annotations?: readonly SpriteAnnotationUpdate[];
   /**
    * Narrow CI capability for the trusted asset-request publisher, or the
    * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
@@ -240,6 +265,46 @@ export function assertSafeBriefPaths(briefs: readonly string[]): void {
   }
 }
 
+/** Validate normalized Sprite Editor annotations at the queue trust boundary. */
+export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUpdate[]): void {
+  const seen = new Set<string>();
+  for (const update of updates) {
+    if (
+      typeof update.key !== 'string' ||
+      update.key.trim() === '' ||
+      update.key.length > 512 ||
+      [...update.key].some((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 31 || code === 127;
+      })
+    ) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Invalid sprite annotation key ${JSON.stringify(update.key)}. Use a non-empty sprite key without control characters.`,
+      );
+    }
+    if (seen.has(update.key)) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Duplicate sprite annotation key ${JSON.stringify(update.key)}. Send one update per sprite.`,
+      );
+    }
+    seen.add(update.key);
+    if (
+      typeof update.favorite !== 'boolean' ||
+      typeof update.disliked !== 'boolean' ||
+      typeof update.comment !== 'string' ||
+      update.comment.length > 1000 ||
+      (update.favorite && update.disliked)
+    ) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Invalid annotation for ${update.key}. favorite/disliked must be booleans, cannot both be true, and comment must be at most 1000 characters.`,
+      );
+    }
+  }
+}
+
 async function runGit(
   exec: Exec,
   cwd: string,
@@ -325,6 +390,8 @@ export async function runQueueCommit(
 
   const briefs = options.briefs ?? [];
   assertSafeBriefPaths(briefs);
+  const annotations = options.annotations ?? [];
+  assertSafeAnnotationUpdates(annotations);
 
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';
@@ -334,7 +401,7 @@ export async function runQueueCommit(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  if (assets.length === 0 && briefs.length === 0) {
+  if (assets.length === 0 && briefs.length === 0 && annotations.length === 0) {
     return { status: 'noop', branch: queueBranch, attempts: 0 };
   }
 
@@ -495,6 +562,35 @@ export async function runQueueCommit(
           }
           await deps.copyBriefFiles(sourceRoot, worktree, briefs);
           await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
+        }
+
+        // The annotations document is one shared aggregate, so copying the
+        // caller's whole file would be last-writer-wins data loss. Merge only
+        // these sprite keys into the freshly-fetched queue-tip document on every
+        // CAS attempt, then stage that one known path.
+        if (annotations.length > 0) {
+          if (!deps.mergeSpriteAnnotations) {
+            throw new QueueCommitError(
+              'invalid-annotation',
+              'annotations provided but deps.mergeSpriteAnnotations is not wired — cannot safely merge the shared Sprite Editor annotations file',
+            );
+          }
+          try {
+            await deps.mergeSpriteAnnotations(worktree, annotations);
+          } catch (error) {
+            throw new QueueCommitError(
+              'invalid-annotation',
+              `Failed to merge Sprite Editor annotations into the fresh queue tip: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+              { cause: error },
+            );
+          }
+          await mustGit(deps.exec, worktree, [
+            'add',
+            '--',
+            'public/assets/generated/sprite-editor-annotations.json',
+          ]);
         }
 
         // No-op guard: if nothing staged, the queue already carries identical

@@ -53,6 +53,22 @@ is_known_mjs_path() {
   [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
 }
 
+# Returns true for hand-written `.d.mts` declaration files living beside a
+# `.mjs` module under .github/extensions/ (the TS-importing-.mjs pattern:
+# a .ts file imports a sibling .mjs directly and a hand-written .d.mts twin
+# supplies its types without requiring allowJs -- see
+# .github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts).
+# These are pure type declarations with no runtime code: ESLint does not lint
+# declaration files anywhere in this repo (see eslint.config.js's *.d.ts
+# ignores), and `tsc --noEmit --project tsconfig.json` already type-checks
+# them transitively via whatever supported .ts file imports the sibling
+# .mjs -- confirmed by running the full project typecheck after adding one.
+# So, like is_known_mjs_path, this is "known and safe to skip locally", not
+# "supported for local lint".
+is_known_dmts_path() {
+  [[ "$1" =~ ^\.github/extensions/.*\.d\.mts$ ]]
+}
+
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
 # is safe: the ESLint config here has NO type-aware or cross-file rules
@@ -110,6 +126,8 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   for f in "${changed_repo_ts[@]}"; do
     if is_supported_ts_path "$f"; then
       changed_ts+=("$f")
+    elif is_known_dmts_path "$f"; then
+      : # known declaration-only file; tsc already covers it transitively above
     else
       unsupported_ts+=("$f")
     fi

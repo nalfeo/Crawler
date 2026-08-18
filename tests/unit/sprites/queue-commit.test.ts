@@ -831,6 +831,39 @@ function queueManifest(liveDir: string): { entries: Record<string, unknown> } {
   return { entries };
 }
 
+function queueAnnotations(liveDir: string): {
+  version: number;
+  sprites: Record<string, { favorite: boolean; disliked: boolean; comment: string }>;
+} {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  return JSON.parse(
+    gitSync(liveDir, 'show', 'FETCH_HEAD:public/assets/generated/sprite-editor-annotations.json'),
+  );
+}
+
+function advanceQueueAnnotationOutOfBand(
+  liveDir: string,
+  key: string,
+  annotation: { favorite: boolean; disliked: boolean; comment: string },
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  const wt = mkdtempSync(path.join(tmpdir(), 'qc-oob-annotation-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'FETCH_HEAD');
+    writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+      version: 1,
+      sprites: { [key]: annotation },
+    });
+    gitSync(wt, 'add', '--', 'public/assets/generated/sprite-editor-annotations.json');
+    gitSync(wt, 'commit', '--no-verify', '-m', `oob annotation ${key}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /** Out-of-band writer: add `key` to assets/queue and push it, simulating a concurrent writer. */
 function advanceQueueOutOfBand(liveDir: string, key: string, png: Buffer): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
@@ -865,6 +898,101 @@ describe('runQueueCommit (real git)', () => {
       }
     }
   });
+
+  it(
+    'creates a durable annotation-only queue commit with favorite/disliked/comment data',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      const annotationPath = path.join(
+        liveDir,
+        'public',
+        'assets',
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      writeJson(annotationPath, { version: 1, sprites: {} });
+      gitSync(liveDir, 'add', '--', annotationPath);
+      gitSync(liveDir, 'commit', '-m', 'track annotations');
+      gitSync(liveDir, 'push', 'origin', 'main');
+
+      const result = await runQueueCommit(liveDir, [], realGitDeps(liveDir), {
+        message: 'chore(assets): annotate alpha',
+        annotations: [
+          {
+            key: 'alpha',
+            favorite: false,
+            disliked: true,
+            comment: 'Regenerate the silhouette.',
+          },
+        ],
+      });
+
+      expect(result.status).toBe('committed');
+      expect(queueAnnotations(liveDir).sprites.alpha).toEqual({
+        favorite: false,
+        disliked: true,
+        comment: 'Regenerate the silhouette.',
+      });
+      expect(gitSync(liveDir, 'status', '--porcelain')).toBe('');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'retries against the fresh queue tip so concurrent non-overlapping annotations survive',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      writeJson(
+        path.join(liveDir, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'),
+        { version: 1, sprites: {} },
+      );
+      gitSync(liveDir, 'add', '-A');
+      gitSync(liveDir, 'commit', '-m', 'track annotations');
+      gitSync(liveDir, 'push', 'origin', 'main');
+      gitSync(liveDir, 'push', 'origin', 'main:refs/heads/assets/queue');
+
+      const deps = realGitDeps(liveDir);
+      let raced = false;
+      const exec: Exec = async (command, args, options) => {
+        if (command === 'git' && args[0] === 'push' && !raced) {
+          raced = true;
+          advanceQueueAnnotationOutOfBand(liveDir, 'alpha', {
+            favorite: true,
+            disliked: false,
+            comment: 'Exemplar.',
+          });
+        }
+        return deps.exec(command, args, options);
+      };
+
+      const result = await runQueueCommit(
+        liveDir,
+        [],
+        { ...deps, exec },
+        {
+          message: 'chore(assets): annotate beta',
+          annotations: [
+            {
+              key: 'beta',
+              favorite: false,
+              disliked: true,
+              comment: 'Needs another pass.',
+            },
+          ],
+        },
+      );
+
+      expect(result.status).toBe('committed');
+      expect(result.attempts).toBe(2);
+      expect(queueAnnotations(liveDir).sprites).toEqual({
+        alpha: { favorite: true, disliked: false, comment: 'Exemplar.' },
+        beta: { favorite: false, disliked: true, comment: 'Needs another pass.' },
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
 
   it(
     'creates the queue branch from main with only the asset delta and never touches the caller',

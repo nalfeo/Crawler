@@ -35,6 +35,7 @@ import { ProviderError } from '../../scripts/sprites/provider/types.js';
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
 import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
+import { resolvePendingAnnotationsPath } from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -460,6 +461,78 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
     expect(selectedNames).toContain(liked.spriteName);
     expect(selectedNames).not.toContain(disliked.spriteName);
+  });
+
+  it('excludes a queued-but-unpromoted disliked sprite via the pending annotation overlay', async () => {
+    // Regression for a real gap: `markDurable` cleanup already resets the
+    // TRACKED annotations file back to HEAD as soon as a queue-commit
+    // succeeds, so a sprite disliked moments ago through the Sprite Editor is
+    // invisible there until the reconciler promotes assets/queue. The ONLY
+    // place that durable-but-unpromoted dislike is still visible is the
+    // editor's untracked per-worktree pending overlay
+    // (`pending-annotation-overlay.mjs`). generateOne must consume it via its
+    // REAL default wiring (not test injection) so a sprite disliked and
+    // queued a moment ago never slips back in as a reference.
+    const previousCopilotHome = process.env.COPILOT_HOME;
+    const copilotHome = mkdtempSync(path.join(tmpdir(), 'crawler-genone-copilot-home-'));
+    process.env.COPILOT_HOME = copilotHome;
+    try {
+      const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+      const sheet = tileVariantsIntoSheet(variants, 2, 2);
+      const generatedDir = path.join(root, 'public', 'assets', 'generated');
+      mkdirSync(generatedDir, { recursive: true });
+      // The tracked file has already been cleaned back to HEAD by markDurable
+      // -- it does NOT show the just-disliked sprite.
+      writeFileSync(
+        path.join(generatedDir, 'sprite-editor-annotations.json'),
+        JSON.stringify({ version: 1, sprites: {} }),
+        'utf8',
+      );
+
+      const disliked = refEntry({ briefId: 'gamma-pending-disliked', type: 'weapon' });
+      const liked = refEntry({ briefId: 'delta-liked', type: 'weapon' });
+
+      // Simulate the editor's own writer: a durably-queued dislike is visible
+      // ONLY in the untracked pending overlay until promotion reaches this
+      // worktree. The path MUST match production's: computed once via the
+      // same shared `resolvePendingAnnotationsPath` helper, never duplicated.
+      const pendingPath = resolvePendingAnnotationsPath(root);
+      mkdirSync(path.dirname(pendingPath), { recursive: true });
+      writeFileSync(
+        pendingPath,
+        JSON.stringify({
+          version: 1,
+          sprites: {
+            [disliked.spriteName]: {
+              annotation: { favorite: false, disliked: true, comment: '' },
+              base: null,
+            },
+          },
+        }),
+        'utf8',
+      );
+
+      const result = await generateOne({
+        briefPath,
+        preloaded,
+        provider: makeMockProvider(sheet),
+        repoRoot: root,
+        outputRoot,
+        now: fixedClock,
+        loadReferenceCandidates: () => [disliked, liked],
+        referenceAssetExists: () => true,
+        readReference: (absolutePath: string) => Buffer.from(absolutePath),
+      });
+
+      const selectedNames =
+        result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+      expect(selectedNames).toContain(liked.spriteName);
+      expect(selectedNames).not.toContain(disliked.spriteName);
+    } finally {
+      if (previousCopilotHome === undefined) delete process.env.COPILOT_HOME;
+      else process.env.COPILOT_HOME = previousCopilotHome;
+      rmSync(copilotHome, { recursive: true, force: true });
+    }
   });
 
   it('skips reference selection for providers that declare no reference-image support', async () => {

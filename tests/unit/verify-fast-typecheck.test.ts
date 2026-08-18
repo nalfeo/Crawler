@@ -443,6 +443,67 @@ describe('verify-fast changed .mjs path coverage', () => {
   );
 
   it.skipIf(!hasBash || !hasGit)(
+    'accepts a changed .github/extensions .d.mts declaration file beside a known .mjs module',
+    () => {
+      // Regression: a hand-written `.d.mts` twin lets a .ts file import a
+      // sibling .mjs without `allowJs` (see
+      // .github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts).
+      // It must be treated like the .mjs it types -- known and skip-locally,
+      // not rejected as an unsupported changed TypeScript file.
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        '.github/extensions/my-ext/lib/shared.mjs': 'export const shared = 1;\n',
+        '.github/extensions/my-ext/lib/shared.d.mts': 'export declare const shared: number;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, '.github/extensions/my-ext/lib/shared.d.mts'),
+        'export declare const shared: number;\nexport declare const added: string;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'still rejects a changed .d.mts file outside .github/extensions/ and the supported TS trees',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        'infra/shared.d.mts': 'export declare const infraValue: number;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, 'infra/shared.d.mts'),
+        'export declare const infraValue: number;\nexport declare const added: string;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain('infra/shared.d.mts');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
     'accepts changed scripts/ .mjs files without linting them locally',
     () => {
       const fixture = makeFixture({

@@ -482,6 +482,15 @@ const CLIENT_SCRIPT = String.raw`
     statusEl.style.color = isError ? '#fecaca' : '#94a3b8';
   }
 
+  function queueCleanupFailureMessage(queue) {
+    if (!queue || !queue.cleanupError) return '';
+    return (
+      '\u26a0 Durable queue push succeeded, but local annotation cleanup FAILED \u2014 ' +
+      String(queue.cleanupError) +
+      ' The annotation remains in this worktree.'
+    );
+  }
+
   async function fetchJson(url, options) {
     var response = await fetch(url, options);
     var json = await response.json().catch(function () { return {}; });
@@ -1265,7 +1274,7 @@ const CLIENT_SCRIPT = String.raw`
                     disliked: !currentFavorite ? false : currentDisliked,
                     comment: currentComment
                   };
-                  await fetchJson('/api/save', {
+                  var saveResult = await fetchJson('/api/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1283,7 +1292,26 @@ const CLIENT_SCRIPT = String.raw`
                   if (currentEditorFingerprint() === editorFingerprintAtStart) {
                     await loadList({ skipDirtyGuard: true });
                   }
-                  setStatus((!currentFavorite ? 'Marked' : 'Unmarked') + ' favorite.');
+                  var favoriteCleanupFailure = queueCleanupFailureMessage(
+                    saveResult && saveResult.queue
+                  );
+                  if (favoriteCleanupFailure) {
+                    setStatus(favoriteCleanupFailure, true);
+                  } else if (
+                    saveResult &&
+                    saveResult.queue &&
+                    saveResult.queue.status === 'failed'
+                  ) {
+                    setStatus(
+                      '\u26a0 Saved locally, but the durable queue push FAILED \u2014 the annotation remains in this worktree. Keep it and check the sprite-editor logs.',
+                      true
+                    );
+                  } else {
+                    setStatus(
+                      (!currentFavorite ? 'Marked' : 'Unmarked') +
+                        ' favorite and queued for durable persistence.'
+                    );
+                  }
                 } catch (error) {
                   setStatus(error.message || String(error), true);
                 } finally {
@@ -2423,12 +2451,16 @@ const CLIENT_SCRIPT = String.raw`
       // lost when the worktree is discarded. So when the response is stale,
       // surface the failed push here before returning; the non-stale path below
       // reports it with more specific messaging.
+      var queue = data && data.queue ? data.queue : null;
+      var cleanupFailure = queueCleanupFailureMessage(queue);
       var saveStale = saveToken !== saveTokenCounter || !sprite || sprite.key !== expectedKey;
-      if (saveStale && data && data.queue && data.queue.status === 'failed') {
+      if (saveStale && queue && queue.status === 'failed') {
         setStatus(
           '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
           true
         );
+      } else if (saveStale && cleanupFailure) {
+        setStatus(cleanupFailure, true);
       }
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
@@ -2436,8 +2468,7 @@ const CLIENT_SCRIPT = String.raw`
       // the outcome in data.queue ({status:'ok'|'skipped'|'failed'}). A 'failed'
       // push means the on-disk write is fine but the edit is NOT yet durable
       // across worktrees/sessions — surface it loudly so the worktree isn't
-      // discarded and the edit lost. Annotation-only saves have no queue field.
-      var queue = data && data.queue ? data.queue : null;
+      // discarded and the edit lost.
       var queueFailed = !!queue && queue.status === 'failed';
       if (currentEditorFingerprint() !== submittedFingerprint) {
         var savedSprite = data && data.sprite ? data.sprite : sprite;
@@ -2452,8 +2483,10 @@ const CLIENT_SCRIPT = String.raw`
           'Saved submitted state; newer edits remain unsaved.' +
             (queueFailed
               ? ' \u26a0 Durable queue push FAILED \u2014 keep this worktree; the edit is not yet safe across sessions.'
+              : cleanupFailure
+                ? ' ' + cleanupFailure
               : ''),
-          queueFailed
+          queueFailed || !!cleanupFailure
         );
         return false;
       }
@@ -2472,6 +2505,8 @@ const CLIENT_SCRIPT = String.raw`
           '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
           true
         );
+      } else if (cleanupFailure) {
+        setStatus(cleanupFailure, true);
       } else if (queue && queue.status === 'ok') {
         setStatus('Saved to disk and queued for durable persistence.');
       } else {

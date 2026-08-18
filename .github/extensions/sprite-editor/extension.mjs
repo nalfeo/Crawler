@@ -16,6 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import { startCanvasServer } from './lib/canvas-harness.mjs';
 import { readSnapshot, resolveSnapshotPath, writeSnapshot } from './lib/manifest-snapshot.mjs';
+import {
+  createAnnotationPersistence,
+  normalizeSpriteAnnotation,
+} from './lib/annotation-persistence.mjs';
+import { resolvePendingAnnotationsPath } from './lib/pending-annotation-overlay.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +72,12 @@ const pendingStartups = new Map();
 
 /** Durable, cross-process snapshot of the composed manifest for THIS worktree. */
 const SNAPSHOT_PATH = resolveSnapshotPath(REPO_ROOT);
+// Single source of truth for this path: `scripts/sprites/generate-one.ts`
+// (which cannot import a same-directory constant) resolves the identical
+// location via the same `resolvePendingAnnotationsPath` helper so a
+// just-disliked, durably-queued sprite is excluded from reference selection
+// even before the reconciler promotes it into the tracked annotations file.
+const PENDING_ANNOTATIONS_PATH = resolvePendingAnnotationsPath(REPO_ROOT);
 /**
  * How long a computed shard fingerprint is trusted before the 642-file walk is
  * repeated. The stat walk is non-trivial and previously ran on EVERY request — including
@@ -93,6 +104,8 @@ let cache = {
   summaryByKey: new Map(),
   allTags: [],
 };
+let annotationPersistence = null;
+let queueCommitTail = Promise.resolve();
 
 function log(message, level = 'info') {
   try {
@@ -274,7 +287,7 @@ function deriveVariantGroup(entryKey, manifestEntry) {
     .trim();
 }
 
-function readAnnotations() {
+function readAnnotationsFromDisk() {
   if (!existsSync(ANNOTATIONS_PATH)) {
     return { version: 1, sprites: {} };
   }
@@ -286,6 +299,11 @@ function readAnnotations() {
   } catch {
     return { version: 1, sprites: {} };
   }
+}
+
+function readAnnotations() {
+  const document = readAnnotationsFromDisk();
+  return annotationPersistence ? annotationPersistence.overlay(document) : document;
 }
 
 function computeSummary(entryKey, manifestEntry, catalogEntry, note, manifestFingerprint) {
@@ -518,22 +536,28 @@ function execGit(args, encoding = 'utf8') {
  * returned as a status object the caller surfaces (and logs) instead. Exit 20
  * from the CLI means the push was skipped on CI.
  */
-async function queueCommitEditedAsset(assetPath, key) {
+async function runQueueCommitSubprocess(assetPath, key, annotation) {
+  const args = [
+    TSX_CLI,
+    QUEUE_COMMIT_CLI,
+    '--repo-root',
+    REPO_ROOT,
+    '--message',
+    `chore(assets): edit ${key}`,
+  ];
+  if (assetPath) {
+    args.push('--asset', assetPath, '--manifest-key', key);
+  }
+  if (annotation) {
+    args.push(
+      '--annotation-json',
+      Buffer.from(JSON.stringify({ key, ...annotation }), 'utf8').toString('base64url'),
+    );
+  }
   const result = await new Promise((resolve) => {
     execFile(
       process.execPath,
-      [
-        TSX_CLI,
-        QUEUE_COMMIT_CLI,
-        '--repo-root',
-        REPO_ROOT,
-        '--asset',
-        assetPath,
-        '--manifest-key',
-        key,
-        '--message',
-        `chore(assets): edit ${key}`,
-      ],
+      args,
       {
         cwd: REPO_ROOT,
         maxBuffer: 16 * 1024 * 1024,
@@ -584,6 +608,86 @@ async function queueCommitEditedAsset(assetPath, key) {
   console.warn(`[sprite-editor] queue-commit failed for ${key}: ${detail}`);
   return { status: 'failed', error: detail };
 }
+
+/**
+ * Serialize queue publications so an earlier request cannot complete after a
+ * later one and regress the same sprite. Local writes may still happen while a
+ * push is in flight; annotationPersistence's version token makes cleanup safe.
+ */
+async function queueCommitEditedAsset(assetPath, key, annotation) {
+  const run = queueCommitTail.then(async () => {
+    try {
+      return await runQueueCommitSubprocess(assetPath, key, annotation);
+    } catch (error) {
+      const detail = error?.message ?? String(error);
+      console.warn(`[sprite-editor] queue-commit failed for ${key}: ${detail}`);
+      return { status: 'failed', error: detail };
+    }
+  });
+  queueCommitTail = run.then(() => undefined);
+  return run;
+}
+
+async function readHeadAnnotations() {
+  const raw = await execGit(['show', `HEAD:${repoPosixPath(ANNOTATIONS_PATH)}`]);
+  const parsed = JSON.parse(String(raw));
+  return parsed && typeof parsed === 'object' ? parsed : { version: 1, sprites: {} };
+}
+
+/**
+ * Whether the annotations file differs between HEAD and the git index.
+ * `markDurable` writes only the working tree, so ANY staged change to this
+ * shared aggregate makes cleanup unsafe regardless of which sprite owns it.
+ */
+function hasStagedAnnotationChanges() {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      ['diff', '--cached', '--quiet', '--', repoPosixPath(ANNOTATIONS_PATH)],
+      { cwd: REPO_ROOT, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        if (!error) {
+          resolve(false);
+          return;
+        }
+        if (error.code === 1) {
+          resolve(true);
+          return;
+        }
+        reject(new Error(String(stderr || stdout || error).trim()));
+      },
+    );
+  });
+}
+
+function readPendingAnnotations() {
+  if (!existsSync(PENDING_ANNOTATIONS_PATH)) return {};
+  try {
+    const parsed = readJsonFile(PENDING_ANNOTATIONS_PATH);
+    return parsed?.sprites && typeof parsed.sprites === 'object' ? parsed.sprites : {};
+  } catch (error) {
+    log(
+      `Discarding invalid pending annotation presentation state at ${PENDING_ANNOTATIONS_PATH}: ${
+        error?.message ?? error
+      }`,
+      'warn',
+    );
+    return {};
+  }
+}
+
+annotationPersistence = createAnnotationPersistence({
+  readCurrent: readAnnotationsFromDisk,
+  writeCurrent: (document) => writeJsonFile(ANNOTATIONS_PATH, document),
+  readHead: readHeadAnnotations,
+  hasStagedChanges: hasStagedAnnotationChanges,
+  readPending: readPendingAnnotations,
+  writePending: (document) => {
+    mkdirSync(path.dirname(PENDING_ANNOTATIONS_PATH), { recursive: true });
+    writeJsonFile(PENDING_ANNOTATIONS_PATH, document);
+  },
+  invalidate: invalidateCaches,
+});
 
 function applyMetadataUpdate(payload, data, key) {
   const entry = data.manifest.entries?.[key];
@@ -649,12 +753,10 @@ function applyAnnotationUpdate(payload, data, key) {
   if (!data.annotations?.sprites || typeof data.annotations.sprites !== 'object') {
     data.annotations = { version: 1, sprites: {} };
   }
-  const favorite = payload?.annotation?.favorite === true;
-  const disliked = payload?.annotation?.disliked === true && !favorite;
-  const rawComment =
-    typeof payload?.annotation?.comment === 'string' ? payload.annotation.comment : '';
-  const comment = rawComment.trim().slice(0, 1000);
-  data.annotations.sprites[key] = { favorite, disliked, comment };
+  const annotation = normalizeSpriteAnnotation(payload?.annotation);
+  const token = annotationPersistence.saveLocal(key, annotation);
+  data.annotations.sprites[key] = annotation;
+  return token;
 }
 
 async function saveSprite(payload) {
@@ -672,9 +774,10 @@ async function saveSprite(payload) {
     typeof payload?.annotation === 'object' &&
     !Array.isArray(payload.annotation);
   let wrotePng = false;
+  let annotationToken = null;
   try {
     if (hasMetadata) applyMetadataUpdate(payload, data, key);
-    if (hasAnnotation) applyAnnotationUpdate(payload, data, key);
+    if (hasAnnotation) annotationToken = applyAnnotationUpdate(payload, data, key);
 
     if (typeof payload?.pngDataUrl === 'string' && payload.pngDataUrl.length > 0) {
       const bytes = decodePngDataUrl(payload.pngDataUrl);
@@ -695,15 +798,31 @@ async function saveSprite(payload) {
     // No catalog write: the committed catalog no longer stores generated rows;
     // they are derived from the manifest at read time. Frame/col/row edits for
     // generated sprites are inherently virtual (always 0) and never persisted.
-    if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
     invalidateCaches();
     // Persist manifest/catalog/PNG edits to the durable assets/queue branch so
     // anchor/metadata edits survive across sessions/worktrees/processes.
-    // Annotation-only saves (favorite/comment) are local curation and are NOT
-    // queued (the art surface did not change). Best-effort — never throws.
+    // Annotation updates are merged by sprite key into the fresh queue tip; the
+    // shared aggregate is never copied wholesale from this potentially-stale
+    // worktree.
     let queue = null;
-    if (hasMetadata || wrotePng) {
-      queue = await queueCommitEditedAsset(entry.assetPath, key);
+    if (hasMetadata || wrotePng || annotationToken) {
+      queue = await queueCommitEditedAsset(
+        hasMetadata || wrotePng ? entry.assetPath : null,
+        key,
+        annotationToken?.annotation ?? null,
+      );
+      if (annotationToken && queue.status === 'ok') {
+        try {
+          queue.localAnnotationCleaned = await annotationPersistence.markDurable(annotationToken);
+        } catch (error) {
+          queue.localAnnotationCleaned = false;
+          queue.cleanupError = error?.message ?? String(error);
+          log(
+            `Queued annotation ${key}, but retained its local diff because cleanup could not be proven safe: ${queue.cleanupError}`,
+            'warn',
+          );
+        }
+      }
     }
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null, queue };
