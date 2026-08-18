@@ -42,20 +42,37 @@ runs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-    - name: Install Playwright system dependencies
+    # Best-effort, NOT a gate. `install-deps` is an apt operation against the
+    # Ubuntu mirrors, and a transient mirror outage (e.g. azure.archive.ubuntu.com
+    # refusing connections) makes apt retry until it times out. Treating that as
+    # a hard failure took all of main CI down — and with it every deploy, since
+    # the deploy release gate requires a successful CI conclusion — even though
+    # the runner image already ships Chromium's system libraries and the browser
+    # was perfectly launchable. The authoritative check is the launch smoke test
+    # below: it verifies the requirement we actually have (Chromium starts)
+    # rather than the proxy (apt succeeded).
+    - name: Install Playwright system dependencies (best-effort)
       if: ${{ inputs.install-playwright == 'true' }}
       run: |
         set +e
-        timeout --kill-after=30s 10m npx playwright install-deps chromium
+        timeout --kill-after=30s 5m npx playwright install-deps chromium
         status=$?
         set -e
-        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "Playwright system dependency installation exceeded 10 minutes."
+        if [ "$status" -ne 0 ]; then
+          echo "::warning::playwright install-deps exited ${status}; continuing. \
+        The Chromium launch smoke test below is authoritative."
         fi
-        exit "$status"
       shell: bash
 
     - name: Install Playwright browser
       if: ${{ inputs.install-playwright == 'true' && steps.pw-cache.outputs.cache-hit != 'true' }}
       run: npx playwright install chromium
+      shell: bash
+
+    # Authoritative gate: if Chromium cannot launch, fail loudly here. This is
+    # what every Playwright-dependent job actually requires, and unlike the apt
+    # step it does not depend on Ubuntu mirror availability.
+    - name: Verify Chromium launches
+      if: ${{ inputs.install-playwright == 'true' }}
+      run: node scripts/agent/verify-chromium-launch.mjs
       shell: bash
