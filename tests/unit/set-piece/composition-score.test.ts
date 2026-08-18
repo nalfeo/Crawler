@@ -541,7 +541,7 @@ describe('height band resolution', () => {
       kind: 'decoration',
       layers: [
         {
-          sprite: { source: 'catalog', spriteId: 'prop-torch-v1-var-8' },
+          sprite: { source: 'catalog', spriteId: 'prop-torch-var-8' },
           widthFt: 1.4,
           heightFt: 2.8,
         },

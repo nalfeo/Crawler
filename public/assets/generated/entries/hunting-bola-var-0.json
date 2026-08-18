@@ -1,0 +1,105 @@
+{
+  "briefId": "hunting-bola",
+  "spriteName": "hunting-bola-var-0",
+  "assetPath": "generated/hunting-bola-var-0.png",
+  "approvedAt": "2026-07-25T05:41:54.031Z",
+  "sourceRun": "generated/runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=47 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -80.16° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:40:48.559Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a hunting bola made from frayed rope and soup cans is both practical and absurd, fitting the Crawler design language. The X-shaped silhouette is clear and the improvised materials add a touch of dark humor."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar outline weight, shading style, and color palette to the references. The materials are well-rendered, though the rope could use slightly more texture to match the detail level of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar outline weight, shading style, and color palette to the references. The materials are well-rendered, though the rope could use slightly more texture to match the detail level of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a hunting bola with frayed rope and mismatched soup cans, as described in the brief. The X-shaped silhouette is also present."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the X-shape is easily recognizable at game scale. However, the pink background peeking through the loop of the rope could be mistaken for part of the design, slightly reducing clarity."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2527,
+      "completionTokens": 322,
+      "totalTokens": 2849
+    }
+  },
+  "type": "weapon",
+  "contentHash": "377f5efdc4589f475a55b085f9438e558d2b99729072fa05831fcc62153cc84c",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 4,
+    "width": 57,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

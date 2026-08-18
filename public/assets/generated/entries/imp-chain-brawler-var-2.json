@@ -1,0 +1,119 @@
+{
+  "briefId": "imp-chain-brawler",
+  "spriteName": "imp-chain-brawler-var-2",
+  "assetPath": "generated/imp-chain-brawler-var-2.png",
+  "approvedAt": "2026-08-01T01:39:34.368Z",
+  "sourceRun": "generated/runs/imp-chain-brawler-v1/2026-08-01T00-28-56-8d65ceda",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 123,
+    "y": 145,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 123,
+      "y": 145,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 123,
+      "y": 145,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 123,
+        "y": 145
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T01:35:43.771Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a stocky imp with jagged chains and a menacing grin is well-executed. The combination of a small, impish figure with oversized, spiked chains creates a strong contradiction and fits the darkly humorous tone of Crawler."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the chain details are slightly more textured and less cleanly defined compared to the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the chain details are slightly more textured and less cleanly defined compared to the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a stocky imp with stubby legs, elongated arms, and jagged chains. The crouched pose and raised fist align perfectly with the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the subject is identifiable at game scale. However, the chain details could be simplified slightly to improve clarity at 1x size."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is facing the camera at an appropriate angle, with a dynamic and aggressive pose that enhances its readability and gameplay role."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple elements from the theme, including jagged iron chains, a crouched and aggressive stance, and a demonic appearance with horns and a menacing grin. The rusted and spiked chains align with the Brimstone Boys' aesthetic."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3975,
+      "completionTokens": 411,
+      "totalTokens": 4386
+    }
+  },
+  "type": "enemy",
+  "contentHash": "7fa45b687534d9157038f9e8b5e2de848e5172ab33c7463efabad23c8584d8d7",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 245,
+    "canvasWidth": 256,
+    "canvasHeight": 273
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -1,0 +1,116 @@
+{
+  "briefId": "war-pick",
+  "spriteName": "war-pick-var-10",
+  "assetPath": "generated/war-pick-var-10.png",
+  "approvedAt": "2026-07-25T05:21:39.343Z",
+  "sourceRun": "generated/runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b",
+  "variantIndex": 10,
+  "anchor": {
+    "x": 35,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 35,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 35,
+      "y": 23,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 35,
+        "y": 60
+      }
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis 66.59° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 10,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:21:15.654Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a brutal, rusted war pick with a sharp, angular silhouette fits well within the dark-fantasy salvage aesthetic of Crawler. The design is grounded and appropriately strange for Floor 1."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading stops, and production finish. The texture and color choices align well with the approved style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading stops, and production finish. The texture and color choices align well with the approved style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a war pick with a rusted, curved iron head, a pointed spike, and a wooden haft wrapped in frayed cloth and leather. The sharp and angular silhouette is consistent with the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The sharp edges and angular design make the weapon recognizable, though the spike could be slightly more pronounced for maximum clarity."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major defects or off-style elements.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2549,
+      "completionTokens": 316,
+      "totalTokens": 2865
+    }
+  },
+  "type": "weapon",
+  "contentHash": "6ce36484b9f2c076232f6657bdbb304259a09ada2482d20e077cbe67a1697549",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 4,
+    "width": 54,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

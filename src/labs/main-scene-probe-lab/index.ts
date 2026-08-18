@@ -54,7 +54,7 @@ import {
   createBloodPoolSurface,
   isBloodyFootprintSourceActive,
 } from '../../shared/blood-surfaces.js';
-import { PIXELS_PER_FOOT } from '../../shared/units.js';
+import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
@@ -76,6 +76,9 @@ import {
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
+import { setActiveWeapon } from '../../game/weaponSystem.js';
+import { CARRIED_WEAPON_OBJECT_NAME_PREFIX } from '../../engine/phaser-bridge/carried-weapon.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
@@ -93,7 +96,7 @@ const PROBE_SEED = 4242;
 
 /**
  * Generated-sprite brief ids the render layer maps the Floor-1 harvestable node
- * types to (e.g. `crimson-mushroom-v1`). A harvestable node's on-floor Image is
+ * types to (e.g. `crimson-mushroom`). A harvestable node's on-floor Image is
  * created with one of these as the texture-key prefix, so the probe counts live
  * display-list Images by matching this set — the deterministic real-scene signal
  * that a node rendered its generated sprite instead of the procedural circle.
@@ -522,6 +525,27 @@ export interface HarvestableRenderSummary {
 }
 
 /**
+ * Display-list state of the player's persistent carried main-hand weapon.
+ * The carried sprite is named `carried-weapon:<eid>` by the render bridge, so
+ * this reads the real scene's display list rather than inferring from pixels.
+ */
+export interface CarriedWeaponRenderInfo {
+  /** Id of the weapon def currently active for the player, if any. */
+  readonly activeWeaponId: string | null;
+  /** Number of live carried-weapon display objects (expected 0 or 1). */
+  readonly spriteCount: number;
+  /** Whether the carried weapon sprite is currently visible. */
+  readonly visible: boolean;
+  /** Texture key backing the carried sprite. */
+  readonly textureKey: string | null;
+  /** Offset in pixels from the player's world position to the sprite. */
+  readonly offsetPx: ProbePoint | null;
+  /** On-screen size of the carried sprite in pixels. */
+  readonly displayWidthPx: number;
+  readonly displayHeightPx: number;
+}
+
+/**
  * Tile-provenance counts from the last terrain bake in the REAL booted scene.
  * Terrain bakes into a single RenderTexture, so per-tile provenance is invisible
  * to display-list counting — this summary (read from the scene's stored counts)
@@ -679,6 +703,12 @@ export interface MainSceneProbeApi {
    * trigger fires on its next update — no UI is opened directly here.
    */
   startStaircaseBossBattle(): number;
+  /**
+   * Arrange the live Floor-1 world at the unlocked stairs for transition-path
+   * e2e coverage. The test still drives the real scene interaction modal,
+   * `onStairDescend`, floor-completion screen, and scene restart.
+   */
+  primeFloor1StairTransition(): void;
   /** Live boss-intro sheet state plus the world clock (frozen while open). */
   getBossIntroState(): BossIntroProbeState;
   /** Scroll the boss-intro flavour copy by `delta` lines. */
@@ -778,6 +808,18 @@ export interface MainSceneProbeApi {
   getNpcRenderInfo(): NpcRenderInfo[];
   /** Live harvestable node count + how many render a generated sprite. */
   getHarvestableRenderSummary(): HarvestableRenderSummary;
+  /**
+   * Equip a static weapon def into the player's main hand through the shipped
+   * equip path, so the carried-weapon render can be observed for a chosen
+   * weapon. Returns false when the weapon id is unknown.
+   */
+  equipMainHandWeapon(weaponId: string): boolean;
+  /**
+   * Display-list state of the player's carried main-hand weapon sprite. Proves
+   * — in the REAL booted scene — that the equipped weapon is drawn between
+   * swings, not only for the duration of a `MeleeSwing`.
+   */
+  getCarriedWeaponRenderInfo(): CarriedWeaponRenderInfo;
   /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
@@ -1108,6 +1150,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       battle.defeated = false;
       battle.bossEid = bossEid;
       return bossEid;
+    },
+
+    primeFloor1StairTransition: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || playerEid < 0 || !objective) {
+        throw new Error('Floor 1 transition path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.featureUnlocks.spells = true;
+      world.goalFlags.set('floor1-defeat-boss', true);
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      objective.staircaseSpawned = true;
+      objective.staircaseUnlocked = true;
+      objective.staircaseDiscovered = false;
+      world.stores.position.x[playerEid] = objective.staircasePos.x;
+      world.stores.position.y[playerEid] = objective.staircasePos.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
     },
 
     getBossIntroState: (): BossIntroProbeState => {
@@ -1558,6 +1626,57 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         });
       }
       return infos;
+    },
+
+    equipMainHandWeapon: (weaponId: string): boolean => {
+      const world = getScene()?.world;
+      const def = getWeaponDef(weaponId);
+      if (!world || !def) {
+        return false;
+      }
+      setActiveWeapon(world, def);
+      return true;
+    },
+
+    getCarriedWeaponRenderInfo: (): CarriedWeaponRenderInfo => {
+      const scene = getScene();
+      const world = scene?.world;
+      const phaserScene = getPhaserScene();
+      const eid = playerEidOf(scene);
+      const empty: CarriedWeaponRenderInfo = {
+        activeWeaponId: null,
+        spriteCount: 0,
+        visible: false,
+        textureKey: null,
+        offsetPx: null,
+        displayWidthPx: 0,
+        displayHeightPx: 0,
+      };
+      if (!world || !phaserScene) {
+        return empty;
+      }
+      const activeWeaponId = getActiveWeaponDef(world)?.id ?? null;
+      const sprites = phaserScene.children.list.filter(
+        (child): child is Phaser.GameObjects.Image =>
+          child instanceof Phaser.GameObjects.Image &&
+          typeof child.name === 'string' &&
+          child.name.startsWith(CARRIED_WEAPON_OBJECT_NAME_PREFIX),
+      );
+      const sprite = sprites[0];
+      if (!sprite) {
+        return { ...empty, activeWeaponId };
+      }
+      const playerX = eid >= 0 ? ftToPx(world.stores.position.x[eid] ?? 0) : 0;
+      const playerY = eid >= 0 ? ftToPx(world.stores.position.y[eid] ?? 0) : 0;
+      return {
+        activeWeaponId,
+        spriteCount: sprites.length,
+        visible: sprite.visible,
+        textureKey: sprite.texture.key,
+        offsetPx: { x: sprite.x - playerX, y: sprite.y - playerY },
+        displayWidthPx: sprite.displayWidth,
+        displayHeightPx: sprite.displayHeight,
+      };
     },
 
     getHarvestableRenderSummary: (): HarvestableRenderSummary => {

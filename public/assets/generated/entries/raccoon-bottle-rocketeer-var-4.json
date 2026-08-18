@@ -1,0 +1,123 @@
+{
+  "briefId": "raccoon-bottle-rocketeer",
+  "spriteName": "raccoon-bottle-rocketeer-var-4",
+  "assetPath": "generated/raccoon-bottle-rocketeer-var-4.png",
+  "approvedAt": "2026-08-01T05:56:39.792Z",
+  "sourceRun": "generated/runs/raccoon-bottle-rocketeer-v2/2026-08-01T05-52-41-a1eae295",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 128,
+    "y": 121,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 128,
+      "y": 121,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 128,
+      "y": 121,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 128,
+        "y": 121
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:55:31.452Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite effectively combines the reckless raccoon identity with the improvised rocketeer concept. The singed fur, soda-can launcher, and firecracker bandolier add dark humor and a sense of chaotic danger, aligning perfectly with the Crawler design language."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the references in outline weight, shading style, and color palette. The rendering is consistent with the approved in-game sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the references in outline weight, shading style, and color palette. The rendering is consistent with the approved in-game sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a raccoon mid-action with a soda-can launcher firing a bottle rocket, a firecracker bandolier, and singed fur, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with the raccoon's pose, launcher, and firecracker bandolier all easily identifiable."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The raccoon is oriented at a three-quarters turn, facing the camera at an appropriate angle for the game style."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all key elements visible, including the head, torso, limbs, and launcher."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific elements from the theme and floor design language, including the raccoon identity, soda-can launcher, firecracker bandolier, singed fur, and chaotic, improvised aesthetic."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4127,
+      "completionTokens": 447,
+      "totalTokens": 4574
+    }
+  },
+  "type": "enemy",
+  "contentHash": "1493085a79cba6b80292d953306c04fd0a198342dcdf5e226a5c4aceab27d2be",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 253,
+    "height": 226,
+    "canvasWidth": 283,
+    "canvasHeight": 256
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

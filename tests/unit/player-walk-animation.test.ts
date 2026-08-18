@@ -157,7 +157,7 @@ describe('player walk-cycle animation (hard success gate)', () => {
   it('does not create a Sprite/animation for textures without an animation descriptor', () => {
     // No generatedRegistry => scene.anims/add.sprite are both unavailable,
     // mirroring every pre-existing test scene stub and today's static-frame
-    // entries (e.g. the original `rhea-vale-v1-var-0` portrait).
+    // entries (e.g. the original `rhea-vale-var-0` portrait).
     const { scene, images, sprites } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();

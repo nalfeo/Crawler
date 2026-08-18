@@ -76,7 +76,7 @@ const stageWall = [
     ),
   ]),
   deco('sconce-far-left', 1.1, 0.15, [
-    catalog('prop-wall-sconce-v1-var-2', 1.5, 1.5, { offsetYFt: -4 }),
+    catalog('prop-wall-sconce-var-2', 1.5, 1.5, { offsetYFt: -4 }),
   ]),
   deco('camera-rig-left', 3.4, 0.1, [
     commissioned(
@@ -89,14 +89,14 @@ const stageWall = [
     ),
   ]),
   deco('sconce-right-inner', 6.1, 0.2, [
-    catalog('prop-wall-sconce-v1-var-4', 1.5, 1.5, { offsetYFt: -4 }),
+    catalog('prop-wall-sconce-var-4', 1.5, 1.5, { offsetYFt: -4 }),
   ]),
-  deco('stage-torch-right', 7.35, 0.1, [catalog('prop-torch-v1-var-8', 1.5, 3, { offsetYFt: -4 })]),
+  deco('stage-torch-right', 7.35, 0.1, [catalog('prop-torch-var-8', 1.5, 3, { offsetYFt: -4 })]),
   deco('poster-right', 8.2, 0, [
-    catalog('welcome-sign-left-v2-var-4', 3, 3, { offsetYFt: -4, flipX: true }),
+    catalog('welcome-sign-left-var-4', 3, 3, { offsetYFt: -4, flipX: true }),
   ]),
   deco('sconce-far-right', 9, 0.15, [
-    catalog('prop-wall-sconce-v1-var-6', 1.5, 1.5, { offsetYFt: -4 }),
+    catalog('prop-wall-sconce-var-6', 1.5, 1.5, { offsetYFt: -4 }),
   ]),
 ];
 
@@ -110,10 +110,10 @@ const leftEdge = [
       3,
       3.5,
     ),
-    catalog('purple-potion-bottle-v1-var-4', 1, 1, { offsetXFt: 0.5, offsetYFt: -2 }),
+    catalog('purple-potion-bottle-var-4', 1, 1, { offsetXFt: 0.5, offsetYFt: -2 }),
   ]),
   deco('call-sheet-left', 0.1, 2.4, [
-    catalog('welcome-sign-left-v1-var-5', 2, 2.5, { offsetXFt: -0.5 }),
+    catalog('welcome-sign-left-var-5', 2, 2.5, { offsetXFt: -0.5 }),
   ]),
   deco('wall-shelf-left', 0, 3.1, [
     commissioned(
@@ -126,7 +126,7 @@ const leftEdge = [
     catalog('autograph-book-placeholder', 1, 1, { offsetXFt: 1, offsetYFt: -1 }),
   ]),
   deco('merchant-sign', 0.15, 6.4, [
-    catalog('welcome-sign-left-v2-var-6', 2.5, 2.5, { offsetXFt: -0.5 }),
+    catalog('welcome-sign-left-var-6', 2.5, 2.5, { offsetXFt: -0.5 }),
   ]),
   deco('cable-coil-left', 0.1, 7.2, [
     commissioned(
@@ -141,7 +141,7 @@ const leftEdge = [
 
 // --- Zone D: broker nook (right edge) ---------------------------------------
 const rightEdge = [
-  deco('broker-torch', 9, 2.6, [catalog('prop-torch-v1-var-14', 1.5, 3, { offsetXFt: 0.5 })]),
+  deco('broker-torch', 9, 2.6, [catalog('prop-torch-var-14', 1.5, 3, { offsetXFt: 0.5 })]),
   deco('crate-right-upper', 9, 3.4, [
     commissioned(
       'welcome-room-crate-single',
@@ -160,7 +160,7 @@ const rightEdge = [
       1.5,
       { flipX: true },
     ),
-    catalog('purple-potion-bottle-v1-var-4', 1, 1, { offsetYFt: -1.25 }),
+    catalog('purple-potion-bottle-var-4', 1, 1, { offsetYFt: -1.25 }),
   ]),
   deco('trash-bin-right', 9, 6.35, [
     commissioned(
@@ -171,7 +171,7 @@ const rightEdge = [
       2.5,
     ),
   ]),
-  deco('sconce-right-low', 9, 7.4, [catalog('prop-wall-sconce-v1-var-7', 1.5, 1.5)]),
+  deco('sconce-right-low', 9, 7.4, [catalog('prop-wall-sconce-var-7', 1.5, 1.5)]),
 ];
 
 // --- Zone E: queue line (bottom edge) ---------------------------------------
@@ -214,8 +214,8 @@ const bottomEdge = [
       { flipX: true },
     ),
   ]),
-  deco('exit-sign-bottom', 0.1, 8, [catalog('welcome-sign-left-v1-var-13', 2, 2)]),
-  deco('sconce-bottom-right', 9, 8, [catalog('prop-wall-sconce-v1-var-8', 1.5, 1.5)]),
+  deco('exit-sign-bottom', 0.1, 8, [catalog('welcome-sign-left-var-13', 2, 2)]),
+  deco('sconce-bottom-right', 9, 8, [catalog('prop-wall-sconce-var-8', 1.5, 1.5)]),
 ];
 
 // --- Floor variety -----------------------------------------------------------
@@ -296,7 +296,7 @@ byId
   );
 byId
   .get('broker-bookcase')
-  ?.layers.push(catalog('purple-potion-bottle-v1-var-4', 1, 1, { offsetXFt: 1, offsetYFt: -1.5 }));
+  ?.layers.push(catalog('purple-potion-bottle-var-4', 1, 1, { offsetXFt: 1, offsetYFt: -1.5 }));
 byId
   .get('shop-table')
   ?.layers.push(

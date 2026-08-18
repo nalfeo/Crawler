@@ -1,0 +1,38 @@
+{
+  "briefId": "tile-corridor",
+  "spriteName": "tile-corridor-var-14",
+  "assetPath": "generated/tile-corridor-var-14.png",
+  "approvedAt": "2026-07-06T17:30:25.717Z",
+  "sourceRun": "generated/runs/tile-corridor-v1/imported-1458105489b4",
+  "variantIndex": 14,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "1458105489b4153e50d18e8d09ae8eaeca88b99bf8895046c542fdc77b461607",
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

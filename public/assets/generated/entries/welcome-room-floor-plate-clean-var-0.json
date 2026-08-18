@@ -1,0 +1,111 @@
+{
+  "briefId": "welcome-room-floor-plate-clean",
+  "spriteName": "welcome-room-floor-plate-clean-var-0",
+  "assetPath": "generated/welcome-room-floor-plate-clean-var-0.png",
+  "approvedAt": "2026-07-27T19:10:56.577Z",
+  "sourceRun": "generated/runs/welcome-room-floor-plate-clean-v2/2026-07-27T16-41-40-4506cad3",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 127,
+        "y": 127
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T16:42:55.713Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The candidate successfully conveys a cool grey concrete-composite studio floor with subtle wear and grain, fitting the muted and utilitarian aesthetic of the welcome-room setting."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading, and texture. The sparse grain and muted tones align well with the Crawler style."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading, and texture. The sparse grain and muted tones align well with the Crawler style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate adheres to all aspects of the brief, including the full-bleed rule, flat lighting, and proof-of-crop requirements. Details are severed at the edges, and the surface is asymmetrically varied."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The surface reads clearly as a flat, continuous floor at game scale. The subtle grain and wear are legible without overwhelming the design, and there are no visual integrity defects."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate adheres to the brief and matches the style and requirements for a continuous, unbroken floor crop.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 5184,
+      "completionTokens": 291,
+      "totalTokens": 5475
+    }
+  },
+  "type": "tile",
+  "contentHash": "5b10b0866440882cd6d5a644a006f3fccf31b97886b26721b7a7e57740a6f167",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

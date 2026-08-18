@@ -5,7 +5,7 @@
  *
  * ## Why this exists
  *
- * `tile-stone-floor-v1-var-2.png` — the texture bound to `TerrainType.STONE_FLOOR`
+ * `tile-stone-floor-var-2.png` — the texture bound to `TerrainType.STONE_FLOOR`
  * in `src/engine/sprites/tile-visuals.ts`, i.e. the floor of every stone room in
  * the game — shipped with a magenta ring baked around its 256x256 edge (86% of
  * its outer 3% ring matched, corner pixel rgb(180,24,113)). Because a terrain

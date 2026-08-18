@@ -197,8 +197,16 @@ async function withEditor(run, options = {}) {
           const saveResponse = { sprite: fixtureSprites[index] };
           // Optionally simulate the sidecar's durable assets/queue push outcome so
           // tests can exercise the queue-failure surfacing (F-D / FIX 3).
-          if (options.saveQueueStatus) {
-            saveResponse.queue = { status: options.saveQueueStatus };
+          if (options.saveQueueStatus || options.saveQueueCleanupError) {
+            saveResponse.queue = {
+              status: options.saveQueueStatus || 'ok',
+              ...(options.saveQueueCleanupError
+                ? {
+                    localAnnotationCleaned: false,
+                    cleanupError: options.saveQueueCleanupError,
+                  }
+                : {}),
+            };
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(saveResponse));
@@ -491,7 +499,7 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /role: 'status'/);
   assert.doesNotMatch(html, /id="app" aria-live/);
   assert.match(EXTENSION_SOURCE, /if \(hasMetadata\) applyMetadataUpdate/);
-  assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
+  assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) annotationToken = applyAnnotationUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
   assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
   assert.match(
@@ -1068,6 +1076,27 @@ test('a failed durable queue push is surfaced even when the operator switches sp
       );
     },
     { saveDelayMs: 1000, saveQueueStatus: 'failed' },
+  );
+});
+
+test('a successful queue push with unsafe local cleanup is surfaced with remediation', async () => {
+  await withEditor(
+    async (page) => {
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(() =>
+        (document.querySelector('#status')?.textContent ?? '').includes(
+          'local annotation cleanup FAILED',
+        ),
+      );
+      const status = await page.locator('#status').textContent();
+      assert.match(status ?? '', /git restore --staged/);
+      assert.match(status ?? '', /annotation remains in this worktree/);
+    },
+    {
+      saveQueueStatus: 'ok',
+      saveQueueCleanupError:
+        'The annotations file has a staged edit. Run "git restore --staged -- public/assets/generated/sprite-editor-annotations.json", then re-save.',
+    },
   );
 });
 

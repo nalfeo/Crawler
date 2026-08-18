@@ -15,7 +15,7 @@ description: >-
 
 After new art lands the project still carries placeholders that the new asset
 could replace, but nothing auto-wires them: a real generated asset ships under a
-versioned brief id (`slime-queen-v1`) while the placeholder it should replace is
+versioned brief id (`slime-queen`) while the placeholder it should replace is
 the bare concept (`slime-queen`), so the names never match by string. This skill
 surfaces that gap deterministically.
 

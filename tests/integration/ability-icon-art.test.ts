@@ -33,9 +33,9 @@ import {
 
 /** The three abilities with icon presentation entries in ability-presentation.ts. */
 const ICON_EXPECTATIONS: ReadonlyArray<{ abilityId: string; legacyBriefIdLineage: string }> = [
-  { abilityId: 'fireball', legacyBriefIdLineage: 'ability-icon-fireball-v1' },
-  { abilityId: 'heal', legacyBriefIdLineage: 'ability-icon-heal-v1' },
-  { abilityId: 'pulse-shield', legacyBriefIdLineage: 'ability-icon-pulse-shield-v1' },
+  { abilityId: 'fireball', legacyBriefIdLineage: 'ability-icon-fireball' },
+  { abilityId: 'heal', legacyBriefIdLineage: 'ability-icon-heal' },
+  { abilityId: 'pulse-shield', legacyBriefIdLineage: 'ability-icon-pulse-shield' },
 ];
 
 /**

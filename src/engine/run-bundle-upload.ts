@@ -20,6 +20,7 @@ export interface RunBundleUploadConfig {
 }
 
 const ENDPOINT_KEYS = [
+  'VITE_RUNS_INGEST_URL',
   'CRAWLER_RUN_BUNDLE_ENDPOINT',
   'CRAWLER_RUNS_ENDPOINT',
   'CRAWLER_RUNS_API_URL',

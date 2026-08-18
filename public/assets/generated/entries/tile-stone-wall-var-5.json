@@ -1,0 +1,39 @@
+{
+  "briefId": "tile-stone-wall",
+  "spriteName": "tile-stone-wall-var-5",
+  "assetPath": "generated/tile-stone-wall-var-5.png",
+  "approvedAt": "2026-07-08T00:06:55.840Z",
+  "sourceRun": "generated/runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032",
+  "variantIndex": 5,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": null,
+  "contentHash": "d2ce2ac9c779091c22feafa465de121113cf2ab2c65f8e53f9836ecff68d817c",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}
