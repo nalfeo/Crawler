@@ -538,7 +538,7 @@ export function createEquipmentUI(
   // lives in a reserved region below the grid, its content can never overlap a
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
-  const INSPECTOR_H = 76;
+  const INSPECTOR_H = 86;
   const INSPECTOR_GAP = 12;
   const inspectorX = dollX + 10;
   const inspectorW = dollW - 20;
@@ -1486,7 +1486,8 @@ export function createEquipmentUI(
       const px = spreadNorm(fill(slot.uiPosition.x, minX, maxX), SLOT_SPREAD_X);
       const py = spreadNorm(fill(slot.uiPosition.y, minY, maxY), SLOT_SPREAD_Y);
       const cx = dollX + innerPadX + gridOffsetX + SLOT_W / 2 + px * usableW;
-      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
+      const slotYOffset = slot.id === 'gloves' ? 10 : slot.id === 'feet' ? -10 : 0;
+      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH + slotYOffset;
 
       const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
       const instance =
