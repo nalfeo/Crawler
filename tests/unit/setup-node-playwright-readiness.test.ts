@@ -46,6 +46,29 @@ describe('setup-node Playwright readiness', () => {
     expect(actionYml).toContain('npx playwright install chromium');
   });
 
+  it('imports a playwright package that is actually declared as a dependency', async () => {
+    // The mocked launch tests inject a fake chromium, so they cannot catch a
+    // wrong package specifier. This did happen: the script first imported
+    // `@playwright/test`, which is not in package.json, and CI failed with
+    // ERR_MODULE_NOT_FOUND. Assert the specifier against the manifest.
+    const source = readFileSync(
+      path.join(repoRoot, 'scripts/agent/verify-chromium-launch.mjs'),
+      'utf8',
+    );
+    const specifier = source.match(/await import\('([^']+)'\)/)?.[1];
+    expect(specifier).toBeDefined();
+
+    const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const declared = { ...manifest.dependencies, ...manifest.devDependencies };
+    expect(Object.keys(declared)).toContain(specifier);
+
+    // And it must genuinely resolve at runtime.
+    await expect(import(specifier!)).resolves.toBeDefined();
+  });
+
   it('passes when Chromium launches and evaluates JavaScript', async () => {
     const verifyChromiumLaunch = await loadVerifyChromiumLaunch();
     let closed = false;
