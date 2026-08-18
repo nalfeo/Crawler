@@ -35,7 +35,31 @@ export type SimEventType =
   | 'quest'
   | 'npc'
   | 'control'
-  | 'den';
+  | 'den'
+  | 'boss';
+
+/** Per-boss-encounter diagnostic snapshot for Floor 2 den softlocks. */
+export interface BossEncounterSnapshot {
+  familyId: string;
+  displayName: string;
+  bossEid: number | null;
+  /** True only when `bossEid` still resolves to this family's live boss entity. */
+  bossEntityExists: boolean;
+  started: boolean;
+  defeated: boolean;
+  denRoomId: number;
+  bossRoomId: number | null;
+  bossInDen: boolean | null;
+  bossTileX: number | null;
+  bossTileY: number | null;
+  bossHealth: number | null;
+  bossHealthMax: number | null;
+  bossVisible: boolean | null;
+  activeGoalId: string;
+  activeGoalValue: boolean;
+  doorsLocked: boolean;
+  playerInDen: boolean;
+}
 
 /**
  * A single telemetry record. Every record carries the full frame context so
@@ -105,6 +129,11 @@ export interface SimEvent {
    * sessions all emit this same contract.
    */
   denBoss?: DenBossEventPayload;
+  /**
+   * Boss-encounter diagnostics for this frame. Present on `sample` records and
+   * on every `boss` transition record when the floor has den encounters.
+   */
+  bossEncounters?: BossEncounterSnapshot[];
   /** Optional annotation for non-sample events. */
   note?: string;
 }

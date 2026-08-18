@@ -23,12 +23,17 @@ import type {
   SessionRecorderStats,
 } from '../../shared/session-recorder-types.js';
 import { AI_STATE_NAME, isDenSimEvent, type SimEvent, type SimEventType } from './event-log.js';
+import type { BossEncounterSnapshot } from './event-log.js';
 import type { DenBossDiagnostics } from './den-boss-telemetry.js';
 import {
   createDenBossTransitionTracker,
   denBossSnapshotPayload,
   denBossTransitionPayload,
 } from './den-boss-telemetry.js';
+import {
+  captureBossEncounterSnapshots,
+  diffBossEncounterSnapshots,
+} from './boss-encounter-telemetry.js';
 
 // ---------------------------------------------------------------------------
 // PlayerSessionEvent
@@ -177,6 +182,10 @@ export function createPlayerSessionRecorder(
   // headless runner, so a human recording and an AI run are directly comparable.
   const denTracker = createDenBossTransitionTracker();
 
+  // Boss-encounter diagnostics. Sampled alongside `sample` records and diffed
+  // every frame so den-softlock transitions get exact frame numbers.
+  let lastBossSnapshots: BossEncounterSnapshot[] = [];
+
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
@@ -277,9 +286,28 @@ export function createPlayerSessionRecorder(
       lastLoggedState = inferredState;
     }
 
+    // Boss-encounter diagnostics: emit a discrete `boss` record on every
+    // interesting transition (encounter start/defeat, boss leaving or returning
+    // to its den, door lock flipping) so a softlock has an exact frame in the
+    // log rather than only showing up between periodic samples.
+    const bossSnapshots = captureBossEncounterSnapshots(world, playerEid);
+    if (bossSnapshots.length > 0) {
+      for (const note of diffBossEncounterSnapshots(lastBossSnapshots, bossSnapshots)) {
+        const event = buildEvent('boss', inputState, enemyEids, note);
+        event.state = inferredState;
+        event.reason = 'boss-encounter';
+        event.bossEncounters = bossSnapshots;
+        events.push(event);
+      }
+    }
+    lastBossSnapshots = bossSnapshots;
+
     if (frameCount % sampleInterval === 0) {
       const event = buildEvent('sample', inputState, enemyEids);
       event.state = inferredState;
+      if (bossSnapshots.length > 0) {
+        event.bossEncounters = bossSnapshots;
+      }
       events.push(event);
       // Reset per-sample window.
       pathTravelAccum = 0;
@@ -469,6 +497,7 @@ export function createPlayerSessionRecorder(
     // for every den; otherwise a cleared log would silently start mid-encounter
     // with no known starting state.
     denTracker.reset();
+    lastBossSnapshots = [];
   }
 
   return {
