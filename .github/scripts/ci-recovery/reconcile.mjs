@@ -3298,25 +3298,44 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     }
     const actorIds = [...new Set([...review.assignees.map((actor) => actor.id), copilot.id])];
     await assertExpectedMetadataUnchanged('assign-copilot');
-    await graphql(
-      pat,
-      `
-        mutation ($assignableId: ID!, $actorIds: [ID!]!) {
-          replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
-            assignable {
-              ... on PullRequest {
-                assignees(first: 50) {
-                  nodes {
-                    login
+    const replaceAssignees = (ids) =>
+      graphql(
+        pat,
+        `
+          mutation ($assignableId: ID!, $actorIds: [ID!]!) {
+            replaceActorsForAssignable(
+              input: { assignableId: $assignableId, actorIds: $actorIds }
+            ) {
+              assignable {
+                ... on PullRequest {
+                  assignees(first: 50) {
+                    nodes {
+                      login
+                    }
                   }
                 }
               }
             }
           }
-        }
-      `,
-      { assignableId: review.id, actorIds },
-    );
+        `,
+        { assignableId: review.id, actorIds: ids },
+      );
+    // A redispatch (e.g. the R33 stale-automation-retry path) targets a PR
+    // that already carries Copilot as an assignee from a prior dispatch. In
+    // that case `actorIds` above is IDENTICAL to the currently-assigned set,
+    // so replacing the assignee list with the same members is a no-op
+    // transition that does not reliably signal GitHub's Copilot coding-agent
+    // platform to start a fresh session -- the PR sits reassigned-in-name-
+    // only while the automation believes it dispatched a new attempt (root
+    // cause of the PR #3040 / incident #3064 "no progress after 2 attempts"
+    // loop). Force a genuine unassign-then-reassign edge whenever Copilot was
+    // already an assignee, mirroring the same remove-then-add pattern already
+    // used for linked-issue reassignment in pr-ready-reviewer-guard.mjs.
+    const copilotAlreadyAssigned = review.assignees.some((actor) => actor.id === copilot.id);
+    if (copilotAlreadyAssigned) {
+      await replaceAssignees(actorIds.filter((id) => id !== copilot.id));
+    }
+    await replaceAssignees(actorIds);
   }
 
   await updateState(
