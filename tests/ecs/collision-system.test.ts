@@ -63,4 +63,30 @@ describe('collisionSystem', () => {
       b: Math.max(player, enemy),
     });
   });
+
+  it('falls back to radius for a malformed NaN halfWidth/halfHeight instead of inserting NaN', () => {
+    // Regression: a naive `if (stored <= 0) fallback` check does not catch NaN
+    // (every ordered comparison with NaN is false), which would silently
+    // insert NaN bounds into the spatial grid and drop the entity from
+    // collision queries. getBodyHalfWidth/getBodyHalfHeight guard against this
+    // with `if (v > 0) return v`, so the fast path must match that exactly.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const malformed = createEntity(world);
+
+    addComponent(world.ecs, malformed, set(Position, { x: 1, y: 0 }));
+    addComponent(world.ecs, malformed, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(
+      world.ecs,
+      malformed,
+      set(Size, { radius: 25, halfWidth: NaN, halfHeight: NaN, shape: SHAPE_CIRCLE }),
+    );
+
+    const result = collisionSystem(world);
+
+    expect(result.pairs).toContainEqual({
+      a: Math.min(player, malformed),
+      b: Math.max(player, malformed),
+    });
+  });
 });
