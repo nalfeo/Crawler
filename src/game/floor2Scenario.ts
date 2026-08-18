@@ -56,6 +56,7 @@ import {
   initializeFactionRelations,
   selectFloor2Roster,
   type FamilyId,
+  type Floor2FamilyBossEncounterState,
   type Floor2State,
 } from '../core/faction-relations.js';
 import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
@@ -625,6 +626,15 @@ export function floor2ObjectiveTick(world: GameWorld): void {
         world.goalFlags.get(denUnlockGoalId(encounter.familyId)) !== true
       ) {
         continue;
+      }
+      // Containment before latching: the den doors RELOCK on `activeGoalId`, so
+      // starting the encounter while the boss is outside its den seals the
+      // player in with an unreachable boss. The boss is mobile and aggressive
+      // from floor init, so once the unlock flag opens the doors it can walk
+      // out on its own. Return it to its den spawn tile first — the fight stays
+      // intact and the relock can never produce a boss-less sealed room.
+      if (encounter.bossEid !== null) {
+        containFloor2BossInDen(world, encounter);
       }
       encounter.started = true;
       if (encounter.bossEid !== null) {
@@ -1548,9 +1558,57 @@ function findNearestPassableTile(
   return null;
 }
 
+/**
+ * Return a Floor 2 family boss to its den if it has left the den room.
+ *
+ * The den doors relock on the encounter's `activeGoalId`, so an out-of-den boss
+ * at encounter start seals the player into an empty room with a boss that is
+ * still `started` (HUD bar visible, damageable through walls by homing spells)
+ * but can never be killed — and the relock only clears on the boss-death latch.
+ * That is a hard softlock, so containment is unconditional rather than
+ * best-effort: if the boss is anywhere other than its own den room, it is
+ * teleported back to the spawn tile recorded at floor init.
+ *
+ * No-op when the boss is already inside its den, so calling this every start
+ * attempt is free in the common case.
+ *
+ * @returns `true` when the boss was relocated.
+ */
+function containFloor2BossInDen(
+  world: GameWorld,
+  encounter: Floor2FamilyBossEncounterState,
+): boolean {
+  const floorMap = world.floorMap;
+  const bossEid = encounter.bossEid;
+  const spawnX = encounter.bossSpawnX;
+  const spawnY = encounter.bossSpawnY;
+  if (!floorMap || bossEid === null || spawnX === undefined || spawnY === undefined) {
+    return false;
+  }
+  const tile = floorMap.worldToTile(
+    world.stores.position.x[bossEid] ?? 0,
+    world.stores.position.y[bossEid] ?? 0,
+  );
+  if (floorMap.roomGraph.getRoomAt(tile.x, tile.y) === encounter.roomId) {
+    return false;
+  }
+  world.stores.position.x[bossEid] = spawnX;
+  world.stores.position.y[bossEid] = spawnY;
+  return true;
+}
+
 function unstickFloor2Bosses(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
+  const encounterByBossEid = new Map<number, Floor2FamilyBossEncounterState>();
+  const encounters = world.floorExtendedState?.familyState?.bossEncounters;
+  if (encounters) {
+    for (const encounter of encounters.values()) {
+      if (encounter.bossEid !== null) {
+        encounterByBossEid.set(encounter.bossEid, encounter);
+      }
+    }
+  }
   for (const eid of query(world.ecs, [Enemy, Health, FamilyMembership, Position])) {
     if ((world.stores.familyMembership.isBoss[eid] ?? 0) !== 1) {
       continue;
@@ -1563,6 +1621,21 @@ function unstickFloor2Bosses(world: GameWorld): void {
     }
     const nearest = findNearestPassableTile(world, tile.x, tile.y);
     if (!nearest) {
+      continue;
+    }
+    // Never unstick a boss OUT of its own den: the den doors relock on the
+    // encounter flag, and a boss nudged into an adjacent room or corridor
+    // produces the same sealed-room softlock as an out-of-den encounter start.
+    // Fall back to the recorded den spawn tile instead of the nearest tile.
+    const encounter = encounterByBossEid.get(eid);
+    if (
+      encounter &&
+      encounter.bossSpawnX !== undefined &&
+      encounter.bossSpawnY !== undefined &&
+      floorMap.roomGraph.getRoomAt(nearest.x, nearest.y) !== encounter.roomId
+    ) {
+      world.stores.position.x[eid] = encounter.bossSpawnX;
+      world.stores.position.y[eid] = encounter.bossSpawnY;
       continue;
     }
     const worldPos = floorMap.tileToWorld(nearest.x, nearest.y);
