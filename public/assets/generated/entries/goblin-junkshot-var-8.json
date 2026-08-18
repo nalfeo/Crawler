@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "1889b8698b1a2ae574014657acbd788231ce51433489a7a5e8cfe5fdad23dcb3",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

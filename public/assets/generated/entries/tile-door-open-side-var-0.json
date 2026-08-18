@@ -110,9 +110,6 @@
     "canvasWidth": 83,
     "canvasHeight": 128
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-effective-disco\\generated\\runs\\tile-door-open-side-v1\\2026-07-31T01-40-38-da630f38\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-effective-disco\\generated\\runs\\tile-door-open-side-v1\\2026-07-31T01-40-38-da630f38\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-effective-disco\\generated\\runs\\tile-door-open-side-v1\\2026-07-31T01-40-38-da630f38\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

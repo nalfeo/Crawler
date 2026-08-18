@@ -103,9 +103,6 @@
   },
   "type": "weapon",
   "contentHash": "bd1233c7e300baba2ccfd93202ecdbe146a66a79ad9cd8a31b0b00fb494b0dd8",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

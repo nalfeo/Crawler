@@ -2,12 +2,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { isOfficialWin } from '../../src/game/ai/scoring.js';
-import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_SHOP_QUEST_ID } from '../../src/shared/quest-types.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 const MAX_WALL_TIME_MS = 30 * 60 * 1000;
 
 const CASES = [
@@ -56,7 +58,7 @@ describe('Floor 1 NPC objective-anchor regression', () => {
 
       it('clears Floor 1 within the official budget', () => {
         expect(
-          isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS),
+          isOfficialWin(stats, FLOOR1_ACTIVE_TIME_BUDGET_MS),
           `seed ${seed} · ${weapon} did not clear Floor 1 in time: ` +
             `${stats.outcome}@${(stats.gameTimeMs / 1000).toFixed(0)}s (${stats.stallReason ?? 'no stall reason'})`,
         ).toBe(true);

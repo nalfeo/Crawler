@@ -118,9 +118,6 @@
     "canvasWidth": 256,
     "canvasHeight": 284
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-elite-slick-don-v1/2026-08-01T05-46-45-40047e73/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-elite-slick-don-v1/2026-08-01T05-46-45-40047e73/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-elite-slick-don-v1/2026-08-01T05-46-45-40047e73/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

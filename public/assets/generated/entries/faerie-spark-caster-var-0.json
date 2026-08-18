@@ -114,9 +114,6 @@
     "canvasWidth": 256,
     "canvasHeight": 272
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-spark-caster-v1/2026-08-01T00-11-38-2fb329ab/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-spark-caster-v1/2026-08-01T00-11-38-2fb329ab/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-spark-caster-v1/2026-08-01T00-11-38-2fb329ab/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

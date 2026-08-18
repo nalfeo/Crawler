@@ -103,9 +103,6 @@
   },
   "type": "weapon",
   "contentHash": "b606275b74e32a5230099e2d8a10b07358319c0331d1eefbfd27d56278dd812e",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/frost-crook-v1/2026-07-25T05-47-27-d2f94bf9/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/frost-crook-v1/2026-07-25T05-47-27-d2f94bf9/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/frost-crook-v1/2026-07-25T05-47-27-d2f94bf9/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

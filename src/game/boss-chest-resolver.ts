@@ -19,7 +19,7 @@ import {
   createBossChestRecord,
   type BossChestRecord,
 } from '../core/systems/bossChestRewards.js';
-import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
+import { getEquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
 import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { resolveEquipmentRewardBundle } from './floor2-reward-bundle-resolver.js';
 import type { EquipmentRewardTier } from '../shared/generated-equipment-types.js';
@@ -91,7 +91,7 @@ export function spawnBossChestForDefeatedBoss(
   if (world.bossChests.has(chestId)) {
     return { created: false, reason: 'alreadyExists' };
   }
-  const access = getFloor2EquipmentEconomyAccess(world);
+  const access = getEquipmentEconomyAccess(world);
   if (access.kind === 'invalid') {
     throw new Error(access.message);
   }

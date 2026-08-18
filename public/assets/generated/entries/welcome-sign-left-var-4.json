@@ -3,7 +3,7 @@
   "spriteName": "welcome-sign-left-var-4",
   "assetPath": "generated/welcome-sign-left-var-4.png",
   "approvedAt": "2026-07-06T17:35:33.650Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-N1vIG3/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+  "sourceRun": "generated/runs/welcome-sign-left-v2/imported-e113aee6b830",
   "variantIndex": 4,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "e113aee6b83020b318988de66006296d2617a56ace6ae73c4836ae3f65c635c4",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 3,

@@ -81,6 +81,8 @@ export interface ShardRecord {
   readonly actualHash?: string;
   /** Whether `assetPath` resolved to an existing file. */
   readonly fileExists: boolean;
+  /** Invalid local provenance found while parsing the shard, if any. */
+  readonly provenanceViolations?: readonly string[];
 }
 
 /**
@@ -101,6 +103,7 @@ export type FindingKind =
   | 'name-mismatch'
   | 'duplicate-path'
   | 'duplicate-name'
+  | 'unsafe-provenance'
   | 'malformed';
 
 /** A single integrity violation. Every finding is blocking. */
@@ -199,7 +202,27 @@ export function checkAssetIntegrity(
   let unhashed = 0;
 
   for (const record of records) {
-    const { shardFile, spriteName, assetPath, contentHash, actualHash, fileExists } = record;
+    const {
+      shardFile,
+      spriteName,
+      assetPath,
+      contentHash,
+      actualHash,
+      fileExists,
+      provenanceViolations = [],
+    } = record;
+
+    for (const violation of provenanceViolations) {
+      findings.push({
+        kind: 'unsafe-provenance',
+        shardFile,
+        spriteName,
+        detail: `Shard contains non-portable provenance: ${violation}.`,
+        remediation:
+          `Replace the value in ${shardFile} with a safe repo-relative sourceRun and remove ` +
+          `machine-local postprocess provenance fields.`,
+      });
+    }
 
     if (!assetPathMatchesSpriteName(spriteName, assetPath)) {
       findings.push({

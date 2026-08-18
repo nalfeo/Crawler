@@ -61,11 +61,13 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  extrapolateRenderPosition,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
+  renderInterpolationAlpha,
   resolveDialogueLines,
   resolveNpcQuestIndicatorState,
 } from './main-game-scene-helpers.js';
@@ -77,7 +79,12 @@ import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
+import { createBossIntroUI } from '../BossIntroUI.js';
+import { resolvePendingBossIntro } from '../boss-intro-state.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createRunSurveyUI } from '../RunSurveyUI.js';
+import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
+import { submitRunSurvey } from '../run-bundle-upload.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -157,6 +164,13 @@ const MAX_STEPS_PER_FRAME = 4;
  * (the modal freeze skips the fixed-step), so it is independent of sim speed.
  */
 const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
+/**
+ * Render frames the boss-intro lore sheet is held open before an AI-driven run
+ * (`autoLevelUpAllocator` wired) auto-dismisses it. ~1s at 60fps — long enough
+ * for a viewer/recording to read the billing, short enough not to stall a
+ * headless-adjacent AI playthrough. Human play dismisses on input instead.
+ */
+const BOSS_INTRO_AUTO_HOLD_FRAMES = 60;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -313,6 +327,18 @@ export interface MainGameSceneOptions {
     available: number,
   ) => Partial<Record<PrimaryStatId, number>> | null;
   /**
+   * Optional predicate reporting whether an AI — not a human — is currently
+   * driving the run. Surfaces that would otherwise wait forever for a keypress
+   * (the boss-intro lore sheet) auto-advance only while this returns true.
+   *
+   * Distinct from {@link autoLevelUpAllocator} on purpose: the AI Runner Lab
+   * always supplies an allocator but hands control back to a human in
+   * manual-control mode, so allocator presence is NOT a reliable "AI is
+   * driving" signal. When omitted, allocator presence is used as the fallback
+   * for harnesses that only wire the allocator.
+   */
+  isAutoDriven?: () => boolean;
+  /**
    * Optional factory for a human player session recorder (dev/debug only).
    *
    * Called once after the world and player entity are created. The factory
@@ -460,6 +486,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private accumulatorClampCount = 0;
 
+  /**
+   * Render-side interpolation factor for the current frame (`0..1`): how far
+   * into the next fixed simulation step the rendered frame sits. Zero on frozen
+   * frames (pause, modals, dialogue) where no step is in flight. Consumed by
+   * `bridge.sync` and `updateCamera` so both extrapolate identically.
+   */
+  private renderInterpAlpha = 0;
+  private playerRenderSampleFrame = -1;
+  private playerRenderSampleEid = -1;
+  private playerRenderPrevX = 0;
+  private playerRenderPrevY = 0;
+  private playerRenderCurrX = 0;
+  private playerRenderCurrY = 0;
+
   private simulationPaused = false;
 
   private simulationSpeed = 1;
@@ -490,6 +530,10 @@ export class MainGameScene extends Phaser.Scene {
   private runStartXp = 0;
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
+  private lastRunBundle?: RunBundle;
+  private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
+  private runSurveyShown = false;
+  private runSurveySubmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -659,6 +703,14 @@ export class MainGameScene extends Phaser.Scene {
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
   private levelUpUI?: ReturnType<typeof createLevelUpUI>;
+
+  private bossIntroUI?: ReturnType<typeof createBossIntroUI>;
+
+  /** `BossIntroContent.introId`s already presented this run (show-once). */
+  private readonly shownBossIntroIds = new Set<string>();
+
+  /** Frames the boss-intro sheet has been held open for an AI-driven run. */
+  private bossIntroAutoHoldFrames = 0;
 
   /** Chest ids already surfaced via a one-time "ready to open" toast. */
   private readonly notifiedBossChestIds = new Set<string>();
@@ -851,6 +903,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
+    this.lastRunBundle = undefined;
+    this.runSurveyShown = false;
+    this.runSurveySubmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -990,6 +1045,7 @@ export class MainGameScene extends Phaser.Scene {
         this.rewardAudioController?.skipped();
       },
     });
+    this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
@@ -1223,8 +1279,14 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.runSurveyUI?.destroy();
+      this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
+      this.bossIntroUI?.destroy();
+      this.bossIntroUI = undefined;
+      this.shownBossIntroIds.clear();
+      this.bossIntroAutoHoldFrames = 0;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -1723,6 +1785,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
@@ -1746,6 +1809,10 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
+    // as the last completed step left it; only the fixed-step path below has a
+    // partially-elapsed step to interpolate.
+    this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
     this.showDeathScreenIfNeeded();
@@ -1762,6 +1829,19 @@ export class MainGameScene extends Phaser.Scene {
         this.queuedAbilitiesToggle = false;
         this.closeAbilitiesModal();
       }
+      this.updateOverlayText();
+      return;
+    }
+
+    // A boss battle just started: freeze the sim behind The Director's lore
+    // sheet so the player reads who they are fighting before taking a hit.
+    // Same freeze contract as the level-up/reward branches — rendering and
+    // camera stay alive, the fixed step does not run.
+    this.showBossIntroIfNeeded();
+    if (this.bossIntroUI?.isOpen()) {
+      this.driveAutoBossIntro();
+      this.bridge.sync(this.world);
+      this.updateCamera();
       this.updateOverlayText();
       return;
     }
@@ -1986,7 +2066,18 @@ export class MainGameScene extends Phaser.Scene {
 
     this.updateDoorOverlay();
     this.updateLightingOverlay();
-    this.bridge.sync(this.world);
+    // Render between fixed steps: the accumulator holds the fraction of the next
+    // step already elapsed in wall-clock time. Feeding it to the bridge (and to
+    // the camera below, via the same alpha) removes the judder caused by rAF
+    // frames not lining up with the 60Hz sim step — most visible on high-refresh
+    // displays, where sprites would otherwise only move on every other frame.
+    // This is render-side only: no world state is read or written differently.
+    this.renderInterpAlpha = renderInterpolationAlpha(this.accumulator, GAME.DELTA_MS);
+    this.bridge.sync(
+      this.world,
+      this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,
+      this.renderInterpAlpha,
+    );
     this.resumePendingRewardPresentations();
     if (this.rewardOpeningUI?.isOpen()) {
       this.updateCamera();
@@ -2016,6 +2107,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false);
 
     // Per-panel open state — used below to show each panel's own button as a
@@ -2032,6 +2124,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (!abilitiesOpen && (this.modalPicker?.isOpen() ?? false));
 
@@ -3566,9 +3659,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     const px = this.world.stores.position.x[this.playerEid];
     const py = this.world.stores.position.y[this.playerEid];
+    const playerX = px ?? 0;
+    const playerY = py ?? 0;
+    if (this.playerRenderSampleEid !== this.playerEid) {
+      this.playerRenderSampleEid = this.playerEid;
+      this.playerRenderSampleFrame = this.world.frameCount;
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    } else if (this.playerRenderSampleFrame !== this.world.frameCount) {
+      this.playerRenderPrevX = this.playerRenderCurrX;
+      this.playerRenderPrevY = this.playerRenderCurrY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+      this.playerRenderSampleFrame = this.world.frameCount;
+    } else if (this.playerRenderCurrX !== playerX || this.playerRenderCurrY !== playerY) {
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    }
+    // Follow the SAME extrapolated position the bridge renders the player sprite
+    // at (`position + acceptedStepDisplacement * interpAlpha`).
+    const alpha = this.renderInterpAlpha;
+    const stepDx = this.playerRenderCurrX - this.playerRenderPrevX;
+    const stepDy = this.playerRenderCurrY - this.playerRenderPrevY;
     this.cameras.main.centerOn(
-      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
-      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+      px !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))
+        : GAME.WIDTH * 0.5,
+      py !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))
+        : GAME.HEIGHT * 0.5,
     );
     this.updateSafeRoomZoom();
   }
@@ -3738,6 +3861,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
@@ -3928,6 +4052,9 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    if (completionPresentation === 'terminal_victory') {
+      this.showRunSurveyIfNeeded('victory');
+    }
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
     this.floorCompletionScreen?.setVisible(true);
@@ -4014,7 +4141,56 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.emitRunBundle('death');
+    this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show();
+  }
+
+  private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
+    if (this.runSurveyShown || this.runSurveySubmitted || !this.lastRunBundle) {
+      return;
+    }
+    if (endReason !== 'death' && endReason !== 'victory') {
+      return;
+    }
+    this.runSurveyShown = true;
+    this.runSurveyUI = createRunSurveyUI({
+      onSubmit: async (survey) => {
+        const validSurvey = validatePlaytestSurvey(survey);
+        if (!validSurvey || !this.lastRunBundle) {
+          return false;
+        }
+        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
+          (error: unknown) => {
+            if (typeof console !== 'undefined') {
+              console.warn('Run survey submission failed', error);
+            }
+            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+          },
+        );
+        if (result.ok) {
+          this.runSurveySubmitted = true;
+        }
+        return result.ok;
+      },
+      onSkip: () => {
+        this.runSurveySubmitted = true;
+        // No survey was submitted: emitRunBundle deliberately deferred the
+        // single upload for this run until skip/submit resolved (see
+        // emitRunBundle), so perform that one silent upload now.
+        if (this.lastRunBundle) {
+          this.options.onRunBundle?.(this.lastRunBundle);
+        }
+      },
+    });
+    this.runSurveyUI.show();
+  }
+
+  private nextRunBundleId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    return `run-${this.world.seed}-${this.world.frameCount}`;
   }
 
   private emitRunBundle(endReason: RunEndReason): void {
@@ -4043,9 +4219,18 @@ export class MainGameScene extends Phaser.Scene {
         endReason,
         floorId: this.options.floorId,
         seed: this.world.seed,
+        runId: this.nextRunBundleId(),
       },
     });
     this.runBundleEmitted = true;
+    this.lastRunBundle = bundle;
+    if (endReason === 'death' || endReason === 'victory') {
+      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
+      // here too would resend this run under an unrelated stored ID once the
+      // survey is submitted, creating a duplicate; instead defer the single
+      // upload for this run to whichever of skip/submit resolves the survey.
+      return;
+    }
     this.options.onRunBundle?.(bundle);
   }
 
@@ -4278,6 +4463,63 @@ export class MainGameScene extends Phaser.Scene {
     if (wasPaused !== undefined) {
       this.setSimulationPaused(wasPaused);
     }
+  }
+
+  /**
+   * Open the boss-intro lore sheet when a boss encounter has just started and
+   * has not been introduced yet. No-ops while any other blocking surface owns
+   * the screen (conversation, level-up, reward reveal, ...), while the run is
+   * over, or once this boss has already been introduced — the intro plays
+   * exactly once per boss per run.
+   */
+  private showBossIntroIfNeeded(): void {
+    const bossIntroUI = this.bossIntroUI;
+    if (!bossIntroUI || bossIntroUI.isOpen() || this.isBlockingSurfaceOpen()) {
+      return;
+    }
+    if (this.world.state === 'game_over' || (this.gameOverUI?.isVisible() ?? false)) {
+      return;
+    }
+    const pending = resolvePendingBossIntro(this.world, this.shownBossIntroIds);
+    if (!pending) {
+      return;
+    }
+    // Latch BEFORE opening so a mid-sheet teardown (floor restart, death)
+    // cannot re-trigger the same intro on the next frame.
+    this.shownBossIntroIds.add(pending.content.introId);
+    this.bossIntroAutoHoldFrames = 0;
+    this.clearPendingInteractionInput();
+    bossIntroUI.open({
+      content: pending.content,
+      ...(pending.appearanceKey === undefined ? {} : { appearanceKey: pending.appearanceKey }),
+      reducedMotion: prefersReducedMotion(),
+      onDismiss: () => {
+        this.bossIntroAutoHoldFrames = 0;
+        this.clearPendingInteractionInput();
+      },
+    });
+  }
+
+  /**
+   * AI boss-intro driver. When the run is AI-driven (see
+   * {@link MainGameSceneOptions.isAutoDriven}) there is no human to press a
+   * key, so hold the sheet for {@link BOSS_INTRO_AUTO_HOLD_FRAMES} render
+   * frames — enough for a viewer to read it — then dismiss it and resume the
+   * run. No-op for human play (including the AI Runner Lab's manual-control
+   * mode), where the sheet waits for input.
+   */
+  private driveAutoBossIntro(): void {
+    const autoDriven =
+      this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+    if (!autoDriven || !this.bossIntroUI?.isOpen()) {
+      this.bossIntroAutoHoldFrames = 0;
+      return;
+    }
+    this.bossIntroAutoHoldFrames += 1;
+    if (this.bossIntroAutoHoldFrames < BOSS_INTRO_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    this.bossIntroUI.dismiss();
   }
 
   /**
@@ -4693,6 +4935,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.modalPicker.isOpen()) return true;
     this.modalPicker.open(
       {
+        kind: 'spell-broker',
         title: 'The Spell Broker',
         subtitle: `Gold: ${this.world.playerGold}`,
         body: 'Choose one expensive spell from the Broker’s rotating stock.',

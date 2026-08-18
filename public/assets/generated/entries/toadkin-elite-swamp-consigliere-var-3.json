@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "002bce70f60405a9f1325819c2434493a7d78e1840e3151f8b57bd74995ad98e",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

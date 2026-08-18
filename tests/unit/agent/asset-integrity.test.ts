@@ -240,6 +240,27 @@ describe('checkAssetIntegrity — malformed', () => {
     expect(result.findings[0]?.detail).toContain('Unexpected end of input');
   });
 
+  describe('checkAssetIntegrity — unsafe-provenance', () => {
+    it('flags machine-local provenance and an escaping source run', () => {
+      const result = checkAssetIntegrity([
+        record({
+          provenanceViolations: [
+            'forbidden field "effectivePipelineSnapshotPath"',
+            'unsafe sourceRun "../../AppData/Local/Temp/run"',
+          ],
+        }),
+      ]);
+      expect(kinds(result.findings)).toEqual(['unsafe-provenance', 'unsafe-provenance']);
+    });
+
+    it('flags a Windows drive-qualified source run', () => {
+      const result = checkAssetIntegrity([
+        record({ provenanceViolations: ['unsafe sourceRun "C:temporary-run"'] }),
+      ]);
+      expect(kinds(result.findings)).toEqual(['unsafe-provenance']);
+    });
+  });
+
   it('lists malformed shards before per-record findings', () => {
     const result = checkAssetIntegrity(
       [record({ actualHash: 'c'.repeat(64) })],

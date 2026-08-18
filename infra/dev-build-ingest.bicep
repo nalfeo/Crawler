@@ -20,22 +20,32 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing 
   name: storageAccountName
 }
 
+// Flex Consumption (FC1) is used instead of the classic Dynamic (Y1) plan
+// because Y1 provisions against the subscription's regional VM-core quota,
+// which is 0 on some subscription types (e.g. Visual Studio Enterprise) and
+// cannot be self-service increased. FC1 draws from a separate Microsoft.Web
+// quota pool that is available on those subscriptions.
 resource plan 'Microsoft.Web/serverfarms@2023-01-01' = {
   name: '${functionAppName}-plan'
   location: location
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
+  kind: 'functionapp'
   properties: {
-    reserved: false
+    reserved: true
   }
+}
+
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  name: '${storageAccountName}/default/${functionAppName}-deploy'
 }
 
 resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
   name: functionAppName
   location: location
-  kind: 'functionapp'
+  kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
   }
@@ -49,26 +59,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         allowedOrigins: allowedOrigins
       }
       appSettings: [
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'node'
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~22'
-        }
-        {
-          name: 'FUNCTIONS_NODE_BLOCK_ON_ENTRY_POINT_ERROR'
-          value: 'true'
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
-        }
         {
           name: 'AZURE_STORAGE_CONNECTION_STRING'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${listKeys(storageAccount.id, '2023-01-01').keys[0].value};EndpointSuffix=core.windows.net'
@@ -95,7 +85,30 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         }
       ]
     }
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storageAccount.properties.primaryEndpoints.blob}${functionAppName}-deploy'
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'AzureWebJobsStorage'
+          }
+        }
+      }
+      runtime: {
+        name: 'node'
+        version: '22'
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40
+        instanceMemoryMB: 2048
+      }
+    }
   }
+  dependsOn: [
+    deploymentContainer
+  ]
 }
 
 output functionAppName string = functionApp.name

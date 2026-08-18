@@ -3,7 +3,7 @@
   "spriteName": "papa-slime-var-10",
   "assetPath": "generated/papa-slime-var-10.png",
   "approvedAt": "2026-07-06T17:34:39.130Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uvCxKP/papa-slime-v1/2026-07-03T03-50-55-0ba32d02",
+  "sourceRun": "generated/runs/papa-slime-v1/imported-becf3bda074b",
   "variantIndex": 10,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "becf3bda074b692a98cf452f47a1c00cdb0dac98cc3194bb2cfefaba739fe572",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 3,

@@ -98,9 +98,6 @@
   },
   "type": "tile",
   "contentHash": "d76bc170016a8a83e1f11f2861866570723219f646c84b7be19dca043e9703a0",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-stone-floor-v2\\2026-07-26T20-57-16-22a4a0ce\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-stone-floor-v2\\2026-07-26T20-57-16-22a4a0ce\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-stone-floor-v2\\2026-07-26T20-57-16-22a4a0ce\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

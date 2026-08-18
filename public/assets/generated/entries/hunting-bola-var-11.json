@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "cdc62b56d409537b82fb92d09a63358922e0b35558ed4b5d51e97e12f3585464",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

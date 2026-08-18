@@ -123,9 +123,6 @@ export const manifestEntrySchema = z
      */
     contentHash: z.string().optional(),
     opaqueBounds: opaqueBoundsSchema.optional(),
-    postprocessOverrideProfilePath: z.string().nullable().optional(),
-    effectivePipelineSnapshotPath: z.string().nullable().optional(),
-    effectivePipelineSnapshotYamlPath: z.string().nullable().optional(),
     effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
     facingDirection: z.enum(['left', 'right']).optional(),
     /**

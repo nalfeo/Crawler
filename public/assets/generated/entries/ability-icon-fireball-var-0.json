@@ -3,7 +3,7 @@
   "spriteName": "ability-icon-fireball-var-0",
   "assetPath": "generated/ability-icon-fireball-var-0.png",
   "approvedAt": "2026-07-06T17:37:10.695Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-LgymqJ/ability-icon-fireball-v1/2026-07-02T21-45-32-1de0721b",
+  "sourceRun": "generated/runs/ability-icon-fireball-v1/imported-1be251a85981",
   "variantIndex": 0,
   "anchor": {
     "x": 24,
@@ -25,10 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "2",
   "type": null,
-  "contentHash": "c5745012ec6ccd07b69461787d5640c1c72ca2a08f1b9290d8e09761c7b29ed5",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
+  "contentHash": "1be251a859813e5aaef1cd0fe8c54a4fdab7e162c8ce4d40f9854c1e8995766f",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

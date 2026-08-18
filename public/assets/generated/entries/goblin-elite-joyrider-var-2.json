@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "1e1dce28c8c5daf84f247a3e4c0655f2d9ecf7cd112383f5b8c875cf38f3ab03",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

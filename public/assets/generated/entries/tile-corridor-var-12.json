@@ -3,7 +3,7 @@
   "spriteName": "tile-corridor-var-12",
   "assetPath": "generated/tile-corridor-var-12.png",
   "approvedAt": "2026-07-06T17:30:51.715Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-ZDGcO1/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+  "sourceRun": "generated/runs/tile-corridor-v1/imported-bd5d1b3b2566",
   "variantIndex": 12,
   "anchor": {
     "x": 127,
@@ -26,9 +26,6 @@
   "judgeScore": "2",
   "type": null,
   "contentHash": "bd5d1b3b25664ebf5542e8baa1c561cb8e75e227148077cbffb3104905028060",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "derived",
   "opaqueBounds": {
     "x": 0,

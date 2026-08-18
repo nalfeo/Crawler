@@ -417,7 +417,18 @@ export interface Floor2FamilyProgressMetrics {
   encounterDefeatedMs: number | null;
 }
 
-/** Hunt-only activity evidence for production Floor 2 progression. */
+/**
+ * Hunt-only activity evidence for production Floor 2 progression.
+ *
+ * Every field here is scoped to ACTIVE HUNT FRAMES — frames where the AI is
+ * committed to a specific still-locked family den. A run that never commits to
+ * a hunt reports zeroes across this block even when it killed family trash all
+ * run, so these counters are NOT floor-wide totals and must not be read as
+ * such. For floor-wide totals use `RunStats.familyTrashKills` (per family) and
+ * `RunStats.combat.killsByType` (`floor2-family-trash-player`,
+ * `floor2-neutral-trash`). `huntTimeMs === 0` means this block has no coverage
+ * for the run rather than "no kills happened".
+ */
 export interface Floor2HuntMetrics {
   /** Simulated time spent pursuing a still-locked family den. */
   huntTimeMs: number;
@@ -429,10 +440,16 @@ export interface Floor2HuntMetrics {
   activeCombatTimeMs: number;
   /** Active-combat share of hunt time, from 0 to 1. */
   activeCombatRatio: number;
-  /** Player-attributed family trash deaths during active hunt frames. */
-  familyTrashKills: number;
-  /** Neutral trash deaths during active hunt frames. */
-  neutralTrashKills: number;
+  /**
+   * Player-attributed family trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntFamilyTrashKills: number;
+  /**
+   * Neutral trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntNeutralTrashKills: number;
   /** Mean live enemies inside the production director's engagement radius. */
   averageNearbyEnemies: number;
   /** Peak live enemies inside the production director's engagement radius. */
@@ -459,6 +476,62 @@ export interface EquipmentPlayabilityMetrics {
   unopenedRewardBoxes: number;
   /** Bagged generated instances that could fill an empty matching slot. */
   unequippedWithEmptySlotCount: number;
+}
+
+/**
+ * Deterministic gold economy evidence for a run: where gold came from, where
+ * it went, and how much was still unspent when the floor ended.
+ *
+ * `unspentSpendableFraction` is the Floor 1 pricing gate's metric — the share
+ * of *reachable* (pre-exit) income the player never converted into power. It
+ * excludes floor-clear achievement loot boxes, which resolve after the exit is
+ * confirmed and so are Floor 2 seed money by construction, not a Floor 1
+ * pricing failure. `unspentFraction` (of everything earned) is still reported
+ * for carryover visibility but is not itself gated.
+ */
+export interface GoldEconomyMetrics {
+  /** Gold picked up off the floor (drops, chests, piles). */
+  earnedFromDrops: number;
+  /** Gold granted by claimed achievement loot boxes. */
+  earnedFromLootBoxes: number;
+  /** `earnedFromDrops + earnedFromLootBoxes`. */
+  earnedTotal: number;
+  /** Gold spent on the Floor 1 merchant's charm. */
+  spentOnCharm: number;
+  /** Gold spent on post-quest merchant weapons. */
+  spentOnMerchantWeapon: number;
+  /** Gold spent at the Floor 1 Spell Broker. */
+  spentOnSpell: number;
+  /** Total gold spent across every vendor. */
+  spentTotal: number;
+  /** `earnedTotal - spentTotal`, clamped at 0. */
+  unspentAtExit: number;
+  /**
+   * `unspentAtExit / earnedTotal`, or 0 when nothing was earned. Observational
+   * carryover telemetry only — see `unspentSpendableFraction` for the metric
+   * the Floor 1 pricing gate actually asserts on.
+   */
+  unspentFraction: number;
+  /**
+   * Gold earned by the time the floor exit was confirmed — the income the run
+   * could actually still spend at a Floor 1 vendor. Floor-clear achievement
+   * loot boxes resolve after this point, so `earnedTotal - spendableEarned` is
+   * income that is Floor 2 seed money by construction.
+   */
+  spendableEarned: number;
+  /** `max(0, spendableEarned - spentTotal)`. */
+  unspentSpendable: number;
+  /**
+   * `unspentSpendable / spendableEarned`, or 0 when nothing was spendable.
+   * This is the actionable spend-through metric for Floor 1 pricing.
+   */
+  unspentSpendableFraction: number;
+  /** Purchase counts by vendor. */
+  charmPurchases: number;
+  merchantWeaponPurchases: number;
+  spellPurchases: number;
+  /** Distinct vendors bought from this run (0-2): merchant, spell broker. */
+  distinctPurchases: number;
 }
 
 /**
@@ -562,6 +635,60 @@ export interface MetaProgressionMetrics {
 }
 
 /**
+ * Per-run merchant evidence: every vendor visit with the inventory on offer,
+ * and every shopping decision — including intents that wanted an item but could
+ * not pay for it. Structurally mirrors the core `VendorLedger` records so the
+ * simulation layer can copy them straight through.
+ */
+export interface VendorInteractionSummary {
+  /** Retained visits, oldest first (capped; see `visitCount`). */
+  readonly visits: readonly VendorVisitEntry[];
+  /** Retained decisions, oldest first (capped; see `decisionCount`). */
+  readonly decisions: readonly VendorDecisionEntry[];
+  /** Total visits observed, including any dropped past the retention cap. */
+  readonly visitCount: number;
+  /** Total decisions observed, including any dropped past the retention cap. */
+  readonly decisionCount: number;
+  /** Visits per vendor id, including dropped-record vendors' retained share. */
+  readonly visitsByVendor: Record<string, number>;
+  /** Decision outcomes by kind across the retained decisions. */
+  readonly outcomeCounts: Record<VendorDecisionOutcome, number>;
+}
+
+/** One item a vendor was offering when it was visited. */
+export interface VendorStockEntry {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+/** A single vendor visit with the stock and budget it was made against. */
+export interface VendorVisitEntry {
+  readonly vendorId: string;
+  readonly gameTimeMs: number;
+  readonly playerGold: number;
+  readonly stock: readonly VendorStockEntry[];
+}
+
+/** Outcome of one shopping decision at a vendor. */
+export type VendorDecisionOutcome =
+  | 'wanted'
+  | 'purchased'
+  | 'unaffordable'
+  | 'declined'
+  | 'abandoned';
+
+/** A single shopping decision, and the gold it was decided against. */
+export interface VendorDecisionEntry {
+  readonly vendorId: string;
+  readonly itemId: string | null;
+  readonly cost: number;
+  readonly outcome: VendorDecisionOutcome;
+  readonly playerGold: number;
+  readonly gameTimeMs: number;
+  readonly reason: string;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -656,6 +783,18 @@ export interface RunStats {
    * `runHeadless` always sets it.
    */
   lootEfficiency?: LootEfficiencyMetrics;
+  /**
+   * Deterministic gold economy accounting for the run (earned by source, spent
+   * by vendor, unspent share). Optional because pre-existing test fixtures
+   * construct RunStats manually; `runHeadless` always sets it.
+   */
+  goldEconomy?: GoldEconomyMetrics;
+  /**
+   * Vendor inventory, visits, and shopping decisions observed this run
+   * (including wanted-but-unaffordable intents). Optional because pre-existing
+   * test fixtures construct RunStats manually; `runHeadless` always sets it.
+   */
+  vendors?: VendorInteractionSummary;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
   /** Timestamped reward milestones captured by the deterministic headless runner. */

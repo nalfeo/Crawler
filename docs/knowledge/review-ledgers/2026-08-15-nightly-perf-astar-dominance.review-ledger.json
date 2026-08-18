@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "nightly-perf-astar-dominance",
+  "task_title": "Grid A*: drop dominated duplicate open-list pushes",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer found NO blockers and confirmed the neutrality proof (steps 1,2,4), the MAX_GENERATION wrap handling, growEntries/reentrancy interaction, and that the filter is not a decrease-key. Four concerns, all addressed: (1) MAJOR - predicted end-to-end ceiling ~1.5% is inside noise; resolved by NOT claiming an end-to-end win: the perf-optimizer gate is on the target share (6.00% self / 8.27% total, above the 3-5% bar and the largest single game-code frame on this checkout), the headline is the per-call ratio, and the in-situ evidence is the profile-share drop 6.00%->4.86% self. (2) MINOR - wrap path untested; resolved by adding __forceGridAStarGenerationForTests plus a regression test that is PROVEN to fail when openStamp.fill(0) is removed. (3) MINOR - new test-only hook is observable state; resolved by documenting that the test hooks are not part of the callers observable contract (path + ordered probe trace). (4) NIT - openStamp doc wording; reworded.",
+      "model": "gpt-5.6-sol"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewer agent attempted counterexamples against the neutrality argument across goal-seed push, reentrancy pool, impure isPassable, sizeForMap early return, MAX_GENERATION wrap, entry-id shifting in both sift directions, and the h-purity assumption; found none. Confirmed no stale bestF/openStamp read is reachable, that the new test-only exports are inert, that the liveness and wrap tests pin what they claim, and that determinism/layering/Zero-Cruft policy holds."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "5566d7a850baa68b9ac58cb6b40f57c379dcebe0",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly drops dominated duplicate open-list pushes, which is a provably inert optimization. The implementation handles generation wrapping correctly, preserves the A* tie-breaking semantics, and properly scopes the logic. The test suite was appropriately expanded with liveness and generation wrap tests that verify the exact pruning behavior without relying on timing. The scope is disciplined and all policies are followed, with excellent documentation."
+    }
+  }
+}

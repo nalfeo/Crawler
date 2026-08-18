@@ -16,7 +16,7 @@
  *   npx tsx scripts/agent/perf/optional-purchases-sweep.ts \
  *     --seeds 1-25 \
  *     --optional-purchases \
- *     --max-frames 23760 \
+ *     --max-frames 39600 \
  *     --out shard-0.json
  *
  * Output shape (compatible with `fun-score.ts --input`)
@@ -34,6 +34,7 @@ import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
+import { formatGoldEconomySummary, summarizeGoldEconomy } from './gold-economy-summary.js';
 import { parseOptionalPurchasesSweepArgs } from './optional-purchases-sweep-args.js';
 
 async function main(): Promise<void> {
@@ -95,12 +96,16 @@ async function main(): Promise<void> {
   const total = runs.length;
   const winRate = total > 0 ? wins / total : 0;
   const summary = { total, wins, losses, timeouts, winRate };
+  const goldEconomy = summarizeGoldEconomy(runs);
 
   console.log('');
   console.log('━'.repeat(60));
   console.log(
     `Total: ${total}  Wins: ${wins}  Losses: ${losses}  Timeouts: ${timeouts}  WinRate: ${(winRate * 100).toFixed(1)}%`,
   );
+  for (const line of formatGoldEconomySummary(goldEconomy)) {
+    console.log(line);
+  }
 
   if (args.out) {
     const output = {
@@ -109,6 +114,7 @@ async function main(): Promise<void> {
       seeds: args.seeds,
       maxFrames: args.maxFrames,
       summary,
+      goldEconomy,
       runs,
     };
     writeFileSync(args.out, JSON.stringify(output, null, 2));

@@ -13,6 +13,7 @@ import {
   parseArgs,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from '../../../src/game/ai/floor-run-budget.js';
 import { getPersonaConfig, personaConfigDivergence } from '../../../src/game/ai/personas.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
@@ -26,6 +27,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     const args = cli();
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
+    expect(args.maxFrames).toBe(FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES);
     expect(args).toEqual(defaultCLIArgs({}));
   });
 

@@ -3,7 +3,7 @@
   "spriteName": "sewer-grate-floor-tile-var-1",
   "assetPath": "generated/sewer-grate-floor-tile-var-1.png",
   "approvedAt": "2026-07-01T23:52:24.808Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-j38iT9/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+  "sourceRun": "generated/runs/sewer-grate-floor-tile-v1/imported-c0506aa92b28",
   "variantIndex": 1,
   "anchor": {
     "x": 127,

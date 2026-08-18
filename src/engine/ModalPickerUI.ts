@@ -115,6 +115,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   open<TId extends string>(config: ModalPickerConfig<TId>, hooks?: ModalPickerOpenHooks<TId>): void;
   close(): void;
   isOpen(): boolean;
+  getKind(): string | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
   destroy(): void;
 } {
@@ -181,6 +182,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   ]);
 
   let state: ModalPickerState<string> | null = null;
+  let kind: string | null = null;
   let hooks: ModalPickerOpenHooks<string> | undefined;
   const entries: RenderEntry<string>[] = [];
   const textNodes: Phaser.GameObjects.Text[] = [];
@@ -382,6 +384,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
   const close = (): void => {
     state = null;
+    kind = null;
     hooks = undefined;
     rerender();
   };
@@ -471,12 +474,16 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       nextHooks?: ModalPickerOpenHooks<TId>,
     ): void {
       state = createModalPickerState(config) as ModalPickerState<string>;
+      kind = config.kind ?? null;
       hooks = nextHooks as ModalPickerOpenHooks<string> | undefined;
       rerender();
     },
     close,
     isOpen(): boolean {
       return state !== null && state.status === 'open';
+    },
+    getKind(): string | null {
+      return kind;
     },
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null {
       if (!state || !titleNode || !footerNode) {

@@ -8,6 +8,7 @@ export interface PlaytestSurvey {
   readonly mastery?: number;
   readonly control?: number;
   readonly tension?: number;
+  readonly comment?: string;
 }
 
 export interface FunSession {
@@ -35,6 +36,7 @@ export interface FunCriteria {
   readonly snowball_frequency: FunCriterion;
   readonly meta_progression: FunCriterion;
   readonly item_viability: FunCriterion;
+  readonly early_death_rate: FunCriterion;
 }
 
 export interface FunPersonaScore {
@@ -125,6 +127,8 @@ export interface FunScoreCLIArgs {
 }
 
 type UnknownRecord = Record<string, unknown>;
+// 'quit' covers a human player closing/leaving mid-run (distinct from
+// 'stalled'/'error', which are AI-runner-only outcomes).
 const VALID_OUTCOMES = new Set<RunStats['outcome']>([
   'victory',
   'death',
@@ -161,6 +165,13 @@ const DIMENSION_WEIGHTS: Readonly<Record<keyof FunDimensionScores, number>> = {
 // Keep in sync with FLOOR_1_MAX_STARTER_CHOICES in src/game/floorScenario.ts.
 const FLOOR_1_STARTER_WEAPON_CHOICES = 3;
 const SUBJECTIVE_BLEND_WEIGHT = 0.4;
+
+const EARLY_DEATH_MAX_FLOOR = 2;
+const EARLY_DEATH_TARGET_RATE = 0.1;
+
+function isEarlyDeath(run: RunStats): boolean {
+  return run.outcome === 'death' && run.finalFloor <= EARLY_DEATH_MAX_FLOOR;
+}
 
 function hasNumberField(obj: UnknownRecord, key: string): boolean {
   return typeof obj[key] === 'number' && Number.isFinite(obj[key]);
@@ -224,6 +235,7 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
     mastery?: number;
     control?: number;
     tension?: number;
+    comment?: string;
   } = {};
   if (typeof obj.enjoyment === 'number' && Number.isFinite(obj.enjoyment))
     survey.enjoyment = obj.enjoyment;
@@ -232,6 +244,10 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
   if (typeof obj.mastery === 'number' && Number.isFinite(obj.mastery)) survey.mastery = obj.mastery;
   if (typeof obj.control === 'number' && Number.isFinite(obj.control)) survey.control = obj.control;
   if (typeof obj.tension === 'number' && Number.isFinite(obj.tension)) survey.tension = obj.tension;
+  if (typeof obj.comment === 'string') {
+    const trimmed = obj.comment.trim();
+    if (trimmed.length > 0) survey.comment = trimmed;
+  }
   return Object.keys(survey).length > 0 ? survey : undefined;
 }
 
@@ -396,7 +412,8 @@ function challengeBalanceForRun(run: RunStats): number {
   const penalties =
     (run.outcome === 'timeout' ? 20 : 0) +
     (run.outcome === 'stalled' ? 25 : 0) +
-    (run.outcome === 'error' ? 50 : 0);
+    (run.outcome === 'error' ? 50 : 0) +
+    (isEarlyDeath(run) ? 35 : 0);
 
   const base =
     bandScore(closeCallsPerMin, 0.8, 0.9) * 0.3 +
@@ -913,6 +930,12 @@ export function scoreFunSessions(
           status: 'unmeasured',
           reason: 'Item exposure/contribution telemetry is not present in RunStats.',
         },
+        early_death_rate: {
+          observed: null,
+          target: EARLY_DEATH_TARGET_RATE,
+          status: 'unmeasured',
+          reason: 'No runs provided.',
+        },
       },
       persona_scores: {},
     };
@@ -1041,6 +1064,13 @@ export function scoreFunSessions(
       itemViability.healthy,
       itemViability.reason,
     ),
+    early_death_rate: criterion(
+      round2(sessions.filter((session) => isEarlyDeath(session.run)).length / sessions.length),
+      EARLY_DEATH_TARGET_RATE,
+      sessions.filter((session) => isEarlyDeath(session.run)).length / sessions.length <=
+        EARLY_DEATH_TARGET_RATE,
+      `Fraction of runs that ended in death on Floor ${EARLY_DEATH_MAX_FLOOR} or earlier. Tutorial-phase deaths are un-fun; healthy is <= ${EARLY_DEATH_TARGET_RATE * 100}%.`,
+    ),
   };
 
   const objectiveScore = weightedObjectiveScore(dimensions);
@@ -1144,6 +1174,7 @@ const CRITERION_MEANINGFUL_DELTA: Readonly<Record<keyof FunCriteria, number>> = 
   snowball_frequency: 0.02,
   meta_progression: 0.05,
   item_viability: 0.05,
+  early_death_rate: 0.02,
 };
 
 /**
@@ -1261,6 +1292,7 @@ export function compareFunReports(
     snowball_frequency: false,
     meta_progression: true,
     item_viability: false,
+    early_death_rate: false,
   };
   for (const key of criterionKeys) {
     criteria[key] =

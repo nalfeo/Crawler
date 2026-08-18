@@ -9,6 +9,8 @@ import {
   isDuplicateDispatch,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
+  isSelfRecoveryCheckRun,
+  selfRecoveryWorkflowRunIds,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -44,7 +46,7 @@ import {
 import {
   HUMAN_APPROVAL_LABEL,
   closingIssuesPropagatingHumanApproval,
-  humanApprovalRejection,
+  resolveHumanApprovalRejection,
   requiresHumanApproval,
   stripClosingKeywordsForIssues,
 } from '../merge-train/human-approval.mjs';
@@ -108,6 +110,27 @@ const workflowRunUrl =
   process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : null;
+// Jobs marked `continue-on-error: true` at the job level in .github/workflows/ci.yml
+// are advisory: the `merge-gate` job's `needs` list deliberately omits them, so their
+// failure can never block or unblock the merge gate. Treating one as a `ci-failure`
+// blocker gives the recovery agent nothing it can fix that changes the PR's mergeable
+// state, so the loop spins without making progress (e.g. PR #3032, a transient 429
+// downloading `davelosert/vitest-coverage-report-action` inside `Advisory coverage`).
+// Keep entries lowercase: isAdvisoryCheck() lowercases incoming check names.
+const ADVISORY_CHECK_NAMES = new Set([
+  'advisory coverage',
+  'headless multi-floor legs (report-only)',
+]);
+function isAdvisoryCheck(checkName) {
+  const normalizedCheckName = String(checkName || '')
+    .trim()
+    .toLowerCase();
+  if (ADVISORY_CHECK_NAMES.has(normalizedCheckName)) return true;
+  for (const advisoryCheckName of ADVISORY_CHECK_NAMES) {
+    if (normalizedCheckName.startsWith(`${advisoryCheckName} (`)) return true;
+  }
+  return false;
+}
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -1238,9 +1261,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
         await assertExpectedMetadataUnchanged('strip-closing-keywords');
         // Re-fetch the live body to avoid overwriting concurrent author edits:
         // fixedBody was computed from the initial PR fetch and may be stale.
-        const livePr = (
-          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)
-        ).data;
+        const livePr = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data;
         const liveFixedBody = stripClosingKeywordsForIssues(livePr.body, targets, repository);
         const bodyChanged = liveFixedBody !== (livePr.body ?? '');
         if (bodyChanged) {
@@ -1252,9 +1273,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
           // Remove the automation-derived label so requiresHumanApproval
           // reflects the cleared state; skips silently if already absent.
           await removePrLabel(HUMAN_APPROVAL_LABEL, { skipIfMissing: true });
-          process.stdout.write(
-            `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
-          );
+          process.stdout.write(`stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`);
         } else {
           pr.body = livePr.body;
         }
@@ -1272,11 +1291,12 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
 }
 
 const humanApprovalRequired = requiresHumanApproval(pr, closingIssues);
-approvalRejection = humanApprovalRejection({
+approvalRejection = await resolveHumanApprovalRejection({
   pullRequest: pr,
   closingIssues,
   comments,
   ownerLogin: owner,
+  fetchReviews: () => paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/reviews`),
 });
 pendingHumanApproval = Boolean(approvalRejection);
 
@@ -2319,6 +2339,20 @@ const rawCheckRuns =
       { headers: { Accept: 'application/vnd.github+json' } },
     )
   ).data.check_runs || [];
+
+const runs =
+  (
+    await request(
+      readToken,
+      `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
+    )
+  ).data.workflow_runs || [];
+// Checks produced by the CI Recovery pipeline's own workflows describe faults in
+// the automation, not in the PR, so they must never become blockers the recovery
+// agent is asked to clear (PR #2952 stalled on a `ci-failure route` blocker that
+// was the router's own job).
+const selfRecoveryRunIds = selfRecoveryWorkflowRunIds(runs);
+
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
@@ -2328,8 +2362,9 @@ for (const check of checkRuns) {
   if (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
-    !checkName.includes('ci recovery') &&
-    !(pendingHumanApproval && humanApprovalDerivedChecks.has(checkName))
+    !isSelfRecoveryCheckRun(check, selfRecoveryRunIds) &&
+    !(pendingHumanApproval && humanApprovalDerivedChecks.has(checkName)) &&
+    !isAdvisoryCheck(checkName)
   ) {
     blockers.push({
       kind: 'ci-failure',
@@ -2341,13 +2376,6 @@ for (const check of checkRuns) {
 }
 const waitingRequiredChecks = unsatisfiedChecks(checkRuns, mergeTrainAdmissionChecks);
 
-const runs =
-  (
-    await request(
-      readToken,
-      `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
-    )
-  ).data.workflow_runs || [];
 // Collapse to the latest run per (normalized path, event) so a successful rerun
 // of a workflow replaces a stale action_required run before any blocker classification.
 const latestRunsByKey = new Map();

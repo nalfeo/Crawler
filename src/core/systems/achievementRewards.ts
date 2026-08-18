@@ -7,23 +7,26 @@
  * surfaces the reward def for display. `lootBox` rewards additionally
  * transfer a pre-resolved bundle's contents into the player's bag/gold — for
  * Floor 2's `floor2-generated-equipment` loot table, one generated-equipment
- * instance (via `claimGeneratedEquipmentRewardBundle`); for Floor 1's
- * `floor1-materials` loot table, gold + common crafting materials — both
- * bundles were resolved ONCE at unlock time (see `resolveEquipmentRewardBundle`
- * / `resolveLootBoxRewardBundle`). Claiming NEVER rolls any RNG itself —
- * generation happens only at unlock (resolution), never at claim, load, or
- * presentation.
+ * instance (via `claimGeneratedEquipmentRewardBundle`) when the unlock-time
+ * drop roll hit, otherwise Floor 2's own richer gold + crafting materials; for
+ * Floor 1's `floor1-materials` loot table, gold + common crafting materials —
+ * every bundle was resolved ONCE at unlock time (see
+ * `resolveEquipmentRewardBundle` / `resolveLootBoxRewardBundle`). Which payout
+ * a Floor 2 achievement carries is read from which bundle map holds it, never
+ * re-rolled here. Claiming NEVER rolls any RNG itself — generation happens
+ * only at unlock (resolution), never at claim, load, or presentation.
  */
 import { query } from 'bitecs';
 import { Player } from '../components.js';
 import type { GameWorld } from '../world.js';
 import {
   getAchievementById,
-  LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
   FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
+  materialsTableForReward,
+  materialsTableGoldForTier,
+  materialsTablePool,
   type AchievementCatalogRegistry,
   type AchievementReward,
 } from '../../shared/achievements.js';
@@ -99,7 +102,8 @@ export function claimAchievementReward(
 
   if (
     achievement.reward.type === 'lootBox' &&
-    achievement.reward.lootTable === 'floor2-generated-equipment'
+    achievement.reward.lootTable === 'floor2-generated-equipment' &&
+    world.generatedEquipmentRewardBundles.has(achievementId)
   ) {
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
@@ -140,10 +144,14 @@ export function claimAchievementReward(
     return { ok: true, reward: achievement.reward, grantedEquipment: grant.granted };
   }
 
-  if (
-    achievement.reward.type === 'lootBox' &&
-    achievement.reward.lootTable === 'floor1-materials'
-  ) {
+  if (achievement.reward.type === 'lootBox') {
+    // Either a Floor 1 `floor1-materials` reward, or a Floor 2 achievement
+    // whose equipment drop roll missed at unlock and resolved Floor 2's own
+    // gold+materials payout instead (see `rollFloor2AchievementEquipmentDrop`).
+    // Which table's gold/pool contract applies is derived from the reward
+    // itself, never from the persisted bundle.
+    const materialsTable = materialsTableForReward(achievement.reward);
+    const materialPool = materialsTablePool(materialsTable);
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
       return { ok: false, reason: 'grantFailed' };
@@ -175,14 +183,14 @@ export function claimAchievementReward(
     // never leak partial gold/materials or throw mid-mutation (which would
     // otherwise leave gold or some materials granted while the achievement
     // stays unclaimed and the bundle already deleted).
-    if (bundle.gold !== LOOT_BOX_GOLD_BY_TIER[bundle.tier]) {
+    if (bundle.gold !== materialsTableGoldForTier(materialsTable, bundle.tier)) {
       return { ok: false, reason: 'grantFailed' };
     }
     if (bundle.materials.length !== LOOT_BOX_MATERIAL_COUNT_BY_TIER[bundle.tier]) {
       return { ok: false, reason: 'grantFailed' };
     }
     for (const itemId of bundle.materials) {
-      if (!FLOOR1_COMMON_CRAFTING_MATERIALS.includes(itemId)) {
+      if (!materialPool.includes(itemId)) {
         return { ok: false, reason: 'grantFailed' };
       }
     }
@@ -190,6 +198,7 @@ export function claimAchievementReward(
     // no other code can observe a partially-granted state.
     world.lootBoxRewardBundles.delete(achievementId);
     world.playerGold += bundle.gold;
+    world.goldLedger.earnedFromLootBoxes += bundle.gold;
     for (const itemId of bundle.materials) {
       addItem(bag, itemId, 1);
     }

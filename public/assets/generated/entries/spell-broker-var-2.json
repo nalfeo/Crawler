@@ -3,7 +3,7 @@
   "spriteName": "spell-broker-var-2",
   "assetPath": "generated/spell-broker-var-2.png",
   "approvedAt": "2026-07-06T17:32:17.678Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-zsIhSp/spell-broker-v2/2026-07-03T21-48-49-f858f61a",
+  "sourceRun": "generated/runs/spell-broker-v2/imported-7b3b5e22238c",
   "variantIndex": 2,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "7b3b5e22238c47b31e81dbe3f2a3c72e8028134fd90a0267f8f779fb2489a3c2",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 5,

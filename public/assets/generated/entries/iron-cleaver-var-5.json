@@ -3,7 +3,7 @@
   "spriteName": "iron-cleaver-var-5",
   "assetPath": "generated/iron-cleaver-var-5.png",
   "approvedAt": "2026-07-20T04:34:21.096Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2tVrXG/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+  "sourceRun": "generated/runs/iron-cleaver-v1/imported-ef2096746a75",
   "variantIndex": 5,
   "anchor": null,
   "anchors": {
@@ -18,9 +18,6 @@
   "judgeScore": "4",
   "type": "weapon",
   "contentHash": "ef2096746a753bbd88d734c4f605f3c25526da8f64ced2cf8ec4eae92c256896",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

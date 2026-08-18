@@ -3,7 +3,7 @@
   "spriteName": "baby-slime-var-1",
   "assetPath": "generated/baby-slime-var-1.png",
   "approvedAt": "2026-06-29T06:22:40.421Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-B8vUPA/baby-slime-v1/2026-06-29T06-16-01-73e9b0d1",
+  "sourceRun": "generated/runs/baby-slime-v1/imported-dba8bfebbc8f",
   "variantIndex": 1,
   "anchor": {
     "x": 32,
@@ -25,7 +25,7 @@
   "sensorScore": "7/8",
   "judgeScore": "4",
   "type": "enemy",
-  "contentHash": "e921c1df2ef7dc32c3865ec9ed92568a294bd6717a6151926bd2a7e0e1d2d252",
+  "contentHash": "dba8bfebbc8f239dd48038e8d7bc147b026ca0a02ed93feb2be56501d771ab41",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

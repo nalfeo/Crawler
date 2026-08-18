@@ -8,7 +8,7 @@ import {
   acknowledgeAchievementRewardPresentation,
   getPendingAchievementRewardPresentation,
 } from '../../src/core/systems/achievementRewards.js';
-import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
+import { _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function floor2World(runKey = 'reward-presentation-test') {

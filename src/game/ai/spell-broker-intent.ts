@@ -1,9 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
+import { FLOOR1_SPELL_BROKER_MAX_PURCHASES } from '../../shared/constants.js';
 import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
-import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import type { Floor1RunPlan } from './run-planner.js';
-
-const SPELL_BROKER_AI_PURCHASE_CHANCE = 0.25;
 
 /**
  * Lifecycle of the optional post-spellbook broker purchase.
@@ -29,6 +27,8 @@ export interface SpellBrokerIntent {
   readonly cost: number;
   /** Runtime status of the optional post-spellbook broker purchase. */
   readonly purchaseStatus: SpellBrokerIntentPurchaseStatus;
+  /** Spells already bought from the broker this run. */
+  readonly purchaseCount: number;
 }
 
 const intents = new WeakMap<GameWorld, SpellBrokerIntent>();
@@ -41,6 +41,7 @@ function initialIntent(enabled: boolean): SpellBrokerIntent {
     spellId: null,
     cost: 0,
     purchaseStatus: 'idle',
+    purchaseCount: 0,
   };
 }
 
@@ -64,15 +65,24 @@ export function isSpellBrokerPurchaseActive(intent: SpellBrokerIntent): boolean 
 }
 
 /**
- * Make one seed-derived decision. A per-key seed keeps the 25% choice stable
- * without consuming the combat RNG stream or changing equipment behavior.
+ * Make the one-shot broker decision.
+ *
+ * Budget-aware policy: a spell is the run's highest-value Floor 1 purchase, so
+ * the AI always intends to buy one and the affordability question is answered
+ * by the lifecycle below (`farming` while short, `abandoned` when the planner
+ * can't fund the deficit inside the run deadline) rather than by a blind coin
+ * flip. The previous 25% seeded roll meant a typical run made zero purchases
+ * and banked its whole Floor 1 income, which is exactly the hoarding the
+ * Floor 1 economy gate measures.
+ *
+ * The offer itself is still seed-derived (see
+ * {@link generateFloor1SpellBrokerOffers}) and consumes no gameplay RNG.
  */
 export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
   const current = getSpellBrokerIntent(world);
   if (!current.enabled || current.decisionMade) return current;
-  const roll = new SeededRandom(hashStringToSeed(`${world.seed}:spell-broker-ai-intent`)).next();
-  const shouldBuy = roll < SPELL_BROKER_AI_PURCHASE_CHANCE;
   const offer = generateFloor1SpellBrokerOffers(world.seed)[0];
+  const shouldBuy = offer !== undefined;
   const next: SpellBrokerIntent = {
     ...current,
     decisionMade: true,
@@ -85,15 +95,54 @@ export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
 }
 
 /**
- * Mark the broker purchase as completed (called from auto-progression after
- * {@link purchaseSpellBrokerSpell} returns true). Transitions `purchaseStatus`
- * to `'purchased'` so the goal-graph and snapshot builder stop emitting the
- * optional bundle.
+ * Mark a broker purchase as completed (called from auto-progression after
+ * {@link purchaseSpellBrokerSpell} returns true).
+ *
+ * The broker is Floor 1's **deep-pocket sink**, so a run may come back for a
+ * second spell off the stepped rack (see `_floor1SpellBrokerOfferCost`) instead of
+ * banking the gold it would otherwise carry to Floor 2 — a run that declines
+ * the merchant's weapon-class switch has nowhere else to spend. The re-arm is a
+ * plain re-entry into the normal lifecycle: the intent points at the cheapest
+ * unpurchased offer, and the run-planner decides as usual whether the deficit
+ * is farmable inside the deadline. Once
+ * {@link FLOOR1_SPELL_BROKER_MAX_PURCHASES} spells are bought, or the rack is
+ * empty, the intent goes terminal and the optional bundle stops being emitted.
  */
-export function markSpellBrokerPurchased(world: GameWorld): void {
+export function markSpellBrokerPurchased(world: GameWorld, purchasedSpellId?: string): void {
   const current = getSpellBrokerIntent(world);
   if (current.purchaseStatus === 'purchased') return;
-  intents.set(world, { ...current, purchaseStatus: 'purchased' });
+  const purchaseCount = current.purchaseCount + 1;
+  const next = nextBrokerOffer(world, purchasedSpellId ?? current.spellId);
+  if (purchaseCount >= FLOOR1_SPELL_BROKER_MAX_PURCHASES || !next) {
+    intents.set(world, { ...current, purchaseStatus: 'purchased', purchaseCount });
+    return;
+  }
+  intents.set(world, {
+    ...current,
+    purchaseCount,
+    spellId: next.spellId,
+    cost: next.cost,
+    purchaseStatus: 'idle',
+  });
+}
+
+/**
+ * Cheapest offer the run has not bought yet, excluding the one just purchased.
+ *
+ * Reads the durable per-run scenario rack when present (its `purchased` flags
+ * are the authority) and falls back to the seed-derived rack otherwise, so the
+ * lookup consumes no gameplay RNG either way.
+ */
+function nextBrokerOffer(
+  world: GameWorld,
+  justPurchasedSpellId: string | null,
+): { spellId: string; cost: number } | null {
+  const offers =
+    world.floorScenario?.spellBrokerOffers ?? generateFloor1SpellBrokerOffers(world.seed);
+  const candidate = [...offers]
+    .filter((offer) => !offer.purchased && offer.spellId !== justPurchasedSpellId)
+    .sort((a, b) => a.cost - b.cost || a.spellId.localeCompare(b.spellId))[0];
+  return candidate ? { spellId: candidate.spellId, cost: candidate.cost } : null;
 }
 
 /**
@@ -111,13 +160,22 @@ export function updateSpellBrokerIntent(
 ): SpellBrokerIntent {
   let intent = getSpellBrokerIntent(world);
 
-  // Nothing to do when disabled, already terminal, or decision says no-buy.
-  if (
-    !intent.enabled ||
-    !intent.shouldBuy ||
-    intent.purchaseStatus === 'purchased' ||
-    intent.purchaseStatus === 'abandoned'
-  ) {
+  // Nothing to do when disabled, already bought, or decision says no-buy.
+  if (!intent.enabled || !intent.shouldBuy || intent.purchaseStatus === 'purchased') {
+    return intent;
+  }
+
+  // `abandoned` means "the deficit can't be farmed inside the run's slack",
+  // not "never buy". Once the player is holding the full price outright there
+  // is no deficit left to farm, so the purchase becomes viable again — without
+  // this recovery a run that abandoned early banks its whole income and buys
+  // nothing, even while sitting on several times the asking price.
+  if (intent.purchaseStatus === 'abandoned') {
+    if (!world.featureUnlocks.spells || world.playerGold < intent.cost) {
+      return intent;
+    }
+    intent = { ...intent, purchaseStatus: 'returning' };
+    intents.set(world, intent);
     return intent;
   }
 
@@ -127,6 +185,21 @@ export function updateSpellBrokerIntent(
   }
 
   const deficit = Math.max(0, intent.cost - world.playerGold);
+
+  // A repeat purchase (purchaseCount > 0) is the run's lowest-priority sink:
+  // it exists to absorb gold that would otherwise sit unspent, not to justify
+  // its own farming detour. Actively farming for it stacks additional time on
+  // top of the headline purchase's own farming, which can push an
+  // already-marginal run past the official completion pace. So a repeat
+  // purchase with a live deficit goes straight to `abandoned` — the existing
+  // recovery path below picks it back up the moment organic income (quest
+  // gold, drops, loot boxes) covers the cost outright, with zero dedicated
+  // farming time spent.
+  if (intent.purchaseCount > 0 && deficit > 0) {
+    intent = { ...intent, purchaseStatus: 'abandoned' };
+    intents.set(world, intent);
+    return intent;
+  }
 
   // Planner explicitly dropped the bundle → abandon.
   if (runPlan?.droppedOptionalBundleIds.includes('spell-broker-purchase')) {

@@ -118,9 +118,6 @@
     "canvasWidth": 273,
     "canvasHeight": 256
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

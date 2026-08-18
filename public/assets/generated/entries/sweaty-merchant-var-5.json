@@ -102,9 +102,6 @@
   },
   "type": "character",
   "contentHash": "eced509e9590a1992f75b2d0257250e06f363fe78bd3c0b63fd7333a0e6a96ed",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

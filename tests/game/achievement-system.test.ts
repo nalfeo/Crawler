@@ -16,12 +16,12 @@ import {
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
   ACHIEVEMENT_CATALOG_REGISTRY,
+  _FLOOR1_COMMON_CRAFTING_MATERIALS as FLOOR1_COMMON_CRAFTING_MATERIALS,
+  _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER,
   createAchievementCatalog,
   createAchievementCatalogRegistry,
   createEmptyAchievementFactSnapshot,
   FLOOR1_ACHIEVEMENTS,
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
-  LOOT_BOX_GOLD_BY_TIER,
   type AchievementDef,
 } from '../../src/shared/achievements.js';
 import {

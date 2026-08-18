@@ -122,9 +122,6 @@
     "canvasWidth": 512,
     "canvasHeight": 565
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

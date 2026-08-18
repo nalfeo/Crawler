@@ -102,9 +102,6 @@
   },
   "type": "item",
   "contentHash": "9c78c8f6a6316e1703732ea1cd2d154d82f41e05c1e2ba235fcdb9692690e8b1",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

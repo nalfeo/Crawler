@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "ce2258e1530d07d1a2edcde0ff4637461f049874e97034539bccb885e4bb3d11",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

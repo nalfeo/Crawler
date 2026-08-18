@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": "enemy",
   "contentHash": "9f47e32106ea23d679f48e7397b2b58cb21e98b1133a42fda48865111f585aa9",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

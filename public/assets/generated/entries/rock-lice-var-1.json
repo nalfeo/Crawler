@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": "enemy",
   "contentHash": "45119ce53a5deed2f4409f080cb14d3ef414a4b13233477f4bc6d231999ad4b9",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

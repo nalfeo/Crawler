@@ -18,6 +18,19 @@ function decision() {
   };
 }
 
+function signatureDecision(signatures, marker = 'abc123') {
+  const markerText = `<!-- release-baseline-regression:${marker} -->`;
+  return {
+    regression: true,
+    issue: {
+      marker: markerText,
+      title: `bug: release sweep regression at ${marker}`,
+      failureSignatures: signatures,
+      body: `${markerText}\n### Failure signatures\n\n${signatures.map((signature) => `- \`${signature}\``).join('\n')}`,
+    },
+  };
+}
+
 function harness(existingIssues = []) {
   const calls = [];
   const paginateFn = async (token, url) => {
@@ -88,6 +101,7 @@ test('updates an open marker match instead of creating a duplicate', async () =>
     repo: 'Crawler',
     decision: decision(),
   });
+
   assert.equal(result.action, 'updated');
   const patch = h.calls.find((call) => call[0] === 'request');
   assert.equal(patch[2], '/repos/nalfeo/Crawler/issues/7');
@@ -95,7 +109,91 @@ test('updates an open marker match instead of creating a duplicate', async () =>
   assert.equal(h.calls.filter((call) => call[2] === '/repos/nalfeo/Crawler/issues').length, 0);
 });
 
-test('reopens the newest closed marker match and re-runs assignment', async () => {
+test('updates an existing open issue when the failure signature repeats on a new release', async () => {
+  const signature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const h = harness([
+    {
+      number: 12,
+      node_id: 'ISSUE_12',
+      state: 'open',
+      body: signatureDecision([signature]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature], 'newer'),
+  });
+  assert.deepEqual(result, [{ action: 'updated', issueNumber: 12, assignee: 'copilot-swe-agent' }]);
+  const update = h.calls.find((call) => call[0] === 'request');
+  assert.equal(update[2], '/repos/nalfeo/Crawler/issues/12');
+});
+
+test('creates an issue only for a new failure signature', async () => {
+  const oldSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const newSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=sword';
+  const h = harness([
+    {
+      number: 13,
+      node_id: 'ISSUE_13',
+      state: 'open',
+      body: signatureDecision([oldSignature]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([newSignature], 'newer'),
+  });
+  assert.deepEqual(result, [{ action: 'created', issueNumber: 42, assignee: 'copilot-swe-agent' }]);
+  const create = h.calls.find((call) => call[0] === 'request' && call[2].endsWith('/issues'));
+  assert.match(create[3].body.body, new RegExp(newSignature.replaceAll('|', '\\\\|')));
+});
+
+test('does not update an unrelated automation issue with a copied signature', async () => {
+  const signature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const h = harness([
+    {
+      number: 14,
+      node_id: 'ISSUE_14',
+      state: 'open',
+      body: `Unrelated automation issue\n\n- \`${signature}\``,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'created', issueNumber: 42, assignee: 'copilot-swe-agent' }]);
+  const create = h.calls.find((call) => call[0] === 'request' && call[2].endsWith('/issues'));
+  assert.equal(create[2], '/repos/nalfeo/Crawler/issues');
+});
+
+test('does not treat a closed issue as an open duplicate', async () => {
   const h = harness([
     {
       number: 8,
@@ -123,11 +221,9 @@ test('reopens the newest closed marker match and re-runs assignment', async () =
     repo: 'Crawler',
     decision: decision(),
   });
-  assert.equal(result.action, 'reopened');
-  const patch = h.calls.find((call) => call[0] === 'request');
-  assert.equal(patch[2], '/repos/nalfeo/Crawler/issues/9');
-  assert.equal(patch[3].body.state, 'open');
-  assert.deepEqual(h.calls.at(-1), ['intake', 'pat-token', 9]);
+  assert.equal(result.action, 'created');
+  const create = h.calls.find((call) => call[0] === 'request');
+  assert.equal(create[2], '/repos/nalfeo/Crawler/issues');
 });
 
 test('propagates create and assignment failures so regression filing cannot pass silently', async () => {

@@ -26,9 +26,6 @@
   "judgeScore": null,
   "type": "equipment",
   "contentHash": "bc35e930fdba78610e2c49c1286e1b254c9f62730c6888d9e03fc7523ee4360b",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

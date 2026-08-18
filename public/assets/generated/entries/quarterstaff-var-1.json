@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "d0dff77abda7d6551653d911352f22d6605c465c442ec68c7e40f3f4c37c2512",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

@@ -91,9 +91,6 @@
   },
   "type": "weapon",
   "contentHash": "2e9704d964b7f280adfc972daecee32b94ceb25a73fd211c5cab45c217c0c558",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/sawblade-launcher-v1/2026-07-25T05-42-10-7d8569ef/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/sawblade-launcher-v1/2026-07-25T05-42-10-7d8569ef/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/sawblade-launcher-v1/2026-07-25T05-42-10-7d8569ef/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

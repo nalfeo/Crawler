@@ -62,18 +62,17 @@ function makeSceneFixture() {
       }),
       toJsonl: () => '',
     },
+    nextRunBundleId: () => 'test-run-id',
   };
   return { scene, runStatsFactory, onRunBundle, world };
 }
 
 describe('MainGameScene terminal run bundle emission', () => {
   it.each([
-    ['death', 'death'],
     ['timeout', 'timeout'],
-    ['victory', 'victory'],
     ['quit', 'quit'],
   ] as const)(
-    'maps %s to runStats outcome %s and only emits once',
+    'maps %s to runStats outcome %s, emits onRunBundle immediately, and only emits once',
     (endReason, expectedOutcome) => {
       const { scene, runStatsFactory, onRunBundle, world } = makeSceneFixture();
       emitRunBundle.call(scene, endReason);
@@ -88,6 +87,37 @@ describe('MainGameScene terminal run bundle emission', () => {
       expect(onRunBundle.mock.calls[0]?.[0]?.meta?.endReason).toBe(endReason);
 
       emitRunBundle.call(scene, 'quit');
+      expect(onRunBundle).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    ['death', 'death'],
+    ['victory', 'victory'],
+  ] as const)(
+    'maps %s to runStats outcome %s but defers onRunBundle to the survey skip/submit path',
+    (endReason, expectedOutcome) => {
+      const { scene, runStatsFactory, onRunBundle, world } = makeSceneFixture();
+      emitRunBundle.call(scene, endReason);
+      // A survey opportunity may follow death/victory: emitRunBundle must not
+      // upload immediately, otherwise a later survey submission would resend
+      // the run under an unrelated stored ID (see PR #2952 review).
+      expect(onRunBundle).not.toHaveBeenCalled();
+      expect(runStatsFactory).toHaveBeenCalledWith(world, 0, expectedOutcome, 0, {
+        totalEvents: 0,
+        totalSamples: 0,
+        totalKills: 0,
+        durationMs: 0,
+        controller: 'MANUAL',
+      });
+      expect(
+        (scene as unknown as { lastRunBundle?: { meta?: { endReason?: string } } }).lastRunBundle
+          ?.meta?.endReason,
+      ).toBe(endReason);
+
+      // Mirrors what showRunSurveyIfNeeded's onSkip does: the deferred bundle
+      // is still uploadable exactly once via the same onRunBundle sink.
+      onRunBundle((scene as unknown as { lastRunBundle: unknown }).lastRunBundle);
       expect(onRunBundle).toHaveBeenCalledTimes(1);
     },
   );

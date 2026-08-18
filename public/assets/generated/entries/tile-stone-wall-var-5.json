@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "d2ce2ac9c779091c22feafa465de121113cf2ab2c65f8e53f9836ecff68d817c",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-stone-wall-v1/2026-07-07T23-47-10-accab032/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

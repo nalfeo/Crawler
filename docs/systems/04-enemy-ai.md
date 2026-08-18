@@ -17,7 +17,7 @@
 
 > **Spawner Battle Arena.** The `spawnerArenaSystem` runs immediately before `spawnerSystem` and turns each spawner mob into a mini-boss encounter: entering the spawn zone locks the containing room's doors (or raises an impassable tile-flag fence when the room isn't sealable), banks up to 10 child-XP drops onto the spawner, and grants them as a single XP gem when the spawner dies. Start/end fire dedicated VFX events and push HUD announcements onto `world.announcements`. See [ADR 0044](../knowledge/adr/0044-spawner-battle-arena.md) and [`.specify/specs/spawner-battle-arena.md`](../../.specify/specs/spawner-battle-arena.md).
 >
-> **BT AI arena lock-in priority.** When the player is physically trapped inside a spawner arena (fence raised or doors locked) or a Floor-1 boss room, the BT AI's Track A selector inserts a new priority slot — **1.5, between Retreat and Interact** — that pins the objective (spawner or boss) as the current target so the AI can't wander into progression/explore behaviors it will never satisfy until the cage lowers. Retreat still trumps it (life-critical). Detector: `src/game/ai/arena-lockin.ts` (pure). Rationale + acceptance metric: [ADR 0045](../knowledge/adr/0045-ai-arena-lockin-priority.md).
+> **BT AI arena lock-in priority.** When the player is physically trapped inside a spawner arena (fence raised or doors locked) or a Floor-1 boss room, the BT AI's Track A selector inserts a new priority slot — **1.5, between Retreat and Interact** — that pins the objective (spawner or boss) as the current target so the AI can't wander into progression/explore behaviors it will never satisfy until the cage lowers. While lock-in is active, retreat intentionally yields so the AI runs defensive engagement (boss/add pressure + spacing) instead of endless retreat loops inside a sealed arena. Detector: `src/game/ai/arena-lockin.ts` (pure). Rationale + acceptance metric: [ADR 0045](../knowledge/adr/0045-ai-arena-lockin-priority.md).
 
 ---
 
@@ -224,7 +224,12 @@ graph LR
 
 ## Floor 1 enemy director system
 
-The Floor 1 scenario (`src/game/floor1Scenario.ts`) injects `floor1EnemyDirectorSystem` into `preSystems`. It manages a wave schedule, spawning `rat` and `slime` enemy species per the Floor 1 objective targets. It replaces `enemySpawnerSystem` for Floor 1 to give precise control over enemy mix and pacing.
+The Floor 1 definition (`src/game/scenarioDefinitions.ts`) registers
+`floor1EnemyDirectorSystem` in the scenario's `afterSpawnerSystems` slot. The
+canonical bootstrap inserts it into `preSystems` immediately after
+`spawnerSystem`. It manages a wave schedule, spawning `rat` and `slime` enemy
+species per the Floor 1 objective targets. It replaces `enemySpawnerSystem` for
+Floor 1 to give precise control over enemy mix and pacing.
 
 ```mermaid
 sequenceDiagram

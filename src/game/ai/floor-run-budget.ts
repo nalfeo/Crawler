@@ -7,11 +7,29 @@
  * implemented floor with that floor's own budget instead of silently borrowing
  * Floor 1's.
  *
- * Floor 1's values are unchanged and must stay byte-identical: the FP-safe
- * division form below is load-bearing (see {@link getDefaultMaxFrames}).
+ * Floor 1's budget is 600_000 ms (10 min); the FP-safe division form below is
+ * load-bearing (see {@link getDefaultMaxFrames}).
  */
 import { GAME } from '../../shared/constants.js';
 import { getFloorWinBudgetMs } from '../../shared/floor-registry.js';
+
+/**
+ * Floor-agnostic simulation frame cap (~27 min at 60 fps) used when a floor
+ * declares no `implemented.winBudgetMs`.
+ *
+ * A budget-less floor has no validated time bound, so it must NOT inherit
+ * another floor's cap: doing so silently truncates every run long before that
+ * floor's own clear is reachable and reports a win rate that is a measurement
+ * artifact rather than a balance signal. Floor 2's release leg reported 0/150
+ * wins for exactly this reason — it ran on Floor 1's 21_600-frame (6 min) cap
+ * while chained progression runs, which resolve this default per leg, did
+ * produce clears. Their reported frame totals include both the Floor 1 and
+ * Floor 2 legs.
+ *
+ * This is the headless runner's own default cap, so an unbudgeted floor run
+ * through the sweep sees the same bound as one run through the runner directly.
+ */
+export const FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES = 100_000;
 
 /**
  * The ACTIVE-time budget (simulated game ms) an official win on `floorId` must
@@ -32,10 +50,13 @@ export function getActiveTimeBudgetMs(floorId: string): number | null {
  * those wins and miscount them as timeouts, biasing the win rate DOWN.
  *
  * The `(budget * 1.1) / DELTA_MS` division form is load-bearing and must not be
- * rewritten as `Math.ceil(frames * 1.1)`: for Floor 1 the latter rounds up to
- * 23_761 because `21_600 * 1.1 === 23760.000000000004`, whereas this form
- * yields 23_760 — the value every existing Floor-1 sweep, gate, and fingerprint
- * is calibrated on.
+ * rewritten as `Math.ceil(frames * 1.1)`: at Floor 1's original 360_000 ms
+ * budget, the latter rounded up to 23_761 because
+ * `21_600 * 1.1 === 23760.000000000004`, whereas this form yielded 23_760 —
+ * the value every Floor-1 sweep, gate, and fingerprint was calibrated on at
+ * that budget. Floor 1's current 600_000 ms budget yields 39_600 either way,
+ * but the division form stays load-bearing for any other floor whose budget
+ * hits the same FP-rounding edge.
  *
  * Returns `null` for a floor with no declared budget, so callers keep their
  * existing "no floor-derived cap" behavior rather than inheriting Floor 1's.

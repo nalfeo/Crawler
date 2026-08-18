@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": "enemy",
   "contentHash": "ce7de98797ee2f7b7540c6854160d2a40c9da31dbdf7748b56feb1591b5fa52c",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

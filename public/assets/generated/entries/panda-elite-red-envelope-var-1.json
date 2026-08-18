@@ -114,9 +114,6 @@
     "canvasWidth": 256,
     "canvasHeight": 298
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

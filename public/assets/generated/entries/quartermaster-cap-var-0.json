@@ -102,9 +102,6 @@
   },
   "type": "item",
   "contentHash": "f4d151e3eb1483216ef63a6ec5b7141c50654e820db4b7e8520726b531564be7",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

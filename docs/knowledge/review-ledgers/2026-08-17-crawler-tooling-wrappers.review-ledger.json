@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "crawler-tooling-wrappers",
+  "task_title": "Add Crawler PR and sweep tooling wrappers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved_with_changes. Addressed: exact sweep run-id correlation now only returns a viewer reference when exactly one new run is identified; sweep defaults documented as opinionated Floor-1 starter presets; PR cockpit labels now import repo merge-train/CI-recovery constants; session skill added to docs governance registry. No major architecture fork warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "9cabb5defb70bdae680fd18f6403d3e63276362b",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff successfully implements the pr-cockpit tooling and sweep-results-viewer dispatch tools with correct and robust validations (e.g., input parsing, safe branch names). Error handling securely redacts tokens, and pagination is handled properly for both GraphQL and REST endpoints. The design appropriately handles the eventually-consistent nature of GitHub Actions workflow dispatch by yielding a warning instead of introducing a flaky poll loop. Test coverage is thorough and wired properly into the test scripts, and the session skill provides solid operational documentation."
+    }
+  }
+}

@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import { startCanvasServer } from './lib/canvas-harness.mjs';
+import { readSnapshot, resolveSnapshotPath, writeSnapshot } from './lib/manifest-snapshot.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,23 @@ const openCvVendorCache = new Map();
 let sessionRef = null;
 const instances = new Map();
 const pendingStartups = new Map();
+
+/** Durable, cross-process snapshot of the composed manifest for THIS worktree. */
+const SNAPSHOT_PATH = resolveSnapshotPath(REPO_ROOT);
+/**
+ * How long a computed shard fingerprint is trusted before the 642-file walk is
+ * repeated. The stat walk is non-trivial and previously ran on EVERY request — including
+ * every `/img/sprite` byte fetch — so a single sprite switch paid it twice.
+ *
+ * This is a freshness/latency trade, and it is safe in both directions:
+ *   - Our own writes (save/revert/reload) bust the cache EXPLICITLY, so an edit
+ *     made through the editor is never served stale regardless of this window.
+ *   - Only an EXTERNAL edit (git checkout, another worktree's pipeline) can be
+ *     briefly missed, and only for this window.
+ */
+const FINGERPRINT_TTL_MS = 2_000;
+let lastFingerprint = '';
+let lastFingerprintAtMs = -Infinity;
 
 let cache = {
   manifestFingerprint: '',
@@ -147,27 +165,19 @@ function writeShard(key, entry) {
   writeJsonFile(file, entry);
 }
 
-// Cheap change-detector for the shard set: file count + newest mtime. Catches
-// add/remove (count changes) and content edits (mtime bumps). Our own writes
-// bust the cache explicitly, so external edits are the only case this guards.
+// Cheap change-detector for the shard set. Include each sorted shard key plus
+// its size and mtime, so replacing/renaming a shard cannot preserve a durable
+// snapshot merely because the file count and newest mtime stayed unchanged. Our
+// own writes bust the cache explicitly, so external edits are the only case this
+// guards.
 function shardsFingerprint() {
-  if (!existsSync(SHARDS_DIR)) return '0:-1';
-  let count = 0;
-  let maxMtime = -1;
-  const walk = (abs) => {
-    for (const dirent of readdirSync(abs, { withFileTypes: true })) {
-      const child = path.join(abs, dirent.name);
-      if (dirent.isDirectory()) {
-        walk(child);
-      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
-        count += 1;
-        const m = statSync(child).mtimeMs;
-        if (m > maxMtime) maxMtime = m;
-      }
-    }
-  };
-  walk(SHARDS_DIR);
-  return `${count}:${maxMtime}`;
+  if (!existsSync(SHARDS_DIR)) return 'v2:empty';
+  const parts = [];
+  for (const key of listShardKeys()) {
+    const stats = statSync(shardPathForKey(key));
+    parts.push(`${key}\0${stats.size}\0${stats.mtimeMs}`);
+  }
+  return `v2:${sha256Hex(parts.join('\n'))}`;
 }
 
 function isPlaceholderManifestEntry(entry) {
@@ -278,7 +288,7 @@ function readAnnotations() {
   }
 }
 
-function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
+function computeSummary(entryKey, manifestEntry, catalogEntry, note, manifestFingerprint) {
   const hold = manifestEntry?.anchors?.hold ?? manifestEntry?.anchor ?? null;
   const pivot = manifestEntry?.anchors?.centerOfGravity ?? hold ?? null;
   const tags = Array.isArray(catalogEntry?.tags)
@@ -289,6 +299,14 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
   const comment = typeof note?.comment === 'string' ? note.comment : '';
   return {
     key: entryKey,
+    // Cache key for `/img/sprite`. `contentHash` makes repeat visits cache hits.
+    // Legacy entries fall back to the manifest fingerprint, which correctly
+    // invalidates on any shard write but also invalidates all legacy entries
+    // together rather than independently.
+    imageVersion:
+      typeof manifestEntry?.contentHash === 'string' && manifestEntry.contentHash.length > 0
+        ? manifestEntry.contentHash
+        : `fp-${manifestFingerprint}`,
     variantGroup: deriveVariantGroup(entryKey, manifestEntry),
     label: manifestEntry.spriteName ?? entryKey,
     briefId: manifestEntry.briefId ?? null,
@@ -320,9 +338,60 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
   };
 }
 
+/**
+ * Throttled wrapper over `shardsFingerprint()`. The underlying walk stats 642
+ * files (~50 ms); within `FINGERPRINT_TTL_MS` the previous result is reused so a
+ * burst of requests (JSON + image for one sprite switch) pays it at most once.
+ *
+ * `force` recomputes unconditionally — used after our own writes so a save is
+ * never observed through a stale fingerprint.
+ */
+function currentFingerprint(force = false) {
+  const now = Date.now();
+  if (!force && lastFingerprint && now - lastFingerprintAtMs < FINGERPRINT_TTL_MS) {
+    return lastFingerprint;
+  }
+  lastFingerprint = shardsFingerprint();
+  lastFingerprintAtMs = now;
+  return lastFingerprint;
+}
+
+/** Invalidate every cache layer after a write this process performed. */
+function invalidateCaches() {
+  cache.manifest = null;
+  cache.catalog = null;
+  cache.annotations = null;
+  lastFingerprint = '';
+  lastFingerprintAtMs = -Infinity;
+}
+
+/**
+ * Compose the manifest, preferring the durable snapshot.
+ *
+ * The snapshot is only used when its recorded fingerprint matches the live one,
+ * so a stale or externally-modified shard set always falls through to a real
+ * compose. On a miss we compose from shards and refresh the snapshot so the NEXT
+ * cold process (new session, app restart, extensions_reload) starts warm.
+ */
+function composeManifestCached(fingerprint) {
+  const snapshot = readSnapshot(SNAPSHOT_PATH, fingerprint);
+  if (snapshot) return snapshot.manifest;
+  const manifest = composeManifestFromShards();
+  writeSnapshot(SNAPSHOT_PATH, fingerprint, manifest);
+  return manifest;
+}
+
+function readCatalogWithMtime() {
+  try {
+    return { catalog: readJsonFile(CATALOG_PATH), mtimeMs: statSync(CATALOG_PATH).mtimeMs };
+  } catch {
+    return { catalog: [], mtimeMs: -1 };
+  }
+}
+
 function loadData() {
-  const manifestFingerprint = shardsFingerprint();
-  const catalogMtimeMs = statSync(CATALOG_PATH).mtimeMs;
+  const manifestFingerprint = currentFingerprint();
+  const { catalog: rawCatalog, mtimeMs: catalogMtimeMs } = readCatalogWithMtime();
   const annotationsMtimeMs = existsSync(ANNOTATIONS_PATH) ? statSync(ANNOTATIONS_PATH).mtimeMs : -1;
   if (
     cache.manifest &&
@@ -335,17 +404,17 @@ function loadData() {
     return cache;
   }
 
-  const manifest = composeManifestFromShards();
+  const manifest = composeManifestCached(manifestFingerprint);
   // The committed catalog no longer stores generated rows; derive them from the
   // manifest so the editor still has a full catalog view for matching/summaries.
-  const catalog = composeFullCatalog(readJsonFile(CATALOG_PATH), manifest);
+  const catalog = composeFullCatalog(rawCatalog, manifest);
   const annotations = readAnnotations();
   const catalogIndex = indexCatalogSprites(catalog);
   const summaries = Object.entries(manifest.entries ?? {})
     .map(([key, entry]) => {
       const catalogEntry = getCatalogMatch(key, entry, catalogIndex);
       const note = annotations.sprites?.[key] ?? {};
-      return computeSummary(key, entry, catalogEntry, note);
+      return computeSummary(key, entry, catalogEntry, note, manifestFingerprint);
     })
     .sort((a, b) => {
       if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
@@ -627,9 +696,7 @@ async function saveSprite(payload) {
     // they are derived from the manifest at read time. Frame/col/row edits for
     // generated sprites are inherently virtual (always 0) and never persisted.
     if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
-    cache.manifest = null;
-    cache.catalog = null;
-    cache.annotations = null;
+    invalidateCaches();
     // Persist manifest/catalog/PNG edits to the durable assets/queue branch so
     // anchor/metadata edits survive across sessions/worktrees/processes.
     // Annotation-only saves (favorite/comment) are local curation and are NOT
@@ -641,9 +708,7 @@ async function saveSprite(payload) {
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null, queue };
   } finally {
-    cache.manifest = null;
-    cache.catalog = null;
-    cache.annotations = null;
+    invalidateCaches();
   }
 }
 
@@ -685,8 +750,7 @@ async function revertSprite(payload) {
     const fresh = loadData().summaryByKey.get(key);
     return { ok: true, sprite: fresh ?? null, queue };
   } finally {
-    cache.manifest = null;
-    cache.catalog = null;
+    invalidateCaches();
   }
 }
 
@@ -938,11 +1002,24 @@ const binaryRoutes = [
       if (!summary) return { status: 404, body: 'sprite not found' };
       const pngPath = resolveAssetDiskPath(summary.assetPath);
       if (!pngPath) return { status: 400, body: 'invalid asset path' };
+      // A request that pins the CURRENT `imageVersion` is immutable by
+      // construction: any byte change mints a new version and therefore a new
+      // URL. Those may be cached hard. Anything else (no version, or a stale
+      // one, a legacy manifest fingerprint, or bytes that no longer hash to the
+      // requested version) must revalidate, so a client holding an old version can
+      // never be served it from its own cache.
+      const requestedVersion = url.searchParams.get('v');
       try {
+        const body = readFileSync(pngPath);
+        const immutable =
+          requestedVersion === summary.imageVersion && requestedVersion === sha256Hex(body);
         return {
           status: 200,
-          headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-          body: readFileSync(pngPath),
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': immutable ? 'private, max-age=31536000, immutable' : 'no-store',
+          },
+          body,
         };
       } catch (error) {
         log(`failed to read image for ${key}: ${error?.message ?? error}`, 'warn');
@@ -1033,9 +1110,7 @@ const canvas = createCanvas({
         if (!instances.get(ctx.instanceId)) {
           throw new CanvasError('not_open', 'Canvas instance is not open.');
         }
-        cache.manifest = null;
-        cache.catalog = null;
-        cache.annotations = null;
+        invalidateCaches();
         const state = buildState();
         return {
           ok: true,
@@ -1064,3 +1139,24 @@ const canvas = createCanvas({
 
 sessionRef = await joinSession({ canvases: [canvas] });
 log('sprite-editor canvas provider registered');
+
+// PROACTIVE HYDRATION.
+//
+// Everything above makes a warm process fast, but the FIRST open of a cold
+// process still had to compose 642 shards (~730 ms) on the request path. Warm
+// the caches here instead, right after registration: the extension host has
+// already started us, but the user has typically not opened the canvas yet, so
+// this work overlaps with their think-time rather than their click.
+//
+// Deferred to a macrotask so registration is never blocked, and fully
+// best-effort — a failed hydration only means the first request composes
+// normally, exactly as before.
+setTimeout(() => {
+  const startedAtMs = Date.now();
+  try {
+    const { summaries } = loadData();
+    log(`hydrated ${summaries.length} sprite entries in ${Date.now() - startedAtMs}ms`);
+  } catch (error) {
+    log(`cache hydration skipped: ${error?.message ?? error}`, 'warn');
+  }
+}, 0).unref?.();

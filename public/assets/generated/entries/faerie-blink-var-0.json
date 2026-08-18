@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "enemy",
   "contentHash": "9cfdf025e596e8b6125b7842fe14527f7f5ea42032caa3f043bcc11570c3fc5f",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

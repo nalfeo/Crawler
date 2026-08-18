@@ -239,6 +239,7 @@ describe('approveVariant', () => {
       derivedAnchorFor: [1],
       judgeFor: [{ index: 1, minScore: 4 }],
     });
+
     const entry = approveVariant({
       runDir,
       variantIndex: 1,
@@ -284,6 +285,27 @@ describe('approveVariant', () => {
     const entryKey = `${briefId}-var-1`;
     expect(Object.keys(manifest.entries)).toEqual([entryKey]);
     expect(manifest.entries[entryKey]).toEqual(entry);
+  });
+
+  it('uses a portable synthetic source run when the approval run is outside the repository', () => {
+    const externalRoot = mkdtempSync(path.join(tmpdir(), 'crawler-external-run-'));
+    try {
+      const { runDir, briefId } = writeFakeRun(externalRoot);
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+      expect(entry.sourceRun).toBe(
+        `generated/runs/${briefId}/external-2026-06-08T12-00-00-deadbeef`,
+      );
+    } finally {
+      rmSync(externalRoot, { recursive: true, force: true });
+    }
   });
 
   it('upserts an existing manifest without dropping other entries (alphabetical key order)', () => {
@@ -437,6 +459,32 @@ describe('approveVariant', () => {
       now: fixedNow,
     });
     expect(allVariantsEntry.facingDirection).toBe('left');
+  });
+
+  it('does not persist machine-local postprocess provenance paths', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0] });
+    const summaryPath = path.join(runDir, 'summary.json');
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as Record<string, unknown>;
+    summary['postprocessOverrides'] = {
+      profilePath: 'C:\\Users\\artist\\generated\\runs\\test\\postprocess.overrides.json',
+      snapshotJsonPath: 'C:\\Users\\artist\\generated\\runs\\test\\postprocess.pipeline.json',
+      snapshotYamlPath: 'C:\\Users\\artist\\generated\\runs\\test\\postprocess.pipeline.yaml',
+    };
+    writeFileSync(summaryPath, JSON.stringify(summary));
+
+    const entry = approveVariant({
+      runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    expect(entry).not.toHaveProperty('postprocessOverrideProfilePath');
+    expect(entry).not.toHaveProperty('effectivePipelineSnapshotPath');
+    expect(entry).not.toHaveProperty('effectivePipelineSnapshotYamlPath');
   });
 
   it('throws already-approved when the exact same variant (identical content) is approved twice', () => {
@@ -1586,6 +1634,8 @@ describe('approveIconBatch', () => {
       caught = err;
     }
     expect((caught as { kind: string }).kind).toBe('hard-blocked');
+    expect(readManifest(manifestPath).entries).toEqual({});
+    expect(existsSync(path.join(publicAssetsDir, 'generated', 'achv-test-icon-0.png'))).toBe(false);
   });
 
   it('allows a hard-blocked cell when allowHardBlocked is true', () => {

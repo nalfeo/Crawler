@@ -3,7 +3,7 @@
   "spriteName": "rat-queen-var-2",
   "assetPath": "generated/rat-queen-var-2.png",
   "approvedAt": "2026-07-06T17:33:53.554Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-kZrngg/rat-queen-v1/2026-07-03T04-03-22-feafa903",
+  "sourceRun": "generated/runs/rat-queen-v1/imported-043f59e0e9b4",
   "variantIndex": 2,
   "anchor": {
     "x": 31,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "043f59e0e9b42f1e6f775567f4c14cebcdbf628c2bfdeda50b2ea3b2b60a6ec2",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "derived",
   "opaqueBounds": {
     "x": 10,

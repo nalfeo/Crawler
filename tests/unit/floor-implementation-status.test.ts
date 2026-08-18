@@ -22,7 +22,7 @@ describe('floor implementation status (manifest SSOT)', () => {
   it('marks Floor 1 implemented, released, and budgeted', () => {
     expect(isFloorImplemented('floor1')).toBe(true);
     expect(getFloorManifest('floor1')?.implemented.released).toBe(true);
-    expect(getFloorWinBudgetMs('floor1')).toBe(360_000);
+    expect(getFloorWinBudgetMs('floor1')).toBe(600_000);
   });
 
   it('includes Floor 2 in the implemented (sweepable) set', () => {
@@ -70,19 +70,19 @@ describe('floor implementation status (manifest SSOT)', () => {
 });
 
 describe('per-floor run budget', () => {
-  it('preserves the exact Floor 1 frame cap of 23760', () => {
-    // 23_760 is what every existing Floor-1 sweep, blocking gate, and
+  it('derives the Floor 1 frame cap from the collapse deadline', () => {
+    // 39_600 is the 10-minute collapse horizon plus safe-room slack. The
     // gameplay-neutrality fingerprint is calibrated on. The FP-safe division
-    // form matters: Math.ceil(21_600 * 1.1) would yield 23_761 because
-    // 21_600 * 1.1 === 23760.000000000004.
-    expect(getDefaultMaxFrames('floor1')).toBe(23_760);
-    expect(FLOOR1_DEFAULT_MAX_FRAMES).toBe(23_760);
-    expect(requireDefaultMaxFrames('floor1')).toBe(23_760);
+    // form matters: Math.ceil(36_000 * 1.1) would yield 39_601 because
+    // 36_000 * 1.1 === 39600.00000000001.
+    expect(getDefaultMaxFrames('floor1')).toBe(39_600);
+    expect(FLOOR1_DEFAULT_MAX_FRAMES).toBe(39_600);
+    expect(requireDefaultMaxFrames('floor1')).toBe(39_600);
   });
 
-  it('preserves the exact Floor 1 active-time budget of 6 minutes', () => {
-    expect(FLOOR1_ACTIVE_TIME_BUDGET_MS).toBe(6 * 60 * 1000);
-    expect(getActiveTimeBudgetMs('floor1')).toBe(6 * 60 * 1000);
+  it('aligns the Floor 1 active-time budget with its 10-minute collapse deadline', () => {
+    expect(FLOOR1_ACTIVE_TIME_BUDGET_MS).toBe(10 * 60 * 1000);
+    expect(getActiveTimeBudgetMs('floor1')).toBe(10 * 60 * 1000);
   });
 
   it('returns null for an implemented floor that declares no budget', () => {

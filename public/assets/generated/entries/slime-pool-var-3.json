@@ -3,7 +3,7 @@
   "spriteName": "slime-pool-var-3",
   "assetPath": "generated/slime-pool-var-3.png",
   "approvedAt": "2026-07-06T21:13:03.539Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-15Fm8k/slime-pool-v1/2026-07-06T20-26-40-713474c0",
+  "sourceRun": "generated/runs/slime-pool-v1/imported-8a55dc35302a",
   "variantIndex": 3,
   "anchor": {
     "x": 64,
@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": "enemy",
   "contentHash": "8a55dc35302adcb2d37dcc65d561e3eb881ac72333390d21c3402c03d43c62fd",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "opaqueBounds": {
     "x": 7,

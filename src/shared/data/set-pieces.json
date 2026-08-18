@@ -13817,7 +13817,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.14,
+              "widthFt": 6.49,
               "heightFt": 3.5
             },
             {
@@ -13858,7 +13858,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 4.22,
+              "widthFt": 6.48,
               "heightFt": 4
             },
             {
@@ -13889,7 +13889,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 6.8,
+              "widthFt": 7.22,
               "heightFt": 6.8,
               "anchorBase": true
             },
@@ -14115,8 +14115,8 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 1.47,
-              "heightFt": 0.97
+              "widthFt": 7,
+              "heightFt": 3.62
             }
           ],
           "width": 1.75,
@@ -14135,7 +14135,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 5.96,
+              "widthFt": 5.13,
               "heightFt": 3.4,
               "rotationDeg": 90,
               "flipX": true,
@@ -15076,7 +15076,7 @@
       "sizing": "exact",
       "width": 8,
       "height": 8,
-      "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Clustered composition with diagonal weighting: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
+      "description": "Threadbare commercial-break reception. The former-contestant Tutorial Goon runs orientation while the Sweaty Merchant handles gear and the Spell Broker handles the Slime Rat spellbook quest. Clustered composition frames their shared backstage life without fixing the current state of their shifting relationship.",
       "tags": ["tutorial", "welcome", "hub", "production-set", "reality-show"],
       "placement": {
         "verticalAlign": "top"
@@ -15700,7 +15700,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.14,
+              "widthFt": 6.49,
               "heightFt": 3.5,
               "anchorBase": true
             },
@@ -15739,7 +15739,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 5.96,
+              "widthFt": 5.13,
               "heightFt": 3.4
             }
           ]
@@ -15849,7 +15849,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 6.8,
+              "widthFt": 7.22,
               "heightFt": 6.8,
               "anchorBase": true
             }
@@ -15870,7 +15870,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 4.22,
+              "widthFt": 6.48,
               "heightFt": 4,
               "anchorBase": true
             },
@@ -15883,24 +15883,6 @@
               "heightFt": 1.44,
               "offsetXFt": -2.5,
               "offsetYFt": -1.5
-            }
-          ]
-        },
-        {
-          "id": "broker-side-table",
-          "kind": "decoration",
-          "x": 4.8,
-          "y": 3.1,
-          "width": 0.64,
-          "height": 0.5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-side-table-var-12"
-              },
-              "widthFt": 2.56,
-              "heightFt": 2.6
             }
           ]
         },
@@ -15956,26 +15938,6 @@
               },
               "widthFt": 4.38,
               "heightFt": 5
-            }
-          ]
-        },
-        {
-          "id": "broker-chair",
-          "kind": "furniture",
-          "x": 4.8,
-          "y": 3,
-          "width": 0.68,
-          "height": 0.75,
-          "solid": true,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-chair-turned-var-0"
-              },
-              "widthFt": 2.72,
-              "heightFt": 3.5,
-              "anchorBase": true
             }
           ]
         },

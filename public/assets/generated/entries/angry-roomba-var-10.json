@@ -3,7 +3,7 @@
   "spriteName": "angry-roomba-var-10",
   "assetPath": "generated/angry-roomba-var-10.png",
   "approvedAt": "2026-07-06T17:33:02.737Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-H62iYl/angry-roomba-v1/2026-07-03T21-18-15-e5a2673f",
+  "sourceRun": "generated/runs/angry-roomba-v1/imported-cf2d79bad0e6",
   "variantIndex": 10,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": null,
   "contentHash": "cf2d79bad0e6c570760dd22e083a9846671c6dfe5a6d026d71170044d5c5bfea",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 3,

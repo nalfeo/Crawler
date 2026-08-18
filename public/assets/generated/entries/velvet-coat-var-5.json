@@ -102,9 +102,6 @@
   },
   "type": "item",
   "contentHash": "27657cb162d0925bc84e8e57610d3d59ac48b4f09ecb00c49d6ef33dd8e85af5",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/velvet-coat-v2/2026-07-25T05-27-56-bdf42efb/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/velvet-coat-v2/2026-07-25T05-27-56-bdf42efb/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/velvet-coat-v2/2026-07-25T05-27-56-bdf42efb/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

@@ -9,13 +9,16 @@ import {
 import type { SettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-types.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
 import { isAchievementClaimed } from '../../src/core/systems/achievementRewards.js';
-import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
+import { _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import {
   spawnBossChestForDefeatedBoss,
   createBossChestId,
 } from '../../src/game/boss-chest-resolver.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
-import { addGeneratedEquipmentReference } from '../../src/shared/inventory.js';
+import {
+  addGeneratedEquipmentReference,
+  listGeneratedEquipmentReferences,
+} from '../../src/shared/inventory.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
@@ -32,6 +35,12 @@ import type {
   Floor2QuartermasterStockState,
   Floor2SettlementSnapshot,
 } from '../../src/shared/floor-types.js';
+import {
+  configureSettlementReturnRouting,
+  getSettlementReturnIntent,
+  updateSettlementReturnIntent,
+} from '../../src/game/ai/settlement-return-router.js';
+import { openBossChest } from '../../src/core/systems/bossChestRewards.js';
 
 // Mock ONLY `purchaseQuartermasterOffer`; every other export (including
 // `getQuartermasterOfferViews`, which the planner also calls) stays real, so
@@ -191,10 +200,37 @@ function decisionKinds(result: SettlementMaintenanceResult): string[] {
 }
 
 describe('runSettlementMaintenancePlanner', () => {
-  it('no-ops when there is no settlement/floorExtendedState opportunity', () => {
+  it('completes a safe-context maintenance visit without Floor 2 settlement state', () => {
     const { world } = createSettlementWorld({ settlement: null });
     const result = runSettlementMaintenancePlanner(world);
-    expect(result).toEqual({ ran: false, terminationReason: 'no-opportunity', decisions: [] });
+    expect(result).toEqual({ ran: true, terminationReason: 'exhausted', decisions: [] });
+  });
+
+  it('completes a Floor 1 safe-room route and acknowledges a revealed chest', () => {
+    const { world, playerEid } = createSettlementWorld({ settlement: null });
+    world.floorId = 'floor1';
+    world.floor = 1;
+    configureSettlementReturnRouting(world, true);
+    unlockAchievement(world, 'first-bonk');
+    const spawned = spawnBossChestForDefeatedBoss(world, 'floor1-test-boss');
+    expect(spawned.created).toBe(true);
+    const chestId = createBossChestId('floor1-test-boss');
+    expect(openBossChest(world, chestId, playerEid).ok).toBe(true);
+
+    const x = world.stores.position.x[playerEid] ?? 0;
+    const y = world.stores.position.y[playerEid] ?? 0;
+    expect(
+      updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
+    ).toBe('armed');
+
+    const result = runSettlementMaintenancePlanner(world);
+    expect(result.ran).toBe(true);
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
+    expect(world.bossChests.get(chestId)?.state).toBe('claimed');
+    expect(
+      updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
+    ).toBe('arrived');
+    expect(getSettlementReturnIntent(world).status).toBe('arrived');
   });
 
   it('no-ops when the player is outside the settlement room', () => {
@@ -631,11 +667,13 @@ describe('runEagerMaintenanceTick', () => {
   // Achievement claiming — anywhere, any floor
   // ──────────────────────────────────────────────────────────────────
 
-  it('claims a Floor 1 lootBox achievement reward without requiring a settlement room', () => {
-    // No settlement wired: plain Floor 1 world outside any safe room.
+  it('claims a Floor 1 lootBox achievement reward in any safe room, with no settlement required', () => {
+    // No settlement wired: plain Floor 1 world, player in a safe room. The
+    // achievements panel is safe-context gated for a human, so the AI's eager
+    // claim is too — but it does NOT need the Floor 2 settlement specifically.
     const world = createTestWorld({ seed: 42, floor: 1 });
     const playerEid = spawnPlayer(world, 400, 400);
-    world.playerInSafeRoom = false;
+    world.playerInSafeRoom = true;
 
     unlockAchievement(world, 'first-bonk');
     expect(isAchievementClaimed(world, 'first-bonk')).toBe(false);
@@ -650,6 +688,7 @@ describe('runEagerMaintenanceTick', () => {
   it('claims multiple unlocked but unclaimed lootBox achievements in one tick', () => {
     const world = createTestWorld({ seed: 42, floor: 1 });
     const playerEid = spawnPlayer(world, 400, 400);
+    world.playerInSafeRoom = true;
 
     unlockAchievement(world, 'first-bonk');
     unlockAchievement(world, 'slime-no-more');
@@ -665,6 +704,7 @@ describe('runEagerMaintenanceTick', () => {
   it('is idempotent: repeated calls do not double-claim or throw', () => {
     const world = createTestWorld({ seed: 42, floor: 1 });
     const playerEid = spawnPlayer(world, 400, 400);
+    world.playerInSafeRoom = true;
     unlockAchievement(world, 'first-bonk');
 
     runEagerMaintenanceTick(world, playerEid);
@@ -675,8 +715,9 @@ describe('runEagerMaintenanceTick', () => {
     expect(world.playerGold).toBe(goldAfterFirst);
   });
 
-  it('claims Floor 2 equipment achievement rewards without being in the settlement room', () => {
-    // Floor 2 world with all equipment flags but player NOT in the settlement room.
+  it('claims Floor 2 equipment achievement rewards in any safe room, not just the settlement', () => {
+    // Floor 2 world with all equipment flags, player in a safe room that is
+    // NOT the settlement room.
     const world = createTestWorld({ seed: 42, floor: 2 });
     world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
     world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
@@ -685,7 +726,7 @@ describe('runEagerMaintenanceTick', () => {
     world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
     const playerEid = spawnPlayer(world, 400, 400);
     world.playerLevel.level = 5;
-    world.playerInSafeRoom = false; // explicitly outside settlement
+    world.playerInSafeRoom = true; // safe context, but not the settlement room
 
     unlockAchievement(world, 'floor2-field-kit');
     expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(false);
@@ -699,12 +740,13 @@ describe('runEagerMaintenanceTick', () => {
   // Generated-equipment equipping — outside settlement, from bag
   // ──────────────────────────────────────────────────────────────────
 
-  it('equips a generated-equipment bag item outside the settlement room without safe-room context', () => {
+  it('equips a generated-equipment bag item in any safe room outside the settlement', () => {
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     // Move the player OUT of the settlement so the settlement planner would
-    // no-op. Also clear safe-room context to confirm force-equip works.
+    // no-op; the eager path still equips because the player is in a safe
+    // context, exactly as a human opening the equipment panel would be.
     moveOutsideSettlement();
-    world.playerInSafeRoom = false; // eager path uses force:true — no safe room needed
+    world.playerInSafeRoom = true;
 
     const instanceId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
 
@@ -717,7 +759,7 @@ describe('runEagerMaintenanceTick', () => {
   it('prefers filling empty slots over contested ones (empty-slot-first priority)', () => {
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     moveOutsideSettlement();
-    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    world.playerInSafeRoom = true; // safe context: the human equip gate is satisfied
 
     // Equip a static charm into the neck slot so the locket candidate is
     // contested (the evaluator requires a stat improvement to displace a
@@ -751,7 +793,7 @@ describe('runEagerMaintenanceTick', () => {
   it('does NOT purchase from the Quartermaster shop (inventory-only path)', () => {
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     moveOutsideSettlement();
-    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    world.playerInSafeRoom = true; // safe context: the human equip gate is satisfied
     world.playerGold = 100_000; // enough to buy anything
 
     // Attach a shop offer that would be a clear upgrade for an empty slot.
@@ -769,7 +811,7 @@ describe('runEagerMaintenanceTick', () => {
   it('equips multiple bag items that each fill a different empty slot', () => {
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     moveOutsideSettlement();
-    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    world.playerInSafeRoom = true; // safe context: the human equip gate is satisfied
 
     const helmId = addBagEquipment(world, playerEid, 'iron-helm', 'common');
     const bootsId = addBagEquipment(world, playerEid, 'leather-boots', 'common');
@@ -782,6 +824,33 @@ describe('runEagerMaintenanceTick', () => {
     expect(equippedValues).toContain(bootsId);
   });
 
+  it('continues after an action-capped equipment pass leaves candidates in the bag', () => {
+    const { world, playerEid } = createSettlementWorld();
+    const baseIds = [
+      'iron-helm',
+      'iron-visor',
+      'steel-pauldrons',
+      'iron-breastplate',
+      'bronze-vambrace',
+      'iron-armguard',
+      'iron-greaves',
+      'leather-boots',
+      'iron-sword',
+    ];
+    for (const baseId of baseIds) {
+      addBagEquipment(world, playerEid, baseId, 'uncommon');
+    }
+
+    runEagerMaintenanceTick(world, playerEid);
+    const equippedAfterFirst = { ...getEquipmentState(world, playerEid)?.equipped };
+    expect(
+      listGeneratedEquipmentReferences(world.inventories.get(playerEid)!).length,
+    ).toBeGreaterThan(0);
+
+    runEagerMaintenanceTick(world, playerEid);
+    expect(getEquipmentState(world, playerEid)?.equipped).not.toEqual(equippedAfterFirst);
+  });
+
   it('retries a deferred claim once equipping frees bag capacity', () => {
     // Scenario: bag is at capacity (1 slot, 1 item). A second achievement
     // unlocks — its claim is deferred because the bag is full. The eager
@@ -789,7 +858,7 @@ describe('runEagerMaintenanceTick', () => {
     // the retry pass claims the previously-deferred achievement.
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     moveOutsideSettlement();
-    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    world.playerInSafeRoom = true; // safe context: the human equip gate is satisfied
     // floor2-field-kit is an equipment-reward achievement gated on this flag.
     world.floor2EquipmentFlags.floor2EquipmentRewards = true;
 
@@ -815,5 +884,51 @@ describe('runEagerMaintenanceTick', () => {
     runEagerMaintenanceTick(world, playerEid);
 
     expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(true);
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // AI/human parity — the eager tick has no privileges a player lacks
+  // ──────────────────────────────────────────────────────────────────
+
+  it('does nothing outside a safe context: no equip, no achievement claim', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false;
+    world.state = 'playing';
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+
+    const instanceId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
+    unlockAchievement(world, 'floor2-field-kit');
+    const goldBefore = world.playerGold;
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    // A human cannot open the equipment or achievements panel here, so neither
+    // can the AI: the loot stays in the bag and the reward stays unclaimed.
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    expect(Object.values(equipped ?? {})).not.toContain(instanceId);
+    expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(false);
+    expect(world.playerGold).toBe(goldBefore);
+  });
+
+  it('completes the deferred work on the next safe-room entry', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false;
+    world.state = 'playing';
+
+    const instanceId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
+    runEagerMaintenanceTick(world, playerEid);
+    expect(Object.values(getEquipmentState(world, playerEid)?.equipped ?? {})).not.toContain(
+      instanceId,
+    );
+
+    // Walk into a safe room — the same trip a player makes to re-gear.
+    world.playerInSafeRoom = true;
+    runEagerMaintenanceTick(world, playerEid);
+
+    expect(Object.values(getEquipmentState(world, playerEid)?.equipped ?? {})).toContain(
+      instanceId,
+    );
   });
 });

@@ -3,7 +3,7 @@
   "spriteName": "rat-nest-var-0",
   "assetPath": "generated/rat-nest-var-0.png",
   "approvedAt": "2026-07-06T20:16:53.208Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-z0MILX/rat-nest-v2/2026-07-06T20-11-59-4ec0292a",
+  "sourceRun": "generated/runs/rat-nest-v2/imported-f1e20151b634",
   "variantIndex": 0,
   "anchor": {
     "x": 64,
@@ -26,9 +26,6 @@
   "judgeScore": null,
   "type": "enemy",
   "contentHash": "f1e20151b634aa3f45407fc11fd615aa77c5bf4e952e0c8e97ca4205ca088bc9",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "opaqueBounds": {
     "x": 7,

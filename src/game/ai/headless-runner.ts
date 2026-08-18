@@ -34,6 +34,7 @@ import {
   type AIInputProvider,
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
+  type GoldEconomyMetrics,
   type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
@@ -72,15 +73,16 @@ import {
   FLOOR1_DEFAULT_MAX_FRAMES,
   planningDeadlineMsFromFrameBudget,
 } from './floor1-run-budget.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { computeVendorInteractions } from './vendor-interactions.js';
 import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
-import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 import {
   classifyGameOverOutcome,
@@ -89,9 +91,6 @@ import {
 } from './headless-runner-invariants.js';
 
 const logger = createLogger('game:headless-runner');
-
-/** Tracks the previous-frame safe-room state per world so the restock fires only on the entry edge. */
-const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -136,6 +135,40 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
     xpRatio: ratio(xpCollected, xpSpawned),
     goldRatio: ratio(goldCollected, goldSpawned),
     combinedRatio: ratio(xpCollected + goldCollected, xpSpawned + goldSpawned),
+  };
+}
+
+function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
+  const ledger = world.goldLedger;
+  const earnedTotal = ledger.earnedFromDrops + ledger.earnedFromLootBoxes;
+  const spentTotal = ledger.spentOnCharm + ledger.spentOnMerchantWeapon + ledger.spentOnSpell;
+  const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
+  const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
+  const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
+  return {
+    earnedFromDrops: ledger.earnedFromDrops,
+    earnedFromLootBoxes: ledger.earnedFromLootBoxes,
+    earnedTotal,
+    spentOnCharm: ledger.spentOnCharm,
+    spentOnMerchantWeapon: ledger.spentOnMerchantWeapon,
+    spentOnSpell: ledger.spentOnSpell,
+    spentTotal,
+    unspentAtExit,
+    unspentFraction: earnedTotal > 0 ? unspentAtExit / earnedTotal : 0,
+    spendableEarned,
+    unspentSpendable,
+    unspentSpendableFraction: spendableEarned > 0 ? unspentSpendable / spendableEarned : 0,
+    charmPurchases: ledger.charmPurchases,
+    merchantWeaponPurchases: ledger.merchantWeaponPurchases,
+    spellPurchases: ledger.spellPurchases,
+    // Distinct *vendors* purchased from, not purchase categories: the charm
+    // and the post-quest weapon are both bought from the single
+    // `floor1-merchant` NPC (see `FLOOR1_MERCHANT_VENDOR_ID`), so buying both
+    // is still one vendor. Only the spell broker (`FLOOR1_SPELL_BROKER_VENDOR_ID`)
+    // is a second, distinct vendor.
+    distinctPurchases:
+      (ledger.charmPurchases > 0 || ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
+      (ledger.spellPurchases > 0 ? 1 : 0),
   };
 }
 
@@ -253,7 +286,7 @@ export interface HeadlessRunnerConfig {
    * wander fast-fails with a clear reason instead of burning the whole budget.
    * Sized above the slowest legitimate inter-progress gap on winning seeds and
    * above the in-AI relocate cycle (now 200s on the 240×140 map) so it never
-   * false-fails a healthy run. Set to 0 to disable. Default 21_600 (~360s at
+   * false-fails a healthy run. Set to 0 to disable. Default 36_000 (~600s at
    * 60 FPS).
    */
   questStallFrames?: number;
@@ -320,10 +353,9 @@ export interface HeadlessRunnerConfig {
    * evaluates whether returning to the Floor 2 settlement to run the
    * maintenance planner (open boxes, equip affinity-maximizing gear, shop,
    * configure abilities) is worth the travel/risk/opportunity cost, using
-   * `settlement-return-router.ts`'s deterministic utility scoring. Default
-   * false — when disabled the router's state machine is never armed and the
-   * AI's Floor 2 progress goal selection is byte-identical to before this
-   * feature.
+   * `settlement-return-router.ts`'s deterministic utility scoring. Defaults to
+   * true on Floor 1, where parity-gated equipment needs a legitimate safe-room
+   * return path, and false on other floors. Callers may explicitly override it.
    */
   settlementReturnRouting?: boolean;
   /**
@@ -352,7 +384,7 @@ const DEFAULT_CONFIG: Required<
   >
 > = {
   seed: 12345,
-  maxFrames: 100_000, // ~27 min at 60 FPS
+  maxFrames: FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES, // ~27 min at 60 FPS
   maxWallTimeMs: 5 * 60 * 1000, // 5 minutes wall time
   progressInterval: 0,
   debug: false,
@@ -572,6 +604,9 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
+    mergedConfig.settlementReturnRouting = true;
+  }
   aiProvider.configurePlanningDeadlineMs?.(
     planningDeadlineMsFromFrameBudget(
       config.planningMaxFrames ??
@@ -673,11 +708,6 @@ export async function runHeadless(
   }
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
-  // Scenario setup creates the initial settlement stock before the first
-  // simulation frame. Treat that initial safe-room state as already observed so
-  // the headless runner does not invent a production-only first restock.
-  quartermasterRestockLatches.set(world, world.playerInSafeRoom === true);
-
   let frameCount = 0;
   // Frames spent in a safe room, where the floor-collapse deadline is paused
   // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
@@ -839,8 +869,8 @@ export async function runHeadless(
     engageRatio: floor2HuntTimeMs > 0 ? floor2HuntEngageTimeMs / floor2HuntTimeMs : 0,
     activeCombatTimeMs: floor2HuntActiveCombatTimeMs,
     activeCombatRatio: floor2HuntTimeMs > 0 ? floor2HuntActiveCombatTimeMs / floor2HuntTimeMs : 0,
-    familyTrashKills: floor2HuntFamilyTrashKills,
-    neutralTrashKills: floor2HuntNeutralTrashKills,
+    huntFamilyTrashKills: floor2HuntFamilyTrashKills,
+    huntNeutralTrashKills: floor2HuntNeutralTrashKills,
     averageNearbyEnemies:
       floor2HuntNearbyEnemySamples > 0
         ? floor2HuntNearbyEnemyTotal / floor2HuntNearbyEnemySamples
@@ -1032,21 +1062,11 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      // On each new safe-room entry, advance the Quartermaster restock epoch so
-      // sold items are retired and fresh offers are generated. The call is
-      // unconditional: `restockFloor2Quartermaster` guards against a disabled
-      // economy, missing settlement, and backwards/skipped epoch requests and
-      // returns a typed error result rather than throwing, so this is safe on
-      // Floor 1 runs and on every frame after the initial entry-edge.
-      const isNowInSafeRoom = world.playerInSafeRoom === true;
-      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
-      if (isNowInSafeRoom && !wasInSafeRoom) {
-        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
-        if (qmStock) {
-          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
-        }
-      }
-      quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      // NOTE: the runner deliberately does NOT restock the Quartermaster on
+      // safe-room entry. `MainGameScene` never calls
+      // `restockFloor2Quartermaster`, so a human run only ever sees the stock
+      // the scenario generated; an AI-only restock would hand the runner an
+      // item pool no player can reach and quietly inflate the balance oracle.
       captureHeadlessRunDataFrame(runData, world, playerEid, currentActiveTimeMs(), 0);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed
@@ -1527,6 +1547,8 @@ export async function runHeadless(
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
+      goldEconomy: computeGoldEconomy(world),
+      vendors: computeVendorInteractions(world),
       ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
     });
     if (mergedConfig.onFinish) {
@@ -1630,6 +1652,8 @@ export async function runHeadless(
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
+    goldEconomy: computeGoldEconomy(world),
+    vendors: computeVendorInteractions(world),
     ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
   });
 

@@ -3,7 +3,7 @@
   "spriteName": "mama-slime-var-4",
   "assetPath": "generated/mama-slime-var-4.png",
   "approvedAt": "2026-07-06T17:34:14.781Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-pOtnXw/mama-slime-v1/2026-07-03T03-54-47-77c4014d",
+  "sourceRun": "generated/runs/mama-slime-v1/imported-3551cc579a84",
   "variantIndex": 4,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "3551cc579a849b830a19b35666f6dc70942686b59b6f1bf9eec17bed5a569f39",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 3,

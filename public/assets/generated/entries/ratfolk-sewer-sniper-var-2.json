@@ -185,9 +185,6 @@
     "canvasWidth": 704,
     "canvasHeight": 256
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-sewer-sniper-v1/2026-08-01T05-42-10-3a961bcd/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-sewer-sniper-v1/2026-08-01T05-42-10-3a961bcd/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-sewer-sniper-v1/2026-08-01T05-42-10-3a961bcd/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

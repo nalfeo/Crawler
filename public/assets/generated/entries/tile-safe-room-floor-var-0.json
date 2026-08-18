@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "2e8719cbe952a5995d13fa7495b746d6ab0cbce64e3bf92b0c52d7ae2153704f",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

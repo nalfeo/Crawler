@@ -114,9 +114,6 @@
     "canvasWidth": 400,
     "canvasHeight": 256
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-boba-sniper-v2/2026-08-01T00-34-25-92bfe238/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-boba-sniper-v2/2026-08-01T00-34-25-92bfe238/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-boba-sniper-v2/2026-08-01T00-34-25-92bfe238/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

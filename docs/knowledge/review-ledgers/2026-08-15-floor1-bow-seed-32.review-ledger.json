@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-bow-seed-32",
+  "task_title": "Fix Floor 1 bow seed 32 release loss",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted all review changes before code: verify exact tuple on current and previous baselines before assigning AI ownership; widen to official-win/sweep/artifact classification if local behavior disagrees; capture eventSampleInterval=1 when needed, weaponTelemetry, game/safe-room time, quests, and stall reason; require bow loadout, outcome victory, shared isOfficialWin true, and paired deterministic equality; define safety panel as failing case plus nearby healthy bow and non-bow cases, adding unforced/chained only if shared runner/loadout/progression changes. Ledger initialized before implementation; post-code order is verify:fast, code-review loop, independent grade last, ledger validation, verify:pr-prereqs, handoff, PR."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "bd62ca0797d6469e903df82625ab4d42d597d5c5",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/handoffs/2026-08-15-floor1-bow-seed-32.md",
+          "detail": "The fix changes every retreat candidate score, but the recorded evidence is focused regression coverage plus spot checks rather than a broad sweep. Smallest remedy: dispatch a standard-panel win-rate sweep and record the Sweep Results Viewer runId before merge."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/ai/bt-ai-tuning.ts",
+          "detail": "RETREAT_OBJECTIVE_BIAS_WEIGHT and RETREAT_OBJECTIVE_BIAS_BAND_FRACTION multiply the same capped term. The comment documents the product, but a future cleanup could fold them into one cap constant."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The retreat-bias fix is correct, scoped, deterministic, and covered by fail-to-pass unit and headless regressions. The wounded NPC threat-clear work from main remains intact. Remaining items are non-blocking evidence breadth and tuning-comment cleanup opportunities."
+    }
+  }
+}

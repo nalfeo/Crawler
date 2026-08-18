@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "setPieceId": "welcome-room-v2",
+  "narrativeVerb": "The player meets a former contestant and two AI-created merchants who have been trapped together for uncountable seasons, then works through the room's orientation, gear, and spell quests.",
+  "primaryPurpose": "A commercial-break safe room where the Tutorial Goon runs orientation, the Sweaty Merchant handles gear, and the Spell Broker handles the spell quest inside a relationship that cycles between lovers, friends, and enemies.",
+  "projection": {
+    "camera": "top-down-3/4",
+    "tilePx": 16,
+    "feetPerTile": 4,
+    "depthAnchor": "bottom-center",
+    "shadowVector": "down-right",
+    "nativeScale": 1
+  },
+  "composition": {
+    "archetype": "welcome-room",
+    "mode": "clustered",
+    "focalPropId": "broker-bookcase",
+    "breathingZone": "shared-backstage"
+  },
+  "preRenderTarget": {
+    "stage": "pre-decomposition",
+    "visualAsset": "src/shared/data/set-piece-evidence/welcome-room-v2-blockout.svg",
+    "canvas": {
+      "width": 512,
+      "height": 512,
+      "scale": "blockout-4x",
+      "scaleFactor": 4
+    },
+    "focal": {
+      "zoneId": "broker-alcove",
+      "boundsFeet": { "x": 20, "y": 4, "width": 8, "height": 12 }
+    },
+    "circulation": {
+      "minimumWidthTiles": 2,
+      "route": [
+        "door-entry",
+        "shared-backstage",
+        "orientation-desk",
+        "merchant-service",
+        "broker-alcove"
+      ]
+    },
+    "negativeSpace": {
+      "zoneId": "shared-backstage",
+      "purpose": "The player crosses the exposed backstage gap before choosing which resident to approach."
+    },
+    "layers": [
+      "shell",
+      "zone-masses",
+      "npc-silhouettes",
+      "focal-mass",
+      "circulation",
+      "relationship-markers"
+    ],
+    "decomposition": "pending"
+  },
+  "zones": [
+    {
+      "id": "merchant-service",
+      "label": "Sweaty Merchant's service corner",
+      "x": 1,
+      "y": 1,
+      "width": 3,
+      "height": 3,
+      "activity": "commerce"
+    },
+    {
+      "id": "orientation-desk",
+      "label": "Tutorial Goon's orientation position",
+      "x": 3,
+      "y": 1,
+      "width": 3,
+      "height": 3,
+      "activity": "orientation"
+    },
+    {
+      "id": "broker-alcove",
+      "label": "Spell Broker's bookcase corner",
+      "x": 4,
+      "y": 1,
+      "width": 3,
+      "height": 3,
+      "activity": "spell-quest"
+    },
+    {
+      "id": "shared-backstage",
+      "label": "Shared backstage crossing and domestic spill",
+      "x": 1,
+      "y": 4,
+      "width": 6,
+      "height": 3,
+      "activity": "relationship-and-circulation"
+    }
+  ],
+  "vignettes": [
+    {
+      "id": "merchant-errand",
+      "zoneId": "merchant-service",
+      "propIds": ["shop-table", "velvet-rope", "queue-stanchion", "merchant-board"],
+      "story": "The Sweaty Merchant keeps hawking gear through another season and will not finish the transaction until the player fetches his special rat tail."
+    },
+    {
+      "id": "goon-orientation",
+      "zoneId": "orientation-desk",
+      "propIds": ["wall-banner", "show-poster", "camera-rig", "call-sheet"],
+      "story": "The Welcome Goon is a former contestant who now runs orientation for newcomers while the room keeps pretending this season is temporary."
+    },
+    {
+      "id": "broker-quest",
+      "zoneId": "broker-alcove",
+      "propIds": ["broker-bookcase", "broker-desk", "call-sheet", "show-poster", "camera-rig"],
+      "story": "The Spell Broker's overstuffed bookcase marks the second quest stop: send the player after the Slime Rat, then hand over the spellbook."
+    },
+    {
+      "id": "uncountable-seasons",
+      "zoneId": "shared-backstage",
+      "propIds": ["bunk-bed", "kitchenette", "mini-fridge", "laundry-line", "chore-rota"],
+      "story": "The Goon and the two AI-created merchants have been stuck in this one room for uncountable seasons; the domestic spill records a relationship that keeps cycling between lovers, friends, and enemies."
+    }
+  ],
+  "anchors": [
+    { "id": "door-entry", "kind": "door", "x": 4, "y": 7 },
+    { "id": "npc-merchant", "kind": "npc", "x": 2, "y": 2 },
+    { "id": "npc-goon", "kind": "npc", "x": 3, "y": 5 },
+    { "id": "npc-broker", "kind": "npc", "x": 5, "y": 2 }
+  ],
+  "grounding": {
+    "corePack": [
+      { "assetId": "welcome-room-carpet-var-4", "usedFor": ["palette", "floor rhythm"] },
+      { "assetId": "welcome-room-shop-table-var-0", "usedFor": ["scale", "commerce silhouette"] },
+      { "assetId": "welcome-room-bookcase-var-0", "usedFor": ["scale", "focal mass"] },
+      { "assetId": "welcome-room-bunk-bed-var-6", "usedFor": ["scale", "living vignette"] }
+    ],
+    "stagePack": [
+      { "assetId": "welcome-room-camera-rig-var-4", "usedFor": ["production-set fiction"] },
+      { "assetId": "welcome-room-call-sheet-var-3", "usedFor": ["story detail"] },
+      { "assetId": "welcome-room-show-poster-var-0", "usedFor": ["signage language"] }
+    ],
+    "rejectedReferences": [
+      {
+        "assetId": "true-isometric-interior",
+        "reason": "Camera model conflicts with Crawler's 3/4 grid."
+      }
+    ],
+    "intentionalDeviations": [
+      {
+        "property": "relationship-asymmetry",
+        "reason": "The room's clusters are arranged to let a single shared space support recurring shifts between intimacy, routine, and conflict without inventing separate rooms."
+      }
+    ]
+  },
+  "lore": {
+    "canonSources": [
+      {
+        "path": "docs/knowledge/game-design/lore-bible.md",
+        "claim": "Commercial breaks are backstage safe rooms in a constructed reality-show dungeon."
+      },
+      {
+        "path": "src/shared/data/quests.floor1.json",
+        "claim": "The Tutorial Goon runs orientation; the Merchant handles the rat-tail errand and gear; the Spell Broker handles the Slime Rat and spellbook quest."
+      },
+      {
+        "path": "src/shared/data/set-pieces.json",
+        "claim": "The welcome room is a threadbare reception with a welcome banner, merchant table, and broker bookcase."
+      },
+      {
+        "path": "user-provided canon",
+        "claim": "The Welcome Goon is a former contestant; the other two are AI-created NPCs trapped together for uncountable seasons, alternating between lovers, friends, and enemies."
+      }
+    ]
+  },
+  "evidence": {
+    "runtimeArtifact": "initializeFloor1Scenario",
+    "seedMatrix": [1, 21],
+    "visualViews": ["native-1x", "nearest-neighbor-4x", "geometry-overlay"],
+    "subjectiveReview": "advisory"
+  }
+}

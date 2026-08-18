@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "floor1-boss-chest-recovery",
+  "task_title": "Recover Floor 1 boss chest PR",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Added Floor 1 equipment-maintenance enablement and dependency ordering; tied headless verification to safe-route completion; checked current main CI before addressing branch-caused export failure. Used existing TypeScript compiler API to satisfy explicit reference/spread guard requirement without a new dependency.",
+      "adversarial": false,
+      "alternatives_considered": 1
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.4",
+      "head_sha": "2d77aadbf443170d06ff9bc7d0117f20a8c41ef2",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The PR correctly enables the boss chest lifecycle on Floor 1, sharing the equipment economy with Floor 2 while maintaining safe-context rules for AI. It removes the AI force-equip bypass to match human constraints, fixing a balance oracle blind spot. Test coverage comprehensively verifies the new behaviors, and regression tests are preserved. The scope remains tight and fully compliant with project policies."
+    }
+  }
+}

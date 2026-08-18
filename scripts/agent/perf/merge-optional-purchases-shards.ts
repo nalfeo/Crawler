@@ -23,6 +23,11 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RunStats } from '../../../src/game/ai/types.js';
+import {
+  formatGoldEconomySummary,
+  summarizeGoldEconomy,
+  type GoldEconomySummary,
+} from './gold-economy-summary.js';
 import { parsePositiveInt } from './winrate-sweep-args.js';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +62,8 @@ interface MergedOutput {
     timeouts: number;
     winRate: number;
   };
+  /** Median Floor 1 gold-economy figures over winning runs; null when none won. */
+  goldEconomy: GoldEconomySummary | null;
   /** Ready for `fun-score.ts --input` (`{ runs: RunStats[] }` format). */
   runs: RunStats[];
 }
@@ -168,6 +175,7 @@ function main(): void {
   }
   const winRate = allRuns.length > 0 ? wins / allRuns.length : 0;
   const summary = { total: allRuns.length, wins, losses, timeouts, winRate };
+  const goldEconomy = summarizeGoldEconomy(allRuns);
 
   // Print summary (visible in GitHub Actions step log and job summary)
   console.log('');
@@ -179,6 +187,9 @@ function main(): void {
   console.log(`Losses:      ${summary.losses}`);
   console.log(`Timeouts:    ${summary.timeouts}`);
   console.log(`Win rate:    ${(winRate * 100).toFixed(1)}%`);
+  for (const line of formatGoldEconomySummary(goldEconomy)) {
+    console.log(line);
+  }
   console.log('━'.repeat(60));
 
   const output: MergedOutput = {
@@ -188,6 +199,7 @@ function main(): void {
     shardCount: files.length,
     maxFrames,
     summary,
+    goldEconomy,
     runs: allRuns,
   };
 

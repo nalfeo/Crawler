@@ -36,6 +36,7 @@ import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
+import { spawnEnemy } from '../../core/spawners/combatants.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -77,6 +78,7 @@ import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
+import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
@@ -201,6 +203,8 @@ interface MainSceneInternals {
     tick(deltaMs: number): void;
     skip(): void;
     acknowledge(): void;
+    openNext(): void;
+    getNextRewardLabel(): string | null;
     getPhase(): string | null;
     getBucket(): string | null;
     getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
@@ -236,6 +240,14 @@ interface MainSceneInternals {
     isOpen(): boolean;
     close(): void;
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+  };
+  bossIntroUI?: {
+    isOpen(): boolean;
+    dismiss(): void;
+    getIntroId(): string | null;
+    getLayout(): BossIntroLayoutSnapshot | null;
+    getScrollState(): BossIntroScrollState | null;
+    scrollBy(delta: number): void;
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
@@ -323,6 +335,12 @@ export interface RewardOpeningProbeState {
   readonly bucket: string | null;
   readonly revealed: number;
   readonly total: number;
+  /**
+   * Label of the chained "open next box" action offered on the summary
+   * screen, or `null` when no next box is available (or the sequence is not
+   * at `summary`).
+   */
+  readonly nextLabel: string | null;
 }
 
 /**
@@ -620,6 +638,20 @@ export interface BloodSurfaceProbeSummary {
   readonly footprintColors: number[];
 }
 
+/** Live boss-intro lore-sheet state as rendered by the real MainGameScene. */
+export interface BossIntroProbeState {
+  /** True while the lore sheet owns the screen. */
+  readonly open: boolean;
+  /** `BossIntroContent.introId` currently shown, or null. */
+  readonly introId: string | null;
+  /** Simulation clock (ms). Frozen while the sheet is open. */
+  readonly worldElapsedMs: number;
+  /** Measured sheet layout while open, else null. */
+  readonly layout: BossIntroLayoutSnapshot | null;
+  /** Flavour-viewport scroll state while open, else null. */
+  readonly scroll: BossIntroScrollState | null;
+}
+
 /**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
@@ -641,6 +673,18 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
+  /**
+   * Start the real Floor-1 staircase boss battle on the live world (spawns a
+   * boss entity and latches the encounter), so the scene's own boss-intro
+   * trigger fires on its next update — no UI is opened directly here.
+   */
+  startStaircaseBossBattle(): number;
+  /** Live boss-intro sheet state plus the world clock (frozen while open). */
+  getBossIntroState(): BossIntroProbeState;
+  /** Scroll the boss-intro flavour copy by `delta` lines. */
+  scrollBossIntro(delta: number): void;
+  /** Dismiss the boss-intro sheet through its real dismiss path. */
+  dismissBossIntro(): void;
   /** Measured layout for the currently open real modal picker. */
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /**
@@ -669,8 +713,17 @@ export interface MainSceneProbeApi {
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Seed three off-screen quests through the real scene's live world. */
   primeQuestWaypointArrows(): void;
+  /** Seed crowded down-right quests through the real scene's live world. */
+  primeCrowdedDownRightQuestWaypointArrows(): void;
   /** Visible quest arrow ids on the real MainGameScene display list. */
   getVisibleQuestArrowIds(): string[];
+  /** Rendered quest arrow positions and rotations from the real display list. */
+  getVisibleQuestArrowStates(): ReadonlyArray<{
+    readonly questId: string;
+    readonly x: number;
+    readonly y: number;
+    readonly rotation: number;
+  }>;
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -745,6 +798,11 @@ export interface MainSceneProbeApi {
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
   claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
+  /**
+   * Unlock an achievement through the REAL unlock path (resolving its reward
+   * bundle) without claiming it — arranges a "next box is available" state.
+   */
+  unlockAchievement(achievementId: string): void;
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -1027,6 +1085,50 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
+    startStaircaseBossBattle: (): number => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) {
+        throw new Error('MainGameScene is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const battle = world.floorScenario?.objective.bossBattles.get('staircase');
+      if (!battle) {
+        throw new Error('Floor 1 staircase boss battle is unavailable');
+      }
+      const playerEid = scene.playerEid ?? -1;
+      const bossX = (world.stores.position.x[playerEid] ?? 0) + 4;
+      const bossY = world.stores.position.y[playerEid] ?? 0;
+      const bossEid = spawnEnemy(world, bossX, bossY, 200);
+      battle.started = true;
+      battle.defeated = false;
+      battle.bossEid = bossEid;
+      return bossEid;
+    },
+
+    getBossIntroState: (): BossIntroProbeState => {
+      const scene = getScene();
+      return {
+        open: scene?.bossIntroUI?.isOpen() ?? false,
+        introId: scene?.bossIntroUI?.getIntroId() ?? null,
+        worldElapsedMs: scene?.world?.elapsedMs ?? 0,
+        layout: scene?.bossIntroUI?.getLayout() ?? null,
+        scroll: scene?.bossIntroUI?.getScrollState() ?? null,
+      };
+    },
+
+    scrollBossIntro: (delta: number) => {
+      getScene()?.bossIntroUI?.scrollBy(delta);
+    },
+
+    dismissBossIntro: () => {
+      getScene()?.bossIntroUI?.dismiss();
+    },
+
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     getSafeAreaLayout: (): SafeAreaLayoutProbe => {
@@ -1247,6 +1349,42 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.slimeRatRoomPos.y = py - 1;
     },
 
+    primeCrowdedDownRightQuestWaypointArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.welcomeOfficePos.x = px + 100;
+      objective.welcomeOfficePos.y = py + 30;
+      objective.shopRoomPos.x = px + 101;
+      objective.shopRoomPos.y = py + 30;
+      objective.slimeRatRoomPos.x = px + 102;
+      objective.slimeRatRoomPos.y = py + 30;
+      const guideEid = world.floorScenario?.guideNpcEid;
+      const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
+      if (guideEid !== null && guideEid !== undefined) {
+        world.stores.position.x[guideEid] = px + 100;
+        world.stores.position.y[guideEid] = py + 30;
+      }
+      if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
+        world.stores.position.x[shopkeeperEid] = px + 101;
+        world.stores.position.y[shopkeeperEid] = py + 30;
+      }
+    },
+
     getVisibleQuestArrowIds: (): string[] => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) {
@@ -1260,6 +1398,30 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             child.name.startsWith('quest-direction-arrow:'),
         )
         .map((arrow) => arrow.name.slice('quest-direction-arrow:'.length));
+    },
+
+    getVisibleQuestArrowStates: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list.flatMap((child) => {
+        if (
+          !(child instanceof Phaser.GameObjects.Triangle) ||
+          !child.visible ||
+          !child.name.startsWith('quest-direction-arrow:')
+        ) {
+          return [];
+        }
+        return [
+          {
+            questId: child.name.slice('quest-direction-arrow:'.length),
+            x: child.x,
+            y: child.y,
+            rotation: child.rotation,
+          },
+        ];
+      });
     },
 
     requestAchievementsToggle: () => {
@@ -1497,6 +1659,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    unlockAchievement: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      unlockAchievement(world, achievementId);
+      scene?.achievementsUI?.refresh(world);
+    },
+
     claimAchievementReward: (achievementId: string) => {
       const scene = getScene();
       const world = scene?.world;
@@ -1593,7 +1763,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const ui = getScene()?.rewardOpeningUI;
       const open = ui?.isOpen() ?? false;
       if (!ui || !open) {
-        return { open: false, phase: null, bucket: null, revealed: 0, total: 0 };
+        return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
       }
       const progress = ui.getRevealProgress();
       return {
@@ -1602,6 +1772,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bucket: ui.getBucket(),
         revealed: progress?.revealed ?? 0,
         total: progress?.total ?? 0,
+        nextLabel: ui.getNextRewardLabel?.() ?? null,
       };
     },
 

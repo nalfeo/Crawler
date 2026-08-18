@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "enemy",
   "contentHash": "e92f8e50db15bf3d7ed923b38f26a2abfeb10792facc03641ba499c7a80e4923",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

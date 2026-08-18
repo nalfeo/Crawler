@@ -81,7 +81,7 @@
     }
   },
   "type": "icon",
-  "contentHash": "00f3bf71e48f4a98a00dc086891fa043dfb48564828a4532c10b39631a1430b1",
+  "contentHash": "e9d360df80de0f73a28d18ec752e421f5d8005c8ddfc8ccd3873b27a566751c3",
   "opaqueBounds": {
     "x": 7,
     "y": 7,
@@ -90,8 +90,5 @@
     "canvasWidth": 128,
     "canvasHeight": 131
   },
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": null
 }

@@ -388,6 +388,28 @@ export const NAVIGATION_ANGLE_OFFSETS = [
 // and its progression behavior every frame (observed: ~90k flips/run).
 export const RETREAT_HYSTERESIS_MULT = 1.5;
 
+// Contact-retreat futility guard. Retreat keeps running against a long-
+// `attackRange` threat that has closed to CONTACT_SAFE_ORBIT_FT (see
+// buildRetreatBehavior) instead of deferring to Engage's kite. That is only the
+// better answer while the retreat can actually create separation: in a corner
+// where pickRetreatTarget finds no reachable escape tile it falls back to a raw
+// away-vector that points into geometry, navigation resolves no path, and the
+// AI stands still bleeding contact damage (the release seed-33 pistol death:
+// ~250 frames frozen on one tile, 110 HP -> 12 HP). So the contact carve-out is
+// released once it has provably failed to move the player.
+// Window (frames) the contact carve-out gets to produce displacement before it
+// is judged futile. One second at 60 fps — long enough for the kite to clear a
+// doorway, short enough to bound the damage taken while pinned.
+export const CONTACT_RETREAT_PROGRESS_FRAMES = 60;
+// Displacement (ft) that counts as "the retreat is working" inside that window.
+// Anchored to the contact-safe orbit: moving at least one contact radius is the
+// smallest move that meaningfully breaks body contact.
+export const CONTACT_RETREAT_PROGRESS_FT = CONTACT_SAFE_ORBIT_FT;
+// Polls further apart than this (frames) start a fresh futility window rather
+// than extending the previous one, so the latch releases naturally once Engage
+// has kited back out of contact instead of persisting for the whole floor.
+export const CONTACT_RETREAT_EPISODE_GAP_FRAMES = 120;
+
 // Retreat kiting: when fleeing, the AI samples an arc of candidate flee
 // directions around the "away from the swarm centroid" base angle, at two
 // distances, and picks the most open tile it can actually A*-reach. This
@@ -407,6 +429,24 @@ export const RETREAT_ARC_OFFSETS_RAD = [
   (2 * Math.PI) / 3,
   -(2 * Math.PI) / 3,
 ] as const;
+// Cornered breakout arc: the remaining rearward directions (±150° and 180°),
+// scanned ONLY when every candidate in the primary ±120° arc is wall or
+// unreachable. That happens when the player is wedged into a room corner with
+// the pack occupying the only open quadrant; without these directions Retreat
+// falls back to the naive away-vector, which points into the corner the player
+// is already pressed against, so collision zeroes its movement and it dies
+// standing still (release-sweep seed 25, #2993). Running past the pack is worse
+// spacing but strictly better than no movement at all.
+// A retreat that covers less than this many feet across a whole re-pick
+// interval is not kiting — it is pressed into geometry with its movement
+// cancelled by collision (normal travel covers roughly 6-7 ft in that window).
+// Only such a wedged retreat widens its escape scan to the breakout arc.
+export const RETREAT_WEDGE_PROGRESS_FT = 1;
+export const RETREAT_BREAKOUT_ARC_OFFSETS_RAD = [
+  (5 * Math.PI) / 6,
+  -(5 * Math.PI) / 6,
+  Math.PI,
+] as const;
 // Sample each arc direction at full and half scan radius so a reachable target
 // exists even in tight rooms where the far ring is all walls.
 export const RETREAT_DISTANCE_MULTS = [1, 0.5] as const;
@@ -421,6 +461,50 @@ export const RETREAT_MAX_PATH_VERIFICATIONS = 6;
 // calls to roughly three re-picks per second instead of one per frame.
 export const RETREAT_REPICK_INTERVAL_FRAMES = 18;
 export const RETREAT_REPICK_ARRIVE_FT = 10;
+// Objective bias for the kite destination. Retreat scores candidates purely on
+// open space, so a wounded runner kites BACKWARD off its route; the very next
+// poll progression walks the same ground forward into the same pursuers, and the
+// pair nets ~zero displacement while contact damage keeps landing (measured on
+// the release Floor-1 losses: 684 ft travelled for 133 ft of net movement while
+// bleeding 120 HP). Adding a subordinate progress term makes the kite run
+// ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
+// objective both breaks contact and banks progress instead of undoing it.
+// The provider normalizes objective progress to directional alignment and caps
+// each signed candidate contribution to this fraction of the retreat hysteresis
+// band, so two opposing candidates can differ by at most one band.
+export const RETREAT_OBJECTIVE_BIAS_BAND_FRACTION = 0.5;
+// Weight applied to that capped objective bias band. Keep this at 1 unless a
+// sweep shows route-aware retreat should use less than the available safety
+// band; the effective per-candidate cap is retreatDangerRadius *
+// (RETREAT_HYSTERESIS_MULT - 1) * RETREAT_OBJECTIVE_BIAS_BAND_FRACTION *
+// RETREAT_OBJECTIVE_BIAS_WEIGHT.
+export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
+// The remembered progression objective is only used while it is this fresh
+// (frames). Retreat and progression interleave within ~1 s, so a short memory is
+// always populated during the oscillation this fixes, and a stale objective from
+// a previous route never steers a later escape.
+export const RETREAT_OBJECTIVE_MEMORY_FRAMES = 180;
+// --- Sustained-damage (time-to-death) retreat trigger -----------------------
+// `retreatThreshold` is a fixed fraction of max HP, so it only reacts to how
+// much health is LEFT, never to how fast it is leaving. A melee runner pinned in
+// contact with a pack drains ~19 HP/s: it burns from full to the 10 % floor in
+// about five seconds and only then starts kiting, by which point the run is
+// unrecoverable with no healing on Floor 1 (measured on the release Floor-1
+// baseball-bat loss: 121 → 21 HP in 5.3 s, all of it above the threshold).
+// Sampling the recent health slope lets the AI disengage while the damage is
+// still survivable: it retreats when sustained incoming damage would kill it
+// inside {@link RETREAT_TIME_TO_DEATH_FRAMES}.
+// Window over which the incoming-damage slope is measured (frames). Long enough
+// that a single hit does not read as a fatal rate, short enough to react inside
+// one contact exchange.
+export const RETREAT_DAMAGE_WINDOW_FRAMES = 90;
+// Predicted survival horizon (frames). Breaking contact takes about a second of
+// kiting (danger radius 20 ft at ~22.5 ft/s), so the horizon must be a small
+// multiple of that or the retreat starts too late to matter.
+export const RETREAT_TIME_TO_DEATH_FRAMES = 180;
+// Ignore the slope until this much damage has landed inside the window, so
+// isolated chip hits on a nearly-dead runner cannot masquerade as a burst.
+export const RETREAT_DAMAGE_WINDOW_MIN_DAMAGE = 10;
 
 // When the player still owes gold for the merchant charm, the AI actively farms
 // the ambient swarm instead of wandering. These scan radii are deliberately
@@ -550,7 +634,20 @@ export const RUN_PLANNER_URGENCY_SLACK_WINDOW_MS = 120_000;
 export const RUN_PLANNER_INTERACTION_MS = 1_500;
 export const RUN_PLANNER_LEVEL_2_GRIND_MS = 35_000;
 export const RUN_PLANNER_QUEST_KILL_MS = 4_500;
-export const RUN_PLANNER_GOLD_FARM_MS = 3_000;
+/**
+ * Planner estimate of the game time needed to earn one gold, used to decide
+ * whether an optional purchase's remaining deficit can be farmed inside the
+ * run's slack.
+ *
+ * Calibrated against measured Floor 1 runs (headless, seeds 1/2/7/42/99/777/
+ * 2024/12345): a completed run earns 709-1121 gold in ~245s of game time, i.e.
+ * ~300-350 ms per gold including both drops and achievement loot boxes. The
+ * previous 3_000 value was ~9x pessimistic, which was invisible while Floor 1
+ * prices were 15-35 gold but abandoned every optional purchase once prices
+ * were tuned to real income. 500 keeps a deliberate ~1.5x safety margin over
+ * the measured rate so the planner still under-promises.
+ */
+export const RUN_PLANNER_GOLD_FARM_MS = 500;
 export const RUN_PLANNER_FETCH_PICKUP_MS = 1_000;
 export const RUN_PLANNER_MINOR_BOSS_KILL_MS = 25_000;
 export const RUN_PLANNER_FINAL_BOSS_KILL_MS = 45_000;
