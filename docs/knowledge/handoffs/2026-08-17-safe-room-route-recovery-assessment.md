@@ -41,13 +41,27 @@ not an authorized rewrite target.
 
 ## Current-main evidence
 
-A current-main local panel found no reproduction of the historical doorway
-timeout signature:
+Evidence is pinned to main SHA
+`a6e32b6f35f4d72c538e8176654138c0be7225d9` (branch HEAD before this
+handoff commit). The local panel used the real headless runner with the
+historical 300-second cap and weapon personas enabled:
+
+```bash
+npx tsx src/game/ai/headless-runner-cli.ts --seed 14 --weapon sword --max-frames 19800 --weapon-personas
+npx tsx src/game/ai/headless-runner-cli.ts --seed 91 --weapon bow --max-frames 19800 --weapon-personas
+npx tsx src/game/ai/headless-runner-cli.ts --seed 35 --weapon baseball-bat --max-frames 19800 --weapon-personas
+npx tsx src/game/ai/headless-runner-cli.ts --seed 2 --weapon bow --max-frames 19800 --weapon-personas
+```
+
+The runner reported `Persona: experienced_player` and
+`Settlement return routing: disabled` for these probes. This panel found no
+reproduction of the historical doorway timeout signature:
 
 - `sword@14`, `bow@91`, `baseball-bat@35`, and `bow@2` each completed as
   `VICTORY` rather than reaching the 300-second timeout cap.
 - `tests/headless/floor1-safe-room-egress-seed2-bow.test.ts` passed all 3
-  focused assertions.
+  focused assertions under
+  `npm run test:headless -- tests/headless/floor1-safe-room-egress-seed2-bow.test.ts`.
 
 This is deliberately **not currently reproducible**, not proven gone. The
 current runs do not expose the old branch's route-lifecycle telemetry, and the
