@@ -34,10 +34,10 @@ cancelled dependency.
 - Confirmed its replacement CI run `32094512050` completed the formerly
   cancelled Game/UI E2E job successfully; no workflow or application change was
   warranted at the time of initial inspection.
-- Added a ten-minute command-level bound to Playwright system-dependency
-  installation and a 20-minute job-level bound to each Playwright E2E job, so
-  unavailable package mirrors fail promptly instead of consuming GitHub's
-  six-hour default timeout.
+- Added a ten-minute command-level bound (with SIGKILL escalation) to Playwright
+  system-dependency installation and a 20-minute job-level bound to each
+  Playwright-consuming job, so unavailable package mirrors fail promptly instead
+  of consuming GitHub's six-hour default timeout.
 
 ## Files touched
 
@@ -53,7 +53,7 @@ cancelled dependency.
   cancellation only.
 - Replacement CI run `32094512050`: Game/UI E2E, unit, integration, headless,
   and security checks completed successfully before this handoff was written.
-- Deterministic workflow test covers all three E2E job timeouts and the bounded
+- Deterministic workflow test covers every Playwright job timeout and the bounded
   Playwright dependency-install command.
 
 ## Unresolved issues

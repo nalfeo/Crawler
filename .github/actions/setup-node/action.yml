@@ -46,7 +46,7 @@ runs:
       if: ${{ inputs.install-playwright == 'true' }}
       run: |
         set +e
-        timeout --foreground 10m npx playwright install-deps chromium
+        timeout --kill-after=30s 10m npx playwright install-deps chromium
         status=$?
         set -e
         if [ "$status" -eq 124 ]; then

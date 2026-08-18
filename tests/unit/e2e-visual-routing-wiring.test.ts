@@ -26,6 +26,7 @@ const SETUP_NODE_ACTION_YML = path.join(REPO_ROOT, '.github/actions/setup-node/a
 
 interface WorkflowStep {
   name?: string;
+  if?: string | boolean;
   run?: string;
   uses?: string;
   with?: Record<string, unknown>;
@@ -82,6 +83,8 @@ const E2E_JOBS = [
   },
 ] as const;
 
+const PLAYWRIGHT_JOBS = ['check-lightweight', ...E2E_JOBS.map(({ jobId }) => jobId)] as const;
+
 describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => {
   it('parses ci.yml and finds merge-gate and all three e2e jobs', () => {
     const { doc } = loadCi();
@@ -116,7 +119,7 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     );
   });
 
-  it.each(E2E_JOBS)('$jobId has a 20-minute job timeout', ({ jobId }) => {
+  it.each(PLAYWRIGHT_JOBS)('%s has a 20-minute job timeout', (jobId) => {
     const { doc } = loadCi();
     expect(getJob(doc, jobId)['timeout-minutes']).toBe(20);
   });
@@ -129,7 +132,7 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     const browserInstall = steps.find((step) => step.name === 'Install Playwright browser');
 
     expect(dependencyInstall?.run).toContain(
-      'timeout --foreground 10m npx playwright install-deps chromium',
+      'timeout --kill-after=30s 10m npx playwright install-deps chromium',
     );
     expect(browserInstall?.if).toContain("steps.pw-cache.outputs.cache-hit != 'true'");
     expect(browserInstall?.run).toBe('npx playwright install chromium');

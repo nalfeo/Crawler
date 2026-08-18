@@ -204,6 +204,7 @@ jobs:
   check-lightweight:
     name: Lightweight Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     # No docs_only skip here: the human-approval step must run unconditionally
     # so a docs-only PR that carries (or closes an issue with) the
