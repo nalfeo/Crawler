@@ -5,6 +5,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
+  previewSettlementMaintenanceOpportunity,
 } from '../../src/game/ai/settlement-maintenance-planner.js';
 import type { SettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-types.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
@@ -19,8 +20,11 @@ import {
   addGeneratedEquipmentReference,
   listGeneratedEquipmentReferences,
 } from '../../src/shared/inventory.js';
-import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
-import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+import { equip, equipFromBag, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import {
+  getEquipmentDefForStarterWeapon,
+  MERCHANTS_CHARM_DEF,
+} from '../../src/shared/equipmentDefs.js';
 import {
   grantAbilitySources,
   getOrCreateAbilityState,
@@ -35,12 +39,20 @@ import type {
   Floor2QuartermasterStockState,
   Floor2SettlementSnapshot,
 } from '../../src/shared/floor-types.js';
+import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
   updateSettlementReturnIntent,
 } from '../../src/game/ai/settlement-return-router.js';
 import { openBossChest } from '../../src/core/systems/bossChestRewards.js';
+import {
+  equipPurchasedGear,
+  initializeFloor1Scenario,
+  purchaseShopkeeperEquipment,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from '../../src/game/floorScenario.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 
 // Mock ONLY `purchaseQuartermasterOffer`; every other export (including
 // `getQuartermasterOfferViews`, which the planner also calls) stays real, so
@@ -148,7 +160,7 @@ function addBagEquipment(
   playerEid: number,
   baseId: string,
   rarity: 'common' | 'uncommon' = 'common',
-): string {
+): GeneratedEquipmentInstanceKey {
   const instance = generateEquipmentInstance(world, {
     baseId,
     itemLevel: world.playerLevel.level,
@@ -231,6 +243,68 @@ describe('runSettlementMaintenancePlanner', () => {
       updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
     ).toBe('arrived');
     expect(getSettlementReturnIntent(world).status).toBe('arrived');
+  });
+
+  it('defers generated Floor 1 equipment until the shopkeeper charm quest is complete', () => {
+    const world = createTestWorld({ seed: 5, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    world.playerInSafeRoom = true;
+    world.playerLevel.level = 1;
+    const instanceId = addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(
+      equipFromBag(world, playerEid, { kind: 'generated-instance', instanceKey: instanceId }).ok,
+    ).toBe(false);
+
+    const result = runSettlementMaintenancePlanner(world);
+
+    expect(result.terminationReason).toBe('exhausted');
+    expect(listGeneratedEquipmentReferences(world.inventories.get(playerEid)!)).toEqual([
+      { kind: 'generated-instance', instanceKey: instanceId },
+    ]);
+    expect(world.goalFlags.get('floor1-shop-quest-complete')).not.toBe(true);
+  });
+
+  it('latches equipment unlock after same-visit charm buy+equip so generated equips can proceed', () => {
+    const world = createTestWorld({ seed: 7, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.playerInSafeRoom = true;
+    world.playerGold = SHOPKEEPER_EQUIPMENT_COST;
+    world.playerLevel.level = 1;
+    world.goalFlags.set('floor1-shop-prize-returned', true);
+
+    expect(purchaseShopkeeperEquipment(world, playerEid)).toBe(true);
+    expect(equipPurchasedGear(world, playerEid)).toBe(true);
+    // Neither helper runs questSystem/latchFeatureUnlocks; unlock is expected
+    // to stay false until the next deterministic quest-system tick.
+    expect(world.featureUnlocks.equipment).toBe(false);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(true);
+
+    const instanceId = addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(
+      equipFromBag(world, playerEid, { kind: 'generated-instance', instanceKey: instanceId }).ok,
+    ).toBe(true);
+  });
+
+  it('hides boss-chest and equipment preview opportunities before Floor 1 unlock', () => {
+    const world = createTestWorld({ seed: 5, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    world.playerInSafeRoom = true;
+    world.playerLevel.level = 1;
+    addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(spawnBossChestForDefeatedBoss(world, 'floor1-preview-gate').created).toBe(true);
+
+    const preview = previewSettlementMaintenanceOpportunity(world, playerEid);
+
+    expect(preview.openBossChests).toBe(0);
+    expect(preview.topEquipmentSwapScore).toBe(0);
+    expect(preview.opportunityFingerprint).toBe('');
   });
 
   it('no-ops when the player is outside the settlement room', () => {
@@ -636,6 +710,23 @@ describe('runSettlementMaintenancePlanner', () => {
 
     const equipped = getEquipmentState(world, playerEid)?.equipped;
     expect(equipped?.neck).toBe(staticInstanceId);
+  });
+
+  it('retains the starter weapon class after replacing its static occupant', () => {
+    const { world, playerEid } = createSettlementWorld();
+    const pistolStarter = getEquipmentDefForStarterWeapon('pistol');
+    if (!pistolStarter) throw new Error('Expected a pistol starter equipment definition');
+    expect(equip(world, playerEid, pistolStarter, { force: true }).ok).toBe(true);
+
+    const sameClassId = addBagEquipment(world, playerEid, 'plasma-pistol', 'uncommon');
+    runEagerMaintenanceTick(world, playerEid);
+    expect(getEquipmentState(world, playerEid)?.equipped.mainHand).toBe(sameClassId);
+
+    const differentClassId = addBagEquipment(world, playerEid, 'fireball', 'uncommon');
+    runEagerMaintenanceTick(world, playerEid);
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    expect(equipped?.mainHand).toBe(sameClassId);
+    expect(Object.values(equipped ?? {})).not.toContain(differentClassId);
   });
 
   it('logs a Quartermaster offer skip decision for an unaffordable offer exactly once, even across multiple equipment-loop iterations', () => {
