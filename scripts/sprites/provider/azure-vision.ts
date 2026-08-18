@@ -193,7 +193,8 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
 }
 
 function buildImagePart(image: VisionImageInput): unknown {
-  const dataUrl = `data:image/png;base64,${image.png.toString('base64')}`;
+  const mediaType = image.mediaType ?? 'image/png';
+  const dataUrl = `data:${mediaType};base64,${image.png.toString('base64')}`;
   return {
     type: 'image_url',
     image_url: { url: dataUrl, detail: 'high' },

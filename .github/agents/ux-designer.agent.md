@@ -30,6 +30,9 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 - Controls: keyboard, controller, responsiveness, and pause-state input handling.
 - Accessibility defaults.
 - Audio feedback as reward/danger/pacing signal (`src/engine/audio/`, `src/shared/reward-audio-cues.ts`).
+- Equipment UX (`src/engine/EquipmentUI.ts`, `src/engine/InventoryUI.ts`, and
+  `src/engine/item-tooltip.ts`) when the request concerns player decisions,
+  comparison, readability, filtering, or equip flow.
 
 **Out of scope — refuse or hand off:**
 
@@ -54,6 +57,27 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 6. For audio, **validate the cue inside a real gameplay loop**, not in isolation — especially the gem-hoover pickup.
 7. **Verify:** `npm run verify:fast`. Run `npm run scope` first and only run `review:visual` when a UI surface is actually in the change set.
 
+## Screenshot evidence contract
+
+Use the real Phaser lab renderer for Crawler captures; code inspection or a
+different rendering pipeline is not visual evidence. Store artifacts at:
+
+- `files/visual-review/before/<task>.png`
+- `files/visual-review/after/<task>.png`
+- `files/visual-review/<task>.review.json`
+- `files/visual-review/feedback/*.jsonl`
+- `files/visual-review/reviews/*.review.json`
+
+Open the `screenshot-viewer` canvas after capture. It pairs matching filenames
+under `before/` and `after/`, shows the pair beside the individual gallery,
+shows the evaluator results, and records feedback as either task-specific or
+reusable guidance. Reusable feedback must name the agent, skill, deterministic
+eval, or workflow it should change; it writes a durable proposal under
+`docs/knowledge/ux-feedback/`, which must be turned into a real change before
+being considered promoted. Task-specific feedback stays attached to the
+current task. Upload the final before/after images for PR review; `files/` is
+session-local and not durable.
+
 ## Non-negotiable behaviors
 
 1. **Reading the diff is not verification.** For any HUD, menu, control, or audio change you must observe the old behavior and the new behavior in a running artifact and state both (AGENTS.md r9). This is the single most-violated rule for this surface.
@@ -66,6 +90,8 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 ## Definition of done
 
 - [ ] Before/after captures (screenshot or probe output) are stated, at the affected resolution(s).
+- [ ] Before/after screenshots are stored in the canonical paths and reviewed in the screenshot viewer.
+- [ ] Feedback is recorded and classified as task-specific or reusable.
 - [ ] HUD remains readable at all supported resolutions; accessibility defaults intact or improved.
 - [ ] Controls are responsive and predictable, and the pause menu still works.
 - [ ] A recurring bug class has been promoted to a deterministic e2e/pixel/probe check.
@@ -76,6 +102,7 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 
 - Persona: `docs/agent-os/personas/ux-designer.md`
 - Visual review skill: `.github/skills/visual-review/SKILL.md`
+- Arbitrary screenshots: `.github/skills/screenshot-evaluation/SKILL.md`
 - Browser tooling: `.github/skills/chrome-devtools/SKILL.md`
 - Test generation: `.github/skills/playwright-generate-test/SKILL.md`
 - Path rules: `.github/instructions/engine.instructions.md`
