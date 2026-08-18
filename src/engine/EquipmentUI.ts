@@ -417,7 +417,7 @@ export function createEquipmentUI(
     text.setOrigin(0, 0).setPosition(snap(rightX - text.width), snap(centerY - text.height / 2));
 
   const panelWidth = config.width ?? 1240;
-  const panelHeight = config.height ?? 680;
+  const panelHeight = config.height ?? 700;
 
   let uiScale = crispUiScale();
   textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
@@ -489,7 +489,7 @@ export function createEquipmentUI(
     {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
-      color: hex(COLORS.textSecondary),
+      color: hex(COLORS.accent),
       padding: { top: 3 },
     },
   );
@@ -1118,15 +1118,16 @@ export function createEquipmentUI(
     inspectorPlaceholder.setVisible(false);
     // Keep the optional fourth generated-equipment line inside the fixed strip
     // without asking it to overlap 12px glyph boxes.
-    const lineH = lines.length <= 3 ? 20 : 18;
-    const blockH = (lines.length - 1) * lineH + 13;
+    const lineH = lines.length <= 3 ? 28 : 22;
+    const textPaddingH = 15;
+    const blockH = (lines.length - 1) * lineH + textPaddingH;
     const yStart = inspectorY + Math.max(6, Math.round((INSPECTOR_H - blockH) / 2));
     lines.forEach((line, index) => {
       const text = crispText(inspectorX + 14, snap(yStart + index * lineH), line.text, {
         fontFamily: FONT_FAMILY,
         fontSize: `${line.size}px`,
         color: hex(line.color),
-        padding: { top: 2, bottom: 3 },
+        padding: { top: 7, bottom: 8 },
       });
       text.setOrigin(0, 0);
       container.add(text);
@@ -1487,7 +1488,11 @@ export function createEquipmentUI(
       const py = spreadNorm(fill(slot.uiPosition.y, minY, maxY), SLOT_SPREAD_Y);
       const cx = dollX + innerPadX + gridOffsetX + SLOT_W / 2 + px * usableW;
       const slotYOffset =
-        slot.id === 'gloves' || slot.id === 'legs' ? 10 : slot.id === 'feet' ? -10 : 0;
+        slot.id === 'gloves' || slot.id === 'legs'
+          ? 10
+          : slot.id === 'feet' || slot.id === 'ring1' || slot.id === 'ring2'
+            ? -10
+            : 0;
       const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH + slotYOffset;
 
       const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
@@ -1512,9 +1517,9 @@ export function createEquipmentUI(
       const baseFill = isSelected ? COLORS.slotSelected : filled ? COLORS.slotBg : COLORS.dollBg;
       const box = scene.add.rectangle(snap(cx), snap(cy), boxW, boxH, baseFill, 0.95);
       box.setStrokeStyle(
-        isSelected ? 3 : filled ? 2 : 1,
+        isSelected ? 3 : filled ? 2 : 2,
         isSelected ? COLORS.slotSelectedBorder : slotBorderColor,
-        isSelected || filled ? 1 : 0.6,
+        isSelected || filled ? 1 : 0.9,
       );
       box.setInteractive({ useHandCursor: true });
       const b = box.getBounds();
