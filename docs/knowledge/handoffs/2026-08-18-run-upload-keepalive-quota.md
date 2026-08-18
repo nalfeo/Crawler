@@ -32,7 +32,8 @@ Fix:
 - Skip `sendBeacon` for oversized quit bundles, since it shares the same quota
   and would silently drop the upload.
 - Treat a `sendBeacon` returning `false` as _not sent_ and fall back to `fetch`,
-  instead of reporting `ok: true` for an upload the browser refused.
+  with `keepalive: false`, instead of retrying the shared quota or reporting
+  `ok: true` for an upload the browser refused.
 
 ## Observation (before/after, real browser + live endpoint)
 

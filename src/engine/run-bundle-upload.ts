@@ -107,7 +107,7 @@ export function resolveRunBundleUploadConfig(): RunBundleUploadConfig {
  * Real dev-build run bundles run ~67 KB, so they tripped this every time while
  * the same payload replayed fine outside the browser.
  */
-export const KEEPALIVE_BODY_LIMIT_BYTES = 64 * 1024;
+const KEEPALIVE_BODY_LIMIT_BYTES = 64 * 1024;
 
 function bodyByteLength(body: string): number {
   if (typeof TextEncoder !== 'undefined') {
@@ -119,7 +119,7 @@ function bodyByteLength(body: string): number {
   return body.length * 3;
 }
 
-export function canUseKeepalive(body: string): boolean {
+function canUseKeepalive(body: string): boolean {
   return bodyByteLength(body) <= KEEPALIVE_BODY_LIMIT_BYTES;
 }
 
@@ -145,6 +145,7 @@ export async function submitRunBundleUpload(
   const payload = buildRunBundleUploadRequest(bundle);
   const body = JSON.stringify(payload);
   const withinKeepaliveQuota = canUseKeepalive(body);
+  let beaconRefused = false;
   const useBeacon =
     ((options.endReason ?? bundle.meta.endReason) === 'quit' ||
       (typeof document !== 'undefined' && document.visibilityState === 'hidden')) &&
@@ -157,6 +158,7 @@ export async function submitRunBundleUpload(
     if (sent) {
       return { ok: true, used: 'sendBeacon' };
     }
+    beaconRefused = true;
   }
   if (typeof fetch === 'undefined' && !options.fetchImpl) {
     return { ok: false, used: 'disabled', reason: 'fetch is not available in this runtime.' };
@@ -167,7 +169,7 @@ export async function submitRunBundleUpload(
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Run-Upload-Mode': 'silent' },
       body,
-      keepalive: withinKeepaliveQuota,
+      keepalive: withinKeepaliveQuota && !beaconRefused,
     });
     return { ok: response.ok, used: 'fetch', status: response.status };
   } catch (error) {

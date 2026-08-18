@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRunBundle } from '../../src/shared/run-bundle.js';
 import {
-  canUseKeepalive,
-  KEEPALIVE_BODY_LIMIT_BYTES,
   resolveRunBundleUploadConfig,
   submitRunBundleUpload,
   submitRunSurvey,
 } from '../../src/engine/run-bundle-upload.js';
+
+const KEEPALIVE_BODY_LIMIT_BYTES = 64 * 1024;
 
 const makeBundle = () =>
   createRunBundle({
@@ -186,11 +186,6 @@ describe('run bundle upload delivery', () => {
     expect(body.survey).toEqual({ ...payload, comment: payload.comment.trim() });
   });
 
-  it('treats bodies at or under the 64 KiB quota as keepalive-eligible', () => {
-    expect(canUseKeepalive('x'.repeat(KEEPALIVE_BODY_LIMIT_BYTES))).toBe(true);
-    expect(canUseKeepalive('x'.repeat(KEEPALIVE_BODY_LIMIT_BYTES + 1))).toBe(false);
-  });
-
   it('drops keepalive for oversized silent uploads so the browser does not reject them', async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
     Object.defineProperty(globalThis, 'window', {
@@ -269,6 +264,9 @@ describe('run bundle upload delivery', () => {
 
     expect(beacon).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const calls = (fetchSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = (calls[0] ?? []) as [unknown, { keepalive?: boolean }];
+    expect(init?.keepalive).toBe(false);
     expect(result.used).toBe('fetch');
     expect(result.ok).toBe(true);
   });
