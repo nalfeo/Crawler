@@ -23,7 +23,7 @@
  * authored font size through the live canvas rect.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { Page } from 'playwright';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
 import { getCanvasRect, type CanvasRect } from './ui-probe.js';
@@ -80,7 +80,9 @@ export function capturePhase(): CapturePhase {
 
 /** Canonical visual-review artifact path for the current phase. */
 export function captureArtifactPath(name: string, phase: CapturePhase = capturePhase()): string {
-  return resolve(process.cwd(), 'files', 'visual-review', phase, `${name}.png`);
+  const version = process.env.EQUIPMENT_CAPTURE_VERSION?.trim();
+  const statePath = version ? join(phase, version) : phase;
+  return resolve(process.cwd(), 'files', 'visual-review', statePath, `${name}.png`);
 }
 
 export function writeArtifact(buffer: Buffer, absolutePath: string): void {
@@ -119,6 +121,11 @@ export async function seedEquipmentDecisionState(page: Page): Promise<void> {
     if (previewId) probe.previewEquipmentBagItem(previewId);
   });
   await page.waitForTimeout(250);
+  await page.waitForFunction(
+    () => window.__uiProbe?.getEquipmentTextRasterMetadata()?.fontLoadState === 'loaded',
+    undefined,
+    { timeout: 10_000 },
+  );
 }
 
 /**

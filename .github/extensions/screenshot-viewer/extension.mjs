@@ -45,7 +45,7 @@ const FEEDBACK_TARGETS = new Set([
 ]);
 
 /** Maximum depth when scanning a directory (1 = immediate children only). */
-const SCAN_MAX_DEPTH = 3;
+const SCAN_MAX_DEPTH = 5;
 
 /** Maximum size of a request body (16 KiB). */
 const MAX_BODY_BYTES = 16_384;
@@ -155,22 +155,57 @@ function pairs(reviews = reviewResults()) {
   const byKey = new Map();
   for (const screenshot of sortedScreenshots()) {
     const normalized = screenshot.path.replaceAll('\\', '/');
-    const match = normalized.match(/\/(before|after)\/([^/]+)$/i);
+    if (/(^|\/)archive(\/|$)/i.test(normalized)) continue;
+    const match = normalized.match(
+      /\/(before|after)\/(?:(main|iteration-[^/]+|[^/]+)\/)?([^/]+)$/i,
+    );
     if (!match) continue;
-    const key = match[2].replace(/\.[^.]+$/, '');
     const side = match[1].toLowerCase();
+    const state = match[2] ?? (side === 'before' ? 'main' : 'current');
+    const key = match[3].replace(/\.[^.]+$/, '');
+    const group = byKey.get(key) ?? { before: new Map(), after: new Map() };
     const review = reviews.get(normalize(resolve(screenshot.path))) ?? null;
-    const item = byKey.get(key) ?? {
-      key,
-      before: null,
-      after: null,
-      reviews: { before: null, after: null },
-    };
-    item[side] = screenshot;
-    item.reviews[side] = review;
-    byKey.set(key, item);
+    group[side].set(state.toLowerCase(), { screenshot, review, state });
+    byKey.set(key, group);
   }
-  return [...byKey.values()].filter((pair) => pair.before || pair.after);
+
+  const result = [];
+  for (const [key, group] of byKey) {
+    const afterStates = [...group.after.keys()].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    );
+    const beforeOnlyStates = [...group.before.keys()].filter(
+      (state) => !group.after.has(state) && !(state === 'main' && afterStates.length > 0),
+    );
+    for (const [index, state] of afterStates.entries()) {
+      const before =
+        index > 0
+          ? (group.after.get(afterStates[index - 1]) ?? null)
+          : (group.before.get(state) ?? group.before.get('main') ?? null);
+      const after = group.after.get(state) ?? null;
+      result.push({
+        key: `${key} (${state})`,
+        before: before?.screenshot ?? null,
+        after: after?.screenshot ?? null,
+        states: { before: before?.state ?? null, after: after?.state ?? null },
+        reviews: {
+          before: before?.review ?? null,
+          after: after?.review ?? null,
+        },
+      });
+    }
+    for (const state of beforeOnlyStates) {
+      const before = group.before.get(state) ?? null;
+      result.push({
+        key: `${key} (${state})`,
+        before: before?.screenshot ?? null,
+        after: null,
+        states: { before: before?.state ?? null, after: null },
+        reviews: { before: before?.review ?? null, after: null },
+      });
+    }
+  }
+  return result;
 }
 
 // ── live tool-use tracking ─────────────────────────────────────────────────

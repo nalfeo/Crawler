@@ -112,8 +112,17 @@ test('keeps feedback controls outside gallery render ownership', () => {
   const html = renderHtml(OPTS);
   const galleryIndex = html.indexOf('<div id="gallery">');
   const feedbackIndex = html.indexOf('<section class="feedback-panel"');
-  assert.ok(galleryIndex >= 0 && feedbackIndex > galleryIndex);
-  assert.ok(html.slice(galleryIndex, feedbackIndex).includes('</div>'));
+  assert.ok(galleryIndex >= 0 && feedbackIndex < galleryIndex);
+  assert.ok(html.slice(feedbackIndex, galleryIndex).includes('</section>'));
+});
+
+test('places review feedback directly under the Before / After pane', () => {
+  const html = renderHtml(OPTS);
+  const pairsIndex = html.indexOf('<div id="pairs">');
+  const feedbackIndex = html.indexOf('<section class="feedback-panel"');
+  const galleryIndex = html.indexOf('<div id="gallery">');
+  assert.ok(pairsIndex >= 0 && feedbackIndex > pairsIndex);
+  assert.ok(galleryIndex > feedbackIndex);
 });
 
 test('gallery cards expose button semantics for keyboard and assistive tech', () => {
@@ -122,9 +131,39 @@ test('gallery cards expose button semantics for keyboard and assistive tech', ()
   assert.match(html, /aria-label="Open screenshot:/);
 });
 
-test('image error handling cannot corrupt the thumbnail markup', () => {
+test('before and after pair images expose click-to-zoom semantics', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /class="pair-image" tabindex="0" role="button"/);
+  assert.match(html, /aria-label="Zoom ' \+ side \+ ' screenshot/);
+  assert.match(html, /pairsEl\.addEventListener\('click'/);
+  assert.match(html, /pairsEl\.addEventListener\('keydown'/);
+  assert.match(html, /click to zoom/);
+});
+
+test('stacks lineage comparisons and labels each concrete variant', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /grid-template-columns: 1fr/);
+  assert.match(html, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(html, /pair-image-label/);
+  assert.match(html, /Main/);
+  assert.match(html, /taskLabel/);
+});
+
+test('uses delegated image error handling instead of inline fallback markup', () => {
   const html = renderHtml(OPTS);
   assert.doesNotMatch(html, /onerror=/);
-  assert.match(html, /addEventListener\('error', handleThumbError\)/);
-  assert.match(html, /function handleThumbError/);
+  assert.match(html, /document\.addEventListener\('error'/);
+  assert.match(html, /Unable to load image/);
+  assert.match(html, /image\?\.closest\('\.thumb-img-wrap'\)/);
+  assert.match(html, /image\?\.classList\.contains\('pair-image'\)/);
+});
+
+test('keeps incomplete comparisons out of the Before / After pane', () => {
+  const html = renderHtml(OPTS);
+  assert.match(
+    html,
+    /const comparablePairs = pairs\.filter\(\(pair\) => pair\.before && pair\.after\)/,
+  );
+  assert.match(html, /comparablePairs\.map/);
+  assert.doesNotMatch(html, /empty-state">missing/);
 });

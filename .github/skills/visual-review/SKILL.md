@@ -188,6 +188,53 @@ should be promoted into a deterministic check in
 `scripts/agent/set-piece/composition-score.ts` rather than relying on model
 consistency.
 
+## What the screenshot judge penalizes
+
+The arbitrary-screenshot evaluator applies deterministic score caps when it
+reports a matching finding, so these are the failure classes worth designing
+against before capture:
+
+| Finding                                                                   | Capped axis                       | Cap     |
+| ------------------------------------------------------------------------- | --------------------------------- | ------- |
+| Text clipped, overflowing, or crossing the viewport edge                  | `text_safety` (and overall score) | 10 / 45 |
+| Wasted space in the header, focal/paper-doll area, or footer              | `workspace_use`                   | 40      |
+| An empty band along a frame edge spanning ~10%+ of width or height        | `workspace_use`                   | 40      |
+| Equipment/paper-doll slots with no text label or slot caption             | `task_readiness`                  | 55      |
+| Small body text, long all-caps runs, or wide unconnected label→value gaps | `legibility`                      | 55      |
+
+The judge is instructed to inspect the header, the focal/paper-doll region, and
+the footer **separately**, and to inspect the outer frame for dead bands, so a
+layout cannot score well merely because each individual panel is internally
+tidy. Slot regions are additionally judged on body anchoring (silhouette,
+left/right pairing, grouping caption) and on whether a filled slot is visually
+distinguishable from an empty one.
+
+These caps are advisory review evidence, never a CI gate.
+
+## Text-raster legibility evidence
+
+For the equipment surface, treat visual fuzziness as a rendering defect, not a
+model preference. The legacy equipment capture exports a deterministic
+`text_raster` report alongside the Azure review. Every visible declared text run
+must prove all of the following:
+
+- the intended face was loaded before capture;
+- final raster position, scale, and resolution are integer-aligned;
+- its own PNG crop meets the calibrated sharp-edge baseline.
+
+The crop evaluator intentionally examines text regions only; do not substitute a
+whole-image blur score, which is polluted by sprites, shadows, and panel art.
+When `text_raster.passed` is true, the visual-review runner removes Azure-only
+claims that text is fuzzy, blurry, soft, or needs a sharper font. The model can
+still report spacing, hierarchy, contrast, clipping, and other visible issues.
+When the report fails, fix the named deterministic failure before treating
+Azure typography feedback as actionable.
+
+Run `node --test scripts/agent/review/text-raster-lib.test.mjs` when changing
+the evaluator, then the focused equipment e2e suite. The real Phaser artifact
+is the authority; an Azure still-image observation never proves raster blur on
+its own.
+
 ## Artifacts
 
 Written under:
@@ -196,14 +243,23 @@ Written under:
 - `files/visual-review/*.review.json`
 - `files/visual-review/before/<task>.png`
 - `files/visual-review/after/<task>.png`
+- `files/visual-review/before/main/<task>.png`
+- `files/visual-review/after/v1/<task>.png`
+- `files/visual-review/after/v2/<task>.png`
 - `files/visual-review/feedback/*.jsonl`
 - `files/visual-review/reviews/*.review.json`
 
 ## Before/After review loop
 
 For a UX change, save the baseline and revised screenshots with the same task
-name under `before/` and `after/`. Then open the `screenshot-viewer` canvas.
-It renders paired comparisons, individual screenshots, and a feedback form.
+name under `before/` and `after/`. The flat form treats the baseline as `main`
+and the revision as `current`; for iterative work, put the state name in a
+subdirectory such as `before/main/`, `after/v1/`, and `after/v2/`. The viewer
+renders lineage pairs (`Main | V1`, then `V1 | V2`) rather than comparing every
+revision back to main, shows the state labels, and keeps review feedback
+directly beneath the Before/After pane. Re-score every captured state and
+attach its `.review.json` beside the image. Click either image to zoom it in
+the lightbox.
 Classify feedback as:
 
 - **This task only** — keep the note attached to the current implementation.

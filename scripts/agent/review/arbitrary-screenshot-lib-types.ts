@@ -30,4 +30,30 @@ declare module '*.mjs' {
     result: { score: number; coverage: number },
     thresholds: { minScore: number | null; minCoverage: number | null },
   ): void;
+  export function measureCropCrispness(input: {
+    pixels: Uint8Array;
+    width: number;
+    height: number;
+  }): { score: number; strongEdges: number; softEdges: number; sampledEdges: number };
+  export function evaluateTextRasterRuns(
+    runs: unknown[],
+    options?: { minimumCrispness?: number },
+  ): {
+    schemaVersion: number;
+    minimumCrispness: number;
+    passed: boolean;
+    entries: Array<{
+      id: string;
+      text: string;
+      fontFamily: string;
+      loaded: boolean;
+      aligned: boolean;
+      crispness: number | null;
+      sampledEdges: number;
+      failures: string[];
+      pass: boolean;
+    }>;
+    failures: string[];
+  };
+  export function suppressUnsupportedFuzziness(result: object, report: { passed: boolean }): number;
 }

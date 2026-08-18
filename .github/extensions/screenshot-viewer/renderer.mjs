@@ -165,20 +165,17 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         gap: 12px;
       }
 
-      .pair-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 16px;
-        margin-bottom: 20px;
-      }
+      .pair-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
       .pair-card, .feedback-panel {
         border: 1px solid var(--border-color-default, #30363d);
         border-radius: 8px;
         padding: 12px;
       }
-      .pair-images { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .pair-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .pair-images figure { margin: 0; }
-      .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
+      .pair-image-label { color: var(--text-color-default, #c9d1d9); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+      .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; cursor: zoom-in; }
+      .pair-images img:focus-visible { outline: 2px solid var(--color-focus-outline, #58a6ff); outline-offset: 2px; }
       figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
       .feedback-panel { margin: 16px 0; display: grid; gap: 8px; }
       textarea, select { width: 100%; font: inherit; padding: 8px; color: inherit; background: var(--background-color-default, #0d1117); border: 1px solid var(--border-color-default, #30363d); border-radius: 5px; }
@@ -333,12 +330,6 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       <div class="error-box" id="error-box" hidden></div>
 
       <div id="pairs"></div>
-      <div id="gallery">
-        <div class="empty-state">
-          <strong>No screenshots yet</strong>
-          Screenshots taken with the Playwright tool will appear here.
-        </div>
-      </div>
       <section class="feedback-panel" aria-labelledby="feedback-heading">
         <strong id="feedback-heading">Capture review feedback</strong>
         <select id="feedback-pair"><option value="">General screenshot feedback</option></select>
@@ -356,6 +347,12 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         <button type="button" id="feedback-submit">Save feedback</button>
         <div class="feedback-list" id="feedback-list"></div>
       </section>
+      <div id="gallery">
+        <div class="empty-state">
+          <strong>No screenshots yet</strong>
+          Screenshots taken with the Playwright tool will appear here.
+        </div>
+      </div>
     </main>
 
     <!-- Lightbox overlay -->
@@ -471,7 +468,6 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
                 src="\${escapeHtml(imgUrl)}"
                 alt="\${escapeHtml(screenshot.filename)}"
                 loading="lazy"
-                onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\"thumb-load-error\\">Unable to load image</div>'"
               />
             </div>
             <div class="thumb-meta">
@@ -513,18 +509,22 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           return;
         }
 
-        const pairHtml = pairs.map((pair) => {
+        const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
+        const pairHtml = comparablePairs.map((pair) => {
           const reviewMeta = (review) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/100</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
-          const image = (side) => pair[side]
-            ? '<figure><img src="' + buildImgUrl(pair[side].path) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '"><figcaption>' + side + '</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>'
-            : '<figure><div class="empty-state">missing</div><figcaption>' + side + '</figcaption></figure>';
-          return '<article class="pair-card"><strong>' + escapeHtml(pair.key) + '</strong><div class="pair-images">' + image('before') + image('after') + '</div></article>';
+          const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
+          const image = (side) =>
+            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
+          const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
+          const beforeState = stateLabel(pair.states?.before);
+          const afterState = stateLabel(pair.states?.after);
+          return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml(pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
         galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
-        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + pairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
+        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + comparablePairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
         feedbackList.innerHTML = (state.feedback ?? []).slice().reverse().map((item) => '<div class="feedback-item"><strong>' + escapeHtml(item.scope) + '</strong> · ' + escapeHtml(item.target || item.pairKey || 'general') + '<br>' + escapeHtml(item.comment) + '</div>').join('');
       }
 
@@ -568,6 +568,39 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         const caption = card.getAttribute('data-caption');
         if (imgUrl) openLightbox(imgUrl, caption || '');
       });
+
+      pairsEl.addEventListener('click', (e) => {
+        const image = e.target instanceof Element ? e.target.closest('.pair-image') : null;
+        if (!image) return;
+        const imgUrl = image.getAttribute('data-img-url');
+        const caption = image.getAttribute('data-caption');
+        if (imgUrl) openLightbox(imgUrl, caption || '');
+      });
+
+      pairsEl.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const image = e.target instanceof Element ? e.target.closest('.pair-image') : null;
+        if (!image) return;
+        e.preventDefault();
+        const imgUrl = image.getAttribute('data-img-url');
+        const caption = image.getAttribute('data-caption');
+        if (imgUrl) openLightbox(imgUrl, caption || '');
+      });
+
+      document.addEventListener('error', (e) => {
+        const image = e.target instanceof HTMLImageElement ? e.target : null;
+        const isGalleryThumbnail = image?.closest('.thumb-img-wrap');
+        const isPairImage = image?.classList.contains('pair-image');
+        if (!image || image.dataset.loadFailed === 'true' || (!isGalleryThumbnail && !isPairImage)) return;
+        image.dataset.loadFailed = 'true';
+        image.style.display = 'none';
+        const parent = image.parentElement;
+        if (!parent || parent.querySelector('.thumb-load-error')) return;
+        const fallback = document.createElement('div');
+        fallback.className = 'thumb-load-error';
+        fallback.textContent = 'Unable to load image';
+        parent.appendChild(fallback);
+      }, true);
 
       galleryEl.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;

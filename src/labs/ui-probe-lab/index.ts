@@ -36,7 +36,7 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
-import type { EquipmentTextRun } from '../../engine/EquipmentUI.js';
+import type { EquipmentTextRasterMetadata, EquipmentTextRun } from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -117,12 +117,16 @@ export interface UiProbeApi {
   useRealGeneratedSprites(): Promise<void>;
   isEquipmentOpen(): boolean;
   getEquipmentPanelBounds(): ScreenBounds;
+  getEquipmentHeaderBounds(): ScreenBounds | null;
+  getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
-  selectEquipmentSlot(slotId: EquipmentSlotId): boolean;
+  /** Render the same inspector content as hovering a paper-doll slot. */
+  previewEquipmentSlot(slotId: EquipmentSlotId): boolean;
+  selectEquipmentSlot(slotId: EquipmentSlotId | null): boolean;
   getEquipmentSlotFilter(): EquipmentSlotId | null;
   getInventorySlotFilter(): EquipmentSlotId | null;
   // Integrated equippable-bag column (inside the equipment panel) -----------
@@ -152,6 +156,8 @@ export interface UiProbeApi {
   getEquipmentInspectorBounds(): ScreenBounds | null;
   /** Every visible text run in the equipment panel, tagged by owning region. */
   getEquipmentTextRuns(): EquipmentTextRun[];
+  /** Resolved equipment-font and pixel-alignment state from the live Phaser UI. */
+  getEquipmentTextRasterMetadata(): EquipmentTextRasterMetadata | null;
   /** Paper-doll slots the active preview would fill (empty when no preview). */
   getEquipmentPreviewTargetSlots(): EquipmentSlotId[];
   /** Screen bounds of the preview target marker drawn over `slotId`. */
@@ -555,6 +561,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         isEquipmentOpen: () => this.equipmentUI?.isOpen() ?? false,
         getEquipmentPanelBounds: () =>
           this.equipmentUI?.getPanelScreenBounds() ?? { x: 0, y: 0, width: 0, height: 0 },
+        getEquipmentHeaderBounds: () => this.equipmentUI?.getHeaderScreenBounds() ?? null,
+        getEquipmentDollBounds: () => this.equipmentUI?.getDollScreenBounds() ?? null,
         getEquipmentSlotBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
         getEquipmentSlotIconBounds: (slotId: EquipmentSlotId) =>
@@ -562,7 +570,14 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
-        selectEquipmentSlot: (slotId: EquipmentSlotId) => {
+        previewEquipmentSlot: (slotId: EquipmentSlotId) => {
+          if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
+            return false;
+          }
+          this.equipmentUI.previewSlot(slotId);
+          return true;
+        },
+        selectEquipmentSlot: (slotId: EquipmentSlotId | null) => {
           if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
             return false;
           }
@@ -591,6 +606,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentStatsBounds: () => this.equipmentUI?.getStatsColumnScreenBounds() ?? null,
         getEquipmentInspectorBounds: () => this.equipmentUI?.getInspectorScreenBounds() ?? null,
         getEquipmentTextRuns: () => this.equipmentUI?.getTextRuns() ?? [],
+        getEquipmentTextRasterMetadata: () => this.equipmentUI?.getTextRasterMetadata() ?? null,
         getEquipmentPreviewTargetSlots: () => this.equipmentUI?.getPreviewTargetSlots() ?? [],
         getEquipmentTargetMarkerBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getPreviewTargetMarkerScreenBounds(slotId) ?? null,

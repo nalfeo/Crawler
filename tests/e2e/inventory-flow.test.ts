@@ -24,7 +24,9 @@ import { parsePng, regionContainsColor } from './helpers/pixels.js';
 import {
   captureArtifactPath,
   captureEquipmentPanel,
+  containsWithin,
   MIN_READABLE_GLYPH_PX,
+  overlapArea,
   physicalGlyphPx,
   seedEquipmentDecisionState,
 } from './helpers/equipment-capture.js';
@@ -766,40 +768,162 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
-  it('keeps rendered text inside its owning region and readable at the capture viewport', async () => {
-    const { context, page: decisionPage } = await openDecisionState({
-      width: 1280,
-      height: 800,
-    });
+  /**
+   * Every slot carries a visible identity label.
+   *
+   * SLOT_REGISTRY has always had a human `label` per slot, but the panel did not
+   * render it — so an empty slot was an anonymous grey square and the player had
+   * to hover each one to learn what it accepted. The screenshot judge reported
+   * this repeatedly as a task-readiness defect; per the repo rule that a
+   * recurring review finding should become a deterministic check rather than
+   * relying on future model consistency, it is gated here on real rendered text.
+   */
+  it('renders a visible identity label for every equipment slot', async () => {
+    const { context, page: labelPage } = await openDecisionState({ width: 1280, height: 800 });
     try {
-      const panel = await probe.getEquipmentPanelBounds(decisionPage);
-      const stats = await probe.getEquipmentStatsBounds(decisionPage);
-      const inspector = await probe.getEquipmentInspectorBounds(decisionPage);
-      const canvas = await getCanvasRect(decisionPage);
-      const runs = await probe.getEquipmentTextRuns(decisionPage);
-      expect(stats).not.toBeNull();
-      expect(inspector).not.toBeNull();
-      expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
-
-      for (const run of runs) {
-        const region =
-          run.region === 'stats' ? stats : run.region === 'inspector' ? inspector : panel;
-        expect(region, `${run.region} region should exist`).not.toBeNull();
-        if (!region) continue;
+      const runs = await probe.getEquipmentTextRuns(labelPage);
+      const dollText = runs.filter((run) => run.region === 'doll').map((run) => run.text);
+      for (const slot of SLOT_REGISTRY) {
         expect(
-          run.bounds.x >= region.x - 1 &&
-            run.bounds.y >= region.y - 1 &&
-            run.bounds.x + run.bounds.width <= region.x + region.width + 1 &&
-            run.bounds.y + run.bounds.height <= region.y + region.height + 1,
-          `${run.region} text "${run.text}" must remain inside its region`,
-        ).toBe(true);
-        expect(
-          physicalGlyphPx(run.renderedFontSize, canvas),
-          `${run.region} text "${run.text}" must remain readable`,
-        ).toBeGreaterThanOrEqual(MIN_READABLE_GLYPH_PX);
+          dollText,
+          `slot "${slot.id}" must render its "${slot.label}" identity label in the doll region`,
+        ).toContain(slot.label);
       }
     } finally {
       await closeQuietly(context);
+    }
+  });
+
+  /**
+   * Stat labels are not shouted.
+   *
+   * Long all-caps runs strip the word-shape cues readers scan by, and the
+   * screenshot judge scores them as legibility strain. Acronyms (HP, XP) are
+   * legitimately short, so only multi-character all-caps words are rejected.
+   */
+  it('avoids long all-capital label runs in the stats column', async () => {
+    const { context, page: capsPage } = await openDecisionState({ width: 1280, height: 800 });
+    try {
+      const runs = await probe.getEquipmentTextRuns(capsPage);
+      for (const run of runs.filter((entry) => entry.region === 'stats')) {
+        const shouted = run.text.match(/\b[A-Z]{4,}\b/g) ?? [];
+        expect(shouted, `stats text "${run.text}" should not use long all-caps runs`).toEqual([]);
+      }
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  /**
+   * Hover/tooltip captures.
+   *
+   * A still of the resting panel cannot show what hovering an equipped slot, an
+   * empty slot, or a bag item reveals, and the judge correctly lists interaction
+   * feedback under `notObservable`. Capturing the hovered states as their own
+   * artifacts is what makes those interaction models reviewable at all.
+   */
+  it('captures equipped, empty, and bag hover states for visual review', async () => {
+    const { context, page: hoverPage } = await openDecisionState({ width: 1280, height: 800 });
+    try {
+      const equippedSlot = 'head';
+      const emptySlot = 'feet';
+
+      expect(await probe.previewEquipmentSlot(hoverPage, equippedSlot)).toBe(true);
+      expect(await probe.isEquipmentTooltipVisible(hoverPage)).toBe(true);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-tooltip-equipped'));
+
+      expect(await probe.previewEquipmentSlot(hoverPage, emptySlot)).toBe(true);
+      expect(await probe.isEquipmentTooltipVisible(hoverPage)).toBe(true);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-tooltip-empty'));
+
+      // Slot filtering: selecting a slot narrows the bag to what fits it.
+      expect(await probe.selectEquipmentSlot(hoverPage, emptySlot)).toBe(true);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
+      expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(emptySlot);
+
+      await probe.selectEquipmentSlot(hoverPage, null);
+      const bagIds = await probe.getEquipmentBagItemIds(hoverPage);
+      expect(bagIds.length, 'the bag should hold reviewable items').toBeGreaterThan(0);
+      await probe.previewEquipmentBagItem(hoverPage, bagIds[0]!);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-tooltip-bag'));
+      expect(await probe.isEquipmentTooltipVisible(hoverPage)).toBe(true);
+
+      for (const name of [
+        'equipment-tooltip-equipped',
+        'equipment-tooltip-empty',
+        'equipment-slot-filtered',
+        'equipment-tooltip-bag',
+      ]) {
+        expect(existsSync(captureArtifactPath(name)), `${name} capture should exist`).toBe(true);
+      }
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('keeps rendered text contained, collision-free, and readable at every supported viewport', async () => {
+    for (const viewport of [
+      { width: 1280, height: 800 },
+      { width: 960, height: 600 },
+    ]) {
+      const { context, page: decisionPage } = await openDecisionState(viewport);
+      try {
+        const [panel, header, doll, bag, stats, inspector, canvas, runs, raster] =
+          await Promise.all([
+            probe.getEquipmentPanelBounds(decisionPage),
+            probe.getEquipmentHeaderBounds(decisionPage),
+            probe.getEquipmentDollBounds(decisionPage),
+            probe.getEquipmentBagColumnBounds(decisionPage),
+            probe.getEquipmentStatsBounds(decisionPage),
+            probe.getEquipmentInspectorBounds(decisionPage),
+            getCanvasRect(decisionPage),
+            probe.getEquipmentTextRuns(decisionPage),
+            probe.getEquipmentTextRasterMetadata(decisionPage),
+          ]);
+        const regions = { header, doll, bag, stats, inspector };
+        expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
+        expect(raster, 'the live panel should expose raster metadata').not.toBeNull();
+        expect(raster?.intendedFontIdentity).toBe('Press Start 2P');
+        expect(raster?.loadedFontIdentity).toBe('Press Start 2P');
+        expect(raster?.fontLoadState).toBe('loaded');
+        expect(raster?.fontSourceUrl).toMatch(/\/fonts\/PressStart2P-Regular\.ttf$/);
+        expect(raster?.textResolution).toBeGreaterThanOrEqual(6);
+        expect(
+          Number.isInteger(raster?.containerScale),
+          'panel scale must stay pixel-aligned',
+        ).toBe(true);
+        expect(raster?.roundPixels).toBe(true);
+        expect(raster?.fractionalTextBounds).toBe(0);
+
+        for (const run of runs) {
+          const region = regions[run.region];
+          expect(region, `${run.region} region should exist`).not.toBeNull();
+          if (!region) continue;
+          expect(
+            containsWithin(region, run.bounds, 1),
+            `${run.region} text "${run.text}" must remain inside its region at ${viewport.width}×${viewport.height}`,
+          ).toBe(true);
+          expect(
+            physicalGlyphPx(run.renderedFontSize, canvas),
+            `${run.region} text "${run.text}" must remain readable at ${viewport.width}×${viewport.height}`,
+          ).toBeGreaterThanOrEqual(MIN_READABLE_GLYPH_PX);
+        }
+
+        for (let index = 0; index < runs.length; index += 1) {
+          for (let other = index + 1; other < runs.length; other += 1) {
+            const current = runs[index]!;
+            const next = runs[other]!;
+            if (current.region !== next.region) continue;
+            expect(
+              overlapArea(current.bounds, next.bounds),
+              `${current.region} text "${current.text}" must not collide with "${next.text}" at ${viewport.width}×${viewport.height}`,
+            ).toBe(0);
+          }
+        }
+        expect(containsWithin(panel, header!, 1)).toBe(true);
+      } finally {
+        await closeQuietly(context);
+      }
     }
   });
 

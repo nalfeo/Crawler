@@ -12,7 +12,13 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { Page } from 'playwright';
+import { PNG } from 'pngjs';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
+import {
+  evaluateTextRasterRuns,
+  measureCropCrispness,
+  suppressUnsupportedFuzziness,
+} from './text-raster-lib.mjs';
 import {
   computeGeometryBlockers,
   diffFindings,
@@ -158,6 +164,30 @@ interface VisualReviewResult {
   suppressed_text_finding_count?: number;
   /** Assets newly appended to the art-regen ledger by this run. */
   ledger_added?: string[];
+  /** Deterministic evidence for text raster sharpness on declared equipment runs. */
+  text_raster?: TextRasterReport;
+  /** Azure-only fuzzy-text claims suppressed by text-raster evidence. */
+  suppressed_text_raster_findings?: number;
+}
+
+interface TextRasterEntry {
+  id: string;
+  text: string;
+  fontFamily: string;
+  loaded: boolean;
+  aligned: boolean;
+  crispness: number | null;
+  sampledEdges: number;
+  failures: string[];
+  pass: boolean;
+}
+
+interface TextRasterReport {
+  schemaVersion: number;
+  minimumCrispness: number;
+  passed: boolean;
+  entries: TextRasterEntry[];
+  failures: string[];
 }
 
 interface ElementBox {
@@ -206,6 +236,8 @@ interface CaptureResult {
   expect: SurfaceExpectations;
   /** Per-element crops for the evidence corpus (art-review mode); empty otherwise. */
   evidenceRegions: EvidenceRegionShot[];
+  /** Pixel-grounded text-raster evidence for the legacy equipment surface. */
+  textRaster: TextRasterReport | null;
 }
 
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 } as const;
@@ -686,6 +718,16 @@ async function captureScreenshot(
   }
 
   const harvest = await harvestSurface(page);
+  if (harvest.source === 'equipment-legacy') {
+    await page.waitForFunction(
+      () => {
+        const state = window.__uiProbe?.getEquipmentTextRasterMetadata?.()?.fontLoadState;
+        return state === 'loaded' || state === 'unavailable';
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+  }
   let captured: CaptureResult;
   if (harvest.source === 'declared') {
     const regions = normalizeHarvestedRegions(harvest.regions);
@@ -702,6 +744,7 @@ async function captureScreenshot(
       regions,
       expect: harvest.expect,
       evidenceRegions: [],
+      textRaster: null,
     };
   } else if (harvest.source === 'equipment-legacy') {
     // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
@@ -720,6 +763,7 @@ async function captureScreenshot(
         sectionDividers: true,
       },
       evidenceRegions: [],
+      textRaster: null,
     };
   } else {
     // No declared contract and no equipment probe: no deterministic checks, no
@@ -737,6 +781,7 @@ async function captureScreenshot(
         sectionDividers: false,
       },
       evidenceRegions: [],
+      textRaster: null,
     };
   }
   const setupClip = normalizeClip(
@@ -751,6 +796,14 @@ async function captureScreenshot(
     fullPage: false,
     ...(screenshotClip ? { clip: screenshotClip } : {}),
   });
+  if (captured.harvestSource === 'equipment-legacy') {
+    captured.textRaster = await captureEquipmentTextRaster(page, outPath, screenshotClip);
+    if (!captured.textRaster.passed) {
+      captured.deterministicBlockers.push(
+        ...captured.textRaster.failures.map((failure) => `text raster: ${failure}`),
+      );
+    }
+  }
 
   // Art-review evidence corpus: crop each declared/published element in the
   // SAME screenshot space (browser still open) so we can later file the crops
@@ -762,6 +815,135 @@ async function captureScreenshot(
   await context.close();
   await browser.close();
   return captured;
+}
+
+/**
+ * Analyze only the actual equipment text crops, never the whole screenshot. The
+ * crop transform is obtained from the live canvas and the same screenshot clip
+ * used for Azure, so the reported pixels are exactly the pixels under review.
+ */
+async function captureEquipmentTextRaster(
+  page: Page,
+  screenshotPath: string,
+  clip: ScreenClip | null,
+): Promise<TextRasterReport> {
+  const harvested = await page.evaluate(() => {
+    const probe = (
+      window as unknown as {
+        __uiProbe?: {
+          getEquipmentTextRuns?: () => Array<{
+            text?: unknown;
+            region?: unknown;
+            bounds?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+            fontFamily?: unknown;
+            textResolution?: unknown;
+            rasterScaleX?: unknown;
+            rasterScaleY?: unknown;
+          }>;
+          getGameSize?: () => { width?: unknown; height?: unknown };
+          getEquipmentTextRasterMetadata?: () => {
+            intendedFontIdentity?: unknown;
+            fontLoadState?: unknown;
+            textResolution?: unknown;
+            containerScale?: unknown;
+          } | null;
+        };
+      }
+    ).__uiProbe;
+    const canvas = document.querySelector<HTMLCanvasElement>('#lab-canvas canvas');
+    const game = probe?.getGameSize?.();
+    const runs = probe?.getEquipmentTextRuns?.() ?? [];
+    const raster = probe?.getEquipmentTextRasterMetadata?.();
+    if (!canvas || !game || !(Number(game.width) > 0) || !(Number(game.height) > 0)) {
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const font = 'Press Start 2P';
+    return {
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      game: { width: Number(game.width), height: Number(game.height) },
+      fontLoaded: raster?.fontLoadState === 'loaded',
+      intendedFont:
+        typeof raster?.intendedFontIdentity === 'string' ? raster.intendedFontIdentity : font,
+      textResolution: Number(raster?.textResolution ?? 0),
+      containerScale: Number(raster?.containerScale ?? 0),
+      runs: runs
+        .map((run, index) => {
+          const bounds = run?.bounds;
+          if (
+            !bounds ||
+            ![bounds.x, bounds.y, bounds.width, bounds.height].every((value) =>
+              Number.isFinite(Number(value)),
+            )
+          ) {
+            return null;
+          }
+          return {
+            id: `${String(run.region ?? 'text')}:${index}`,
+            text: typeof run.text === 'string' ? run.text : '',
+            bounds: {
+              x: Number(bounds.x),
+              y: Number(bounds.y),
+              width: Number(bounds.width),
+              height: Number(bounds.height),
+            },
+            fontFamily:
+              typeof run.fontFamily === 'string'
+                ? run.fontFamily
+                : String(raster?.intendedFontIdentity ?? font),
+          };
+        })
+        .filter((run): run is NonNullable<typeof run> => run !== null),
+    };
+  });
+  if (!harvested) {
+    return evaluateTextRasterRuns([]);
+  }
+
+  const png = PNG.sync.read(readFileSync(screenshotPath));
+  const scaleX = harvested.rect.width / harvested.game.width;
+  const scaleY = harvested.rect.height / harvested.game.height;
+  const offsetX = clip?.x ?? 0;
+  const offsetY = clip?.y ?? 0;
+  const runs = harvested.runs.map((run) => {
+    const x = Math.floor(harvested.rect.x + run.bounds.x * scaleX - offsetX) - 1;
+    const y = Math.floor(harvested.rect.y + run.bounds.y * scaleY - offsetY) - 1;
+    const width = Math.ceil(run.bounds.width * scaleX) + 2;
+    const height = Math.ceil(run.bounds.height * scaleY) + 2;
+    const pixels = cropPng(png, x, y, width, height);
+    const crop = measureCropCrispness(pixels);
+    return {
+      ...run,
+      fontLoaded: harvested.fontLoaded,
+      // These are Phaser's final scene-space coordinates. The browser's FIT
+      // transform can be fractional at a smaller viewport, but it is not the
+      // glyph-texture transform that causes canvas text to blur.
+      rasterX: run.bounds.x,
+      rasterY: run.bounds.y,
+      rasterScaleX: harvested.containerScale,
+      rasterScaleY: harvested.containerScale,
+      resolution: harvested.textResolution,
+      crispness: crop.score,
+      sampledEdges: crop.sampledEdges,
+    };
+  });
+  return evaluateTextRasterRuns(runs);
+}
+
+function cropPng(png: PNG, x: number, y: number, width: number, height: number) {
+  const left = Math.max(0, x);
+  const top = Math.max(0, y);
+  const right = Math.min(png.width, x + width);
+  const bottom = Math.min(png.height, y + height);
+  const cropWidth = Math.max(0, right - left);
+  const cropHeight = Math.max(0, bottom - top);
+  const data = new Uint8Array(cropWidth * cropHeight * 4);
+  for (let row = 0; row < cropHeight; row += 1) {
+    const source = ((top + row) * png.width + left) * 4;
+    const target = row * cropWidth * 4;
+    data.set(png.data.subarray(source, source + cropWidth * 4), target);
+  }
+  return { pixels: data, width: cropWidth, height: cropHeight };
 }
 
 /**
@@ -1555,7 +1737,14 @@ async function main(): Promise<number> {
     deployment,
     apiVersion,
   });
-  const prompt = buildPrompt(opts, capture.geometryText, {
+  const textRasterText = capture.textRaster
+    ? `\n\nTEXT RASTER EVIDENCE (AUTHORITATIVE FOR BLUR/FUZZINESS): ${
+        capture.textRaster.passed
+          ? `PASS — ${capture.textRaster.entries.length} declared text crops have a loaded intended font, integer-aligned raster geometry, and calibrated sharp edges. Do not report text as fuzzy, blurry, soft, or in need of a sharper font unless a visible contradiction is specific and high confidence.`
+          : `FAIL — ${capture.textRaster.failures.join('; ')}. You may discuss only these named deterministic text-raster failures.`
+      }`
+    : '';
+  const prompt = buildPrompt(opts, `${capture.geometryText}${textRasterText}`, {
     expect: capture.expect,
     regionIds: capture.regions.map((r) => r.id),
     artReview: opts.artReview,
@@ -1571,6 +1760,13 @@ async function main(): Promise<number> {
   });
 
   const result = extractJsonObject(evaluation.json);
+  if (capture.textRaster) {
+    result.text_raster = capture.textRaster;
+    result.suppressed_text_raster_findings = suppressUnsupportedFuzziness(
+      result,
+      capture.textRaster,
+    );
+  }
   const mergedBlockers = new Set<string>([
     ...(result.blocking_findings ?? []),
     ...capture.deterministicBlockers,

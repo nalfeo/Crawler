@@ -77,3 +77,97 @@ test('fails closed for absent rubric or behavior claims', () => {
     /behavior claim/,
   );
 });
+
+test('caps severe overflow and wasted-space findings', () => {
+  const raw = response();
+  raw.hard_failures = ['text overflows off-screen'];
+  raw.player_cost = ['copious wasted space'];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.equal(result.observable.text_safety.score, 10);
+  assert.equal(result.observable.workspace_use.score, 40);
+  assert.ok(result.score <= 45);
+});
+
+test('caps workspace use for region-specific empty-space findings', () => {
+  const raw = response();
+  raw.player_cost = ['The paper-doll region has substantial empty background and padding.'];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.equal(result.observable.workspace_use.score, 40);
+});
+
+test('caps workspace use for a full-frame dead band', () => {
+  const raw = response();
+  raw.player_cost = ['A large empty band runs along the bottom edge of the frame.'];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.equal(result.observable.workspace_use.score, 40);
+});
+
+test('caps task readiness for unlabeled paper-doll slots', () => {
+  const raw = response();
+  raw.player_cost = ['Unlabeled equipment slots make each position hard to name.'];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.equal(result.observable.task_readiness.score, 55);
+});
+
+test('caps legibility for small text and wide label-value gaps', () => {
+  const small = response();
+  small.player_cost = ['Small font size in the stats column raises reading cost.'];
+  assert.equal(
+    normalizeReview(small, { image: 'screen.png', metadata: {}, modelDeployment: 'test' })
+      .observable.legibility.score,
+    55,
+  );
+
+  const gap = response();
+  gap.player_cost = ['A wide gap separates each label from its value in the stats column.'];
+  assert.equal(
+    normalizeReview(gap, { image: 'screen.png', metadata: {}, modelDeployment: 'test' }).observable
+      .legibility.score,
+    55,
+  );
+});
+
+test('leaves axes uncapped when no matching finding is reported', () => {
+  const raw = response();
+  raw.player_cost = ['Comparison takes an extra glance.'];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.equal(result.observable.workspace_use.score, 80);
+  assert.equal(result.observable.task_readiness.score, 80);
+  assert.equal(result.observable.legibility.score, 80);
+});
+
+test('suppresses unsupported fuzziness findings when text-raster evidence passes', () => {
+  const raw = response();
+  raw.player_cost = [
+    'Text is blurry in the bag column.',
+    'A wide gap separates a stat label and value.',
+  ];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: { textRaster: { passed: true } },
+    modelDeployment: 'test',
+  });
+  assert.equal(result.suppressedTextRasterFindings, 1);
+  assert.deepEqual(result.playerCost, ['A wide gap separates a stat label and value.']);
+  assert.equal(result.observable.legibility.score, 55);
+});
