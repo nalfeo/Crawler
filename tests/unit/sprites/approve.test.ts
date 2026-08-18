@@ -417,6 +417,125 @@ describe('approveVariant', () => {
     expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
   });
 
+  it('refuses to mint a new variant slot for content already approved under a different variant index', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    // A second, independent run (e.g. a stale re-harvest of the same brief)
+    // whose processed PNG happens to be byte-identical to the already-approved
+    // variant-0 image, requesting a DIFFERENT variant index (3). Without the
+    // cross-variant dedup this mints a brand-new "iron-sword-var-3" entry
+    // every time it's re-run — the churn this test guards against.
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const opts = {
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+    };
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('already-approved');
+      expect((err as ApproveError).message).toContain('iron-sword-var-0');
+    }
+
+    // The refused approval must not have created a second entry or PNG.
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-0']);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', 'iron-sword-var-3.png'))).toBe(false);
+  });
+
+  it('allows minting a new variant slot for content that is genuinely different', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    // Distinct bytes (writeFakeRun already writes "PNG-3" for index 3), so this
+    // must succeed and create a second entry.
+    const entry = approveVariant({
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+    });
+    expect(entry.spriteName).toBe('iron-sword-var-3');
+
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries).sort()).toEqual(['iron-sword-var-0', 'iron-sword-var-3']);
+  });
+
+  it('allowReapprove bypasses the cross-variant dedup check', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const entry = approveVariant({
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+      allowReapprove: true,
+    });
+    expect(entry.spriteName).toBe('iron-sword-var-3');
+  });
+
   it('writes facingDirection from postprocess facing override and defaults to right otherwise', () => {
     const targeted = writeFakeRun(repoRoot, {
       runId: '2026-06-08T16-00-00-faceleft',

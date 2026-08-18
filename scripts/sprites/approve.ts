@@ -55,6 +55,7 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
@@ -62,7 +63,7 @@ import {
 import path from 'node:path';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
-import { shardPathForKey } from './generated-shards.js';
+import { shardPathForKey, shardsDir } from './generated-shards.js';
 import { bareConcept, hasResidualLineageTag } from './sprite-name-taxonomy.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
@@ -72,6 +73,7 @@ export interface ApproveFs {
   readonly writeFileSync: typeof writeFileSync;
   readonly copyFileSync: typeof copyFileSync;
   readonly mkdirSync: typeof mkdirSync;
+  readonly readdirSync: typeof readdirSync;
 }
 
 /** Extended fs subset that also supports file deletion, used by unapproveVariant. */
@@ -85,6 +87,7 @@ const DEFAULT_FS: ApproveFs = {
   writeFileSync,
   copyFileSync,
   mkdirSync,
+  readdirSync,
 };
 
 const DEFAULT_UNAPPROVE_FS: UnapproveFs = {
@@ -503,6 +506,32 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
             `Re-post-process to change the image, or pass allowReapprove to overwrite it.`,
         );
       }
+    }
+
+    // Cross-variant dedup: refuse to mint a FRESH `briefId-var-N` slot for
+    // pixel content this brief already has approved under a DIFFERENT variant
+    // index. Without this, a run that keeps re-generating/re-harvesting the
+    // same brief (e.g. a stale batch job, or two naming lineages of the same
+    // brief both feeding the reconciler) mints a brand-new variant slot every
+    // cycle — a genuinely new PATH each time, so the exact-`variantId` check
+    // above never fires — and the sprite-queue reconciler then promotes it as
+    // "new" art forever. Scanning every existing variant of this brief (not
+    // just the target slot) catches that duplicate before it is ever written.
+    const duplicateOf = findExistingVariantWithContentHash(
+      fs,
+      options.manifestPath,
+      briefId,
+      variantId,
+      contentHash,
+    );
+    if (duplicateOf !== null) {
+      throw new ApproveError(
+        'already-approved',
+        `Brief "${briefId}" already has this exact image approved as variant ` +
+          `"${duplicateOf}". Refusing to mint a new variant slot ("${variantId}") ` +
+          `for duplicate content — re-post-process to change the image, or pass ` +
+          `allowReapprove to force it anyway.`,
+      );
     }
   }
 
@@ -952,6 +981,51 @@ function readManifestEntry(
   } catch {
     return null;
   }
+}
+
+/**
+ * Scan every OTHER existing `briefId-var-*` shard for one whose stored
+ * `contentHash` matches `contentHash`, returning that variant's id (or `null`
+ * if none match). `excludeVariantId` is skipped — its own exact-match dedup is
+ * handled separately by the caller — so this only reports a collision against
+ * a genuinely DIFFERENT variant index of the same brief.
+ *
+ * Flat-layout assumption: every `briefId-var-N` key is a single path segment
+ * (no `/`), so its shard lives directly under `entries/`, not in a nested
+ * directory. Best-effort: a missing/corrupt shards directory or an unreadable
+ * shard is treated as "no match" so approval is never blocked by an I/O
+ * hiccup unrelated to the dedup check itself.
+ */
+function findExistingVariantWithContentHash(
+  fs: ApproveFs,
+  manifestPath: string,
+  briefId: string,
+  excludeVariantId: string,
+  contentHash: string,
+): string | null {
+  const dir = shardsDir(path.dirname(manifestPath));
+  if (!fs.existsSync(dir)) return null;
+  const prefix = `${briefId}-var-`;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const variantId = name.slice(0, -'.json'.length);
+    if (variantId === excludeVariantId) continue;
+    if (!variantId.startsWith(prefix)) continue;
+    // Guard against a longer briefId prefix-matching (e.g. "rat" matching
+    // "rat-fink-var-0") — the suffix after the prefix must be purely numeric.
+    if (!/^\d+$/.test(variantId.slice(prefix.length))) continue;
+    const entry = readManifestEntry(fs, manifestPath, variantId);
+    if (entry?.contentHash && entry.contentHash === contentHash) {
+      return variantId;
+    }
+  }
+  return null;
 }
 
 /** SHA-256 (hex) of a file's bytes, or null when the file is missing/unreadable. */
