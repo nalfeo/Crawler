@@ -394,12 +394,11 @@ interface StaticEquippedClassification {
    */
   readonly protectedSlots: ReadonlySet<EquipmentSlotId>;
   /**
-   * Weapon-class skill of the modelable statically-equipped WEAPON occupying
-   * each slot (e.g. `mainHand` -> `'ranged'` for the pistol starter). Used to
-   * keep a mid-run weapon swap inside the archetype the run has been
-   * levelling (see {@link displacesIncompatibleStaticWeaponClass}).
+   * Weapon-class skill of the currently-equipped weapon occupying each slot.
+   * This includes a generated weapon that already replaced the static starter,
+   * so the class commitment survives subsequent maintenance iterations.
    */
-  readonly staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>;
+  readonly committedWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>;
 }
 
 /**
@@ -428,7 +427,7 @@ function classifyStaticEquippedInstances(
   }
 
   const baselines: StaticEquipmentBaselineV1[] = [];
-  const staticWeaponClassBySlot = new Map<EquipmentSlotId, WeaponClassSkillId>();
+  const committedWeaponClassBySlot = new Map<EquipmentSlotId, WeaponClassSkillId>();
   for (const [instanceId, slots] of [...occupiedSlotsByInstanceId.entries()].sort(
     ([a], [b]) => a - b,
   )) {
@@ -441,11 +440,19 @@ function classifyStaticEquippedInstances(
     const weaponDef = baseline.weaponId === null ? undefined : getWeaponDef(baseline.weaponId);
     if (weaponDef !== undefined) {
       for (const slotId of baseline.slots) {
-        staticWeaponClassBySlot.set(slotId, weaponDef.weaponClassSkillId);
+        committedWeaponClassBySlot.set(slotId, weaponDef.weaponClassSkillId);
       }
     }
   }
-  return { baselines, protectedSlots, staticWeaponClassBySlot };
+  for (const [slotId, instanceId] of Object.entries(equipmentState?.equipped ?? {})) {
+    if (typeof instanceId !== 'string') continue;
+    const weaponClass = getGeneratedEquipmentInstance(world, instanceId)?.frozen
+      .activeWeaponSnapshot?.weaponClassSkillId;
+    if (weaponClass !== undefined) {
+      committedWeaponClassBySlot.set(slotId as EquipmentSlotId, weaponClass);
+    }
+  }
+  return { baselines, protectedSlots, committedWeaponClassBySlot };
 }
 
 /**
@@ -495,15 +502,15 @@ function modelableStaticBaseline(
  * slot whose static occupant is a weapon is class-gated, and a candidate with
  * no active weapon snapshot can never target a hand slot held by one.
  */
-function displacesIncompatibleStaticWeaponClass(
+function displacesIncompatibleCommittedWeaponClass(
   instance: GeneratedEquipmentInstanceV1,
-  staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
+  committedWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
 ): boolean {
   const candidateClass = instance.frozen.activeWeaponSnapshot?.weaponClassSkillId ?? null;
   return instance.frozen.slots.some((slotId) => {
-    const staticClass = staticWeaponClassBySlot.get(slotId);
-    if (staticClass === undefined) return false;
-    return candidateClass !== staticClass;
+    const committedClass = committedWeaponClassBySlot.get(slotId);
+    if (committedClass === undefined) return false;
+    return candidateClass !== committedClass;
   });
 }
 
@@ -591,7 +598,7 @@ function buildEquipmentCandidates(
   world: GameWorld,
   playerEid: number,
   protectedSlots: ReadonlySet<EquipmentSlotId>,
-  staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
+  committedWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
   decisions: SettlementMaintenanceDecision[],
   loggedSkipKeys: Set<string>,
 ): EquipmentCandidateSet {
@@ -613,7 +620,7 @@ function buildEquipmentCandidates(
       }
       continue;
     }
-    if (displacesIncompatibleStaticWeaponClass(instance, staticWeaponClassBySlot)) {
+    if (displacesIncompatibleCommittedWeaponClass(instance, committedWeaponClassBySlot)) {
       const skipKey = `weapon-class:${instance.instanceId}`;
       if (!loggedSkipKeys.has(skipKey)) {
         loggedSkipKeys.add(skipKey);
@@ -652,7 +659,7 @@ function buildEquipmentCandidates(
       }
       continue;
     }
-    if (displacesIncompatibleStaticWeaponClass(instance, staticWeaponClassBySlot)) {
+    if (displacesIncompatibleCommittedWeaponClass(instance, committedWeaponClassBySlot)) {
       const skipKey = `weapon-class:${instance.instanceId}`;
       if (!loggedSkipKeys.has(skipKey)) {
         loggedSkipKeys.add(skipKey);
@@ -785,16 +792,14 @@ function runEquipmentLoop(
   for (let step = 0; step < EQUIPMENT_LOOP_CANDIDATE_CAP; step += 1) {
     // Recomputed per iteration: an accepted swap can retire a static item, so
     // the modelled/protected split is only valid for the current loadout.
-    const { baselines, protectedSlots, staticWeaponClassBySlot } = classifyStaticEquippedInstances(
-      world,
-      playerEid,
-    );
+    const { baselines, protectedSlots, committedWeaponClassBySlot } =
+      classifyStaticEquippedInstances(world, playerEid);
     const snapshot = buildEquipmentSnapshot(world, playerEid, baselines);
     const { candidates: allCandidates, offerLookup } = buildEquipmentCandidates(
       world,
       playerEid,
       protectedSlots,
-      staticWeaponClassBySlot,
+      committedWeaponClassBySlot,
       decisions,
       loggedSkipKeys,
     );
@@ -1221,7 +1226,7 @@ export function previewSettlementMaintenanceOpportunity(
     .map(([chestId]) => chestId)
     .sort();
 
-  const { baselines, protectedSlots, staticWeaponClassBySlot } = classifyStaticEquippedInstances(
+  const { baselines, protectedSlots, committedWeaponClassBySlot } = classifyStaticEquippedInstances(
     world,
     playerEid,
   );
@@ -1232,7 +1237,7 @@ export function previewSettlementMaintenanceOpportunity(
     world,
     playerEid,
     protectedSlots,
-    staticWeaponClassBySlot,
+    committedWeaponClassBySlot,
     previewDecisions,
     previewLoggedSkipKeys,
   );
