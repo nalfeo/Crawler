@@ -1233,44 +1233,46 @@ export function previewSettlementMaintenanceOpportunity(
   world: GameWorld,
   playerEid: number,
 ): SettlementMaintenanceOpportunityPreview {
+  const generatedEquipmentUnlocked = floor1GeneratedEquipmentUnlocked(world);
   const unclaimedAchievementIds = [...world.achievements.unlockedIds]
     .filter((achievementId) => !isAchievementClaimed(world, achievementId))
     .sort();
 
-  const openBossChestIds = [...world.bossChests.entries()]
-    .filter(([, chest]) => chest.state !== 'claimed')
-    .map(([chestId]) => chestId)
-    .sort();
-
-  const { baselines, protectedSlots, committedWeaponClassBySlot } = classifyStaticEquippedInstances(
-    world,
-    playerEid,
-  );
-  const previewDecisions: SettlementMaintenanceDecision[] = [];
-  const previewLoggedSkipKeys = new Set<string>();
-  const snapshot = buildEquipmentSnapshot(world, playerEid, baselines);
-  const { candidates } = buildEquipmentCandidates(
-    world,
-    playerEid,
-    protectedSlots,
-    committedWeaponClassBySlot,
-    previewDecisions,
-    previewLoggedSkipKeys,
-  );
+  const openBossChestIds = generatedEquipmentUnlocked
+    ? [...world.bossChests.entries()]
+        .filter(([, chest]) => chest.state !== 'claimed')
+        .map(([chestId]) => chestId)
+        .sort()
+    : [];
 
   let topEquipmentSwapScore = 0;
   let bestSwapInstanceId: string | null = null;
-  if (candidates.length > 0) {
-    const evaluation = evaluateEquipmentLoadoutCandidates({
-      current: snapshot,
-      candidates,
-      remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
-      affinityTagWeights: deriveAffinityTagWeights(snapshot),
-    });
-    const top = evaluation.ranked[0];
-    if (top && top.score > 0) {
-      topEquipmentSwapScore = top.score;
-      bestSwapInstanceId = top.candidate.instance.instanceId;
+  if (generatedEquipmentUnlocked) {
+    const { baselines, protectedSlots, committedWeaponClassBySlot } =
+      classifyStaticEquippedInstances(world, playerEid);
+    const previewDecisions: SettlementMaintenanceDecision[] = [];
+    const previewLoggedSkipKeys = new Set<string>();
+    const snapshot = buildEquipmentSnapshot(world, playerEid, baselines);
+    const { candidates } = buildEquipmentCandidates(
+      world,
+      playerEid,
+      protectedSlots,
+      committedWeaponClassBySlot,
+      previewDecisions,
+      previewLoggedSkipKeys,
+    );
+    if (candidates.length > 0) {
+      const evaluation = evaluateEquipmentLoadoutCandidates({
+        current: snapshot,
+        candidates,
+        remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
+        affinityTagWeights: deriveAffinityTagWeights(snapshot),
+      });
+      const top = evaluation.ranked[0];
+      if (top && top.score > 0) {
+        topEquipmentSwapScore = top.score;
+        bestSwapInstanceId = top.candidate.instance.instanceId;
+      }
     }
   }
 

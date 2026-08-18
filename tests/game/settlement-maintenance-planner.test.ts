@@ -5,6 +5,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
+  previewSettlementMaintenanceOpportunity,
 } from '../../src/game/ai/settlement-maintenance-planner.js';
 import type { SettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-types.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
@@ -45,7 +46,13 @@ import {
   updateSettlementReturnIntent,
 } from '../../src/game/ai/settlement-return-router.js';
 import { openBossChest } from '../../src/core/systems/bossChestRewards.js';
-import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import {
+  equipPurchasedGear,
+  initializeFloor1Scenario,
+  purchaseShopkeeperEquipment,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from '../../src/game/floorScenario.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 
 // Mock ONLY `purchaseQuartermasterOffer`; every other export (including
 // `getQuartermasterOfferViews`, which the planner also calls) stays real, so
@@ -257,6 +264,47 @@ describe('runSettlementMaintenancePlanner', () => {
       { kind: 'generated-instance', instanceKey: instanceId },
     ]);
     expect(world.goalFlags.get('floor1-shop-quest-complete')).not.toBe(true);
+  });
+
+  it('latches equipment unlock after same-visit charm buy+equip so generated equips can proceed', () => {
+    const world = createTestWorld({ seed: 7, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.playerInSafeRoom = true;
+    world.playerGold = SHOPKEEPER_EQUIPMENT_COST;
+    world.playerLevel.level = 1;
+    world.goalFlags.set('floor1-shop-prize-returned', true);
+
+    expect(purchaseShopkeeperEquipment(world, playerEid)).toBe(true);
+    expect(equipPurchasedGear(world, playerEid)).toBe(true);
+    // Neither helper runs questSystem/latchFeatureUnlocks; unlock is expected
+    // to stay false until the next deterministic quest-system tick.
+    expect(world.featureUnlocks.equipment).toBe(false);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(true);
+
+    const instanceId = addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(
+      equipFromBag(world, playerEid, { kind: 'generated-instance', instanceKey: instanceId }).ok,
+    ).toBe(true);
+  });
+
+  it('hides boss-chest and equipment preview opportunities before Floor 1 unlock', () => {
+    const world = createTestWorld({ seed: 5, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    world.playerInSafeRoom = true;
+    world.playerLevel.level = 1;
+    addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(spawnBossChestForDefeatedBoss(world, 'floor1-preview-gate').created).toBe(true);
+
+    const preview = previewSettlementMaintenanceOpportunity(world, playerEid);
+
+    expect(preview.openBossChests).toBe(0);
+    expect(preview.topEquipmentSwapScore).toBe(0);
+    expect(preview.opportunityFingerprint).toBe('');
   });
 
   it('no-ops when the player is outside the settlement room', () => {

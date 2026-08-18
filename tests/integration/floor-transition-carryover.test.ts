@@ -129,6 +129,7 @@ describe('Floor 1 to Floor 2 production transition', () => {
     const floor1Player = spawnPlayer(floor1, 0, 0);
     floor1Options.configureWorld?.(floor1, floor1Player);
     floor1Options.selectLoadoutOption?.(floor1, 0);
+    floor1.featureUnlocks.equipment = true;
     const equipped = createGeneratedEquipmentInstance(
       floor1,
       generatedEquipmentInput({
