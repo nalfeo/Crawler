@@ -4867,13 +4867,20 @@ function render(): void {
           setWorkflowStatus(patch.approvalSummary, queueCommitFailed ? '#fca5a5' : '#bef264');
           void recompute();
         } catch (error) {
-          // The sidecar returns 409 (already-approved) only when this exact
+          // The sidecar returns 409 `already-approved` only when this exact
           // variant key already exists WITH byte-identical content. That is NOT
           // a failure: the asset IS in the catalog, so advance the item to the
           // `approved` stage (unlocking Tag) exactly like a fresh approval —
           // otherwise re-approving an already-approved variant dead-ends on the
-          // Approve step and the operator can never reach Tag/Done.
-          if (error instanceof ApproveRequestError && error.status === 409) {
+          // Approve step and the operator can never reach Tag/Done. A 409
+          // `duplicate-content` is a DIFFERENT case (cross-variant collision):
+          // the requested variant was refused and never written, so it must
+          // NOT be treated as approved — fall through to the failure branch.
+          if (
+            error instanceof ApproveRequestError &&
+            error.status === 409 &&
+            error.errorCode === 'already-approved'
+          ) {
             approvedVariantKeys.add(variantKey);
             const patch = approvedItemPatch({
               briefId: run.briefId,
