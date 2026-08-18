@@ -38,6 +38,7 @@ import { pathToFileURL } from 'node:url';
 
 import { deleteShard, readAllShards } from './generated-shards.js';
 import { normalizeSpriteNames } from './normalize-sprite-names.js';
+import { bareConcept, buildTaxonomyPlan, type TaxonomyEntry } from './sprite-name-taxonomy.js';
 
 export interface PruneOptions {
   readonly queueGeneratedDir: string;
@@ -55,8 +56,14 @@ function assetAbsPath(generatedDir: string, assetPath: string): string {
 }
 
 /**
- * Prune every `assets/queue` entry whose contentHash is already present
- * anywhere in `main`'s manifest. Returns the pruned manifest keys.
+ * Prune every `assets/queue` entry whose contentHash is already present on
+ * `main` under the SAME canonical concept (bare `briefId`, lineage tag
+ * stripped). Matching by content hash alone is not sufficient: identical
+ * pixel content is legitimately reused across different semantic briefs (for
+ * example `welcome-sign-left-var-0` and `welcome-room-wall-shelf-var-0` share
+ * a hash), so scoping to the concept avoids discarding novel queued art that
+ * merely happens to share bytes with an unrelated concept. Returns the pruned
+ * manifest keys.
  */
 export async function pruneStaleQueueDuplicates(options: PruneOptions): Promise<PruneResult> {
   const queueEntries = readAllShards(options.queueGeneratedDir) as unknown as Record<
@@ -68,17 +75,25 @@ export async function pruneStaleQueueDuplicates(options: PruneOptions): Promise<
     Record<string, unknown>
   >;
 
-  const mainContentHashes = new Set<string>();
+  const mainHashesByConcept = new Map<string, Set<string>>();
   for (const entry of Object.values(mainEntries)) {
-    if (typeof entry.contentHash === 'string') {
-      mainContentHashes.add(entry.contentHash);
+    if (typeof entry.contentHash !== 'string' || typeof entry.briefId !== 'string') continue;
+    const concept = bareConcept(entry.briefId);
+    let hashes = mainHashesByConcept.get(concept);
+    if (hashes === undefined) {
+      hashes = new Set<string>();
+      mainHashesByConcept.set(concept, hashes);
     }
+    hashes.add(entry.contentHash);
   }
 
   const duplicatesPruned: string[] = [];
   for (const [key, entry] of Object.entries(queueEntries)) {
     const contentHash = typeof entry.contentHash === 'string' ? entry.contentHash : undefined;
-    if (contentHash !== undefined && mainContentHashes.has(contentHash)) {
+    const briefId = typeof entry.briefId === 'string' ? entry.briefId : undefined;
+    if (contentHash === undefined || briefId === undefined) continue;
+    const concept = bareConcept(briefId);
+    if (mainHashesByConcept.get(concept)?.has(contentHash) === true) {
       duplicatesPruned.push(key);
     }
   }
@@ -94,18 +109,32 @@ export async function pruneStaleQueueDuplicates(options: PruneOptions): Promise<
       }
       deleteShard(options.queueGeneratedDir, key);
     }
+
+    // Whatever remains may still carry a stale lineage tag that isn't a
+    // duplicate of anything on `main` (genuinely un-migrated, novel content).
+    // Bare-name it using the same taxonomy migration `main` already went
+    // through, so the tree becomes fully canonical either way. Runs AFTER the
+    // physical deletion above so it reads the true post-prune tree from disk.
+    const normalizeResult = await normalizeSpriteNames({
+      generatedDir: options.queueGeneratedDir,
+      mode: 'apply',
+    });
+    return { duplicatesPruned, renamesApplied: normalizeResult.plan.renames.length };
   }
 
-  // Whatever remains may still carry a stale lineage tag that isn't a
-  // duplicate of anything on `main` (genuinely un-migrated, novel content).
-  // Bare-name it using the same taxonomy migration `main` already went
-  // through, so the tree becomes fully canonical either way.
-  const normalizeResult = await normalizeSpriteNames({
-    generatedDir: options.queueGeneratedDir,
-    mode: options.apply ? 'apply' : 'dry-run',
-  });
-
-  return { duplicatesPruned, renamesApplied: normalizeResult.plan.renames.length };
+  // Dry-run preview: `normalizeSpriteNames` reads its entries straight off
+  // disk, which apply mode's deletion hasn't touched, so calling it here would
+  // plan renames (and report conflicts) for entries the apply pass will have
+  // already deleted. Compute the plan directly from the POST-PRUNE in-memory
+  // entry set instead, so a dry-run preview matches what apply will actually do.
+  const postPruneEntries: Record<string, TaxonomyEntry> = {};
+  const prunedSet = new Set(duplicatesPruned);
+  for (const [key, entry] of Object.entries(queueEntries)) {
+    if (prunedSet.has(key)) continue;
+    postPruneEntries[key] = entry as unknown as TaxonomyEntry;
+  }
+  const plan = buildTaxonomyPlan(postPruneEntries);
+  return { duplicatesPruned, renamesApplied: plan.renames.length };
 }
 
 function parseFlagValue(argv: readonly string[], flag: string): string | undefined {

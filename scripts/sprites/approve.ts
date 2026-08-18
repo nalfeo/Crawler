@@ -28,7 +28,13 @@
  *     already exists in the manifest throws `ApproveError('already-approved')`
  *     (mapped to HTTP 409 by the sidecar). The UI must confirm before approving
  *     a NEW variant and must refuse an exact duplicate. Pass
- *     `allowReapprove: true` only for deliberate programmatic overwrites.
+ *     `allowReapprove: true` only for deliberate programmatic overwrites of that
+ *     SAME slot.
+ *   - **Cross-variant duplicate content is ALSO blocked**, independent of
+ *     `allowReapprove`: minting a brand-new `briefId-var-N` slot whose pixels
+ *     are byte-identical to a DIFFERENT existing variant of the same brief
+ *     throws `ApproveError('duplicate-content')` (also mapped to HTTP 409).
+ *     Pass `allowDuplicateContent: true` only for a deliberate duplicate slot.
  *   - Different variant indices of the same brief coexist as separate
  *     manifest/catalog entries (`briefId-var-0`, `briefId-var-3`, ...).
  *
@@ -232,6 +238,7 @@ export class ApproveError extends Error {
       | 'variant-not-found'
       | 'processed-missing'
       | 'already-approved'
+      | 'duplicate-content'
       | 'manifest-invalid'
       | 'hard-blocked'
       // Frame-sequence-only kinds (approveFrameSequence):
@@ -363,11 +370,21 @@ export interface ApproveVariantOptions {
   /** Injected fs for tests. Defaults to `node:fs`. */
   readonly fs?: ApproveFs;
   /**
-   * Allow overwriting an already-approved `briefId-var-N` entry. Default false:
-   * approving an exact-duplicate variant throws `ApproveError('already-approved')`.
-   * Set true only for deliberate programmatic re-approval.
+   * Allow overwriting an already-approved `briefId-var-N` entry (the EXACT
+   * requested slot). Default false: approving an exact-duplicate variant
+   * throws `ApproveError('already-approved')`. Set true only for deliberate
+   * programmatic re-approval of the SAME slot. Does NOT bypass cross-variant
+   * dedup — see `allowDuplicateContent`.
    */
   readonly allowReapprove?: boolean;
+  /**
+   * Allow minting a NEW `briefId-var-N` slot whose content is byte-identical
+   * to a DIFFERENT existing variant of the same brief. Default false:
+   * cross-variant duplicate content throws `ApproveError('duplicate-content')`
+   * regardless of `allowReapprove`. Set true only when a human consciously
+   * wants two variant slots to hold the same pixels.
+   */
+  readonly allowDuplicateContent?: boolean;
   /**
    * Allow approving a variant whose judge scorecard has `hardBlocked === true`.
    * Default false: hard-blocked variants throw `ApproveError('hard-blocked')`.
@@ -507,16 +524,23 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
         );
       }
     }
+  }
 
-    // Cross-variant dedup: refuse to mint a FRESH `briefId-var-N` slot for
-    // pixel content this brief already has approved under a DIFFERENT variant
-    // index. Without this, a run that keeps re-generating/re-harvesting the
-    // same brief (e.g. a stale batch job, or two naming lineages of the same
-    // brief both feeding the reconciler) mints a brand-new variant slot every
-    // cycle — a genuinely new PATH each time, so the exact-`variantId` check
-    // above never fires — and the sprite-queue reconciler then promotes it as
-    // "new" art forever. Scanning every existing variant of this brief (not
-    // just the target slot) catches that duplicate before it is ever written.
+  // Cross-variant dedup: refuse to mint a FRESH `briefId-var-N` slot for pixel
+  // content this brief already has approved under a DIFFERENT variant index.
+  // Without this, a run that keeps re-generating/re-harvesting the same brief
+  // (e.g. a stale batch job, or two naming lineages of the same brief both
+  // feeding the reconciler) mints a brand-new variant slot every cycle — a
+  // genuinely new PATH each time, so the exact-`variantId` check above never
+  // fires — and the sprite-queue reconciler then promotes it as "new" art
+  // forever. Scanning every existing variant of this brief (not just the
+  // target slot) catches that duplicate before it is ever written.
+  //
+  // Deliberately independent of `allowReapprove`: that flag only authorizes
+  // overwriting the EXACT requested slot (used by pipelines that idempotently
+  // re-approve the same variantIndex), it must never license minting a fresh
+  // duplicate slot elsewhere. `allowDuplicateContent` is the only bypass.
+  if (!options.allowDuplicateContent) {
     const duplicateOf = findExistingVariantWithContentHash(
       fs,
       options.manifestPath,
@@ -526,11 +550,11 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     );
     if (duplicateOf !== null) {
       throw new ApproveError(
-        'already-approved',
+        'duplicate-content',
         `Brief "${briefId}" already has this exact image approved as variant ` +
           `"${duplicateOf}". Refusing to mint a new variant slot ("${variantId}") ` +
           `for duplicate content — re-post-process to change the image, or pass ` +
-          `allowReapprove to force it anyway.`,
+          `allowDuplicateContent to force it anyway.`,
       );
     }
   }

@@ -456,7 +456,7 @@ describe('approveVariant', () => {
     try {
       approveVariant(opts);
     } catch (err) {
-      expect((err as ApproveError).kind).toBe('already-approved');
+      expect((err as ApproveError).kind).toBe('duplicate-content');
       expect((err as ApproveError).message).toContain('iron-sword-var-0');
     }
 
@@ -502,7 +502,53 @@ describe('approveVariant', () => {
     expect(Object.keys(manifest.entries).sort()).toEqual(['iron-sword-var-0', 'iron-sword-var-3']);
   });
 
-  it('allowReapprove bypasses the cross-variant dedup check', () => {
+  it('allowReapprove does NOT bypass the cross-variant dedup check', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const opts = {
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+      allowReapprove: true,
+    };
+    // `allowReapprove` only authorizes overwriting the EXACT requested slot
+    // (used by pipelines that idempotently re-approve the same variantIndex);
+    // it must never license minting a fresh duplicate slot elsewhere. Only
+    // `allowDuplicateContent` does that (see next test).
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('duplicate-content');
+    }
+
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-0']);
+  });
+
+  it('allowDuplicateContent bypasses the cross-variant dedup check', () => {
     const first = writeFakeRun(repoRoot, {
       runId: '2026-06-08T10-00-00-aaaaaaaa',
       variantIndices: [0],
@@ -531,7 +577,7 @@ describe('approveVariant', () => {
       publicAssetsDir,
       repoRoot,
       now: () => new Date('2026-06-08T14:00:00.000Z'),
-      allowReapprove: true,
+      allowDuplicateContent: true,
     });
     expect(entry.spriteName).toBe('iron-sword-var-3');
   });

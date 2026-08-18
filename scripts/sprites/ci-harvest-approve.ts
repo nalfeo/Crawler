@@ -275,7 +275,10 @@ async function main(): Promise<void> {
       console.log(`✅ Approved ${briefId} variant ${variantIndex}`);
       results.push({ briefId, runId, variantIndex, status: 'approved' });
     } catch (err) {
-      if (err instanceof ApproveError && err.kind === 'already-approved') {
+      if (
+        err instanceof ApproveError &&
+        (err.kind === 'already-approved' || err.kind === 'duplicate-content')
+      ) {
         console.log(`⏭️  Already approved: ${briefId} variant ${variantIndex}`);
         results.push({ briefId, runId, variantIndex, status: 'already-approved' });
       } else {
