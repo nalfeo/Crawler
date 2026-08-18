@@ -1,0 +1,39 @@
+{
+  "briefId": "green-slime-baby",
+  "spriteName": "green-slime-baby-var-2",
+  "assetPath": "generated/green-slime-baby-var-2.png",
+  "approvedAt": "2026-06-27T22:31:47.452Z",
+  "sourceRun": "generated/runs/green-slime-baby-v1/imported-bd3ade9a3ec8",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 31,
+    "y": 33,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 33,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 33,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "bd3ade9a3ec8d710dcd522a91b3fbac01d7d94c5fe8b83d8810513b651fdafed",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 6,
+    "width": 58,
+    "height": 51,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

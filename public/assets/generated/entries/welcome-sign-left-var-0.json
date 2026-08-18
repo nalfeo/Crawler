@@ -1,0 +1,37 @@
+{
+  "briefId": "welcome-sign-left",
+  "spriteName": "welcome-sign-left-var-0",
+  "assetPath": "generated/welcome-sign-left-var-0.png",
+  "approvedAt": "2026-07-03T01:36:43.943Z",
+  "sourceRun": "generated/runs/welcome-sign-left-v1/imported-cfbd5e8e3acb",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "2",
+  "type": "tile",
+  "contentHash": "cfbd5e8e3acbabb6c5a13576c9cb0db49dac4901c672539a108dda968f017005",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 5,
+    "width": 86,
+    "height": 57,
+    "canvasWidth": 96,
+    "canvasHeight": 67
+  }
+}

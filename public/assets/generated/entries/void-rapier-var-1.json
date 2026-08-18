@@ -1,0 +1,39 @@
+{
+  "briefId": "void-rapier",
+  "spriteName": "void-rapier-var-1",
+  "assetPath": "generated/void-rapier-var-1.png",
+  "approvedAt": "2026-07-20T04:40:36.780Z",
+  "sourceRun": "generated/runs/void-rapier-v1/imported-085628ff2e00",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "4",
+  "type": "weapon",
+  "contentHash": "085628ff2e0060da4a9cd388bdb007212890d8d2a9abb192ff43a752009c5de6",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 18,
+    "y": 3,
+    "width": 28,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

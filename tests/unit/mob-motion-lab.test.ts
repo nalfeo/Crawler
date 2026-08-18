@@ -43,7 +43,7 @@ describe('mob motion lab model', () => {
       entries: {
         'rat-var-3': manifestEntry('rat', 3, 'enemy'),
         'rat-var-1': manifestEntry('rat', 1, 'enemy'),
-        'rat-nest-var-0': manifestEntry('rat-nest-v2', 0, 'enemy'),
+        'rat-nest-var-0': manifestEntry('rat-nest', 0, 'enemy'),
         'sword-var-0': manifestEntry('sword', 0, 'item'),
         'legacy-rat-var-0': manifestEntry('legacy-rat', 0, null),
       },

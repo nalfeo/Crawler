@@ -1,0 +1,119 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-gloves",
+  "spriteName": "classic-fantasy-basic-leather-leather-gloves-var-3",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-gloves-var-3.png",
+  "approvedAt": "2026-07-30T00:52:32.054Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-gloves-v1/2026-07-28T06-48-33-ca5d98c0",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 25,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 25,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 25,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:52:51.384Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The gloves are utilitarian and plain, matching the dark-fantasy aesthetic of Crawler. The reinforced panels and stitching are visible, but the design lacks a strong contradiction or authored twist."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading stops, and palette depth. The style is consistent with the Crawler sprite family."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading stops, and palette depth. The style is consistent with the Crawler sprite family."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The gloves clearly depict the described subject, including light-brown leather, reinforced panels, and visible stitching. The linen cuffs are slightly ambiguous but present."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale, and the gloves are immediately recognizable on the dark floor tile without blending or losing detail."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and focused on the gloves without any extraneous elements or background distractions."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The gloves incorporate the specified materials and utilitarian design, but the linen cuffs are slightly understated and could be more prominent to fully adhere to the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3214,
+      "completionTokens": 358,
+      "totalTokens": 3572
+    }
+  },
+  "type": null,
+  "contentHash": "d090ebb0ef2e68e72fdfc1d4aecf4cb75c6efc0830648a8ebaaff352f804d0b9",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

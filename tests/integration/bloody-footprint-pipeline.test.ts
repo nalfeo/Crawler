@@ -99,7 +99,7 @@ describe('bloody footprints pipeline wiring', () => {
   // for the retired 3.2 ft Kenney knight, so stride spacing (0.42 ft) was
   // SHORTER than a single print (0.52-0.64 ft) and consecutive prints
   // physically overlapped into a continuous streak instead of reading as
-  // discrete alternating steps under the 5.2 ft `rhea-vale-v1` player.
+  // discrete alternating steps under the 5.2 ft `rhea-vale` player.
   it('lays discrete, non-overlapping prints along a straight walk', () => {
     const trail = walkStraightLineTrail();
 

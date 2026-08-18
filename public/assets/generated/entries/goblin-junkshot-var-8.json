@@ -1,0 +1,39 @@
+{
+  "briefId": "goblin-junkshot",
+  "spriteName": "goblin-junkshot-var-8",
+  "assetPath": "generated/goblin-junkshot-var-8.png",
+  "approvedAt": "2026-07-09T08:03:09.843Z",
+  "sourceRun": "generated/runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 31,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": null,
+  "contentHash": "1889b8698b1a2ae574014657acbd788231ce51433489a7a5e8cfe5fdad23dcb3",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 58,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

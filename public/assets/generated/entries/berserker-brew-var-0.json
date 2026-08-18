@@ -1,0 +1,37 @@
+{
+  "briefId": "berserker-brew",
+  "spriteName": "berserker-brew-var-0",
+  "assetPath": "generated/berserker-brew-var-0.png",
+  "approvedAt": "2026-07-02T05:19:58.941Z",
+  "sourceRun": "generated/runs/berserker-brew-v2/2026-07-02T00-04-24-9935d2d6",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "item",
+  "contentHash": "cc182b05f1feb6f1a9902cfa98952db9fd9603fa84e36c4dab00199cc8e9c6e3",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

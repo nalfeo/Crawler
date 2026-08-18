@@ -121,8 +121,8 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const actualIds = runtimeMobMotionProfiles.map((profile) => profile.archetypeId).sort();
   expect(actualIds).toEqual(expectedIds);
   expect(new Set(actualIds).size).toBe(actualIds.length);
-  expect(actualIds).not.toContain('rat-nest-v2');
-  expect(actualIds).not.toContain('slime-pool-v1');
+  expect(actualIds).not.toContain('rat-nest');
+  expect(actualIds).not.toContain('slime-pool');
 
   const world = createTestWorld({ seed: 42, floor: 1 });
   const spawned = runtimeMobMotionProfiles.map((profile, index) => {
