@@ -15,16 +15,14 @@ import {
   computeEncumbranceMultiplier,
   computeEncumbranceThresholds,
 } from '../../shared/encumbrance.js';
-import { isValidSlotId } from '../../shared/equipment-slots.js';
+import { isValidSlotId, type EquipmentSlotId } from '../../shared/equipment-slots.js';
+import { getWeaponDef, type WeaponDef } from '../../shared/weaponDefs.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
   equipmentAbilityGrantSourceId,
   type AbilityGrantSourceId,
 } from '../../shared/abilities.js';
-import type {
-  ActiveWeaponSnapshotV1,
-  GeneratedEquipmentInstanceV1,
-} from '../../shared/generated-equipment-types.js';
+import type { GeneratedEquipmentInstanceV1 } from '../../shared/generated-equipment-types.js';
 import type { CatalogEffect } from '../../shared/progression-effects.js';
 import {
   applyAttackSpeedAndCooldownReduction,
@@ -96,8 +94,43 @@ export interface EquipmentEncounterFixture {
   readonly skillTriggerRatePerSecond: number;
 }
 
+/**
+ * Canonical scoring view of a STATIC (non-generated) equipped item — e.g. the
+ * Floor 1 starter weapon, minted by `equip(world, entity, staticDef, ...)`
+ * with a numeric `EquipmentInstanceId` rather than a generated-equipment
+ * string key.
+ *
+ * Static items live outside the generated-equipment registry, so they carry no
+ * fingerprint, no ability grants and no `ActiveWeaponSnapshotV1`. This narrow
+ * input models only the immutable fields that affect scoring; the evaluator
+ * resolves the canonical {@link WeaponDef} itself from `weaponId` so callers
+ * can never inject a structural weapon shape. Items whose contribution cannot
+ * be modelled this way (status-effect grants, ability grants) must NOT be
+ * passed here — see the planner's `classifyStaticEquippedInstance`.
+ */
+export interface StaticEquipmentBaselineV1 {
+  /** Numeric `EquipmentInstanceId` of the equipped static item. */
+  readonly equipmentInstanceId: number;
+  readonly slots: readonly EquipmentSlotId[];
+  readonly tags?: readonly string[];
+  readonly weightLb: number;
+  readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
+  /** Canonical `WeaponDef` id, or `null` for a non-weapon static item. */
+  readonly weaponId: string | null;
+}
+
+/** Canonical evaluator-internal id for a {@link StaticEquipmentBaselineV1}. */
+export function staticEquipmentBaselineItemId(equipmentInstanceId: number): string {
+  return `static:${equipmentInstanceId}`;
+}
+
 export interface EquipmentLoadoutSnapshot {
   readonly equipped: readonly GeneratedEquipmentInstanceV1[];
+  /**
+   * Static (non-generated) equipped items to score alongside `equipped`.
+   * Omitted or empty preserves the generated-only behaviour exactly.
+   */
+  readonly staticEquipped?: readonly StaticEquipmentBaselineV1[];
   readonly baseStats: Readonly<Partial<Record<StatId, number>>>;
   readonly coreStatPoints: Readonly<Partial<Record<PrimaryStatId, number>>>;
   readonly activeAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSourceId[]>;
@@ -138,6 +171,12 @@ export interface EquipmentLoadoutEvaluation {
   readonly candidateContribution: number;
   readonly displacementCost: number;
   readonly displacedInstanceIds: readonly string[];
+  /**
+   * Numeric ids of the STATIC equipped items this candidate would displace
+   * (see {@link StaticEquipmentBaselineV1}). Always empty when the snapshot
+   * carries no `staticEquipped` baselines.
+   */
+  readonly displacedStaticEquipmentInstanceIds: readonly number[];
   readonly configuredActiveAbilityIds: readonly string[];
   readonly blockedActiveAbilityIds: readonly string[];
 }
@@ -164,8 +203,30 @@ type MutableOwnership = {
   passive: Map<string, AbilityGrantSourceId[]>;
 };
 
+/**
+ * Uniform scoring view over the two kinds of equipped item: generated
+ * registry instances and {@link StaticEquipmentBaselineV1} baselines. Only
+ * immutable scoring data lives here — generated-specific mechanics
+ * (validation, fingerprints, ability-grant sources, candidate execution)
+ * continue to operate on the `generated` instance and are never synthesised
+ * for a static baseline.
+ */
+interface LoadoutItem {
+  readonly id: string;
+  readonly slots: readonly string[];
+  readonly tags: readonly string[];
+  readonly weightLb: number;
+  readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
+  readonly weapon: WeaponDef | null;
+  readonly weaponInstanceId: string | null;
+  readonly abilityGrants: readonly string[];
+  readonly passiveGrants: readonly string[];
+  readonly generated: GeneratedEquipmentInstanceV1 | null;
+  readonly staticEquipmentInstanceId: number | null;
+}
+
 interface LoadoutScoringState {
-  readonly equipped: readonly GeneratedEquipmentInstanceV1[];
+  readonly equipped: readonly LoadoutItem[];
   readonly ownership: MutableOwnership;
   readonly equippedActiveAbilityIds: readonly string[];
 }
@@ -270,13 +331,62 @@ function validateEncounter(fixture: EquipmentEncounterFixture, index: number): v
   }
 }
 
-function validateInstanceSlots(instance: GeneratedEquipmentInstanceV1): string[] {
+function generatedLoadoutItem(instance: GeneratedEquipmentInstanceV1): LoadoutItem {
+  const snapshot = instance.frozen.activeWeaponSnapshot;
+  return {
+    id: instance.instanceId,
+    slots: instance.frozen.slots,
+    tags: instance.frozen.tags,
+    weightLb: instance.frozen.weightLb,
+    statBonuses: instance.frozen.statBonuses,
+    weapon: snapshot,
+    weaponInstanceId: snapshot?.generatedEquipmentInstanceId ?? null,
+    abilityGrants: instance.frozen.abilityGrants,
+    passiveGrants: instance.frozen.passiveGrants,
+    generated: instance,
+    staticEquipmentInstanceId: null,
+  };
+}
+
+function staticLoadoutItem(baseline: StaticEquipmentBaselineV1, path: string): LoadoutItem {
+  if (!Number.isInteger(baseline.equipmentInstanceId) || baseline.equipmentInstanceId < 0) {
+    throw new EquipmentLoadoutEvaluationError(
+      `${path}.equipmentInstanceId must be a non-negative integer`,
+    );
+  }
+  requireFinite(baseline.weightLb, `${path}.weightLb`, 0);
+  validateFiniteRecord(baseline.statBonuses, `${path}.statBonuses`);
+  let weapon: WeaponDef | null = null;
+  if (baseline.weaponId !== null) {
+    weapon = getWeaponDef(baseline.weaponId) ?? null;
+    if (weapon === null) {
+      throw new EquipmentLoadoutEvaluationError(
+        `${path}.weaponId '${baseline.weaponId}' does not resolve to a canonical WeaponDef`,
+      );
+    }
+  }
+  return {
+    id: staticEquipmentBaselineItemId(baseline.equipmentInstanceId),
+    slots: baseline.slots,
+    tags: baseline.tags ?? [],
+    weightLb: baseline.weightLb,
+    statBonuses: baseline.statBonuses,
+    weapon,
+    weaponInstanceId: null,
+    abilityGrants: [],
+    passiveGrants: [],
+    generated: null,
+    staticEquipmentInstanceId: baseline.equipmentInstanceId,
+  };
+}
+
+function validateItemSlots(item: LoadoutItem): string[] {
   const reasons: string[] = [];
-  if (instance.frozen.slots.length === 0) {
+  if (item.slots.length === 0) {
     reasons.push('candidate has no equipment slots');
   }
   const seen = new Set<string>();
-  for (const slot of instance.frozen.slots) {
+  for (const slot of item.slots) {
     if (!isValidSlotId(slot)) reasons.push(`unknown slot ${slot}`);
     if (seen.has(slot)) reasons.push(`duplicate slot ${slot}`);
     seen.add(slot);
@@ -284,37 +394,57 @@ function validateInstanceSlots(instance: GeneratedEquipmentInstanceV1): string[]
   return reasons;
 }
 
-function canonicalInstances(
-  instances: readonly GeneratedEquipmentInstanceV1[],
-  path: string,
-): GeneratedEquipmentInstanceV1[] {
-  const byId = new Map<string, GeneratedEquipmentInstanceV1>();
+function validateInstanceSlots(instance: GeneratedEquipmentInstanceV1): string[] {
+  return validateItemSlots(generatedLoadoutItem(instance));
+}
+
+/**
+ * Validate + canonicalise an equipped item list: generated instances are
+ * revalidated against the registry schema, every item's slots are checked,
+ * duplicate ids and slot collisions are rejected, and the result is sorted by
+ * canonical id so scoring is order-independent.
+ */
+function canonicalItems(items: readonly LoadoutItem[], path: string): LoadoutItem[] {
+  const byId = new Map<string, LoadoutItem>();
   const occupied = new Map<string, string>();
-  for (let index = 0; index < instances.length; index += 1) {
-    const instance = validateGeneratedEquipmentInstanceV1(instances[index]);
-    const slotReasons = validateInstanceSlots(instance);
+  for (let index = 0; index < items.length; index += 1) {
+    const raw = items[index] as LoadoutItem;
+    const item =
+      raw.generated === null
+        ? raw
+        : generatedLoadoutItem(validateGeneratedEquipmentInstanceV1(raw.generated));
+    const slotReasons = validateItemSlots(item);
     if (slotReasons.length > 0) {
       throw new EquipmentLoadoutEvaluationError(
         `${path}[${index}] is invalid: ${slotReasons.join(', ')}`,
       );
     }
-    if (byId.has(instance.instanceId)) {
-      throw new EquipmentLoadoutEvaluationError(
-        `${path} contains duplicate instance ${instance.instanceId}`,
-      );
+    if (byId.has(item.id)) {
+      throw new EquipmentLoadoutEvaluationError(`${path} contains duplicate instance ${item.id}`);
     }
-    byId.set(instance.instanceId, instance);
-    for (const slot of instance.frozen.slots) {
+    byId.set(item.id, item);
+    for (const slot of item.slots) {
       const prior = occupied.get(slot);
       if (prior !== undefined) {
         throw new EquipmentLoadoutEvaluationError(
-          `${path} assigns slot ${slot} to both ${prior} and ${instance.instanceId}`,
+          `${path} assigns slot ${slot} to both ${prior} and ${item.id}`,
         );
       }
-      occupied.set(slot, instance.instanceId);
+      occupied.set(slot, item.id);
     }
   }
-  return [...byId.values()].sort((a, b) => a.instanceId.localeCompare(b.instanceId));
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Build the canonical current-loadout item list (generated + static). */
+function canonicalCurrentItems(snapshot: EquipmentLoadoutSnapshot): LoadoutItem[] {
+  const staticItems = (snapshot.staticEquipped ?? []).map((baseline, index) =>
+    staticLoadoutItem(baseline, `$.current.staticEquipped[${index}]`),
+  );
+  return canonicalItems(
+    [...snapshot.equipped.map(generatedLoadoutItem), ...staticItems],
+    '$.current.equipped',
+  );
 }
 
 function cloneSourceMap(
@@ -337,10 +467,12 @@ function cloneOwnership(snapshot: EquipmentLoadoutSnapshot): MutableOwnership {
 
 function removeEquipmentSources(
   ownership: MutableOwnership,
-  removed: readonly GeneratedEquipmentInstanceV1[],
+  removed: readonly LoadoutItem[],
 ): void {
+  // Static baselines never own ability-grant sources, so only generated items
+  // can contribute a removable prefix here.
   const removedPrefixes = new Set<string>(
-    removed.map((instance) => `equipment:${instance.instanceId}:`),
+    removed.filter((item) => item.generated !== null).map((item) => `equipment:${item.id}:`),
   );
   for (const sourceMap of [ownership.active, ownership.passive]) {
     for (const [abilityId, sources] of sourceMap) {
@@ -411,19 +543,11 @@ function configuredActives(
   return { configured, blocked: [...new Set(blocked)] };
 }
 
-function activeWeapon(
-  equipped: readonly GeneratedEquipmentInstanceV1[],
-): ActiveWeaponSnapshotV1 | null {
-  return (
-    equipped.find((instance) => instance.frozen.activeWeaponSnapshot !== null)?.frozen
-      .activeWeaponSnapshot ?? null
-  );
+function activeWeaponItem(equipped: readonly LoadoutItem[]): LoadoutItem | null {
+  return equipped.find((item) => item.weapon !== null) ?? null;
 }
 
-function passivePrerequisiteMet(
-  ability: AbilityDefinition,
-  weapon: ActiveWeaponSnapshotV1 | null,
-): boolean {
+function passivePrerequisiteMet(ability: AbilityDefinition, weapon: WeaponDef | null): boolean {
   if (ability.kind !== 'passive') return false;
   if (ability.weaponPrerequisite === undefined) return true;
   return (
@@ -438,7 +562,7 @@ function passivePrerequisiteMet(
 
 function passiveModifiers(
   ownership: MutableOwnership,
-  weapon: ActiveWeaponSnapshotV1 | null,
+  weapon: WeaponDef | null,
 ): LegacyStatModifierLike[] {
   const modifiers: LegacyStatModifierLike[] = [];
   for (const abilityId of [...ownership.passive.keys()].sort()) {
@@ -458,17 +582,17 @@ function passiveModifiers(
 }
 
 function equipmentSources(
-  equipped: readonly GeneratedEquipmentInstanceV1[],
+  equipped: readonly LoadoutItem[],
 ): Array<{ statBonuses: Readonly<Partial<Record<StatId, number>>>; weightLb: number }> {
-  return equipped.map((instance) => ({
-    statBonuses: instance.frozen.statBonuses,
-    weightLb: instance.frozen.weightLb,
+  return equipped.map((item) => ({
+    statBonuses: item.statBonuses,
+    weightLb: item.weightLb,
   }));
 }
 
 function effectiveStats(
   snapshot: EquipmentLoadoutSnapshot,
-  equipped: readonly GeneratedEquipmentInstanceV1[],
+  equipped: readonly LoadoutItem[],
   modifiers: readonly LegacyStatModifierLike[],
 ): Record<StatId, number> {
   return computeEffectiveStatsFromLoadout(
@@ -480,7 +604,7 @@ function effectiveStats(
 }
 
 export function computeExpectedWeaponTargets(
-  weapon: ActiveWeaponSnapshotV1,
+  weapon: WeaponDef,
   fixture: EquipmentEncounterFixture,
 ): number {
   if (fixture.enemyCount === 0) return 0;
@@ -491,7 +615,7 @@ export function computeExpectedWeaponTargets(
   );
 }
 
-function weaponHasAreaCapability(weapon: ActiveWeaponSnapshotV1): boolean {
+function weaponHasAreaCapability(weapon: WeaponDef): boolean {
   return (
     weapon.aoeRadius > 0 ||
     weapon.trapExplosionRadius > 0 ||
@@ -506,7 +630,7 @@ interface ExpectedWeaponDpsProfile {
 }
 
 function expectedWeaponDpsProfile(
-  weapon: ActiveWeaponSnapshotV1 | null,
+  weapon: WeaponDef | null,
   stats: Readonly<Record<StatId, number>>,
 ): ExpectedWeaponDpsProfile {
   if (weapon === null) return { primary: 0, additionalTarget: 0 };
@@ -540,7 +664,7 @@ function expectedWeaponDpsProfile(
 }
 
 function expectedWeaponDps(
-  weapon: ActiveWeaponSnapshotV1 | null,
+  weapon: WeaponDef | null,
   stats: Readonly<Record<StatId, number>>,
 ): number {
   return expectedWeaponDpsProfile(weapon, stats).primary;
@@ -674,7 +798,7 @@ function expectedActiveAbilityValue(
 }
 
 function scoreCoreComponents(
-  weapon: ActiveWeaponSnapshotV1 | null,
+  weapon: WeaponDef | null,
   stats: Readonly<Record<StatId, number>>,
   equippedWeightLb: number,
   bodyWeightLb: number,
@@ -719,7 +843,7 @@ function scoreCoreComponents(
 
 function passiveNonStatValue(
   ownership: MutableOwnership,
-  weapon: ActiveWeaponSnapshotV1 | null,
+  weapon: WeaponDef | null,
   weaponDps: number,
   fixtures: readonly EquipmentEncounterFixture[],
 ): number {
@@ -747,15 +871,15 @@ function passiveNonStatValue(
 }
 
 function affinityValue(
-  equipped: readonly GeneratedEquipmentInstanceV1[],
+  equipped: readonly LoadoutItem[],
   ownership: MutableOwnership,
   configured: readonly string[],
   tagWeights: Readonly<Record<string, number>>,
 ): number {
   const tags = new Set<string>();
-  for (const instance of equipped) {
-    for (const tag of instance.frozen.tags) tags.add(tag);
-    const weapon = instance.frozen.activeWeaponSnapshot;
+  for (const item of equipped) {
+    for (const tag of item.tags) tags.add(tag);
+    const weapon = item.weapon;
     if (weapon !== null) {
       tags.add('weapon');
       tags.add(weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical');
@@ -781,15 +905,13 @@ function scoreLoadout(
   affinityTagWeights: Readonly<Record<string, number>>,
   config: EquipmentErvConfig,
 ): EquipmentLoadoutScore {
-  const weapon = activeWeapon(state.equipped);
+  const weaponItem = activeWeaponItem(state.equipped);
+  const weapon = weaponItem?.weapon ?? null;
   const configured = configuredActives(state.equippedActiveAbilityIds, state.ownership).configured;
   const baseStats = effectiveStats(snapshot, state.equipped, []);
   const modifiers = passiveModifiers(state.ownership, weapon);
   const fullStats = effectiveStats(snapshot, state.equipped, modifiers);
-  const equippedWeightLb = state.equipped.reduce(
-    (sum, instance) => sum + instance.frozen.weightLb,
-    0,
-  );
+  const equippedWeightLb = state.equipped.reduce((sum, item) => sum + item.weightLb, 0);
   const baseComponents = scoreCoreComponents(
     weapon,
     baseStats,
@@ -840,7 +962,7 @@ function scoreLoadout(
     effectiveStats: fullStats,
     equippedActiveAbilityIds: configured,
     availablePassiveAbilityIds: [...state.ownership.passive.keys()].sort(),
-    activeWeaponInstanceId: weapon?.generatedEquipmentInstanceId ?? null,
+    activeWeaponInstanceId: weaponItem?.weaponInstanceId ?? null,
   };
 }
 
@@ -871,7 +993,7 @@ export function evaluateEquipmentLoadoutCandidates(
     requireFinite(weight, `$.affinityTagWeights.${tag}`);
   }
 
-  const currentEquipped = canonicalInstances(input.current.equipped, '$.current.equipped');
+  const currentEquipped = canonicalCurrentItems(input.current);
   const currentOwnership = cloneOwnership(input.current);
   const currentConfiguration = configuredActives(
     input.current.equippedActiveAbilityIds,
@@ -916,15 +1038,15 @@ export function evaluateEquipmentLoadoutCandidates(
     }
     candidateIds.add(candidateInstance.instanceId);
 
-    const candidateSlots = new Set(candidateInstance.frozen.slots);
-    const displaced = currentEquipped.filter((instance) =>
-      instance.frozen.slots.some((slot) => candidateSlots.has(slot)),
+    const candidateSlots = new Set<string>(candidateInstance.frozen.slots);
+    const displaced = currentEquipped.filter((item) =>
+      item.slots.some((slot) => candidateSlots.has(slot)),
     );
     const retained = currentEquipped.filter(
-      (instance) => !displaced.some((removed) => removed.instanceId === instance.instanceId),
+      (item) => !displaced.some((removed) => removed.id === item.id),
     );
-    const nextEquipped = canonicalInstances(
-      [...retained, candidateInstance],
+    const nextEquipped = canonicalItems(
+      [...retained, generatedLoadoutItem(candidateInstance)],
       `$.candidates.${candidateInstance.instanceId}.next`,
     );
 
@@ -994,7 +1116,15 @@ export function evaluateEquipmentLoadoutCandidates(
       components,
       candidateContribution,
       displacementCost,
-      displacedInstanceIds: displaced.map((instance) => instance.instanceId).sort(),
+      displacedInstanceIds: displaced
+        .filter((item) => item.generated !== null)
+        .map((item) => item.id)
+        .sort(),
+      displacedStaticEquipmentInstanceIds: displaced
+        .flatMap((item) =>
+          item.staticEquipmentInstanceId === null ? [] : [item.staticEquipmentInstanceId],
+        )
+        .sort((a, b) => a - b),
       configuredActiveAbilityIds: nextConfiguration.configured,
       blockedActiveAbilityIds: nextConfiguration.blocked,
     });

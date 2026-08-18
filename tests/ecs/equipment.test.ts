@@ -146,6 +146,7 @@ describe('Equipment System', () => {
   beforeEach(() => {
     world = createTestWorld();
     world.state = 'safe_room';
+    world.featureUnlocks.equipment = true;
     entity = setupEntity(world);
   });
 

@@ -995,6 +995,12 @@ function equipGeneratedFromBag(
   options?: EquipOptions,
 ): EquipFromBagResult {
   const instanceKey = entry.instanceKey;
+  if (world.floorScenario !== null && !world.featureUnlocks.equipment) {
+    return {
+      ok: false,
+      reasons: [{ type: 'invalidDef', message: 'Generated equipment is not unlocked yet' }],
+    };
+  }
   if (!options?.force && !isInSafeContext(world)) {
     return {
       ok: false,

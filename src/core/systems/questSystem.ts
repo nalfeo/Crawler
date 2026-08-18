@@ -282,6 +282,7 @@ export function isQuestComplete(world: GameWorld, questId: string): boolean {
 
 function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): void {
   const bag = playerEid === undefined ? undefined : world.inventories.get(playerEid);
+  const equipmentState = playerEid === undefined ? undefined : getEquipmentState(world, playerEid);
   if (!bag) {
     return;
   }
@@ -292,7 +293,8 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   // Equipment unlocks once the player holds anything equippable (the purchase).
   if (
     !world.featureUnlocks.equipment &&
-    listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId))
+    (listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
+      Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null))
   ) {
     world.featureUnlocks.equipment = true;
   }

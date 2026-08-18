@@ -223,6 +223,62 @@ describe('equipment loadout expected-run-value evaluator', () => {
     );
   });
 
+  it('scores and reports static baselines separately from generated equipment', () => {
+    const replacement = candidate(generated('plasma-pistol', 'erv-static-replacement', 42, 'rare'));
+    const withStatic = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [replacement]),
+      current: {
+        ...snapshot(),
+        staticEquipped: [
+          {
+            equipmentInstanceId: 101,
+            slots: ['mainHand'],
+            tags: ['weapon', 'physical'],
+            weightLb: 2,
+            statBonuses: { dexterity: 3 },
+            weaponId: 'pistol',
+          },
+        ],
+      },
+    }).ranked[0]!;
+    const generatedOnly = evaluateEquipmentLoadoutCandidates(inputShape([], [replacement]))
+      .ranked[0]!;
+
+    expect(withStatic.currentScore.total).not.toBe(generatedOnly.currentScore.total);
+    expect(withStatic.displacedInstanceIds).toEqual([]);
+    expect(withStatic.displacedStaticEquipmentInstanceIds).toEqual([101]);
+    expect(withStatic.displacementCost).toBeGreaterThan(0);
+    expect(withStatic.score).toBeLessThan(generatedOnly.score);
+  });
+
+  it('rejects malformed static baselines and preserves generated-only snapshots when omitted', () => {
+    const helm = candidate(generated('iron-helm', 'erv-static-validation'));
+    const input = inputShape([], [helm]);
+    expect(evaluateEquipmentLoadoutCandidates(input)).toEqual(
+      evaluateEquipmentLoadoutCandidates({
+        ...input,
+        current: { ...input.current, staticEquipped: [] },
+      }),
+    );
+    expect(() =>
+      evaluateEquipmentLoadoutCandidates({
+        ...input,
+        current: {
+          ...input.current,
+          staticEquipped: [
+            {
+              equipmentInstanceId: 1,
+              slots: ['mainHand'],
+              weightLb: Number.NaN,
+              statBonuses: {},
+              weaponId: null,
+            },
+          ],
+        },
+      }),
+    ).toThrow('weightLb must be a finite number');
+  });
+
   it('separates AOE encounter fit from single-target offense', () => {
     const pistol = candidate(generated('plasma-pistol', 'erv-aoe-pistol'));
     const fireball = candidate(generated('fireball', 'erv-aoe-fireball'));

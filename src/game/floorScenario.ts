@@ -3975,10 +3975,10 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
     return 'complete';
   }
   const bag = playerBag(world);
-  const hasEquippable = bag
-    ? listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId))
-    : false;
-  if (hasEquippable) {
+  // Only the charm gates this quest stage. A generated weapon swap can return
+  // the starter weapon to the bag, and that unrelated static item must not make
+  // the AI believe the purchased charm is merely awaiting equip.
+  if (bag && hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
     return 'awaiting-equip';
   }
   if (world.goalFlags.get('floor1-shop-prize-returned') === true) {

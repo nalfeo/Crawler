@@ -35,6 +35,7 @@ describe('generated equipment real-pipeline integration', () => {
     const world = createTestWorld({ generatedEquipmentRunKey: 'b2-pipeline-test' });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
+    world.featureUnlocks.equipment = true;
     const input: GeneratedEquipmentCreateInputV1 = {
       baseId: 'armor.pipeline-helm',
       itemLevel: 4,
