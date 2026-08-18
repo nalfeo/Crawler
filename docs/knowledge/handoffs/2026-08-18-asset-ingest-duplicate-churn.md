@@ -60,6 +60,12 @@ variant slots).
   pushed directly to `origin/assets/queue`** (commit `1c1243b06`): pruned 516
   duplicate entries (shard + PNG), 0 residual renames needed on the remaining
   124 entries (already canonical).
+- `scripts/sprites/prune-duplicate-variants.ts` (new, hash-aware cleanup tool):
+  applied to `main`'s generated asset tree and removed 61 same-brief,
+  same-contentHash duplicates across `cactusfolk-boss`,
+  `molefolk-elite-pit-boss`, `ratfolk-elite-underboss`, and `warding-bell`.
+  It preserves every distinct content hash, including all legitimate cactus
+  boss variants; only the higher-index copy of a repeated hash is removed.
 
 ## Verification
 
@@ -68,6 +74,9 @@ variant slots).
 - `npm run test:sprites -- tests/unit/sprites/approve.test.ts` — 52/52 passing (49 pre-existing + 3 new).
 - `bash scripts/agent/verify-fast.sh` — full pass, 252 tests, asset-integrity check reports 695 shards / 577 contentHash values verified against PNG bytes, 0 blocking findings.
 - Confirmed post-cleanup `assets/queue` has zero `-v1-var-N`/`-v2-var-N` style paths remaining (`git ls-files public/assets/generated | grep -v-var-` → 0 matches) and manifest entry count dropped from ~470 to 124.
+- `npx tsx scripts/sprites/prune-duplicate-variants.ts --dry-run` after
+  applying the cleanup reports 497 distinct hashes retained and 0 remaining
+  duplicate groups.
 
 ## Follow-ups (not done in this session)
 
