@@ -1,10 +1,10 @@
 {
-  "briefId": "ratfolk-elite-underboss-v1",
-  "spriteName": "ratfolk-elite-underboss-v1-var-6",
-  "assetPath": "generated/ratfolk-elite-underboss-v1-var-6.png",
+  "briefId": "ratfolk-elite-underboss",
+  "spriteName": "ratfolk-elite-underboss-var-8",
+  "assetPath": "generated/ratfolk-elite-underboss-var-8.png",
   "approvedAt": "2026-08-01T05:07:31.488Z",
   "sourceRun": "generated/runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f",
-  "variantIndex": 6,
+  "variantIndex": 8,
   "anchor": {
     "x": 261,
     "y": 288,
