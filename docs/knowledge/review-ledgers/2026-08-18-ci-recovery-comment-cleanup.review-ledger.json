@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "38638cccfc8b236321d33d77b12fb384567d6341",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly and safely streamlines the CI recovery comment logic. It sorts blockers according to a well-defined phase array, gracefully handling the dual nature of review-thread blockers (which need both feedback and resolution phases). The exclusion of aggregate CI failures when concrete ones exist is accurately implemented and covered by new tests."
     }
   }
 }
