@@ -1,10 +1,10 @@
 {
-  "briefId": "cactusfolk-boss-v1",
-  "spriteName": "cactusfolk-boss-v1-var-3",
-  "assetPath": "generated/cactusfolk-boss-v1-var-3.png",
+  "briefId": "cactusfolk-boss",
+  "spriteName": "cactusfolk-boss-var-17",
+  "assetPath": "generated/cactusfolk-boss-var-17.png",
   "approvedAt": "2026-07-20T04:47:46.136Z",
   "sourceRun": "generated/runs/cactusfolk-boss-v1/imported-60e81e4205dc",
-  "variantIndex": 3,
+  "variantIndex": 17,
   "anchor": {
     "x": 65,
     "y": 68,
