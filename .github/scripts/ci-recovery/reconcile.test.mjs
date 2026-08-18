@@ -8,10 +8,12 @@
  */
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 import {
   automationProgressKey,
@@ -33,6 +35,9 @@ import {
 } from './review-request.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
+const CI_WORKFLOW = parseYaml(
+  readFileSync(new URL('../../workflows/ci.yml', import.meta.url), 'utf8'),
+);
 const OWNER = 'test-owner';
 const REPO = 'test-repo';
 const PR_NUM = 42;
@@ -3787,6 +3792,22 @@ test('failed job-level continue-on-error checks (including matrix-suffixed repor
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });
 
+  test('advisory check names match every job-level continue-on-error CI job', () => {
+    const source = readFileSync(SCRIPT, 'utf8');
+    const match = source.match(/const ADVISORY_CHECK_NAMES = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(match, 'expected the recovery advisory check-name set');
+    const configuredNames = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+    const workflowNames = Object.values(CI_WORKFLOW.jobs)
+      .filter((job) => job['continue-on-error'] === true)
+      .map((job) => String(job.name).toLowerCase())
+      .sort();
+    assert.deepEqual(
+      configuredNames.sort(),
+      workflowNames,
+      'recovery advisory filtering must remain aligned with every advisory CI job',
+    );
+  });
+
   t.after(() => server.close());
 
   const { code, stdout, stderr } = await runScript(port, {
@@ -6208,40 +6229,32 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'fresh review-thread blocker should not include the outdated annotation',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('not the ID of this task comment'),
+    taskCommentCall.body.body.includes('(not this task comment)'),
     'task comment should instruct the agent NOT to reply to the task comment itself',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'a marker reply on the review-thread comment is the only form recognised by the reconciler',
-    ),
-    'task comment should state that only a review-thread reply is recognised by the reconciler',
+    taskCommentCall.body.body.includes('exact **Reply target comment ID**'),
+    'task comment should direct the marker to the exact review-thread reply target',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'A top-level PR comment is never sufficient for a review-thread blocker',
-    ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
+    taskCommentCall.body.body.includes('A top-level PR comment cannot resolve a thread'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'post the `✅ Addressed in <post-push-head-sha>: <one-line note>` reply',
+      'use that full SHA in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
     ),
     'top-level-comment warning should require the post-push HEAD marker',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'replace `<post-push-head-sha>` in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+      'After required verification and one consolidated push, run `git rev-parse HEAD`',
     ),
-    'reply_to_comment instruction should require replacing the post-push HEAD placeholder',
+    'reply_to_comment instruction should require deriving the marker from post-push HEAD',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('push your consolidated repair commit first'),
-    'task comment should require pushing before posting addressed markers',
-  );
-  assert.ok(
-    taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
-    'task comment should require deriving the marker SHA from post-push HEAD',
+    taskCommentCall.body.body.includes('only for deterministic non-applicability'),
+    'task comment should reserve Not applicable for deterministic non-applicability',
   );
   assert.equal(
     taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
@@ -6249,10 +6262,8 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'task comment must not contain the generic <sha> placeholder in marker instructions',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'validated `✅ Addressed in <post-push-head-sha>: <one-line note>` result',
-    ),
-    'task comment should require a post-push SHA for ordinary Addressed markers',
+    taskCommentCall.body.body.includes('leave substantive disagreements unresolved for escalation'),
+    'task comment should leave substantive disagreement unresolved for escalation',
   );
   assert.ok(
     taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
@@ -6264,17 +6275,34 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'task comment should not prefill dispatch-time HEAD in marker instruction',
   );
   assert.equal(
-    taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
+    taskCommentCall.body.body.includes('update_pull_request'),
     false,
-    'task comment should not advertise a bare Addressed marker',
+    'ordinary thread tasks should omit prior-recovery-only PR-body instructions',
   );
   assert.ok(
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('use the session `update_pull_request` tool'),
-    'task comment should direct PR-body edits through the supported update_pull_request tool path',
+    taskCommentCall.body.body.includes(
+      '**Required phases:** review feedback → CI failures → thread resolution.',
+    ),
+    'task phases should include only present review and CI phases in recovery order',
+  );
+  assert.ok(
+    taskCommentCall.body.body.indexOf('**review-thread**') <
+      taskCommentCall.body.body.indexOf('**ci-failure**'),
+    'blockers should follow the same review-before-CI phase order',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /merge-conflict resolution|validation/,
+    'task phases should omit absent conflict and validation phases',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `ci`/,
+    'a sole actionable ci aggregate should remain visible as the CI blocker',
   );
 });
 
@@ -6331,10 +6359,24 @@ test('ci-only task body omits review-thread protocol and requires push-based pro
         check_runs: [
           {
             id: 1,
-            name: 'Lightweight Checks',
+            name: 'ci',
             status: 'completed',
             conclusion: 'failure',
             html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/2`,
+          },
+          {
+            id: 3,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/3`,
           },
         ],
       },
@@ -6397,6 +6439,21 @@ test('ci-only task body omits review-thread protocol and requires push-based pro
     taskCommentCall.body.body.includes('thread resolution'),
     false,
     'ci-only recovery task should omit thread-resolution step from required-order line',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Lightweight Checks`/,
+    'a concrete failed check should remain actionable',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `(?:ci|Merge gate)`/,
+    'aggregate CI conclusions should be suppressed when a concrete failure exists',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('merge-conflict resolution'),
+    false,
+    'ci-only recovery task should omit the absent merge-conflict phase',
   );
 });
 
@@ -6515,6 +6572,10 @@ test('merge-train-noop task body uses generic repair protocol, not ci-only or re
     taskCommentCall.body.body.includes('thread resolution'),
     false,
     'merge-train-noop task should omit thread-resolution from required-order line',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('**Required phases:** merge-train cleanup.'),
+    'merge-train-noop task should render its own non-empty recovery phase',
   );
 });
 
@@ -11082,6 +11143,14 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
       String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(priorBlockedReply)}\]`,
     ),
     'task body must include the prior blocked reply text inside the blocker hint',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('A listed thread has a prior-recovery hint:'),
+    'a prior-reply blocker should retain the conditional external-action recovery instruction',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('update_pull_request'),
+    'a prior-reply blocker should retain the conditional PR-body edit instruction',
   );
 
   // The stale-marker hint must NOT appear (prior reply, not a stale marker).
