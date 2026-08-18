@@ -124,19 +124,24 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     expect(getJob(doc, jobId)['timeout-minutes']).toBe(20);
   });
 
-  it('bounds Playwright system dependency installation while retaining cache-aware browser installation', () => {
+  it('keeps system dependency installation best-effort while retaining cache-aware browser installation and the launch gate', () => {
     const steps = loadSetupNodeAction().runs.steps;
-    const dependencyInstall = steps.find(
-      (step) => step.name === 'Install Playwright system dependencies',
+    const dependencyInstall = steps.find((step) =>
+      step.name?.startsWith('Install Playwright system dependencies'),
     );
     const browserInstall = steps.find((step) => step.name === 'Install Playwright browser');
+    const launchCheck = steps.find((step) => step.name === 'Verify Chromium launches');
 
     expect(dependencyInstall?.run).toContain(
-      'timeout --kill-after=30s 10m npx playwright install-deps chromium',
+      'timeout --kill-after=30s 5m npx playwright install-deps chromium',
     );
-    expect(dependencyInstall?.run).toContain('[ "$status" -eq 124 ] || [ "$status" -eq 137 ]');
+    // A nonzero apt status must warn and continue, never re-raise: an Ubuntu
+    // mirror outage must not fail CI.
+    expect(dependencyInstall?.run).toContain('::warning::');
+    expect(dependencyInstall?.run).not.toContain('exit "$status"');
     expect(browserInstall?.if).toContain("steps.pw-cache.outputs.cache-hit != 'true'");
     expect(browserInstall?.run).toBe('npx playwright install chromium');
+    expect(launchCheck?.run).toContain('scripts/agent/verify-chromium-launch.mjs');
   });
 
   it('merge-gate check calls each e2e job with allow_skipped semantics ("true")', () => {

@@ -29,7 +29,7 @@ export async function verifyChromiumLaunch(chromium) {
 }
 
 async function main() {
-  const { chromium } = await import('@playwright/test');
+  const { chromium } = await import('playwright');
   try {
     await verifyChromiumLaunch(chromium);
   } catch (error) {

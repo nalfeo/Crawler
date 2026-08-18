@@ -53,9 +53,10 @@ actionable message instead of after a 10-minute hang.
 
 - `.github/actions/setup-node/action.yml` — apt step made best-effort (warn, no
   `exit "$status"`, 10m → 5m); new `Verify Chromium launches` step.
-- `scripts/agent/verify-chromium-launch.mjs` — new; exports `verifyChromiumLaunch`
-  and runs as a CLI. Closes the browser in a `finally` so a failure never leaks a
-  process.
+- `scripts/agent/verify-chromium-launch.mjs` — new; imports `chromium` from the
+  installed `playwright` package (the repo has no `@playwright/test` dependency),
+  exports `verifyChromiumLaunch` and runs as a CLI. Closes the browser in a
+  `finally` so a failure never leaks a process.
 - `tests/unit/setup-node-playwright-readiness.test.ts` — new; 5 regression tests.
 
 ## Verification run
@@ -69,6 +70,15 @@ actionable message instead of after a 10-minute hang.
 - Authoritative check is this PR's own CI: `Lightweight Checks` exercises the
   changed composite action directly, so a green run on this branch is the real
   before/after evidence.
+- `npx vitest run tests/unit/dev-build-ingest-handler.test.ts --project unit`
+  → 4 passed. An earlier session note claimed this file failed with
+  `getaddrinfo ENOTFOUND unittest.blob.core.windows.net`; that was an artefact of
+  a stale worktree, not a defect. Re-run on this branch (and the `Unit Tests` CI
+  job) it passes, so there is no outstanding rule #7 obligation here.
+- `npx vitest run tests/unit/e2e-visual-routing-wiring.test.ts --project unit`
+  → 15 passed after updating the stale `Install Playwright system dependencies`
+  contract to the best-effort step name, the 5-minute timeout, the
+  warn-and-continue behaviour, and the launch gate.
 
 ## Unresolved issues
 
@@ -79,10 +89,6 @@ actionable message instead of after a 10-minute hang.
   `CRAWLER_CI_PAT`. A redeploy from `main` would regress both. The
   `labels: ['telemetry']` change also only takes effect once the function is
   redeployed.
-- **`tests/unit/dev-build-ingest-handler.test.ts` is broken in this
-  environment** — all 5 tests fail with `getaddrinfo ENOTFOUND
-unittest.blob.core.windows.net` and hang 16–30s each; the `@azure/storage-blob`
-  mock does not intercept every path. Pre-existing, but a rule #7 obligation.
 - Vitest cannot import a `.mjs` with a shebang (`vite:import-analysis` fails to
   parse it) and decodes non-ASCII bytes such that an em-dash in a comment throws
   `SyntaxError: Invalid or unexpected token`. Both cost time here; any
