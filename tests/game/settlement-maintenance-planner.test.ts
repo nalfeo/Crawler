@@ -20,7 +20,10 @@ import {
   listGeneratedEquipmentReferences,
 } from '../../src/shared/inventory.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
-import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+import {
+  getEquipmentDefForStarterWeapon,
+  MERCHANTS_CHARM_DEF,
+} from '../../src/shared/equipmentDefs.js';
 import {
   grantAbilitySources,
   getOrCreateAbilityState,
@@ -636,6 +639,33 @@ describe('runSettlementMaintenancePlanner', () => {
 
     const equipped = getEquipmentState(world, playerEid)?.equipped;
     expect(equipped?.neck).toBe(staticInstanceId);
+  });
+
+  it('retains the starter weapon class after replacing its static occupant', () => {
+    const { world, playerEid } = createSettlementWorld();
+    const pistolStarter = getEquipmentDefForStarterWeapon('pistol');
+    if (!pistolStarter) throw new Error('Expected a pistol starter equipment definition');
+    expect(equip(world, playerEid, pistolStarter, { force: true }).ok).toBe(true);
+
+    const sameClassId = addBagEquipment(world, playerEid, 'plasma-pistol', 'uncommon');
+    const differentClassId = addBagEquipment(world, playerEid, 'fireball', 'uncommon');
+
+    const result = runSettlementMaintenancePlanner(world);
+
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    expect(equipped?.mainHand).toBe(sameClassId);
+    expect(Object.values(equipped ?? {})).not.toContain(differentClassId);
+    expect(result.decisions.some((decision) => decision.detail.includes(differentClassId))).toBe(
+      true,
+    );
+    expect(
+      result.decisions.some(
+        (decision) =>
+          decision.kind === 'skip' &&
+          decision.detail.includes(differentClassId) &&
+          decision.detail.includes('different weapon class'),
+      ),
+    ).toBe(true);
   });
 
   it('logs a Quartermaster offer skip decision for an unaffordable offer exactly once, even across multiple equipment-loop iterations', () => {
