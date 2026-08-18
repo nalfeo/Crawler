@@ -407,6 +407,8 @@ const CLIENT_SCRIPT = String.raw`
   var baselineFingerprint = null;
   var loadTokenCounter = 0;
   var listTokenCounter = 0;
+  /** Sprite keys already warmed into the browser image cache (dedupes prefetch). */
+  var prefetchedImageKeys = Object.create(null);
   var saveTokenCounter = 0;
   var revertTokenCounter = 0;
   var scaleFactor = 1;
@@ -478,6 +480,15 @@ const CLIENT_SCRIPT = String.raw`
     if (!statusEl) return;
     statusEl.textContent = message || '';
     statusEl.style.color = isError ? '#fecaca' : '#94a3b8';
+  }
+
+  function queueCleanupFailureMessage(queue) {
+    if (!queue || !queue.cleanupError) return '';
+    return (
+      '\u26a0 Durable queue push succeeded, but local annotation cleanup FAILED \u2014 ' +
+      String(queue.cleanupError) +
+      ' The annotation remains in this worktree.'
+    );
   }
 
   async function fetchJson(url, options) {
@@ -1081,6 +1092,15 @@ const CLIENT_SCRIPT = String.raw`
     );
   }
 
+  function currentEditorInputFingerprint() {
+    if (!sprite) return null;
+    return JSON.stringify({
+      key: sprite.key,
+      metadata: currentMetadataSnapshot(),
+      annotation: currentAnnotationSnapshot()
+    });
+  }
+
   function currentEditorFingerprint() {
     if (!sprite) return null;
     return serializeEditorFingerprint(
@@ -1157,6 +1177,9 @@ const CLIENT_SCRIPT = String.raw`
         return;
       }
       sprites = data.sprites || [];
+      // The list defines the prefetch universe; drop warm-keys from the previous
+      // one so a re-listed sprite whose bytes changed is re-warmed at its new URL.
+      prefetchedImageKeys = Object.create(null);
       if (totalEl) totalEl.textContent = String(data.total || 0);
       refreshTagsDatalist(data.availableTags || []);
       if (
@@ -1251,7 +1274,7 @@ const CLIENT_SCRIPT = String.raw`
                     disliked: !currentFavorite ? false : currentDisliked,
                     comment: currentComment
                   };
-                  await fetchJson('/api/save', {
+                  var saveResult = await fetchJson('/api/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1269,7 +1292,26 @@ const CLIENT_SCRIPT = String.raw`
                   if (currentEditorFingerprint() === editorFingerprintAtStart) {
                     await loadList({ skipDirtyGuard: true });
                   }
-                  setStatus((!currentFavorite ? 'Marked' : 'Unmarked') + ' favorite.');
+                  var favoriteCleanupFailure = queueCleanupFailureMessage(
+                    saveResult && saveResult.queue
+                  );
+                  if (favoriteCleanupFailure) {
+                    setStatus(favoriteCleanupFailure, true);
+                  } else if (
+                    saveResult &&
+                    saveResult.queue &&
+                    saveResult.queue.status === 'failed'
+                  ) {
+                    setStatus(
+                      '\u26a0 Saved locally, but the durable queue push FAILED \u2014 the annotation remains in this worktree. Keep it and check the sprite-editor logs.',
+                      true
+                    );
+                  } else {
+                    setStatus(
+                      (!currentFavorite ? 'Marked' : 'Unmarked') +
+                        ' favorite and queued for durable persistence.'
+                    );
+                  }
                 } catch (error) {
                   setStatus(error.message || String(error), true);
                 } finally {
@@ -1311,21 +1353,27 @@ const CLIENT_SCRIPT = String.raw`
         setStatus('Sprite not found.', true);
         return false;
       }
-      await loadImage(loadToken, nextSprite.key);
+      var decodedImage = await decodeSpriteImage(nextSprite.key, nextSprite.imageVersion);
       if (loadToken !== loadTokenCounter) return false;
       if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
         setStatus('Stayed on current sprite: newer edits were made while loading.');
         return false;
       }
+      commitLoadedImage(decodedImage);
       sprite = nextSprite;
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
+      // renderEditor paints the badge from the pre-load baseline, so refresh the
+      // indicator once the new baseline is in place or a freshly loaded sprite
+      // keeps a stale "Unsaved" badge.
+      updateDirtyIndicator();
       if (opts.updateSelection !== false) {
         selectedKey = sprite.key;
         selectedVariantGroup = sprite.variantGroup || null;
         renderList();
       }
       setStatus('Ready.');
+      prefetchNeighbors(sprite);
       return true;
     } catch (error) {
       console.error('[sprite-editor] failed to load sprite', error);
@@ -1339,15 +1387,70 @@ const CLIENT_SCRIPT = String.raw`
     return canvas.toDataURL('image/png');
   }
 
-  async function loadImage(loadToken, spriteKey) {
-    if (!spriteKey) return;
+  /**
+   * Build the image URL for a sprite. Keying on the content version (rather than
+   * the old timestamp cache-buster) makes a repeat visit a browser-cache hit
+   * instead of a fresh fetch + PNG decode, while still guaranteeing that edited
+   * bytes mint a brand-new URL.
+   */
+  function spriteImageUrl(spriteKey, imageVersion) {
+    var url = '/img/sprite?key=' + encodeURIComponent(spriteKey);
+    return imageVersion ? url + '&v=' + encodeURIComponent(imageVersion) : url + '&_ts=' + Date.now();
+  }
+
+  /**
+   * Warm the browser image cache for the sprites the user is most likely to open
+   * next (the adjacent variants and the neighbouring list rows). Purely
+   * best-effort: failures are ignored and nothing here touches editor state.
+   */
+  function prefetchNeighbors(currentSprite) {
+    if (!currentSprite) return;
+    var wanted = [];
+    if (currentSprite.prevVariantKey) wanted.push(currentSprite.prevVariantKey);
+    if (currentSprite.nextVariantKey) wanted.push(currentSprite.nextVariantKey);
+    var index = -1;
+    for (var i = 0; i < sprites.length; i++) {
+      if (sprites[i].key === currentSprite.key) { index = i; break; }
+    }
+    if (index >= 0) {
+      if (sprites[index - 1]) wanted.push(sprites[index - 1].key);
+      if (sprites[index + 1]) wanted.push(sprites[index + 1].key);
+    }
+    for (var j = 0; j < wanted.length; j++) {
+      var neighborKey = wanted[j];
+      if (!neighborKey || prefetchedImageKeys[neighborKey]) continue;
+      var row = null;
+      for (var k = 0; k < sprites.length; k++) {
+        if (sprites[k].key === neighborKey) { row = sprites[k]; break; }
+      }
+      // Without a known version we cannot build a cacheable URL, so prefetching
+      // would just burn a request that the real load could not reuse.
+      if (!row || !row.imageVersion) continue;
+      prefetchedImageKeys[neighborKey] = true;
+      var warm = new Image();
+      warm.decoding = 'async';
+      warm.src = spriteImageUrl(neighborKey, row.imageVersion);
+    }
+  }
+
+  async function decodeSpriteImage(spriteKey, imageVersion) {
+    if (!spriteKey) return null;
     var img = new Image();
-    img.src = '/img/sprite?key=' + encodeURIComponent(spriteKey) + '&_ts=' + Date.now();
+    img.src = spriteImageUrl(spriteKey, imageVersion);
     await new Promise(function (resolve, reject) {
       img.onload = resolve;
       img.onerror = reject;
     });
-    if (loadToken != null && loadToken !== loadTokenCounter) return;
+    return img;
+  }
+
+  async function loadImage(loadToken, spriteKey, imageVersion) {
+    var img = await decodeSpriteImage(spriteKey, imageVersion);
+    if (!img || (loadToken != null && loadToken !== loadTokenCounter)) return;
+    commitLoadedImage(img);
+  }
+
+  function commitLoadedImage(img) {
     canvas = h('canvas', { class: 'sprite-canvas' });
     overlayCanvas = h('canvas', { class: 'overlay-canvas' });
     canvas.width = img.naturalWidth || img.width;
@@ -2348,12 +2451,16 @@ const CLIENT_SCRIPT = String.raw`
       // lost when the worktree is discarded. So when the response is stale,
       // surface the failed push here before returning; the non-stale path below
       // reports it with more specific messaging.
+      var queue = data && data.queue ? data.queue : null;
+      var cleanupFailure = queueCleanupFailureMessage(queue);
       var saveStale = saveToken !== saveTokenCounter || !sprite || sprite.key !== expectedKey;
-      if (saveStale && data && data.queue && data.queue.status === 'failed') {
+      if (saveStale && queue && queue.status === 'failed') {
         setStatus(
           '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
           true
         );
+      } else if (saveStale && cleanupFailure) {
+        setStatus(cleanupFailure, true);
       }
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
@@ -2361,8 +2468,7 @@ const CLIENT_SCRIPT = String.raw`
       // the outcome in data.queue ({status:'ok'|'skipped'|'failed'}). A 'failed'
       // push means the on-disk write is fine but the edit is NOT yet durable
       // across worktrees/sessions — surface it loudly so the worktree isn't
-      // discarded and the edit lost. Annotation-only saves have no queue field.
-      var queue = data && data.queue ? data.queue : null;
+      // discarded and the edit lost.
       var queueFailed = !!queue && queue.status === 'failed';
       if (currentEditorFingerprint() !== submittedFingerprint) {
         var savedSprite = data && data.sprite ? data.sprite : sprite;
@@ -2377,8 +2483,10 @@ const CLIENT_SCRIPT = String.raw`
           'Saved submitted state; newer edits remain unsaved.' +
             (queueFailed
               ? ' \u26a0 Durable queue push FAILED \u2014 keep this worktree; the edit is not yet safe across sessions.'
+              : cleanupFailure
+                ? ' ' + cleanupFailure
               : ''),
-          queueFailed
+          queueFailed || !!cleanupFailure
         );
         return false;
       }
@@ -2397,6 +2505,8 @@ const CLIENT_SCRIPT = String.raw`
           '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
           true
         );
+      } else if (cleanupFailure) {
+        setStatus(cleanupFailure, true);
       } else if (queue && queue.status === 'ok') {
         setStatus('Saved to disk and queued for durable persistence.');
       } else {
@@ -2444,7 +2554,7 @@ const CLIENT_SCRIPT = String.raw`
       if (!sprite || sprite.key !== expectedKey) return;
       sprite = data.sprite || sprite;
       var loadToken = ++loadTokenCounter;
-      await loadImage(loadToken, sprite.key);
+      await loadImage(loadToken, sprite.key, sprite.imageVersion);
       if (loadToken !== loadTokenCounter) {
         // The user switched sprites during loadImage; this early return sits
         // before the terminal report below, so surface a failed push here too.

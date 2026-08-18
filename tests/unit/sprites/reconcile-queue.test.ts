@@ -917,6 +917,28 @@ function seedQueueWithBrief(
   }
 }
 
+function seedQueueWithAnnotations(
+  liveDir: string,
+  sprites: Record<string, { favorite: boolean; disliked: boolean; comment: string }>,
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-annotations-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+      version: 1,
+      sprites,
+    });
+    gitSync(wt, 'add', '--', 'public/assets/generated/sprite-editor-annotations.json');
+    gitSync(wt, 'commit', '--no-verify', '-m', 'queue sprite annotations');
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /**
  * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
  * flow that lands art without going through the queue branch).
@@ -1407,6 +1429,43 @@ describe('runReconcile (real git)', () => {
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
     const promotedBrief = gitSync(liveDir, 'show', `origin/assets/promote:${briefPath}`);
     expect(promotedBrief).toContain('id: panda-boba-sniper');
+  });
+
+  it('(c2) promotes and retains an annotation-only candidate through the real reconcile path', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const annotations = {
+      exemplar: { favorite: true, disliked: false, comment: 'Best silhouette.' },
+      regenerate: { favorite: false, disliked: true, comment: 'Needs another pass.' },
+    };
+    seedQueueWithAnnotations(liveDir, annotations);
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual(['public/assets/generated/sprite-editor-annotations.json']);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      JSON.parse(
+        gitSync(
+          liveDir,
+          'show',
+          'origin/assets/promote:public/assets/generated/sprite-editor-annotations.json',
+        ),
+      ),
+    ).toEqual({ version: 1, sprites: annotations });
+
+    simulateSquashMerge(liveDir, gh, result.prNumber!);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    expect(
+      JSON.parse(
+        gitSync(
+          liveDir,
+          'show',
+          'origin/main:public/assets/generated/sprite-editor-annotations.json',
+        ),
+      ),
+    ).toEqual({ version: 1, sprites: annotations });
   });
 
   it('(d) returns to a no-op after the promote PR squash-merges into main', async () => {

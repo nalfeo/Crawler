@@ -2,6 +2,8 @@ import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import {
   DeathTimer,
+  MeleeSwing,
+  Owner,
   Position,
   Prop,
   Rotation,
@@ -9,6 +11,7 @@ import {
   Spawner,
   Sprite,
 } from '../core/components.js';
+import { getActiveWeaponDef } from '../core/active-weapon.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
@@ -85,6 +88,16 @@ import {
   SLIME_FULL_SPRITE_WIDTH,
 } from './phaser-bridge/sprite-kind.js';
 import { BOSS_BAR_COLORS } from './boss-health-bar-state.js';
+import {
+  CARRIED_WEAPON_HAND_DROP_FT,
+  CARRIED_WEAPON_HAND_OFFSET_FT,
+  CARRIED_WEAPON_OBJECT_NAME_PREFIX,
+  carriedWeaponLengthFt,
+  computeCarriedWeaponPlacement,
+  kenneyCarriedWeaponSpriteId,
+} from './phaser-bridge/carried-weapon.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../shared/item-sprites.js';
+import { hashStringToSeed } from '../shared/random.js';
 import type { EntitySpriteMappings } from '../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../shared/data/entity-sprite-mappings.json';
 
@@ -609,6 +622,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   generateTextures(scene);
 
   const visuals = new Map<number, EntityVisual>();
+  /**
+   * Persistent carried main-hand weapon sprite per player entity. Independent
+   * of `visuals` (which is keyed by the entity's own sprite) because the
+   * weapon is a second display object hanging off the same eid.
+   */
+  const carriedWeaponVisuals = new Map<number, Phaser.GameObjects.Image>();
+  /**
+   * Last known horizontal facing per player eid. The player's own sprite flip
+   * is only re-derived when |vx| is above the flip epsilon (so standing still
+   * doesn't snap the sprite around); the carried weapon must follow the exact
+   * same latched facing so hand and body never disagree.
+   */
+  const playerFacingRightByEid = new Map<number, boolean>();
   const deathMarkers = new Map<number, Phaser.GameObjects.Image>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
@@ -838,6 +864,155 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         }
         playerWalkMovingByEid.set(eid, isMoving);
+      };
+
+      /**
+       * Eids that currently own a live melee swing. The swing branch draws its
+       * own weapon sprite pivoting from the player's centre, so the carried
+       * sprite hides for the duration to avoid rendering the weapon twice.
+       */
+      const swingOwners = new Set<number>();
+      for (const swingEid of query(world.ecs, [MeleeSwing, Owner])) {
+        const owner = world.stores.owner.eid[swingEid];
+        if (owner !== undefined) {
+          swingOwners.add(owner);
+        }
+      }
+
+      /**
+       * Draw (or hide) the player's equipped main-hand weapon as a persistent
+       * carried sprite, so the weapon is visible between swings and for weapon
+       * types that never spawn a swing entity at all.
+       *
+       * Art resolution mirrors the swing branch's preference order: approved
+       * generated art first, then the Kenney placeholder for melee weapons,
+       * then any generated placeholder entry — so a weapon with no art at all
+       * simply renders nothing rather than a misleading stand-in.
+       */
+      const updateCarriedWeapon = (
+        eid: number,
+        playerX: number,
+        playerY: number,
+        playerVisible: boolean,
+      ): void => {
+        const hideCarried = (): void => {
+          const existing = carriedWeaponVisuals.get(eid);
+          if (existing) {
+            existing.setVisible(false);
+          }
+        };
+        if (typeof scene.add.image !== 'function') {
+          return;
+        }
+        const weaponDef = getActiveWeaponDef(world);
+        if (!weaponDef || !playerVisible || swingOwners.has(eid)) {
+          hideCarried();
+          return;
+        }
+
+        const generatedEntry = generatedRegistry
+          ? resolveItemSprite(
+              generatedRegistry,
+              weaponDef.id,
+              (hashStringToSeed(weaponDef.id) ^ world.seed) | 0,
+            )
+          : null;
+        const generatedReady =
+          generatedEntry !== null && scene.textures?.exists?.(generatedEntry.textureKey) === true;
+        const kenneySpriteId = kenneyCarriedWeaponSpriteId(weaponDef.id, weaponDef.weaponType);
+        const fallbackSpriteDef = kenneySpriteId ? getSprite(kenneySpriteId) : undefined;
+        // Real approved art wins; a generated PLACEHOLDER only wins when there
+        // is no hand-picked Kenney stand-in for this weapon (i.e. non-melee),
+        // so a melee weapon never downgrades to placeholder art.
+        const useGenerated =
+          generatedEntry !== null &&
+          generatedReady &&
+          (!_isPlaceholderEntry(generatedEntry) || fallbackSpriteDef === undefined);
+
+        let textureKey: string | null = null;
+        let frame: string | number | undefined;
+        let holdX = DEFAULT_HANDHELD_SPRITE_ANCHOR.x;
+        let holdY = DEFAULT_HANDHELD_SPRITE_ANCHOR.y;
+        let frameWidth = 16;
+        let frameHeight = 16;
+        let isGeneratedArt = false;
+
+        if (useGenerated && generatedEntry !== null) {
+          textureKey = generatedEntry.textureKey;
+          holdX = generatedEntry.anchor.x;
+          holdY = generatedEntry.anchor.y;
+          isGeneratedArt = true;
+          const src = scene.textures.get(textureKey).getSourceImage() as
+            | { width?: number; height?: number }
+            | undefined;
+          const w = src?.width;
+          const h = src?.height;
+          if (typeof w === 'number' && w > 0 && typeof h === 'number' && h > 0) {
+            frameWidth = w;
+            frameHeight = h;
+          }
+        } else if (fallbackSpriteDef) {
+          textureKey = fallbackSpriteDef.sheetKey;
+          frame = fallbackSpriteDef.frame;
+        }
+
+        if (textureKey === null) {
+          hideCarried();
+          return;
+        }
+
+        const placement = computeCarriedWeaponPlacement({
+          playerX,
+          playerY,
+          facingRight: playerFacingRightByEid.get(eid) ?? true,
+          handOffsetPx: ftToPx(CARRIED_WEAPON_HAND_OFFSET_FT),
+          handDropPx: ftToPx(CARRIED_WEAPON_HAND_DROP_FT),
+          lengthPx: ftToPx(carriedWeaponLengthFt(weaponDef)),
+          holdX,
+          holdY,
+          frameWidth,
+          frameHeight,
+          clampMinScale: !isGeneratedArt,
+        });
+
+        let img = carriedWeaponVisuals.get(eid);
+        if (!img) {
+          img =
+            frame !== undefined
+              ? scene.add.image(placement.x, placement.y, textureKey, frame)
+              : scene.add.image(placement.x, placement.y, textureKey);
+          // Named so a real-scene probe can identify the carried weapon on the
+          // display list (mirrors the blood-pool / quest-arrow naming pattern).
+          if (typeof img.setName === 'function') {
+            img.setName(`${CARRIED_WEAPON_OBJECT_NAME_PREFIX}${eid}`);
+          }
+          carriedWeaponVisuals.set(eid, img);
+        } else {
+          // Reconcile only on a real change (late generated-art load, or a
+          // weapon switch), mirroring the swing branch's guard so a stable
+          // weapon never re-`setTexture`s every frame.
+          const keyChanged = img.texture.key !== textureKey;
+          const frameChanged =
+            !keyChanged && frame !== undefined && String(img.frame?.name) !== String(frame);
+          if (keyChanged || frameChanged) {
+            if (frame !== undefined) {
+              img.setTexture(textureKey, frame);
+            } else {
+              img.setTexture(textureKey);
+            }
+          }
+        }
+        img.setOrigin(placement.originX, placement.originY);
+        img.setScale(placement.scale);
+        img.setPosition(placement.x, placement.y);
+        img.setRotation(placement.rotation);
+        img.setAlpha(1);
+        img.setVisible(true);
+        if (typeof img.setDepth === 'function') {
+          // Just above the entity plane so the weapon reads as held in front of
+          // the body without escaping the world-space camera.
+          img.setDepth(ENTITY_DEPTH + 0.002);
+        }
       };
 
       const ensureMobMotionState = (
@@ -1833,6 +2008,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                 const vx = velocity.x[eid] ?? 0;
                 if (Math.abs(vx) > ENEMY_RIGHTWARD_FLIP_EPSILON) {
                   const movingRight = vx > 0;
+                  playerFacingRightByEid.set(eid, movingRight);
                   const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
                   const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
                   if (typeof img.setFlipX === 'function') {
@@ -1840,6 +2016,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   }
                 }
                 playPlayerWalkAnimation(img, eid);
+                // The equipped main-hand weapon is always carried, not just
+                // drawn for the duration of a swing.
+                updateCarriedWeapon(eid, x, y, img.visible !== false);
               } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
@@ -2338,6 +2517,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visuals.delete(eid);
         playerWalkMovingByEid.delete(eid);
         acceptedStepDisplacementByEid.delete(eid);
+        playerFacingRightByEid.delete(eid);
+        const carriedWeapon = carriedWeaponVisuals.get(eid);
+        if (carriedWeapon) {
+          carriedWeapon.destroy();
+          carriedWeaponVisuals.delete(eid);
+        }
         // Remove weapon anchor so dead/despawned entities don't leave stale
         // offsets that could be picked up if the eid is reused later.
         world.entityWeaponAnchors.delete(eid);
@@ -2486,6 +2671,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       visuals.clear();
       playerWalkMovingByEid.clear();
       acceptedStepDisplacementByEid.clear();
+      for (const img of carriedWeaponVisuals.values()) {
+        img.destroy();
+      }
+      carriedWeaponVisuals.clear();
+      playerFacingRightByEid.clear();
       mobMotionStates.clear();
       for (const overlay of mobFlashOverlays.values()) {
         overlay.destroy();

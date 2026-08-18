@@ -3821,12 +3821,8 @@ function floor1ObjectiveTick(world: GameWorld): void {
     entityExists(world.ecs, staircaseEid) &&
     !hasComponent(world.ecs, staircaseEid, DeathTimer);
   if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
-    const chestX =
-      (staircaseEid === null ? undefined : world.stores.position.x[staircaseEid]) ??
-      objective.staircasePos.x;
-    const chestY =
-      (staircaseEid === null ? undefined : world.stores.position.y[staircaseEid]) ??
-      objective.staircasePos.y;
+    const chestX = objective.staircasePos.x;
+    const chestY = objective.staircasePos.y;
     objective.staircaseSpawned = true;
     objective.staircaseLocked = false;
     objective.staircaseUnlocked = true;

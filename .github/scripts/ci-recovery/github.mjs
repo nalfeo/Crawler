@@ -104,18 +104,28 @@ export async function paginate(token, path) {
 }
 
 export async function graphql(token, query, variables = {}) {
-  const response = await fetch(graphqlUrl, {
-    method: 'POST',
-    headers: headers(token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query, variables }),
-  });
-  const payload = await response.json();
-  if (!response.ok || payload.errors?.length) {
-    throw new Error(
-      `GitHub GraphQL failed: ${payload.errors?.map((error) => error.message).join('; ') || response.status}`,
-    );
+  const canRetry = query.trimStart().startsWith('query');
+  for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
+    }
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: headers(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.errors?.length) {
+      if (canRetry && RETRYABLE_STATUSES.has(response.status) && attempt < MAX_RETRY_ATTEMPTS) {
+        continue;
+      }
+      throw new Error(
+        `GitHub GraphQL failed: ${payload.errors?.map((error) => error.message).join('; ') || response.status}`,
+      );
+    }
+    return payload.data;
   }
-  return payload.data;
+  throw new Error('GitHub GraphQL: exhausted all retry attempts');
 }
 
 export async function listReviewThreads(token, owner, repo, number, graphqlFn = graphql) {

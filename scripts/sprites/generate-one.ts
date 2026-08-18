@@ -75,6 +75,15 @@ import {
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
 import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
+// The Sprite Editor's queued-but-unpromoted annotation overlay lives beside
+// the extension (a `.mjs` cannot import TypeScript, so this is the one
+// direction that CAN be shared without duplicating logic). A sibling
+// `pending-annotation-overlay.d.mts` declares its types for `tsc` without
+// requiring `allowJs`.
+import {
+  resolvePendingAnnotationsPath,
+  readPendingDislikedSpriteNames,
+} from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -119,6 +128,17 @@ export interface GenerateOneOptions {
   readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
   /** Asset-level disliked annotation loader injection for reference hygiene. */
   readonly loadDislikedReferenceNames?: () => ReadonlySet<string>;
+  /**
+   * Queued-but-unpromoted Sprite Editor annotation overlay loader injection
+   * (tests). Defaults to reading the same per-worktree pending-overlay file
+   * the editor's `annotation-persistence.mjs` writes (see
+   * `pending-annotation-overlay.mjs`), so a sprite disliked and durably
+   * queued moments ago is still excluded from reference selection even
+   * though local cleanup already reset the tracked annotations file back to
+   * HEAD (`markDurable`). READ-ONLY: this never recreates a tracked diff
+   * after queueing -- it only reads the overlay the editor already wrote.
+   */
+  readonly loadPendingDislikedReferenceNames?: () => ReadonlySet<string>;
   /**
    * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
    * to pre-filter manifest entries to those whose PNG is actually on disk
@@ -239,30 +259,40 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
   };
 }
 
-function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+/**
+ * Raw `sprites` map from the tracked `sprite-editor-annotations.json`
+ * aggregate. Fails safe to an empty map (never throws) on a missing,
+ * malformed, or transiently torn file, mirroring the pending-overlay
+ * reader's own fail-safe retry policy.
+ */
+function loadAnnotationSpritesMap(annotationsPath: string): Readonly<Record<string, unknown>> {
   for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
     try {
       const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
         readonly sprites?: unknown;
       };
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Set<string>();
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
       const sprites = raw.sprites;
-      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites))
-        return new Set<string>();
-      const disliked = new Set<string>();
-      for (const [spriteName, note] of Object.entries(sprites as Record<string, unknown>)) {
-        if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
-        if ((note as { readonly disliked?: unknown }).disliked === true) {
-          disliked.add(spriteName);
-        }
-      }
-      return disliked;
+      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites)) return {};
+      return sprites as Record<string, unknown>;
     } catch {
       // Concurrent sprite-editor writes can expose a transient truncated snapshot.
-      // Retry a bounded number of times, then fail-safe to an empty disliked set.
+      // Retry a bounded number of times, then fail-safe to an empty map.
     }
   }
-  return new Set<string>();
+  return {};
+}
+
+function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+  const sprites = loadAnnotationSpritesMap(annotationsPath);
+  const disliked = new Set<string>();
+  for (const [spriteName, note] of Object.entries(sprites)) {
+    if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
+    if ((note as { readonly disliked?: unknown }).disliked === true) {
+      disliked.add(spriteName);
+    }
+  }
+  return disliked;
 }
 
 export async function generateSheetCore(
@@ -341,6 +371,26 @@ export async function generateSheetCore(
       if (!existsSync(annotationsPath)) return new Set<string>();
       return loadDislikedSpriteNamesFromAnnotations(annotationsPath);
     });
+  const loadPendingDislikedReferenceNames =
+    options.loadPendingDislikedReferenceNames ??
+    (() => {
+      const annotationsPath = path.join(
+        publicAssetsRoot,
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      // Reconcile each pending dislike's captured `base` against the tracked
+      // annotation before trusting it, so a dislike another worktree has since
+      // superseded (e.g. promotion now carries a favorite) is not counted
+      // indefinitely — see `readPendingDislikedSpriteNames`.
+      const currentSprites = existsSync(annotationsPath)
+        ? loadAnnotationSpritesMap(annotationsPath)
+        : {};
+      return readPendingDislikedSpriteNames(resolvePendingAnnotationsPath(repoRoot), {
+        getCurrentAnnotation: (key) =>
+          Object.hasOwn(currentSprites, key) ? currentSprites[key] : null,
+      });
+    });
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
@@ -356,7 +406,13 @@ export async function generateSheetCore(
       briefType: brief.type,
       count: referenceCount,
       seed: referenceSelectorSeed(brief.name),
-      dislikedSpriteNames: loadDislikedReferenceNames(),
+      // Union the durably-tracked dislikes with anything queued-but-not-yet
+      // -promoted, so a sprite disliked moments ago cannot slip back in as a
+      // reference before the reconciler catches up.
+      dislikedSpriteNames: new Set([
+        ...loadDislikedReferenceNames(),
+        ...loadPendingDislikedReferenceNames(),
+      ]),
     });
     if (selection.selected.length === 0) {
       if (presentCandidates.length === 0 && brief.type === 'icon') {
