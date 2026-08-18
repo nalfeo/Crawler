@@ -1,5 +1,39 @@
 [
   {
+    "commit": "2896a4b771773d9ab9238a985583956fac659758",
+    "commitDate": "2026-08-18T07:18:22Z",
+    "commitSubject": "fix(sprites): normalize brief IDs and merge variants (#3050)",
+    "capturedAt": "2026-08-18T08:35:43.849Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32113210076",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/2896a4b771773d9ab9238a985583956fac659758.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.75,
+      "gatePass": false,
+      "path": "by-sha/2896a4b771773d9ab9238a985583956fac659758.fun-report.json"
+    }
+  },
+  {
     "commit": "b1b404a6d9cc7e016a2596b7837926e114743fc3",
     "commitDate": "2026-08-18T06:42:31Z",
     "commitSubject": "feat(engine): always render the player's carried main-hand weapon (#3055)",
