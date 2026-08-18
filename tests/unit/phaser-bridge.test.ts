@@ -20,6 +20,7 @@ import {
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -34,6 +35,8 @@ import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import { addSetPieceProp } from '../../src/core/spawners/world-objects.js';
 import { setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
+import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
+import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
@@ -1491,6 +1494,193 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     bridge.sync(world);
     expect(img.setTextureCalls).toBe(1);
+  });
+
+  // --- Carried main-hand weapon (always visible, not just during a swing) ---
+
+  function makePlayerWithWeapon(
+    world: ReturnType<typeof createTestWorld>,
+    weaponId: string,
+  ): number {
+    const player = addEntity(world.ecs);
+    addComponent(world.ecs, player, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, player, Player);
+    addComponent(world.ecs, player, set(Sprite, { textureId: 1, width: 3, height: 3 }));
+    const def = WEAPON_DEFS.get(weaponId);
+    expect(def).toBeDefined();
+    setActiveWeaponDef(world, def!);
+    return player;
+  }
+
+  it('carries the equipped main-hand weapon on the player when no swing is active', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    makePlayerWithWeapon(world, 'sword');
+
+    bridge.sync(world);
+
+    // Player sprite + the carried weapon sprite.
+    expect(images).toHaveLength(2);
+    const weaponImage = images[1]!;
+    expect(weaponImage.textureKey).toBe('kenney-tiny-dungeon');
+    expect(weaponImage.frame).toBe(getSprite('weapon.sword')?.frame);
+    expect(weaponImage.visible).toBe(true);
+    expect(weaponImage.depth).toBeGreaterThan(ENTITY_DEPTH);
+  });
+
+  it('uses loaded generated baseball-bat art for the carried weapon instead of the Kenney fallback', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'baseball-bat-v1-var-0': {
+          briefId: 'baseball-bat-v1',
+          spriteName: 'baseball-bat-v1-var-0',
+          assetPath: 'generated/baseball-bat-v1-var-0.png',
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          sourceRun: 'test-run',
+          variantIndex: 0,
+          anchor: { x: 32, y: 60, source: 'brief' },
+          sensorScore: '8/8',
+          judgeScore: '2',
+        },
+      },
+    });
+    const { scene, images } = createSceneStub({
+      generatedRegistry: registry,
+      textureExists: (key) => key === 'baseball-bat-v1-var-0' || key === 'player',
+      textureSizes: (key) =>
+        key === 'baseball-bat-v1-var-0' ? { width: 64, height: 64 } : undefined,
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const batDef = WEAPON_DEFS.get('baseball-bat');
+    expect(batDef).toBeDefined();
+    makePlayerWithWeapon(world, 'baseball-bat');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    const weaponImage = images[1]!;
+    expect(weaponImage.textureKey).toBe('baseball-bat-v1-var-0');
+    expect(weaponImage.frame).toBeUndefined();
+    expect(weaponImage.originX).toBeCloseTo(32 / 64, 5);
+    expect(weaponImage.originY).toBeCloseTo(60 / 64, 5);
+    expect(weaponImage.scaleX).toBeCloseTo(ftToPx(carriedWeaponLengthFt(batDef!)) / 60, 5);
+    expect(weaponImage.scaleX).toBeLessThan(1.8);
+    expect(weaponImage.visible).toBe(true);
+  });
+
+  it('reuses the carried weapon sprite across frames and follows the player', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = makePlayerWithWeapon(world, 'sword');
+
+    bridge.sync(world);
+    const weaponImage = images[1]!;
+    const firstX = weaponImage.x;
+
+    world.stores.position.x[player] = 20;
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(weaponImage.x).toBeCloseTo(firstX + ftToPx(10), 5);
+  });
+
+  it('mirrors the carried weapon to the side the player is facing', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = makePlayerWithWeapon(world, 'sword');
+    addComponent(world.ecs, player, set(Velocity, { x: 5, y: 0 }));
+
+    bridge.sync(world);
+    const weaponImage = images[1]!;
+    const playerX = ftToPx(10);
+    expect(weaponImage.x).toBeGreaterThan(playerX);
+    expect(weaponImage.rotation).toBeGreaterThan(0);
+
+    world.stores.velocity.x[player] = -5;
+    bridge.sync(world);
+    expect(weaponImage.x).toBeLessThan(playerX);
+    expect(weaponImage.rotation).toBeLessThan(0);
+  });
+
+  it('hides the carried weapon while the player has a live melee swing', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true, withGraphics: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = makePlayerWithWeapon(world, 'sword');
+
+    bridge.sync(world);
+    const weaponImage = images[1]!;
+    expect(weaponImage.visible).toBe(true);
+
+    const swing = spawnMeleeSwing(
+      world,
+      10,
+      10,
+      player,
+      5,
+      3,
+      5_000,
+      1,
+      0,
+      90,
+      0,
+      0,
+      0,
+      1,
+      0,
+      MeleeSpriteId.SWORD,
+    );
+    bridge.sync(world);
+    expect(weaponImage.visible).toBe(false);
+
+    removeEntity(world.ecs, swing);
+    bridge.sync(world);
+    expect(weaponImage.visible).toBe(true);
+  });
+
+  it('renders no carried weapon when nothing is equipped in the main hand', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = addEntity(world.ecs);
+    addComponent(world.ecs, player, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, player, Player);
+    addComponent(world.ecs, player, set(Sprite, { textureId: 1, width: 3, height: 3 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+  });
+
+  it('renders no carried weapon for a weapon type with no hand art', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    makePlayerWithWeapon(world, 'bow');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+  });
+
+  it('destroys the carried weapon sprite when the player entity goes away', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = makePlayerWithWeapon(world, 'sword');
+
+    bridge.sync(world);
+    const weaponImage = images[1]!;
+
+    removeEntity(world.ecs, player);
+    bridge.sync(world);
+
+    expect(weaponImage.destroyed).toBe(true);
   });
 
   it('renders mob health bars for non-boss enemies only', () => {
