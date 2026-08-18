@@ -1,5 +1,39 @@
 [
   {
+    "commit": "96626999d6c72599f72388f498e4be2c4b4a4ceb",
+    "commitDate": "2026-08-18T09:22:57Z",
+    "commitSubject": "fix(ci): streamline recovery task comments (#3070)",
+    "capturedAt": "2026-08-18T10:47:45.891Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32123129334",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/96626999d6c72599f72388f498e4be2c4b4a4ceb.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/96626999d6c72599f72388f498e4be2c4b4a4ceb.fun-report.json"
+    }
+  },
+  {
     "commit": "5c527be3e72533298014c698f8a74b2cd84566a4",
     "commitDate": "2026-08-18T08:12:09Z",
     "commitSubject": "fix(ci-recovery): detect stacked PRs by keeping slashes literal in ref-path API URLs (#3069)",
