@@ -204,6 +204,7 @@ jobs:
   check-lightweight:
     name: Lightweight Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     # No docs_only skip here: the human-approval step must run unconditionally
     # so a docs-only PR that carries (or closes an issue with) the
@@ -984,6 +985,7 @@ jobs:
   test-e2e-game:
     name: E2E Visual — Game/UI
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1012,6 +1014,7 @@ jobs:
   test-e2e-assets:
     name: E2E Visual — Asset Smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.asset_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1040,6 +1043,7 @@ jobs:
   test-e2e-devtools:
     name: E2E Visual — Devtools
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.devtool_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:

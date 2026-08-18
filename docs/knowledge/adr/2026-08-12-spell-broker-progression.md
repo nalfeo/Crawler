@@ -1,6 +1,9 @@
 # ADR: Spell Broker purchases and spell skill progression
 
-- Status: Accepted
+## Status
+
+Accepted
+
 - Date: 2026-08-12
 
 ## Context
