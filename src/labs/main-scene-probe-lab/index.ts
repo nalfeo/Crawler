@@ -679,6 +679,12 @@ export interface MainSceneProbeApi {
    * trigger fires on its next update — no UI is opened directly here.
    */
   startStaircaseBossBattle(): number;
+  /**
+   * Arrange the live Floor-1 world at the unlocked stairs for transition-path
+   * e2e coverage. The test still drives the real scene interaction modal,
+   * `onStairDescend`, floor-completion screen, and scene restart.
+   */
+  primeFloor1StairTransition(): void;
   /** Live boss-intro sheet state plus the world clock (frozen while open). */
   getBossIntroState(): BossIntroProbeState;
   /** Scroll the boss-intro flavour copy by `delta` lines. */
@@ -1108,6 +1114,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       battle.defeated = false;
       battle.bossEid = bossEid;
       return bossEid;
+    },
+
+    primeFloor1StairTransition: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || playerEid < 0 || !objective) {
+        throw new Error('Floor 1 transition path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.featureUnlocks.spells = true;
+      world.goalFlags.set('floor1-defeat-boss', true);
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      objective.staircaseSpawned = true;
+      objective.staircaseUnlocked = true;
+      objective.staircaseDiscovered = false;
+      world.stores.position.x[playerEid] = objective.staircasePos.x;
+      world.stores.position.y[playerEid] = objective.staircasePos.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
     },
 
     getBossIntroState: (): BossIntroProbeState => {
