@@ -13,11 +13,12 @@
 import { WeaponType, type WeaponTypeValue } from '../../shared/constants.js';
 
 /**
- * Kenney placeholder sprite id for a weapon that has no approved generated art.
+ * Kenney placeholder sprite id for a weapon that has no preferred generated art.
  *
  * Only melee weapons get a placeholder: the Kenney tiny-dungeon sheet has a
  * sword and a mallet, and drawing a sword in the hand of a bow user would be a
- * lie. Non-melee weapons render only when real generated art resolves.
+ * lie. Returning `null` only withholds the Kenney stand-in; non-melee weapons
+ * can still render generated art, including generated placeholder entries.
  */
 export function kenneyCarriedWeaponSpriteId(
   weaponId: string,
@@ -39,10 +40,10 @@ export function kenneyCarriedWeaponSpriteId(
  * at rest would draw a weapon nearly as tall as the player. Every other weapon
  * type uses a neutral hand-prop length.
  */
-export const DEFAULT_CARRIED_WEAPON_LENGTH_FT = 2.5;
+const DEFAULT_CARRIED_WEAPON_LENGTH_FT = 2.5;
 
 /** Fraction of a melee weapon's swing reach drawn while it is merely carried. */
-export const CARRIED_WEAPON_REACH_FRACTION = 0.6;
+const CARRIED_WEAPON_REACH_FRACTION = 0.6;
 
 export function carriedWeaponLengthFt(weapon: {
   readonly weaponType: WeaponTypeValue;
@@ -59,7 +60,7 @@ export function carriedWeaponLengthFt(weapon: {
  * readable. Mirrors `MIN_WEAPON_SPRITE_SCALE` in the swing branch; generated
  * art already ships at 32/64 px so it is never clamped.
  */
-export const MIN_CARRIED_WEAPON_SPRITE_SCALE = 1.8;
+const MIN_CARRIED_WEAPON_SPRITE_SCALE = 1.8;
 
 /** Horizontal hand offset from the player's centre, in feet. */
 export const CARRIED_WEAPON_HAND_OFFSET_FT = 0.55;
@@ -70,7 +71,7 @@ export const CARRIED_WEAPON_HAND_DROP_FT = 0.15;
  * (0,-1) is the blade tip, so a positive rotation tips the tip toward the
  * facing side; the sign is mirrored when the player faces left.
  */
-export const CARRIED_WEAPON_TILT_RAD = 0.45;
+const CARRIED_WEAPON_TILT_RAD = 0.45;
 
 export interface CarriedWeaponPlacement {
   readonly x: number;

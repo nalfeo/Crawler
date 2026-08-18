@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CARRIED_WEAPON_REACH_FRACTION,
-  CARRIED_WEAPON_TILT_RAD,
-  DEFAULT_CARRIED_WEAPON_LENGTH_FT,
-  MIN_CARRIED_WEAPON_SPRITE_SCALE,
   carriedWeaponLengthFt,
   computeCarriedWeaponPlacement,
   kenneyCarriedWeaponSpriteId,
 } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { WeaponType } from '../../src/shared/constants.js';
+
+const EXPECTED_CARRIED_WEAPON_REACH_FRACTION = 0.6;
+const EXPECTED_DEFAULT_CARRIED_WEAPON_LENGTH_FT = 2.5;
+const EXPECTED_MIN_CARRIED_WEAPON_SPRITE_SCALE = 1.8;
+const EXPECTED_CARRIED_WEAPON_TILT_RAD = 0.45;
 
 describe('kenneyCarriedWeaponSpriteId', () => {
   it('uses the mallet placeholder for the baseball bat', () => {
@@ -28,17 +29,17 @@ describe('kenneyCarriedWeaponSpriteId', () => {
 describe('carriedWeaponLengthFt', () => {
   it('draws a melee weapon at a fraction of its swing reach', () => {
     expect(carriedWeaponLengthFt({ weaponType: WeaponType.MELEE, aoeRadius: 5 })).toBeCloseTo(
-      5 * CARRIED_WEAPON_REACH_FRACTION,
+      5 * EXPECTED_CARRIED_WEAPON_REACH_FRACTION,
       5,
     );
   });
 
   it('falls back to the neutral hand-prop length for non-melee or reachless weapons', () => {
     expect(carriedWeaponLengthFt({ weaponType: WeaponType.RANGED, aoeRadius: 0 })).toBe(
-      DEFAULT_CARRIED_WEAPON_LENGTH_FT,
+      EXPECTED_DEFAULT_CARRIED_WEAPON_LENGTH_FT,
     );
     expect(carriedWeaponLengthFt({ weaponType: WeaponType.MELEE, aoeRadius: 0 })).toBe(
-      DEFAULT_CARRIED_WEAPON_LENGTH_FT,
+      EXPECTED_DEFAULT_CARRIED_WEAPON_LENGTH_FT,
     );
   });
 });
@@ -69,7 +70,7 @@ describe('computeCarriedWeaponPlacement', () => {
   it('mirrors offset and tilt when facing left', () => {
     const placement = computeCarriedWeaponPlacement({ ...base, facingRight: false });
     expect(placement.x).toBe(92);
-    expect(placement.rotation).toBeCloseTo(-CARRIED_WEAPON_TILT_RAD, 5);
+    expect(placement.rotation).toBeCloseTo(-EXPECTED_CARRIED_WEAPON_TILT_RAD, 5);
   });
 
   it('scales the anchor-to-tip distance onto the requested length', () => {
@@ -82,7 +83,7 @@ describe('computeCarriedWeaponPlacement', () => {
       lengthPx: 4,
       clampMinScale: true,
     });
-    expect(placement.scale).toBe(MIN_CARRIED_WEAPON_SPRITE_SCALE);
+    expect(placement.scale).toBe(EXPECTED_MIN_CARRIED_WEAPON_SPRITE_SCALE);
   });
 
   it('never clamps generated art (its tip would decouple from the intended length)', () => {

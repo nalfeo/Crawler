@@ -20,6 +20,7 @@ import {
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
+import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -1526,6 +1527,48 @@ describe('createPhaserBridge', () => {
     expect(weaponImage.frame).toBe(getSprite('weapon.sword')?.frame);
     expect(weaponImage.visible).toBe(true);
     expect(weaponImage.depth).toBeGreaterThan(ENTITY_DEPTH);
+  });
+
+  it('uses loaded generated baseball-bat art for the carried weapon instead of the Kenney fallback', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'baseball-bat-v1-var-0': {
+          briefId: 'baseball-bat-v1',
+          spriteName: 'baseball-bat-v1-var-0',
+          assetPath: 'generated/baseball-bat-v1-var-0.png',
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          sourceRun: 'test-run',
+          variantIndex: 0,
+          anchor: { x: 32, y: 60, source: 'brief' },
+          sensorScore: '8/8',
+          judgeScore: '2',
+        },
+      },
+    });
+    const { scene, images } = createSceneStub({
+      generatedRegistry: registry,
+      textureExists: (key) => key === 'baseball-bat-v1-var-0' || key === 'player',
+      textureSizes: (key) =>
+        key === 'baseball-bat-v1-var-0' ? { width: 64, height: 64 } : undefined,
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const batDef = WEAPON_DEFS.get('baseball-bat');
+    expect(batDef).toBeDefined();
+    makePlayerWithWeapon(world, 'baseball-bat');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    const weaponImage = images[1]!;
+    expect(weaponImage.textureKey).toBe('baseball-bat-v1-var-0');
+    expect(weaponImage.frame).toBeUndefined();
+    expect(weaponImage.originX).toBeCloseTo(32 / 64, 5);
+    expect(weaponImage.originY).toBeCloseTo(60 / 64, 5);
+    expect(weaponImage.scaleX).toBeCloseTo(ftToPx(carriedWeaponLengthFt(batDef!)) / 60, 5);
+    expect(weaponImage.scaleX).toBeLessThan(1.8);
+    expect(weaponImage.visible).toBe(true);
   });
 
   it('reuses the carried weapon sprite across frames and follows the player', () => {
