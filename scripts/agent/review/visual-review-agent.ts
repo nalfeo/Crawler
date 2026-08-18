@@ -18,6 +18,7 @@ import {
   evaluateTextRasterRuns,
   measureCropCrispness,
   suppressUnsupportedFuzziness,
+  toScreenshotRasterGeometry,
 } from './text-raster-lib.mjs';
 import {
   computeGeometryBlockers,
@@ -174,6 +175,11 @@ interface TextRasterEntry {
   id: string;
   text: string;
   fontFamily: string;
+  rasterX: number | null;
+  rasterY: number | null;
+  rasterScaleX: number | null;
+  rasterScaleY: number | null;
+  resolution: number | null;
   loaded: boolean;
   aligned: boolean;
   crispness: number | null;
@@ -915,13 +921,17 @@ async function captureEquipmentTextRaster(
     return {
       ...run,
       fontLoaded: harvested.fontLoaded,
-      // These are Phaser's final scene-space coordinates. The browser's FIT
-      // transform can be fractional at a smaller viewport, but it is not the
-      // glyph-texture transform that causes canvas text to blur.
-      rasterX: run.bounds.x,
-      rasterY: run.bounds.y,
-      rasterScaleX: harvested.containerScale,
-      rasterScaleY: harvested.containerScale,
+      // Text-raster evidence describes the final captured pixels, including
+      // the browser canvas transform that can resample the scene.
+      ...toScreenshotRasterGeometry({
+        bounds: run.bounds,
+        rect: harvested.rect,
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+        containerScale: harvested.containerScale,
+      }),
       resolution: harvested.textResolution,
       crispness: crop.score,
       sampledEdges: crop.sampledEdges,

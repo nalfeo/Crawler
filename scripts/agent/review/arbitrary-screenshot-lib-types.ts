@@ -35,6 +35,20 @@ declare module '*.mjs' {
     width: number;
     height: number;
   }): { score: number; strongEdges: number; softEdges: number; sampledEdges: number };
+  export function toScreenshotRasterGeometry(input: {
+    bounds: { x: number; y: number };
+    rect: { x: number; y: number };
+    scaleX: number;
+    scaleY: number;
+    offsetX?: number;
+    offsetY?: number;
+    containerScale: number;
+  }): {
+    rasterX: number;
+    rasterY: number;
+    rasterScaleX: number;
+    rasterScaleY: number;
+  };
   export function evaluateTextRasterRuns(
     runs: unknown[],
     options?: { minimumCrispness?: number },
@@ -46,6 +60,11 @@ declare module '*.mjs' {
       id: string;
       text: string;
       fontFamily: string;
+      rasterX: number | null;
+      rasterY: number | null;
+      rasterScaleX: number | null;
+      rasterScaleY: number | null;
+      resolution: number | null;
       loaded: boolean;
       aligned: boolean;
       crispness: number | null;

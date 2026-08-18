@@ -5,6 +5,7 @@ import {
   isFuzzinessFinding,
   measureCropCrispness,
   suppressUnsupportedFuzziness,
+  toScreenshotRasterGeometry,
 } from './text-raster-lib.mjs';
 
 function pixels(rows) {
@@ -66,6 +67,39 @@ test('fails text runs with an unloaded font, fractional raster, or soft crop', (
     'text raster geometry is not integer-aligned',
     'crop crispness 0.050 is below 0.1',
   ]);
+});
+
+test('reports and fails text runs resampled by a fractional browser canvas transform', () => {
+  const geometry = toScreenshotRasterGeometry({
+    bounds: { x: 10, y: 20 },
+    rect: { x: 3, y: 4 },
+    scaleX: 0.75,
+    scaleY: 5 / 6,
+    offsetX: 1,
+    offsetY: 2,
+    containerScale: 1,
+  });
+  const report = evaluateTextRasterRuns([
+    {
+      id: 'resampled',
+      fontLoaded: true,
+      ...geometry,
+      resolution: 2,
+      crispness: 0.9,
+      sampledEdges: 8,
+    },
+  ]);
+  assert.equal(report.passed, false);
+  assert.deepEqual(
+    {
+      rasterX: report.entries[0].rasterX,
+      rasterY: report.entries[0].rasterY,
+      rasterScaleX: report.entries[0].rasterScaleX,
+      rasterScaleY: report.entries[0].rasterScaleY,
+    },
+    { rasterX: 9.5, rasterY: 56 / 3, rasterScaleX: 0.75, rasterScaleY: 5 / 6 },
+  );
+  assert.deepEqual(report.entries[0].failures, ['text raster geometry is not integer-aligned']);
 });
 
 test('removes Azure-only fuzziness claims when deterministic evidence passes', () => {

@@ -58,6 +58,28 @@ export function measureCropCrispness({ pixels, width, height }) {
 }
 
 /**
+ * Converts scene-space bounds to the captured screenshot's pixel space.
+ * `rect` is the browser canvas origin, `scale*` maps scene pixels through its
+ * CSS transform, and `offset*` accounts for an optional screenshot clip.
+ */
+export function toScreenshotRasterGeometry({
+  bounds,
+  rect,
+  scaleX,
+  scaleY,
+  offsetX = 0,
+  offsetY = 0,
+  containerScale,
+}) {
+  return {
+    rasterX: rect.x + bounds.x * scaleX - offsetX,
+    rasterY: rect.y + bounds.y * scaleY - offsetY,
+    rasterScaleX: containerScale * scaleX,
+    rasterScaleY: containerScale * scaleY,
+  };
+}
+
+/**
  * Convert captured text-run metadata into a deterministic report. Runs must
  * expose post-transform values: checking authored coordinates alone misses blur
  * introduced by a fractional container transform.
@@ -95,6 +117,11 @@ export function evaluateTextRasterRuns(
       id,
       text: typeof run?.text === 'string' ? run.text : '',
       fontFamily: typeof run?.fontFamily === 'string' ? run.fontFamily : '',
+      rasterX: Number.isFinite(Number(run?.rasterX)) ? Number(run.rasterX) : null,
+      rasterY: Number.isFinite(Number(run?.rasterY)) ? Number(run.rasterY) : null,
+      rasterScaleX: Number.isFinite(Number(run?.rasterScaleX)) ? Number(run.rasterScaleX) : null,
+      rasterScaleY: Number.isFinite(Number(run?.rasterScaleY)) ? Number(run.rasterScaleY) : null,
+      resolution: Number.isFinite(Number(run?.resolution)) ? Number(run.resolution) : null,
       loaded,
       aligned,
       crispness: Number.isFinite(crispness) ? crispness : null,
