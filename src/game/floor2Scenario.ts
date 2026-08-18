@@ -30,7 +30,15 @@
  * 0011 (data-driven quest packs), ADR 0023 (special-room sealing already
  * applied by CaveSystemGenerator + the generic sealing pass).
  */
-import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
+import {
+  addComponent,
+  entityExists,
+  hasComponent,
+  query,
+  removeComponent,
+  set,
+  setComponent,
+} from 'bitecs';
 import {
   BaseStats,
   BroadcastScore,
@@ -633,14 +641,21 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       // from floor init, so once the unlock flag opens the doors it can walk
       // out on its own. Return it to its den spawn tile first — the fight stays
       // intact and the relock can never produce a boss-less sealed room.
-      if (encounter.bossEid !== null) {
-        containFloor2BossInDen(world, encounter);
+      if (
+        encounter.bossEid === null ||
+        !entityExists(world.ecs, encounter.bossEid) ||
+        !hasComponent(world.ecs, encounter.bossEid, Enemy) ||
+        !hasComponent(world.ecs, encounter.bossEid, Health)
+      ) {
+        // Do not relock a den around an absent boss. The victory path below
+        // reconciles vanished bosses once every den is unlocked; until then,
+        // keeping this den open prevents a second sealed-room softlock.
+        continue;
       }
+      containFloor2BossInDen(world, encounter);
       encounter.started = true;
-      if (encounter.bossEid !== null) {
-        removeComponent(world.ecs, encounter.bossEid, Invincible);
-        world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
-      }
+      removeComponent(world.ecs, encounter.bossEid, Invincible);
+      world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
       setGoalFlag(world, encounter.activeGoalId, true);
     }
   }

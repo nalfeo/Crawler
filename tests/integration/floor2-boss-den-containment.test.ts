@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { removeComponent } from 'bitecs';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -12,7 +13,7 @@ import {
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
-import { spawnPlayer } from '../../src/core/index.js';
+import { Enemy, spawnPlayer } from '../../src/core/index.js';
 import {
   captureBossEncounterSnapshots,
   diffBossEncounterSnapshots,
@@ -131,6 +132,67 @@ describe('Floor 2 boss den containment', () => {
     const notes = diffBossEncounterSnapshots(atSpawn, strayed);
     expect(notes.some((n) => n.startsWith('boss left den'))).toBe(true);
   });
+
+  it('does not relock a den when its boss entity is no longer a live enemy', () => {
+    const seed = 42;
+    const gen = new CaveSystemGenerator({ presentCount: 3 });
+    const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
+    const world = createTestWorld({ seed, floor: 2 });
+    world.floorMap = floorMap;
+    const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources());
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
+    };
+    const familyState = world.floorExtendedState.familyState!;
+    const objectives = initializeFloor2Bosses(world, floorMap, familyState);
+    const encounter = familyState.bossEncounters!.get(objectives[0]!.familyId)!;
+
+    markDenUnlocked(world, encounter.familyId);
+    removeComponent(world.ecs, encounter.bossEid!, Enemy);
+    spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    world.state = 'playing';
+
+    floor2ObjectiveTick(world);
+
+    expect(encounter.started).toBe(false);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+  });
+
+  it('returns a stuck boss to its den spawn when the nearest passable tile is outside the den', () => {
+    const seed = 42;
+    const gen = new CaveSystemGenerator({ presentCount: 3 });
+    const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
+    const world = createTestWorld({ seed, floor: 2 });
+    world.floorMap = floorMap;
+    const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources());
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
+    };
+    const familyState = world.floorExtendedState.familyState!;
+    const objectives = initializeFloor2Bosses(world, floorMap, familyState);
+    const encounter = familyState.bossEncounters!.get(objectives[0]!.familyId)!;
+    const bossEid = encounter.bossEid!;
+    const stuckTile = findImpassableTileWithOutsideNearest(floorMap, encounter.roomId);
+    const stuckWorld = floorMap.tileToWorld(stuckTile.x, stuckTile.y);
+    world.stores.position.x[bossEid] = stuckWorld.x;
+    world.stores.position.y[bossEid] = stuckWorld.y;
+    world.state = 'playing';
+
+    // `floor2ObjectiveTick` runs the private unstick routine before encounter work.
+    floor2ObjectiveTick(world);
+
+    expect(world.stores.position.x[bossEid]).toBe(encounter.bossSpawnX);
+    expect(world.stores.position.y[bossEid]).toBe(encounter.bossSpawnY);
+    expect(roomIdOfEntity(floorMap, world, bossEid)).toBe(encounter.roomId);
+  });
 });
 
 function roomIdOfEntity(
@@ -155,4 +217,42 @@ function findTileOutsideRoom(
     if (cell) return { x: cell.x, y: cell.y };
   }
   throw new Error('no other room found in generated map');
+}
+
+function findImpassableTileWithOutsideNearest(
+  floorMap: ReturnType<CaveSystemGenerator['generate']>,
+  denRoomId: number,
+): { x: number; y: number } {
+  const { tileMap } = floorMap;
+  for (let y = 0; y < tileMap.height; y += 1) {
+    for (let x = 0; x < tileMap.width; x += 1) {
+      if (tileMap.isPassable(x, y) || nearestPassableRoomId(floorMap, x, y) === denRoomId) {
+        continue;
+      }
+      if (nearestPassableRoomId(floorMap, x, y) !== null) {
+        return { x, y };
+      }
+    }
+  }
+  throw new Error('no impassable tile with an out-of-den nearest passable tile found');
+}
+
+function nearestPassableRoomId(
+  floorMap: ReturnType<CaveSystemGenerator['generate']>,
+  startX: number,
+  startY: number,
+): number | null {
+  const { tileMap } = floorMap;
+  for (let radius = 1; radius <= 6; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+        const x = startX + dx;
+        const y = startY + dy;
+        if (!tileMap.inBounds(x, y) || !tileMap.isPassable(x, y)) continue;
+        return floorMap.roomGraph.getRoomAt(x, y);
+      }
+    }
+  }
+  return null;
 }

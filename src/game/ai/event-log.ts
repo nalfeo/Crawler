@@ -54,6 +54,8 @@ export interface BossEncounterSnapshot {
   displayName: string;
   /** Boss entity id, or null once defeated/despawned. */
   bossEid: number | null;
+  /** Whether the boss entity exists in the ECS world this frame. */
+  bossEntityExists: boolean;
   /** True once the player entered the den and the fight latched. */
   started: boolean;
   /** True once the boss-death latch fired. */

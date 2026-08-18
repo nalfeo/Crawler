@@ -79,6 +79,7 @@ export function captureBossEncounterSnapshots(
       familyId: String(encounter.familyId),
       displayName: encounter.displayName,
       bossEid,
+      bossEntityExists: bossAlive,
       started: encounter.started,
       defeated: encounter.defeated,
       denRoomId: encounter.roomId,

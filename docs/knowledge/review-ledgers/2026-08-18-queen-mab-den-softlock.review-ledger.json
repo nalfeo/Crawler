@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-18",
+  "session_slug": "queen-mab-den-softlock",
+  "task_title": "Contain Floor 2 den bosses before relocking doors",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Chosen containment design retained. Resolved: encounter start now refuses to relock when the referenced boss is missing or lacks Enemy/Health; added a stale-boss regression. Added a separate unstick regression for the nearest-passable-outside-den fallback. Recorded spawn positions are already used only after den containment; the fallback remains deterministic. Added explicit bossEntityExists telemetry to distinguish missing from defeated."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
