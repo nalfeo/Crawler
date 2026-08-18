@@ -19,6 +19,18 @@ export function escapeHtml(value) {
 }
 
 /**
+ * Serialize a value into a `<script>`-safe JavaScript string literal.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function toScriptLiteral(value) {
+  return JSON.stringify(String(value))
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026');
+}
+
+/**
  * @param {string | undefined | null} candidate
  * @param {string | undefined | null} repoRoot
  * @returns {string | null}
@@ -191,7 +203,7 @@ ${
   hasSheet
     ? `
 <script>
-  const SHEET_B64 = "${sheetB64}";
+  const SHEET_B64 = ${toScriptLiteral(sheetB64)};
   const ROWS = ${rows};
   const COLS = ${cols};
   const FRAME_RATE = ${frameRate};

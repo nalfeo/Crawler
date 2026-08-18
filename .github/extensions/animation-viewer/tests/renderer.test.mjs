@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { escapeHtml, renderHtml } from '../renderer.mjs';
+import { escapeHtml, renderHtml, toScriptLiteral } from '../renderer.mjs';
 
 const BASE_STATE = {
   sheetB64: 'QUJD',
@@ -78,4 +78,14 @@ test('shows the empty catalog message when nothing is available', () => {
 test('reports the total frame count from rows × cols', () => {
   const html = renderHtml({ ...BASE_STATE, rows: 2, cols: 4 }, []);
   assert.match(html, /Frame 0 \/ 8/);
+});
+
+test('emits the sheet payload as an escaped script-safe literal', () => {
+  const html = renderHtml({ ...BASE_STATE, sheetB64: `A"</script><script>alert(1)` }, []);
+  assert.ok(!html.includes('</script><script>alert(1)'), 'payload must not close the script tag');
+  assert.match(html, /const SHEET_B64 = "A\\"\\u003c\/script\\u003e/);
+});
+
+test('toScriptLiteral escapes quotes and angle brackets', () => {
+  assert.equal(toScriptLiteral('a"b<c>d&e'), '"a\\"b\\u003cc\\u003ed\\u0026e"');
 });
