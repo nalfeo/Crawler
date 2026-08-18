@@ -33,13 +33,41 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "75ed2a62aac3e11a88f4766b64462c1874dfc108",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "docs/knowledge/adr/0070-achievement-reward-content-tiers.md",
+          "detail": "Unrelated drive-by edit renaming lootbox resolver references. Revert to maintain scope discipline."
+        },
+        {
+          "severity": "major",
+          "file": "docs/knowledge/adr/0085-run-bundle-telemetry-boundary.md",
+          "detail": "Unrelated drive-by edit adding a Status section. Revert to maintain scope discipline."
+        },
+        {
+          "severity": "major",
+          "file": "docs/knowledge/adr/2026-08-12-spell-broker-progression.md",
+          "detail": "Unrelated drive-by edit changing Status formatting. Revert to maintain scope discipline."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 2,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "fail",
+      "findings_count": 3,
+      "notes": "The CI implementation and workflow contract tests are correct. The grade fails only because it classifies the ADR validation repairs as scope widening.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: scope_discipline",
+        "unresolved_findings": 3
+      }
     }
   }
 }
