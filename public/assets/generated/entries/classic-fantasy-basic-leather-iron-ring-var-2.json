@@ -1,0 +1,186 @@
+{
+  "briefId": "classic-fantasy-basic-leather-iron-ring",
+  "spriteName": "classic-fantasy-basic-leather-iron-ring-var-2",
+  "assetPath": "generated/classic-fantasy-basic-leather-iron-ring-var-2.png",
+  "approvedAt": "2026-07-30T01:07:06.105Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-iron-ring-v1/2026-07-28T04-22-18-bae1e60a",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 31,
+    "y": 57,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 57,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 42,
+      "y": 36,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 610 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 26,
+          "y": 19
+        },
+        {
+          "x": 27,
+          "y": 19
+        },
+        {
+          "x": 28,
+          "y": 19
+        },
+        {
+          "x": 29,
+          "y": 19
+        },
+        {
+          "x": 30,
+          "y": 19
+        },
+        {
+          "x": 31,
+          "y": 19
+        },
+        {
+          "x": 32,
+          "y": 19
+        },
+        {
+          "x": 33,
+          "y": 19
+        },
+        {
+          "x": 34,
+          "y": 19
+        },
+        {
+          "x": 35,
+          "y": 19
+        },
+        {
+          "x": 36,
+          "y": 19
+        },
+        {
+          "x": 37,
+          "y": 19
+        },
+        {
+          "x": 38,
+          "y": 19
+        },
+        {
+          "x": 39,
+          "y": 19
+        },
+        {
+          "x": 26,
+          "y": 20
+        },
+        {
+          "x": 27,
+          "y": 20
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 57
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T17:00:02.343Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The candidate adheres to the Crawler design language with its rough, hand-forged appearance and utilitarian aesthetic. However, it lacks a strong authored contradiction or dark humor element."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The texture and pitting are consistent with the style."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The texture and pitting are consistent with the style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a plain iron ring with a rough, hand-forged look, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, and the ring's shape is immediately recognizable on the dark floor tile."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a standalone icon with no extraneous elements or background distractions."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the specified materials (matte dark grey iron with pitting) and the rough, practical design. However, the seam where the ends were joined is not clearly visible, which slightly detracts from full adherence to the brief."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3211,
+      "completionTokens": 361,
+      "totalTokens": 3572
+    }
+  },
+  "type": null,
+  "contentHash": "d2062758e7e59f87405243c6bd092c771c29e1185e43c20ec1fb2a268cfb0227",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 5,
+    "width": 58,
+    "height": 53,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -1,0 +1,123 @@
+{
+  "briefId": "crabfolk-claw-gunner",
+  "spriteName": "crabfolk-claw-gunner-var-12",
+  "assetPath": "generated/crabfolk-claw-gunner-var-12.png",
+  "approvedAt": "2026-08-01T05:42:55.663Z",
+  "sourceRun": "generated/runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3",
+  "variantIndex": 12,
+  "anchor": {
+    "x": 131,
+    "y": 132,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 131,
+      "y": 132,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 131,
+      "y": 132,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 131,
+        "y": 132
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 12,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:42:25.215Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a crabfolk soldier with a pincer-cannon is well-executed and fits the Crawler aesthetic. The combination of a crustacean body with a weaponized claw is a strong contradiction and aligns with the darkly humorous tone of the game. However, the design could benefit from more emphasis on the 'battlefield veteran' aspect, such as additional scuff marks or damage to the shell."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite's outline, shading, and color palette are consistent with the references. However, the shading on the shell could use slightly more contrast to match the depth seen in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite's outline, shading, and color palette are consistent with the references. However, the shading on the shell could use slightly more contrast to match the depth seen in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a crabfolk soldier with a pincer-cannon resembling a spiny seashell, a blue-gray carapace, and a raised defensive claw. The decorative scrap plating is also present, fulfilling the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the pincer-cannon is immediately recognizable. However, the raised defensive claw could be more distinct to enhance readability at game scale."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a three-quarters turn, which is consistent with the references and provides a dynamic view of the sprite."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the character visible and well-positioned within the sprite boundaries."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the blue-gray carapace, spiny seashell cannon, and decorative scrap plating, which align with the theme. However, additional details like sailor tattoos or barnacled armor could further enhance the Tidewrack Mob identity."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.85,
+    "usage": {
+      "promptTokens": 4120,
+      "completionTokens": 510,
+      "totalTokens": 4630
+    }
+  },
+  "type": "enemy",
+  "contentHash": "742ab9949041ff0b4d9d6e6a3a52005c6c523cacbdda873e7b2540f47b2cafa8",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 245,
+    "height": 228,
+    "canvasWidth": 273,
+    "canvasHeight": 256
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

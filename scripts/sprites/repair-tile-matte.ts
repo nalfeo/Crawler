@@ -4,7 +4,7 @@
  * Some generated tiles shipped with a magenta chroma-key border baked into the
  * pixels (see `check-tile-seams.ts`). For an edge-to-edge TILING texture that
  * border is fatal: it tiles into a continuous magenta lattice across the whole
- * floor. `tile-stone-floor-v1-var-2.png` shipped this way and is bound to
+ * floor. `tile-stone-floor-var-2.png` shipped this way and is bound to
  * `TerrainType.STONE_FLOOR`, so every stone room in the game drew a pink grid.
  *
  * The matte replaced real pixels, so it cannot simply be made transparent (a

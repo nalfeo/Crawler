@@ -56,7 +56,7 @@ describe('normalizeConcept', () => {
   });
 
   it('strips a -vN then -var-N suffix together so a variant collapses to its concept', () => {
-    expect(normalizeConcept('slime-queen-v1-var-0')).toBe('slime-queen');
+    expect(normalizeConcept('slime-queen-var-0')).toBe('slime-queen');
   });
 
   it('drops an enemy. dotted prefix and keeps the last segment', () => {
@@ -106,7 +106,7 @@ describe('isPlaceholderManifestEntry', () => {
   });
 
   it('is false for a real generated asset', () => {
-    expect(isPlaceholderManifestEntry(manifestEntry({ briefId: 'slime-v1' }))).toBe(false);
+    expect(isPlaceholderManifestEntry(manifestEntry({ briefId: 'slime' }))).toBe(false);
   });
 });
 
@@ -141,7 +141,7 @@ describe('buildPlaceholderAudit — bucketing', () => {
           sourceRun: 'placeholder',
           assetPath: 'generated/slime-queen/slime-queen-placeholder.png',
         }),
-        'slime-queen-v1-var-0': manifestEntry({ briefId: 'slime-queen-v1' }),
+        'slime-queen-var-0': manifestEntry({ briefId: 'slime-queen' }),
         'iron-sword-v1-var-0': manifestEntry({ briefId: 'iron-sword-v1' }),
       },
       spriteRegistry: [{ id: 'enemy.rat', note: 'temp CC0 art' }],
@@ -164,7 +164,7 @@ describe('buildPlaceholderAudit — bucketing', () => {
           briefId: 'slime-king',
           sourceRun: 'placeholder',
         }),
-        'slime-king-v1-var-0': manifestEntry({ briefId: 'slime-king-v1' }),
+        'slime-king-var-0': manifestEntry({ briefId: 'slime-king' }),
       },
     });
 
@@ -210,9 +210,9 @@ describe('buildPlaceholderAudit — --since scoping', () => {
   const input: Partial<PlaceholderAuditInput> = {
     manifestEntries: {
       'slime-king': manifestEntry({ briefId: 'slime-king', sourceRun: 'placeholder' }),
-      'slime-king-v1-var-0': manifestEntry({
-        briefId: 'slime-king-v1',
-        assetPath: 'generated/slime-king-v1/var-0.png',
+      'slime-king-var-0': manifestEntry({
+        briefId: 'slime-king',
+        assetPath: 'generated/slime-king/var-0.png',
       }),
       'old-armor-v1-var-0': manifestEntry({
         briefId: 'old-armor-v1',
@@ -224,14 +224,14 @@ describe('buildPlaceholderAudit — --since scoping', () => {
   it('flags isNew, scopes new-content to new assets, and counts newReplaceable', () => {
     const report = audit({
       ...input,
-      newAssetPaths: new Set(['generated/slime-king-v1/var-0.png']),
+      newAssetPaths: new Set(['generated/slime-king/var-0.png']),
     });
 
     expect(report.scopedToNew).toBe(true);
     // slime-king has a placeholder + a NEW real asset -> replaceable & newReplaceable.
     expect(report.replaceable.map((c) => c.concept)).toEqual(['slime-king']);
     const slimeKing = report.replaceable[0];
-    expect(slimeKing?.realAssets[0]).toMatchObject({ briefId: 'slime-king-v1', isNew: true });
+    expect(slimeKing?.realAssets[0]).toMatchObject({ briefId: 'slime-king', isNew: true });
     // old-armor is real-only but NOT new -> excluded from scoped new-content.
     expect(report.newContent).toHaveLength(0);
     expect(report.counts).toMatchObject({
@@ -256,7 +256,7 @@ describe('buildPlaceholderAudit — related suggestions', () => {
   it('links a placeholder concept to a real concept that shares a hyphen-prefix', () => {
     const report = audit({
       manifestEntries: {
-        'slime-queen-v1-var-0': manifestEntry({ briefId: 'slime-queen-v1' }),
+        'slime-queen-var-0': manifestEntry({ briefId: 'slime-queen' }),
       },
       spriteRegistry: [{ id: 'enemy.slime', note: 'temp CC0 art' }],
     });

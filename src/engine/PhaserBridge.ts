@@ -371,10 +371,13 @@ function resolveNpcTexture(
   }
   if (appearanceKey !== undefined) {
     const registry = getGeneratedSpriteRegistry(scene);
-    const eliteBriefId = `${appearanceKey}-v1`;
-    const eliteTexture = registry?.variants(eliteBriefId)?.[0]?.textureKey;
-    if (eliteTexture) {
-      return { key: eliteTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+    const preferredBriefId =
+      registry !== null ? generatedBriefIdForEnemy(undefined, appearanceKey, registry) : undefined;
+    if (preferredBriefId !== undefined) {
+      const preferredTexture = registry?.variants(preferredBriefId)?.[0]?.textureKey;
+      if (preferredTexture) {
+        return { key: preferredTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+      }
     }
     if (appearanceFallbackKey !== undefined) {
       return resolveTexture(scene, 'enemy', { appearanceKey: appearanceFallbackKey });
@@ -1404,7 +1407,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // stays a direct briefId lookup until the bat art is migrated to a
           // single bare `baseball-bat` lineage. When a `sword-v1` (or hammer
           // variant) gets approved, add its briefId here.
-          const generatedBriefId = swingSprite === MeleeSpriteId.BAT ? 'baseball-bat-v1' : null;
+          const generatedBriefId = swingSprite === MeleeSpriteId.BAT ? 'baseball-bat' : null;
           const generatedRegistry = generatedBriefId ? getGeneratedSpriteRegistry(scene) : null;
           const generatedEntry: GeneratedSpriteEntry | null =
             generatedRegistry && generatedBriefId
@@ -1451,7 +1454,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // Only applied to the 16×16 Kenney fallback path — generated art
           // ships at 32/64 px so its natural size is already readable, and
           // clamping the scale would decouple the tip from `bladeLen`
-          // (e.g. baseball-bat-v1 is 64×64 with holdY=60; bladeLen=44 gives
+          // (e.g. baseball-bat is 64×64 with holdY=60; bladeLen=44 gives
           // rawScale ≈ 0.73, clamped to 1.8 would put the tip ~108 px away
           // from the hand instead of 44).
           const MIN_WEAPON_SPRITE_SCALE = 1.8;

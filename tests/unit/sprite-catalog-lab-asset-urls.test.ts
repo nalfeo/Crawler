@@ -25,12 +25,12 @@ describe('generatedSpritePreviewUrl', () => {
     expect(
       generatedSpritePreviewUrl(
         {
-          spriteId: 'sewer-grate-floor-tile-v1-var-1',
-          assetPath: 'generated/sewer-grate-floor-tile-v1-var-1.png',
+          spriteId: 'sewer-grate-floor-tile-var-1',
+          assetPath: 'generated/sewer-grate-floor-tile-var-1.png',
         },
         PAGES_BASE,
       ),
-    ).toBe('/Crawler/dev/assets/generated/sewer-grate-floor-tile-v1-var-1.png');
+    ).toBe('/Crawler/dev/assets/generated/sewer-grate-floor-tile-var-1.png');
   });
 
   it('keeps root-absolute paths when the base is "/" (local dev)', () => {
@@ -40,8 +40,8 @@ describe('generatedSpritePreviewUrl', () => {
   });
 
   it('falls back to generated/<spriteId>.png when assetPath is missing', () => {
-    expect(generatedSpritePreviewUrl({ spriteId: 'rat-v1-var-3' }, PAGES_BASE)).toBe(
-      '/Crawler/dev/assets/generated/rat-v1-var-3.png',
+    expect(generatedSpritePreviewUrl({ spriteId: 'rat-var-3' }, PAGES_BASE)).toBe(
+      '/Crawler/dev/assets/generated/rat-var-3.png',
     );
   });
 

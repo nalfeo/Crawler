@@ -72,7 +72,7 @@ const GH = Math.ceil(GAME.HEIGHT / TILE);
 /** Texture key for the synthetic inventory icon (guarantees a sprite renders). */
 const PROBE_ICON_TEXTURE = 'ui_probe_item_icon';
 const PROBE_THEMED_ICON_TEXTURE = 'ui_probe_item_icon_themed';
-const PROBE_BAT_TEXTURE = 'baseball-bat-v1-var-0';
+const PROBE_BAT_TEXTURE = 'baseball-bat-var-0';
 
 /** Bounds of a stat row's −/+ controls, in world/scene coordinates. */
 export interface StatControlBounds {
@@ -218,9 +218,9 @@ function buildProbeSpriteRegistry(
     version: 1,
     entries: {
       [PROBE_BAT_TEXTURE]: {
-        briefId: 'baseball-bat-v1',
+        briefId: 'baseball-bat',
         spriteName: PROBE_BAT_TEXTURE,
-        assetPath: 'generated/baseball-bat-v1-var-0.png',
+        assetPath: 'generated/baseball-bat-var-0.png',
         approvedAt: '2026-06-30T04:49:00.000Z',
         sourceRun: 'ui-probe-lab',
         variantIndex: 0,
@@ -309,7 +309,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     preload(): void {
       if (!this.textures.exists(PROBE_BAT_TEXTURE)) {
-        this.load.image(PROBE_BAT_TEXTURE, 'assets/generated/baseball-bat-v1-var-0.png');
+        this.load.image(PROBE_BAT_TEXTURE, 'assets/generated/baseball-bat-var-0.png');
       }
     }
 

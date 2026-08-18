@@ -1,0 +1,115 @@
+{
+  "briefId": "quartermaster-cap",
+  "spriteName": "quartermaster-cap-var-0",
+  "assetPath": "generated/quartermaster-cap-var-0.png",
+  "approvedAt": "2026-07-25T05:27:44.367Z",
+  "sourceRun": "generated/runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 29,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 29,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 37,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 29,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:26:43.224Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a patched tricorn hat with a glowing brass orb fits the dark-fantasy salvage aesthetic of Crawler. The jagged edges and eerie light add a touch of authored contradiction, but the design could push the scavenged look further for more impact."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of outline weight, shading, and palette depth. The glowing orb is well-executed, but the leather texture could use more nuanced shading to match the references more closely."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of outline weight, shading, and palette depth. The glowing orb is well-executed, but the leather texture could use more nuanced shading to match the references more closely."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a tall, battered tricorn hat with jagged edges, patched leather, and a glowing brass orb in the center, as described in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and recognizable at game scale, with the glowing orb providing a focal point. However, the jagged edges could be slightly more pronounced to enhance the silhouette's distinctiveness."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is an isolated item with no extraneous elements, adhering to the presentation requirements for an inanimate consumable or prop."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues in readability or style match. Minor improvements could enhance its integration into the game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2610,
+      "completionTokens": 387,
+      "totalTokens": 2997
+    }
+  },
+  "type": "item",
+  "contentHash": "f4d151e3eb1483216ef63a6ec5b7141c50654e820db4b7e8520726b531564be7",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 37,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

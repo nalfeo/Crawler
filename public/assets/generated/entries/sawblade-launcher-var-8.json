@@ -1,0 +1,116 @@
+{
+  "briefId": "sawblade-launcher",
+  "spriteName": "sawblade-launcher-var-8",
+  "assetPath": "generated/sawblade-launcher-var-8.png",
+  "approvedAt": "2026-07-25T06:16:44.091Z",
+  "sourceRun": "generated/runs/sawblade-launcher-v1/2026-07-25T05-42-10-7d8569ef",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 35,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 35,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 34,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 35,
+        "y": 60
+      }
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -81.57° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 8,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T06:16:06.196Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a shoulder-mounted sawblade launcher with industrial design is clear and well-executed. The glowing red light adds a menacing touch, and the rusted crank handle reinforces the industrial theme. The design feels grounded and appropriate for Floor 1."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of hard outlines, distinct color stops, and consistent shading aligns well with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of hard outlines, distinct color stops, and consistent shading aligns well with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a shoulder-mounted sawblade launcher with all the specified elements: blocky steel base, rivets, rusted crank handle, glowing red light, and a half-loaded sawblade with jagged teeth."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale. The sawblade, crank handle, and glowing red light are distinct and contribute to the overall readability of the sprite."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is well-executed and fits the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 2553,
+      "completionTokens": 329,
+      "totalTokens": 2882
+    }
+  },
+  "type": "weapon",
+  "contentHash": "57b0b84e743f299497aee08e053bf4ef7d014779770d2f2fca9e2fe8d3e18da6",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 49,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

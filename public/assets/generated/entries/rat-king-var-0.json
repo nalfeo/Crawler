@@ -1,0 +1,38 @@
+{
+  "briefId": "rat-king",
+  "spriteName": "rat-king-var-0",
+  "assetPath": "generated/rat-king-var-0.png",
+  "approvedAt": "2026-07-06T17:32:31.147Z",
+  "sourceRun": "generated/runs/rat-king-v1/imported-2575c5eea24a",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 35,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "2575c5eea24a7c5f974d4071defcc545ddcb8f09b2dda55c3dfde5f8dc53ac80",
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 4,
+    "width": 52,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

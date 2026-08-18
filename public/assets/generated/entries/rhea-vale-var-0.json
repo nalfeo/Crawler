@@ -1,0 +1,38 @@
+{
+  "briefId": "rhea-vale",
+  "spriteName": "rhea-vale-var-0",
+  "assetPath": "generated/rhea-vale-var-0.png",
+  "approvedAt": "2026-07-06T17:31:35.492Z",
+  "sourceRun": "generated/runs/rhea-vale-v1/imported-0e94d10e3153",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "0e94d10e31531a4d4d2ae93efb5a02ec379b647275d1723427d0c613e43b06ae",
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

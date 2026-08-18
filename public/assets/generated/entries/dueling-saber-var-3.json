@@ -1,0 +1,31 @@
+{
+  "briefId": "dueling-saber",
+  "spriteName": "dueling-saber-var-3",
+  "assetPath": "generated/dueling-saber-var-3.png",
+  "approvedAt": "2026-07-20T04:39:33.313Z",
+  "sourceRun": "generated/runs/dueling-saber-v1/imported-0411b9f7b23c",
+  "variantIndex": 3,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 29,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": "weapon",
+  "contentHash": "0411b9f7b23cbefa3b378032da6af20c0734a9172bb33968aad66c35f1b4b9b6",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 10,
+    "y": 3,
+    "width": 44,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

@@ -885,9 +885,9 @@ describe('approveVariant', () => {
       expect(entry.assetPath).toBe('generated/classified-dossier-var-0.png');
     });
 
-    it('ships a weaponId-alias brief BARE (baseball-bat-v3 → baseball-bat)', () => {
+    it('ships a weaponId-alias brief BARE (baseball-bat → baseball-bat)', () => {
       const { runDir } = writeFakeRun(repoRoot, {
-        briefId: 'baseball-bat-v3',
+        briefId: 'baseball-bat',
         variantIndices: [0],
         chosenIndex: 0,
       });
@@ -905,7 +905,7 @@ describe('approveVariant', () => {
       expect(entry.spriteName).toBe('baseball-bat-var-0');
     });
 
-    it('leaves a genuine non-item versioned brief VERSIONED (angry-roomba-v2)', () => {
+    it('canonicalizes a design-named brief instead of stripping it (angry-roomba-v2)', () => {
       const { runDir } = writeFakeRun(repoRoot, {
         briefId: 'angry-roomba-v2',
         variantIndices: [0],
@@ -921,10 +921,36 @@ describe('approveVariant', () => {
         now: fixedNow,
       });
 
-      // Enemy art is not an item identity → the -v2 lineage is preserved.
-      expect(entry.briefId).toBe('angry-roomba-v2');
-      expect(entry.spriteName).toBe('angry-roomba-v2-var-0');
-      expect(entry.assetPath).toBe('generated/angry-roomba-v2-var-0.png');
+      // All art now ships bare, but `angry-roomba-v2` is a DESIGN name (the
+      // Roomba mark 2), not a generation lineage tag. Stripping it would merge
+      // the mark 2 into `angry-roomba`; instead it is remapped to an
+      // unambiguous spelling so the "no lineage tags" rule needs no allowlist.
+      expect(entry.briefId).toBe('angry-roomba-mk2');
+      expect(entry.spriteName).toBe('angry-roomba-mk2-var-0');
+      expect(entry.assetPath).toBe('generated/angry-roomba-mk2-var-0.png');
+      expect(entry.briefId).not.toBe('angry-roomba');
+    });
+
+    it('strips a real lineage tag from non-item art too (enemy)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'toadkin-bouncer',
+        variantIndices: [0],
+        chosenIndex: 0,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      // Enemies used to keep their `-vN`, which is what fragmented 24 concepts
+      // into unreachable variant buckets. They now ship bare like everything else.
+      expect(entry.briefId).toBe('toadkin-bouncer');
+      expect(entry.spriteName).toBe('toadkin-bouncer-var-0');
     });
   });
 
@@ -1517,6 +1543,17 @@ describe('approveIconBatch', () => {
       const pngPath = path.join(publicAssetsDir, 'generated', `${entry.spriteName}.png`);
       expect(existsSync(pngPath)).toBe(true);
     }
+  });
+
+  it('rejects a malformed nested lineage brief before writing icon assets', () => {
+    const { runDir, iconBatch } = writeIconBatchRun(repoRoot, {
+      briefId: 'achv-icons-batch-v1-v2',
+    });
+
+    expect(() => approveIconBatch(makeOpts(runDir, iconBatch))).toThrow(
+      /malformed nested lineage tag/,
+    );
+    expect(readManifest(manifestPath).entries).toEqual({});
   });
 
   it('throws icon-batch-count-mismatch when processed count is GREATER than iconBatch length', () => {

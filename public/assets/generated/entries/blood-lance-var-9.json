@@ -1,0 +1,115 @@
+{
+  "briefId": "blood-lance",
+  "spriteName": "blood-lance-var-9",
+  "assetPath": "generated/blood-lance-var-9.png",
+  "approvedAt": "2026-07-25T05:49:54.122Z",
+  "sourceRun": "generated/runs/blood-lance-v1/2026-07-25T05-47-28-6fcdb8b2",
+  "variantIndex": 9,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 60
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 9,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:49:40.111Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a jagged lance with a spiraled crimson tip resembling a blood droplet is clear and fits the dark-fantasy theme of Crawler. The blood-like rivulets on the shaft add a unique and authored contradiction, enhancing the design."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally aligns with the reference style in terms of outline, shading, and palette. However, the crimson tip's shading is slightly inconsistent with the references, appearing overly saturated and lacking the subtlety seen in the approved sprites."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally aligns with the reference style in terms of outline, shading, and palette. However, the crimson tip's shading is slightly inconsistent with the references, appearing overly saturated and lacking the subtlety seen in the approved sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts the brief, with a jagged lance, a spiraled crimson tip resembling a blood droplet, and a blackened steel shaft with blood-like rivulets."
+    },
+    "readability": {
+      "score": 3,
+      "rationale": "The silhouette is mostly clear, but the spiraled crimson tip could be more distinct at game scale. The rivulets on the shaft are not immediately recognizable as bloodflows, which slightly impacts readability."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, though it has minor issues with style and readability that can be improved.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 2531,
+      "completionTokens": 339,
+      "totalTokens": 2870
+    }
+  },
+  "type": "weapon",
+  "contentHash": "b92715955359f2e697d2fd8c5f1c6c04d85935b624bc0a6ff78549b243479713",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 24,
+    "y": 3,
+    "width": 16,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
