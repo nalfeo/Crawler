@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b1b404a6d9cc7e016a2596b7837926e114743fc3",
+    "commitDate": "2026-08-18T06:42:31Z",
+    "commitSubject": "feat(engine): always render the player's carried main-hand weapon (#3055)",
+    "capturedAt": "2026-08-18T08:10:55.363Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32109897386",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b1b404a6d9cc7e016a2596b7837926e114743fc3.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.75,
+      "gatePass": false,
+      "path": "by-sha/b1b404a6d9cc7e016a2596b7837926e114743fc3.fun-report.json"
+    }
+  },
+  {
     "commit": "03702c1260e9aa95a2d13b8742df85cd0e525f40",
     "commitDate": "2026-08-18T05:47:52Z",
     "commitSubject": "feat(sprites): persist editor annotations through queue (#3060)",
