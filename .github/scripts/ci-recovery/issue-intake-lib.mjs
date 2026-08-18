@@ -527,9 +527,13 @@ export async function intakeOpenedIssue({
   let eligibilityReason;
   if (fromUnblockSweep) {
     // Automation-label restriction is intentionally skipped here — see JSDoc.
-    // We still reject non-issues (PR payloads) and untrusted openers.
+    // We still reject non-issues (PR payloads), telemetry issues, and
+    // untrusted openers.
     if (!issue || issue.pull_request) {
       return { assigned: false, reason: 'event has no eligible issue payload' };
+    }
+    if (isTelemetryIssue(issue)) {
+      return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
     }
     const opener = String(issue.user?.login || '').toLowerCase();
     const maintainer = String(maintainerLogin || '').toLowerCase();

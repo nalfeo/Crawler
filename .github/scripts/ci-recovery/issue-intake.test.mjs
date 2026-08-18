@@ -902,6 +902,38 @@ test('intakeOpenedIssue skips ineligible openers before ever querying dependenci
   assert.equal(paginateCalled, false, 'eligibility must short-circuit before the dependency query');
 });
 
+test('intakeOpenedIssue rejects a telemetry-labeled dependent even from the unblock sweep', async () => {
+  let paginateCalled = false;
+  const result = await intakeOpenedIssue({
+    graphql: async () => ({}),
+    paginate: async () => {
+      paginateCalled = true;
+      return [];
+    },
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: {
+      number: 1905,
+      node_id: 'ISSUE_1905',
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'telemetry' }],
+    },
+    fromUnblockSweep: true,
+  });
+
+  assert.deepEqual(result, {
+    assigned: false,
+    reason: 'telemetry issues are not assigned to Copilot',
+  });
+  assert.equal(
+    paginateCalled,
+    false,
+    'telemetry guard must short-circuit before the dependency query',
+  );
+});
+
 test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
   const fakes = makeSuccessfulIntakeFakes();
   const closedIssue = { number: 1851 };
