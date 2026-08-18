@@ -26,20 +26,22 @@ static-equipment evaluator and fixed the generated-occupant class-retention regr
   baselines; added generated-weapon persona fallback coverage.
 - Added an eager-maintenance two-step regression: equip a same-class generated pistol, then
   reject a later cross-class fireball while retaining the pistol.
+- Gated generated Floor 1 equipment on the equipment feature unlock and deferred boss-chest
+  maintenance until the shopkeeper charm has been bought and equipped.
+- Made the shopkeeper stage recognize only the charm, avoiding false progress from a displaced
+  starter weapon in the bag.
 
 ## Validation
 
-- `npx vitest run tests/game/equipment-loadout-evaluator.test.ts tests/game/settlement-maintenance-planner.test.ts tests/unit/weapon-personas.test.ts` — 68 passed.
+- `npx vitest run tests/ecs/equipment.test.ts tests/game/equipment-loadout-evaluator.test.ts tests/game/settlement-maintenance-planner.test.ts tests/unit/weapon-personas.test.ts tests/headless/floor1-boss-chest-equip.test.ts` — 125 passed.
 - `npm run typecheck` — passed.
-- `npm run verify:fast` — passed (139 files, 2295 tests).
-- `npm run scope` confirms sim-touched changes; the pre-existing 25-seed CI gate is left to
-  GitHub rather than running a broad local sweep.
+- `npm run verify:fast` — passed (1796 tests).
+- `npx vitest run tests/headless/floor1-completion.test.ts` — passed (25-seed gate).
 
 ## CI / review
 
-- Run 32072746735’s `ci` and `Merge gate` failed downstream because `Lightweight Checks` was
-  cancelled; the actionable Floor 1 gate reported a 76% win rate.
-- The retained-class defect explains the cross-class follow-up swap path. The repaired
-  two-step eager-maintenance test proves that path locally; CI must re-run the broader gate.
-- Review feedback was addressed with targeted tests. The review ledger records the completed
-  4-apple review stages.
+- PR #3040 was closed as superseded after its substantive implementation and tests were
+  ported to a fresh branch.
+- The retained-class defect explains the cross-class follow-up swap path, while the progression
+  gate fixes the shopkeeper deadlock that previously prevented the staircase boss from starting.
+- The review ledger records the completed 4-apple review stages for the retained implementation.

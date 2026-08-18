@@ -19,7 +19,7 @@ import {
   addGeneratedEquipmentReference,
   listGeneratedEquipmentReferences,
 } from '../../src/shared/inventory.js';
-import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { equip, equipFromBag, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
@@ -38,12 +38,14 @@ import type {
   Floor2QuartermasterStockState,
   Floor2SettlementSnapshot,
 } from '../../src/shared/floor-types.js';
+import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
   updateSettlementReturnIntent,
 } from '../../src/game/ai/settlement-return-router.js';
 import { openBossChest } from '../../src/core/systems/bossChestRewards.js';
+import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 
 // Mock ONLY `purchaseQuartermasterOffer`; every other export (including
 // `getQuartermasterOfferViews`, which the planner also calls) stays real, so
@@ -151,7 +153,7 @@ function addBagEquipment(
   playerEid: number,
   baseId: string,
   rarity: 'common' | 'uncommon' = 'common',
-): string {
+): GeneratedEquipmentInstanceKey {
   const instance = generateEquipmentInstance(world, {
     baseId,
     itemLevel: world.playerLevel.level,
@@ -234,6 +236,27 @@ describe('runSettlementMaintenancePlanner', () => {
       updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
     ).toBe('arrived');
     expect(getSettlementReturnIntent(world).status).toBe('arrived');
+  });
+
+  it('defers generated Floor 1 equipment until the shopkeeper charm quest is complete', () => {
+    const world = createTestWorld({ seed: 5, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    world.playerInSafeRoom = true;
+    world.playerLevel.level = 1;
+    const instanceId = addBagEquipment(world, playerEid, 'weapon.ember-wand');
+    expect(
+      equipFromBag(world, playerEid, { kind: 'generated-instance', instanceKey: instanceId }).ok,
+    ).toBe(false);
+
+    const result = runSettlementMaintenancePlanner(world);
+
+    expect(result.terminationReason).toBe('exhausted');
+    expect(listGeneratedEquipmentReferences(world.inventories.get(playerEid)!)).toEqual([
+      { kind: 'generated-instance', instanceKey: instanceId },
+    ]);
+    expect(world.goalFlags.get('floor1-shop-quest-complete')).not.toBe(true);
   });
 
   it('no-ops when the player is outside the settlement room', () => {

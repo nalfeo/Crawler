@@ -83,6 +83,16 @@ import type { WeaponClassSkillId } from '../../shared/weapon-skills.js';
 const EQUIPMENT_LOOP_CANDIDATE_CAP = 8;
 
 /**
+ * Floor 1's expanded generated-equipment inventory is unlocked by completing
+ * the shopkeeper errand, including equipping the purchased charm. Keep boss
+ * chest rewards deferred until that progression gate is satisfied so a reward
+ * cannot strand the charm in the bag or replace the starter weapon early.
+ */
+function floor1GeneratedEquipmentUnlocked(world: GameWorld): boolean {
+  return world.floorScenario === null || world.goalFlags.get('floor1-shop-quest-complete') === true;
+}
+
+/**
  * One fixed, canonical "average Floor 2 encounter" fixture. Settlement
  * maintenance is a non-combat opportunity, so the planner has no real
  * upcoming-encounter telemetry to draw from; using one constant, documented
@@ -291,6 +301,9 @@ function planBossChestActions(
   playerEid: number,
   decisions: SettlementMaintenanceDecision[],
 ): readonly string[] {
+  if (!floor1GeneratedEquipmentUnlocked(world)) {
+    return [];
+  }
   const chestIds = [...world.bossChests.keys()].sort();
   const deferred: string[] = [];
   for (const chestId of chestIds) {
@@ -774,6 +787,9 @@ function runEquipmentLoop(
   // ("disabling a consumer stops new generation and mutation through that
   // consumer") applies to this AI consumer just as it does to UX/world ones.
   if (!world.floor2EquipmentFlags.floor2EquipmentAiMaintenance) {
+    return 'exhausted';
+  }
+  if (!floor1GeneratedEquipmentUnlocked(world)) {
     return 'exhausted';
   }
 

@@ -53,6 +53,9 @@ describe('Floor 1 boss-chest drops are usable by the AI', () => {
       for (const seed of SEEDS) {
         const stats = await runFloor1(seed);
         const metrics = stats.equipmentPlayability;
+        if (!metrics) {
+          throw new Error(`seed ${seed} did not report equipment playability metrics`);
+        }
         summaries.push(
           `seed ${seed}: outcome=${stats.outcome} equipped=${metrics.equippedGeneratedCount} ` +
             `bagged=${metrics.baggedGeneratedCount} unopenedRewardBoxes=${metrics.unopenedRewardBoxes}`,
