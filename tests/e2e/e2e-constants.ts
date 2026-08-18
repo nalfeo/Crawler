@@ -5,7 +5,7 @@
  * Test files use E2E_LAB_BASE_URL to construct lab page URLs.
  */
 
-export const E2E_LAB_PORT = 5299;
+export const E2E_LAB_PORT = Number(process.env.CRAWLER_E2E_LAB_PORT ?? 5299);
 export const E2E_LAB_BASE_URL = `http://localhost:${E2E_LAB_PORT}`;
 
 /** Phaser game canvas dimensions as defined in src/shared/constants.ts */

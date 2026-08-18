@@ -52,7 +52,7 @@ describe('EquipmentUI bag-scroll architectural guard', () => {
   });
 
   it('resolves generated equipment through the world registry for render and dirty checks', () => {
-    expect(source.match(/resolveEquipmentInstance\(lastWorld, state, instId\)/g)).toHaveLength(2);
+    expect(source.match(/resolveEquipmentInstance\(lastWorld, state, instId\)/g)).toHaveLength(3);
     expect(source).toContain('itemDef ?? instance.def');
     expect(source).toContain('showGeneratedEquipmentTooltip(instance.def)');
     expect(source).toContain('getItemById(swapped.id)?.name ?? swapped.name');

@@ -1,0 +1,77 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-18",
+  "session_slug": "text-raster-legibility",
+  "task_title": "Add calibrated text-raster legibility evidence",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alternatives: deterministic-only authority selected in part; golden crops rejected as brittle; broad migration rejected as excessive. Common review path consumes structured report; Node suppresses unsupported Azure fuzziness; report covers decision, equipped-empty tooltip, bag tooltip, and filtered state; explicit font-load proof is required."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "b7ab27271b154b3e1f8a02bbbc707db7c5205989",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation cleanly introduces deterministic text raster validation to separate actual font blurring from vision-model hallucination. It effectively adjusts EquipmentUI layout, scaling (enforcing integer pixels), and typography to meet the new strict pixel-rendering rules. Extensive E2E and unit test coverage ensures the legibility logic, interaction hover states, and screenshot evaluator constraints work correctly and protect against regressions. The new logic is heavily commented and thoroughly adheres to project guidelines."
+    }
+  }
+}
