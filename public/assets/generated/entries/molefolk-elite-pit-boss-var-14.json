@@ -1,10 +1,10 @@
 {
-  "briefId": "molefolk-elite-pit-boss-v1",
-  "spriteName": "molefolk-elite-pit-boss-v1-var-2",
-  "assetPath": "generated/molefolk-elite-pit-boss-v1-var-2.png",
+  "briefId": "molefolk-elite-pit-boss",
+  "spriteName": "molefolk-elite-pit-boss-var-14",
+  "assetPath": "generated/molefolk-elite-pit-boss-var-14.png",
   "approvedAt": "2026-08-01T06:01:37.949Z",
   "sourceRun": "generated/runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241",
-  "variantIndex": 2,
+  "variantIndex": 14,
   "anchor": {
     "x": 258,
     "y": 299,
