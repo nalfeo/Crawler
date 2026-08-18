@@ -643,6 +643,8 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       // intact and the relock can never produce a boss-less sealed room.
       if (
         encounter.bossEid === null ||
+        encounter.bossSpawnX === undefined ||
+        encounter.bossSpawnY === undefined ||
         !entityExists(world.ecs, encounter.bossEid) ||
         !hasComponent(world.ecs, encounter.bossEid, Enemy) ||
         !hasComponent(world.ecs, encounter.bossEid, Health)
