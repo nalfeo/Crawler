@@ -5,7 +5,8 @@
  *   - When the player is locked in a spawner arena, `poll()` selects the
  *     spawner as the movement target instead of the default Progress goal
  *     (Tutorial Goon on a fresh Floor-1 world).
- *   - Retreat (Priority 1) still takes precedence over ArenaLockin.
+ *   - In lock-in scenarios, retreat yields so ArenaLockin can run defensive
+ *     engagement instead of endless cage-kiting.
  *   - When no arena lock-in fires, normal Progress behavior is selected.
  */
 
@@ -25,9 +26,38 @@ import {
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AIState } from '../../../src/game/ai/types.js';
 import { activateHostileEncounter } from '../../../src/game/hostile-encounter-lifecycle.js';
+import { FloorMap } from '../../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../../src/core/map/TileMap.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../../src/shared/map-types.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
+
+function makeAdjacentRooms(): FloorMap {
+  const width = 10;
+  const height = 6;
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.FLOOR);
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 0, y: 0, width: 6, height: 6 });
+  roomGraph.add({ x: 5, y: 0, width: 5, height: 6 });
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizeFt: 4,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [4, 4],
+    roomHeightRange: [4, 4],
+    maxRooms: 2,
+    floorDensity: 1,
+  };
+  return new FloorMap(config, tileMap, roomGraph, new Uint8Array(width * height), {
+    x: 4,
+    y: 2,
+  });
+}
 
 function makeLockedSpawnerNearPlayer(
   world: ReturnType<typeof createTestWorld>,
@@ -109,6 +139,33 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason.toLowerCase()).not.toContain('tutorial goon');
   });
 
+  it('spawner lock-in keeps spacing movement instead of parking on spawner center', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const spawnerEid = makeLockedSpawnerNearPlayer(world, px, py);
+    const sx = world.stores.position.x[spawnerEid]!;
+    const sy = world.stores.position.y[spawnerEid]!;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(spawnerEid);
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetY).not.toBeNull();
+    const tx = decision.targetX!;
+    const ty = decision.targetY!;
+    expect(Math.hypot(tx - sx, ty - sy)).toBeGreaterThan(0.1);
+    expect(decision.reason.toLowerCase()).toContain('arena lock-in');
+    expect(decision.reason.toLowerCase()).not.toContain('attacking spawner');
+  });
+
   it('falls through to normal Progress behavior when no arena lock-in fires', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
@@ -171,7 +228,7 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(ai.getDecision().reason).toBe(firstDecision.reason);
   });
 
-  it('retreat (priority 1) still wins over arena lock-in at low HP with a nearby threat', () => {
+  it('low-HP lock-in uses defensive arena engagement instead of retreat loops', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -180,19 +237,42 @@ describe('BT — arena lock-in priority (1.5)', () => {
     world.stores.health.current[player] = 5;
     world.stores.health.max[player] = 100;
 
-    // Retreat needs a nearby Enemy-tagged threat within retreatDangerRadius
-    // (20 ft). Spawn one AND set up the arena lock-in — both conditions hold
-    // simultaneously, and retreat must win.
+    // Spawn a nearby enemy and lock in the arena simultaneously. In lock-in,
+    // retreat must yield so the AI commits to the objective instead of running
+    // in circles inside a sealed space.
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
     spawnEnemy(world, px + 3, py, 20);
-    makeLockedSpawnerNearPlayer(world, px, py);
+    const spawnerEid = makeLockedSpawnerNearPlayer(world, px, py);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(spawnerEid);
+    expect(decision.reason.toLowerCase()).toContain('arena');
+  });
+
+  it('boss lock-in preserves point-blank escape from a long-range boss', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.current[player] = 5;
+    world.stores.health.max[player] = 100;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 3, 0);
+    world.stores.enemyBehavior.attackRange[bossEid] = 280;
 
     const ai = new BehaviorTreeAI({ seed: 42 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.RETREAT);
+    expect(decision.targetEid).toBeNull();
   });
 
   it('ignores loot outside the arena while locked in (arena objective wins)', () => {
@@ -292,6 +372,39 @@ describe('BT — arena lock-in priority (1.5)', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.targetEid).toBe(bossEid);
+    expect(decision.reason).toContain('boss');
+  });
+
+  it('boss lock-in: ignores closer enemies outside the locked boss room', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeAdjacentRooms();
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const playerPos = world.floorMap.tileToWorld(4, 2);
+    const bossPos = world.floorMap.tileToWorld(2, 2);
+    const outsidePos = world.floorMap.tileToWorld(6, 2);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const bossEid = startStaircaseBossLockin(
+      world,
+      playerPos.x,
+      playerPos.y,
+      bossPos.x - playerPos.x,
+      bossPos.y - playerPos.y,
+    );
+    const outsideEnemyEid = spawnEnemy(world, outsidePos.x, outsidePos.y, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(outsideEnemyEid);
     expect(decision.reason).toContain('boss');
   });
 

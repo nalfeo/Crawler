@@ -9,6 +9,7 @@ import {
   isCopilotLogin,
   removeIssueAssignees,
 } from './ci-recovery/issue-intake-lib.mjs';
+import { requiresHumanApproval } from './merge-train/human-approval.mjs';
 
 const READY_FOR_REVIEW_MUTATION = `
   mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
@@ -24,6 +25,7 @@ export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = 'dynamic/copilot-swe-agent/copi
 export const COPILOT_CLOUD_AGENT_WORKFLOW_ID = 288998107;
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
 export const EMPTY_DRAFT_REPAIR_LABEL = 'copilot-empty-draft-repaired';
+export const EMPTY_DRAFT_REPEAT_TRIAGE_LABEL = 'copilot-empty-draft-repeat-triage';
 const WORKFLOW_RUNS_PAGE_SIZE = 100;
 const WORKFLOW_RUNS_MAX_PAGES = 10;
 
@@ -158,6 +160,15 @@ function localEmptyCopilotDraftRepairRejection({ pr, changedFiles, repository })
   return null;
 }
 
+function issueHasLabel(issue, labelName) {
+  const labels = Array.isArray(issue?.labels?.nodes)
+    ? issue.labels.nodes
+    : Array.isArray(issue?.labels)
+      ? issue.labels
+      : [];
+  return labels.some((label) => normalize(label?.name) === normalize(labelName));
+}
+
 export function inspectEmptyCopilotDraftRepair({
   pr,
   changedFiles,
@@ -227,7 +238,14 @@ export function inspectEmptyCopilotDraftRepair({
       reason: `copilot-cloud-run-grace=${graceMs - ageMs}`,
     };
   }
-  return { eligible: true, linkedIssue, latestRun };
+  return {
+    eligible: true,
+    linkedIssue,
+    latestRun,
+    repeatRepair:
+      issueHasLabel(linkedIssue, EMPTY_DRAFT_REPAIR_LABEL) ||
+      issueHasLabel(linkedIssue, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL),
+  };
 }
 
 async function changedFilesForDraft({
@@ -267,24 +285,30 @@ async function changedFilesForDraft({
   return changedFiles;
 }
 
-async function removeRequestedReviewerIfPresent({ api, pr, prNumber, reviewerLogin, log }) {
-  try {
-    const normalizedReviewerLogin = normalize(reviewerLogin);
-    const requestedReviewers = pr.requested_reviewers ?? [];
-    const reviewerToRemove = requestedReviewers.find(
-      (reviewer) => normalize(reviewer.login) === normalizedReviewerLogin,
-    );
-    if (!reviewerToRemove?.login) {
-      return false;
-    }
-    await api.removeRequestedReviewer(prNumber, reviewerToRemove.login);
-    log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
-    return true;
-  } catch (error) {
-    const warn = log.warning ?? log.warn ?? log.info;
-    warn?.call(log, `Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
+async function requestHumanReviewerIfRequired({ api, pr, prNumber, reviewerLogin, log }) {
+  if (requiresHumanApproval(pr)) {
+    return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+  }
+  const closingIssues = await api.listClosingIssues(prNumber);
+  if (!requiresHumanApproval(pr, closingIssues)) {
     return false;
   }
+  return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+}
+
+async function requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log }) {
+  if (normalize(pr.user?.login) === normalize(reviewerLogin)) {
+    return false;
+  }
+  const requestedReviewers = pr.requested_reviewers ?? [];
+  if (
+    requestedReviewers.some((reviewer) => normalize(reviewer.login) === normalize(reviewerLogin))
+  ) {
+    return false;
+  }
+  await api.requestReviewer(prNumber, reviewerLogin);
+  log.info(`Requested @${reviewerLogin} to review human-gated PR #${prNumber}.`);
+  return true;
 }
 
 async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log, now, graceMs }) {
@@ -383,6 +407,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     copilotActorId: assignmentContext.copilot.id,
     includeCopilot: true,
   }).filter((id) => !actorIdsWithoutCopilot.includes(id));
+  const linkedIssueNumber = confirmedDecision.linkedIssue.number;
 
   // Apply a durable repair marker label before closing so any subsequent scan
   // (including after a reopen event) skips this PR without repeating the repair.
@@ -488,6 +513,91 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     return { status: 'skipped', reason: driftReason };
   }
 
+  if (confirmedDecision.repeatRepair) {
+    // Apply the reversible mutations (triage label, Copilot removal) first and keep the
+    // irreversible issue comment as the final side effect, so any failure can be fully
+    // rolled back without leaving the triage label (which itself drives `repeatRepair`)
+    // stuck on the issue.
+    let triageLabelApplied = false;
+    try {
+      await api.addIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL);
+      triageLabelApplied = true;
+      const removedLogins = await api.removeIssueAssignees(
+        assignmentContext.issueId,
+        copilotActorIds,
+      );
+      if (removedLogins.some((login) => isCopilotLogin(login))) {
+        throw new Error(
+          `Copilot removal did not persist on repeat empty-draft issue #${linkedIssueNumber}`,
+        );
+      }
+      await api.addIssueComment(
+        linkedIssueNumber,
+        [
+          `Empty Copilot draft repair has already been attempted for this issue, so PR #${pr.number} was closed without reassigning Copilot again.`,
+          '',
+          'Please clarify or triage the issue before starting another Copilot run.',
+        ].join('\n'),
+      );
+    } catch (repairError) {
+      const rollbackErrors = [];
+      try {
+        const restoredLogins = await api.addIssueAssignees(
+          assignmentContext.issueId,
+          copilotActorIds,
+        );
+        if (!restoredLogins.some((login) => isCopilotLogin(login))) {
+          throw new Error(
+            `Copilot assignment did not persist during repeat-repair rollback on issue #${linkedIssueNumber}`,
+          );
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`issue rollback failed: ${getErrorMessage(rollbackError)}`));
+      }
+      if (triageLabelApplied) {
+        try {
+          await api.removeIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL);
+        } catch (rollbackError) {
+          rollbackErrors.push(
+            new Error(`issue triage label cleanup failed: ${getErrorMessage(rollbackError)}`),
+          );
+        }
+      }
+      if (closeApplied) {
+        try {
+          await api.updatePullState(pr.number, 'open');
+        } catch (rollbackError) {
+          rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+        }
+      }
+      if (labelApplied) {
+        try {
+          await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+        } catch (rollbackError) {
+          rollbackErrors.push(new Error(`label cleanup failed: ${getErrorMessage(rollbackError)}`));
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [repairError, ...rollbackErrors],
+          `repeat repair failed for PR #${pr.number}: ${getErrorMessage(repairError)}; rollback also failed: ${rollbackErrors.map(getErrorMessage).join('; ')}`,
+          { cause: repairError },
+        );
+      }
+      throw repairError;
+    }
+
+    log.info(
+      `Escalated repeat empty Copilot draft PR #${pr.number}: closed shell, removed Copilot from linked issue #${linkedIssueNumber}, cloud run ${confirmedDecision.latestRun.id}.`,
+    );
+    return {
+      status: 'repaired',
+      issueNumber: linkedIssueNumber,
+      runId: confirmedDecision.latestRun.id,
+      repeatRepair: true,
+    };
+  }
+
   try {
     const removedLogins = await api.removeIssueAssignees(
       assignmentContext.issueId,
@@ -508,6 +618,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         `Copilot reassignment did not persist on linked issue #${confirmedDecision.linkedIssue.number}`,
       );
     }
+    await api.addIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPAIR_LABEL);
   } catch (repairError) {
     const rollbackErrors = [];
     try {
@@ -554,11 +665,11 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   }
 
   log.info(
-    `Repaired empty Copilot draft PR #${pr.number}: closed shell, restarted linked issue #${confirmedDecision.linkedIssue.number}, cloud run ${confirmedDecision.latestRun.id}.`,
+    `Repaired empty Copilot draft PR #${pr.number}: closed shell, restarted linked issue #${linkedIssueNumber}, cloud run ${confirmedDecision.latestRun.id}.`,
   );
   return {
     status: 'repaired',
-    issueNumber: confirmedDecision.linkedIssue.number,
+    issueNumber: linkedIssueNumber,
     runId: confirmedDecision.latestRun.id,
   };
 }
@@ -572,15 +683,51 @@ function parseRepository(fullName) {
 }
 
 function createApi({ token, owner, repo }) {
+  const addIssueLabel = async (issueNumber, labelName) => {
+    try {
+      await request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/labels`, {
+        method: 'POST',
+        body: { labels: [labelName] },
+      });
+    } catch (addError) {
+      if (addError?.status === 422) {
+        await request(token, `/repos/${owner}/${repo}/labels`, {
+          method: 'POST',
+          body: { name: labelName, color: 'e4e669' },
+        }).catch(() => {});
+        await request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/labels`, {
+          method: 'POST',
+          body: { labels: [labelName] },
+        });
+      } else {
+        throw addError;
+      }
+    }
+  };
+
+  const removeIssueLabel = async (issueNumber, labelName) => {
+    try {
+      await request(
+        token,
+        `/repos/${owner}/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(labelName)}`,
+        { method: 'DELETE' },
+      );
+    } catch (removeError) {
+      if (removeError?.status !== 404) {
+        throw removeError;
+      }
+    }
+  };
+
   return {
     listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&per_page=100`),
     getPull: async (pullNumber) =>
       (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data,
     markReadyForReview: async (pullRequestId) =>
       graphql(token, READY_FOR_REVIEW_MUTATION, { pullRequestId }),
-    removeRequestedReviewer: async (pullNumber, reviewerLogin) =>
+    requestReviewer: async (pullNumber, reviewerLogin) =>
       request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, {
-        method: 'DELETE',
+        method: 'POST',
         body: { reviewers: [reviewerLogin] },
       }),
     listClosingIssues: (pullNumber) => listClosingIssues(token, owner, repo, pullNumber),
@@ -621,40 +768,15 @@ function createApi({ token, owner, repo }) {
         assignableId,
         actorIds,
       }),
-    addPrLabel: async (pullNumber, labelName) => {
-      try {
-        await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
-          method: 'POST',
-          body: { labels: [labelName] },
-        });
-      } catch (addError) {
-        if (addError?.status === 422) {
-          await request(token, `/repos/${owner}/${repo}/labels`, {
-            method: 'POST',
-            body: { name: labelName, color: 'e4e669' },
-          }).catch(() => {});
-          await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
-            method: 'POST',
-            body: { labels: [labelName] },
-          });
-        } else {
-          throw addError;
-        }
-      }
-    },
-    removePrLabel: async (pullNumber, labelName) => {
-      try {
-        await request(
-          token,
-          `/repos/${owner}/${repo}/issues/${pullNumber}/labels/${encodeURIComponent(labelName)}`,
-          { method: 'DELETE' },
-        );
-      } catch (removeError) {
-        if (removeError?.status !== 404) {
-          throw removeError;
-        }
-      }
-    },
+    addPrLabel: (pullNumber, labelName) => addIssueLabel(pullNumber, labelName),
+    addIssueLabel,
+    addIssueComment: async (issueNumber, body) =>
+      request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+        method: 'POST',
+        body: { body },
+      }),
+    removePrLabel: removeIssueLabel,
+    removeIssueLabel,
   };
 }
 
@@ -686,7 +808,7 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber ?? '',
         )})`,
       );
-      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+      return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
     }
     const pull = await api.getPull(prNumber);
     openPrs = String(pull?.state || '').toLowerCase() === 'open' ? [pull] : [];
@@ -695,19 +817,19 @@ export async function runPrReadyReviewerGuard({
   }
   if (openPrs.length === 0) {
     log.info('No open PRs found.');
-    return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
   }
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
-  let reviewerRemovals = 0;
+  let humanReviewerRequests = 0;
   const publishFailures = [];
   const repairFailures = [];
+  const reviewerRequestFailures = [];
 
   for (const pr of openPrs) {
     const prNumber = pr.number;
     let closedByRepair = false;
     let attemptedRepair = false;
-    let reviewerCleanupAttempted = false;
 
     if (pr.draft) {
       try {
@@ -719,16 +841,6 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber,
         });
         if (changedFiles === 0) {
-          reviewerCleanupAttempted = true;
-          reviewerRemovals += Number(
-            await removeRequestedReviewerIfPresent({
-              api,
-              pr,
-              prNumber,
-              reviewerLogin,
-              log,
-            }),
-          );
           attemptedRepair = true;
           const repairResult = await repairEmptyCopilotDraft({
             api,
@@ -784,24 +896,36 @@ export async function runPrReadyReviewerGuard({
       continue;
     }
 
-    if (!reviewerCleanupAttempted) {
-      reviewerRemovals += Number(
-        await removeRequestedReviewerIfPresent({
-          api,
-          pr,
-          prNumber,
-          reviewerLogin,
-          log,
-        }),
-      );
+    if (!pr.draft) {
+      try {
+        humanReviewerRequests += Number(
+          await requestHumanReviewerIfRequired({
+            api,
+            pr,
+            prNumber,
+            reviewerLogin,
+            log,
+          }),
+        );
+      } catch (error) {
+        const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
+        reviewerRequestFailures.push(new Error(prError, { cause: error }));
+        log.error(
+          `Could not request human reviewer for PR #${prNumber}: ${getErrorMessage(error)}`,
+        );
+      }
     }
   }
 
   log.info(
-    `Done. Drafts published: ${draftsPublished}. Empty draft repairs: ${emptyDraftRepairs}. Reviewer removals: ${reviewerRemovals}.`,
+    `Done. Drafts published: ${draftsPublished}. Empty draft repairs: ${emptyDraftRepairs}. Human reviewer requests: ${humanReviewerRequests}.`,
   );
 
-  if (publishFailures.length > 0 || repairFailures.length > 0) {
+  if (
+    publishFailures.length > 0 ||
+    repairFailures.length > 0 ||
+    reviewerRequestFailures.length > 0
+  ) {
     const failureLines = [
       ...(publishFailures.length > 0
         ? [
@@ -815,11 +939,20 @@ export async function runPrReadyReviewerGuard({
             ...repairFailures.map((failure) => failure.message),
           ]
         : []),
+      ...(reviewerRequestFailures.length > 0
+        ? [
+            `Failed to request a human reviewer for ${reviewerRequestFailures.length} PR(s):`,
+            ...reviewerRequestFailures.map((failure) => failure.message),
+          ]
+        : []),
     ];
-    throw new AggregateError([...publishFailures, ...repairFailures], failureLines.join('\n'));
+    throw new AggregateError(
+      [...publishFailures, ...repairFailures, ...reviewerRequestFailures],
+      failureLines.join('\n'),
+    );
   }
 
-  return { draftsPublished, emptyDraftRepairs, reviewerRemovals };
+  return { draftsPublished, emptyDraftRepairs, humanReviewerRequests };
 }
 
 async function main() {

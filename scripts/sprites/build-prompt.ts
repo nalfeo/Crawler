@@ -363,12 +363,16 @@ function typeRulesBlock(brief: Brief): string | null {
             '- Give the boss a distinctive threat silhouette and unmistakable visual hierarchy; do not render a normal enemy with extra accessories.',
           ]
         : [];
+    const bodyOnlyRule =
+      brief.sensors.enemy?.allowSpellMedium === true
+        ? '- Keep the sprite body-led and character-centric: no shields, no oversized held weapons, and no detached floating orbs/particle trails. A compact held spell medium and its localized magic glow are allowed when explicitly requested by the brief.'
+        : '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.';
     return [
       '## Mob rules',
       ...cartoonFigureRules(brief.seedFrames.length),
       facingLine,
       ...bossLines,
-      '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
+      bodyOnlyRule,
       `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell). Measure that span from the TOP OF THE BIG HEAD to the soles. Avoid elongated, extra-tall limb/torso stretch.`,
       '- Non-humanoid creatures (slimes, beasts, swarms) keep the same cartoon language: simple bold shapes, flat cel fills, large expressive eyes, no dither grime.',
       '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',

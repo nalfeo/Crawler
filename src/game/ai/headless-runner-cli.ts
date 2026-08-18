@@ -11,6 +11,7 @@
 import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
+import { getPersonaConfig, personaConfigDivergence } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
 import { helpText, parseArgs } from './headless-runner-cli-lib.js';
 
@@ -41,15 +42,32 @@ async function main(): Promise<void> {
   }
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
-  console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
+  console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
+  console.log(`Persona: ${args.persona}`);
   console.log(
     `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
   );
   console.log('');
 
+  // A persona label is only truthful while the run actually uses the preset.
+  // `--aggression`/`--pathing-mode`/`--decision-mode` can override it, so a
+  // diverging run stays UNLABELLED rather than contaminating that cohort's
+  // cohort scores with behavior the persona never had.
+  const personaDivergence = personaConfigDivergence(args.persona, {
+    ...(args.aggression !== null ? { aggression: args.aggression } : {}),
+    pathingMode: args.pathingMode,
+    decisionMode: args.decisionMode,
+  });
+  if (personaDivergence.length > 0) {
+    console.log(
+      `⚠️  Persona "${args.persona}" overridden by: ${personaDivergence.join(', ')} — run will NOT be labelled with this persona.`,
+    );
+  }
+
   const ai = new BehaviorTreeAI({
+    ...getPersonaConfig(args.persona),
     seed: args.seed,
-    aggression: args.aggression,
+    ...(args.aggression !== null ? { aggression: args.aggression } : {}),
     debug: args.debug,
     pathingMode: args.pathingMode,
     decisionMode: args.decisionMode,
@@ -72,7 +90,8 @@ async function main(): Promise<void> {
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
-    merchantWeaponPurchase: args.merchantWeaponPurchase,
+    optionalPurchases: args.optionalPurchases,
+    ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
     settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {
@@ -138,6 +157,57 @@ async function main(): Promise<void> {
     console.log(
       `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
     );
+  }
+  if (stats.goldEconomy) {
+    const ge = stats.goldEconomy;
+    console.log('');
+    console.log('💰 Gold Economy');
+    console.log(
+      `  Earned:       ${ge.earnedTotal} (drops ${ge.earnedFromDrops}, loot boxes ${ge.earnedFromLootBoxes})`,
+    );
+    console.log(
+      `  Spent:        ${ge.spentTotal} (charm ${ge.spentOnCharm}, weapon ${ge.spentOnMerchantWeapon}, spell ${ge.spentOnSpell})`,
+    );
+    console.log(
+      `  Unspent:      ${ge.unspentAtExit} (${(ge.unspentFraction * 100).toFixed(1)}% of earned)`,
+    );
+    console.log(
+      `  Spendable:    ${ge.spendableEarned} earned before exit — unspent ${ge.unspentSpendable} (${(ge.unspentSpendableFraction * 100).toFixed(1)}%)`,
+    );
+    console.log(
+      `  Purchases:    ${ge.distinctPurchases} vendors (charm ${ge.charmPurchases}, weapon ${ge.merchantWeaponPurchases}, spell ${ge.spellPurchases})`,
+    );
+  }
+  if (stats.vendors) {
+    const vendors = stats.vendors;
+    console.log('');
+    console.log('🛒 Vendor Visits & Decisions');
+    console.log(
+      `  Visits:       ${vendors.visitCount} (${
+        Object.entries(vendors.visitsByVendor)
+          .map(([vendorId, count]) => `${vendorId} ${count}`)
+          .join(', ') || 'none'
+      })`,
+    );
+    for (const visit of vendors.visits) {
+      const stock =
+        visit.stock.map((entry) => `${entry.itemId} ${entry.cost}g`).join(', ') || 'empty';
+      console.log(
+        `    ${(visit.gameTimeMs / 1000).toFixed(1)}s ${visit.vendorId} — gold ${visit.playerGold}, stock: ${stock}`,
+      );
+    }
+    console.log(
+      `  Decisions:    ${vendors.decisionCount} (${Object.entries(vendors.outcomeCounts)
+        .map(([outcome, count]) => `${outcome} ${count}`)
+        .join(', ')})`,
+    );
+    for (const decision of vendors.decisions) {
+      console.log(
+        `    ${(decision.gameTimeMs / 1000).toFixed(1)}s ${decision.vendorId} — ${decision.outcome} ${
+          decision.itemId ?? 'nothing'
+        } (${decision.cost}g, gold ${decision.playerGold}, ${decision.reason})`,
+      );
+    }
   }
   console.log('');
   console.log('❤️  Health Metrics');
@@ -214,12 +284,12 @@ async function main(): Promise<void> {
       `  Exit:       ${stats.floor2Progression.exitCompleted ? 'completed' : 'incomplete'}`,
     );
     const hunt = stats.floor2Progression.hunt;
-    const huntKills = hunt.familyTrashKills + hunt.neutralTrashKills;
-    const familyKillRatio = huntKills > 0 ? hunt.familyTrashKills / huntKills : 0;
+    const huntKills = hunt.huntFamilyTrashKills + hunt.huntNeutralTrashKills;
+    const familyKillRatio = huntKills > 0 ? hunt.huntFamilyTrashKills / huntKills : 0;
     console.log(
       `  Hunt:       ${(hunt.huntTimeMs / 1000).toFixed(1)}s · COMBAT ${(hunt.activeCombatRatio * 100).toFixed(1)}% ` +
         `(ENGAGE ${(hunt.engageRatio * 100).toFixed(1)}%) · ` +
-        `kills ${hunt.familyTrashKills} family/${hunt.neutralTrashKills} neutral ` +
+        `kills ${hunt.huntFamilyTrashKills} family/${hunt.huntNeutralTrashKills} neutral ` +
         `(${(familyKillRatio * 100).toFixed(1)}% family) · ` +
         `nearby ${hunt.averageNearbyEnemies.toFixed(1)} avg/${hunt.peakNearbyEnemies} peak`,
     );

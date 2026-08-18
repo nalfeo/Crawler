@@ -3,7 +3,7 @@
   "spriteName": "welcome-room-velvet-rope-var-2",
   "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
   "approvedAt": "2026-07-08T22:11:09.718Z",
-  "sourceRun": "../nalfeo-upgraded-enigma/generated/runs/welcome-room-velvet-rope/2026-07-08T03-38-52-1c707f76",
+  "sourceRun": "generated/runs/welcome-room-velvet-rope/imported-a809daa032aa",
   "variantIndex": 2,
   "anchor": null,
   "anchors": {
@@ -18,9 +18,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "a809daa032aa7642cff005b185be55aa5532bf8a603d51e248cb04b4c60484a3",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

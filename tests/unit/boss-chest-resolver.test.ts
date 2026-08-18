@@ -17,15 +17,15 @@ function enableFloor2Economy(world: GameWorld): void {
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
 }
 
-describe('spawnBossChestForDefeatedBoss — Floor 1 exclusion', () => {
-  it('never creates a chest on Floor 1, even with all flags enabled', () => {
+describe('spawnBossChestForDefeatedBoss — Floor 1', () => {
+  it('creates a chest when the Floor 1 equipment economy is enabled', () => {
     const world = createTestWorld({ seed: 1, floor: 1, generatedEquipmentRunKey: RUN_KEY });
     enableFloor2Economy(world);
     const result = spawnBossChestForDefeatedBoss(world, FAMILY_ID);
-    expect(result).toEqual({ created: false, reason: 'notFloor2' });
-    expect(world.bossChests.size).toBe(0);
-    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
-    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+    expect(result.created).toBe(true);
+    expect(world.bossChests.size).toBe(1);
+    expect(world.generatedEquipmentRewardBundles.size).toBe(1);
+    expect(listGeneratedEquipmentInstances(world).length).toBe(1);
   });
 });
 

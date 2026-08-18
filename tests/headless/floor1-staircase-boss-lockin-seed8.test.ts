@@ -3,10 +3,12 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import { isOfficialWin } from '../../src/game/ai/scoring.js';
-import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 // Keep this below Vitest headless project timeout (180s) so runHeadless's own
 // timeout path emits the diagnostic instead of a suite-level timeout abort.
 const MAX_WALL_TIME_MS = 170_000;
@@ -68,7 +70,7 @@ describe('Floor 1 staircase boss-entry survival regressions', () => {
       expect(run.bosses.staircaseDefeated).toBe(true);
       expect(run.bosses.staircaseUnlocked).toBe(true);
       expect(run.stats.outcome).toBe('victory');
-      expect(isOfficialWin(run.stats, FLOOR1_TIME_BUDGET_MS)).toBe(true);
+      expect(isOfficialWin(run.stats, FLOOR1_ACTIVE_TIME_BUDGET_MS)).toBe(true);
     });
   }
 

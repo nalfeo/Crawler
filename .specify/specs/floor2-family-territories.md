@@ -125,10 +125,20 @@ tuned **easy**, gated on a **90%+ seed win-rate**, never on cherry-picked seeds.
 ### Bosses, dens & objectives
 
 13. **Quest-gated boss dens.** Each present family's den is **sealed** (reuse ADR 0023
-    sealing + ADR 0010 door-lock) until that family's seeded **unlock objective** is
-    completed (from a pool: thin-the-ranks / steal-ledger / win-favor>75 /
-    sabotage-still / bring-tribute / rival's-hit). Completion sets goal flag
-    `floor2-den-<id>-unlocked` and opens the den.
+    sealing + ADR 0010 door-lock) until its den-unlock flag `floor2-den-<id>-unlocked`
+    is set. Two independent routes set that flag:
+    - **Seeded objective (AI-reachable pool):** each family is assigned one objective
+      at floor init from the pool: thin-the-ranks / steal-ledger / sabotage-still /
+      bring-tribute / rival's-hit. Completing it sets `floor2-den-<id>-unlocked`.
+
+    - **Universal win-favor bypass (parallel, latched):** if a family's relation
+      reaches the Friendly band (>75) the den opens regardless of the seeded
+      objective. The unlock is latched (`floor2-family-<id>-favor-earned`) so a
+      later relation drop cannot re-seal the den. This route is **universal** — not
+      seeded per-family — because `win-favor>75` is AI-unreachable (headless AI
+      fights, which lowers relation) and seeding it for individual families would
+      stall their dens in headless runs (rule #12 / win-rate gates).
+
 14. **Boss defeat gates spawns.** Killing boss `<id>` sets goal flag
     `floor2-family-<id>-boss-defeated`, which disables that family's spawner.
 

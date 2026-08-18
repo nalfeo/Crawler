@@ -30,6 +30,7 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "scripts/**/*.ts",
+    "functions/**/*.ts",
     "tools/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]

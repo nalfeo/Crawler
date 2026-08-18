@@ -19,7 +19,8 @@ import {
   createBossChestRecord,
   type BossChestRecord,
 } from '../core/systems/bossChestRewards.js';
-import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
+import { getEquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { resolveEquipmentRewardBundle } from './floor2-reward-bundle-resolver.js';
 import type { EquipmentRewardTier } from '../shared/generated-equipment-types.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-bases.js';
@@ -47,7 +48,10 @@ const BOSS_CHEST_REWARD_TIER: EquipmentRewardTier = 'tier4';
 
 export type SpawnBossChestResult =
   | { readonly created: true; readonly chest: BossChestRecord }
-  | { readonly created: false; readonly reason: 'notFloor2' | 'economyDisabled' | 'alreadyExists' };
+  | {
+      readonly created: false;
+      readonly reason: 'bossChestsDisabled' | 'economyDisabled' | 'alreadyExists';
+    };
 
 function resolveBossChestSpawnPosition(
   world: GameWorld,
@@ -80,14 +84,14 @@ export function spawnBossChestForDefeatedBoss(
   x?: number,
   y?: number,
 ): SpawnBossChestResult {
-  if (world.floor !== 2) {
-    return { created: false, reason: 'notFloor2' };
+  if (!getWorldFloorBehavior(world).bossChests) {
+    return { created: false, reason: 'bossChestsDisabled' };
   }
   const chestId = createBossChestId(familyId);
   if (world.bossChests.has(chestId)) {
     return { created: false, reason: 'alreadyExists' };
   }
-  const access = getFloor2EquipmentEconomyAccess(world);
+  const access = getEquipmentEconomyAccess(world);
   if (access.kind === 'invalid') {
     throw new Error(access.message);
   }

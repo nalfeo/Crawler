@@ -1,0 +1,83 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "floor1-spell-broker-progression",
+  "task_title": "Add Floor 1 Spell Broker progression",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alternative A: planner-integrated spell purchase bundle, adopted after review because it prevents a failed broker attempt from silently suppressing merchant purchases. Alternative B: effect-returned cast success, rejected for now because the existing activation contract treats a completed gated activation as spell use; targetless behavior remains a future mechanics refinement. Review also identified missing browser modal handling and stale state mutation; the stale mutation was removed and planner/resolver goal wiring plus regression tests were added."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "c9da463b1c4ab70895843a2a2a1a378ee146df45",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/ai/headless-runner.ts",
+          "detail": "spellBrokerPurchase defaults to true in DEFAULT_CONFIG while the analogous merchantWeaponPurchase defaults to false. With it on, ~25% of seeds now insert a farm+buy broker detour post-spellbook, which can silently shift existing headless AI win-rate/pacing baselines. Confirm this baseline change is intended (or default it false like the merchant flag) so benchmark diffs are attributable."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Cohesive, well-tested feature: seeded broker offers, per-spell usage-skill efficacy applied centrally in progressionEffects, AI intent mirroring the merchant pattern, goal-graph/route integration, UI modal, and labs. Typecheck passes, 3 new test suites pass, CI dead-code lint clean. Determinism preserved via a dedicated RNG stream; efficacy is a no-op at level 0 so no regression to existing spell output. ADR + review ledger included. No blockers or high-confidence bugs found; only a minor default-on baseline-impact note."
+    }
+  }
+}

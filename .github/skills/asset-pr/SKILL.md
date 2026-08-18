@@ -1,32 +1,37 @@
 ---
 name: asset-pr
 description: >-
-  Consolidate every open `asset-checkin` issue in the Crawler repo into ONE
-  squash-merged game PR. Use when asked to "process the asset issues", "batch
-  the approved art", "open the asset PR", "ship the checked-in sprites", or to
-  clear the asset-checkin queue. Covers discovering open asset-checkin issues,
-  unioning their pushed art branches into a single batch branch (via
-  `npm run sprites:asset-pr`), opening the PR that closes the source issues,
-  arming auto-merge per the repo merge policy, and — after merge — automatically
-  generating wiring patches to hook up the new art to replace placeholders (via
-  `npm run sprites:generate-wiring`).
+  **Legacy drain only.** Use to fold accumulated `asset-checkin` issues (from
+  before the automated reconciler) into one PR. The normal art-landing path is
+  now `sprites:approve` → `assets/queue` → hourly reconciler (`sprite-queue-reconciler.yml`).
+  Select this skill only when draining leftover `asset-checkin` issues or
+  orphaned `assets/checkin-*` branches that predate the reconciler, or when
+  someone asks to "process the asset issues", "drain the asset-checkin backlog",
+  or "consolidate the legacy check-in queue".
 ---
 
-# Asset PR
+# Asset PR (legacy drain)
 
-Turn the queue of locally-approved art (one `asset-checkin` issue + `assets/<slug>`
-branch per check-in) into a single game PR and drive it to a clean squash-merge.
+> ⚠️ **This skill covers a legacy path.** The normal approval → landing flow is:
+> `sprites:approve` (which pushes to `assets/queue`) → the hourly
+> `.github/workflows/sprite-queue-reconciler.yml` cron opens/merges ONE
+> `assets/promote → main` PR automatically. **Do not run `sprites:checkin` or
+> `sprites:asset-pr` for new approvals.** This skill exists only to drain legacy
+> `asset-checkin` issues and orphaned `assets/checkin-*` branches that
+> accumulated before the reconciler was deployed (merged Jul 2026).
 
-Each check-in was produced by `npm run sprites:checkin` (or the sidecar
-`POST /api/checkin`): it pushed an `assets/<slug>` branch holding the art-surface
-delta off `main` and filed an issue whose body carries a machine-readable
-payload. This skill folds **all** of them into one branch and one PR.
+Turn leftover `asset-checkin` issues into a single game PR and drive it to a
+clean squash-merge.
+
+Each check-in was produced by `npm run sprites:checkin` — the old flow that pushed an
+`assets/<slug>` branch and filed an issue whose body carries a machine-readable payload.
+This skill folds **all** such legacy issues into one branch and one PR.
 
 > The deterministic heavy lifting — listing issues, unioning every branch's
-> `manifest.json` + `sprite-catalog.json`, copying the approved PNGs
-> binary-safely, pushing the batch branch, and opening the PR — is done by
-> `npm run sprites:asset-pr`. Detailed recipes, edge cases, and the manual
-> fallback live in [`references/playbook.md`](references/playbook.md).
+> `manifest.json`, copying the approved PNGs binary-safely, pushing the batch
+> branch, and opening the PR — is done by `npm run sprites:asset-pr`. Detailed
+> recipes, edge cases, and the manual fallback live in
+> [`references/playbook.md`](references/playbook.md).
 
 ## Crawler merge facts (authoritative)
 
@@ -67,32 +72,20 @@ payload. This skill folds **all** of them into one branch and one PR.
 6. **Confirm closure:** once merged, GitHub closes every `Closes #<n>` issue.
    Spot-check with `gh issue list --label asset-checkin --state open` (should be
    empty, or only issues whose branches failed to fold — see playbook §Recovery).
-7. **Generate wiring for checked-in art (automated after merge):**
-   consolidation only ships the files; nothing renders them until a consumer
-   points at the new brief id. After the merge, automatically find and wire up
-   replaceable placeholders:
-   - `npm run sprites:generate-wiring -- --since main` — scans for new assets that
-     can replace existing placeholders (exact concept matches).
-   - Review the output summary to see what needs wiring.
-   - For each replaceable placeholder, generate the wiring patches:
-     - **Item icons** resolve by `itemId === briefId` (manifest) — usually no code.
-     - **Mobs** point via `spriteId` in `src/shared/mobDefs.ts`.
-     - **Engine entities** (rat / slime / boss) map type → brief id in
-       `ENTITY_GENERATED_SPRITE` in `src/engine/PhaserBridge.ts`.
-   - Use `npm run sprites:generate-wiring -- --since main --output patches` to see
-     detailed patches.
-   - Apply patches and open a **separate non-art PR** that runs the full gates —
-     never fold wiring into the art-only batch. Verify near-identical concepts
-     aren't conflated (e.g. `rat-slime` boss ≠ `slime-rat` tutorial boss) and tune
-     render scale for the new PNG size.
+   After the legacy drain is complete, the reconciler owns future art landing.
+7. **Wire after merge** — consolidation only ships the files; nothing renders them
+   until a consumer references the brief id. Run `npm run sprites:generate-wiring
+-- --since main` to find replaceable placeholders and open a **separate non-art
+   PR** for any matches.
 
 ## Guardrails
 
-- **Never** approve sprites or run check-in from here — this skill only
-  consolidates already-checked-in art.
+- **Never** approve sprites or run `sprites:checkin` from here — this skill only
+  consolidates already-accumulated legacy check-in art.
+- For **new approvals**, use the current flow: `sprites:approve` (which pushes to
+  `assets/queue`) and let the hourly reconciler handle landing.
 - If `npm run sprites:asset-pr` fails on a missing branch (a check-in branch was
-  deleted), see playbook §Recovery: re-run after removing the stale issue, or
-  re-check-in the lost asset.
+  deleted), see playbook §Recovery: re-run after removing the stale issue.
 - One batch PR at a time. If a prior batch PR is still open, merge or close it
   before opening another so issues aren't double-counted.
 - **Consolidating ≠ wiring.** The batch PR is art-only by design; nothing renders
@@ -100,6 +93,7 @@ payload. This skill folds **all** of them into one branch and one PR.
   always run `npm run sprites:generate-wiring -- --since main` to find replaceable
   placeholders and open a follow-up wiring PR for any matches — otherwise approved
   art ships and is never seen in-game.
-- Do not hand-edit the unioned `manifest.json` / `sprite-catalog.json`; if the
-  union looks wrong, fix `mergeManifests` / `mergeCatalogs` in
-  `scripts/sprites/asset-issues.ts` and add a unit test.
+- Do not hand-edit any JSON in the worktree. If a per-asset shard (`entries/<key>.json`)
+  looks wrong, confirm its content on the source branch
+  (`git show origin/<branch>:public/assets/generated/entries/<key>.json`) and
+  re-run `sprites:asset-pr` after correcting the source data.

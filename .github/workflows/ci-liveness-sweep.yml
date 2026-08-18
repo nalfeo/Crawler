@@ -1,8 +1,25 @@
 name: CI Liveness Sweep
 
 on:
+  # Incident 2026-08-14 (#2894): during a quiet window with no PR activity at
+  # all (no pushes, comments, reviews, or CI completions), this sweep is the
+  # ONLY thing that keeps the harvester alive -- it is what re-dispatches
+  # ci-recovery-router.yml when nothing else would. A single '*/10 * * * *'
+  # schedule entry landed at 04:17 and did not fire again until 05:49, a
+  # 92-minute gap, well past the 60-minute liveness threshold. That is not an
+  # isolated fluke: merge-train.yml's independent '*/5 * * * *' schedule shows
+  # the identical 50-130 minute gaps in its own run history. Both crons are
+  # aligned to common top-of-interval boundaries, which GitHub's own docs
+  # flag as the most congested schedule slots ("high load times include the
+  # start of every hour... schedule your workflow to run at a different time
+  # of the hour" -- workflow syntax docs). A second, minute-offset schedule
+  # entry does not eliminate GitHub's platform-side scheduling delay, but it
+  # gives the sweep two independent chances per 10-minute window instead of
+  # one, so a delay on one slot no longer strands the harvester's sole
+  # quiet-period backstop for 90+ minutes.
   schedule:
     - cron: '*/10 * * * *'
+    - cron: '5,15,25,35,45,55 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -152,6 +169,7 @@ jobs:
       - name: Verify stale-session harvest liveness
         uses: actions/github-script@v7
         env:
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           HARVEST_LIVENESS_THRESHOLD_MINUTES: ${{ vars.HARVEST_LIVENESS_THRESHOLD_MINUTES || '60' }}
           CI_RECOVERY_DISPATCH_WINDOW_HOURS: ${{ vars.CI_RECOVERY_DISPATCH_WINDOW_HOURS || '8' }}
           CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS: ${{ vars.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS || '4' }}
@@ -210,8 +228,25 @@ jobs:
               );
               return { data: response.data };
             };
+            const graphql = async (token, query, variables = {}) => {
+              const { request: requestOptions, ...graphqlVariables } = variables;
+              return github.graphql(query, {
+                ...graphqlVariables,
+                request: token
+                  ? {
+                      ...(requestOptions || {}),
+                      headers: {
+                        ...((requestOptions && requestOptions.headers) || {}),
+                        authorization: `token ${token}`,
+                      },
+                    }
+                  : requestOptions,
+              });
+            };
 
             const result = await lib.reconcileHarvestIncident({
+              graphql,
+              assignmentToken: process.env.CRAWLER_CI_PAT,
               request,
               paginate,
               token: null,

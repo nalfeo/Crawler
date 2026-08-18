@@ -9,7 +9,7 @@
 
 [`asset-forge`](../../../.github/agents/asset-forge.agent.md) — the invocable
 form of this persona; it runs the full scope → brief → generate → judge →
-approve → check-in → batch-PR → wire → observe loop. For a full themed
+approve → queue → wire → observe loop. For a full themed
 collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md).
 
 ## Responsibilities
@@ -17,6 +17,10 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
 - Own sprites, tilesets, visual effects, animation readability, and overall in-game visual hierarchy.
 - Maintain the art style guide (`docs/agent-os/sprite-style.md`) and curate the palette files under `data/palettes/` that the sprite generation pipeline enforces.
 - Author and iterate on sprite **briefs** under `briefs/<type>/` for the sprite generation pipeline.
+- Before authoring a narrative brief, read
+  `docs/knowledge/game-design/lore-bible.md` and trace its source citations.
+  Contradictions go to `docs/knowledge/game-design/lore-contradictions.md` with
+  provenance and escalation; they must not be silently resolved.
 - Drive the human-in-the-loop review and approval flow in `sprite-forge-lab` — judge candidates against the style guide, approve winners into `src/engine/sprites/registry.ts`, reject or iterate the rest.
 - Keep assets consistent with the style guide and gameplay readability needs across high-entity-count scenes.
 
@@ -46,8 +50,8 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
   generated sheet. Use it before any approval.
 - [`placeholder-audit`](../../../.github/skills/placeholder-audit/SKILL.md) —
   find which placeholders real art can now replace.
-- [`asset-pr`](../../../.github/skills/asset-pr/SKILL.md) — fold every open
-  `asset-checkin` issue into one art-only PR.
+- [`asset-pr`](../../../.github/skills/asset-pr/SKILL.md) — **legacy drain only**: fold
+  leftover `asset-checkin` issues into one art-only PR. Do not use for new approvals.
 - [`theme-equipment-forge`](../../../.github/skills/theme-equipment-forge/SKILL.md)
   — build a complete themed equipment collection.
 - [`visual-review`](../../../.github/skills/visual-review/SKILL.md) — confirm the

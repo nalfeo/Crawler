@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { MANAGED_COMMENT_PREFIX } from './markers.mjs';
+import { MANAGED_COMMENT_PREFIX, STALE_BASE_RETARGET_MARKER } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
@@ -253,6 +253,15 @@ export function isRetryableError(error) {
   return false;
 }
 
+function isRateLimitError(error) {
+  const status = Number(error?.status || 0);
+  if (status !== 403 && status !== 429) {
+    return false;
+  }
+  const message = String(error?.data?.message || error?.message || '').toLowerCase();
+  return message.includes('rate limit');
+}
+
 export function computeBackoffDelayMs(error, attempt, baseDelayMs, maxDelayMs) {
   const retryAfterMs = parseRetryAfterMilliseconds(error);
   if (retryAfterMs !== null) {
@@ -283,6 +292,13 @@ export async function requestWithBackoff(
       return await execute();
     } catch (error) {
       if (!isRetryableError(error) || attempt >= maxAttempts) {
+        // This is a RETRY loop over attempts at a single request, not a batch
+        // loop over work items. There are no "remaining items" to abandon: once
+        // the error is non-retryable or attempts are exhausted, propagating to
+        // the caller is the contract of requestWithBackoff, and each caller
+        // decides whether to skip its own item. Swallowing here would silently
+        // return undefined and corrupt every caller's result handling.
+        // eslint-disable-next-line crawler/no-rethrow-in-automation-catch
         throw error;
       }
       const delayMs = computeBackoffDelayMs(error, attempt, baseDelayMs, maxDelayMs);
@@ -440,7 +456,9 @@ function stalenessScore(pullRequest, now = new Date()) {
   const progressAge = Number.isFinite(stateProgressMs)
     ? Math.max(nowMs - stateProgressMs, 0)
     : Number.MAX_SAFE_INTEGER;
-  const updateAge = Number.isFinite(updatedMs) ? Math.max(nowMs - updatedMs, 0) : Number.MAX_SAFE_INTEGER;
+  const updateAge = Number.isFinite(updatedMs)
+    ? Math.max(nowMs - updatedMs, 0)
+    : Number.MAX_SAFE_INTEGER;
   const blockerSeverity = Array.isArray(pullRequest?.recoveryState?.blockers)
     ? pullRequest.recoveryState.blockers.length
     : 0;
@@ -507,7 +525,10 @@ export function collectPrNumbers({
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (Number.isInteger(number) && number > 0) {
         pullsByNumber.set(number, pullRequest);
-        if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+        if (
+          (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
+          (pullRequest.base?.ref === undefined || pullRequest.base.ref === 'main')
+        ) {
           numbers.add(number);
         }
       }
@@ -570,6 +591,7 @@ export function collectPrNumbers({
     .filter((pullRequest) => {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (!Number.isInteger(number) || number <= 0 || directNumbers.has(number)) return false;
+      if (pullRequest.base?.ref !== undefined && pullRequest.base.ref !== 'main') return false;
       if (!isFlagOffDispatchEligibleByBlockState(pullRequest)) return false;
       if (hasUnhydratedOwnerLabel(pullRequest)) return false;
       return !hasHealthyOwnerForSweep(pullRequest, now);
@@ -623,6 +645,174 @@ export function eligibleTrainRecoveryPulls({
       );
     })
     .sort(ageOrder);
+}
+
+export function isStaleBaseRecoveryCandidate(pullRequest, repository) {
+  const labels = pullRequest.labels || [];
+  const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
+  const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
+  const waiting = labels.some((label) => label.name === WAITING_LABEL);
+  return (
+    pullRequest.state === 'open' &&
+    !pullRequest.draft &&
+    pullRequest.base?.ref !== 'main' &&
+    pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+    !hasQueueLabel &&
+    !hasOptOutLabel &&
+    !waiting &&
+    !isExternallyBlocked(pullRequest)
+  );
+}
+
+export function classifyStaleBase({ pullRequest, basePulls, baseBranch, comparison }) {
+  const baseRef = String(pullRequest.base?.ref || '');
+  if (!baseRef || baseRef === 'main') return { action: 'skip', reason: 'main-base' };
+
+  const matchingBasePulls = (basePulls || []).filter((basePull) => basePull?.head?.ref === baseRef);
+  if (matchingBasePulls.some((basePull) => basePull.state === 'open')) {
+    return { action: 'skip', reason: 'base-pr-open' };
+  }
+
+  if (!baseBranch) {
+    return { action: 'retarget', reason: 'base-branch-missing' };
+  }
+
+  const branchSha = String(baseBranch.object?.sha || '').toLowerCase();
+  const mergedBasePull = matchingBasePulls.find(
+    (basePull) =>
+      Boolean(basePull.merged_at || basePull.merged) &&
+      basePull.state === 'closed' &&
+      basePull.base?.ref === 'main',
+  );
+  if (
+    mergedBasePull &&
+    branchSha &&
+    branchSha === String(mergedBasePull.head?.sha || '').toLowerCase()
+  ) {
+    return {
+      action: 'retarget',
+      reason: 'merged-base-pr',
+      basePrNumber: mergedBasePull.number,
+    };
+  }
+
+  if (comparison?.status === 'ahead' || comparison?.status === 'identical') {
+    return { action: 'retarget', reason: 'base-contained-in-main' };
+  }
+  return { action: 'skip', reason: 'base-not-stale' };
+}
+
+export async function retargetStaleBasePulls({
+  scheduledPulls,
+  repository,
+  token,
+  mutationToken,
+  requestFn = request,
+  paginateFn = paginate,
+  writeLog = (line) => process.stdout.write(`${line}\n`),
+}) {
+  const [owner, repo] = repository.split('/');
+  const candidates = scheduledPulls.filter((pullRequest) =>
+    isStaleBaseRecoveryCandidate(pullRequest, repository),
+  );
+  const baseFacts = new Map();
+  const retargetedPulls = [];
+
+  for (const pullRequest of candidates) {
+    const baseRef = pullRequest.base.ref;
+    let facts = baseFacts.get(baseRef);
+    if (!facts) {
+      const basePulls = await paginateFn(
+        token,
+        `/repos/${owner}/${repo}/pulls?state=all&head=${encodeURIComponent(`${owner}:${baseRef}`)}`,
+      );
+      let baseBranch = null;
+      let branchLookupError = null;
+      try {
+        baseBranch = (
+          await requestFn(
+            token,
+            `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(baseRef)}`,
+          )
+        ).data;
+      } catch (error) {
+        if (error?.status !== 404) branchLookupError = error;
+      }
+      if (branchLookupError) {
+        writeLog(
+          `stale-base pr=#${pullRequest.number} base=${baseRef} action=skip reason=base-branch-lookup-failed error=${branchLookupError.message}`,
+        );
+        continue;
+      }
+      let comparison = null;
+      if (baseBranch) {
+        comparison = (
+          await requestFn(
+            token,
+            `/repos/${owner}/${repo}/compare/${encodeURIComponent(baseRef)}...main`,
+          )
+        ).data;
+      }
+      facts = { basePulls, baseBranch, comparison };
+      baseFacts.set(baseRef, facts);
+    }
+
+    const decision = classifyStaleBase({ pullRequest, ...facts });
+    writeLog(
+      `stale-base pr=#${pullRequest.number} base=${baseRef} action=${decision.action} reason=${decision.reason}`,
+    );
+    if (decision.action !== 'retarget') continue;
+    if (!mutationToken) {
+      throw new Error(
+        `CRAWLER_CI_PAT is required to retarget stale base for PR #${pullRequest.number}`,
+      );
+    }
+
+    const retargeted = (
+      await requestFn(mutationToken, `/repos/${owner}/${repo}/pulls/${pullRequest.number}`, {
+        method: 'PATCH',
+        body: { base: 'main' },
+      })
+    ).data;
+    await requestFn(
+      mutationToken,
+      `/repos/${owner}/${repo}/issues/${pullRequest.number}/comments`,
+      {
+        method: 'POST',
+        body: {
+          body: `${STALE_BASE_RETARGET_MARKER} base=${baseRef} reason=${decision.reason} -->\nCI Recovery auto-retargeted this PR to \`main\` because its stacked base is no longer active. Existing conflict-rebase recovery will now reconcile the refreshed diff.`,
+        },
+      },
+    );
+    retargetedPulls.push(retargeted);
+    writeLog(
+      `stale-base-retargeted pr=#${pullRequest.number} from=${baseRef} to=main reason=${decision.reason}`,
+    );
+  }
+
+  return retargetedPulls;
+}
+
+export async function settleRetargetedPull({
+  pullRequest,
+  repository,
+  token,
+  requestFn = request,
+  sleepFn = sleep,
+  attempts = 3,
+}) {
+  const [owner, repo] = repository.split('/');
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const current = (await requestFn(token, `/repos/${owner}/${repo}/pulls/${pullRequest.number}`))
+      .data;
+    const mergeabilityResolved =
+      current.mergeable !== null &&
+      current.mergeable_state !== 'unknown' &&
+      current.mergeable_state !== null;
+    if (current.base?.ref === 'main' && mergeabilityResolved) return current;
+    if (attempt < attempts) await sleepFn(1000);
+  }
+  return null;
 }
 
 export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
@@ -1203,13 +1393,48 @@ export async function runFromEnv(env = process.env) {
   // only consults scheduledPulls for schedule/workflow_dispatch events or
   // when trainEnabled is true, exactly as before.
   let scheduledPulls = await requestWithBackoff(
-    () =>
-      paginate(
-        token,
-        `/repos/${owner}/${repo}/pulls?state=open&base=main&sort=updated&direction=desc`,
-      ),
+    () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&sort=updated&direction=desc`),
     { label: 'list-open-prs' },
   );
+  const retargetedExpectedMetadata = new Map();
+  const staleBaseSweep =
+    eventName === 'schedule' || eventName === 'workflow_dispatch' || directlyTriggeredPrs.size > 0;
+  if (staleBaseSweep) {
+    const retargetedPulls = await retargetStaleBasePulls({
+      scheduledPulls,
+      repository,
+      token,
+      mutationToken: env.CRAWLER_CI_PAT || '',
+    });
+    if (retargetedPulls.length > 0) {
+      const settledPulls = [];
+      for (const pullRequest of retargetedPulls) {
+        const settled = await settleRetargetedPull({ pullRequest, repository, token });
+        if (settled) {
+          settledPulls.push(settled);
+          retargetedExpectedMetadata.set(settled.number, {
+            expectedHeadSha: settled.head?.sha || '',
+            expectedBaseRef: 'main',
+          });
+          process.stdout.write(
+            `stale-base-ready pr=#${pullRequest.number} base=main mergeable_state=${settled.mergeable_state}\n`,
+          );
+        } else {
+          process.stdout.write(
+            `stale-base-deferred pr=#${pullRequest.number} reason=mergeability-pending retry=next-sweep\n`,
+          );
+        }
+      }
+      const retargetedByNumber = new Map(
+        settledPulls.map((pullRequest) => [pullRequest.number, pullRequest]),
+      );
+      scheduledPulls = scheduledPulls.map(
+        (pullRequest) => retargetedByNumber.get(pullRequest.number) ?? pullRequest,
+      );
+    }
+  } else {
+    process.stdout.write(`stale-base-scan skipped event=${eventName} reason=no-pr-trigger\n`);
+  }
   if (trainEnabled && repairWindowSweepEvent) {
     // Snapshot the reference time before hydration so the age-ordering and
     // "healthy owner" checks inside the callback all share the same clock.
@@ -1458,29 +1683,46 @@ export async function runFromEnv(env = process.env) {
   // count (a full ai-sweep.yml run fans to ~10–19 concurrent jobs). Validation
   // runs use the full outstanding-status set so even a queued/waiting
   // validation run contributes to the reserved floor.
-  const [activeSweepRunCount, activeValidationRunCount] = await Promise.all([
-    Promise.all(
-      SWEEP_WORKFLOW_FILES.map((f) =>
-        countOutstandingWorkflowRuns(token, owner, repo, f, ['in_progress']),
-      ),
-    ).then((counts) => counts.reduce((sum, c) => sum + c, 0)),
-    countOutstandingWorkflowRuns(token, owner, repo, VALIDATION_WORKFLOW_FILE),
-  ]);
-  const activeSweepJobs = activeSweepRunCount * SWEEP_RUNNER_WEIGHT;
-  const activeValidationJobs = activeValidationRunCount * VALIDATION_RUNNER_WEIGHT;
+  let outstandingCountLabel = 'unknown';
+  let boundedDispatchBudget = 0;
+  let activeSweepRunCount = 0;
+  let activeValidationRunCount = 0;
+  let dispatchBudgetTelemetryStep = 'runner-pressure';
+  try {
+    [activeSweepRunCount, activeValidationRunCount] = await Promise.all([
+      Promise.all(
+        SWEEP_WORKFLOW_FILES.map((f) =>
+          countOutstandingWorkflowRuns(token, owner, repo, f, ['in_progress']),
+        ),
+      ).then((counts) => counts.reduce((sum, c) => sum + c, 0)),
+      countOutstandingWorkflowRuns(token, owner, repo, VALIDATION_WORKFLOW_FILE),
+    ]);
+    const activeSweepJobs = activeSweepRunCount * SWEEP_RUNNER_WEIGHT;
+    const activeValidationJobs = activeValidationRunCount * VALIDATION_RUNNER_WEIGHT;
 
-  const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
-  const dispatchBudget = computeDispatchBudget({
-    trainQueueNonEmpty,
-    outstandingCount,
-    activeSweepJobs,
-    activeValidationJobs,
-    maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
-    maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
-  });
-  const boundedDispatchBudget = trainQueueNonEmpty
-    ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
-    : dispatchBudget;
+    dispatchBudgetTelemetryStep = 'recovery-outstanding';
+    const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
+    outstandingCountLabel = String(outstandingCount);
+    const dispatchBudget = computeDispatchBudget({
+      trainQueueNonEmpty,
+      outstandingCount,
+      activeSweepJobs,
+      activeValidationJobs,
+      maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
+      maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
+    });
+    boundedDispatchBudget = trainQueueNonEmpty
+      ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
+      : dispatchBudget;
+  } catch (error) {
+    if (!isRateLimitError(error)) {
+      throw error;
+    }
+    boundedDispatchBudget = 0;
+    process.stdout.write(
+      `dispatch budget telemetry rate-limited; deferring normal dispatches step=${dispatchBudgetTelemetryStep} status=${error.status || 'n/a'}\n`,
+    );
+  }
   const { dispatchable, deferred } = partitionDispatchable(prNumbers, boundedDispatchBudget);
 
   // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
@@ -1498,6 +1740,7 @@ export async function runFromEnv(env = process.env) {
       eventName,
       dispatchTrigger,
     });
+    const expectedMetadata = retargetedExpectedMetadata.get(prNumber);
     // Use a direct request() -- do NOT wrap in requestWithBackoff. The
     // workflow_dispatch POST is non-idempotent: if GitHub accepts the first
     // request but the response is lost or returns an ambiguous 5xx, retrying
@@ -1511,6 +1754,12 @@ export async function runFromEnv(env = process.env) {
           operation: 'reconcile',
           pr_number: String(prNumber),
           trigger: prTrigger,
+          ...(expectedMetadata
+            ? {
+                expected_head_sha: expectedMetadata.expectedHeadSha,
+                expected_base_ref: expectedMetadata.expectedBaseRef,
+              }
+            : {}),
           lease_id: '',
         },
       },
@@ -1521,7 +1770,7 @@ export async function runFromEnv(env = process.env) {
   if (deferred.length > 0) {
     const cap = trainQueueNonEmpty ? caps.globalTrainDispatchCap : caps.maxBudgetTrainIdle;
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCountLabel} cap=${cap} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -1536,7 +1785,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCountLabel} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

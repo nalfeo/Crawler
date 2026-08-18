@@ -60,6 +60,11 @@ export {
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,
   ensureBossBattleSpellReward,
+  getSpellBrokerOffers,
+  canPurchaseSpellBrokerSpell,
+  isSpellBrokerSpellEligibleIgnoringGold,
+  purchaseSpellBrokerSpell,
+  SPELL_BROKER_SPELL_COST,
 } from './floorScenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
@@ -164,8 +169,5 @@ export type {
   _GenerateEquipmentInstanceRequest,
   GenerateEquipmentInstanceOptions,
 } from './generated-equipment-generator.js';
-export {
-  createInitialFloor2QuartermasterStock,
-  restockFloor2Quartermaster,
-} from './quartermaster-stock.js';
+export { createInitialFloor2QuartermasterStock } from './quartermaster-stock.js';
 export type { QuartermasterRestockResult } from './quartermaster-stock.js';

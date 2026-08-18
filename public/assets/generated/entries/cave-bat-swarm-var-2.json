@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": "enemy",
   "contentHash": "49a9d4daa74b30054e1755dd77b90ee84f25a900af33e3f76cffa220acaa012e",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-bat-swarm\\2026-07-08T00-48-12-70a0add0\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

@@ -1,16 +1,30 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-describe('AI runner merchant weapon purchase wiring', () => {
-  it('keeps the lab toggle default-off and passes it into the shared world intent', () => {
+describe('AI runner optional purchases wiring', () => {
+  it('uses the shared optional-purchases resolver for persisted state', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
     expect(source).toMatch(
-      /merchantWeaponPurchase:\s*persisted\?\.aiConfig\?\.merchantWeaponPurchase\s*\?\?\s*false/,
+      /optionalPurchases:\s*resolveOptionalPurchases\(persisted\?\.aiConfig\s*\?\?\s*\{\}\)/,
     );
+  });
+
+  it('passes optionalPurchases into both purchase intent configurators', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
+
     expect(source).toMatch(
-      /configureMerchantWeaponPurchase\(world,\s*aiConfig\.merchantWeaponPurchase\)\s*;\s*autoFloor1ProgressionSystem\(world,\s*playerEid,\s*ai,\s*aiConfig\.weaponPersonas\)/s,
+      /configureMerchantWeaponPurchase\(world,\s*aiConfig\.optionalPurchases\)/,
     );
-    expect(source).toMatch(/\.add\(aiConfig,\s*'merchantWeaponPurchase'\)/);
+    expect(source).toMatch(/configureSpellBrokerPurchase\(world,\s*aiConfig\.optionalPurchases\)/);
+  });
+
+  it('GUI is wired to the single optionalPurchases field', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
+
+    expect(source).toMatch(/\.add\(aiConfig,\s*'optionalPurchases'\)/);
+    // The two old independent fields must not have their own separate GUI toggles
+    expect(source).not.toMatch(/\.add\(aiConfig,\s*'merchantWeaponPurchase'\)/);
+    expect(source).not.toMatch(/\.add\(aiConfig,\s*'spellBrokerPurchase'\)/);
   });
 });

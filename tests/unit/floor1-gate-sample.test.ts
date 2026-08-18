@@ -8,6 +8,10 @@ import {
   GATE_WEAPONS,
 } from '../../scripts/agent/perf/floor1-gate-sample.js';
 import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 
@@ -22,6 +26,8 @@ describe('floor1 gate sample', () => {
   });
 
   it('caps frames just past the AI time budget', () => {
+    expect(FLOOR1_TIME_BUDGET_MS).toBe(FLOOR1_ACTIVE_TIME_BUDGET_MS);
+    expect(GATE_MAX_FRAMES).toBe(FLOOR1_DEFAULT_MAX_FRAMES);
     expect(GATE_MAX_FRAMES).toBe(Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS));
   });
 

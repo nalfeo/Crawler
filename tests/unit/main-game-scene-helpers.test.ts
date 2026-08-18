@@ -9,6 +9,7 @@ import {
 } from '../../src/engine/lighting/light-field.js';
 import {
   areLightingRectsEqual,
+  getFloorCompletionPresentation,
   formatAbilityTrigger,
   getFloorRunOutcome,
   getLightingViewRect,
@@ -25,7 +26,7 @@ import {
   SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
-  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+  selectSpellBrokerDialogue,
 } from '../../src/shared/npc-types.js';
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID, type ShopkeeperStage } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -108,6 +109,51 @@ describe('getFloorRunOutcome', () => {
       },
     };
     expect(getFloorRunOutcome(world)).toBeNull();
+  });
+});
+
+describe('getFloorCompletionPresentation', () => {
+  it('returns null when the run has no terminal outcome yet', () => {
+    const world = freshFloor1World();
+    expect(getFloorCompletionPresentation(world, false)).toBeNull();
+  });
+
+  it('prioritizes timeout over every other completion presentation', () => {
+    const world = freshFloor1World();
+    world.floorScenario!.runSummary = { outcome: 'failed_timeout', viewsEarned: 0, fansEarned: 0 };
+    expect(getFloorCompletionPresentation(world, true)).toBe('failed_timeout');
+  });
+
+  it('prioritizes a configured floor transition over terminal staircase victory', () => {
+    const world = createTestWorld();
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: true,
+      },
+    };
+    expect(getFloorCompletionPresentation(world, true)).toBe('transition_to_next_floor');
+  });
+
+  it('falls back to terminal staircase victory when no next-floor callback is configured', () => {
+    const world = createTestWorld();
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: true,
+      },
+    };
+    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_victory');
+  });
+
+  it('keeps non-family clear outcomes on the legacy terminal-complete branch without a transition', () => {
+    const world = freshFloor1World();
+    world.floorScenario!.runSummary = { outcome: 'cleared_floor', viewsEarned: 0, fansEarned: 0 };
+    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_complete');
   });
 });
 
@@ -316,7 +362,44 @@ describe('resolveDialogueLines', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: false })!,
     ]);
+  });
+
+  it('returns the spell broker post-claim line once the spellbook is claimed', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    world.featureUnlocks.spells = true;
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      ...selectSpellBrokerDialogue({ locked: false, spellbookClaimed: true })!,
+    ]);
+  });
+
+  it('keeps the authored spell broker intro until the spell unlock is actually live', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
+    );
+  });
+
+  it('prefers the locked line over the post-claim line for the spell broker', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    world.featureUnlocks.spells = true;
+    const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: true })!,
+    ]);
+  });
+
+  it('falls back to authored spell broker dialogue before the spellbook is claimed', () => {
+    const world = createTestWorld();
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
+    );
   });
 });

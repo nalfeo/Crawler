@@ -17,7 +17,11 @@ import {
   isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
+  isSelfRecoveryCheckRun,
+  selfRecoveryWorkflowRunIds,
+  checkRunWorkflowRunId,
   isTrainFastPathPushRun,
+  requiresAdminIntervention,
   isTrustedTrainPromotionCheck,
   makeState,
   reviewThreadBlockerId,
@@ -1380,6 +1384,83 @@ test('collapseCheckRunsByName keeps latest attempt by id', () => {
   assert.equal(collapsed.length, 2);
 });
 
+test('checkRunWorkflowRunId reads the owning run id from the Actions job URL', () => {
+  assert.equal(
+    checkRunWorkflowRunId({
+      html_url: 'https://github.com/nalfeo/Crawler/actions/runs/31878782271/job/94998297902',
+    }),
+    31878782271,
+  );
+  assert.equal(
+    checkRunWorkflowRunId({
+      details_url: 'https://github.com/nalfeo/Crawler/actions/runs/42',
+    }),
+    42,
+  );
+  assert.equal(checkRunWorkflowRunId({ html_url: 'https://example.test/other' }), null);
+  assert.equal(checkRunWorkflowRunId({}), null);
+  assert.equal(checkRunWorkflowRunId(null), null);
+});
+
+test('selfRecoveryWorkflowRunIds selects recovery-owned runs by immutable path', () => {
+  const ids = selfRecoveryWorkflowRunIds([
+    { id: 1, path: '.github/workflows/ci-recovery-router.yml' },
+    { id: 2, path: '.github/workflows/ci.yml' },
+    { id: 3, path: '.github/workflows/CI-Recovery.yml' },
+    { id: 4, path: '.github/workflows/merge-train.yml' },
+    { id: 5 },
+  ]);
+  assert.deepEqual(
+    [...ids].sort((a, b) => a - b),
+    [1, 3],
+  );
+  assert.deepEqual([...selfRecoveryWorkflowRunIds(null)], []);
+});
+
+test('a failed CI Recovery Router job is never a PR blocker candidate', () => {
+  // Regression: the router job is named `route`, so the legacy name-substring
+  // filter let its failure through as an unclearable `ci-failure route` blocker
+  // (PR #2952 recovery-loop incident).
+  const routerCheck = {
+    id: 9,
+    name: 'route',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/31878782271/job/94998297902',
+  };
+  const selfIds = selfRecoveryWorkflowRunIds([
+    { id: 31878782271, path: '.github/workflows/ci-recovery-router.yml' },
+    { id: 31878782272, path: '.github/workflows/ci.yml' },
+  ]);
+  assert.equal(isSelfRecoveryCheckRun(routerCheck, selfIds), true);
+
+  // A genuine PR check on the same head SHA still blocks.
+  assert.equal(
+    isSelfRecoveryCheckRun(
+      {
+        id: 10,
+        name: 'ci',
+        status: 'completed',
+        conclusion: 'failure',
+        html_url: 'https://github.com/nalfeo/Crawler/actions/runs/31878782272/job/1',
+      },
+      selfIds,
+    ),
+    false,
+  );
+
+  // Fallback: the reconcile job keeps its "CI recovery" name even when the
+  // owning run is missing from the caller's (single-page) run list.
+  assert.equal(
+    isSelfRecoveryCheckRun(
+      { name: 'CI recovery for PR #2952', html_url: 'https://example.test/none' },
+      new Set(),
+    ),
+    true,
+  );
+  assert.equal(isSelfRecoveryCheckRun({ name: 'route' }, new Set()), false);
+});
+
 test('skips repository incidents for PR-linked workflow runs', () => {
   assert.equal(
     shouldSkipRepoIncidentWorkflowRun({
@@ -1620,4 +1701,68 @@ test('parseDispositionCommand: green CI or other-author text does NOT unlock', (
   // author; the caller (workflow) must gate on author identity separately.
   assert.equal(parseDispositionCommand('All checks passed'), null);
   assert.equal(parseDispositionCommand('✅ CI green'), null);
+});
+
+test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'Security Review Loop',
+      path: '.github/workflows/security-review.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+});
+
+test('requiresAdminIntervention: classification follows path, not the display name', () => {
+  // A renamed required workflow keeps its automatic retrigger eligibility.
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'Continuous Integration',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+  // An unrelated workflow that merely calls itself "CI" does not inherit it.
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/nightly-sweep.yml',
+      conclusion: 'action_required',
+    }),
+    true,
+  );
+});
+
+test('requiresAdminIntervention: startup failures always need admin intervention', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'startup_failure',
+    }),
+    true,
+  );
+});
+
+test('requiresAdminIntervention: ordinary failures do not need admin intervention', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'failure',
+    }),
+    false,
+  );
+  assert.equal(requiresAdminIntervention({}), false);
+  assert.equal(requiresAdminIntervention(null), false);
 });

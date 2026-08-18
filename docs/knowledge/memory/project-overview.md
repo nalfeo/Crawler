@@ -26,4 +26,3 @@ it can be tested and replayed.
 - follows [[Conventions and Invariants]]
 - contains [[Systems Map]]
 - records_decisions_in [[Decisions Index]]
-- current_status [[Current State 2026-06-26]]

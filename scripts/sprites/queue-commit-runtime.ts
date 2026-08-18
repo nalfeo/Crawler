@@ -10,12 +10,22 @@
  * never imports node fs/child_process.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
 import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
-import type { QueueCommitDeps } from './queue-commit.js';
+import type { QueueCommitDeps, SpriteAnnotationUpdate } from './queue-commit.js';
 
 /**
  * Hard deadline for any single git subprocess a queue-commit spawns. A
@@ -24,6 +34,63 @@ import type { QueueCommitDeps } from './queue-commit.js';
  * must be killed so the sidecar mutation lock / editor save never hangs forever.
  */
 const GIT_SUBPROCESS_TIMEOUT_MS = 120_000;
+const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotations.json';
+
+/**
+ * Merge annotation updates into the destination queue-tip document by sprite
+ * key. The caller's aggregate is never copied, so two stale worktrees editing
+ * different sprites cannot erase each other.
+ */
+export async function mergeSpriteAnnotationUpdates(
+  worktree: string,
+  updates: readonly SpriteAnnotationUpdate[],
+): Promise<void> {
+  const target = path.join(worktree, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
+  let document: { version: 1; sprites: Record<string, unknown> } = { version: 1, sprites: {} };
+  if (existsSync(target)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(target, 'utf8'));
+    } catch (error) {
+      throw new Error(
+        `${ANNOTATIONS_RELATIVE_PATH} is invalid JSON on the queue tip: ${
+          error instanceof Error ? error.message : String(error)
+        }. Repair the queue file, then retry the Sprite Editor save.`,
+        { cause: error },
+      );
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof (parsed as { sprites?: unknown }).sprites !== 'object' ||
+      (parsed as { sprites?: unknown }).sprites === null ||
+      Array.isArray((parsed as { sprites?: unknown }).sprites)
+    ) {
+      throw new Error(
+        `${ANNOTATIONS_RELATIVE_PATH} must contain an object-valued "sprites" map. Repair the queue file, then retry the Sprite Editor save.`,
+      );
+    }
+    document = {
+      version: 1,
+      sprites: { ...((parsed as { sprites: Record<string, unknown> }).sprites ?? {}) },
+    };
+  }
+  for (const update of updates) {
+    document.sprites[update.key] = {
+      favorite: update.favorite,
+      disliked: update.disliked,
+      comment: update.comment,
+    };
+  }
+  mkdirSync(path.dirname(target), { recursive: true });
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
+    renameSync(temporary, target);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
 
 /**
  * Force git fully non-interactive so a missing/expired credential fails fast
@@ -67,6 +134,7 @@ export function createDefaultQueueCommitDeps(
   return {
     exec,
     copyArtSurface,
+    mergeSpriteAnnotations: mergeSpriteAnnotationUpdates,
     copyBriefFiles: async (sourceRoot, worktree, briefPaths) => {
       for (const briefPath of briefPaths) {
         const src = path.join(sourceRoot, ...briefPath.split('/'));

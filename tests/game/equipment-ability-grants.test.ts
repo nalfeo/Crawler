@@ -6,9 +6,11 @@ import {
   revokeEquipmentAbilitySources,
 } from '../../src/game/equipment-ability-grants.js';
 import {
+  forceActivateAbility,
   getOrCreateAbilityState,
   grantAbilitySources,
 } from '../../src/game/systems/abilitySystem.js';
+import { createRunEventCollector } from '../../src/core/run-events.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -75,6 +77,15 @@ describe('generated equipment ability grants', () => {
       new Set([equipmentAbilityGrantSourceId(instance.instanceId, 1)]),
     );
     expect(state.equippedActiveAbilityIds).toEqual(['fireball']);
+    world.runEvents = createRunEventCollector();
+    world.featureUnlocks.spells = true;
+    expect(forceActivateAbility(world, player, 'fireball')).toBe(true);
+    expect(world.runEvents.itemActivations).toEqual([
+      {
+        activationId: 1,
+        itemSources: [`generated-equipment-instance:${instance.instanceId}`, 'spell:fireball'],
+      },
+    ]);
 
     revokeEquipmentAbilitySources(world, player, instance.instanceId);
     revokeEquipmentAbilitySources(world, player, instance.instanceId);

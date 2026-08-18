@@ -466,7 +466,7 @@ describe('ai-sweep-recover.yml structure', () => {
     }
   });
 
-  it('recover-validate never sets GITHUB_SHA via a step/job env: key (GitHub Actions silently discards overrides of reserved GITHUB_*/RUNNER_* variables, so a naive env: override never reaches the npx tsx child — this is exactly what broke run 29869238382)', () => {
+  it('recover-validate never sets GITHUB_SHA via a step/job env: key (GitHub Actions silently discards overrides of reserved GITHUB_*/RUNNER_* variables, so a naive env: override never reaches the child — this is exactly what broke run 29869238382)', () => {
     const doc = loadRecoverWorkflow();
     for (const jobName of ['recover-validate', 'recover-aggregate']) {
       const job = getJob(doc, jobName);
@@ -485,7 +485,9 @@ describe('ai-sweep-recover.yml structure', () => {
     const expectedShaExpr = '${{ needs.recover-preflight.outputs.head_sha }}';
 
     const validateJob = getJob(doc, 'recover-validate');
-    const validateStep = allSteps(validateJob).find((s) => s.run?.includes('sweep-eval.ts'));
+    const validateStep = allSteps(validateJob).find((s) =>
+      s.run?.includes('prebundle-cli.mjs --entry sweep-eval'),
+    );
     expect(validateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
 
     const aggregateJob = getJob(doc, 'recover-aggregate');
@@ -493,11 +495,11 @@ describe('ai-sweep-recover.yml structure', () => {
     expect(aggregateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
   });
 
-  it('recover-validate and recover-aggregate assign GITHUB_SHA inline at the exec boundary (immediately before each npx tsx invocation), not via env:', () => {
+  it('recover-validate and recover-aggregate assign GITHUB_SHA inline at the exec boundary (immediately before each runner invocation), not via env:', () => {
     const doc = loadRecoverWorkflow();
     const validateScript = allRunScript(getJob(doc, 'recover-validate'));
     expect(validateScript).toMatch(
-      /GITHUB_SHA="\$RECOVER_HEAD_SHA"\s+npx tsx scripts\/agent\/perf\/sweep-eval\.ts/,
+      /GITHUB_SHA="\$RECOVER_HEAD_SHA"\s+node scripts\/agent\/perf\/prebundle-cli\.mjs --entry sweep-eval/,
     );
 
     const aggregateScript = allRunScript(getJob(doc, 'recover-aggregate'));
@@ -514,14 +516,16 @@ describe('ai-sweep-recover.yml structure', () => {
 
     const doc = loadRecoverWorkflow();
     const job = getJob(doc, 'recover-validate');
-    const step = allSteps(job).find((s) => s.run?.includes('sweep-eval.ts'));
+    const step = allSteps(job).find((s) => s.run?.includes('prebundle-cli.mjs --entry sweep-eval'));
     const runScript = step?.run ?? '';
 
     // Extract the literal exec-boundary prefix (e.g. `GITHUB_SHA="$RECOVER_HEAD_SHA"`)
-    // used immediately before `npx tsx` in the REAL workflow file — not a
+    // used immediately before the runner in the REAL workflow file — not a
     // hand-duplicated copy — so a future edit that regresses the idiom (e.g.
     // reverting to a step-level env: key) fails this test.
-    const match = runScript.match(/(GITHUB_SHA="\$RECOVER_HEAD_SHA")\s+npx tsx/);
+    const match = runScript.match(
+      /(GITHUB_SHA="\$RECOVER_HEAD_SHA")\s+node scripts\/agent\/perf\/prebundle-cli\.mjs/,
+    );
     expect(
       match,
       'exec-boundary GITHUB_SHA assignment not found in recover-validate run script',
@@ -537,7 +541,7 @@ describe('ai-sweep-recover.yml structure', () => {
     const historicalSha = '1'.repeat(40);
     // `printenv` is a standalone binary (not a shell builtin), so invoking it
     // genuinely proves the override crosses a real process-exec boundary —
-    // exactly what `npx tsx` spawning the sweep-eval.ts child does — without
+    // exactly what the prebundle launcher spawning the sweep-eval child does — without
     // depending on `node` being resolvable inside whichever `bash` is on PATH
     // (e.g. the WSL interop shim, which has its own separate PATH/toolchain).
     const probeScript = `${execBoundaryPrefix} printenv GITHUB_SHA`;

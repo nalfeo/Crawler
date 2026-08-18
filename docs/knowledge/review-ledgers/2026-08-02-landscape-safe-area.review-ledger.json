@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "landscape-safe-area",
+  "task_title": "Landscape-only mobile safe-area layout",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review run for 3🍎 policy compliance. One concern was raised and resolved: the ledger incorrectly recorded a human maintainer as plan reviewer; this entry now reflects the required separate-model reviewer. Scope remains the approved letterbox-safe-area plan with the joystick/action-button promotion phase intentionally cut."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Separate-model code-review agent over the full branch diff, focused on inset math edge cases, safe-area subscription teardown leaks, stale-layout races, and vacuous-gate risk. Result: no significant issues found."
+        }
+      ]
+    }
+  }
+}

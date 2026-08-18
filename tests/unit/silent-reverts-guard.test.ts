@@ -13,6 +13,8 @@ import {
   findUnusedAcks,
   isDiscarded,
   parseAckTrailers,
+  parseDiffLineChanges,
+  sideAdditionsSubsumedByOther,
   survivesToHead,
 } from '../../scripts/agent/health/silent-reverts-lib.js';
 
@@ -64,6 +66,20 @@ describe('isDiscarded', () => {
     expect(isDiscarded(triple({ base: 'B', side: 'S', other: 'O', result: 'O' }))).toBe(true);
   });
 
+  it('does not flag taking the opposing blob when it already contains the incoming change', () => {
+    expect(
+      isDiscarded(
+        triple({
+          base: 'B',
+          side: 'S',
+          other: 'O',
+          result: 'O',
+          sideAlreadyPresentInOther: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it('detects a discarded deletion', () => {
     expect(isDiscarded(triple({ base: 'B', side: null, other: 'B', result: 'B' }))).toBe(true);
   });
@@ -92,6 +108,77 @@ describe('survivesToHead', () => {
 
   it('survives an `-s ours` discard, where the surviving blob is ours not the base', () => {
     expect(survivesToHead(triple({ base: 'B', result: 'O', head: 'O' }))).toBe(true);
+  });
+});
+
+describe('parseDiffLineChanges', () => {
+  it('splits added and removed lines, excluding file headers', () => {
+    const diff = [
+      '--- a/f.md',
+      '+++ b/f.md',
+      '@@ -1,2 +1,2 @@',
+      '-old line',
+      '+new line',
+      ' context line',
+    ].join('\n');
+    expect(parseDiffLineChanges(diff)).toEqual({
+      added: ['new line'],
+      removed: ['old line'],
+    });
+  });
+
+  it('returns empty arrays for a diff with no content changes', () => {
+    expect(parseDiffLineChanges('')).toEqual({ added: [], removed: [] });
+  });
+
+  it('does not mistake a content line starting with -- or ++ for a diff file header', () => {
+    const diff = [
+      '--- a/f.md',
+      '+++ b/f.md',
+      '@@ -1 +1 @@',
+      '-old --no-color',
+      '+new ++verbose',
+    ].join('\n');
+    expect(parseDiffLineChanges(diff)).toEqual({
+      added: ['new ++verbose'],
+      removed: ['old --no-color'],
+    });
+  });
+});
+
+describe('sideAdditionsSubsumedByOther', () => {
+  it('is false when the side added nothing', () => {
+    expect(sideAdditionsSubsumedByOther([], [], ['+row'])).toBe(false);
+  });
+
+  it('is false when the side removed a line, even if additions match', () => {
+    expect(sideAdditionsSubsumedByOther(['row'], ['old row'], ['row'])).toBe(false);
+  });
+
+  it('is false when the added line is missing from the other side', () => {
+    expect(sideAdditionsSubsumedByOther(['row a'], [], ['row b'])).toBe(false);
+  });
+
+  it('is true when every added line reappears verbatim in the other side', () => {
+    expect(sideAdditionsSubsumedByOther(['row a', 'row b'], [], ['row b', 'row a', 'row c'])).toBe(
+      true,
+    );
+  });
+
+  it('ignores whitespace-run differences from markdown table re-justification', () => {
+    const sideAdded = [
+      '| AI headless (tsx loader)  | `npm run ai:headless:tsx`                  |',
+    ];
+    const otherAdded = [
+      '| AI headless (tsx loader)  | `npm run ai:headless:tsx`                                                                                                                   |',
+    ];
+    expect(sideAdditionsSubsumedByOther(sideAdded, [], otherAdded)).toBe(true);
+  });
+
+  it('does not ignore genuine content differences beyond whitespace', () => {
+    const sideAdded = ['ai:headless pre-bundles the CLI, which removes ~2.7s of startup.'];
+    const otherAdded = ['The headless and sweep CLIs pre-bundle, which removes the fixed startup.'];
+    expect(sideAdditionsSubsumedByOther(sideAdded, [], otherAdded)).toBe(false);
   });
 });
 
@@ -749,6 +836,32 @@ describe('silent-reverts CLI (real git)', () => {
       expect(output).toMatch(/\[ERROR][^\n]*shared\.ts/);
       // Genuinely branch-local content (other.ts) stays a non-blocking warning.
       expect(output).toMatch(/\[WARN][^\n]*other\.ts/);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('does not report a side whose change is already present in the kept parent', () => {
+    const { dir, git, write } = makeRepo();
+    try {
+      write('shared.txt', 'top\nmid1\nmid2\nbottom\n');
+      git('add', '.');
+      git('commit', '-qm', 'base');
+      const base = git('rev-parse', 'HEAD');
+
+      git('checkout', '-q', '-b', 'mainline');
+      write('shared.txt', 'top\nshared\nmid1\nmid2\nbottom\n');
+      git('commit', '-qam', 'main: add shared line');
+
+      git('checkout', '-q', '-b', 'pr', base);
+      write('shared.txt', 'top\nshared\nmid1\nmid2\nbottom\nextra\n');
+      git('commit', '-qam', 'pr: add shared and extra line');
+
+      git('merge', '--no-edit', '-q', 'mainline');
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no surviving silent reverts');
+      expect(status).toBe(0);
     } finally {
       cleanup(dir);
     }

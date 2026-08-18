@@ -28,13 +28,14 @@ import {
 } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
+  resolveGeneratedFootprintScale,
   resolveOpaqueFit,
   type GeneratedSpriteAnimation,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
   type OpaqueBounds,
 } from '../shared/generated-assets.js';
-import { ftToPx } from '../shared/units.js';
+import { ftToPx, PIXELS_PER_FOOT } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import {
   combineMobMotion,
@@ -125,6 +126,14 @@ interface EntityVisual {
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
   /**
+   * The `registryRevision` value at which `baseScale` was last computed.
+   * Used by the enemy texture-key-unchanged branch to skip the
+   * `resolveBaseScale` call on frames where the generated registry has not
+   * changed — keeping the recompute to the one (or few) frames that follow
+   * a late registry load instead of running every frame.
+   */
+  baseScaleRegistryRevision: number;
+  /**
    * Which baked welcome-sign variant is currently applied ('right' arrow vs
    * 'left' arrow). Tracked so the renderer only swaps the texture when the
    * sign's facing hemisphere actually changes.
@@ -169,6 +178,14 @@ interface ResolvedTexture {
   frame?: number;
   /** Base render scale for this texture. */
   scale: number;
+  /**
+   * Authored drawn height of the VISIBLE art in world feet, when the render
+   * kind sizes itself in feet (`generated.heightFt`). The caller converts this
+   * to a base scale against the loaded texture's opaque bounds via
+   * {@link resolveGeneratedFootprintScale}, and falls back to {@link scale}
+   * when the texture cannot be measured.
+   */
+  heightFt?: number;
   /** True when the engine fell back to a procedural __cw_* texture. */
   fallback: boolean;
 }
@@ -285,6 +302,7 @@ function resolveTexture(
     return {
       key: generated.key,
       scale: generated.scale,
+      ...(generated.heightFt !== undefined ? { heightFt: generated.heightFt } : {}),
       fallback: false,
     };
   }
@@ -404,10 +422,16 @@ function resolveGeneratedTexture(
   type: string,
   generated: EntitySpriteMappings['renderKinds'][string]['generated'] | undefined,
   options?: { appearanceKey?: string; variantRoll?: number },
-): { key: string; scale: number } | null {
+): { key: string; scale: number; heightFt?: number } | null {
   if (generated === undefined || scene.textures === undefined) {
     return null;
   }
+
+  // The authored footprint belongs to the RENDER KIND, not to the variant that
+  // wins resolution: a Floor 2 family mook resolved through the global
+  // appearance-key registry must draw at the same feet as this kind's own
+  // pinned art, even though its source PNG is 4-8x larger.
+  const heightFt = generated.heightFt !== undefined ? { heightFt: generated.heightFt } : {};
 
   // Resolution precedence (highest to lowest):
   //   1. The global enemy variant-roll registry (`pickGeneratedEnemyTextureKey`)
@@ -428,7 +452,7 @@ function resolveGeneratedTexture(
     options?.appearanceKey,
   );
   if (registryKey !== null && scene.textures.exists(registryKey)) {
-    return { key: registryKey, scale: generated.scale };
+    return { key: registryKey, scale: generated.scale, ...heightFt };
   }
   if (generatedRegistry !== null && options?.appearanceKey !== undefined) {
     const preferredBriefId = generatedBriefIdForEnemy(
@@ -452,7 +476,7 @@ function resolveGeneratedTexture(
         const fallbackIndex = Math.floor(normalizedRoll * fallbackVariants.length);
         const fallbackKey = fallbackVariants[fallbackIndex]?.textureKey;
         if (fallbackKey !== undefined && scene.textures.exists(fallbackKey)) {
-          return { key: fallbackKey, scale: generated.scale };
+          return { key: fallbackKey, scale: generated.scale, ...heightFt };
         }
       }
     }
@@ -467,11 +491,11 @@ function resolveGeneratedTexture(
   const effectiveScale = variant?.scale ?? generated.scale;
 
   if (scene.textures.exists(effectivePinnedTextureKey)) {
-    return { key: effectivePinnedTextureKey, scale: effectiveScale };
+    return { key: effectivePinnedTextureKey, scale: effectiveScale, ...heightFt };
   }
 
   if (scene.textures.exists(effectiveBriefId)) {
-    return { key: effectiveBriefId, scale: effectiveScale };
+    return { key: effectiveBriefId, scale: effectiveScale, ...heightFt };
   }
 
   const textureKeys = scene.textures.getTextureKeys?.();
@@ -505,13 +529,50 @@ function resolveGeneratedTexture(
     });
     return null;
   }
-  return { key: selectedKey, scale: effectiveScale };
+  return { key: selectedKey, scale: effectiveScale, ...heightFt };
 }
 
 function getProceduralTextureForType(type: string): string {
   const token = (RENDER_KIND_CONFIGS[type]?.proceduralTexture ??
     'default') as ProceduralTextureToken;
   return PROCEDURAL_TEXTURE_KEYS[token] ?? PROCEDURAL_TEXTURE_KEYS.default;
+}
+
+/**
+ * Resolve the still-image texture for a render kind, using the SAME precedence
+ * the live renderer uses (approved generated art → Kenney sheet frame →
+ * procedural placeholder). Exported for portrait surfaces such as the boss
+ * intro lore sheet, which must show the same art the player is about to fight
+ * rather than maintaining a second, drift-prone mapping.
+ *
+ * `appearanceKey` is the entity's own appearance key (`world.enemyAppearanceKeys`).
+ * It matters for render kinds shared by many entities — every Floor 2 family
+ * boss renders as `enemy_family_boss` and is told apart only by its appearance
+ * key — so omitting it would fall back to the kind's default art.
+ */
+export function resolveRenderKindPortraitTexture(
+  scene: Phaser.Scene,
+  kind: string,
+  appearanceKey?: string,
+): { key: string; frame?: number } {
+  const config = RENDER_KIND_CONFIGS[kind];
+  const generated = resolveGeneratedTexture(
+    scene,
+    kind,
+    config?.generated,
+    appearanceKey === undefined ? undefined : { appearanceKey },
+  );
+  if (generated !== null) {
+    return { key: generated.key };
+  }
+  const spriteId = config?.kenneySpriteId;
+  if (spriteId !== undefined) {
+    const spriteDef = getSprite(spriteId);
+    if (spriteDef !== undefined && scene.textures?.exists(spriteDef.sheetKey) === true) {
+      return { key: spriteDef.sheetKey, frame: spriteDef.frame };
+    }
+  }
+  return { key: getProceduralTextureForType(kind) };
 }
 
 function resolveMobMotionProfile(
@@ -590,6 +651,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
+  /**
+   * Monotonically incremented each time `cachedGeneratedRegistry` changes
+   * identity. Entity visuals stamp the revision at which their `baseScale`
+   * was last computed; the enemy texture-key-unchanged branch uses this to
+   * skip `resolveBaseScale` on frames where the registry has not changed.
+   */
+  let registryRevision = 0;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   /**
    * Animation descriptor per generated texture key, so the player render
@@ -605,6 +673,16 @@ export function createPhaserBridge(scene: Phaser.Scene): {
    */
   const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
   const playerWalkMovingByEid = new Map<number, boolean>();
+  const acceptedStepDisplacementByEid = new Map<
+    number,
+    {
+      frameCount: number;
+      prevX: number;
+      prevY: number;
+      currX: number;
+      currY: number;
+    }
+  >();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -655,6 +733,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           registerGeneratedSpriteAnimations(scene, generatedRegistry);
         }
         cachedGeneratedRegistry = generatedRegistry;
+        registryRevision++;
         // Expose the registry to the game layer so projectile-origin helpers can
         // resolve per-entity weapon anchors without a Phaser scene reference.
         world.generatedSpriteRegistry = generatedRegistry;
@@ -682,6 +761,34 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         preferredTextureCache.set(cacheKey, resolved);
         return resolved;
       };
+      /**
+       * Base render scale for a freshly created / retextured visual.
+       *
+       * When the render kind authors its size in world FEET
+       * (`generated.heightFt`), the scale is derived from the loaded texture's
+       * OPAQUE bounds so the drawn art is exactly that many feet tall
+       * regardless of the canvas the sprite pipeline emitted. Falls back to the
+       * legacy `generated.scale` pixel multiplier when the kind authors no
+       * height, or when the texture is not measurable (headless/stub scenes,
+       * or art that has not decoded yet) — so an unmeasurable texture reverts
+       * to the previous look rather than to a bogus size.
+       *
+       * Frame-based textures (Kenney sheet cells) never take the feet path:
+       * `heightFt` is only ever set by the generated resolver, which emits
+       * single-image textures.
+       */
+      const resolveBaseScale = (
+        obj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite,
+        resolved: ResolvedTexture,
+      ): number =>
+        resolveGeneratedFootprintScale({
+          bounds: generatedBoundsByTexture.get(resolved.key),
+          canvasWidth: obj.width,
+          canvasHeight: obj.height,
+          targetHeightFt: resolved.heightFt,
+          pixelsPerFoot: PIXELS_PER_FOOT,
+        }) ?? resolved.scale;
+
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
 
@@ -894,8 +1001,37 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         // Positions/velocities are stored in feet; scale feet → pixels for
         // rendering (the only place pixels exist). All downstream geometry
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
-        const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
-        const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
+        const positionX = position.x[eid] ?? 0;
+        const positionY = position.y[eid] ?? 0;
+        let sample = acceptedStepDisplacementByEid.get(eid);
+        if (!sample) {
+          sample = {
+            frameCount: world.frameCount,
+            prevX: positionX,
+            prevY: positionY,
+            currX: positionX,
+            currY: positionY,
+          };
+          acceptedStepDisplacementByEid.set(eid, sample);
+        } else if (sample.frameCount !== world.frameCount) {
+          sample.prevX = sample.currX;
+          sample.prevY = sample.currY;
+          sample.currX = positionX;
+          sample.currY = positionY;
+          sample.frameCount = world.frameCount;
+        } else if (sample.currX !== positionX || sample.currY !== positionY) {
+          // Position changed without an accompanying sim frame tick (teleport,
+          // spawn, floor transitions): snap to the new position and render from
+          // there with zero extrapolation to avoid stale offsets.
+          sample.prevX = positionX;
+          sample.prevY = positionY;
+          sample.currX = positionX;
+          sample.currY = positionY;
+        }
+        const stepDx = sample.currX - sample.prevX;
+        const stepDy = sample.currY - sample.prevY;
+        const x = ftToPx(sample.currX + stepDx * interpAlpha);
+        const y = ftToPx(sample.currY + stepDy * interpAlpha);
 
         // --- Harvestable node rendering (generated sprite when wired, else a
         // procedural tinted circle) + harvest progress ring ---
@@ -1163,7 +1299,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Origin at hold anchor so the sprite pivots from the player's hand
             img.setOrigin(originX, originY);
             img.setScale(weaponScale);
-            visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale });
+            visuals.set(eid, {
+              obj: img,
+              type: entityType,
+              baseScale: weaponScale,
+              baseScaleRegistryRevision: registryRevision,
+            });
             visual = visuals.get(eid);
           }
 
@@ -1240,13 +1381,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               : resolved.frame !== undefined
                 ? scene.add.image(x, y, resolved.key, resolved.frame)
                 : scene.add.image(x, y, resolved.key);
-          if (resolved.scale !== 1) {
-            img.setScale(resolved.scale);
+          const baseScale = resolveBaseScale(img, resolved);
+          if (baseScale !== 1) {
+            img.setScale(baseScale);
           }
           if (resolved.fallback) {
             logFallback(visualType);
           }
-          visual = { obj: img, type: visualType, baseScale: resolved.scale };
+          visual = {
+            obj: img,
+            type: visualType,
+            baseScale,
+            baseScaleRegistryRevision: registryRevision,
+          };
           visuals.set(eid, visual);
         }
 
@@ -1261,10 +1408,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // it becomes available so slimes/rats upgrade off placeholder art.
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
-            visual.baseScale = preferred.scale;
+            visual.baseScale = resolveBaseScale(img, preferred);
+            visual.baseScaleRegistryRevision = registryRevision;
+            img.setScale(visual.baseScale);
             // Invalidate the cached weapon anchor so the next game-layer access
             // recomputes from the updated variant entry.
             world.entityWeaponAnchors.delete(eid);
+          } else if (visual.baseScaleRegistryRevision !== registryRevision) {
+            // Recompute base scale when opaque bounds became available after the
+            // entity was first rendered (late generated-sprite registry load).
+            // Gated on `registryRevision` so this is a no-op on every frame
+            // after bounds have stabilised — the registry identity only changes
+            // on the one (or few) frames that follow a late load, not every
+            // frame, so `resolveBaseScale` is not called per-entity per-frame.
+            const freshScale = resolveBaseScale(img, preferred);
+            if (freshScale !== visual.baseScale) {
+              visual.baseScale = freshScale;
+            }
+            visual.baseScaleRegistryRevision = registryRevision;
           }
         }
         if (entityType === 'npc') {
@@ -1282,7 +1443,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           );
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
-            visual.baseScale = preferred.scale;
+            visual.baseScale = resolveBaseScale(img, preferred);
+            img.setScale(visual.baseScale);
           }
         }
         if (entityType === 'player') {
@@ -1298,7 +1460,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const preferred = resolvePreferredTexture(visualType, { appearanceKey });
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
-            visual.baseScale = preferred.scale;
+            visual.baseScale = resolveBaseScale(img, preferred);
+            img.setScale(visual.baseScale);
             if (
               generatedAnimationByTexture.has(preferred.key) &&
               (img as Partial<Phaser.GameObjects.Sprite>).anims === undefined &&
@@ -1315,9 +1478,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                 preferred.frame !== undefined
                   ? scene.add.sprite(px, py, preferred.key, preferred.frame)
                   : scene.add.sprite(px, py, preferred.key);
-              sprite.setScale(preferred.scale);
+              const spriteBaseScale = resolveBaseScale(sprite, preferred);
+              sprite.setScale(spriteBaseScale);
               if (savedFlipX) sprite.setFlipX(true);
-              visual = { obj: sprite, type: visualType, baseScale: preferred.scale };
+              visual = {
+                obj: sprite,
+                type: visualType,
+                baseScale: spriteBaseScale,
+                baseScaleRegistryRevision: registryRevision,
+              };
               visuals.set(eid, visual);
               img = sprite;
             }
@@ -2168,6 +2337,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
         visuals.delete(eid);
         playerWalkMovingByEid.delete(eid);
+        acceptedStepDisplacementByEid.delete(eid);
         // Remove weapon anchor so dead/despawned entities don't leave stale
         // offsets that could be picked up if the eid is reused later.
         world.entityWeaponAnchors.delete(eid);
@@ -2314,6 +2484,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       visuals.clear();
+      playerWalkMovingByEid.clear();
+      acceptedStepDisplacementByEid.clear();
       mobMotionStates.clear();
       for (const overlay of mobFlashOverlays.values()) {
         overlay.destroy();

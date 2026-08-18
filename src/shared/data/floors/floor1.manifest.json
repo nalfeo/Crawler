@@ -3,6 +3,11 @@
   "name": "Floor 1 - Welcome to the Dungeon",
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "bow", "baseball-bat", "pistol", "throwing-knife", "fireball"],
+  "implemented": {
+    "mvp": true,
+    "released": true,
+    "winBudgetMs": 600000
+  },
   "timer": {
     "durationMs": 600000,
     "stairSpawnCountdownMs": 30000
@@ -34,6 +39,14 @@
   },
   "camera": {
     "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomWeaponImmunity": true,
+    "safeRoomDoorsAutoClose": true,
+    "lineOfSightAggro": false,
+    "equipmentEconomy": true,
+    "bossChests": true
   },
   "lighting": {
     "ambient": 0.2

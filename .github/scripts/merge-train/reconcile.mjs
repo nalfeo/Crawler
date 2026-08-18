@@ -69,7 +69,7 @@ import {
   trainCheckState,
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
-import { humanApprovalRejection } from './human-approval.mjs';
+import { resolveHumanApprovalRejection } from './human-approval.mjs';
 import { countOutstandingRecoveryRuns, resolveGlobalDispatchCaps } from '../ci-recovery/router.mjs';
 import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 
@@ -299,11 +299,12 @@ async function eligible(pr) {
     String(pr.head?.ref || '').trim() === 'assets/promote'
       ? await paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/files`)
       : [];
-  const approvalRejection = humanApprovalRejection({
+  const approvalRejection = await resolveHumanApprovalRejection({
     pullRequest: pr,
     closingIssues,
     comments,
     ownerLogin: owner,
+    fetchReviews: () => paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/reviews`),
   });
 
   // D11 fix (Issue #1851): read the authoritative lifecycle phase so quarantined/abandoned
@@ -829,13 +830,25 @@ for (const pr of queued) {
           );
           await removeLabel(pr.number, QUEUE_LABEL);
           dequeuedFork = true;
-        } else if (err.status !== 422) {
-          // 422 covers "already up-to-date" and stale expected_head_sha — log
-          // it so stale-head races are visible and not silently swallowed.
-          throw err;
-        } else {
+        } else if (err.status === 422) {
+          // 422 covers "already up-to-date" and stale expected_head_sha —
+          // expected, benign, logged so stale-head races stay visible.
           process.stderr.write(
             `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        } else {
+          // Any novel status (404, 5xx, transient network) is logged LOUDLY
+          // and skipped — never re-thrown. This catch sits inside the
+          // `for (const pr of queued)` loop, so an escaping throw does not
+          // just fail this PR: it abandons every remaining queued PR and
+          // leaves nobody to unstick the train. That is exactly how a
+          // re-thrown non-422 update-branch error deadlocked the queue for
+          // ~90 minutes on 2026-07-29. Novel failures stay visible via this
+          // distinct `unexpected-status` marker (greppable by CI recovery)
+          // rather than via a process crash; the PR re-enters on the next
+          // reconcile pass. Enforced by `crawler/no-rethrow-in-automation-catch`.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} unexpected-status: ${err.status} ${err.message}\n`,
           );
         }
       }
@@ -1020,6 +1033,8 @@ async function promotePrefix(prefixLength, validationIndex) {
               paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
             fetchCheckRuns: async (sha) => checkRuns(sha),
             fetchClosingIssues: async (number) => listClosingIssues(token, owner, repo, number),
+            fetchReviews: async (number) =>
+              paginate(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`),
           })
       : undefined,
   });

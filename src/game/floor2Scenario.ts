@@ -51,6 +51,7 @@ import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   asFamilyId,
+  bandFor,
   getRelation,
   initializeFactionRelations,
   selectFloor2Roster,
@@ -221,6 +222,35 @@ export function denUnlockGoalId(familyId: FamilyId): string {
 /** Goal-flag name for a family's boss-defeat latch. */
 export function bossDefeatGoalId(familyId: FamilyId): string {
   return `floor2-family-${familyId}-boss-defeated`;
+}
+
+/**
+ * Goal-flag name for the *favor* den-unlock route (FR13 `win-favor`). Latched
+ * the first frame a family's relation reaches the Friendly band; kept separate
+ * from {@link denUnlockGoalId} so HUD/telemetry can tell "opened by favor"
+ * apart from "opened by the assigned objective".
+ */
+export function denFavorGoalId(familyId: FamilyId): string {
+  return `floor2-family-${familyId}-favor-earned`;
+}
+
+/**
+ * Second route into a boss den (FR13 `win-favor`): the peaceful path. Any
+ * present family whose relation reaches the Friendly band (>75, see
+ * {@link bandFor}) invites the player in, opening its den regardless of the
+ * kill-based objective assigned to it at floor init.
+ *
+ * This is a *parallel* route, not a replacement — the assigned objective still
+ * unlocks the den on its own, so a player (or the headless AI) who only fights
+ * is unaffected. Pure read: callers latch, so a later relation drop can never
+ * re-seal a den the player already earned entry to.
+ */
+export function hasEarnedDenFavor(world: GameWorld, familyId: FamilyId): boolean {
+  const familyState = world.floorExtendedState?.familyState;
+  // `=== false` is intentional: `undefined` means "active by default" (labs and
+  // tests that never ran the Broker intro).
+  if (familyState?.reputationSystemActive === false) return false;
+  return bandFor(getRelation(world, familyId)) === 'friendly';
 }
 
 /**
@@ -493,6 +523,7 @@ export function initializeFloor2Bosses(
     setGoalFlag(world, unlockGoalId, false);
     setGoalFlag(world, defeatGoalId, false);
     setGoalFlag(world, activeGoalId, false);
+    setGoalFlag(world, denFavorGoalId(familyId), false);
     decapitated.delete(familyId);
     floor2State.trashKillsByFamily.set(familyId, 0);
 
@@ -695,6 +726,16 @@ export function floor2ObjectiveTick(world: GameWorld): void {
   for (const familyId of floor2State.presentFamilies) {
     const questId = `floor2-den-${familyId}-unlock`;
     if (world.questLog.get(questId)?.status === 'complete') {
+      setGoalFlag(world, denUnlockGoalId(familyId), true);
+    }
+    // FR13 `win-favor` — the peaceful route. Reaching the Friendly band opens
+    // the den in parallel with the assigned objective. Latched: relation may
+    // decay afterwards, but the door stays open.
+    if (
+      world.goalFlags.get(denFavorGoalId(familyId)) !== true &&
+      hasEarnedDenFavor(world, familyId)
+    ) {
+      setGoalFlag(world, denFavorGoalId(familyId), true);
       setGoalFlag(world, denUnlockGoalId(familyId), true);
     }
   }

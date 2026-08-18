@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "prebundle-all-sweeps",
+  "task_title": "Pre-bundle all headless and sweep runners",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "The review identified three concerns: the 1.25x gate needed to be tied to representative startup-dominated sweep workloads; bundled sweep-eval needed explicit GITHUB_SHA provenance coverage; and deterministic comparisons must use stable fingerprint/artifact fields rather than wall-clock output. The implementation retained the measured 4.61x winrate smoke result, added a bundled sweep-eval --print-meta test for GITHUB_SHA, and uses SHA-256 fingerprint parity rather than raw timing output."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Round 1 found and fixed a CI-breaking no-redeclare regression from broad scripts/**/*.mjs node globals. Round 2 was clean. After the independent grade found bundled packageLockHash resolving outside the repository, round 3 reviewed the process.cwd()-anchored fix and found no remaining issues."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "a9a85ed0426d13f26341f788fd1d71cea8251cea",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 3,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff implements a reusable prebundle launcher, routes the advertised headless/sweep npm scripts and GitHub workflows through it, preserves worker execution for bundled modules, and adds targeted tests for provenance, bundle creation, workflow rewiring, and worker behavior. Scope is somewhat broad due to AGENTS table reflow and silent-reverts guard changes that are not central to prebundling, but no high-confidence blocker or major correctness defect was found."
+    }
+  }
+}

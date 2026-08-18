@@ -49,6 +49,8 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
     if (hasComponent(world.ecs, otherEid, Gold)) {
       const goldValue = world.stores.gold.value[otherEid] ?? 0;
       world.playerGold += goldValue;
+      world.lootLedger.goldCollected += goldValue;
+      world.goldLedger.earnedFromDrops += goldValue;
       emitPickupSparkle(world, otherEid, 'gold');
       removeEntity(world.ecs, otherEid);
       continue;
@@ -60,6 +62,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       const currentScore = world.stores.broadcastScore.current[playerEid] ?? 0;
       world.stores.broadcastScore.current[playerEid] = currentScore + gemValue;
       world.playerLevel.xp += gemValue;
+      world.lootLedger.xpCollected += gemValue;
       emitPickupSparkle(world, otherEid, 'gem');
       removeEntity(world.ecs, otherEid);
       continue;

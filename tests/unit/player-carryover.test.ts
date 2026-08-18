@@ -15,7 +15,10 @@ import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/p
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
-import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
+import {
+  createEmptyAchievementFactSnapshot,
+  LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
+} from '../../src/shared/achievements.js';
 import {
   abilitySystem,
   grantPassiveAbility,
@@ -1315,6 +1318,23 @@ describe('player floor carryover', () => {
       {
         ...snapshot,
         generatedInventoryInstanceKeys: null,
+      },
+      {
+        ...snapshot,
+        achievements: {
+          ...snapshot.achievements,
+          unlockedIds: [...snapshot.achievements.unlockedIds, 'floor2-field-kit'],
+        },
+        generatedEquipmentRewardBundles: [{ achievementId: 'floor2-field-kit' }],
+        lootBoxRewardBundles: [
+          {
+            schemaVersion: LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
+            achievementId: 'floor2-field-kit',
+            tier: 'common',
+            gold: 75,
+            itemIds: [],
+          },
+        ],
       },
       // bundle.instanceKeys must be an array; a non-array value must fail closed.
       // Use a real, unlocked equipment achievement so validation reaches the

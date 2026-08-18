@@ -25,10 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "4",
   "type": "enemy",
-  "contentHash": "0e8892e263b6654623be9cfe339a86b22fdd136bf40d06bafa4c427479a97d01",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crabfolk-boss\\2026-07-08T02-27-51-931d271c\\postprocess.pipeline.effective.yaml",
+  "contentHash": "a5cd6dadbc0070dc9a1d78197bb606f6286c708959e88fca5c30c88884623725",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

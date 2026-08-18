@@ -96,9 +96,9 @@ describe('classifySweepRun — Floor 1', () => {
   });
 
   it('safe-room-credited victory under active-time budget is a fast win', () => {
-    // Raw game time = 370 s (> 360 s budget), but 30 s was safe-room dwell.
-    // Active time = 370 - 30 = 340 s < 360 s budget → official win.
-    const stats = makeStats({ outcome: 'victory', gameTimeMs: 370_000, safeRoomMs: 30_000 });
+    // Raw game time = 650 s (> 600 s budget), but 70 s was safe-room dwell.
+    // Active time = 650 - 70 = 580 s < 600 s budget → official win.
+    const stats = makeStats({ outcome: 'victory', gameTimeMs: 650_000, safeRoomMs: 70_000 });
     const result = classifySweepRun(stats, 'floor1');
 
     expect(result.outcomeVictory).toBe(true);

@@ -1,0 +1,81 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-08",
+  "session_slug": "loot-collection-efficiency",
+  "task_title": "AI loot-collection efficiency: loot ledger + mid-run loot sweep + trivial pickup snap",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial red-team of the loot-ledger + windowed sweep + snap + descend-deferral design. 3 alternatives enumerated and argued (strengthen tactical opportunity planner; encounter-scoped drop recovery; explicit exit-cleanup transaction). Blockers fixed: (1) descend deferral drained its 1800-frame budget during the walk to the stairs - proximity check now runs first; (2) combinedRatio mixes XP+gold units and is cross-floor cumulative - documented as a same-matrix comparison metric only. Also fixed: deterministic eid tie-break for equidistant snap targets; added regression tests for the loot ledger, deferral budget/panic/exhaustion. Accepted-with-rationale: Euclidean sweep radius (12ft narrow window measured to beat path-cost-gated alternatives at 72-run scale), unbounded pre-exit greedy tour (pre-existing behaviour, panic-gated), auto-progression importing panic helpers from bt-ai-provider (same layer, extraction deferred), Floor 2 symmetry (bounded by the same frame budget, no collapse timer to lose)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Cross-floor shared stair-descend defer budget; Floor 2 deferral untested."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-reviewed after per-floor budget keying + Floor 2 tests: no remaining concerns."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 4,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Valid: typecheck break from the as-never Floor 2 fixture (tsc failed); MAX_STAIR_DESCEND_DEFER_FRAMES doc said 60s for a 1800-frame/30s budget. Adjudicated as already-resolved: two missing-coverage findings that the round-1 code-review fixes had already added tests for."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both models re-reviewed HEAD and reported clean. gpt-5.6-terra additionally flagged the still-unfilled ledger stages, which is this record itself, not a code concern."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.7",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "cfd1ffd44688cfe6d96289cc319c11db88973595",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly delivers the four stated pieces. The LootLedger is a purely additive counter incremented at both spawn sites (spawnXpGem/spawnGold) and both collection sites in itemPickupSystem, with tests covering spawn-without-collect, partial collection, and cumulative accumulation. The loot-sweep generalization adds gold as a target, introduces a bounded post-combat window plus the pre-existing pre-exit window, preserves the panic-gate and engage-range safety checks, and switches the sticky latch name (xpSweep→lootSweep) consistently. The trivial-pickup snap is gated on !panic, no threats, direct-lane 1-ft probe, safe-gap check, and deterministic eid tie-break — all exercised by targeted tests including a wall-blocked case and equidistant-eid determinism. The stair-descend deferral is charged only inside the stair marker (avoiding the wall-clock bug the retro calls out), is per-world/per-floor via a WeakMap+Map so a fresh world starts at zero and Floor 1 cannot drain Floor 2's budget, and surrenders under collapse panic; tests cover deferral, exhaustion, on-stairs-only spending, cross-floor independence, and panic surrender. No Math.random/Date.now, no cross-layer import violations (auto-progression→bt-ai-provider is same layer, and Gold/XpGem come from core), and the tuning constants carry recorded 72-run measurements per rule #12. No blockers or high-confidence major issues found."
+    }
+  }
+}

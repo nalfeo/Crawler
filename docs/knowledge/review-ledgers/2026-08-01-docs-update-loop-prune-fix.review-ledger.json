@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "docs-update-loop-prune-fix",
+  "task_title": "Fix docs-update stale --force-with-lease by pruning tracking refs before PR creation",
+  "estimated_apples": 1,
+  "stages": {}
+}

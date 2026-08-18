@@ -35,6 +35,13 @@ import {
 } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
+import {
+  configureSpellBrokerPurchase,
+  getSpellBrokerIntent,
+  isSpellBrokerPurchaseActive,
+  markSpellBrokerPurchased,
+} from '../../game/ai/spell-broker-intent.js';
+import { resolveOptionalPurchases } from '../../game/ai/optional-purchases.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -488,7 +495,14 @@ interface AiRunnerLabState {
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
+    /** Single shared flag for both optional AI purchases. Replaces the former independent fields. */
+    optionalPurchases?: boolean;
+    /**
+     * @deprecated Retained for reading old persisted state only.
+     */
     merchantWeaponPurchase?: boolean;
+    /** @deprecated See `merchantWeaponPurchase` deprecation note. */
+    spellBrokerPurchase?: boolean;
   };
 }
 
@@ -560,7 +574,7 @@ function randomRunSeed(): number {
 interface RunnerSceneInternals {
   world?: GameWorld;
   playerEid?: number;
-  modalPicker?: { isOpen(): boolean; close(): void };
+  modalPicker?: { isOpen(): boolean; getKind(): string | null; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   requestInventoryToggle(): void;
@@ -658,7 +672,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
-    merchantWeaponPurchase: boolean;
+    /** Single shared flag for both optional AI purchases. Default true. */
+    optionalPurchases: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
     decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
@@ -666,7 +681,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
-    merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
+    optionalPurchases: resolveOptionalPurchases(persisted?.aiConfig ?? {}),
   };
 
   let ai = new BehaviorTreeAI({
@@ -716,7 +731,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
-        merchantWeaponPurchase: aiConfig.merchantWeaponPurchase,
+        optionalPurchases: aiConfig.optionalPurchases,
       },
     });
   };
@@ -825,7 +840,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
+    configureMerchantWeaponPurchase(world, aiConfig.optionalPurchases);
+    configureSpellBrokerPurchase(world, aiConfig.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid);
@@ -859,6 +875,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       manualControl
         ? null
         : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
+    // Manual control hands the run back to a human, so surfaces that wait for
+    // input (the boss-intro sheet) must NOT auto-advance in that mode.
+    isAutoDriven: () => !manualControl,
     sessionRecorderFactory: recorderControls.factory,
     recomposeFloorTransitionOptions: (nextFloorOptions) => {
       // Synchronize lab state with the destination floor before composing.
@@ -872,7 +891,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       selectedScenarioPresetId = resolved.presetId;
       applyScenarioVisualProfile(selectedScenarioPresetId);
       persistLabState();
-      return composeSceneOptions(nextFloorOptions);
+      Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions));
+      return sceneOptions;
     },
   });
 
@@ -1237,8 +1257,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiFolder
-    .add(aiConfig, 'merchantWeaponPurchase')
-    .name('Merchant weapon purchase')
+    .add(aiConfig, 'optionalPurchases')
+    .name('Optional purchases (merchant + broker)')
     .onChange(() => {
       persistLabState();
     });
@@ -1525,6 +1545,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
             pendingGearEquipPreview = true;
           }
+        }
+        modalPicker.close();
+        return;
+      }
+      const spellBroker = sceneOptions.spellQuestGiver;
+      const spellBrokerIntent = getSpellBrokerIntent(world);
+      if (
+        modalPicker.getKind() === 'spell-broker' &&
+        spellBroker?.getSpellBrokerOffers &&
+        spellBroker.canPurchaseSpell &&
+        spellBroker.purchaseSpell &&
+        world.featureUnlocks.spells === true &&
+        (isSpellBrokerPurchaseActive(spellBrokerIntent) ||
+          spellBrokerIntent.purchaseStatus === 'purchased')
+      ) {
+        const offer = spellBroker
+          .getSpellBrokerOffers(world)
+          .find(
+            (entry) =>
+              !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
+          );
+        if (offer && spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
+          markSpellBrokerPurchased(world);
         }
         modalPicker.close();
         return;

@@ -28,6 +28,33 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
   }
 
+  it('pauses for the issue picker and restores the exact prior pause state', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation running before report',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker opened with simulation paused',
+    });
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.modalOpen && !s.simulationPaused, {
+      label: 'issue picker restored running simulation',
+    });
+
+    await mainSceneProbe.setSimulationPaused(page, true);
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker opened from an already paused scene',
+    });
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.modalOpen && s.simulationPaused, {
+      label: 'issue picker preserved pre-existing pause',
+    });
+  });
+
   it('keeps achievements closed when abilities and achievements are queued in the same frame', async () => {
     await bootPlayingSafeScene();
 

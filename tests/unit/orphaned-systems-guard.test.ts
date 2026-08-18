@@ -423,8 +423,19 @@ describe('findOrphanedSystems', () => {
         'src/engine/sim/simulation-step.ts',
         'src/game/ai/simulation-step.ts',
         'src/game/ai/headless-runner.ts',
+        'src/game/scenarioDefinitions.ts',
       ]);
       expect(WIRING_SITES).not.toContain('src/engine/scenes/MainGameScene.ts');
+    });
+
+    it('accepts a system registered in a scenario pipeline slot', () => {
+      const wiredRefs = refsFromTrustedSites([
+        {
+          path: 'src/game/scenarioDefinitions.ts',
+          content: 'const scenario = { beforeWeaponSystems: [sceneOnlySystem] };',
+        },
+      ]);
+      expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([]);
     });
 
     it('FAILS a system referenced only by the visual scene', () => {

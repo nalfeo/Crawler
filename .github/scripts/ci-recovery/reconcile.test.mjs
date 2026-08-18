@@ -3750,6 +3750,64 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('failed job-level continue-on-error checks (including matrix-suffixed report-only legs) never become ci-failure blockers (PR #3032)', async (t) => {
+  // "Advisory coverage" and "Headless Multi-Floor Legs (report-only)" run with
+  // `continue-on-error: true` at the job level in .github/workflows/ci.yml, and
+  // `merge-gate`'s `needs` list deliberately omits both, so their failure can never
+  // block or unblock merge. Recovery previously flagged a red Advisory coverage
+  // check-run as a `ci-failure` blocker and dispatched Copilot to "fix" it, but a
+  // transient infra failure (e.g. a 429 downloading an action) in an advisory job
+  // gives the agent nothing to fix that changes the PR's mergeable state -- the
+  // recovery loop spun with no progress across repeated attempts.
+  const advisoryFailedCheck = {
+    id: 1,
+    name: 'Advisory coverage',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const matrixAdvisoryFailedCheck = {
+    id: 2,
+    name: 'Headless Multi-Floor Legs (report-only) (floor2, --floor floor2 --seed 42)',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/2`,
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [advisoryFailedCheck, matrixAdvisoryFailedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(
+    stdout,
+    /dry-run would-assign copilot/,
+    'a solely-advisory-job failure must never trigger a recovery dispatch',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /ci-failure/,
+    'a solely-advisory-job failure must never be classified as a ci-failure blocker',
+  );
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND PR', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
@@ -3788,6 +3846,70 @@ test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND
   // to document that live mode would dispatch a follow-up reconcile to re-arm.
   assert.match(stdout, /dry-run would-dispatch-post-update-branch pr=#42/);
   assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+// Regression (PR #2952 recovery-loop incident): the CI Recovery Router's own
+// `route` job publishes a check run on the PR head SHA. When that infrastructure
+// job fails it must NOT become a `ci-failure route` PR blocker — nothing on the
+// branch can clear it, so recovery re-dispatches until the retry budget is gone.
+test('a failed CI Recovery Router check on the head SHA is not a PR blocker', async (t) => {
+  const routerRunId = 31878782271;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+          {
+            id: 3,
+            name: 'route',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${routerRunId}/job/94998297902`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: routerRunId,
+            name: 'CI Recovery Router',
+            path: '.github/workflows/ci-recovery-router.yml',
+            event: 'pull_request_target',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${routerRunId}`,
+          },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
+  assert.doesNotMatch(
+    stdout,
+    /would-assign copilot/,
+    'the router job failure must not dispatch a recovery agent',
+  );
+  assert.doesNotMatch(stdout, /route/, 'the router job must not appear as a blocker');
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
@@ -3876,7 +3998,12 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE
   );
   assert.deepEqual(
     postUpdateDispatch.body?.inputs,
-    { operation: 'reconcile', pr_number: String(PR_NUM), trigger: 'post-update-branch', lease_id: '' },
+    {
+      operation: 'reconcile',
+      pr_number: String(PR_NUM),
+      trigger: 'post-update-branch',
+      lease_id: '',
+    },
     'post-update-branch dispatch inputs must be correct',
   );
 });
@@ -4116,6 +4243,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -4798,7 +4926,8 @@ test('train mode skips substantive-review wait for assets/promote when diff is a
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.doesNotMatch(stdout, /admission=substantive-copilot-review/);
   const labelPosts = mutatingCalls.filter(
-    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
   );
   assert.equal(
     labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
@@ -5735,7 +5864,9 @@ test('reconcile escalates required-check action-required runs as ci-retrigger bl
   // REQUIRED_CHECK_WORKFLOW_PATHS and must not produce a required-check escalation.
   assert.doesNotMatch(
     stdout,
-    new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-action_required`),
+    new RegExp(
+      `escalate action_required run=${lintRunId} .* reason=required-check-action_required`,
+    ),
   );
   // Must NOT attempt approval or produce an un-actionable wait-only exit
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
@@ -6141,6 +6272,10 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes('use the session `update_pull_request` tool'),
+    'task comment should direct PR-body edits through the supported update_pull_request tool path',
+  );
 });
 
 test('ci-only task body omits review-thread protocol and requires push-based progress', async (t) => {
@@ -6404,6 +6539,7 @@ test('task body includes human-approval note when pendingHumanApproval is true',
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -6527,6 +6663,7 @@ test('balance-sweep branch prefix alone (no label) triggers human-approval gate'
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -12600,10 +12737,7 @@ test('lease-reaper stale retry refreshes progressAt and carries the attempt coun
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
   const parsedProgressAt = Date.parse(finalState?.progressAt ?? '');
-  assert.ok(
-    Number.isFinite(parsedProgressAt),
-    'progressAt must be a valid ISO timestamp',
-  );
+  assert.ok(Number.isFinite(parsedProgressAt), 'progressAt must be a valid ISO timestamp');
   assert.ok(
     Math.abs(parsedProgressAt - Date.now()) < 10_000,
     'lease-reaper retry must set progressAt within 10s of now (fresh liveness window)',

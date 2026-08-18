@@ -138,7 +138,7 @@ For each variant:
 ## Related
 
 - End-to-end pipeline agent: [`asset-forge`](../../agents/asset-forge.agent.md)
-- Batch approved art into one PR + wire: [`asset-pr`](../asset-pr/SKILL.md)
+- Legacy drain (existing `asset-checkin` issues only): [`asset-pr`](../asset-pr/SKILL.md)
 - Find what art can now replace a placeholder: [`placeholder-audit`](../placeholder-audit/SKILL.md)
 - Review harness + ledger for any wiring code change: [`review-harness`](../review-harness/SKILL.md)
 - Style ground-truth (fed to prompts AND the judge): `docs/agent-os/sprite-style.md`

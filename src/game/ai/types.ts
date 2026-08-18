@@ -197,11 +197,26 @@ export interface AIConfig {
   debug?: boolean;
 }
 
+/** Deterministic behavioral cohorts used by the fun evaluator. */
+export type PlayerPersona = 'new_player' | 'experienced_player' | 'min_max_cheeser' | 'explorer';
+
 /**
  * AI input provider interface.
  * Reads GameWorld state and outputs simulated InputState.
  */
 export interface AIInputProvider {
+  /**
+   * Configure the raw simulated-time deadline derived from the runner's frame
+   * budget. Providers without time-aware planning may omit this capability.
+   */
+  configurePlanningDeadlineMs?(deadlineMs: number | null): void;
+
+  /**
+   * Resolve the provider's effective Floor 1 planning deadline. Used by the
+   * headless auto-progression driver to share the provider's exact budget.
+   */
+  resolveFloor1PlanningDeadlineMs?(objectiveDeadlineMs: number): number;
+
   /**
    * Generate input for the current frame based on world state.
    * @param state - InputState to populate
@@ -346,6 +361,33 @@ export interface SpawnerArenaMetrics {
   bankedXpTotal: number;
 }
 
+/** Lifecycle evidence for one named production Floor 1 boss encounter. */
+export interface Floor1BossEncounterMetrics {
+  /** Boss entity captured when the encounter first started. */
+  bossEid: number | null;
+  /** Whether the production encounter started. */
+  encounterStarted: boolean;
+  /** Simulation frame when the encounter first started. */
+  encounterStartedFrame: number | null;
+  /** Simulated time when the encounter first started. */
+  encounterStartedMs: number | null;
+  /** Player level when the encounter first started. */
+  playerLevelAtStart: number | null;
+  /** Player health fraction when the encounter first started. */
+  playerHealthFractionAtStart: number | null;
+  /** Whether the production encounter was defeated. */
+  encounterDefeated: boolean;
+  /** Simulation frame when the encounter was first defeated. */
+  encounterDefeatedFrame: number | null;
+  /** Simulated time when the encounter was first defeated. */
+  encounterDefeatedMs: number | null;
+}
+
+/** Named Floor 1 boss lifecycle evidence captured by the headless runner. */
+export interface Floor1BossProgressionMetrics {
+  encounters: Record<string, Floor1BossEncounterMetrics>;
+}
+
 /** Per-family evidence for production Floor 2 progression. */
 export interface Floor2FamilyProgressMetrics {
   /** Player-attributed non-boss kills recorded by the production objective tick. */
@@ -375,7 +417,18 @@ export interface Floor2FamilyProgressMetrics {
   encounterDefeatedMs: number | null;
 }
 
-/** Hunt-only activity evidence for production Floor 2 progression. */
+/**
+ * Hunt-only activity evidence for production Floor 2 progression.
+ *
+ * Every field here is scoped to ACTIVE HUNT FRAMES — frames where the AI is
+ * committed to a specific still-locked family den. A run that never commits to
+ * a hunt reports zeroes across this block even when it killed family trash all
+ * run, so these counters are NOT floor-wide totals and must not be read as
+ * such. For floor-wide totals use `RunStats.familyTrashKills` (per family) and
+ * `RunStats.combat.killsByType` (`floor2-family-trash-player`,
+ * `floor2-neutral-trash`). `huntTimeMs === 0` means this block has no coverage
+ * for the run rather than "no kills happened".
+ */
 export interface Floor2HuntMetrics {
   /** Simulated time spent pursuing a still-locked family den. */
   huntTimeMs: number;
@@ -387,10 +440,16 @@ export interface Floor2HuntMetrics {
   activeCombatTimeMs: number;
   /** Active-combat share of hunt time, from 0 to 1. */
   activeCombatRatio: number;
-  /** Player-attributed family trash deaths during active hunt frames. */
-  familyTrashKills: number;
-  /** Neutral trash deaths during active hunt frames. */
-  neutralTrashKills: number;
+  /**
+   * Player-attributed family trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntFamilyTrashKills: number;
+  /**
+   * Neutral trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntNeutralTrashKills: number;
   /** Mean live enemies inside the production director's engagement radius. */
   averageNearbyEnemies: number;
   /** Peak live enemies inside the production director's engagement radius. */
@@ -420,6 +479,62 @@ export interface EquipmentPlayabilityMetrics {
 }
 
 /**
+ * Deterministic gold economy evidence for a run: where gold came from, where
+ * it went, and how much was still unspent when the floor ended.
+ *
+ * `unspentSpendableFraction` is the Floor 1 pricing gate's metric — the share
+ * of *reachable* (pre-exit) income the player never converted into power. It
+ * excludes floor-clear achievement loot boxes, which resolve after the exit is
+ * confirmed and so are Floor 2 seed money by construction, not a Floor 1
+ * pricing failure. `unspentFraction` (of everything earned) is still reported
+ * for carryover visibility but is not itself gated.
+ */
+export interface GoldEconomyMetrics {
+  /** Gold picked up off the floor (drops, chests, piles). */
+  earnedFromDrops: number;
+  /** Gold granted by claimed achievement loot boxes. */
+  earnedFromLootBoxes: number;
+  /** `earnedFromDrops + earnedFromLootBoxes`. */
+  earnedTotal: number;
+  /** Gold spent on the Floor 1 merchant's charm. */
+  spentOnCharm: number;
+  /** Gold spent on post-quest merchant weapons. */
+  spentOnMerchantWeapon: number;
+  /** Gold spent at the Floor 1 Spell Broker. */
+  spentOnSpell: number;
+  /** Total gold spent across every vendor. */
+  spentTotal: number;
+  /** `earnedTotal - spentTotal`, clamped at 0. */
+  unspentAtExit: number;
+  /**
+   * `unspentAtExit / earnedTotal`, or 0 when nothing was earned. Observational
+   * carryover telemetry only — see `unspentSpendableFraction` for the metric
+   * the Floor 1 pricing gate actually asserts on.
+   */
+  unspentFraction: number;
+  /**
+   * Gold earned by the time the floor exit was confirmed — the income the run
+   * could actually still spend at a Floor 1 vendor. Floor-clear achievement
+   * loot boxes resolve after this point, so `earnedTotal - spendableEarned` is
+   * income that is Floor 2 seed money by construction.
+   */
+  spendableEarned: number;
+  /** `max(0, spendableEarned - spentTotal)`. */
+  unspentSpendable: number;
+  /**
+   * `unspentSpendable / spendableEarned`, or 0 when nothing was spendable.
+   * This is the actionable spend-through metric for Floor 1 pricing.
+   */
+  unspentSpendableFraction: number;
+  /** Purchase counts by vendor. */
+  charmPurchases: number;
+  merchantWeaponPurchases: number;
+  spellPurchases: number;
+  /** Distinct vendors bought from this run (0-2): merchant, spell broker. */
+  distinctPurchases: number;
+}
+
+/**
  * Skill and ability progression observed during a run.
  * Populated from `world.milestoneGrantLog` at run end.
  */
@@ -438,6 +553,139 @@ export interface SkillRunMetrics {
   uniqueAbilityCount: number;
   /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
   milestonesReached: Record<string, number[]>;
+}
+
+/**
+ * XP/gold collection efficiency for a run: how much loot value the player
+ * picked up versus how much value dropped into the world.
+ *
+ * Caveat: the counters are cumulative for the whole run (they are never reset on
+ * a floor transition) and `combinedRatio` sums XP points and gold units, which
+ * are different units. It is therefore a **comparison metric across runs of the
+ * same seed matrix**, not an economic quantity: compare `combinedRatio` only
+ * between arms measured on the same seed/persona matrix, and read `xpRatio` and
+ * `goldRatio` when the XP/gold mix itself may have moved.
+ */
+export interface LootEfficiencyMetrics {
+  /** Total XP gem value spawned into the world during the run. */
+  xpSpawned: number;
+  /** Total XP gem value the player collected. */
+  xpCollected: number;
+  /** Total gold value spawned into the world during the run. */
+  goldSpawned: number;
+  /** Total gold value the player collected. */
+  goldCollected: number;
+  /** `xpCollected / xpSpawned`, or 1 when nothing spawned. */
+  xpRatio: number;
+  /** `goldCollected / goldSpawned`, or 1 when nothing spawned. */
+  goldRatio: number;
+  /** Combined `(xp + gold) collected / spawned`, or 1 when nothing spawned. */
+  combinedRatio: number;
+}
+
+export type RewardEventKind = 'level_up' | 'quest_complete' | 'boss_kill' | 'rare_loot';
+
+/** Timestamped reward milestone observed during a run. */
+export interface RewardEvent {
+  readonly kind: RewardEventKind;
+  readonly sourceId: string;
+  readonly gameTimeMs: number;
+  readonly activeTimeMs: number;
+}
+
+/** Ordered reward milestones and the safe-room-adjusted duration they cover. */
+export interface RewardEventSummary {
+  readonly activeDurationMs: number;
+  readonly events: readonly RewardEvent[];
+}
+
+export type ItemInteractionKind = 'starter_weapon' | 'spell' | 'generated_equipment';
+
+/** Per-run opportunity, choice, and contribution evidence for one stable catalog item. */
+export interface ItemInteractionEntry {
+  /** Cross-run stable identity. Generated entries exclude rolled values and run IDs. */
+  readonly catalogKey: string;
+  readonly kind: ItemInteractionKind;
+  readonly offeredCount: number;
+  readonly selectableExposureCount: number;
+  readonly selectionCount: number;
+  readonly activationCount: number;
+  readonly activeTimeMs: number;
+}
+
+/** Per-run item opportunities, choices, active time, and unique activations. */
+export interface ItemInteractionSummary {
+  readonly items: readonly ItemInteractionEntry[];
+  readonly uniqueActivationCount: number;
+  readonly dominantActivationCount: number;
+}
+
+/** Raw per-run performance rates suitable for population-level analysis. */
+export interface RunPerformanceMetrics {
+  readonly activeClearTimeMs: number;
+  readonly damagePerActiveMinute: number;
+  readonly killsPerActiveMinute: number;
+  readonly dominantItemUsageShare: number;
+}
+
+/** Future hook for a permanent-upgrade system; absent until that system exists. */
+export interface MetaProgressionMetrics {
+  readonly permanentPowerBefore: number;
+  readonly permanentPowerAfter: number;
+}
+
+/**
+ * Per-run merchant evidence: every vendor visit with the inventory on offer,
+ * and every shopping decision — including intents that wanted an item but could
+ * not pay for it. Structurally mirrors the core `VendorLedger` records so the
+ * simulation layer can copy them straight through.
+ */
+export interface VendorInteractionSummary {
+  /** Retained visits, oldest first (capped; see `visitCount`). */
+  readonly visits: readonly VendorVisitEntry[];
+  /** Retained decisions, oldest first (capped; see `decisionCount`). */
+  readonly decisions: readonly VendorDecisionEntry[];
+  /** Total visits observed, including any dropped past the retention cap. */
+  readonly visitCount: number;
+  /** Total decisions observed, including any dropped past the retention cap. */
+  readonly decisionCount: number;
+  /** Visits per vendor id, including dropped-record vendors' retained share. */
+  readonly visitsByVendor: Record<string, number>;
+  /** Decision outcomes by kind across the retained decisions. */
+  readonly outcomeCounts: Record<VendorDecisionOutcome, number>;
+}
+
+/** One item a vendor was offering when it was visited. */
+export interface VendorStockEntry {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+/** A single vendor visit with the stock and budget it was made against. */
+export interface VendorVisitEntry {
+  readonly vendorId: string;
+  readonly gameTimeMs: number;
+  readonly playerGold: number;
+  readonly stock: readonly VendorStockEntry[];
+}
+
+/** Outcome of one shopping decision at a vendor. */
+export type VendorDecisionOutcome =
+  | 'wanted'
+  | 'purchased'
+  | 'unaffordable'
+  | 'declined'
+  | 'abandoned';
+
+/** A single shopping decision, and the gold it was decided against. */
+export interface VendorDecisionEntry {
+  readonly vendorId: string;
+  readonly itemId: string | null;
+  readonly cost: number;
+  readonly outcome: VendorDecisionOutcome;
+  readonly playerGold: number;
+  readonly gameTimeMs: number;
+  readonly reason: string;
 }
 
 /**
@@ -462,7 +710,7 @@ export interface RunStats {
   /** Final score */
   finalScore: number;
   /** Run outcome */
-  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error';
+  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error' | 'quit';
   /** Error message if outcome is 'error' */
   error?: string;
   /**
@@ -494,10 +742,14 @@ export interface RunStats {
   totalGold: number;
   /** Durable player-attributed Floor 2 trash kills by family id. */
   familyTrashKills?: Record<string, number>;
+  /** Named production Floor 1 boss encounter lifecycle evidence. */
+  floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
+  /** Optional evaluator cohort that produced this run. */
+  playerPersona?: PlayerPersona;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
   /**
@@ -524,6 +776,33 @@ export interface RunStats {
    * test fixtures construct RunStats manually.
    */
   xpOnGroundAtEnd?: number;
+  /**
+   * Deterministic loot-collection accounting for the run: total XP/gold value
+   * spawned into the world versus the value the player actually picked up.
+   * Optional because pre-existing test fixtures construct RunStats manually;
+   * `runHeadless` always sets it.
+   */
+  lootEfficiency?: LootEfficiencyMetrics;
+  /**
+   * Deterministic gold economy accounting for the run (earned by source, spent
+   * by vendor, unspent share). Optional because pre-existing test fixtures
+   * construct RunStats manually; `runHeadless` always sets it.
+   */
+  goldEconomy?: GoldEconomyMetrics;
+  /**
+   * Vendor inventory, visits, and shopping decisions observed this run
+   * (including wanted-but-unaffordable intents). Optional because pre-existing
+   * test fixtures construct RunStats manually; `runHeadless` always sets it.
+   */
+  vendors?: VendorInteractionSummary;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
+  /** Timestamped reward milestones captured by the deterministic headless runner. */
+  rewardEvents?: RewardEventSummary;
+  /** Offer, selection, activation, and active-time evidence by stable item identity. */
+  itemInteractions?: ItemInteractionSummary;
+  /** Raw run-level rates for population-based performance analysis. */
+  runPerformance?: RunPerformanceMetrics;
+  /** Future permanent-power hook; omitted while meta-progression remains deferred. */
+  metaProgression?: MetaProgressionMetrics;
 }

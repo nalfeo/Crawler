@@ -26,6 +26,8 @@ import { Path } from 'rot-js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  __forceGridAStarGenerationForTests,
+  __getGridAStarLastEntryCountForTests,
   __getGridAStarScratchDepthForTests,
   __getGridAStarScratchPoolSizeForTests,
   __resetGridAStarScratchForTests,
@@ -462,5 +464,128 @@ describe('findTilePath — behaviour preserved end to end', () => {
     );
     expect(path[0]).toEqual({ x: 2, y: 4 });
     expect(path[path.length - 1]).toEqual({ x: 9, y: 4 });
+  });
+});
+
+/**
+ * Liveness pin for the dominated-duplicate open-list filter.
+ *
+ * The filter is **output-identical by construction** (see the "Dominated-
+ * duplicate filter" section of `astar-grid.ts`), which is exactly why it needs
+ * its own test: every assertion in the differential suite above stays green if
+ * the filter is deleted, weakened, or accidentally disabled — the game would
+ * merely get slower. A mutation run over the filter confirms this asymmetry:
+ * every mutant that prunes MORE is killed by the differential suite, and every
+ * mutant that prunes LESS survives it. The open-list size is the only
+ * observable that separates the two.
+ *
+ * The counts below were measured on this exact fixture with the filter both
+ * enabled and defeated, so they are a real A/B, not a vanity snapshot.
+ */
+describe('computeGridPath dominated-duplicate filter', () => {
+  beforeEach(() => {
+    __resetGridAStarScratchForTests();
+  });
+
+  /** Open grid with the start walled off, so the goal-seeded search floods
+   * every tile and exhausts the open list — the duplicate-heaviest shape. */
+  function exhaustiveSearch(size: number): { pathLength: number; entries: number } {
+    const mid = (size - 1) >> 1;
+    const isPassable: GridPassableFn = (x, y) =>
+      x >= 0 && x < size && y >= 0 && y < size && Math.abs(x - mid) + Math.abs(y - mid) !== 1;
+    let pathLength = 0;
+    computeGridPath(size, size, mid, mid, 0, 0, isPassable, () => {
+      pathLength += 1;
+    });
+    return { pathLength, entries: __getGridAStarLastEntryCountForTests() };
+  }
+
+  it.each([
+    // size, entries WITH the filter, entries with the filter defeated
+    [31, 1163, 1845],
+    [41, 2053, 3265],
+  ])(
+    'pushes far fewer open-list entries on a %ix%i exhaustive search',
+    (size, filtered, unfiltered) => {
+      const result = exhaustiveSearch(size);
+      // The start is sealed off, so the search must find nothing either way.
+      expect(result.pathLength).toBe(0);
+      expect(result.entries).toBe(filtered);
+      // Guard the direction as well as the value: a regression that disabled the
+      // filter would land back on `unfiltered`.
+      expect(result.entries).toBeLessThan(unfiltered * 0.8);
+    },
+  );
+
+  it('matches rot-js exactly on the same exhaustive fixture', () => {
+    const size = 31;
+    const mid = (size - 1) >> 1;
+    const probes: string[] = [];
+    const isPassable: GridPassableFn = (x, y) => {
+      probes.push(`${x},${y}`);
+      return (
+        x >= 0 && x < size && y >= 0 && y < size && Math.abs(x - mid) + Math.abs(y - mid) !== 1
+      );
+    };
+    const actual: Step[] = [];
+    computeGridPath(size, size, mid, mid, 0, 0, isPassable, (x, y) => {
+      actual.push({ x, y });
+    });
+    const actualProbes = probes.splice(0, probes.length);
+
+    const expected = referencePath(mid, mid, 0, 0, (x, y) => {
+      probes.push(`${x},${y}`);
+      return (
+        x >= 0 && x < size && y >= 0 && y < size && Math.abs(x - mid) + Math.abs(y - mid) !== 1
+      );
+    });
+
+    expect(actual).toEqual(expected);
+    expect(actualProbes).toEqual(probes);
+  });
+});
+
+/**
+ * The generation-stamp wrap. Both `stamp` (closed set) and `openStamp`
+ * (dominated-duplicate filter) are keyed on the same monotonic counter, so a
+ * wrap that cleared only one of them would let the PREVIOUS search's stamps
+ * alias generation 1 and silently corrupt the next search — a stale `bestF`
+ * would prune a push that is not dominated, which is a gameplay change.
+ *
+ * The wrap is otherwise unreachable (2^31 searches), which is why
+ * `__forceGridAStarGenerationForTests` exists. Deleting the `openStamp.fill(0)`
+ * line in `beginSearch` makes this test fail.
+ */
+describe('computeGridPath generation wrap', () => {
+  it('produces rot-js-identical results on the search immediately after a wrap', () => {
+    __resetGridAStarScratchForTests();
+    const size = 21;
+    const isPassable: GridPassableFn = (x, y) =>
+      x >= 0 && x < size && y >= 0 && y < size && !(x === 10 && y !== 0);
+
+    const collect = (sx: number, sy: number, gx: number, gy: number): Step[] => {
+      const out: Step[] = [];
+      computeGridPath(size, size, sx, sy, gx, gy, isPassable, (x, y) => {
+        out.push({ x, y });
+      });
+      return out;
+    };
+
+    // Search 1 populates `stamp` and `openStamp` at generation 1.
+    const warm = collect(1, 1, 19, 19);
+    expect(warm).toEqual(referencePath(1, 1, 19, 19, isPassable));
+
+    // Force the counter to the wrap boundary; the next `beginSearch` must zero
+    // BOTH generation-keyed arrays and restart at generation 1.
+    __forceGridAStarGenerationForTests(0x7fffffff);
+
+    const afterWrap = collect(1, 1, 19, 19);
+    expect(afterWrap).toEqual(referencePath(1, 1, 19, 19, isPassable));
+
+    // A different endpoint pair after the wrap, so stale stamps from search 1
+    // would have to be actively wrong rather than coincidentally compatible.
+    __forceGridAStarGenerationForTests(0x7fffffff);
+    const other = collect(19, 1, 1, 19);
+    expect(other).toEqual(referencePath(19, 1, 1, 19, isPassable));
   });
 });

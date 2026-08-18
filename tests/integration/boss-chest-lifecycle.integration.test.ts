@@ -250,8 +250,8 @@ describe('Boss chest lifecycle — atomic claim failure (retryable, no reward lo
   });
 });
 
-describe('Boss chest lifecycle — Floor 1 exclusion', () => {
-  it('never creates a boss chest on Floor 1, even with a real boss-death event and flags enabled', () => {
+describe('Boss chest lifecycle — Floor 1 inclusion', () => {
+  it('creates a boss chest on Floor 1 when the equipment economy is enabled', () => {
     const world = createTestWorld({
       seed: 17,
       floor: 1,
@@ -261,10 +261,10 @@ describe('Boss chest lifecycle — Floor 1 exclusion', () => {
     spawnPlayer(world, 0, 0);
 
     const result = spawnBossChestForDefeatedBoss(world, 'mirekin');
-    expect(result).toEqual({ created: false, reason: 'notFloor2' });
-    expect(world.bossChests.size).toBe(0);
-    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
-    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+    expect(result).toMatchObject({ created: true });
+    expect(world.bossChests.has(createBossChestId('mirekin'))).toBe(true);
+    expect(world.generatedEquipmentRewardBundles.size).toBe(1);
+    expect(listGeneratedEquipmentInstances(world).length).toBe(1);
   });
 });
 

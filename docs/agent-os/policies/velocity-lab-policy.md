@@ -182,7 +182,8 @@ authority safe:
 
 ## 10. Observational data is not causal
 
-`npm run velocity:scan` mines merged-PR history, apple estimates, and guard telemetry. It
+`npm run velocity:scan` mines merged-PR history, closed-unmerged (abandoned) PR history,
+apple estimates, and guard telemetry. It
 is excellent at generating hypotheses and incapable of confirming them. A finding from the
 scan is a candidate for an experiment, never a justification on its own.
 

@@ -2,13 +2,13 @@
  * Mobile tap-target e2e (Item 18b).
  *
  * Verifies the two touch controls flagged in the 2026-06-24 mobile hit-targets
- * handoff are both adequately sized AND functional at portrait and landscape
+ * handoff are both adequately sized AND functional at the supported landscape
  * viewports, with NO human QA:
  *
  *   • Full-screen minimap overlay close button.
  *   • Level-up +/- stat steppers.
  *
- * For each control, at each orientation, we assert:
+ * For each control, at each viewport, we assert:
  *   1. Size — the authored design-space hit-rect meets a minimum dimension.
  *     The lab runs in Phaser.Scale.FIT (mirroring the shipped game), so the
  *     scene keeps its 1280×720 design space and these rects are stable. The
@@ -16,7 +16,7 @@
  *     fix under test); the +/- buttons use a fixed authored size.
  *   2. Function — tapping the on-screen centre (design→CSS pixel) actually
  *     triggers the control (overlay closes / draft allocation changes),
- *     proving placement and wiring survive both orientations.
+ *     proving placement and wiring survive both landscape sizes.
  *
  * See tests/e2e/helpers/ui-probe.ts for the coordinate model.
  */
@@ -38,9 +38,15 @@ interface Viewport {
   readonly height: number;
 }
 
+/**
+ * Crawler is landscape-only (portrait shows a rotate interstitial — see
+ * `index.html`), so both cases are landscape: the reference phone target
+ * (iPhone 13 Pro, 2532×1170 physical = 844×390 CSS px at DPR 3) and a smaller
+ * landscape phone that drives `uiScale` to its cap.
+ */
 const VIEWPORTS: readonly Viewport[] = [
-  { name: 'portrait', width: 390, height: 844 },
-  { name: 'landscape', width: 844, height: 390 },
+  { name: 'landscape-iphone-13-pro', width: 844, height: 390 },
+  { name: 'landscape-compact', width: 667, height: 375 },
 ];
 
 // Minimum authored (design-space) tap-target dimensions. The close button is

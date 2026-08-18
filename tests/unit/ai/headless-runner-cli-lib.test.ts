@@ -12,6 +12,9 @@ import {
   helpText,
   parseArgs,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
+import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from '../../../src/game/ai/floor-run-budget.js';
+import { getPersonaConfig, personaConfigDivergence } from '../../../src/game/ai/personas.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 // parseArgs skips argv[0] (node) and argv[1] (script), matching process.argv.
@@ -24,6 +27,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     const args = cli();
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
+    expect(args.maxFrames).toBe(FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES);
     expect(args).toEqual(defaultCLIArgs({}));
   });
 
@@ -61,6 +65,51 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(cli('--no-weapon-personas').weaponPersonas).toBe(false);
   });
 
+  it('defaults to the experienced evaluator persona and parses named personas', () => {
+    expect(cli().persona).toBe('experienced_player');
+    expect(cli('--persona', 'new_player').persona).toBe('new_player');
+    expect(cli('--persona', 'min_max_cheeser').persona).toBe('min_max_cheeser');
+  });
+
+  it('keeps the experienced evaluator persona aligned with the production default AI config', () => {
+    const experienced = getPersonaConfig('experienced_player');
+    expect(experienced).toMatchObject({
+      aggression: DEFAULT_CONFIG.aggression,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      retreatDangerRadius: DEFAULT_CONFIG.retreatDangerRadius,
+      scanRadius: DEFAULT_CONFIG.scanRadius,
+      rangedSafeDistance: DEFAULT_CONFIG.rangedSafeDistance,
+      opportunisticGrabRadius: DEFAULT_CONFIG.opportunisticGrabRadius,
+      dodgeWeight: DEFAULT_CONFIG.dodgeWeight,
+      collectPullWeight: DEFAULT_CONFIG.collectPullWeight,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
+    });
+  });
+
+  it('rejects unknown evaluator personas', () => {
+    expect(() => cli('--persona', 'speedrunner')).toThrow(/Invalid --persona/);
+  });
+
+  it('rejects a --persona flag with no value instead of silently defaulting', () => {
+    expect(() => cli('--persona')).toThrow(/--persona requires a value/);
+    expect(() => cli('--persona', '  ')).toThrow(/--persona requires a value/);
+  });
+
+  it('consumes the persona value so it is not reparsed as a flag', () => {
+    const args = cli('--persona', 'explorer', '--seed', '77');
+    expect(args.persona).toBe('explorer');
+    expect(args.seed).toBe(77);
+  });
+
+  it('treats --aggression as an unset override unless explicitly supplied', () => {
+    expect(cli().aggression).toBeNull();
+    // An explicit `--aggression 1` must still be applied (it used to be
+    // indistinguishable from the old default of 1 and silently dropped).
+    expect(cli('--aggression', '1').aggression).toBe(1);
+    expect(cli('--aggression', '1.8').aggression).toBe(1.8);
+    expect(() => cli('--aggression', 'hot')).toThrow(/Invalid --aggression/);
+  });
+
   it('throws on an invalid --decision-mode', () => {
     expect(() => cli('--decision-mode', 'bogus')).toThrow(/Invalid --decision-mode/);
   });
@@ -69,13 +118,31 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
   });
 
-  it('keeps merchant weapon purchase off by default and enables it by flag or environment', () => {
-    expect(cli().merchantWeaponPurchase).toBe(false);
-    expect(cli('--merchant-weapon-purchase').merchantWeaponPurchase).toBe(true);
+  it('defaults optionalPurchases on and supports explicit CLI and environment controls', () => {
+    expect(cli().optionalPurchases).toBe(true);
+    expect(cli('--optional-purchases').optionalPurchases).toBe(true);
+    expect(cli('--no-optional-purchases').optionalPurchases).toBe(false);
+    // New canonical env var
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: '1' })
+        .optionalPurchases,
+    ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: 'true' })
+        .optionalPurchases,
+    ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: 'false' })
+        .optionalPurchases,
+    ).toBe(false);
+    // Legacy --merchant-weapon-purchase flag is still honoured (backward compat)
+    expect(cli('--merchant-weapon-purchase').optionalPurchases).toBe(true);
+    // Legacy env var is still honoured
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_MERCHANT_WEAPON_PURCHASE: 'true' })
-        .merchantWeaponPurchase,
+        .optionalPurchases,
     ).toBe(true);
+    expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
   it('keeps settlement return routing off by default and enables it by flag or environment', () => {
@@ -141,5 +208,25 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
     expect(() => cli('--enemy-telegraph-ms', '   ')).toThrow(
       /--enemy-telegraph-ms requires a value/,
     );
+  });
+});
+
+describe('personaConfigDivergence', () => {
+  it('reports no divergence when overrides match the persona preset', () => {
+    const preset = getPersonaConfig('min_max_cheeser');
+    expect(
+      personaConfigDivergence('min_max_cheeser', {
+        aggression: preset.aggression,
+        pathingMode: DEFAULT_CONFIG.pathingMode,
+        decisionMode: DEFAULT_CONFIG.decisionMode,
+      }),
+    ).toEqual([]);
+  });
+
+  it('reports every knob an override actually changes', () => {
+    expect(personaConfigDivergence('min_max_cheeser', { aggression: 1 })).toEqual(['aggression']);
+    // An explicit override equal to the preset value is NOT a divergence.
+    expect(personaConfigDivergence('experienced_player', { aggression: 1 })).toEqual([]);
+    expect(personaConfigDivergence('new_player', { aggression: 2 })).toEqual(['aggression']);
   });
 });

@@ -3,7 +3,7 @@
   "spriteName": "classified-dossier-var-1",
   "assetPath": "generated/classified-dossier-var-1.png",
   "approvedAt": "2026-07-02T17:09:45.354Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-43fp4Q/classified-dossier-v1/2026-07-02T06-18-39-8a4f737b",
+  "sourceRun": "generated/runs/classified-dossier/imported-2f82c2d6641b",
   "variantIndex": 1,
   "anchor": {
     "x": 31,
@@ -25,7 +25,7 @@
   "sensorScore": "6/8",
   "judgeScore": "4",
   "type": "character",
-  "contentHash": "f88d72535b4d9e8609b048200b982adcc21fc2bb2a567a24a993c980b9ef92de",
+  "contentHash": "2f82c2d6641b76e8f5d7f4d074e7ec148605000d8e3187b4986ff9bb31982a57",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

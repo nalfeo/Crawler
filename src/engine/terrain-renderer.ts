@@ -48,7 +48,11 @@ import { TERRAIN_FALLBACK_COLORS } from '../shared/terrain-colors.js';
 import { getTileVisual, resolveFrame } from './sprites/tile-visuals.js';
 import { getSheet } from './sprites/index.js';
 import { createLogger } from '../shared/logger.js';
-import { computeRawMask8, normalizeBlob47Mask } from '../shared/terrain-pack-mask.js';
+import {
+  computeRawMask8Grid,
+  FULLY_OPAQUE_BLOB47_MASK,
+  normalizeBlob47Mask,
+} from '../shared/terrain-pack-mask.js';
 import { getTerrainPack } from '../shared/terrain-pack-registry.js';
 import {
   buildGroundDecalStampConfig,
@@ -183,6 +187,52 @@ export type TerrainPackFamily = 'stone' | 'cave';
 function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
   return terrain === TerrainType.CAVE_WALL || terrain === TerrainType.CAVE_FLOOR ? 'cave' : 'stone';
 }
+
+/**
+ * Per-TerrainType classification bits, precomputed once at module load.
+ *
+ * The bake asks the same handful of questions about a tile's terrain several
+ * times per tile (is it pack wall? pack floor? pack corridor? decal ground?
+ * which family?), and each question used to be a `Set.has` or a comparison
+ * chain. At 33,600–40,000 tiles across two paint passes plus the decal and
+ * linework passes, that is on the order of a quarter of a million megamorphic
+ * `Set.has` calls per bake for information that depends only on the terrain
+ * VALUE. One flat lookup table indexed by TerrainType answers all of them with
+ * a single typed-array read.
+ *
+ * The `ReadonlySet`s above remain the declarative source of truth (they are
+ * exported and documented at length); this table is derived from them, so the
+ * two cannot drift.
+ */
+const TERRAIN_FLAG = {
+  PACK_WALL: 1,
+  PACK_FLOOR: 2,
+  PACK_CORRIDOR: 4,
+  /** Reads as solid for a neighbouring wall's blob47 mask. */
+  WALL_MASK_SOLID: 8,
+  /** Belongs to the `cave` pack family (else `stone`). */
+  CAVE_FAMILY: 16,
+} as const;
+
+/** Ground a decal may mark = any pack floor or pack corridor terrain. */
+const TERRAIN_FLAG_DECAL_GROUND = TERRAIN_FLAG.PACK_FLOOR | TERRAIN_FLAG.PACK_CORRIDOR;
+
+const TERRAIN_FLAGS: Uint8Array = (() => {
+  // Sized to the full byte domain: `floorMap.terrain` is a Uint8Array, so any
+  // value it can hold must index this table without a bounds check.
+  const flags = new Uint8Array(256);
+  for (let t = 0; t < flags.length; t++) {
+    const terrain = t as TerrainType;
+    let value = 0;
+    if (PACK_WALL_TERRAIN_TYPES.has(terrain)) value |= TERRAIN_FLAG.PACK_WALL;
+    if (PACK_FLOOR_TERRAIN_TYPES.has(terrain)) value |= TERRAIN_FLAG.PACK_FLOOR;
+    if (PACK_CORRIDOR_TERRAIN_TYPES.has(terrain)) value |= TERRAIN_FLAG.PACK_CORRIDOR;
+    if (PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(terrain)) value |= TERRAIN_FLAG.WALL_MASK_SOLID;
+    if (familyForTerrain(terrain) === 'cave') value |= TERRAIN_FLAG.CAVE_FAMILY;
+    flags[t] = value;
+  }
+  return flags;
+})();
 
 const SPECIAL_POOL_BY_TERRAIN: ReadonlyMap<TerrainType, 'safe' | 'bossStair'> = new Map([
   [TerrainType.SAFE_ROOM_FLOOR, 'safe'],
@@ -428,6 +478,42 @@ export function buildTerrainLayer(
   const packPoolScale = tileSize / TERRAIN_PACK_CELL_PX;
   const packPoolHalfTile = tileSize / 2;
 
+  /**
+   * Per-bake `textures.exists` memo. The bake asks about the same handful of
+   * pack texture keys once per eligible tile — tens of thousands of lookups
+   * into Phaser's texture map for an answer that cannot change, because the
+   * whole bake is synchronous and nothing loads a texture mid-bake.
+   *
+   * Scoped to one bake (not module-level) so a later bake still observes
+   * textures that finished loading after this one.
+   */
+  const textureExistsCache = new Map<string, boolean>();
+  const textureExists = (key: string): boolean => {
+    const cached = textureExistsCache.get(key);
+    if (cached !== undefined) return cached;
+    const exists = scene.textures.exists(key);
+    textureExistsCache.set(key, exists);
+    return exists;
+  };
+
+  /**
+   * Pool stamp configs are immutable value objects keyed by `(transform,
+   * scale)`, and `scale` is constant for the whole bake — so there are at most
+   * as many distinct configs as there are transforms. Phaser's `stamp()` reads
+   * the config's fields straight into its command buffer and never retains the
+   * object, so one shared instance per transform is safe and saves ~34k
+   * short-lived allocations per bake.
+   */
+  const poolStampConfigCache = new Map<TransformId, ReturnType<typeof buildPoolStampConfig>>();
+  const poolStampConfig = (transform: TransformId): ReturnType<typeof buildPoolStampConfig> => {
+    let cached = poolStampConfigCache.get(transform);
+    if (!cached) {
+      cached = buildPoolStampConfig(transform, packPoolScale);
+      poolStampConfigCache.set(transform, cached);
+    }
+    return cached;
+  };
+
   const stampPoolVariant = (
     pool: readonly PoolVariantDef[] | undefined,
     tx: number,
@@ -438,13 +524,13 @@ export function buildTerrainLayer(
   ): boolean => {
     if (!pool) return false;
     const combo = pickPoolCombo(pool, floorSeed, tx, ty);
-    if (!combo || !scene.textures.exists(combo.variant.textureKey)) return false;
+    if (!combo || !textureExists(combo.variant.textureKey)) return false;
     rt.stamp(
       combo.variant.textureKey,
       undefined,
       tx * tileSize + packPoolHalfTile,
       ty * tileSize + packPoolHalfTile,
-      buildPoolStampConfig(combo.transform, packPoolScale),
+      poolStampConfig(combo.transform),
     );
     if (sourceCounts) {
       sourceCounts[combo.variant.id] = (sourceCounts[combo.variant.id] ?? 0) + 1;
@@ -465,27 +551,94 @@ export function buildTerrainLayer(
   // marks a key whose texture is missing or has an unusable width, so that tile
   // deterministically falls through to the Kenney sheet path below.
   const generatedScaleCache = new Map<string, number | null>();
+  /**
+   * Extra tile ROWS a generated stamp covers below its own cell, per texture key.
+   *
+   * The scale above is derived from WIDTH alone, so a generated PNG that is
+   * taller than it is wide renders past the bottom of its tile. Square art (all
+   * of it today) overflows nothing. Rather than assume squareness, the overflow
+   * is measured and fed into `inkedCells`, so the cover pass keeps clearing
+   * cells that a tall tile actually bled into.
+   */
+  const generatedOverflowRowsCache = new Map<string, number>();
   const resolveGeneratedScale = (textureKey: string): number | null => {
     const cached = generatedScaleCache.get(textureKey);
     if (cached !== undefined) return cached;
     let scale: number | null = null;
-    if (scene.textures.exists(textureKey)) {
-      const source = scene.textures.get(textureKey).getSourceImage() as { width?: number };
+    let overflowRows = 0;
+    if (textureExists(textureKey)) {
+      const source = scene.textures.get(textureKey).getSourceImage() as {
+        width?: number;
+        height?: number;
+      };
       const srcWidth = typeof source?.width === 'number' ? source.width : 0;
-      if (srcWidth > 0) scale = tileSize / srcWidth;
+      const srcHeight = typeof source?.height === 'number' ? source.height : 0;
+      if (srcWidth > 0) {
+        scale = tileSize / srcWidth;
+        overflowRows = Math.max(0, Math.ceil((srcHeight * scale) / tileSize) - 1);
+      }
     }
     generatedScaleCache.set(textureKey, scale);
+    generatedOverflowRowsCache.set(textureKey, overflowRows);
     return scale;
   };
 
-  // Tiles the ground decals are allowed to mark. Hoisted above the paint passes
-  // because it also decides which pass paints a tile: decals are stamped BETWEEN
-  // the ground pass and the wall/void pass so a crack can run under a wall and be
-  // clipped by it, instead of being rejected for coming near one.
-  const isDecalGround = (tx: number, ty: number): boolean => {
-    if (tx < 0 || ty < 0 || tx >= width || ty >= height) return false;
-    const t = floorMap.terrain[ty * width + tx] as TerrainType;
-    return PACK_FLOOR_TERRAIN_TYPES.has(t) || PACK_CORRIDOR_TERRAIN_TYPES.has(t);
+  /**
+   * Cells a cross-tile stamp has actually put ink into, in TILE coordinates.
+   *
+   * Only the ground-decal pass can mark a cell it does not own *by design*: a
+   * decal spans up to `spanTiles` and is deliberately allowed to hang off its
+   * ground so the wall pass clips it (see the decal pass below). Pool variants,
+   * wall frames, linework tiles and linework props are all single-cell stamps —
+   * square frames scaled to exactly `tileSize`, and the props' only rotation is
+   * a quarter turn, which preserves a square's bounds — so none of them can
+   * bleed into a neighbour.
+   *
+   * The two legacy fallback paths (generated single PNGs and Kenney sheet
+   * frames) scale by WIDTH only, so non-square art would render past the bottom
+   * of its cell. That is not true of any shipped tile today, but it is a
+   * property of the ART rather than of this code, so the overflow is measured
+   * and marked here instead of assumed away.
+   *
+   * The cover pass consults this to decide whether a cell needs clearing at
+   * all. On a pack with no `groundDecals` (Floor 1) nothing is ever marked and
+   * the cover pass issues ZERO clears — which matters because a `CLEAR` is the
+   * one DynamicTexture command that cannot batch: `DynamicTextureHandler` clones
+   * the drawing context, sets a scissor box, issues a `glClear` and releases the
+   * clone for each one, breaking the in-flight quad batch every time.
+   */
+  const inkedCells = new Uint8Array(width * height);
+
+  /**
+   * Mark the `rows` cells directly below `(tx, ty)` as inked.
+   *
+   * Used by the two width-scaled fallback paths, whose stamps are the only
+   * non-decal ones that can exceed their own cell. Clamped to the map, so an
+   * overflow off the bottom edge marks nothing.
+   */
+  const markVerticalOverflow = (tx: number, ty: number, rows: number): void => {
+    for (let ty2 = ty + 1; ty2 <= Math.min(height - 1, ty + rows); ty2++) {
+      inkedCells[ty2 * width + tx] = 1;
+    }
+  };
+
+  /**
+   * Per-cell "reads as solid for a neighbouring wall's blob47 mask" grid,
+   * derived once from `TERRAIN_FLAGS`. Built lazily because a bake with no
+   * terrain pack never computes a wall mask at all.
+   *
+   * This exists so the mask lookup is a typed-array read instead of a
+   * per-tile closure — see `computeRawMask8Grid`.
+   */
+  let wallMaskSolid: Uint8Array | null = null;
+  const wallMaskSolidGrid = (): Uint8Array => {
+    if (wallMaskSolid) return wallMaskSolid;
+    const grid = new Uint8Array(width * height);
+    for (let i = 0; i < grid.length; i++) {
+      grid[i] = (TERRAIN_FLAGS[floorMap.terrain[i]!]! & TERRAIN_FLAG.WALL_MASK_SOLID) !== 0 ? 1 : 0;
+    }
+    wallMaskSolid = grid;
+    return grid;
   };
 
   /**
@@ -493,19 +646,49 @@ export function buildTerrainLayer(
    *
    * `ground` paints the surfaces decals may mark; `cover` paints everything else
    * (walls, void, special rooms) and runs AFTER the decal pass so it overpaints
-   * any decal overhang. `cover` clears each cell first because a wall silhouette
-   * is inset and does not fill its own cell — without the clear, decal pixels
-   * would survive inside the transparent inset and float over the background.
-   * Nothing else in the pack draws across a cell boundary, so clearing a cover
-   * cell can only ever remove decal overhang.
+   * any decal overhang. A cover cell may need clearing first because a wall
+   * silhouette is inset and does not fill its own cell — without the clear,
+   * decal pixels would survive inside the transparent inset and float over the
+   * background. Nothing else in the pack draws across a cell boundary, so
+   * clearing a cover cell can only ever remove decal overhang.
+   *
+   * The clear is therefore issued only when it can actually remove something.
+   * Two conditions independently make it a no-op, and both are checked:
+   *
+   *   1. **Nothing inked the cell.** `inkedCells` records every cell the decal
+   *      pass could have bled into. An unmarked cover cell holds exactly what
+   *      the empty RenderTexture started with — transparent — so clearing it
+   *      changes no pixel. A pack with no `groundDecals` (Floor 1) marks
+   *      nothing, so its cover pass clears nothing.
+   *   2. **The cell is about to be repainted opaquely, edge to edge.** Pool
+   *      variants, the fully-opaque blob47 wall frame and the solid-colour
+   *      fallback all cover the whole cell with alpha 1, and source-over with an
+   *      opaque source leaves no trace of the destination. Clear-then-paint and
+   *      paint alone are pixel-identical there.
+   *
+   * `clearCellIfPending` exists so the decision can be made *after* a branch has
+   * resolved which of those cases applies, while the CLEAR command is still
+   * queued ahead of that branch's stamps. Each branch either cancels the pending
+   * clear (opaque repaint) or flushes it immediately before its first stamp.
    */
   const paintTiles = (phase: 'ground' | 'cover'): void => {
+    const isCover = phase === 'cover';
     for (let ty = 0; ty < height; ty++) {
       for (let tx = 0; tx < width; tx++) {
-        if (isDecalGround(tx, ty) !== (phase === 'ground')) continue;
-        if (phase === 'cover') rt.clear(tx * tileSize, ty * tileSize, tileSize, tileSize);
         const idx = ty * width + tx;
         const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
+        const terrainFlags = TERRAIN_FLAGS[terrain]!;
+        const isGroundTile = (terrainFlags & TERRAIN_FLAG_DECAL_GROUND) !== 0;
+        if (isGroundTile === isCover) continue;
+
+        // Pending only for cover cells that were actually inked; see the two
+        // no-op conditions in this function's doc comment.
+        let clearPending = isCover && inkedCells[idx] === 1;
+        const clearCellIfPending = (): void => {
+          if (!clearPending) return;
+          clearPending = false;
+          rt.clear(tx * tileSize, ty * tileSize, tileSize, tileSize);
+        };
 
         // Terrain-pack precedence: WALL/FLOOR/CORRIDOR tiles eligible for this
         // pack's surfaces are stamped from the pack's atlas/pool textures FIRST,
@@ -514,20 +697,18 @@ export function buildTerrainLayer(
         // (`textures.exists` guard); if the texture is missing the tile falls
         // through to the generated/Kenney/color chain below so a cold boot or
         // a missing asset never leaves a blank tile.
-        if (anyPack && PACK_WALL_TERRAIN_TYPES.has(terrain)) {
-          const family = familyForTerrain(terrain);
+        if (anyPack && (terrainFlags & TERRAIN_FLAG.PACK_WALL) !== 0) {
+          const family: TerrainPackFamily =
+            (terrainFlags & TERRAIN_FLAG.CAVE_FAMILY) !== 0 ? 'cave' : 'stone';
           const wallPack = packsByFamily[family];
           const maskFrameLookup = maskFrameLookups.get(family);
           if (wallPack && maskFrameLookup) {
-            const rawMask = computeRawMask8(
+            const rawMask = computeRawMask8Grid(
+              wallMaskSolidGrid(),
               tx,
               ty,
               width,
               height,
-              (nx, ny) =>
-                PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(
-                  floorMap.terrain[ny * width + nx] as TerrainType,
-                ),
               // A map-edge neighbour has no real terrain to inspect — treat it
               // as solid so a border wall full-bleeds instead of insetting
               // into nothing (see PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES doc).
@@ -535,17 +716,32 @@ export function buildTerrainLayer(
             );
             const canonicalMask = normalizeBlob47Mask(rawMask);
             const frameIndex = maskFrameLookup.get(canonicalMask);
-            if (
-              frameIndex !== undefined &&
-              scene.textures.exists(wallPack.wallAutotile.textureKey)
-            ) {
+            if (frameIndex !== undefined && textureExists(wallPack.wallAutotile.textureKey)) {
               // Stamp the floor pool variant underneath the wall frame first, so that
               // transparent regions of the blob47 silhouette (open-edge quadrants are
               // inset by WALL_INSET_PX of alpha) expose ground rather than the empty
               // RenderTexture (which reads as black). The underdraw is NOT counted in
               // packFloorCount — it is not a floor tile from the player's perspective
               // and must not pollute floor-diversity metrics.
-              stampPoolVariant(wallPack.floorPool, tx, ty);
+              //
+              // A `FULLY_OPAQUE_BLOB47_MASK` frame has no such transparent region:
+              // every neighbour is solid, so all four quadrants are the quadrant
+              // kit's `full` state and the frame covers its cell edge to edge. The
+              // underdraw would be stamped and then completely painted over, so it
+              // is skipped — on Floor 1 that is ~81% of all wall tiles, because
+              // VOID counts as solid for the mask and the bulk rock outside the
+              // rooms is fully enclosed.
+              if (canonicalMask === FULLY_OPAQUE_BLOB47_MASK) {
+                // The wall frame itself is the opaque full-cell repaint.
+                clearPending = false;
+              } else if (stampPoolVariant(wallPack.floorPool, tx, ty)) {
+                // The underdraw is a full-cell opaque pool variant.
+                clearPending = false;
+              } else {
+                // No underdraw available: the inset really can leak, so any ink
+                // must be cleared before the frame goes down.
+                clearCellIfPending();
+              }
               const packWallScale = tileSize / wallPack.wallAutotile.cellPx;
               rt.stamp(wallPack.wallAutotile.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
                 originX: 0,
@@ -555,7 +751,7 @@ export function buildTerrainLayer(
               });
               packWallCount++;
               const accent = pickWallAccentSelection(wallPack.wallAccents ?? [], floorSeed, tx, ty);
-              if (accent && scene.textures.exists(accent.textureKey)) {
+              if (accent && textureExists(accent.textureKey)) {
                 rt.stamp(accent.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
                   originX: 0,
                   originY: 0,
@@ -575,13 +771,17 @@ export function buildTerrainLayer(
             (terrain === TerrainType.STONE_FLOOR && spawnRoomMask?.[idx] === 1
               ? ('welcome' as const)
               : undefined);
+          // A pool variant is a full-cell opaque tile, so a successful stamp is
+          // itself the repaint that makes the clear redundant.
           if (poolKey && stampPoolVariant(specialPack.specialFloorPools[poolKey], tx, ty)) {
             packSpecialFloorCount++;
+            clearPending = false;
             continue;
           }
         }
-        if (PACK_FLOOR_TERRAIN_TYPES.has(terrain)) {
-          const floorPack = packsByFamily[familyForTerrain(terrain)];
+        if ((terrainFlags & TERRAIN_FLAG.PACK_FLOOR) !== 0) {
+          const floorPack =
+            packsByFamily[(terrainFlags & TERRAIN_FLAG.CAVE_FAMILY) !== 0 ? 'cave' : 'stone'];
           if (
             floorPack &&
             stampPoolVariant(
@@ -594,10 +794,11 @@ export function buildTerrainLayer(
             )
           ) {
             packFloorCount++;
+            clearPending = false;
             continue;
           }
         }
-        if (PACK_CORRIDOR_TERRAIN_TYPES.has(terrain)) {
+        if ((terrainFlags & TERRAIN_FLAG.PACK_CORRIDOR) !== 0) {
           const corridorPack = packsByFamily.stone ?? packsByFamily.cave;
           if (
             corridorPack &&
@@ -611,6 +812,7 @@ export function buildTerrainLayer(
             )
           ) {
             packCorridorCount++;
+            clearPending = false;
             continue;
           }
         }
@@ -623,6 +825,11 @@ export function buildTerrainLayer(
           // Generated single-texture tile: stamp the whole PNG scaled to tileSize.
           // Passing `undefined` for the frame uses the texture's default `__BASE`
           // frame — a single generated PNG has no sub-frames to select.
+          //
+          // Conservative: generated art is authored per tile type and is not
+          // guaranteed edge-to-edge opaque, so any ink is cleared first rather
+          // than assumed to be painted over.
+          clearCellIfPending();
           rt.stamp(visual.textureKey, undefined, tx * tileSize, ty * tileSize, {
             originX: 0,
             originY: 0,
@@ -630,11 +837,16 @@ export function buildTerrainLayer(
             scaleY: generatedScale,
           });
           generatedCount++;
-        } else if (visual && scene.textures.exists(visual.sheetKey)) {
+          markVerticalOverflow(tx, ty, generatedOverflowRowsCache.get(visual.textureKey) ?? 0);
+        } else if (visual && textureExists(visual.sheetKey)) {
           const sheet = getSheet(visual.sheetKey);
           const frameSize = sheet?.frameWidth ?? tileSize;
           const scale = tileSize / frameSize;
+          const frameHeight = sheet?.frameHeight ?? frameSize;
           const frame = resolveFrame(visual, floorMap.terrain, width, height, tx, ty, terrain);
+          // Same conservatism as the generated branch: a Kenney frame may carry
+          // its own transparency.
+          clearCellIfPending();
           rt.stamp(visual.sheetKey, frame, tx * tileSize, ty * tileSize, {
             originX: 0,
             originY: 0,
@@ -642,9 +854,18 @@ export function buildTerrainLayer(
             scaleY: scale,
           });
           spriteCount++;
+          markVerticalOverflow(
+            tx,
+            ty,
+            Math.max(0, Math.ceil((frameHeight * scale) / tileSize) - 1),
+          );
         } else {
           // rt.fill() queues a fill command into Phaser 4's DynamicTexture buffer.
           // Commands are NOT visible until rt.render() is called below.
+          //
+          // The fill is a full-cell alpha-1 rectangle, so it is itself the opaque
+          // repaint that makes a preceding clear redundant.
+          clearPending = false;
           const color = TERRAIN_FALLBACK_COLORS[terrain] ?? 0x05060f;
           rt.fill(color, 1, tx * tileSize, ty * tileSize, tileSize, tileSize);
           colorCount++;
@@ -691,13 +912,17 @@ export function buildTerrainLayer(
     const marksCorridors = pack === corridorDecalPack;
     const isMarkable = (tx: number, ty: number): boolean => {
       if (tx < 0 || ty < 0 || tx >= width || ty >= height) return false;
-      const t = floorMap.terrain[ty * width + tx] as TerrainType;
-      if (PACK_CORRIDOR_TERRAIN_TYPES.has(t)) return marksCorridors;
-      return PACK_FLOOR_TERRAIN_TYPES.has(t) && families.has(familyForTerrain(t));
+      const t = floorMap.terrain[ty * width + tx]!;
+      const flags = TERRAIN_FLAGS[t]!;
+      if ((flags & TERRAIN_FLAG.PACK_CORRIDOR) !== 0) return marksCorridors;
+      return (
+        (flags & TERRAIN_FLAG.PACK_FLOOR) !== 0 &&
+        families.has((flags & TERRAIN_FLAG.CAVE_FAMILY) !== 0 ? 'cave' : 'stone')
+      );
     };
     const decalSets = pack.groundDecals ?? [];
     for (const [setIndex, decals] of decalSets.entries()) {
-      if (!scene.textures.exists(decals.textureKey)) continue;
+      if (!textureExists(decals.textureKey)) continue;
       const decalScale = (tileSize * decals.spanTiles) / decals.cellPx;
       const stride = decals.strideTiles;
       const footprintPx = tileSize * decals.spanTiles;
@@ -760,6 +985,15 @@ export function buildTerrainLayer(
             buildGroundDecalStampConfig(decalScale, pick.rotationDeg, pick.flipX),
           );
           packGroundDecalCount++;
+          // Record every cell this stamp could have put ink into, so the cover
+          // pass knows which cells actually need clearing. The rotated AABB is
+          // an over-estimate of the drawn extent, which is the safe direction:
+          // it can only ever cause a redundant clear, never a missing one.
+          for (let ty2 = Math.max(0, minTy); ty2 <= Math.min(height - 1, maxTy); ty2++) {
+            for (let tx2 = Math.max(0, minTx); tx2 <= Math.min(width - 1, maxTx); tx2++) {
+              inkedCells[ty2 * width + tx2] = 1;
+            }
+          }
         }
       }
     }
@@ -802,17 +1036,30 @@ export function buildTerrainLayer(
     scale: number;
   }[] = [];
   const lineworkScaleFor = (cellPx: number): number => tileSize / cellPx;
+  /** Immutable per-scale linework stamp configs; see `poolStampConfig`. */
+  const lineworkStampConfigCache = new Map<number, ReturnType<typeof buildLineworkStampConfig>>();
+  const lineworkStampConfig = (scale: number): ReturnType<typeof buildLineworkStampConfig> => {
+    let cached = lineworkStampConfigCache.get(scale);
+    if (!cached) {
+      cached = buildLineworkStampConfig(scale);
+      lineworkStampConfigCache.set(scale, cached);
+    }
+    return cached;
+  };
   const lineworkPropTaken = new Uint8Array(width * height);
   for (const { pack, families } of lineworkPasses) {
     const routable = new Uint8Array(width * height);
     const wall = new Uint8Array(width * height);
     for (let i = 0; i < width * height; i++) {
-      const t = floorMap.terrain[i] as TerrainType;
-      if (PACK_WALL_TERRAIN_TYPES.has(t)) {
+      const flags = TERRAIN_FLAGS[floorMap.terrain[i]!]!;
+      if ((flags & TERRAIN_FLAG.PACK_WALL) !== 0) {
         wall[i] = 1;
-      } else if (PACK_CORRIDOR_TERRAIN_TYPES.has(t)) {
+      } else if ((flags & TERRAIN_FLAG.PACK_CORRIDOR) !== 0) {
         routable[i] = 1;
-      } else if (PACK_FLOOR_TERRAIN_TYPES.has(t) && families.has(familyForTerrain(t))) {
+      } else if (
+        (flags & TERRAIN_FLAG.PACK_FLOOR) !== 0 &&
+        families.has((flags & TERRAIN_FLAG.CAVE_FAMILY) !== 0 ? 'cave' : 'stone')
+      ) {
         routable[i] = 1;
       }
     }
@@ -833,7 +1080,7 @@ export function buildTerrainLayer(
       (a, b) => (a.kind === 'track' ? 0 : 1) - (b.kind === 'track' ? 0 : 1),
     );
     for (const layer of orderedLayers) {
-      if (!scene.textures.exists(layer.textureKey)) continue;
+      if (!textureExists(layer.textureKey)) continue;
       const plan = planLinework({
         width,
         height,
@@ -861,7 +1108,7 @@ export function buildTerrainLayer(
       const propScale = layer.props ? lineworkScaleFor(layer.props.cellPx) : 1;
       // Hoisted: these are constant for the whole layer, and the loop below runs
       // once per map tile.
-      const stampConfig = buildLineworkStampConfig(scale);
+      const stampConfig = lineworkStampConfig(scale);
       const propStampConfigs = {
         y: buildLineworkPropStampConfig(propScale, 0),
         x: buildLineworkPropStampConfig(propScale, Math.PI / 2),
@@ -916,7 +1163,7 @@ export function buildTerrainLayer(
             cell === LINEWORK_GROUND &&
             runAxis !== null &&
             !lineworkPropTaken[index] &&
-            scene.textures.exists(props.textureKey) &&
+            textureExists(props.textureKey) &&
             shouldPlaceLineworkProp(floorSeed, layer.seedSalt, tx, ty, props.density)
           ) {
             // Prop art is authored along the vertical axis, so an east-west run
@@ -956,13 +1203,9 @@ export function buildTerrainLayer(
   paintTiles('cover');
 
   for (const entry of deferredWallEntries) {
-    rt.stamp(
-      entry.textureKey,
-      entry.frame,
-      entry.x,
-      entry.y,
-      buildLineworkStampConfig(entry.scale),
-    );
+    // Deferred entries share the small set of per-layer scales already resolved
+    // above, so the config is memoized rather than rebuilt per entry.
+    rt.stamp(entry.textureKey, entry.frame, entry.x, entry.y, lineworkStampConfig(entry.scale));
   }
 
   // Phaser 4: flush all buffered fill/stamp commands to the GPU framebuffer.

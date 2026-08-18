@@ -388,6 +388,28 @@ export const NAVIGATION_ANGLE_OFFSETS = [
 // and its progression behavior every frame (observed: ~90k flips/run).
 export const RETREAT_HYSTERESIS_MULT = 1.5;
 
+// Contact-retreat futility guard. Retreat keeps running against a long-
+// `attackRange` threat that has closed to CONTACT_SAFE_ORBIT_FT (see
+// buildRetreatBehavior) instead of deferring to Engage's kite. That is only the
+// better answer while the retreat can actually create separation: in a corner
+// where pickRetreatTarget finds no reachable escape tile it falls back to a raw
+// away-vector that points into geometry, navigation resolves no path, and the
+// AI stands still bleeding contact damage (the release seed-33 pistol death:
+// ~250 frames frozen on one tile, 110 HP -> 12 HP). So the contact carve-out is
+// released once it has provably failed to move the player.
+// Window (frames) the contact carve-out gets to produce displacement before it
+// is judged futile. One second at 60 fps — long enough for the kite to clear a
+// doorway, short enough to bound the damage taken while pinned.
+export const CONTACT_RETREAT_PROGRESS_FRAMES = 60;
+// Displacement (ft) that counts as "the retreat is working" inside that window.
+// Anchored to the contact-safe orbit: moving at least one contact radius is the
+// smallest move that meaningfully breaks body contact.
+export const CONTACT_RETREAT_PROGRESS_FT = CONTACT_SAFE_ORBIT_FT;
+// Polls further apart than this (frames) start a fresh futility window rather
+// than extending the previous one, so the latch releases naturally once Engage
+// has kited back out of contact instead of persisting for the whole floor.
+export const CONTACT_RETREAT_EPISODE_GAP_FRAMES = 120;
+
 // Retreat kiting: when fleeing, the AI samples an arc of candidate flee
 // directions around the "away from the swarm centroid" base angle, at two
 // distances, and picks the most open tile it can actually A*-reach. This
@@ -407,6 +429,24 @@ export const RETREAT_ARC_OFFSETS_RAD = [
   (2 * Math.PI) / 3,
   -(2 * Math.PI) / 3,
 ] as const;
+// Cornered breakout arc: the remaining rearward directions (±150° and 180°),
+// scanned ONLY when every candidate in the primary ±120° arc is wall or
+// unreachable. That happens when the player is wedged into a room corner with
+// the pack occupying the only open quadrant; without these directions Retreat
+// falls back to the naive away-vector, which points into the corner the player
+// is already pressed against, so collision zeroes its movement and it dies
+// standing still (release-sweep seed 25, #2993). Running past the pack is worse
+// spacing but strictly better than no movement at all.
+// A retreat that covers less than this many feet across a whole re-pick
+// interval is not kiting — it is pressed into geometry with its movement
+// cancelled by collision (normal travel covers roughly 6-7 ft in that window).
+// Only such a wedged retreat widens its escape scan to the breakout arc.
+export const RETREAT_WEDGE_PROGRESS_FT = 1;
+export const RETREAT_BREAKOUT_ARC_OFFSETS_RAD = [
+  (5 * Math.PI) / 6,
+  -(5 * Math.PI) / 6,
+  Math.PI,
+] as const;
 // Sample each arc direction at full and half scan radius so a reachable target
 // exists even in tight rooms where the far ring is all walls.
 export const RETREAT_DISTANCE_MULTS = [1, 0.5] as const;
@@ -421,6 +461,50 @@ export const RETREAT_MAX_PATH_VERIFICATIONS = 6;
 // calls to roughly three re-picks per second instead of one per frame.
 export const RETREAT_REPICK_INTERVAL_FRAMES = 18;
 export const RETREAT_REPICK_ARRIVE_FT = 10;
+// Objective bias for the kite destination. Retreat scores candidates purely on
+// open space, so a wounded runner kites BACKWARD off its route; the very next
+// poll progression walks the same ground forward into the same pursuers, and the
+// pair nets ~zero displacement while contact damage keeps landing (measured on
+// the release Floor-1 losses: 684 ft travelled for 133 ft of net movement while
+// bleeding 120 HP). Adding a subordinate progress term makes the kite run
+// ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
+// objective both breaks contact and banks progress instead of undoing it.
+// The provider normalizes objective progress to directional alignment and caps
+// each signed candidate contribution to this fraction of the retreat hysteresis
+// band, so two opposing candidates can differ by at most one band.
+export const RETREAT_OBJECTIVE_BIAS_BAND_FRACTION = 0.5;
+// Weight applied to that capped objective bias band. Keep this at 1 unless a
+// sweep shows route-aware retreat should use less than the available safety
+// band; the effective per-candidate cap is retreatDangerRadius *
+// (RETREAT_HYSTERESIS_MULT - 1) * RETREAT_OBJECTIVE_BIAS_BAND_FRACTION *
+// RETREAT_OBJECTIVE_BIAS_WEIGHT.
+export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
+// The remembered progression objective is only used while it is this fresh
+// (frames). Retreat and progression interleave within ~1 s, so a short memory is
+// always populated during the oscillation this fixes, and a stale objective from
+// a previous route never steers a later escape.
+export const RETREAT_OBJECTIVE_MEMORY_FRAMES = 180;
+// --- Sustained-damage (time-to-death) retreat trigger -----------------------
+// `retreatThreshold` is a fixed fraction of max HP, so it only reacts to how
+// much health is LEFT, never to how fast it is leaving. A melee runner pinned in
+// contact with a pack drains ~19 HP/s: it burns from full to the 10 % floor in
+// about five seconds and only then starts kiting, by which point the run is
+// unrecoverable with no healing on Floor 1 (measured on the release Floor-1
+// baseball-bat loss: 121 → 21 HP in 5.3 s, all of it above the threshold).
+// Sampling the recent health slope lets the AI disengage while the damage is
+// still survivable: it retreats when sustained incoming damage would kill it
+// inside {@link RETREAT_TIME_TO_DEATH_FRAMES}.
+// Window over which the incoming-damage slope is measured (frames). Long enough
+// that a single hit does not read as a fatal rate, short enough to react inside
+// one contact exchange.
+export const RETREAT_DAMAGE_WINDOW_FRAMES = 90;
+// Predicted survival horizon (frames). Breaking contact takes about a second of
+// kiting (danger radius 20 ft at ~22.5 ft/s), so the horizon must be a small
+// multiple of that or the retreat starts too late to matter.
+export const RETREAT_TIME_TO_DEATH_FRAMES = 180;
+// Ignore the slope until this much damage has landed inside the window, so
+// isolated chip hits on a nearly-dead runner cannot masquerade as a burst.
+export const RETREAT_DAMAGE_WINDOW_MIN_DAMAGE = 10;
 
 // When the player still owes gold for the merchant charm, the AI actively farms
 // the ambient swarm instead of wandering. These scan radii are deliberately
@@ -506,9 +590,6 @@ export const FARM_FORWARD_DOT_MIN = 0.35;
 // over-engagement death mode the forward bias must never reintroduce.
 export const FARM_MIN_HEALTH_FRACTION = 0.6;
 // --- Collapse-pressure panic routing ---
-// AI pressure remains tuned to the 6-minute headless Floor 1 gate even if the
-// human-facing floor collapse timer is made more generous in the manifest.
-export const FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS = 6 * 60 * 1000;
 // Remaining-time threshold for hard beeline behavior. At or below this value the
 // AI drops opportunistic loot/farm detours and commits to objective progress.
 export const PANIC_BEELINE_REMAINING_MS = 60_000;
@@ -553,7 +634,20 @@ export const RUN_PLANNER_URGENCY_SLACK_WINDOW_MS = 120_000;
 export const RUN_PLANNER_INTERACTION_MS = 1_500;
 export const RUN_PLANNER_LEVEL_2_GRIND_MS = 35_000;
 export const RUN_PLANNER_QUEST_KILL_MS = 4_500;
-export const RUN_PLANNER_GOLD_FARM_MS = 3_000;
+/**
+ * Planner estimate of the game time needed to earn one gold, used to decide
+ * whether an optional purchase's remaining deficit can be farmed inside the
+ * run's slack.
+ *
+ * Calibrated against measured Floor 1 runs (headless, seeds 1/2/7/42/99/777/
+ * 2024/12345): a completed run earns 709-1121 gold in ~245s of game time, i.e.
+ * ~300-350 ms per gold including both drops and achievement loot boxes. The
+ * previous 3_000 value was ~9x pessimistic, which was invisible while Floor 1
+ * prices were 15-35 gold but abandoned every optional purchase once prices
+ * were tuned to real income. 500 keeps a deliberate ~1.5x safety margin over
+ * the measured rate so the planner still under-promises.
+ */
+export const RUN_PLANNER_GOLD_FARM_MS = 500;
 export const RUN_PLANNER_FETCH_PICKUP_MS = 1_000;
 export const RUN_PLANNER_MINOR_BOSS_KILL_MS = 25_000;
 export const RUN_PLANNER_FINAL_BOSS_KILL_MS = 45_000;
@@ -563,6 +657,14 @@ export const RUN_PLANNER_STAIRS_INTERACT_MS = 1_000;
 // Pickup opportunities are filtered by reachability first, then ranked by
 // path-relative detour cost. Enemy packs are scored for debug only in this slice.
 export const TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT = 24;
+// Max detour (ft) a pickup may add to the current objective leg. Measured over
+// the 72-run Floor-1 gate matrix (seeds 1-24 x sword/bow/baseball-bat) on top of
+// the 12ft mid-run loot sweep:
+//    8ft -> 72/72 wins, combined collection 0.7919, mean floor 258.4s
+//   12ft -> 70/72 wins, combined collection 0.7854, mean floor 260.0s
+// Widening it does NOT collect more: it trades on-path gems for longer errands
+// (mean level rises but two runs are lost to a deadline timeout and a death), so
+// 8ft stays. Rule 12 gates on win-RATE first.
 export const TACTICAL_OPPORTUNITY_MAX_DETOUR_FT = 8;
 export const TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT = 0.75;
 export const TACTICAL_OPPORTUNITY_MIN_DETOUR_MS = 250;
@@ -716,6 +818,17 @@ export const TRAVEL_W_LOOT = 0;
 export const TRAVEL_W_FARM = 0;
 export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
 export const TRAVEL_LOOT_CORRIDOR_FT = 4;
+// Trivial-pickup snap radius (ft). Pickups are collected by body overlap, so the
+// corridor loot bias — which only *curves* the travel arc toward loot — routinely
+// slides past a gem a foot off the heading without ever touching it: the "walked
+// right past free XP while adventuring" behaviour. Inside this radius the runner
+// steers straight at the pickup instead, so gems it is already next to are
+// actually collected mid-run rather than left for the post-boss sweep (which the
+// collapse-panic gate often cancels). Deliberately small: the snap is bounded by
+// this distance, so the worst case is a ~5 ft deviation that resolves within a
+// few frames, and it is skipped entirely when the direct lane is unsafe/blocked
+// or a panic beeline is active.
+export const TRAVEL_LOOT_SNAP_FT = 3;
 // |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
 // to the current separation instead of a spurious projection. Kept far below
 // (playerSpeed · small-angle)² so a slow-but-real closing course is never
@@ -725,16 +838,35 @@ export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 
-// --- Pre-exit XP sweep -------------------------------------------------------
-// After the floor staircase is unlocked the AI performs a sweep to collect any
-// XP gems left on the ground before descending (which destroys uncollected gems
-// via scene restart). The sweep fires between Interact (Priority 2) and Progress
-// (Priority 3), so it delays the stair approach only while reachable XP remains.
+// --- Loot sweep --------------------------------------------------------------
+// The AI sweeps loot it has already earned (XP gems and gold) rather than
+// walking past it toward the next objective. The sweep fires between Interact
+// (Priority 2) and Progress (Priority 3), so it delays objective travel only
+// while reachable loot remains and no enemy is in engage range.
+//
+// Two windows share one node:
+//   1. **Post-combat** (any time): only loot within LOOT_SWEEP_RADIUS_FT of the
+//      player, i.e. the drops from the fight that just ended. Bounded so the
+//      sweep is a local cleanup, never a cross-floor errand.
+//   2. **Pre-exit** (staircase unlocked, not yet descended): unbounded radius,
+//      because descending destroys every uncollected pickup (scene restart with
+//      a fresh entity world), so anything left behind is lost permanently.
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable post-clear lull (~3-4 min remaining) but
-// surrenders in the final 1-min crunch period when panic > 0.5 on Floor 1.
-// Floor 2 has no collapse timer so panic is always 0 there — the sweep runs
-// until all reachable XP is collected.
-export const XP_SWEEP_PANIC_THRESHOLD = 0.5;
+// stays active during the comfortable lull but surrenders in the final 1-min
+// crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
+// panic is always 0 there — the sweep runs until all reachable loot is taken.
+export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
+// Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
+// sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.
+// Measured over the gate matrix (seeds 1-24 x sword/bow/baseball-bat, 72 runs):
+//    0ft -> combined collection 0.7795, 71/72 wins
+//   12ft -> combined collection 0.7919, 72/72 wins  <- shipped
+//   35ft -> combined collection 0.7254, 70/72 wins  (two bat losses)
+// A *narrow* mid-run window is strictly better than both: it collects the drops
+// of the fight that just ended without turning the sweep into a cross-room
+// errand, and it costs no measurable floor time (mean 257.3s -> 258.4s). The
+// wide 35ft window is what flipped wins, not mid-run sweeping itself. Rule 12
+// gates on win-RATE first; change this only with a fresh 72-run measurement.
+export const LOOT_SWEEP_RADIUS_FT = 12;

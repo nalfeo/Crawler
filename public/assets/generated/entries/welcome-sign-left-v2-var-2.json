@@ -3,7 +3,7 @@
   "spriteName": "welcome-sign-left-v2-var-2",
   "assetPath": "generated/welcome-sign-left-v2-var-2.png",
   "approvedAt": "2026-07-06T17:35:26.168Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bJ161L/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+  "sourceRun": "generated/runs/welcome-sign-left-v2/imported-1d2e24224efc",
   "variantIndex": 2,
   "anchor": {
     "x": 32,
@@ -25,10 +25,7 @@
   "sensorScore": "6/8",
   "judgeScore": "3",
   "type": null,
-  "contentHash": "f605f52898105ab707a5637716de625977fd1951db4bced88f1aadc28130f0db",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
+  "contentHash": "1d2e24224efc7de8702f475214bddf9b5963f78aa98e058f4318411bef407d3e",
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 4,

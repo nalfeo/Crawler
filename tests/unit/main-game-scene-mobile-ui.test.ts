@@ -24,7 +24,12 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('const INTERACTION_HINT_MAX_SCALE = 1.25;');
     expect(source).toContain('const INTERACTION_HINT_BOTTOM_MARGIN = 12;');
     expect(source).toContain('const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);');
-    expect(source).toContain('.setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);');
+    // The hint sits above the bottom safe-area inset, not the raw canvas edge,
+    // so it stays clear of the iOS home indicator in landscape.
+    expect(source).toContain(
+      'return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;',
+    );
+    expect(source).toContain('.setY(this.interactionHintY());');
     expect(source).toContain(
       'const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);',
     );

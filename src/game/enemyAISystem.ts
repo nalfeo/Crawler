@@ -14,6 +14,7 @@ import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flo
 import type { TileMap } from '../core/map/TileMap.js';
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import type { GameWorld } from '../core/world.js';
 import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
 import {
@@ -1740,6 +1741,7 @@ export function enemyAISystem(world: GameWorld): void {
   const players = query(world.ecs, [Player, Position]);
   const playerEid = players[0];
   const pathStates = getPathStateMap(world);
+  const lineOfSightAggro = getWorldFloorBehavior(world).lineOfSightAggro;
 
   if (world.frameCount % 60 === 0) {
     trimStalePaths(world, pathStates);
@@ -1847,11 +1849,11 @@ export function enemyAISystem(world: GameWorld): void {
     // Cave interiors can share open geometry without sharing a semantic room ID.
     // Evaluate the costly Bresenham LOS only after cheap gates fail and the
     // enemy is in range — avoid O(ray-length) work for already-qualified mobs.
-    // Scope this seam fallback to Floor 2: Floor 1 parity gates intentionally
-    // keep legacy room/door-driven aggro behavior.
+    // Opt-in per floor (`behavior.lineOfSightAggro`): floors without it keep
+    // the legacy room/door-driven aggro behavior.
     const hasDirectPlayerSight =
       !familyBypass &&
-      world.floor === 2 &&
+      lineOfSightAggro &&
       !playerHiddenInSafeRoom &&
       inAggroRange &&
       !hasOpenRoomDoor &&

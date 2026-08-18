@@ -89,6 +89,13 @@ export interface FileTriple {
   /** Blob at the PR head, used for the survival filter. */
   readonly head: string | null;
   /**
+   * True when a clean three-way merge of `base`, `other`, and `side` would
+   * still produce `other` at this path. In that case `result === other` does
+   * NOT mean the incoming side was discarded — the opposing side already
+   * contained the incoming change and merely had extra edits of its own.
+   */
+  readonly sideAlreadyPresentInOther?: boolean;
+  /**
    * Blob at the CURRENT mainline tip. When the discarded side's blob equals
    * this, the discard drops content main still holds — a genuine mainline loss
    * regardless of which branch delivered it. `undefined` when not supplied
@@ -222,6 +229,72 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 }
 
 /**
+ * Split a unified `git diff` for a single path into its added and removed
+ * content lines (file-header lines excluded).
+ *
+ * Used by `sideAdditionsSubsumedByOther` to detect a subsumed conflict
+ * resolution — a genuine textual conflict (so `git merge-tree` cannot
+ * auto-resolve it) where the human/agent resolution still keeps every line
+ * the incoming side added, just alongside more of its own edits. That shape
+ * is common for growing tables/lists where both sides append a row.
+ */
+export function parseDiffLineChanges(diffText: string): {
+  added: readonly string[];
+  removed: readonly string[];
+} {
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const line of diffText.split('\n')) {
+    if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
+    if (line.startsWith('+')) added.push(line.slice(1));
+    else if (line.startsWith('-')) removed.push(line.slice(1));
+  }
+  return { added, removed };
+}
+
+/**
+ * Collapse a line's whitespace runs to a single space and trim. Markdown
+ * tables (and similarly padded lists) get re-justified whenever a column's
+ * widest cell changes, which changes inter-cell padding without changing any
+ * cell's content — that padding churn must not defeat the subsumption check
+ * below.
+ */
+function normalizeForComparison(line: string): string {
+  return line.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * True when every non-blank line the incoming side ADDED (relative to the
+ * merge base) also appears as an added line in the opposing side's resolution
+ * — i.e. the incoming side's content is not lost, only reformatted alongside
+ * more content. Comparison ignores whitespace-run differences (e.g. markdown
+ * table column re-justification); see `normalizeForComparison`.
+ *
+ * Deliberately conservative: any line the incoming side REMOVED is not
+ * verified this way (deletions are easy to silently drop and hard to confirm
+ * by line-presence alone), so this returns `false` whenever `sideRemoved` is
+ * non-empty — those cases still get the ordinary discard treatment. This
+ * complements (does not replace) the `git merge-tree`-based check in
+ * `silent-reverts.ts`, which only fires when the two sides' edits do not
+ * textually conflict; this heuristic instead handles the shape where they DO
+ * conflict (e.g. two PRs both append a row to the same markdown table) but
+ * the chosen resolution still carries every line the incoming side added.
+ */
+export function sideAdditionsSubsumedByOther(
+  sideAdded: readonly string[],
+  sideRemoved: readonly string[],
+  otherAdded: readonly string[],
+): boolean {
+  const meaningfulAdded = sideAdded.map(normalizeForComparison).filter((line) => line.length > 0);
+  if (meaningfulAdded.length === 0) return false; // nothing to subsume
+  if (sideRemoved.some((line) => normalizeForComparison(line).length > 0)) return false;
+  const otherAddedSet = new Set(
+    otherAdded.map(normalizeForComparison).filter((line) => line.length > 0),
+  );
+  return meaningfulAdded.every((line) => otherAddedSet.has(line));
+}
+
+/**
  * True when the merge dropped a change the incoming side made — either by
  * taking the opposing parent's version wholesale, or by resetting to the base.
  *
@@ -232,7 +305,8 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 export function isDiscarded(f: FileTriple): boolean {
   if (f.side === f.base) return false; // incoming did not change it
   if (f.result === f.side) return false; // merge took the incoming version
-  return f.result === f.other || f.result === f.base;
+  if (f.result === f.other) return f.sideAlreadyPresentInOther !== true;
+  return f.result === f.base;
 }
 
 /**

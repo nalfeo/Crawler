@@ -123,9 +123,6 @@ export const manifestEntrySchema = z
      */
     contentHash: z.string().optional(),
     opaqueBounds: opaqueBoundsSchema.optional(),
-    postprocessOverrideProfilePath: z.string().nullable().optional(),
-    effectivePipelineSnapshotPath: z.string().nullable().optional(),
-    effectivePipelineSnapshotYamlPath: z.string().nullable().optional(),
     effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
     facingDirection: z.enum(['left', 'right']).optional(),
     /**
@@ -499,6 +496,75 @@ export function resolveOpaqueFit(input: OpaqueFitInput): OpaqueFit {
       ? Math.min(targetWidthPx / box.width, targetHeightPx / box.height)
       : targetHeightPx / box.height,
   };
+}
+
+/**
+ * Base render scale for a generated sprite whose on-screen size is authored in
+ * world FEET (`renderKinds.*.generated.heightFt`) rather than as a raw pixel
+ * multiplier: the scale at which the sprite's VISIBLE art is exactly
+ * `targetHeightFt` tall.
+ *
+ * Thin, named wrapper over {@link resolveOpaqueFit} — deliberately NOT a second
+ * fitter — so mobs inherit the same opaque-bounds semantics the set-piece prop
+ * path already relies on:
+ *
+ *  - measured on the manifest's `opaqueBounds`, so the pipeline's standardized
+ *    ~5%-per-side transparent safety margin does not shrink the drawn art;
+ *  - HEIGHT-authoritative (`floorPlane: false`), because a `Math.min`
+ *    contain-fit silently discards whichever declared dimension is the looser
+ *    fit — which is what made props render up to 50% short;
+ *  - degrades to whole-canvas measurement when bounds are missing (legacy
+ *    entries) or disagree with the loaded texture, so a stale manifest reverts
+ *    to the previous look rather than to garbage.
+ *
+ * Returns `null` when the caller cannot supply a usable measurement (no loaded
+ * texture size, or no authored height), so the caller can fall back to the
+ * legacy `generated.scale` multiplier instead of rendering at a bogus size.
+ *
+ * This exists because the raw multiplier couples on-screen size to the ASSET
+ * PIPELINE's canvas size: `scale: 0.4` was tuned against 64×64 art, and when
+ * the enemy brief default became 256×256 (512×512 for `sizeVariant: large`
+ * bosses) every mob resolved through it rendered 4–8× oversized — a Floor 2
+ * family boss drew ~60 ft tall.
+ */
+export function resolveGeneratedFootprintScale(input: {
+  /** Opaque bounds from the manifest, or `undefined` for legacy entries. */
+  readonly bounds: OpaqueBounds | undefined;
+  /** Loaded texture size in pixels; `0`/`undefined` when unmeasurable. */
+  readonly canvasWidth: number | undefined;
+  readonly canvasHeight: number | undefined;
+  /** Authored drawn height of the visible art, in world feet. */
+  readonly targetHeightFt: number | undefined;
+  /** Feet → pixels conversion (injected so this stays engine-agnostic). */
+  readonly pixelsPerFoot: number;
+}): number | null {
+  const { bounds, canvasWidth, canvasHeight, targetHeightFt, pixelsPerFoot } = input;
+  if (
+    targetHeightFt === undefined ||
+    !Number.isFinite(targetHeightFt) ||
+    targetHeightFt <= 0 ||
+    canvasWidth === undefined ||
+    canvasHeight === undefined ||
+    !(canvasWidth > 0) ||
+    !(canvasHeight > 0) ||
+    !(pixelsPerFoot > 0)
+  ) {
+    return null;
+  }
+  const targetHeightPx = targetHeightFt * pixelsPerFoot;
+  const { scale } = resolveOpaqueFit({
+    bounds,
+    canvasWidth,
+    canvasHeight,
+    // Height-authoritative (`floorPlane: false`) ignores the width target; the
+    // height is passed so the value can never be silently meaningful if the
+    // fit mode is ever changed.
+    targetWidthPx: targetHeightPx,
+    targetHeightPx,
+    anchorBase: false,
+    floorPlane: false,
+  });
+  return Number.isFinite(scale) && scale > 0 ? scale : null;
 }
 
 /**

@@ -3,7 +3,7 @@
   "spriteName": "prop-wall-sconce-v1-var-9",
   "assetPath": "generated/prop-wall-sconce-v1-var-9.png",
   "approvedAt": "2026-07-06T17:36:23.818Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-qasET3/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+  "sourceRun": "generated/runs/prop-wall-sconce-v1/imported-aa12f07338f2",
   "variantIndex": 9,
   "anchor": {
     "x": 33,
@@ -25,10 +25,7 @@
   "sensorScore": "6/8",
   "judgeScore": "3",
   "type": "prop",
-  "contentHash": "98e5a968aa3d346e5b20c85a991e90d92b89d2d7d31ef78c37175054acb9c488",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
+  "contentHash": "aa12f07338f278af13cc7c4f90ffa7c1a91147960ffdb1e8e5e27a66abd5a026",
   "effectiveAnchorSource": "manual",
   "facingDirection": "left",
   "opaqueBounds": {

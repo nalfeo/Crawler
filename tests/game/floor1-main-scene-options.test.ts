@@ -6,16 +6,97 @@ import {
 } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
   enemyAISystem,
+  emergentEventSystem,
+  familyFeudSystem,
   floor1EnemyDirectorSystem,
+  floor1PlayerStatSystem,
   initializeFloor1Scenario,
   spawnerArenaSystem,
   spawnerSystem,
 } from '../../src/game/index.js';
+import {
+  familyRelationshipSystem,
+  mobAbilitySystem,
+  statSystem,
+  statusEffectSystem,
+} from '../../src/core/index.js';
+import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
+import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('createFloor1MainSceneOptions', () => {
+  it.each([
+    {
+      floorId: 'floor1',
+      beforeWeaponSystems: [floor1PlayerStatSystem],
+      beforeEnemyAISystems: [],
+      afterSpawnerSystems: [floor1EnemyDirectorSystem],
+      foreignSystems: [floor2VictorySystem, emergentEventSystem, familyFeudSystem],
+    },
+    {
+      floorId: 'floor2',
+      beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
+      beforeEnemyAISystems: [familyFeudSystem],
+      afterSpawnerSystems: [],
+      foreignSystems: [floor1PlayerStatSystem, floor1EnemyDirectorSystem],
+    },
+  ])(
+    'assembles only $floorId scenario systems at their canonical slots',
+    ({
+      floorId,
+      beforeWeaponSystems,
+      beforeEnemyAISystems,
+      afterSpawnerSystems,
+      foreignSystems,
+    }) => {
+      // The expected slot contents below are hardcoded independently of
+      // scenarioDefinitions.ts, so deleting or misplacing a registration
+      // there changes only the assembled preSystems and fails this test.
+      const scenario = getScenarioDefinition(floorId);
+      expect(scenario.beforeWeaponSystems ?? []).toEqual(beforeWeaponSystems);
+      expect(scenario.beforeEnemyAISystems ?? []).toEqual(beforeEnemyAISystems);
+      expect(scenario.afterSpawnerSystems ?? []).toEqual(afterSpawnerSystems);
+
+      const preSystems = createFloorMainSceneOptions(floorId).preSystems ?? [];
+      const localSystems = [
+        ...beforeWeaponSystems,
+        ...beforeEnemyAISystems,
+        ...afterSpawnerSystems,
+      ];
+      const sharedSystems = [
+        statSystem,
+        familyRelationshipSystem,
+        weaponSystem,
+        enemyAISystem,
+        statusEffectSystem,
+        mobAbilitySystem,
+        spawnerArenaSystem,
+        spawnerSystem,
+      ];
+
+      for (const system of [...sharedSystems, ...localSystems]) {
+        expect(preSystems.filter((entry) => entry === system)).toHaveLength(1);
+      }
+      for (const system of foreignSystems) {
+        expect(preSystems).not.toContain(system);
+      }
+
+      expect(
+        preSystems.slice(
+          preSystems.indexOf(familyRelationshipSystem) + 1,
+          preSystems.indexOf(weaponSystem),
+        ),
+      ).toEqual(beforeWeaponSystems);
+      expect(
+        preSystems.slice(preSystems.indexOf(weaponSystem) + 1, preSystems.indexOf(enemyAISystem)),
+      ).toEqual(beforeEnemyAISystems);
+      expect(preSystems.slice(preSystems.indexOf(spawnerSystem) + 1)).toEqual(afterSpawnerSystems);
+      expect(preSystems.indexOf(spawnerSystem)).toBe(preSystems.indexOf(spawnerArenaSystem) + 1);
+    },
+  );
+
   it('wires every quest-giver meet callback the browser scene relies on', () => {
     const options = createFloor1MainSceneOptions();
     expect(typeof options.tutorialGoon?.meet).toBe('function');
@@ -106,5 +187,22 @@ describe('createFloor1MainSceneOptions', () => {
   it('does not wire onFloor1Cleared for floor2', () => {
     const options = createFloorMainSceneOptions('floor2');
     expect(options.onFloor1Cleared).toBeUndefined();
+  });
+
+  it('routes NPC and stair callbacks from the scenario definition, not a floor branch', () => {
+    const floor1 = createFloorMainSceneOptions('floor1');
+    const floor2 = createFloorMainSceneOptions('floor2');
+
+    // Floor 1 owns the quest-giver trio and no broker; Floor 2 is the inverse.
+    expect(floor1.broker).toBeUndefined();
+    expect(typeof floor2.broker?.met).toBe('function');
+    expect(floor2.shopkeeper).toBeUndefined();
+    expect(floor2.tutorialGoon).toBeUndefined();
+    expect(floor2.spellQuestGiver).toBeUndefined();
+
+    // Both floors declare their own stair-descend confirmation.
+    expect(typeof floor1.onStairDescend).toBe('function');
+    expect(typeof floor2.onStairDescend).toBe('function');
+    expect(floor1.onStairDescend).not.toBe(floor2.onStairDescend);
   });
 });

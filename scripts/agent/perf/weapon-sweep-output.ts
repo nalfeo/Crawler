@@ -1,9 +1,13 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import type { WeaponSweepOutput } from './weapon-sweep-results.js';
+import {
+  EXPERIMENT_ARTIFACT_DIRECTORY,
+  weaponSweepToExperiment,
+  writeExperimentResult,
+} from './experiment-result.js';
 
-export const WEAPON_SWEEP_ARTIFACT_DIRECTORY = join('artifacts', 'weapon-sweeps');
+export const WEAPON_SWEEP_ARTIFACT_DIRECTORY = EXPERIMENT_ARTIFACT_DIRECTORY;
 
 export function formatWeaponSweepTimestamp(date: Date): string {
   if (!Number.isFinite(date.getTime())) {
@@ -30,25 +34,6 @@ export function writeWeaponSweepOutput(
   explicitPath: string | undefined,
   workingDirectory = process.cwd(),
 ): string {
-  const serialized = JSON.stringify(output, null, 2);
-  if (explicitPath) {
-    writeFileSync(explicitPath, serialized);
-    return explicitPath;
-  }
-
-  const runAt = new Date(output.runAt);
-  const directory = dirname(defaultWeaponSweepOutputPath(workingDirectory, runAt));
-  mkdirSync(directory, { recursive: true });
-
-  for (let collisionIndex = 1; ; collisionIndex += 1) {
-    const candidate = defaultWeaponSweepOutputPath(workingDirectory, runAt, collisionIndex);
-    try {
-      writeFileSync(candidate, serialized, { flag: 'wx' });
-      return candidate;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-        throw error;
-      }
-    }
-  }
+  const result = weaponSweepToExperiment(output);
+  return writeExperimentResult(result, explicitPath, workingDirectory);
 }

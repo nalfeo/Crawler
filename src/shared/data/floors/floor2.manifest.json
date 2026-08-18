@@ -3,6 +3,10 @@
   "name": "Floor 2 - The Deeper Dungeon",
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": true,
+    "released": false
+  },
   "timer": {
     "durationMs": 1200000,
     "stairSpawnCountdownMs": 40000
@@ -36,6 +40,14 @@
   },
   "camera": {
     "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": true,
+    "safeRoomWeaponImmunity": false,
+    "safeRoomDoorsAutoClose": false,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": true
   },
   "lighting": {
     "ambient": 0.1

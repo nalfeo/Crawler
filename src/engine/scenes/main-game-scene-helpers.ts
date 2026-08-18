@@ -15,13 +15,13 @@ import {
 } from '../lighting/light-field.js';
 import {
   getNpcDef,
+  selectSpellBrokerDialogue,
   selectTutorialGoonDialogue,
   SHOPKEEPER_DONE_DIALOGUE,
   SHOPKEEPER_EQUIP_HINT_DIALOGUE,
   SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
-  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
@@ -49,6 +49,40 @@ export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_
     return outcome;
   }
   return null;
+}
+
+export type FloorCompletionPresentation =
+  | 'failed_timeout'
+  | 'transition_to_next_floor'
+  | 'terminal_victory'
+  | 'terminal_complete';
+
+/**
+ * Chooses which completion-screen branch the scene should present once
+ * {@link getFloorRunOutcome} reports a terminal state.
+ *
+ * Transition callbacks take precedence over the Floor 2 terminal-victory branch
+ * so scenarios that clear via `familyState.staircaseDiscovered` can still route
+ * onward to another authored floor.
+ */
+export function getFloorCompletionPresentation(
+  world: GameWorld,
+  hasFloorTransition: boolean,
+): FloorCompletionPresentation | null {
+  const outcome = getFloorRunOutcome(world);
+  if (!outcome) {
+    return null;
+  }
+  if (outcome === 'failed_timeout') {
+    return 'failed_timeout';
+  }
+  if (hasFloorTransition) {
+    return 'transition_to_next_floor';
+  }
+  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
+    return 'terminal_victory';
+  }
+  return 'terminal_complete';
 }
 
 /** Exact-equality of two light-field dirty rects (component-wise). */
@@ -235,9 +269,52 @@ export function resolveDialogueLines(
     }
     // not-met / awaiting-prize: the merchant's initial fetch request.
   }
-  if (defId === 'spell-quest-giver' && deps.spellQuestGiver?.isLocked?.(world)) {
-    return [...SPELL_QUEST_GIVER_LOCKED_DIALOGUE];
+  if (defId === 'spell-quest-giver') {
+    const brokerLines = selectSpellBrokerDialogue({
+      locked: deps.spellQuestGiver?.isLocked?.(world) === true,
+      spellbookClaimed:
+        world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
+        world.featureUnlocks.spells === true,
+    });
+    if (brokerLines) {
+      return [...brokerLines];
+    }
   }
   const def = getNpcDef(defId);
   return def?.dialogue.map((line) => line.text) ?? [];
+}
+
+/**
+ * Fraction of the next fixed simulation step that has already elapsed in
+ * wall-clock time, clamped to `[0, 1]`.
+ *
+ * The scene simulates on a fixed `GAME.DELTA_MS` accumulator while the browser
+ * renders on rAF, so rendered frames rarely land on a step boundary: without
+ * this factor some frames advance the world by zero steps and the next by two,
+ * which reads as judder. Rendering at `alpha` between steps smooths that out.
+ *
+ * Defensive clamping matters because the paused single-step drain can leave the
+ * accumulator negative (it is zeroed mid-step and then decremented), and a long
+ * stall can leave it above one step before the spiral-of-death clamp runs.
+ */
+export function renderInterpolationAlpha(accumulatorMs: number, stepMs: number): number {
+  if (!Number.isFinite(accumulatorMs) || !Number.isFinite(stepMs) || stepMs <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, accumulatorMs / stepMs));
+}
+
+/**
+ * Advances a fixed-step position by `alpha` of its per-step velocity, matching
+ * the render-side extrapolation `PhaserBridge.sync` applies to every entity
+ * sprite (`position + velocity * interpAlpha`). The camera must use the exact
+ * same expression for the player, otherwise the interpolated player sprite
+ * would slide against a step-quantized camera.
+ */
+export function extrapolateRenderPosition(
+  position: number,
+  velocityPerStep: number,
+  alpha: number,
+): number {
+  return position + velocityPerStep * alpha;
 }

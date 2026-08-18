@@ -44,6 +44,9 @@ const DEFAULT_PARAMS: TravelSteeringParams = {
   wFarm: 0,
   lootLookaheadFt: 12,
   lootCorridorFt: 4,
+  // Snap disabled by default so the existing arc/beeline expectations below
+  // describe the corridor-bias behaviour; the snap has its own describe block.
+  lootSnapFt: 0,
   relSpeedEpsilonSq: 1e-8,
 };
 
@@ -491,5 +494,107 @@ describe('pickSafeTravelHeading — properties', () => {
         );
       }),
     );
+  });
+});
+
+describe('pickSafeTravelHeading — trivial pickup snap', () => {
+  const snapParams = makeParams({ wLoot: 1, lootSnapFt: 5 });
+
+  it('steers straight at a pickup that is a step off the beeline', () => {
+    // Objective is +x; the gem sits 3 ft away, mostly sideways. The corridor
+    // bias alone only curves the arc, which slides past without overlapping.
+    const r = pickSafeTravelHeading(
+      baseInput({ pickups: [{ eid: 11, x: 1, y: 2.8, weight: 1 }] }),
+      snapParams,
+    );
+
+    expect(r.reason).toBe('trivial pickup snap');
+    expect(r.moveX).toBeCloseTo(1 / Math.hypot(1, 2.8));
+    expect(r.moveY).toBeCloseTo(2.8 / Math.hypot(1, 2.8));
+    expect(r.emergency).toBe(false);
+  });
+
+  it('snaps to the nearest pickup when several are in range', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({
+        pickups: [
+          { eid: 1, x: 0, y: 4, weight: 1 },
+          { eid: 2, x: 0, y: -1.5, weight: 1 },
+        ],
+      }),
+      snapParams,
+    );
+
+    expect(r.reason).toBe('trivial pickup snap');
+    expect(r.moveY).toBeCloseTo(-1);
+  });
+
+  it('ignores pickups beyond the snap radius (corridor bias still applies)', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({ pickups: [{ eid: 3, x: 10, y: 3, weight: 8 }] }),
+      snapParams,
+    );
+
+    expect(r.reason).not.toBe('trivial pickup snap');
+  });
+
+  it('does not snap under a panic beeline', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({ panic: true, pickups: [{ eid: 4, x: 0, y: 2, weight: 1 }] }),
+      snapParams,
+    );
+
+    expect(r.reason).not.toBe('trivial pickup snap');
+  });
+
+  it('does not snap while any threat is perceived (spacing owns the heading)', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({
+        pickups: [{ eid: 5, x: 0, y: 3, weight: 1 }],
+        threats: [threat({ x: 0, y: 5 })],
+      }),
+      snapParams,
+    );
+
+    expect(r.reason).not.toBe('trivial pickup snap');
+  });
+
+  it('does not snap through a wall', () => {
+    // Wall tile immediately north of the player; the gem is beyond it.
+    const probe = gridProbe(['.#.', '...', '...']);
+    const r = pickSafeTravelHeading(
+      baseInput({
+        px: 15,
+        py: 11,
+        pickups: [{ eid: 6, x: 15, y: 8, weight: 1 }],
+        probePassable: probe,
+      }),
+      snapParams,
+    );
+
+    expect(r.reason).not.toBe('trivial pickup snap');
+  });
+
+  it('is disabled when lootSnapFt is 0', () => {
+    const r = pickSafeTravelHeading(
+      baseInput({ pickups: [{ eid: 7, x: 0, y: 2, weight: 1 }] }),
+      makeParams({ wLoot: 1, lootSnapFt: 0 }),
+    );
+
+    expect(r.reason).not.toBe('trivial pickup snap');
+  });
+
+  it('breaks equidistant pickups by entity id, not scan order', () => {
+    const a = { eid: 9, x: 0, y: 2, weight: 1 };
+    const b = { eid: 4, x: 0, y: -2, weight: 1 };
+
+    const forward = pickSafeTravelHeading(baseInput({ pickups: [a, b] }), snapParams);
+    const reversed = pickSafeTravelHeading(baseInput({ pickups: [b, a] }), snapParams);
+
+    expect(forward.reason).toBe('trivial pickup snap');
+    expect(reversed.reason).toBe('trivial pickup snap');
+    expect(forward.moveY).toBeCloseTo(reversed.moveY);
+    // Lowest eid (4, at y = -2) wins the tie.
+    expect(forward.moveY).toBeCloseTo(-1);
   });
 });

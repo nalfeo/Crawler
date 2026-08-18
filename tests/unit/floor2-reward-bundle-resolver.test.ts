@@ -12,6 +12,7 @@ import {
   _alignmentFromRoll as alignmentFromRoll,
   _categoryFromRoll as categoryFromRoll,
   resolveEquipmentRewardBundle,
+  rollFloor2AchievementEquipmentDrop,
   _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
   _rollAffinityAlignment as rollAffinityAlignment,
   _rollTierRarity as rollTierRarity,
@@ -22,6 +23,10 @@ import {
   _assertGeneratedRewardInstanceLegal as assertGeneratedRewardInstanceLegal,
   _partitionBases as partitionBases,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
+import {
+  FLOOR2_ACHIEVEMENT_LOOT_TIERS,
+  FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS,
+} from '../../src/shared/achievements.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
@@ -957,5 +962,45 @@ describe('resolveEquipmentRewardBundle — category-weighted selection (weaponId
         resolveEquipmentRewardBundle(world, `boss-${i}`, MIXED_BASES, 'tier2'),
       ).not.toThrow();
     }
+  });
+});
+
+describe('rollFloor2AchievementEquipmentDrop', () => {
+  it('always drops equipment for rare tiers and the guaranteed starter kit', () => {
+    for (const achievementId of FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS) {
+      for (const tier of FLOOR2_ACHIEVEMENT_LOOT_TIERS) {
+        expect(rollFloor2AchievementEquipmentDrop('run-key', achievementId, tier)).toBe(true);
+      }
+    }
+    for (let i = 0; i < 50; i += 1) {
+      expect(rollFloor2AchievementEquipmentDrop(`run-${i}`, `floor2-rare-${i}`, 'rare')).toBe(true);
+    }
+  });
+
+  it('drops equipment on roughly half of lower-tier unlocks (the halved rate)', () => {
+    for (const tier of ['common', 'uncommon'] as const) {
+      let drops = 0;
+      const samples = 400;
+      for (let i = 0; i < samples; i += 1) {
+        if (rollFloor2AchievementEquipmentDrop('sweep-run-key', `floor2-ach-${tier}-${i}`, tier)) {
+          drops += 1;
+        }
+      }
+      expect(drops / samples).toBeGreaterThan(0.4);
+      expect(drops / samples).toBeLessThan(0.6);
+    }
+  });
+
+  it('is deterministic per run key + achievement, and varies across run keys', () => {
+    const first = rollFloor2AchievementEquipmentDrop('stable-key', 'floor2-second-wind', 'common');
+    expect(rollFloor2AchievementEquipmentDrop('stable-key', 'floor2-second-wind', 'common')).toBe(
+      first,
+    );
+    const perRunKey = new Set(
+      Array.from({ length: 40 }, (_unused, i) =>
+        rollFloor2AchievementEquipmentDrop(`run-${i}`, 'floor2-second-wind', 'common'),
+      ),
+    );
+    expect(perRunKey.size).toBe(2);
   });
 });

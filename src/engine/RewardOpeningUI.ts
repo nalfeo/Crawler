@@ -113,6 +113,25 @@ export interface RewardOpeningUIHooks {
   readonly onSkip?: () => void;
 }
 
+/**
+ * Optional "open the next box right away" chain action offered on the
+ * `summary` screen. Callers supply it only when another reward is genuinely
+ * openable right now (e.g. `AchievementsUI` found another unlocked, unclaimed
+ * loot-box achievement); this UI never discovers or resolves that reward
+ * itself — it only renders the affordance and invokes `open` after the
+ * current reward has been acknowledged.
+ */
+export interface NextRewardAction {
+  /** Short player-facing label for the next reward, e.g. "rare box". */
+  readonly label: string;
+  /**
+   * Claim + present the next reward. Invoked at most once per `open()` call,
+   * only after the current sequence acknowledged and closed, and only when no
+   * other presentation auto-resumed in the meantime.
+   */
+  readonly open: () => void;
+}
+
 export interface OpenRewardOpeningParams {
   readonly world: GameWorld;
   readonly presentation: ResolvedRewardPresentation;
@@ -130,6 +149,13 @@ export interface OpenRewardOpeningParams {
    * (achievements, boss chests) without cross-talk.
    */
   readonly onAcknowledge: () => void;
+  /**
+   * Chain affordance for opening several boxes back to back. When present,
+   * the summary screen offers an "Open next" button (and the `[N]` key) that
+   * acknowledges this reward and immediately opens the next one, so the
+   * player never has to reopen the achievements panel between boxes.
+   */
+  readonly nextReward?: NextRewardAction;
 }
 
 export interface RewardOpeningUI {
@@ -144,6 +170,17 @@ export interface RewardOpeningUI {
    * sequence is currently at `summary` — duplicate calls once closed are safe.
    */
   acknowledge(): void;
+  /**
+   * Acknowledge the current summary and immediately open the next reward via
+   * the `nextReward` action supplied to `open()`. No-op unless the sequence is
+   * at `summary` and a next action exists. If acknowledging already reopened
+   * the overlay for some other pending presentation (an already-granted
+   * reward that must still be shown), that presentation wins and the chain
+   * action is not invoked — the next box stays claimable from the panel.
+   */
+  openNext(): void;
+  /** Label of the chained next reward while at `summary`, else `null`. */
+  getNextRewardLabel(): string | null;
   /** Test/automation affordance: current phase, or `null` while closed. */
   getPhase(): RewardOpeningPhase | null;
   /** Test/automation affordance: current excitement bucket, or `null` while closed. */
@@ -258,10 +295,25 @@ export function createRewardOpeningUI(
   footer.setOrigin(0.5, 0.5);
   container.add(footer);
 
+  // Persistent (created once, shown only on `summary` when a chain action
+  // exists) so it is never torn down/recreated by `clearItemObjects()`.
+  const nextButton = crispText(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 130, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '13px',
+    fontStyle: 'bold',
+    color: '#f8fafc',
+    backgroundColor: '#2a2a4a',
+    padding: { x: 10, y: 6 },
+  });
+  nextButton.setOrigin(0.5, 0.5);
+  nextButton.setVisible(false);
+  container.add(nextButton);
+
   let world: GameWorld | null = null;
   let presentation: ResolvedRewardPresentation | null = null;
   let sourceLabel = '';
   let onAcknowledgeCallback: (() => void) | null = null;
+  let nextReward: NextRewardAction | null = null;
   let sequenceState: RewardOpeningState | null = null;
   let excitement: RewardExcitement = { tierWeight: 0, rarityWeight: 0, score: 0, bucket: 'modest' };
   let revealItems: RevealItemDisplay[] = [];
@@ -295,6 +347,18 @@ export function createRewardOpeningUI(
     glow.setFillStyle(style.glowColor, 0.22);
 
     header.setText(sourceLabel);
+    // The chain button only ever exists on the summary screen; every other
+    // phase hides AND disables it so it can never swallow a pointer event
+    // intended for the skip/advance backdrop.
+    const showNextButton = sequenceState.phase === 'summary' && nextReward !== null;
+    if (showNextButton && nextReward) {
+      nextButton.setText(`▶ Open next: ${nextReward.label}  [N]`);
+      nextButton.setVisible(true);
+      nextButton.setInteractive({ useHandCursor: true });
+    } else {
+      nextButton.setVisible(false);
+      nextButton.disableInteractive();
+    }
 
     switch (sequenceState.phase) {
       case 'anticipation': {
@@ -360,7 +424,11 @@ export function createRewardOpeningUI(
           container.add(label);
           itemObjects.push(label);
         });
-        footer.setText('Click / press Enter to claim');
+        footer.setText(
+          showNextButton
+            ? 'Click / press Enter to claim · [N] open next box'
+            : 'Click / press Enter to claim',
+        );
         break;
       }
       case 'claimed': {
@@ -399,13 +467,21 @@ export function createRewardOpeningUI(
     world = null;
     presentation = null;
     onAcknowledgeCallback = null;
+    nextReward = null;
     sequenceState = null;
     lastRenderedPhase = null;
-    clearItemObjects();
-    // Kill any in-flight VFX immediately so particles don't linger over the
-    // game world after the overlay is dismissed.
-    vfx.destroy();
-    container.setVisible(false);
+    // Phaser has already destroyed scene display objects by the time a scene
+    // shutdown listener runs. Avoid calling UI methods on those detached
+    // objects, which would abort the scene restart.
+    if (container.active) {
+      clearItemObjects();
+      nextButton.setVisible(false);
+      nextButton.disableInteractive();
+      // Kill any in-flight VFX immediately so particles don't linger over the
+      // game world after the overlay is dismissed.
+      vfx.destroy();
+      container.setVisible(false);
+    }
     if (wasOpen) {
       hooks.onVisibilityChange?.(false);
     }
@@ -442,20 +518,53 @@ export function createRewardOpeningUI(
     callback?.();
   }
 
+  /**
+   * Acknowledge the current reward and immediately chain into the next one.
+   * The acknowledge half is identical to `handleAcknowledge` (same exact-once
+   * claim callback, same close), so the chain can never double-acknowledge or
+   * skip the caller's own bookkeeping.
+   */
+  function handleOpenNext(): void {
+    if (!sequenceState) return;
+    if (sequenceState.phase !== 'summary') return;
+    const next = nextReward;
+    if (!next) return;
+    handleAcknowledge();
+    // `handleAcknowledge` fires the caller's `onAcknowledge`, which may itself
+    // reopen this shared modal for an already-granted pending presentation
+    // (save/load resume, a second achievement claimed in the same frame, a
+    // boss chest reveal). Those must not be pre-empted, so only chain when the
+    // overlay actually settled closed — the next box remains claimable from
+    // the achievements panel either way.
+    if (sequenceState === null) {
+      next.open();
+    }
+  }
+
   function handleAdvanceInput(): void {
     if (!sequenceState) return;
     if (sequenceState.phase === 'summary') {
       handleAcknowledge();
-    } else if (sequenceState.phase !== 'claimed') {
+    } else if (!isRewardOpeningComplete(sequenceState)) {
       handleSkip();
     }
   }
 
   backdrop.on('pointerdown', handleAdvanceInput);
+  nextButton.on('pointerdown', handleOpenNext);
 
   const keyListener = (event: KeyboardEvent): void => {
     if (!sequenceState) return;
     switch (event.code) {
+      case 'KeyN':
+        // Only meaningful on the summary screen with a chain action wired —
+        // outside that, leave the key entirely alone (no preventDefault) so a
+        // stray [N] is not silently swallowed by this overlay.
+        if (sequenceState.phase === 'summary' && nextReward !== null) {
+          event.preventDefault();
+          handleOpenNext();
+        }
+        break;
       case 'Enter':
       case 'Space':
       case 'Escape':
@@ -474,6 +583,7 @@ export function createRewardOpeningUI(
       presentation = params.presentation;
       sourceLabel = params.sourceLabel;
       onAcknowledgeCallback = params.onAcknowledge;
+      nextReward = params.nextReward ?? null;
       excitement = computeExcitement();
       revealItems =
         presentation.kind === 'lootBox'
@@ -568,6 +678,10 @@ export function createRewardOpeningUI(
     },
     skip: handleSkip,
     acknowledge: handleAcknowledge,
+    openNext: handleOpenNext,
+    getNextRewardLabel(): string | null {
+      return sequenceState?.phase === 'summary' ? (nextReward?.label ?? null) : null;
+    },
     getPhase(): RewardOpeningPhase | null {
       return sequenceState?.phase ?? null;
     },
@@ -583,13 +697,15 @@ export function createRewardOpeningUI(
         : null;
     },
     destroy(): void {
-      backdrop.off('pointerdown', handleAdvanceInput);
+      if (container.active) {
+        backdrop.off('pointerdown', handleAdvanceInput);
+        nextButton.off('pointerdown', handleOpenNext);
+      }
       scene.input.keyboard?.off('keydown', keyListener);
       close();
-      container.destroy(true);
+      if (container.active) {
+        container.destroy(true);
+      }
     },
   };
 }
-
-/** Re-exported for callers that only need the completion predicate. */
-export { isRewardOpeningComplete };

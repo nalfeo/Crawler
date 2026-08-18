@@ -3,6 +3,7 @@ import { CI_INCIDENT_MARKER } from './markers.mjs';
 import {
   hasTrustedTrainPromotionCheck,
   isTrustedTrainPromotionCheck,
+  requiresAdminIntervention,
   shouldSkipRepoIncidentWorkflowRun,
 } from './state.mjs';
 import { parseEnabledFlag } from '../merge-train/state.mjs';
@@ -42,6 +43,7 @@ if (shouldSkipRepoIncidentWorkflowRun(run)) {
 }
 
 const label = 'ci-incident';
+const adminInterventionLabel = 'admin-intervention-required';
 const title = `CI incident: ${run.name}`;
 const openIssues = await paginate(
   token,
@@ -84,11 +86,47 @@ const isTrainFastPathSuccess =
   run.name === 'CI' &&
   hasTrustedTrainPromotionCheck(headCheckRuns, trustedAppId);
 
+async function deployRunActuallyReleased() {
+  if (run.name !== 'Deploy to GitHub Pages') {
+    return true;
+  }
+  if (!run.id) {
+    process.stdout.write(
+      `skip auto-close workflow=${run.name} reason=missing-run-id (cannot prove deploy job succeeded)\n`,
+    );
+    return false;
+  }
+  const jobs =
+    (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(run.id)}/jobs?per_page=100`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+    ).data.jobs || [];
+  const deployJob = jobs.find((job) => job.name === 'deploy');
+  const deploymentStepSucceeded = deployJob?.steps?.some(
+    (step) =>
+      ['Deploy to GitHub Pages', 'Deploy to GitHub Pages (retry)'].includes(step.name) &&
+      step.conclusion === 'success',
+  );
+  if (deployJob?.conclusion === 'success' && deploymentStepSucceeded) {
+    return true;
+  }
+  process.stdout.write(
+    `skip auto-close workflow=${run.name} reason=pages-deploy-not-success job-conclusion=${deployJob?.conclusion || 'missing'} deployment-step-succeeded=${deploymentStepSucceeded || false}\n`,
+  );
+  return false;
+}
+
 if (run.conclusion === 'success') {
   if (isTrainFastPathSuccess) {
     process.stdout.write(
       `skip auto-close workflow=${run.name} reason=train-fast-path-success (docs_only shortcut is not full-CI evidence)\n`,
     );
+    process.exit(0);
+  }
+  if (!(await deployRunActuallyReleased())) {
     process.exit(0);
   }
   if (existing) {
@@ -127,6 +165,25 @@ try {
   }
 }
 
+// Identity comes from the immutable workflow path shared with
+// action-required-retrigger.mjs, so both recovery paths agree on which runs
+// automation can already retrigger without a human.
+const needsAdminIntervention = requiresAdminIntervention(run);
+if (needsAdminIntervention) {
+  try {
+    await request(token, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: {
+        name: adminInterventionLabel,
+        color: 'b60205',
+        description: 'Automation requires a human or repository-admin intervention',
+      },
+    });
+  } catch (error) {
+    if (error.status !== 422) throw error;
+  }
+}
+
 const body = [
   CI_INCIDENT_MARKER,
   `# ${run.name} needs recovery`,
@@ -151,6 +208,15 @@ const body = [
       : [];
   })(),
   '',
+  ...(needsAdminIntervention
+    ? [
+        '## Required human/admin intervention',
+        '',
+        'This incident was raised because automation cannot safely recover without a human or repository-admin action.',
+        'The fix must include a deterministic guard, automation change, or documented removal condition so the same intervention is not needed again.',
+        '',
+      ]
+    : []),
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');
 
@@ -159,14 +225,21 @@ if (existing) {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
-      body: { body, labels: [label] },
+      body: {
+        body,
+        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+      },
     })
   ).data;
 } else {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
-      body: { title, body, labels: [label] },
+      body: {
+        title,
+        body,
+        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+      },
     })
   ).data;
 }

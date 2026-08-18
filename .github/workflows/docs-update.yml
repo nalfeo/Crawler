@@ -1,16 +1,16 @@
 name: Docs Update Loop
 
 on:
-  # Rebuild INDEX.md whenever a new date-stamped handoff file lands on main.
-  # Matches 2026-*.md, 2027-*.md, etc. — never INDEX.md itself (preventing
-  # an infinite trigger loop).
-  push:
+  # Trigger only when the merge train promotes a real payload onto main.
+  # `merge-train.yml` also runs on raw main pushes, schedules and wake-ups, so
+  # the landing itself is confirmed from the `Merge-Train-PR:` trailer in the
+  # landed commit (see .github/scripts/docs-update-payload-gate.mjs).
+  # Docs-only train payloads are intentionally ignored: they do not need the
+  # docs automation PR churn, and they should not trigger the release path.
+  workflow_run:
+    workflows: ['Merge Train']
+    types: [completed]
     branches: [main]
-    paths:
-      - 'docs/knowledge/handoffs/2*.md'
-  schedule:
-    # Mondays at 09:00 UTC (catch-all for any drift)
-    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -32,74 +32,144 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Detect non-doc merge-train payload
+        id: payload
+        if: github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          LANDED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node .github/scripts/docs-update-payload-gate.mjs "$LANDED_SHA"
 
       - uses: actions/setup-node@v4
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         with:
           node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npm ci
 
       - name: Prepare report directory
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: mkdir -p "$AUTOMATION_REPORT_DIR"
 
       # Each check writes a JSON summary under $AUTOMATION_REPORT_DIR.
       # `continue-on-error: true` is intentional — we aggregate at the end.
       - name: Check doc paths
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/check-paths.ts
         continue-on-error: true
 
       - name: Check ADR consistency
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/check-adr-consistency.ts
         continue-on-error: true
 
+      # Lore conflicts are hard blockers: the workflow must not silently
+      # canonize a proposal or choose between conflicting sources.
+      - name: Validate lore canon and provenance
+        id: lore_canon
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
+        run: npx tsx scripts/agent/docs/check-lore-canon.ts
+
       - name: Check README vs package.json scripts
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/check-readme-commands.ts
         continue-on-error: true
 
       - name: Stale game-design detector
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/stale-game-design.ts
         continue-on-error: true
 
       - name: Lint handoff retrospectives
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/lint-handoff.ts
         continue-on-error: true
 
       - name: Handoff promotion candidates
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/promote-handoffs.ts
         continue-on-error: true
 
       - name: Promote Mistakes into agent memory
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/promote-mistakes.ts --apply
         continue-on-error: true
 
       - name: Apple calibration
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/apple-calibration.ts
         continue-on-error: true
 
       - name: Guard telemetry
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/guard-telemetry.ts
         continue-on-error: true
 
       - name: Archive handoffs older than 30 days
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/archive-handoffs.ts --apply
 
+      # Archiving mutates docs/knowledge/handoffs/ after the pre-archive lore
+      # gate above already passed. If a handoff cited by the Lore Bible ages
+      # out here, the earlier check can't see it: revalidate now so a
+      # dangling citation hard-blocks the PR instead of shipping silently.
+      - name: Revalidate lore canon after archive
+        id: lore_canon_post_archive
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
+        run: npx tsx scripts/agent/docs/check-lore-canon.ts
+
       - name: Rebuild handoff system-impact index
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/build-system-index.ts --apply
 
       - name: Detect docs automation changes
         id: changes
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.lore_canon.outcome == 'success' && steps.lore_canon_post_archive.outcome == 'success'
         run: |
-          if [ -n "$(git status --porcelain docs/knowledge/handoffs/ docs/knowledge/agent-memory.jsonl)" ]; then
+          if [ -n "$(git status --porcelain docs/knowledge/handoffs/ docs/knowledge/agent-memory.jsonl docs/knowledge/game-design/lore-bible.md docs/knowledge/game-design/lore-contradictions.md)" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Refresh remote tracking refs so --force-with-lease in create-pull-request
+      # uses accurate data.  The initial fetch-depth: 0 checkout can leave a
+      # stale ref for automation/docs-update (e.g. the branch was deleted after
+      # the previous PR was merged), and the 25-second Prettier pre-push hook
+      # creates a window where the remote can change.  Pruning here ensures the
+      # lease check sees reality, not a stale snapshot.
+      - name: Prune stale remote tracking refs
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.changes.outputs.changed == 'true'
+        run: git fetch --prune origin
+
+      # Back up the generated docs before create-pull-request@v7 runs.
+      # The action commits these files to a local PR branch and then resets the
+      # working tree to clean main — so after a failed push (stale-lease race)
+      # there are no docs changes left in the workspace for a retry.  Saving
+      # them here lets the restore step below reinstate them before the second
+      # invocation, preventing the retry from committing an empty diff and
+      # potentially force-pushing main onto the remote PR branch.
+      - name: Save generated docs for potential retry
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.changes.outputs.changed == 'true'
+        run: |
+          mkdir -p /tmp/docs-retry-backup
+          cp -r docs/knowledge/handoffs /tmp/docs-retry-backup/handoffs
+          cp docs/knowledge/agent-memory.jsonl /tmp/docs-retry-backup/ 2>/dev/null || true
+          cp docs/knowledge/game-design/lore-bible.md /tmp/docs-retry-backup/ 2>/dev/null || true
+          cp docs/knowledge/game-design/lore-contradictions.md /tmp/docs-retry-backup/ 2>/dev/null || true
+
       - name: Open docs automation PR
-        if: steps.changes.outputs.changed == 'true'
+        id: open_pr
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.changes.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
+        continue-on-error: true
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
           branch: automation/docs-update
@@ -112,6 +182,46 @@ jobs:
           add-paths: |
             docs/knowledge/handoffs/
             docs/knowledge/agent-memory.jsonl
+            docs/knowledge/game-design/lore-bible.md
+            docs/knowledge/game-design/lore-contradictions.md
+          body: |
+            Automated docs-update run. Generated by
+            `.github/workflows/docs-update.yml`.
+
+            - Archives handoffs older than 30 days.
+            - Rebuilds the per-system handoff index (`docs/knowledge/handoffs/INDEX.md`).
+            - Promotes `### Mistakes Made` retrospectives into
+              `docs/knowledge/agent-memory.jsonl` (`Session_Mistakes`).
+
+            Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+          labels: |
+            automation
+            docs
+
+      # After a failed push, create-pull-request@v7 has already reset the
+      # working tree to clean main.  Reinstate the generated docs so the retry
+      # below has an actual diff to commit.
+      - name: Restore generated docs for retry
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.changes.outputs.changed == 'true' && steps.open_pr.outcome == 'failure'
+        run: |
+          cp -r /tmp/docs-retry-backup/handoffs/. docs/knowledge/handoffs/
+          cp /tmp/docs-retry-backup/agent-memory.jsonl docs/knowledge/ 2>/dev/null || true
+          cp /tmp/docs-retry-backup/lore-bible.md docs/knowledge/game-design/ 2>/dev/null || true
+          cp /tmp/docs-retry-backup/lore-contradictions.md docs/knowledge/game-design/ 2>/dev/null || true
+
+      - name: Retry docs automation PR after branch race
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.changes.outputs.changed == 'true' && steps.open_pr.outcome == 'failure'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.CRAWLER_CI_PAT }}
+          branch: automation/docs-update
+          title: 'chore: archive handoffs, rebuild system index, promote mistakes'
+          commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
+          add-paths: |
+            docs/knowledge/handoffs/
+            docs/knowledge/agent-memory.jsonl
+            docs/knowledge/game-design/lore-bible.md
+            docs/knowledge/game-design/lore-contradictions.md
           body: |
             Automated docs-update run. Generated by
             `.github/workflows/docs-update.yml`.
@@ -128,6 +238,7 @@ jobs:
 
       - name: Aggregate report
         id: aggregate
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: |
           set +e
           npx tsx scripts/agent/shared/aggregate-report.ts > report.md
@@ -136,7 +247,7 @@ jobs:
 
       - name: Check workflow-run freshness
         id: freshness
-        if: steps.aggregate.outputs.exitcode != '0'
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.aggregate.outputs.exitcode != '0'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -163,7 +274,7 @@ jobs:
             }
 
       - name: File tracking issue
-        if: steps.aggregate.outputs.exitcode != '0' && steps.freshness.outputs.is_latest == 'true'
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.aggregate.outputs.exitcode != '0' && steps.freshness.outputs.is_latest == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

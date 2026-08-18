@@ -21,35 +21,18 @@ AZURE_STORAGE_KEY=
 AZURE_STORAGE_CONNECTION_STRING=
 AZURE_STORAGE_QUEUE_NAME=asset-requests
 AZURE_STORAGE_RUNS_CONTAINER=generated-runs
+AZURE_STORAGE_PLAYTEST_RUNS_CONTAINER=playtest-runs
 SPRITES_ASSET_QUEUE=azure-queue
 SPRITES_RUN_STORE=azure-blob
 
-# --- Azure AI Foundry (ADR 0033, opt-in) -------------------------------------
-# Provision + populate these automatically with:
-#   pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -IncludeFoundry
-#   (or `npm run setup:azure:foundry`)
-# Env-only refresh (resource already exists):
-#   npm run setup:azure:foundry:env
-#
-# SCOPE: Phase 2 groundwork provisions an Azure AI Foundry (AIServices) resource
-# with an OpenAI-COMPATIBLE starter catalog only (gpt-image-1 / gpt-4o /
-# gpt-4o-mini), because the provider route below is the Azure OpenAI data-plane
-# surface `{FOUNDRY_ENDPOINT}/openai/deployments/{model}/...`. The broader catalog
-# (FLUX/SDXL/Llama/Mistral/DeepSeek) and the model router use the Azure AI Model
-# Inference route and are NOT wired yet — tracked as ADR 0033 Phase 4.
-#
-# Backend selectors default to 'azure-openai'. Uncomment one to route that
-# provider through Foundry instead. FOUNDRY_*_MODEL values are Azure *deployment
-# aliases* (the /openai/deployments/{alias} path segment), not raw model IDs.
-# SPRITES_PROVIDER=foundry          # image
-# SPRITES_TEXT_PROVIDER=foundry     # variation expansion
-# SPRITES_SYNTH_PROVIDER=foundry    # brief synthesis + brief selector
-# SPRITES_VISION_PROVIDER=foundry   # judge
+# --- Azure AI Foundry image deployments (local-only) -------------------------
+# The restored Foundry backend currently supports only OpenAI-compatible image
+# deployments via `{FOUNDRY_ENDPOINT}/openai/deployments/{alias}/images/edits`.
+# Set FOUNDRY_IMAGE_MODEL to a deployment alias, not a catalog model ID.
+# FLUX and MAI models use a separate model-router contract and are deliberately
+# not selected by this backend until that contract is verified.
+# SPRITES_PROVIDER=foundry
 FOUNDRY_ENDPOINT=
 FOUNDRY_API_KEY=
 FOUNDRY_API_VERSION=2025-04-01-preview
-FOUNDRY_IMAGE_MODEL=gpt-image-1
-FOUNDRY_TEXT_MODEL=gpt-4o
-FOUNDRY_VISION_MODEL=gpt-4o
-# Brief selector MUST differ from FOUNDRY_TEXT_MODEL (the factory rejects an equal pair):
-FOUNDRY_BRIEF_SELECTOR_MODEL=gpt-4o-mini
+FOUNDRY_IMAGE_MODEL=

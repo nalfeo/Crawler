@@ -114,9 +114,6 @@
     "canvasWidth": 256,
     "canvasHeight": 474
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-elite-pinstripe-artillerist-v1/2026-08-01T00-15-10-ca812d29/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-elite-pinstripe-artillerist-v1/2026-08-01T00-15-10-ca812d29/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-elite-pinstripe-artillerist-v1/2026-08-01T00-15-10-ca812d29/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

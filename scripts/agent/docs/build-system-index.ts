@@ -21,9 +21,10 @@
  * Exits 0 always — findings are informational.
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { Report, fromRepo } from '../shared/report.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
@@ -157,15 +158,23 @@ interface HandoffEntry {
   readonly summary: string;
 }
 
-function extractSystemsField(text: string): string[] | null {
+export function extractSystemsField(text: string): string[] | null {
   // Look for `## Systems touched` header, then grab non-comment lines until the
   // next `##` header.
   const lines = text.split(/\r?\n/);
   let i = 0;
-  while (i < lines.length && !/^##\s+Systems touched\s*$/i.test(lines[i]!)) i++;
+  let inlineValue = '';
+  while (i < lines.length) {
+    const match = /^##\s+Systems touched(?:\s*:\s*(.*))?\s*$/i.exec(lines[i]!);
+    if (match) {
+      inlineValue = match[1] ?? '';
+      break;
+    }
+    i++;
+  }
   if (i >= lines.length) return null;
   i++;
-  const collected: string[] = [];
+  const collected: string[] = [inlineValue];
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (/^##\s+/.test(line)) break;
@@ -193,16 +202,29 @@ function classifyBySlug(slug: string): string[] {
   return [...hits];
 }
 
-function extractSummary(text: string, fallback: string): string {
+export function extractSummary(text: string, fallback: string): string {
   const lines = text.split(/\r?\n/);
   const idx = lines.findIndex((l) => /^##\s+What Was Done\s*$/i.test(l));
   if (idx >= 0) {
+    const paragraphLines: string[] = [];
     for (let i = idx + 1; i < lines.length; i++) {
       const raw = lines[i]!.trim();
-      if (!raw) continue;
+      if (!raw) {
+        if (paragraphLines.length > 0) break;
+        continue;
+      }
       if (raw.startsWith('<!--')) continue;
       if (raw.startsWith('##')) break;
-      return truncate(raw.replace(/^[-*]\s+/, ''));
+      if (paragraphLines.length === 0) {
+        paragraphLines.push(raw.replace(/^[-*]\s+/, ''));
+      } else if (/^[-*#]/.test(raw) || raw.startsWith('|')) {
+        break;
+      } else {
+        paragraphLines.push(raw);
+      }
+    }
+    if (paragraphLines.length > 0) {
+      return truncate(paragraphLines.join(' '));
     }
   }
   const h1 = lines.find((l) => /^#\s+/.test(l));
@@ -224,8 +246,9 @@ function renderIndex(
   systemsOrder: ReadonlyArray<string>,
   entriesBySystem: Map<string, HandoffEntry[]>,
   unclassified: ReadonlyArray<HandoffEntry>,
+  timestamp?: string,
 ): string {
-  const now = new Date().toISOString();
+  const now = timestamp ?? new Date().toISOString();
   const parts: string[] = [];
   parts.push('# Handoff system-impact index');
   parts.push('');
@@ -257,7 +280,9 @@ function renderIndex(
     const remaining = list.length - shown.length;
     if (remaining > 0) {
       parts.push('');
-      parts.push(`_…and ${remaining} older, see \`archive/\`._`);
+      parts.push(
+        `_…and ${remaining} older unarchived handoff(s) in this directory (see \`archive/\` for older archived entries)._`,
+      );
     }
     parts.push('');
   }
@@ -370,8 +395,33 @@ async function main(): Promise<void> {
   }
   unclassified.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
-  const rendered = renderIndex(systemsOrder, bySystem, unclassified);
+  // Suppress timestamp-only diffs: if the existing INDEX.md has the same body
+  // (everything except the "Last built:" line), reuse its timestamp so the file
+  // is byte-identical and the workflow does not create a no-op PR.
   const indexAbs = fromRepo(INDEX_FILE);
+  let existingTimestamp: string | undefined;
+  if (existsSync(indexAbs)) {
+    const existing = readFileSync(indexAbs, 'utf8');
+    const tsMatch = existing.match(/^Last built: (.+)\./m);
+    if (tsMatch) {
+      existingTimestamp = tsMatch[1];
+    }
+  }
+  // Render once with existing timestamp (or fresh) to compare bodies.
+  const rendered = renderIndex(systemsOrder, bySystem, unclassified, existingTimestamp);
+  // If body matches with existing timestamp, rendered === existing — no write needed.
+  // If body differs, render with a fresh timestamp.
+  let finalRendered: string;
+  if (existingTimestamp !== undefined && existsSync(indexAbs)) {
+    const existing = readFileSync(indexAbs, 'utf8');
+    if (rendered === existing) {
+      finalRendered = rendered; // no-op: identical to existing
+    } else {
+      finalRendered = renderIndex(systemsOrder, bySystem, unclassified);
+    }
+  } else {
+    finalRendered = rendered;
+  }
 
   const populated = [...bySystem.values()].filter((v) => v.length > 0).length;
   report.info(
@@ -379,10 +429,10 @@ async function main(): Promise<void> {
   );
 
   if (apply) {
-    writeFileSync(indexAbs, rendered);
+    writeFileSync(indexAbs, finalRendered);
     report.info(`Wrote ${INDEX_FILE}.`);
   } else {
-    process.stdout.write(rendered);
+    process.stdout.write(finalRendered);
     process.stdout.write('\n');
     report.info(`Dry-run: pass --apply to write ${INDEX_FILE}.`);
   }
@@ -390,7 +440,12 @@ async function main(): Promise<void> {
   report.finish();
 }
 
-main().catch((err) => {
-  process.stderr.write(`build-system-index crashed: ${err instanceof Error ? err.stack : err}\n`);
-  process.exit(2);
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
+  main().catch((err) => {
+    process.stderr.write(`build-system-index crashed: ${err instanceof Error ? err.stack : err}\n`);
+    process.exit(2);
+  });
+}

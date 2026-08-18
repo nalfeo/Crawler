@@ -1,4 +1,4 @@
-const VALID_RUN_OUTCOMES = new Set(['victory', 'death', 'timeout', 'stalled', 'error']);
+const VALID_RUN_OUTCOMES = new Set(['victory', 'death', 'timeout', 'stalled', 'error', 'quit']);
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -30,8 +30,119 @@ export function normalizeSweepResult(value) {
   if (!isPlainObject(value)) {
     throw new Error('result must be a JSON object');
   }
+  if (value.schemaVersion === 'crawler.experiment.v1' && !Array.isArray(value.weapons)) {
+    return normalizeGenericExperiment(value);
+  }
   if (typeof value.runAt !== 'string' || !Number.isFinite(Date.parse(value.runAt))) {
     throw new Error('runAt must be a valid timestamp');
+  }
+
+  function normalizeGenericExperiment(value) {
+    if (
+      !isPlainObject(value.experiment) ||
+      typeof value.experiment.type !== 'string' ||
+      typeof value.runAt !== 'string' ||
+      !Number.isFinite(Date.parse(value.runAt)) ||
+      !Array.isArray(value.records) ||
+      !Array.isArray(value.aggregates)
+    ) {
+      throw new Error('generic experiment requires experiment, runAt, records, and aggregates');
+    }
+    const dimensions = isPlainObject(value.dimensions) ? value.dimensions : {};
+    const dimensionLabels = (...names) => {
+      for (const name of names) {
+        const labels = Array.isArray(dimensions[name])
+          ? dimensions[name].filter((item) => typeof item === 'string')
+          : [];
+        if (labels.length > 0) return labels;
+      }
+      return [];
+    };
+    const weapons = dimensionLabels(
+      'weapon',
+      'startingWeapon',
+      'persona',
+      'playerPersona',
+      'weaponPersona',
+    );
+    const seeds = value.records
+      .map((record) => record?.seed)
+      .filter((seed) => isPositiveInteger(seed));
+    const allRecords = value.records.map((record, index) => {
+      if (
+        !isPlainObject(record) ||
+        !isPlainObject(record.dimensions) ||
+        !isPlainObject(record.metrics)
+      ) {
+        throw new Error(`records[${index}] must contain dimensions and metrics objects`);
+      }
+      const metric = (name, fallback = 0) =>
+        isFiniteNumber(record.metrics[name]) ? record.metrics[name] : fallback;
+      const weapon =
+        typeof record.dimensions.weapon === 'string'
+          ? record.dimensions.weapon
+          : typeof record.dimensions.startingWeapon === 'string'
+            ? record.dimensions.startingWeapon
+            : typeof record.dimensions.persona === 'string'
+              ? record.dimensions.persona
+              : typeof record.dimensions.playerPersona === 'string'
+                ? record.dimensions.playerPersona
+                : String(record.dimensions.weaponPersona ?? value.experiment.type);
+      return {
+        weapon,
+        seed: isPositiveInteger(record.seed) ? record.seed : index + 1,
+        outcome: typeof record.outcome === 'string' ? record.outcome : undefined,
+        gameTimeSec: metric('gameTimeSec'),
+        finalLevel: metric('finalLevel'),
+        totalKills: metric('totalKills'),
+        totalXp: metric('totalXp'),
+        totalGold: metric('totalGold'),
+        score: metric('score'),
+        minHealthPct: metric('minHealthPct'),
+        closeCallCount: metric('closeCallCount'),
+        questsCompleted: metric('questsCompleted'),
+        dimensions: record.dimensions,
+        metrics: record.metrics,
+      };
+    });
+    const labels =
+      weapons.length > 0 ? weapons : [...new Set(allRecords.map((record) => record.weapon))];
+    const summaries = labels.map((weapon) => {
+      const records = allRecords.filter((record) => record.weapon === weapon);
+      const mean = (field) =>
+        records.length === 0
+          ? 0
+          : records.reduce((sum, record) => sum + record[field], 0) / records.length;
+      const measuredRecords = records.filter((record) => typeof record.outcome === 'string');
+      const victories = measuredRecords.filter((record) => record.outcome === 'victory').length;
+      return {
+        weapon,
+        runs: records.length,
+        victories,
+        winRate: measuredRecords.length === 0 ? null : victories / measuredRecords.length,
+        meanScore: mean('score'),
+        meanGameTimeSec: mean('gameTimeSec'),
+        meanLevel: mean('finalLevel'),
+        meanKills: mean('totalKills'),
+        meanXp: mean('totalXp'),
+        meanMinHealthPct: mean('minHealthPct'),
+        meanCloseCallCount: mean('closeCallCount'),
+        meanQuestsCompleted: mean('questsCompleted'),
+        records,
+      };
+    });
+    const parameters = value.experiment.parameters;
+    return {
+      ...value,
+      floors: Array.isArray(parameters?.floors) ? parameters.floors : undefined,
+      seeds: [...new Set(seeds)].sort((left, right) => left - right),
+      weapons: labels,
+      maxFrames: isPositiveInteger(parameters?.maxFrames) ? parameters.maxFrames : 1,
+      weaponPersonas: Boolean(parameters?.weaponPersonas),
+      budgetSec: isFiniteNumber(parameters?.budgetSec) ? parameters.budgetSec : 0,
+      summaries,
+      allRecords,
+    };
   }
   if (!Array.isArray(value.seeds) || !value.seeds.every(isPositiveInteger)) {
     throw new Error('seeds must be an array of positive integers');

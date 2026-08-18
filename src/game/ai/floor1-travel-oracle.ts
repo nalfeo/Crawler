@@ -50,6 +50,46 @@ export interface Floor1TravelOracleOptions {
    * oracle supplies its own hypothetical-effects-aware passability predicate
    * per distinct effect set encountered. */
   readonly pathOptions: Omit<PathfindingOptions, 'isTilePassable'>;
+  /**
+   * Optional recovery for a true live-player start whose center maps onto an
+   * impassable tile while its physical body still overlaps adjacent floor.
+   * Other location ids remain strict.
+   */
+  readonly blockedStartRecovery?: {
+    readonly locationId: LocationId;
+    readonly bodyRadiusFt: number;
+  };
+}
+
+function physicallyOverlappedCardinalTiles(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  point: RunPlannerPoint,
+  blockedTile: { readonly x: number; readonly y: number },
+  bodyRadiusFt: number,
+): readonly { readonly x: number; readonly y: number }[] {
+  if (!(bodyRadiusFt > 0)) return [];
+
+  const tileSize = floorMap.config.tileSizeFt;
+  const radiusSquared = bodyRadiusFt * bodyRadiusFt;
+  const candidates = [
+    { x: blockedTile.x + 1, y: blockedTile.y },
+    { x: blockedTile.x - 1, y: blockedTile.y },
+    { x: blockedTile.x, y: blockedTile.y + 1 },
+    { x: blockedTile.x, y: blockedTile.y - 1 },
+  ];
+
+  return candidates.filter((tile) => {
+    if (!floorMap.tileMap.inBounds(tile.x, tile.y)) return false;
+    const minX = tile.x * tileSize;
+    const maxX = minX + tileSize;
+    const minY = tile.y * tileSize;
+    const maxY = minY + tileSize;
+    const closestX = Math.max(minX, Math.min(point.x, maxX));
+    const closestY = Math.max(minY, Math.min(point.y, maxY));
+    const dx = point.x - closestX;
+    const dy = point.y - closestY;
+    return dx * dx + dy * dy <= radiusSquared + EPSILON;
+  });
 }
 
 /**
@@ -137,14 +177,24 @@ export function makeFloor1DoorAwareTravelOracle(
 
       const startTile = floorMap.worldToTile(a.x, a.y);
       const goalTile = floorMap.worldToTile(b.x, b.y);
-      const path = findTilePath(floorMap, startTile, goalTile, {
-        ...options.pathOptions,
-        isTilePassable: passable,
-      });
-      const cost =
-        path.length < 1
-          ? Infinity
-          : Math.round(((path.length - 1) * floorMap.config.tileSizeFt) / speed);
+      const recovery = options.blockedStartRecovery;
+      const startTiles =
+        from === recovery?.locationId && !passable(startTile.x, startTile.y)
+          ? physicallyOverlappedCardinalTiles(floorMap, a, startTile, recovery.bodyRadiusFt)
+          : [startTile];
+      let minPathSteps = Infinity;
+      for (const candidate of startTiles) {
+        const path = findTilePath(floorMap, candidate, goalTile, {
+          ...options.pathOptions,
+          isTilePassable: passable,
+        });
+        if (path.length > 0) {
+          minPathSteps = Math.min(minPathSteps, path.length - 1);
+        }
+      }
+      const cost = !Number.isFinite(minPathSteps)
+        ? Infinity
+        : Math.round((minPathSteps * floorMap.config.tileSizeFt) / speed);
       costByKey.set(cacheKey, cost);
       return cost;
     },

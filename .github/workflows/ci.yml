@@ -167,6 +167,23 @@ jobs:
           echo "asset_visual_touched=$asset_visual_touched" >>"$GITHUB_OUTPUT"
           echo "devtool_visual_touched=$devtool_visual_touched" >>"$GITHUB_OUTPUT"
 
+  deps-install:
+    name: Cold dependency install
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.dependencies_touched == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install from the registry without caches
+        run: |
+          npm cache clean --force
+          npm ci --ignore-scripts --no-audit --no-fund
+
   # Job 1: Lightweight checks — consolidates Types & Lint, Format & Labs,
   # advisory dead-code/typecheck, and human-approval into a single runner to
   # eliminate three repeated setup/checkout sequences on a full CI run.
@@ -212,6 +229,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           install-playwright: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
+          install-dependencies: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
@@ -310,6 +328,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run check:wired-systems
 
+      # AI/human parity guard: no src/game/ai file may force past the
+      # safe-context gate that binds every human equipment panel action. The
+      # headless runner is the balance oracle, so an AI-only privilege silently
+      # measures a game no human plays.
+      - name: AI equipment-parity guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:ai-equip-parity
+
       # Test-only exports guard: flags src/ exports whose only consumers are in
       # tests/**. Closes the blind spot where test-only usage masked production
       # deadness in knip (knip includes tests/** in its project scope). The
@@ -326,6 +352,50 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:knip-suppressions
 
+      # Allowlist governance guard: generalizes the knip/npm-audit expiry rule to
+      # EVERY allowlist, suppression, and exception list in the repo. Each entry
+      # must carry a specific reason plus either an unexpired `expiresOn`
+      # (time-bounded) or a tracking ref + removal condition (tracked-permanent).
+      # Fail-closed: an allowlist-shaped export that is not registered is itself
+      # a finding, so a new allowlist cannot silently escape governance.
+      # Receipt: `npm audit` went red in CI because an exception list quietly
+      # expired on a date nobody was watching.
+      - name: Allowlist governance + expiry guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:allowlist-expiry
+
+      # Registry integrity guard: duplicate/blank ids within a registry file and,
+      # critically, ACROSS sibling files that share one logical id namespace
+      # (achievements.floor1.json + achievements.floor2.json). Per-file Zod
+      # loaders structurally cannot see the cross-file case, which is how a
+      # Floor-2 tier4 achievement collided with a sibling PR's rows and needed a
+      # human escalation to untangle.
+      - name: Registry ID integrity guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:registry-integrity
+
+      # Asset identity guard: verifies the shard ↔ PNG ↔ contentHash triple over
+      # the ENTIRE committed corpus, not just newly added entries, so latent
+      # defects surface once instead of being discovered by eye in-game.
+      # Receipts: 55 welcome-room shards kept stale contentHashes after their
+      # PNGs were restored (red unit tests, CI-recovery intervention), a sprite
+      # shipped whose filename and pixels disagreed, and an orphaned walk shard
+      # was resurrected by a chore commit after its PNG was intentionally deleted.
+      - name: Asset manifest identity guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:asset-integrity
+
+      # Equipment art coverage ratchet: every wired equipment piece (legacy
+      # catalog equippables + the Floor 2 generated-equipment reward pool) must
+      # resolve to real approved art through the SAME resolver the equipment and
+      # inventory panels call. Gaps already recorded in the shrink-only baseline
+      # pass; a NEW gap fails. Closes the loop where gear shipped wired but
+      # un-arted, stayed green in CI, and was only ever discovered by a human
+      # noticing a placeholder in game — one ad-hoc PR at a time.
+      - name: Equipment art coverage ratchet
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:equipment-art-coverage
+
       # Exact-version guard: block any PR that introduces a semver range into
       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
       # lockfile regeneration to silently advance a package version before
@@ -334,6 +404,13 @@ jobs:
       - name: Exact dependency versions
         if: env.DOCS_ONLY != 'true'
         run: npm run security:exact-deps
+
+      - name: Lockfile integrity
+        if: env.DOCS_ONLY != 'true' && needs.changes.outputs.dependencies_touched == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm run security:lock-integrity
 
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
@@ -538,10 +615,13 @@ jobs:
 
   # Job 5: Headless Floor 1 completion gate (critical path, must pass)
   # Deterministically proves the behavior-tree AI can still clear Floor 1
-  # (victory + all quests, under the 5-minute game-time budget). Runs the same
+  # (victory + all quests, under the 6-minute active-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
   # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
   # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
+  #
+  # This is the BLOCKING leg of the PR sweep tier (see scripts/agent/perf/sweep-legs.ts).
+  # The report-only multi-floor legs run in test-headless-multifloor below.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -555,8 +635,86 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # Includes progression-chain.test.ts: it asserts the multi-floor CHAINING
+      # MECHANISM (chain order, carryover handoff, aggregate accounting), not a
+      # win rate, so it is a legitimate blocking wiring guard. The win-rate legs
+      # that genuinely lack measured thresholds are report-only below.
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
+
+  # Job 5a: Report-only multi-floor sweep legs (NEVER blocking).
+  #
+  # Floor 1 alone can no longer answer "is the game completable end-to-end?" now
+  # that Floor 2 is implemented E2E with an attainable victory. These legs run
+  # the two coverage gaps the blocking Floor-1 gate cannot see:
+  #
+  #   * floor1-chain — Floor 1 → Floor 2 with a carried-over player, the ONLY
+  #     leg that exercises the floor transition at all.
+  #   * floor2       — Floor 2 standalone.
+  #
+  # Deliberately `continue-on-error` and excluded from merge-gate: neither leg
+  # has a measured, trustworthy win-rate threshold yet, and inventing one would
+  # either be meaningless or would pressure someone into tuning Floor 1 to
+  # satisfy it (AGENTS.md r12). They publish numbers now; promoting a leg to
+  # blocking is a separate, evidence-backed decision.
+  #
+  # Shards in parallel with the blocking gate so the PR tier's wall time stays
+  # inside the previous single-job envelope.
+  test-headless-multifloor:
+    name: Headless Multi-Floor Legs (report-only)
+    runs-on: ubuntu-latest
+    needs: [changes]
+    continue-on-error: true
+    if: >-
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: floor1-chain
+            args: --floor floor1 --seeds 1-10 --no-force-weapon --chain
+          - leg: floor2
+            args: --floor floor2 --seeds 1-15 --no-force-weapon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Sweep leg ${{ matrix.leg }}
+        run: >-
+          node scripts/agent/perf/prebundle-cli.mjs --entry winrate-sweep
+          ${{ matrix.args }}
+          --workers 4 --skip-events --out "files/sweep-${{ matrix.leg }}.json"
+
+      - name: Publish leg summary
+        if: always()
+        run: |
+          set -euo pipefail
+          out="files/sweep-${{ matrix.leg }}.json"
+          {
+            echo "### Sweep leg \`${{ matrix.leg }}\` (report-only)"
+            echo ""
+            if [ -f "$out" ]; then
+              node -e '
+                const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                console.log(`- Win rate: **${(j.winRate * 100).toFixed(1)}%** (${j.totalWins}/${j.totalRuns})`);
+                console.log(`- Slow victories: ${j.totalSlowVictories}`);
+                console.log(`- True losses: ${j.totalTrueLosses}`);
+              ' "$out"
+            else
+              echo "- ⚠️ leg produced no artifact (see job log)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: sweep-leg-${{ matrix.leg }}
+          path: files/sweep-${{ matrix.leg }}.json
+          if-no-files-found: warn
 
   # Job 5b: Set-piece reachability hard gate (scoped)
   # Runs the 200-seed Floor 1 welcome-room prefab reachability sweep whenever the
@@ -657,6 +815,7 @@ jobs:
     needs:
       [
         changes,
+        deps-install,
         check-lightweight,
         check-aggregate-rows,
         check-silent-reverts,
@@ -723,6 +882,7 @@ jobs:
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
+          check "Cold dependency install"        "${{ needs.deps-install.result }}" "true"
           # Lightweight Checks consolidates Types & Lint, Format & Labs,
           # advisory dead-code/typecheck, and human-approval. On docs-only
           # changes the non-approval steps are skipped at the step level; the

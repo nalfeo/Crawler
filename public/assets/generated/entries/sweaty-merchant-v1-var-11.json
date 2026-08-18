@@ -3,7 +3,7 @@
   "spriteName": "sweaty-merchant-v1-var-11",
   "assetPath": "generated/sweaty-merchant-v1-var-11.png",
   "approvedAt": "2026-07-06T17:32:00.467Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-UPh1oc/sweaty-merchant-v1/2026-07-03T21-53-19-9abe74c3",
+  "sourceRun": "generated/runs/sweaty-merchant-v1/imported-6e7c92abdaef",
   "variantIndex": 11,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": null,
   "contentHash": "6e7c92abdaeffd0620101c7687c57df40f6c7c66d7f8aded9d146a2846de9da6",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 8,

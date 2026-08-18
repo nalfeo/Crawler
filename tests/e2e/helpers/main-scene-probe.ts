@@ -13,14 +13,18 @@ import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 // Type-only import (erased at runtime — does NOT execute the lab's registerLab).
 import type {
   BloodSurfaceProbeSummary,
+  BossIntroProbeState,
   HarvestableRenderSummary,
   FamilyHudProbeState,
+  FloatingTextProbe,
+  ItemIconRenderInfo,
   MainSceneProbeApi,
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
+  SafeAreaLayoutProbe,
   TerrainRenderSummary,
   DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
@@ -86,8 +90,20 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
+  startStaircaseBossBattle: (page: Page): Promise<number> =>
+    page.evaluate(() => window.__mainSceneProbe!.startStaircaseBossBattle()),
+  primeFloor1StairTransition: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor1StairTransition()),
+  getBossIntroState: (page: Page): Promise<BossIntroProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getBossIntroState()),
+  scrollBossIntro: (page: Page, delta: number): Promise<void> =>
+    page.evaluate((lines) => window.__mainSceneProbe!.scrollBossIntro(lines), delta),
+  dismissBossIntro: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.dismissBossIntro()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
+  getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
+    page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
   advanceSimulationFrames: (page: Page, frames: number): Promise<void> =>
@@ -105,8 +121,12 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.primeNpcInteractionTarget()),
   primeQuestWaypointArrows: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.primeQuestWaypointArrows()),
+  primeCrowdedDownRightQuestWaypointArrows: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeCrowdedDownRightQuestWaypointArrows()),
   getVisibleQuestArrowIds: (page: Page): Promise<string[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowIds()),
+  getVisibleQuestArrowStates: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowStates()),
   requestAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestAchievementsToggle()),
   requestQuartermasterToggle: (page: Page): Promise<void> =>
@@ -128,6 +148,20 @@ export const mainSceneProbe = {
         window.__mainSceneProbe!.queueSkillUsage(id, usageMetric, usageAmount),
       { id: skillId, usageMetric: metric, usageAmount: amount },
     ),
+  equipPlayerActiveAbility: (page: Page, abilityId: string): Promise<boolean> =>
+    page.evaluate((id) => window.__mainSceneProbe!.equipPlayerActiveAbility(id), abilityId),
+  getAbilityFloaters: (
+    page: Page,
+  ): Promise<
+    ReadonlyArray<{
+      readonly abilityId: string;
+      readonly label: string;
+      readonly x: number;
+      readonly y: number;
+      readonly visible: boolean;
+      readonly alpha: number;
+    }>
+  > => page.evaluate(() => window.__mainSceneProbe!.getAbilityFloaters()),
   setWorldState: (page: Page, state: MainSceneState['worldState']): Promise<void> =>
     page.evaluate(
       (value) =>
@@ -180,6 +214,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.skipRewardOpening()),
   acknowledgeRewardOpening: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.acknowledgeRewardOpening()),
+  unlockAchievement: (page: Page, achievementId: string): Promise<void> =>
+    page.evaluate((id) => window.__mainSceneProbe!.unlockAchievement(id), achievementId),
   getWorldElapsedMs: (page: Page): Promise<number | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getWorldElapsedMs()),
   getPlayerGold: (page: Page): Promise<number | null> =>
@@ -250,10 +286,14 @@ export const mainSceneProbe = {
     page: Page,
   ): Promise<readonly GeneratedEquipmentInstanceKey[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getEquippedGeneratedInstanceKeys()),
+  getItemIconRenderInfo: (page: Page, itemId: string): Promise<ItemIconRenderInfo> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getItemIconRenderInfo(id), itemId),
   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
+  getVisibleFloatingTexts: (page: Page, prefix = ''): Promise<readonly FloatingTextProbe[]> =>
+    page.evaluate((value) => window.__mainSceneProbe!.getVisibleFloatingTexts(value), prefix),
 };
 
 /**

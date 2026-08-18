@@ -27,6 +27,14 @@ permissions:
 jobs:
   release-gate:
     runs-on: ubuntu-latest
+    # Avoid allocating a runner for CI completions that can never deploy
+    # (scheduled/manual PR-health runs or failed CI). A no-op release-gate runner
+    # failure would otherwise make the whole Pages workflow red even though the
+    # deploy and baseline jobs are intentionally skipped.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     outputs:
       should_run: ${{ steps.gate.outputs.should_run }}
     steps:
@@ -115,6 +123,7 @@ jobs:
         env:
           DEPLOY_ENV: dev
           BUILD_OUTDIR: staging/dev
+          VITE_RUNS_INGEST_URL: https://crawler-dev-ingest.azurewebsites.net/runs
 
       - name: Guard - dev must include lab.html
         run: |
@@ -346,10 +355,102 @@ jobs:
             fi
           done
 
-  baseline-sweep:
-    name: Baseline win-rate sweep (100 seeds)
+  release-report-sweep:
+    name: Release report leg (${{ matrix.leg }} shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: [release-gate, deploy]
+    if: >
+      needs.release-gate.outputs.should_run == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    continue-on-error: true
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        include:
+          - { leg: floor2, shard: 0 }
+          - { leg: floor2, shard: 1 }
+          - { leg: floor2, shard: 2 }
+          - { leg: floor2, shard: 3 }
+          - { leg: floor2, shard: 4 }
+          - { leg: floor2, shard: 5 }
+          - { leg: floor2, shard: 6 }
+          - { leg: floor2, shard: 7 }
+          - { leg: floor2, shard: 8 }
+          - { leg: floor2, shard: 9 }
+          - { leg: floor2, shard: 10 }
+          - { leg: floor2, shard: 11 }
+          - { leg: floor2, shard: 12 }
+          - { leg: floor2, shard: 13 }
+          - { leg: floor2, shard: 14 }
+          - { leg: floor1-chain, shard: 0 }
+          - { leg: floor1-chain, shard: 1 }
+          - { leg: floor1-chain, shard: 2 }
+          - { leg: floor1-chain, shard: 3 }
+          - { leg: floor1-chain, shard: 4 }
+          - { leg: floor1-chain, shard: 5 }
+          - { leg: floor1-chain, shard: 6 }
+          - { leg: floor1-chain, shard: 7 }
+          - { leg: floor1-chain, shard: 8 }
+          - { leg: floor1-chain, shard: 9 }
+          - { leg: floor1-chain, shard: 10 }
+          - { leg: floor1-chain, shard: 11 }
+          - { leg: floor1-chain, shard: 12 }
+          - { leg: floor1-chain, shard: 13 }
+          - { leg: floor1-chain, shard: 14 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run report shard
+        continue-on-error: true
+        env:
+          LEG: ${{ matrix.leg }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/release-legs
+          start=$((SHARD * 10 + 1))
+          end=$((start + 9))
+          if [ "$end" -gt 150 ]; then end=150; fi
+          if [ "$LEG" = "floor2" ]; then
+            npm run ai:winrate-sweep -- \
+              --floor floor2 --seeds "$start-$end" --no-force-weapon \
+              --out ".cache/release-legs/$LEG-$SHARD.json"
+          else
+            npm run ai:winrate-sweep -- \
+              --floor floor1 --seeds "$start-$end" --no-force-weapon --chain \
+              --out ".cache/release-legs/$LEG-$SHARD.json"
+          fi
+
+      - name: Upload report shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-leg-${{ matrix.leg }}-${{ matrix.shard }}
+          path: .cache/release-legs/*.json
+          if-no-files-found: ignore
+
+  baseline-sweep:
+    name: Baseline multi-floor sweep (600 runs)
+    runs-on: ubuntu-latest
+    needs: [release-gate, deploy, release-report-sweep]
+    concurrency:
+      group: baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}
+      cancel-in-progress: false
     # Only baseline what we actually released to Pages. `needs: deploy` alone
     # is NOT sufficient here: GitHub Actions does not cascade-skip a job with
     # its own explicit `if:` just because a job it `needs` was skipped -- that
@@ -410,16 +511,160 @@ jobs:
           echo "short=$(echo "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
           echo "Baseline will be tagged with SHA: $SHA"
 
-      - name: Run 100-seed win-rate sweep
+      # Multi-floor release sweep — 600 runs across three legs (see the
+      # canonical matrix in scripts/agent/perf/sweep-legs.ts).
+      #
+      # Floor 1 alone can no longer answer "is the game completable
+      # end-to-end?" now that Floor 2 is implemented E2E with an attainable
+      # victory. The legs are:
+      #
+      #   floor1       50 seeds × 6 weapons = 300 runs  (blocking; this is the
+      #                leg the baseline-regression check compares, and the only
+      #                one that measures per-weapon balance)
+      #   floor2      150 seeds, seed-selected weapon  (report-only)
+      #   floor1-chain 150 seeds, chained F1 → F2      (report-only; the ONLY
+      #                leg that exercises the floor transition)
+      #
+      # Total run count is unchanged from the previous Floor-1-only 100-seed ×
+      # 6-weapon baseline, so release wall time stays roughly neutral.
+      #
+      # Resizing the Floor-1 leg (600 → 300 runs) is an intentional sweep
+      # resize, so the regression check reports ONE skipped comparison and then
+      # resumes at full strength from the next release. See
+      # RELEASE_SWEEP_REVISION in scripts/agent/perf/sweep-legs.ts.
+      #
+      # The Floor-1 leg remains the top-level baseline artifact for continuity:
+      # the regression check compares top-level totals against the historical
+      # series, and a run-count change would make it refuse to compare. The
+      # other legs are attached under `legs` for per-leg diagnostics.
+      - name: Run multi-floor release sweep
         id: sweep
         run: |
+          set -euo pipefail
           mkdir -p .cache/baseline
+
+          # Blocking Floor-1 balance leg → the top-level baseline artifact.
           npm run ai:winrate-sweep -- \
-            --seeds 1-100 \
+            --seeds 1-50 \
+            --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball \
             --out .cache/baseline/baseline.json
+
+          # Report-only legs run in the parallel release-report-sweep matrix.
+          # Download and merge their shard summaries here so publication remains
+          # one atomic baseline operation.
+          mkdir -p .cache/release-legs
+
+      - name: Download report shards
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-leg-*
+          path: .cache/release-legs
+          merge-multiple: true
+
+      - name: Merge report leg metrics
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const dir = '.cache/release-legs';
+          const expectedShards = 15;
+          const expectedRuns = 150;
+          for (const leg of ['floor2', 'floor1-chain']) {
+            const shardPattern = new RegExp(`^${leg}-(\\d+)\\.json$`);
+            const shardId = (file) => {
+              const match = path.basename(file).match(shardPattern);
+              if (!match) throw new Error(`unexpected shard filename for ${leg}: ${file}`);
+              return Number(match[1]);
+            };
+            const files = fs.readdirSync(dir)
+              .filter((file) => shardPattern.test(file))
+              .sort((a, b) => shardId(a) - shardId(b))
+              .map((file) => path.join(dir, file));
+            if (files.length === 0) {
+              console.log(`skipping missing leg ${leg}`);
+              continue;
+            }
+            const shards = files.map(shardId);
+            const expectedShardIds = Array.from({ length: expectedShards }, (_, shard) => shard);
+            if (files.length !== expectedShards || shards.some((shard, i) => shard !== expectedShardIds[i])) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found shards ${shards.join(',')}, expected ${expectedShardIds.join(',')}`);
+              continue;
+            }
+            const totals = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')))
+              .reduce((sum, part) => ({
+                totalWins: sum.totalWins + part.totalWins,
+                totalRuns: sum.totalRuns + part.totalRuns,
+                totalSlowVictories: sum.totalSlowVictories + (part.totalSlowVictories ?? 0),
+                totalTrueLosses: sum.totalTrueLosses + (part.totalTrueLosses ?? 0),
+                runs: [...sum.runs, ...(Array.isArray(part.runs) ? part.runs : [])],
+              }), { totalWins: 0, totalRuns: 0, totalSlowVictories: 0, totalTrueLosses: 0, runs: [] });
+            if (totals.totalRuns !== expectedRuns) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found ${totals.totalRuns} runs, expected ${expectedRuns}`);
+              continue;
+            }
+            fs.writeFileSync(`.cache/baseline/leg-${leg}.json`, JSON.stringify({
+              floorId: leg === 'floor2' ? 'floor2' : 'floor1',
+              legId: leg,
+              ...totals,
+              winRate: totals.totalWins / totals.totalRuns,
+            }, null, 2));
+            console.log(`${leg}: ${files.length} shards, ${totals.totalWins}/${totals.totalRuns}`);
+          }
+          NODE
+
+      # Fold the report-only legs into the baseline under `legs`, so the
+      # per-leg regression comparison has data to work with on the NEXT release
+      # while the top-level aggregate stays exactly the Floor-1 leg.
+      - name: Attach per-leg metrics
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const base = ".cache/baseline";
+            const baseline = JSON.parse(fs.readFileSync(`${base}/baseline.json`, "utf8"));
+            const legs = { floor1: pick(baseline) };
+            for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"]]) {
+              const p = `${base}/${file}`;
+              if (!fs.existsSync(p)) { console.log(`skipping missing leg ${id}`); continue; }
+              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")), true);
+            }
+            baseline.legs = legs;
+            fs.writeFileSync(`${base}/baseline.json`, JSON.stringify(baseline, null, 2));
+            function pick(j, includeRuns = false) {
+              return {
+                winRate: j.winRate,
+                totalWins: j.totalWins,
+                totalRuns: j.totalRuns,
+                ...(includeRuns && Array.isArray(j.runs) ? { runs: j.runs } : {}),
+              };
+            }
+          '
+
+      - name: Publish report-only leg summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release sweep legs"
+            echo ""
+            echo "| Leg | Win rate | Wins | Blocking |"
+            echo "| --- | ---: | ---: | :---: |"
+            for f in .cache/baseline/baseline.json .cache/baseline/leg-floor2.json .cache/baseline/leg-floor1-chain.json; do
+              [ -f "$f" ] || continue
+              node -e '
+                const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                const id = j.legId ?? j.floorId;
+                const blocking = id === "floor1" ? "yes" : "no";
+                console.log(`| \`${id}\` | ${(j.winRate * 100).toFixed(1)}% | ${j.totalWins}/${j.totalRuns} | ${blocking} |`);
+              ' "$f"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enrich baseline with commit metadata
         env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
           SHA: ${{ steps.sha.outputs.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -429,24 +674,23 @@ jobs:
           COMMIT_DATE=$(git show -s --format=%cI "$SHA")
           COMMIT_SUBJECT=$(git show -s --format=%s "$SHA")
           RUN_URL="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
-          COMMIT_DATE="$COMMIT_DATE" \
-          COMMIT_SUBJECT="$COMMIT_SUBJECT" \
-          RUN_URL="$RUN_URL" \
-          node -e "
-            const fs = require('node:fs');
-            const data = JSON.parse(fs.readFileSync('.cache/baseline/baseline.json','utf8'));
-            const meta = {
-              commit: process.env.SHA,
-              commitDate: process.env.COMMIT_DATE,
-              commitSubject: process.env.COMMIT_SUBJECT,
-              capturedAt: new Date().toISOString(),
-              runId: process.env.RUN_ID,
-              runNumber: Number(process.env.RUN_NUMBER),
-              runUrl: process.env.RUN_URL,
-              sweep: { seeds: '1-100', kind: 'winrate' },
-            };
-            fs.writeFileSync('.cache/baseline/baseline.json', JSON.stringify({ meta, ...data }, null, 2));
-          "
+          COMMIT_DATE="$COMMIT_DATE" COMMIT_SUBJECT="$COMMIT_SUBJECT" RUN_URL="$RUN_URL" \
+            npx tsx scripts/agent/perf/release-baseline.ts
+
+      # Score the deterministic fun evaluation on every available release leg
+      # (600 runs when all three legs complete), once `baseline.json` carries `runs` and `meta`
+      # (the enrichment step above). This is diagnostic/trendable data, not a
+      # release gate: a low fun score must never fail a commit that already
+      # shipped, so a scoring failure is downgraded to a warning instead of
+      # failing the job. `fun-report.json` is intentionally allowed to be
+      # absent downstream (publish/upload/index both tolerate its absence).
+      - name: Score fun evaluation
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          FUN_REPORT_JSON: ${{ github.workspace }}/.cache/baseline/fun-report.json
+        run: |
+          npx tsx scripts/agent/perf/release-fun-report.ts || \
+            echo "::warning::Fun evaluation scoring failed; this release's baseline will publish without a fun-report.json."
 
       - name: Publish to baselines branch
         env:
@@ -469,6 +713,7 @@ jobs:
           # two unrelated orphan histories.
           WORKTREE="$RUNNER_TEMP/baselines-wt"
           SRC="$GITHUB_WORKSPACE/.cache/baseline/baseline.json"
+          FUN_REPORT_SRC="$GITHUB_WORKSPACE/.cache/baseline/fun-report.json"
           export WORKTREE
 
           write_readme() {
@@ -525,38 +770,29 @@ jobs:
 
             # Storage is keyed by commit SHA, so a re-run for the same commit
             # overwrites its by-sha file: this branch holds the latest baseline
-            # per release commit (the sweep is deterministic for a given commit).
+            # per release commit. Gameplay fields are deterministic for a given
+            # commit; each complete RunStats also preserves nondeterministic
+            # wallTimeMs from the runner that captured it.
             mkdir -p "$WORKTREE/by-sha"
             cp "$SRC" "$WORKTREE/by-sha/$SHA.json" || return 1
+            # The fun-eval report is diagnostic-only and may legitimately be
+            # absent (scoring failure, or a by-sha file published before this
+            # feature existed) -- publish it opportunistically, never fail.
+            # Delete any stale same-SHA sibling first: a failed/missing score on
+            # a rerun must not leave the previous run's report as indexed data.
+            rm -f "$WORKTREE/by-sha/$SHA.fun-report.json"
+            if [ -f "$FUN_REPORT_SRC" ]; then
+              cp "$FUN_REPORT_SRC" "$WORKTREE/by-sha/$SHA.fun-report.json" || return 1
+            fi
             [ -f "$WORKTREE/README.md" ] || write_readme || return 1
 
             # Rebuild index.json from every by-sha/*.json (sorted newest-first by
             # commit date). Because the index is a deterministic derivation of the
             # by-sha files, concurrent jobs never textually merge the shared array.
-            node -e "
-              const fs = require('node:fs');
-              const path = require('node:path');
-              const wt = process.env.WORKTREE;
-              const dir = path.join(wt, 'by-sha');
-              const entries = fs
-                .readdirSync(dir)
-                .filter((f) => f.endsWith('.json'))
-                .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))
-                .filter((b) => b && b.meta && b.meta.commit)
-                .map((b) => ({
-                  commit: b.meta.commit,
-                  commitDate: b.meta.commitDate,
-                  commitSubject: b.meta.commitSubject,
-                  capturedAt: b.meta.capturedAt,
-                  runUrl: b.meta.runUrl,
-                  winRate: b.winRate,
-                  totalWins: b.totalWins,
-                  totalRuns: b.totalRuns,
-                  path: 'by-sha/' + b.meta.commit + '.json',
-                }));
-              entries.sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
-              fs.writeFileSync(path.join(wt, 'index.json'), JSON.stringify(entries, null, 2) + '\n');
-            " || return 1
+            # The derivation lives in a unit-tested module so it cannot silently
+            # drop a field the regression check reads (per-leg metrics, sweep
+            # revision) the way the previous inline script did.
+            BASELINES_DIR="$WORKTREE" npx tsx "$GITHUB_WORKSPACE/scripts/agent/perf/baseline-index.ts" || return 1
 
             git -C "$WORKTREE" add -A || return 1
             if git -C "$WORKTREE" diff --cached --quiet; then
@@ -583,12 +819,33 @@ jobs:
             sleep $((RANDOM % 5 + 2))
           done
 
+      - name: Detect baseline win-rate regression
+        id: baseline-regression
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: npx tsx scripts/agent/perf/baseline-regression-check.ts
+
+      - name: File regression issue and assign Copilot
+        if: steps.baseline-regression.outputs.regression == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: node .github/scripts/baseline-regression-issue.mjs
+
       - name: Upload baseline as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: baseline-${{ steps.sha.outputs.short }}
-          path: .cache/baseline/baseline.json
+          # fun-report.json is optional (see "Score fun evaluation" above), so
+          # `if-no-files-found: warn` lets this artifact still upload
+          # baseline.json alone when scoring failed for this release.
+          path: |
+            .cache/baseline/baseline.json
+            .cache/baseline/fun-report.json
           if-no-files-found: warn
           retention-days: 90
 

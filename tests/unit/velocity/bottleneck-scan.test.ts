@@ -4,12 +4,18 @@ import {
   buildReport,
   bucketBySize,
   collectMergedPrPages,
+  computeAbandonedWaste,
   computeOpenPrAging,
   computeStageTimings,
   deriveFindings,
+  fetchClosedPrs,
   fetchOpenPrs,
   fetchMergedPrs,
+  GUARD_REMEDIATION,
+  render,
+  UNLABELED_WASTE_BUCKET,
   type BottleneckReport,
+  type ClosedPrRecord,
   type OpenPrRecord,
   type StageTiming,
 } from '../../../scripts/agent/velocity/bottleneck-scan';
@@ -323,6 +329,7 @@ function report(overrides: Partial<Omit<BottleneckReport, 'findings'>>) {
     estimationAccuracy: null,
     guardFriction: [],
     openPrAging: null,
+    abandonedWaste: null,
     ...overrides,
   };
 }
@@ -369,6 +376,54 @@ describe('deriveFindings', () => {
 
   it('reports honestly when the sample shows nothing', () => {
     expect(deriveFindings(report({})).join('\n')).toMatch(/Widen --limit/);
+  });
+
+  it('includes guard-specific remediation for known denial guards', () => {
+    const findings = deriveFindings(
+      report({
+        guardFriction: [{ guard: 'pr-review-ledger', allow: 50, deny: 8 }],
+      }),
+    );
+    const text = findings.join('\n');
+    expect(text).toMatch(/pr-review-ledger/);
+    expect(text).toMatch(/8/);
+    // Estimated overhead: 8 denials × 2 retries minimum = 16 avoidable tool calls
+    expect(text).toMatch(/16\+/);
+    // Should include the specific remediation from GUARD_REMEDIATION
+    expect(text).toMatch(/verify:pr-prereqs/);
+    expect(text).toContain(GUARD_REMEDIATION['pr-review-ledger']);
+  });
+
+  it('uses generic fallback message for unknown denial guards', () => {
+    const findings = deriveFindings(
+      report({
+        guardFriction: [{ guard: 'unknown-custom-guard', allow: 10, deny: 3 }],
+      }),
+    );
+    const text = findings.join('\n');
+    expect(text).toMatch(/unknown-custom-guard/);
+    expect(text).toMatch(/6\+/);
+    expect(text).toMatch(/catching real violations or mis-firing/);
+    // Must NOT claim to have a specific fix
+    expect(text).not.toMatch(/verify:pr-prereqs/);
+  });
+
+  it('reports the first guard in the friction list (callers pre-sort by deny count)', () => {
+    // readGuardFriction pre-sorts by deny descending; deriveFindings trusts that order
+    // and reports the first item in the list.
+    const findings = deriveFindings(
+      report({
+        guardFriction: [
+          { guard: 'pr-preflight', allow: 40, deny: 6 },
+          { guard: 'pr-review-ledger', allow: 50, deny: 8 },
+        ],
+      }),
+    );
+    const text = findings.join('\n');
+    // pr-preflight is listed first — that is the one reported
+    expect(text).toMatch(/pr-preflight/);
+    expect(text).toMatch(/verify:pr-prereqs/);
+    expect(text).not.toMatch(/unknown-custom-guard/);
   });
 });
 
@@ -600,5 +655,226 @@ describe('buildReport', () => {
   it('uses null only when the caller omits open-PR data entirely', () => {
     const report = buildReport('/tmp/repo', [], undefined, NOW);
     expect(report.openPrAging).toBeNull();
+  });
+});
+
+describe('computeAbandonedWaste', () => {
+  const closed = (overrides: Partial<ClosedPrRecord>): ClosedPrRecord => ({
+    number: 1,
+    title: 'PR',
+    closedAt: at(1),
+    merged: true,
+    labels: [],
+    ...overrides,
+  });
+
+  it('reports a zeroed panel for an empty window', () => {
+    expect(computeAbandonedWaste([])).toEqual({
+      closedPrs: 0,
+      merged: 0,
+      abandoned: 0,
+      wasteRate: 0,
+      labelBreakdown: [],
+      recent: [],
+    });
+  });
+
+  it('splits merged from abandoned and computes the waste rate', () => {
+    const panel = computeAbandonedWaste([
+      closed({ number: 1, merged: true }),
+      closed({ number: 2, merged: true }),
+      closed({ number: 3, merged: false, labels: ['ci-lifecycle-abandoned'] }),
+      closed({ number: 4, merged: false, labels: ['copilot-empty-draft-repaired'] }),
+    ]);
+
+    expect(panel.closedPrs).toBe(4);
+    expect(panel.merged).toBe(2);
+    expect(panel.abandoned).toBe(2);
+    expect(panel.wasteRate).toBeCloseTo(0.5);
+  });
+
+  it('ranks lifecycle labels by count and buckets unlabeled abandonment', () => {
+    const panel = computeAbandonedWaste([
+      closed({ number: 1, merged: false, labels: ['ci-lifecycle-abandoned'] }),
+      closed({ number: 2, merged: false, labels: ['ci-lifecycle-abandoned'] }),
+      closed({ number: 3, merged: false, labels: ['copilot-empty-draft-repaired'] }),
+      closed({ number: 4, merged: false, labels: ['unrelated-label'] }),
+    ]);
+
+    expect(panel.labelBreakdown).toEqual([
+      { label: 'ci-lifecycle-abandoned', count: 2 },
+      { label: 'copilot-empty-draft-repaired', count: 1 },
+      { label: UNLABELED_WASTE_BUCKET, count: 1 },
+    ]);
+  });
+
+  it('lists the 5 most recently abandoned PRs, newest first, and ignores merged ones', () => {
+    const panel = computeAbandonedWaste([
+      closed({ number: 10, merged: true, closedAt: at(100) }),
+      ...[1, 2, 3, 4, 5, 6].map((n) =>
+        closed({
+          number: n,
+          merged: false,
+          closedAt: at(n),
+          labels: ['ci-lifecycle-abandoned', 'noise'],
+        }),
+      ),
+    ]);
+
+    expect(panel.recent.map((pr) => pr.prNumber)).toEqual([6, 5, 4, 3, 2]);
+    expect(panel.recent[0]!.labels).toEqual(['ci-lifecycle-abandoned']);
+  });
+});
+
+describe('deriveFindings — abandoned PR waste', () => {
+  const wastePanel = (abandoned: number, closedPrs: number, label = 'ci-lifecycle-abandoned') => ({
+    closedPrs,
+    merged: closedPrs - abandoned,
+    abandoned,
+    wasteRate: closedPrs === 0 ? 0 : abandoned / closedPrs,
+    labelBreakdown: [{ label, count: abandoned }],
+    recent: [],
+  });
+
+  it('flags a waste rate above the alert threshold and names the dominant class', () => {
+    const text = deriveFindings(report({ abandonedWaste: wastePanel(23, 100) })).join('\n');
+    expect(text).toMatch(/23 of 100 closed PRs \(23%\) never merged/);
+    expect(text).toMatch(/ci-lifecycle-abandoned/);
+  });
+
+  it('stays quiet below the alert threshold', () => {
+    const text = deriveFindings(report({ abandonedWaste: wastePanel(5, 100) })).join('\n');
+    expect(text).not.toMatch(/never merged/);
+  });
+
+  it('stays quiet on a sample too small to trust', () => {
+    const text = deriveFindings(report({ abandonedWaste: wastePanel(5, 10) })).join('\n');
+    expect(text).not.toMatch(/never merged/);
+  });
+});
+
+describe('render — abandoned PR waste', () => {
+  it('renders the abandoned waste panel, alarm, labels, and recent abandoned PRs', () => {
+    const text = render({
+      ...report({
+        abandonedWaste: {
+          closedPrs: 100,
+          merged: 77,
+          abandoned: 23,
+          wasteRate: 0.23,
+          labelBreakdown: [
+            { label: 'ci-lifecycle-abandoned', count: 11 },
+            { label: 'copilot-empty-draft-repaired', count: 10 },
+            { label: UNLABELED_WASTE_BUCKET, count: 2 },
+          ],
+          recent: [
+            {
+              prNumber: 2973,
+              title: 'Fix Floor 1 release sweep loss',
+              closedAt: at(100),
+              labels: ['ci-lifecycle-abandoned'],
+            },
+          ],
+        },
+      }),
+      findings: [],
+    });
+
+    expect(text).toContain('─── Abandoned PR waste ───');
+    expect(text).toContain('23 of 100 closed PRs never merged (23%) ← ⚠ WASTE ALARM');
+    expect(text).toContain('   11  ci-lifecycle-abandoned');
+    expect(text).toContain('   10  copilot-empty-draft-repaired');
+    expect(text).toContain(`    2  ${UNLABELED_WASTE_BUCKET}`);
+    expect(text).toContain('Most recently abandoned:');
+    expect(text).toContain('#2973');
+    expect(text).toContain('[ci-lifecycle-abandoned]  Fix Floor 1 release sweep loss');
+  });
+
+  it('renders a supplied empty closed-PR snapshot instead of treating it as omitted', () => {
+    const text = render({
+      ...report({
+        abandonedWaste: {
+          closedPrs: 0,
+          merged: 0,
+          abandoned: 0,
+          wasteRate: 0,
+          labelBreakdown: [],
+          recent: [],
+        },
+      }),
+      findings: [],
+    });
+
+    expect(text).toContain('─── Abandoned PR waste ───');
+    expect(text).toContain('0 of 0 closed PRs never merged (0%)');
+    expect(text).not.toContain('WASTE ALARM');
+  });
+});
+
+describe('fetchClosedPrs', () => {
+  function closedGraphqlPage(
+    prs: Array<Record<string, unknown>>,
+    endCursor: string | null,
+    hasNextPage: boolean,
+  ) {
+    return JSON.stringify({
+      data: {
+        repository: {
+          pullRequests: {
+            pageInfo: { endCursor, hasNextPage },
+            nodes: prs.map((pr) => ({
+              title: `PR ${String(pr.number ?? 'unknown')}`,
+              closedAt: at(1),
+              merged: true,
+              labels: { nodes: [] },
+              ...pr,
+            })),
+          },
+        },
+      },
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(execFileSync).mockReset();
+  });
+
+  it('pages with the GraphQL cursor and maps merge state plus labels', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(closedGraphqlPage([{ number: 1 }], 'CURSOR_1', true))
+      .mockReturnValueOnce(
+        closedGraphqlPage(
+          [{ number: 2, merged: false, labels: { nodes: [{ name: 'ci-lifecycle-abandoned' }] } }],
+          null,
+          false,
+        ),
+      );
+
+    const prs = fetchClosedPrs('repo-root', 10);
+
+    expect(prs.map((pr) => pr.number)).toEqual([1, 2]);
+    expect(prs[1]).toMatchObject({ merged: false, labels: ['ci-lifecycle-abandoned'] });
+    const secondArgs = vi.mocked(execFileSync).mock.calls[2]![1] as string[];
+    expect(secondArgs).toContain('cursor=CURSOR_1');
+  });
+
+  it('stops at the requested limit', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(closedGraphqlPage([{ number: 1 }, { number: 2 }], 'CURSOR_1', true));
+
+    expect(fetchClosedPrs('repo-root', 2).map((pr) => pr.number)).toEqual([1, 2]);
+    expect(vi.mocked(execFileSync).mock.calls).toHaveLength(2);
+  });
+
+  it('skips records with no closedAt timestamp', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(
+        closedGraphqlPage([{ number: 1, closedAt: null }, { number: 2 }], null, false),
+      );
+
+    expect(fetchClosedPrs('repo-root', 10).map((pr) => pr.number)).toEqual([2]);
   });
 });

@@ -21,6 +21,11 @@ permissions:
 
 jobs:
   route:
+    # The job name becomes the check-run name on the PR head SHA. Keeping
+    # "CI Recovery" in it means reconcile.mjs's name-based self-check fallback
+    # also excludes a failed router job from PR blocker classification when the
+    # owning workflow run is not resolvable (see isSelfRecoveryCheckRun).
+    name: CI Recovery Router
     if: >-
       ${{
         (github.event_name != 'pull_request_target' ||
@@ -80,6 +85,7 @@ jobs:
       - name: Dispatch per-PR reconciliation
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           RECOVERY_TRIGGER: ${{ github.event_name }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY || '5' }}

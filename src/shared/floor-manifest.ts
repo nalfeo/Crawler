@@ -18,6 +18,7 @@ import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
+import { floorBehaviorSchema } from './floor-behavior.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
@@ -34,6 +35,35 @@ export const floorManifestDefSchema = z
     protagonist: z.string().min(1),
     /** Available starter weapons for loadout selection. */
     starterWeapons: z.array(z.string().min(1)).min(1),
+    /**
+     * Implementation maturity for this floor — the single source of truth for
+     * "is this floor actually finishable end-to-end?".
+     *
+     * Deliberately NOT sweep-specific: any system that needs to know whether a
+     * floor is real content (stair-enabling into the next floor, floor-select
+     * UI, progression chaining) reads this rather than hardcoding a floor id.
+     *
+     * - `mvp`: the floor is implemented E2E with an attainable victory. This —
+     *   NOT `released` — is what puts a floor in the implemented (sweepable)
+     *   set, so a floor still stabilizing behind the release flag is still
+     *   swept.
+     * - `released`: the floor is shipped to players. Implies `mvp`; a floor may
+     *   be `mvp` but not yet `released` while it stabilizes.
+     * - `winBudgetMs`: the ACTIVE-time budget an official (tournament) win must
+     *   land under, in simulated game time. Omitted means the floor has no
+     *   validated budget yet, and a win is raw victory with no time bound.
+     *
+     * Defaulted so a manifest that predates this block still parses (as an
+     * unimplemented floor with no budget).
+     */
+    implemented: z
+      .object({
+        mvp: z.boolean().default(false),
+        released: z.boolean().default(false),
+        winBudgetMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .default(() => ({ mvp: false, released: false })),
     /** Floor timer configuration. */
     timer: z
       .object({
@@ -171,6 +201,14 @@ export const floorManifestDefSchema = z
         ambient: z.number().min(0).max(1),
       })
       .strict(),
+    /**
+     * Generic per-floor behavior switches. These replace hardcoded
+     * `world.floor === 1` / `world.floorId === 'floor2'` conditionals inside
+     * otherwise-generic systems: the system stays floor-agnostic and the floor
+     * declares which behavior it wants. Every flag defaults to `false`, so a
+     * new floor opts in explicitly.
+     */
+    behavior: floorBehaviorSchema.default(() => floorBehaviorSchema.parse({})),
     /** Floor-2-specific scenario config (ignored by Floor 1). */
     floor2: z
       .object({
@@ -217,7 +255,19 @@ export const floorManifestDefSchema = z
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, ctx) => {
+    // `released` means shipped-to-players, which cannot be true of a floor that
+    // is not even finishable. Catching this in the schema keeps the released
+    // sweep set from ever containing an unwinnable floor.
+    if (manifest.implemented.released && !manifest.implemented.mvp) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['implemented', 'released'],
+        message: 'implemented.released requires implemented.mvp to be true',
+      });
+    }
+  });
 
 export type FloorManifestDef = z.infer<typeof floorManifestDefSchema>;
 

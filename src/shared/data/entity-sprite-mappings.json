@@ -60,7 +60,8 @@
       "generated": {
         "briefId": "rat-v1",
         "pinnedTextureKey": "rat-v1-var-9",
-        "scale": 0.4
+        "scale": 0.4,
+        "heightFt": 2.05
       }
     },
     "enemy_slime": {
@@ -70,7 +71,8 @@
       "generated": {
         "briefId": "slime-v1",
         "pinnedTextureKey": "slime-v1-var-9",
-        "scale": 0.4
+        "scale": 0.4,
+        "heightFt": 2.25
       }
     },
     "enemy_spawner_rats_nest": {
@@ -80,7 +82,8 @@
       "generated": {
         "briefId": "rat-nest-v2",
         "pinnedTextureKey": "rat-nest-v2-var-3",
-        "scale": 0.4
+        "scale": 0.4,
+        "heightFt": 3.0
       }
     },
     "enemy_spawner_slime_pool": {
@@ -90,7 +93,8 @@
       "generated": {
         "briefId": "slime-pool-v1",
         "pinnedTextureKey": "slime-pool-v1-var-3",
-        "scale": 0.4
+        "scale": 0.4,
+        "heightFt": 2.4
       }
     },
     "enemy_baby_slime": {
@@ -100,7 +104,8 @@
       "generated": {
         "briefId": "baby-slime-v1",
         "pinnedTextureKey": "baby-slime-v1-var-8",
-        "scale": 0.4
+        "scale": 0.4,
+        "heightFt": 2.25
       }
     },
     "enemy_boss": {
@@ -115,7 +120,8 @@
       "generated": {
         "briefId": "rat-slime-v1",
         "pinnedTextureKey": "rat-slime-v1-var-1",
-        "scale": 0.6
+        "scale": 0.6,
+        "heightFt": 7.0
       }
     },
     "enemy_boss_slimerat": {
@@ -125,7 +131,8 @@
       "generated": {
         "briefId": "slime-rat-boss",
         "pinnedTextureKey": "slime-rat-boss-var-1",
-        "scale": 0.6
+        "scale": 0.6,
+        "heightFt": 3.98
       }
     },
     "enemy_family_boss": {
@@ -135,7 +142,8 @@
       "generated": {
         "briefId": "goblin-boss",
         "pinnedTextureKey": "goblin-boss-var-0",
-        "scale": 1.0
+        "scale": 1.0,
+        "heightFt": 7.0
       }
     },
     "npc": {

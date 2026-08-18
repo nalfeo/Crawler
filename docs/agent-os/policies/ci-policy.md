@@ -21,6 +21,38 @@
 - For Floor 1 weapon balance broad sweeps, use `.github/workflows/weapon-sweep.yml`.
 - For larger AI combo/pathing batch evaluations, use `.github/workflows/ai-sweep.yml`.
 
+## Prior Benchmark and Sweep Result Discovery
+
+When a user asks for a prior benchmark or sweep result, search repository evidence
+before GitHub Actions. A result may live on an active benchmark branch or in a
+committed artifact even when no matching workflow run exists or is retained.
+
+Use this order:
+
+1. **Inventory local and remote branches first** with `git branch --all` and
+   `git ls-remote --heads origin`. In a shallow or single-branch checkout, unrelated
+   remote heads are absent from `git branch --all`. Identify any branch whose name
+   or current checkout indicates the requested benchmark or sweep, then fetch each
+   matching remote head with
+   `git fetch --depth=<count> origin refs/heads/<branch>:refs/remotes/origin/<branch>`
+   before inspecting it. Give an explicitly named or active benchmark branch
+   priority over `main` and workflow history.
+2. **Inspect recent history on candidate branches** with
+   `git log --oneline --decorate -n <count> <branch>`. Use commit messages and
+   changed paths to identify the commit that produced or recorded the result.
+3. **Search each candidate branch tree for committed evidence** with
+   `git ls-tree -r --name-only <branch>` and `git grep` (or `git show`) scoped to
+   benchmark names, run IDs, and expected artifact paths. Check committed result
+   files and summaries, including the canonical `artifacts/experiments/`
+   directory, before treating a result as unavailable.
+4. **Only then inspect GitHub Actions workflow history and downloadable
+   artifacts.** Use Actions as a fallback for runs not represented in repository
+   branches or committed artifacts, not as the first source of prior results.
+
+Report which source produced the result, including the branch and commit when it
+came from repository evidence. Do not imply that an Actions-history miss means the
+benchmark did not run until the branch and artifact search is complete.
+
 ## Canonical Gate Stack
 
 Run the gate stack in this order:

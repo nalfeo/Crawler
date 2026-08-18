@@ -1,0 +1,87 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "fun-event-telemetry",
+  "task_title": "Add deterministic run data for fun evaluation",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A extend optional SimEvent log rejected because RunStats evidence must not depend on a debug sink. Alt B pure headless inference rejected because weapon/ability provenance is not reconstructable after transient queues clear. Alt C global event bus rejected as broader and riskier than this slice. Added boss-reward spell opportunities, canonical generated-item keys, one headless active clock, exact MAD policy, opportunity dedupe, shared normal/error finalizer, legacy/comparison tests, and smoke-vs-synthetic evidence boundaries."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "The review stage was restarted after the post-release sweep/viewer scope expansion. It rolled up two validated single-model findings across the final implementation: active-time timestamp ordering and malformed historical fun-report handling. Both were fixed with regression coverage."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified the complete runtime, evaluator, release workflow, persistence, and viewer diff after all fixes; full second pass found no remaining concerns."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Adjudication validated explicit baseline selector mismatch, stale same-SHA fun-report retention, and operational-error masking. All three were fixed with focused regression coverage."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final complete-diff review after all fixes found no remaining concerns."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "60f2be755453486c2a8e7065d731658ea6659a29",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": ".github/extensions/sweep-results-viewer/tests/renderer.test.mjs",
+          "detail": "The new renderer tests assert on JavaScript source substrings inside the emitted HTML rather than on rendered DOM output. They verify code text is present but not that populated baseline-sweep selector and criterion rows render. Prefer state-driven rendered-markup assertions if the renderer gains an executable DOM harness."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Final rebased release-sweep/index/viewer delta validated against HEAD 60f2be755. Diagnostic scoring remains non-blocking; sibling report publication removes stale same-SHA data, malformed reports degrade to null, and explicit baseline-sweep loading distinguishes not-found from operational failures. Runtime configured-level handling remains deterministic and regression-tested. All targeted unit, headless, viewer, typecheck, lint, and verify-fast checks passed. Test coverage is 4 because generated browser-script branches are currently source-asserted rather than executed under a DOM harness."
+    }
+  }
+}

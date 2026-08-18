@@ -132,6 +132,44 @@ export const FLOOR = {
  */
 export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
 
+/** Floor 1 Spell Broker price, in gold. */
+export const FLOOR1_SPELL_BROKER_COST: number = tuning.shopPricing.floor1.spellBrokerCost;
+
+/**
+ * Price step between rungs of the broker's rack: the n-th offer costs
+ * `spellBrokerCost * multiplier^n`, so the headline pick is the priciest and
+ * each further spell is back-catalog stock at a step-down price.
+ *
+ * The rack is Floor 1's **repeatable** gold sink, and it steps down rather than
+ * up because a repeat priced *above* the headline spell is unreachable at
+ * measured Floor 1 income (~800g earned, ~300g banked by a run that skips the
+ * merchant's weapon-class switch): at 1.4x no run on the 25-seed gate panel
+ * ever bought a second spell and the economy gate failed at 37.2% unspent.
+ */
+export const FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER: number =
+  tuning.shopPricing.floor1.spellBrokerRepeatCostMultiplier;
+
+/**
+ * Maximum spells one run may buy from the Floor 1 broker. Bounds the sink so a
+ * rich run converts spare gold into power without buying the whole rack.
+ */
+export const FLOOR1_SPELL_BROKER_MAX_PURCHASES: number =
+  tuning.shopPricing.floor1.spellBrokerMaxPurchases;
+
+/** Floor 1 merchant's charm price, in gold. */
+export const FLOOR1_MERCHANTS_CHARM_COST: number = tuning.shopPricing.floor1.merchantsCharm;
+
+/**
+ * Floor 1 post-quest merchant weapon prices, keyed by item id. Items missing
+ * from the table fall back to {@link FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST}.
+ */
+export const FLOOR1_POST_QUEST_WEAPON_COSTS: Readonly<Record<string, number>> =
+  tuning.shopPricing.floor1.postQuestWeaponCosts;
+
+/** Fallback price for a post-quest merchant weapon with no explicit entry. */
+export const FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST: number =
+  tuning.shopPricing.floor1.postQuestWeaponDefaultCost;
+
 export const SAFE_ROOM = {
   MIN_DURATION_S: tuning.safeRoom.minDurationS,
   OPTIMAL_DURATION_S: tuning.safeRoom.optimalDurationS,

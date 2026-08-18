@@ -15,8 +15,9 @@
  * or the AI dies to accumulated damage.
  *
  * This module is the pure, deterministic detector consumed by
- * `bt-ai-provider.ts` in a new priority slot (1.5 — just below Retreat,
- * above Interact). It has:
+ * `bt-ai-provider.ts` in a new priority slot (1.5 — above Interact; Retreat
+ * yields while lock-in is active so sealed arenas use defensive engagement
+ * instead of cage-kiting loops). It has:
  *
  *   - No side effects.
  *   - No dependency on the BT provider or its blackboard.

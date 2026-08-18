@@ -3,7 +3,7 @@
   "spriteName": "welcome-sign-left-v1-var-0",
   "assetPath": "generated/welcome-sign-left-v1-var-0.png",
   "approvedAt": "2026-07-03T01:36:43.943Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uOShiB/welcome-sign-left-v1/2026-07-03T00-12-24-022f040a",
+  "sourceRun": "generated/runs/welcome-sign-left-v1/imported-cfbd5e8e3acb",
   "variantIndex": 0,
   "anchor": {
     "x": 31,
@@ -25,7 +25,7 @@
   "sensorScore": "7/8",
   "judgeScore": "2",
   "type": "tile",
-  "contentHash": "da3d92bdddc15b04b85396043e075e31f8149964a20c1c6c3cb285ffbf0fd55f",
+  "contentHash": "cfbd5e8e3acbabb6c5a13576c9cb0db49dac4901c672539a108dda968f017005",
   "opaqueBounds": {
     "x": 5,
     "y": 5,

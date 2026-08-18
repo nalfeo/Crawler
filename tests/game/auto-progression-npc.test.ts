@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { removeEntity } from 'bitecs';
 import {
+  MAX_STAIR_DESCEND_DEFER_FRAMES,
   NPC_INTERACTION_COOLDOWN,
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
+  autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
-import { getOfferedBossRewardSpellIds } from '../../src/game/floorScenario.js';
+import {
+  getOfferedBossRewardSpellIds,
+  meetShopkeeper,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from '../../src/game/floorScenario.js';
 import {
   AINpcInteractionAction,
   AIState,
@@ -13,8 +20,9 @@ import {
   type AIInputProvider,
 } from '../../src/game/ai/types.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
 import equipmentDefsTestSeams from '../../src/shared/equipmentDefs.test-seams.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
@@ -22,8 +30,13 @@ import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { _customTag as customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import { NPC_INTERACT_RANGE_FT } from '../../src/shared/npc-types.js';
-import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
-import type { GameWorld } from '../../src/core/world.js';
+import {
+  FLOOR1_SHOP_QUEST_ID,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
+  SHOPKEEPER_FETCH_ITEM_ID,
+  SHOPKEEPER_FETCH_OBJECTIVE_ID,
+} from '../../src/shared/quest-types.js';
+import type { FloorExtendedState, GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -117,6 +130,17 @@ function makeCatalogItem(id: string): ItemDef {
     tags: [customTag('test')],
     rarity: ItemRarity.Common,
     maxStack: 1,
+  };
+}
+
+function seedFloor2Staircase(world: GameWorld): void {
+  world.floorExtendedState = {
+    familyState: {
+      staircaseUnlocked: true,
+      staircaseSpawned: true,
+      staircaseDiscovered: false,
+      staircasePos: { x: 0, y: 0 },
+    } as unknown as NonNullable<FloorExtendedState['familyState']>,
   };
 }
 
@@ -458,8 +482,139 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
   });
 
+  describe('loot-aware stair-descend deferral', () => {
+    function stairWorld() {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.state = 'playing';
+      world.floorScenario = makeFloor1({
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircaseSpawned: true,
+        staircasePos: { x: 100, y: 100 },
+      });
+      return { world, player };
+    }
+
+    function standOnStairs(world: GameWorld, player: number): void {
+      world.stores.position.x[player] = 100;
+      world.stores.position.y[player] = 100;
+    }
+
+    it('defers the descend while uncollected loot remains', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      spawnXpGem(world, 140, 140, 5);
+
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+    });
+
+    it('descends once the loot is gone', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      const gem = spawnXpGem(world, 140, 140, 5);
+      autoFloor1ProgressionSystem(world, player);
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      removeEntity(world.ecs, gem);
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+
+    it('spends the deferral budget only while standing on the staircase', () => {
+      const { world, player } = stairWorld();
+      spawnXpGem(world, 140, 140, 5);
+      // Far from the staircase: the walk there must not drain the budget.
+      for (let i = 0; i < MAX_STAIR_DESCEND_DEFER_FRAMES + 10; i += 1) {
+        autoFloor1ProgressionSystem(world, player);
+      }
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      standOnStairs(world, player);
+      autoFloor1ProgressionSystem(world, player);
+
+      // Budget is intact, so arriving still buys the sweep its full hold.
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+    });
+
+    it('gives up and descends once the deferral budget is exhausted', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      // Unreachable loot must never hold a run hostage.
+      spawnXpGem(world, 5_000, 5_000, 5);
+
+      for (let i = 0; i < MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
+        autoFloor1ProgressionSystem(world, player);
+      }
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+
+    it('defers the Floor 2 descend while loot remains, then gives up', () => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.state = 'playing';
+      seedFloor2Staircase(world);
+      spawnXpGem(world, 5_000, 5_000, 5);
+
+      autoFloor2ProgressionSystem(world, player);
+      expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(false);
+
+      for (let i = 1; i < MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
+        autoFloor2ProgressionSystem(world, player);
+      }
+      expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(false);
+
+      autoFloor2ProgressionSystem(world, player);
+      expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(true);
+    });
+
+    it('keeps Floor 1 and Floor 2 deferral budgets independent', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      // Unreachable Floor 1 loot burns the whole Floor 1 budget.
+      spawnXpGem(world, 5_000, 5_000, 5);
+      for (let i = 0; i <= MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
+        autoFloor1ProgressionSystem(world, player);
+      }
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+
+      // Floor 2 on the same world must still get its full hold.
+      world.state = 'playing';
+      seedFloor2Staircase(world);
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+
+      autoFloor2ProgressionSystem(world, player);
+
+      expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(false);
+    });
+
+    it('surrenders the deferral under collapse panic', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      spawnXpGem(world, 140, 140, 5);
+      // Deep into the collapse deadline ⇒ panic above the sweep threshold.
+      world.elapsedMs = world.floorScenario!.objective.deadlineMs - 1_000;
+
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+  });
+
   it('equips only persona-scored gear, so different weapons keep different loadouts', () => {
     const swordWorld = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    swordWorld.playerInSafeRoom = true;
     const swordPlayer = spawnPlayer(swordWorld, 0, 0);
     swordWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(swordWorld, getWeaponDef('sword')!);
@@ -467,6 +622,7 @@ describe('autoFloor1ProgressionSystem', () => {
     addItem(swordBag, 'signet-of-focus', 1);
 
     const fireballWorld = createTestWorld();
+    fireballWorld.playerInSafeRoom = true;
     const fireballPlayer = spawnPlayer(fireballWorld, 0, 0);
     fireballWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(fireballWorld, getWeaponDef('fireball')!);
@@ -486,6 +642,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('uses persona gear selection by default when weaponPersonas is omitted', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -495,6 +655,7 @@ describe('autoFloor1ProgressionSystem', () => {
     autoFloor1ProgressionSystem(world, player);
 
     const legacyWorld = createTestWorld();
+    legacyWorld.playerInSafeRoom = true;
     const legacyPlayer = spawnPlayer(legacyWorld, 0, 0);
     legacyWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(legacyWorld, getWeaponDef('sword')!);
@@ -509,6 +670,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('preserves legacy purchased-gear flow when weaponPersonas is false', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -524,6 +689,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it("still equips the Merchant's Charm even when persona scoring is zero", () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -539,8 +708,55 @@ describe('autoFloor1ProgressionSystem', () => {
     );
   });
 
+  it.each(['sword', 'bow', 'baseball-bat', 'pistol', 'throwing-knife', 'fireball'])(
+    'does not return the merchant prize before the quest can latch it for %s',
+    (weaponId) => {
+      const world = createTestWorld();
+      // Equipping the merchant prize is safe-context gated for the AI exactly
+      // as it is for a human; the shopkeeper stands in the safe welcome room.
+      world.playerInSafeRoom = true;
+      const player = spawnPlayer(world, 0, 0);
+      world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+      setActiveWeaponDef(world, getWeaponDef(weaponId)!);
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      addNpc(world, 100, { defId: 'shopkeeper', nearbyPlayer: true });
+      const bag = world.inventories.get(player)!;
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST * 2;
+
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)).toBe(true);
+      expect(world.goalFlags.get('floor1-shop-prize-returned')).not.toBe(true);
+
+      meetShopkeeper(world);
+      autoFloor1ProgressionSystem(world, player);
+      expect(hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)).toBe(false);
+      expect(world.goalFlags.get('floor1-shop-prize-returned')).toBe(true);
+      expect(world.questLog.get(FLOOR1_SHOP_QUEST_ID)?.done[SHOPKEEPER_FETCH_OBJECTIVE_ID]).toBe(
+        true,
+      );
+
+      autoFloor1ProgressionSystem(world, player);
+      questSystem(world);
+
+      const equipment = getEquipmentState(world, player)!;
+      expect(equipment.instances.get(equipment.equipped.neck!)?.def.id).toBe(
+        SHOPKEEPER_EQUIPMENT_ITEM_ID,
+      );
+      expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+      expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST);
+      expect(world.questLog.get(FLOOR1_SHOP_QUEST_ID)?.status).toBe('complete');
+      expect(world.goalFlags.get('floor1-shop-quest-complete')).toBe(true);
+    },
+  );
+
   it('can swap out weaker equipped gear for a better persona-scored replacement', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('fireball')!);

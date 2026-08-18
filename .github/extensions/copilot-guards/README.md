@@ -14,10 +14,10 @@ Loaded automatically because it lives under `.github/extensions/`.
 | ---------------------------- | --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `shell-force-push-main`      | `powershell`, `bash`                    | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                                                                    |
 | `shell-main-branch-delete`   | `powershell`, `bash`                    | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                                                         |
+| `shell-blunt-merge-strategy` | `powershell`, `bash`                    | **deny** | Side-wholesale merge resolution: `-X theirs/ours`, `--strategy-option=theirs/ours`, the `ours` strategy (`-s ours`), and unacknowledged `--allow-unrelated-histories` on `merge`/`rebase`/`cherry-pick`/`pull`.        |
 | `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                                                                 |
 | `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`.                                      |
 | `shell-unsafe-port-kill`     | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                                                             |
-| `authoring-main-sync`        | all except `create_pull_request`        | allow    | Measures active authoring intervals and safely rebases after 30 active minutes when clean; otherwise adds a non-blocking checkpoint/sync reminder.                                                                     |
 | `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                                                                |
 | `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                       |
 | `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                |
@@ -52,6 +52,46 @@ allow-through is a git failure (surfaced as context for manual review).
 | Scope            | `lib/pr-scope.mjs` strict allowlist. Skips a diff only if **every** file is docs (`docs/**`, root `*.md`/`*.txt`), art (`public/assets/**`, `briefs/**`, `data/palettes/**`), or a dependency lockfile. `src/**` is never skippable. |
 | Ledger discovery | Looks for `docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json` **added on this branch** (an old ledger on `main` does not count).                                                                                        |
 | Validation       | Validates every added ledger via `scripts/agent/review/ledger.mjs` (the same module the `npm run review:ledger` CLI uses). Missing or incomplete for the declared apple tier → hard deny with the exact failing rule.                |
+
+### `shell-blunt-merge-strategy` in detail
+
+Merge-resolution data loss is silent: the merge succeeds, CI is green, and the
+discarded side never appears in the diff. This guard has receipts —
+`git merge -X theirs` clobbered `.github/agents/set-piece-designer.agent.md`;
+two main-merges resolved side-wholesale dropped an upstream
+`test-only-exports.ts` wrapper and the Don Paco boss-ability rows; an
+`--allow-unrelated-histories` merge of the orphan `assets/queue` branch pulled
+unrelated non-art files into the tree.
+
+| Denied on `git merge` / `rebase` / `cherry-pick` / `pull`          | Why                                                       |
+| ------------------------------------------------------------------ | --------------------------------------------------------- |
+| `-X theirs`, `-X ours`, `-Xtheirs`, `-Xours`                       | Resolves **every** conflict by taking one side wholesale. |
+| `--strategy-option=theirs\|ours`, `--strategy-option theirs\|ours` | Same thing, long spelling.                                |
+| `-s ours`, `-sours`, `--strategy=ours`, `--strategy ours`          | Records a merge while discarding the other side's tree.   |
+| `--allow-unrelated-histories`                                      | Pulls every file from an unrelated root into this tree.   |
+
+**Escape hatch (unrelated histories only):** set
+`CRAWLER_ALLOW_UNRELATED_HISTORIES=1` on the same command
+(`CRAWLER_ALLOW_UNRELATED_HISTORIES=1 git merge --allow-unrelated-histories …`,
+or `export` it earlier in the same chain). Sanctioned scripts keep working; an
+ad-hoc agent invocation is blocked. The acknowledgement does **not** license
+`-X theirs`/`-s ours` — those are never allowed.
+
+**Sanctioned alternative** (named in every deny message):
+
+```sh
+git reset --hard <base>
+git checkout <ref> -- <paths>   # only the paths you intend to change
+git add <paths>
+```
+
+Every discarded line then shows up in the diff and is reviewable.
+
+**Not denied:** `git checkout --theirs <path>` / `--ours <path>` (path-scoped
+conflict resolution on a named file is legitimate), non-side strategy options
+such as `-X ignore-space-change`, `-s ort`/`--strategy=recursive`, a branch
+literally named `ours`/`theirs`, and those words inside a quoted commit
+message — detection is token-based and quote-aware.
 
 ### `edit-repo-md-junk` allowlist
 
@@ -135,7 +175,8 @@ protecting you.
 **Run `extensions_reload` immediately after every `git pull`/rebase onto main.**
 
 This was found empirically: a long-running session started 2026-07-25T06:08 and
-`authoring-main-sync` merged at 19:12 the same day. Over the next two days that
+`authoring-main-sync` (a per-tool guard, since removed) merged at 19:12 the same
+day. Over the next two days that
 session recorded **10 guard events, all PR-time**. A single `extensions_reload`
 took it to 12 within seconds, with `authoring-main-sync` firing on the very next
 `grep` and `powershell` call.
@@ -256,6 +297,7 @@ Pure-function guards, no harness needed. 182 tests across both suites cover norm
 ├── guards/
 │   ├── shell-force-push-main.mjs
 │   ├── shell-main-branch-delete.mjs
+│   ├── shell-blunt-merge-strategy.mjs
 │   ├── shell-gh-pr-create.mjs
 │   ├── shell-rm-rf-repo.mjs
 │   ├── shell-unsafe-port-kill.mjs

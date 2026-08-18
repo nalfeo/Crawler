@@ -135,6 +135,22 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
+  it('allows a compact held spell medium for caster enemy briefs that opt in', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        enemy: { allowSpellMedium: true },
+      } as Brief['sensors'],
+    });
+
+    const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/held spell medium/i);
+    expect(out).toMatch(/localized magic glow are allowed/i);
+    expect(out).not.toMatch(/no held weapons/i);
+    expect(out).not.toMatch(/no spell effects/i);
+  });
+
   it('defaults enemy briefs to a camera-facing three-quarter pose when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',

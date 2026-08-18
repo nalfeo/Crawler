@@ -55,15 +55,19 @@ import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
-import { getUiScale, onUiScaleChange } from '../ui-scale.js';
+import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
+import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  extrapolateRenderPosition,
   findNearestNearbyNpc,
   formatAbilityTrigger,
+  getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
+  renderInterpolationAlpha,
   resolveDialogueLines,
   resolveNpcQuestIndicatorState,
 } from './main-game-scene-helpers.js';
@@ -75,7 +79,12 @@ import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
+import { createBossIntroUI } from '../BossIntroUI.js';
+import { resolvePendingBossIntro } from '../boss-intro-state.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createRunSurveyUI } from '../RunSurveyUI.js';
+import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
+import { submitRunSurvey } from '../run-bundle-upload.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -113,11 +122,23 @@ import {
   type FovPresetId,
 } from '../fov/fov-config.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
-import { createLogger } from '../../shared/logger.js';
+import {
+  createLogCursor,
+  createLogger,
+  readLogsSince,
+  type LogCursor,
+} from '../../shared/logger.js';
+import { createRunBundle, type RunBundle, type RunEndReason } from '../../shared/run-bundle.js';
+import {
+  buildFileIssuePayload,
+  serializeIssueScreenshot,
+  submitFileIssue,
+  type FileIssuePayload,
+} from '../file-issue.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import type { Floor2ShopInstance } from '../../shared/floor-types.js';
+import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
@@ -143,6 +164,13 @@ const MAX_STEPS_PER_FRAME = 4;
  * (the modal freeze skips the fixed-step), so it is independent of sim speed.
  */
 const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
+/**
+ * Render frames the boss-intro lore sheet is held open before an AI-driven run
+ * (`autoLevelUpAllocator` wired) auto-dismisses it. ~1s at 60fps — long enough
+ * for a viewer/recording to read the billing, short enough not to stall a
+ * headless-adjacent AI playthrough. Human play dismisses on input instead.
+ */
+const BOSS_INTRO_AUTO_HOLD_FRAMES = 60;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -151,9 +179,19 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
+const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
+
+// Floor-transition progress bar dimensions (used in both create() and
+// startFloorTransitionProgress()).
+const FLOOR_TRANS_BAR_W = 400;
+const FLOOR_TRANS_BAR_H = 14;
+const FLOOR_TRANS_BAR_INNER_W = FLOOR_TRANS_BAR_W - 2;
+const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
+
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -164,6 +202,13 @@ const FLOOR_1_COMMENTARY = {
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;
 const logger = createLogger('engine:main-game-scene');
+
+/** Mark a named stage in the browser performance timeline (no-op in Node). */
+function markGame(label: string): void {
+  if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+    performance.mark(label);
+  }
+}
 
 function resolveSetPieceLightEmission(
   spriteId: string,
@@ -199,7 +244,7 @@ export interface MainGameSceneOptions {
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
-   * Called when Floor 1 is cleared (player descends the stairs).
+   * Called when a cleared floor should transition in-process to the next floor.
    * When it returns next-floor options, the scene restarts in process with a
    * fresh world after the transitional message.
    */
@@ -246,6 +291,9 @@ export interface MainGameSceneOptions {
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
+    getSpellBrokerOffers?: (world: GameWorld) => readonly Floor1SpellBrokerOffer[];
+    canPurchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
+    purchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
   };
   /** Floor 2 Broker callbacks — fired when the player reads all intro dialogue lines. */
   broker?: {
@@ -279,6 +327,18 @@ export interface MainGameSceneOptions {
     available: number,
   ) => Partial<Record<PrimaryStatId, number>> | null;
   /**
+   * Optional predicate reporting whether an AI — not a human — is currently
+   * driving the run. Surfaces that would otherwise wait forever for a keypress
+   * (the boss-intro lore sheet) auto-advance only while this returns true.
+   *
+   * Distinct from {@link autoLevelUpAllocator} on purpose: the AI Runner Lab
+   * always supplies an allocator but hands control back to a human in
+   * manual-control mode, so allocator presence is NOT a reliable "AI is
+   * driving" signal. When omitted, allocator presence is used as the fallback
+   * for harnesses that only wire the allocator.
+   */
+  isAutoDriven?: () => boolean;
+  /**
    * Optional factory for a human player session recorder (dev/debug only).
    *
    * Called once after the world and player entity are created. The factory
@@ -291,6 +351,16 @@ export interface MainGameSceneOptions {
    * shared {@link SessionRecorder} interface, keeping layer boundaries intact.
    */
   sessionRecorderFactory?: (world: GameWorld, playerEid: number) => SessionRecorder;
+  /** Builds the concrete game-layer RunStats without importing game code here. */
+  runStatsFactory?: (
+    world: GameWorld,
+    playerEid: number,
+    outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'quit',
+    runStartXp?: number,
+    recorderStats?: ReturnType<SessionRecorder['getStats']>,
+  ) => unknown;
+  /** Receives the completed run artifact before reload or scene restart. */
+  onRunBundle?: (bundle: RunBundle) => void;
   /**
    * Per-floor lighting overrides, merged over {@link DEFAULT_LIGHTING_CONFIG}
    * when the scene is created. The shipped game passes the floor manifest's
@@ -391,7 +461,7 @@ declare global {
         getPerf: () => FovPerfSnapshot;
       };
     };
-    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
+    /** Optional human player session recorder. Set when the factory is provided. */
     __playerSessionRecorder?: SessionRecorder;
   }
 }
@@ -416,6 +486,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private accumulatorClampCount = 0;
 
+  /**
+   * Render-side interpolation factor for the current frame (`0..1`): how far
+   * into the next fixed simulation step the rendered frame sits. Zero on frozen
+   * frames (pause, modals, dialogue) where no step is in flight. Consumed by
+   * `bridge.sync` and `updateCamera` so both extrapolate identically.
+   */
+  private renderInterpAlpha = 0;
+  private playerRenderSampleFrame = -1;
+  private playerRenderSampleEid = -1;
+  private playerRenderPrevX = 0;
+  private playerRenderPrevY = 0;
+  private playerRenderCurrX = 0;
+  private playerRenderCurrY = 0;
+
   private simulationPaused = false;
 
   private simulationSpeed = 1;
@@ -426,12 +510,30 @@ export class MainGameScene extends Phaser.Scene {
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
+  private issueButton?: Phaser.GameObjects.Text;
+  private issueReportPausedState?: boolean;
+  private issueReportDescription = '';
+  private issueReportIncludeLogs = true;
+  private issueReportIncludeScreenshot = false;
+  private issueReportScreenshot?: string;
+  private issueReportScreenshotError?: string;
+  private issueReportSubmitting = false;
+  private issueReportRunId?: string;
+  private issueReportRetryPayload?: FileIssuePayload;
+  private issueReportAttemptCounter = 0;
 
   /**
-   * Dev-only: human player session recorder. Non-null only when
+   * Optional human player session recorder. Non-null only when
    * `options.sessionRecorderFactory` is provided.
    */
   private sessionRecorder?: SessionRecorder;
+  private runStartXp = 0;
+  private runLogCursor!: LogCursor;
+  private runBundleEmitted = false;
+  private lastRunBundle?: RunBundle;
+  private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
+  private runSurveyShown = false;
+  private runSurveySubmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -602,6 +704,14 @@ export class MainGameScene extends Phaser.Scene {
 
   private levelUpUI?: ReturnType<typeof createLevelUpUI>;
 
+  private bossIntroUI?: ReturnType<typeof createBossIntroUI>;
+
+  /** `BossIntroContent.introId`s already presented this run (show-once). */
+  private readonly shownBossIntroIds = new Set<string>();
+
+  /** Frames the boss-intro sheet has been held open for an AI-driven run. */
+  private bossIntroAutoHoldFrames = 0;
+
   /** Chest ids already surfaced via a one-time "ready to open" toast. */
   private readonly notifiedBossChestIds = new Set<string>();
 
@@ -632,6 +742,7 @@ export class MainGameScene extends Phaser.Scene {
   private interactionHint?: Phaser.GameObjects.Text;
 
   private offInteractionHintScale?: () => void;
+  private offInteractionHintSafeArea?: () => void;
 
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
@@ -646,6 +757,15 @@ export class MainGameScene extends Phaser.Scene {
   private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
+  /** Progress bar shown during floor-to-floor transitions (hidden otherwise). */
+  private floorTransitionProgressTrack?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressFill?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressShine?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressLabel?: Phaser.GameObjects.Text;
 
   /** Dedicated UI camera so HUD is not affected by world camera zoom. */
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
@@ -664,6 +784,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
+  /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
+  private activeConversationLines: readonly string[] | null = null;
 
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
@@ -713,6 +835,7 @@ export class MainGameScene extends Phaser.Scene {
   private achievementToast?: Phaser.GameObjects.Text;
 
   private offMobileButtonScale?: () => void;
+  private offMobileButtonSafeArea?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -771,12 +894,18 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
+    markGame('game:create-start');
     const worldSeed = this.options.worldSeed ?? 42;
     this.world = createGameWorld({
       seed: worldSeed,
       generatedEquipmentRunKey:
         this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed),
     });
+    this.runLogCursor = createLogCursor();
+    this.runBundleEmitted = false;
+    this.lastRunBundle = undefined;
+    this.runSurveyShown = false;
+    this.runSurveySubmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -826,6 +955,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
+    this.runStartXp = this.world.playerLevel?.xp ?? 0;
 
     logger.info('Main game scene created', {
       state: this.world.state,
@@ -915,6 +1045,7 @@ export class MainGameScene extends Phaser.Scene {
         this.rewardAudioController?.skipped();
       },
     });
+    this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
@@ -954,6 +1085,10 @@ export class MainGameScene extends Phaser.Scene {
         window.location.reload();
       },
       onQuit: () => {
+        // Death/victory/timeout already emitted the terminal bundle before
+        // showing this UI. A future active-run quit screen can use this same
+        // path to emit the distinct quit outcome.
+        this.emitRunBundle('quit');
         window.location.reload();
       },
     });
@@ -981,14 +1116,18 @@ export class MainGameScene extends Phaser.Scene {
     // right stepPx, and so a scene restart resets any prior live tweaks. Routing
     // through setLightingConfig() gives clamping + a stepPx-change rebuild.
     this.setLightingConfig({ ...DEFAULT_LIGHTING_CONFIG, ...this.options.lightingConfig });
+    markGame('game:terrain-bake-start');
     this.drawFloorTerrain();
+    markGame('game:terrain-bake-end');
     this.ensureUiCamera();
     this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.runFovSystemWithPerf(this.world);
+    markGame('game:lighting-start');
     this.updateLightingOverlay(true);
+    markGame('game:lighting-end');
     this.bridge.sync(this.world);
     this.updateOverlayText();
     if (typeof window !== 'undefined') {
@@ -1050,6 +1189,29 @@ export class MainGameScene extends Phaser.Scene {
       };
     }
 
+    markGame('game:create-end');
+    if (typeof performance !== 'undefined' && typeof performance.measure === 'function') {
+      try {
+        const terrain = performance.measure(
+          'game:terrain-bake',
+          'game:terrain-bake-start',
+          'game:terrain-bake-end',
+        );
+        const lighting = performance.measure(
+          'game:lighting',
+          'game:lighting-start',
+          'game:lighting-end',
+        );
+        const total = performance.measure('game:create', 'game:create-start', 'game:create-end');
+        logger.info('MainGameScene.create() timing', {
+          totalMs: Math.round(total.duration),
+          terrainBakeMs: Math.round(terrain.duration),
+          lightingMs: Math.round(lighting.duration),
+        });
+      } catch {
+        // Marks may be missing in headless / test environments — safe to ignore.
+      }
+    }
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
       this.inputCapture?.destroy();
@@ -1078,8 +1240,12 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.destroy();
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
+      this.offInteractionHintSafeArea?.();
+      this.offInteractionHintSafeArea = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
+      this.offMobileButtonSafeArea?.();
+      this.offMobileButtonSafeArea = undefined;
       this.inventoryButton?.destroy();
       this.inventoryButton = undefined;
       this.equipButton?.destroy();
@@ -1106,13 +1272,21 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
+      this.issueButton?.destroy();
+      this.issueButton = undefined;
       this.abilitiesModalOpen = false;
       this.achievementToast?.destroy();
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.runSurveyUI?.destroy();
+      this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
+      this.bossIntroUI?.destroy();
+      this.bossIntroUI = undefined;
+      this.shownBossIntroIds.clear();
+      this.bossIntroAutoHoldFrames = 0;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -1125,13 +1299,19 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.directorCommentaryText = undefined;
+      this.floorCompletionScreen?.destroy();
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
+      this.floorTransitionProgressTrack = undefined;
+      this.floorTransitionProgressFill = undefined;
+      this.floorTransitionProgressShine = undefined;
+      this.floorTransitionProgressLabel = undefined;
       this.loadoutText = undefined;
       this.keyAbilities = undefined;
       this.conversationNpcEid = null;
+      this.activeConversationLines = null;
       this.tappedInteraction = false;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
@@ -1160,6 +1340,27 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Screen-space bounds of the bottom-centre interaction hint / Talk button,
+   * or `null` when it is not showing. Test/automation affordance so e2e probes
+   * can assert this canvas-rendered tap target clears the safe-area bands.
+   */
+  getInteractionHintBounds(): ScreenBounds | null {
+    if (!this.interactionHint?.visible) {
+      return null;
+    }
+    const bounds = this.interactionHint.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
+   * home-indicator band on notched devices (zero inset elsewhere).
+   */
+  private interactionHintY(): number {
+    return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
+  }
+
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
     const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
     return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
@@ -1184,7 +1385,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
-      isCornerButtonHit(this.quartermasterButton)
+      isCornerButtonHit(this.quartermasterButton) ||
+      isCornerButtonHit(this.issueButton)
     ) {
       return;
     }
@@ -1243,6 +1445,11 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.isBlockingSurfaceOpen()) {
+      return;
+    }
+    if (event.code === 'F8' && !event.repeat) {
+      event.preventDefault();
+      this.openIssueReport();
       return;
     }
     if (event.code === 'KeyE') {
@@ -1524,6 +1731,12 @@ export class MainGameScene extends Phaser.Scene {
     this.updateOverlayText();
   }
 
+  private closeConversation(): void {
+    this.conversationNpcEid = null;
+    this.activeConversationLines = null;
+    this.dialogueBox?.hide();
+  }
+
   private processOpenAbilitiesModal(): void {
     if (!(this.abilitiesModalOpen && (this.modalPicker?.isOpen() ?? false))) {
       return;
@@ -1572,6 +1785,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
@@ -1595,6 +1809,10 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
+    // as the last completed step left it; only the fixed-step path below has a
+    // partially-elapsed step to interpolate.
+    this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
     this.showDeathScreenIfNeeded();
@@ -1611,6 +1829,19 @@ export class MainGameScene extends Phaser.Scene {
         this.queuedAbilitiesToggle = false;
         this.closeAbilitiesModal();
       }
+      this.updateOverlayText();
+      return;
+    }
+
+    // A boss battle just started: freeze the sim behind The Director's lore
+    // sheet so the player reads who they are fighting before taking a hit.
+    // Same freeze contract as the level-up/reward branches — rendering and
+    // camera stay alive, the fixed step does not run.
+    this.showBossIntroIfNeeded();
+    if (this.bossIntroUI?.isOpen()) {
+      this.driveAutoBossIntro();
+      this.bridge.sync(this.world);
+      this.updateCamera();
       this.updateOverlayText();
       return;
     }
@@ -1800,7 +2031,7 @@ export class MainGameScene extends Phaser.Scene {
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
 
-      // Dev-only: record telemetry from the human player each sim step.
+      // Record telemetry from the human player each sim step when configured.
       if (this.sessionRecorder) {
         const currentEnemyCount = query(this.world.ecs, [Enemy]).length;
         const currentLevel = this.world.playerLevel?.level ?? 0;
@@ -1835,7 +2066,18 @@ export class MainGameScene extends Phaser.Scene {
 
     this.updateDoorOverlay();
     this.updateLightingOverlay();
-    this.bridge.sync(this.world);
+    // Render between fixed steps: the accumulator holds the fraction of the next
+    // step already elapsed in wall-clock time. Feeding it to the bridge (and to
+    // the camera below, via the same alpha) removes the judder caused by rAF
+    // frames not lining up with the 60Hz sim step — most visible on high-refresh
+    // displays, where sprites would otherwise only move on every other frame.
+    // This is render-side only: no world state is read or written differently.
+    this.renderInterpAlpha = renderInterpolationAlpha(this.accumulator, GAME.DELTA_MS);
+    this.bridge.sync(
+      this.world,
+      this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,
+      this.renderInterpAlpha,
+    );
     this.resumePendingRewardPresentations();
     if (this.rewardOpeningUI?.isOpen()) {
       this.updateCamera();
@@ -1865,6 +2107,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false);
 
     // Per-panel open state — used below to show each panel's own button as a
@@ -1881,6 +2124,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (!abilitiesOpen && (this.modalPicker?.isOpen() ?? false));
 
@@ -2228,7 +2472,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHint = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN, '', {
+      .text(GAME.WIDTH / 2, this.interactionHintY(), '', {
         fontFamily: 'monospace',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -2247,10 +2491,13 @@ export class MainGameScene extends Phaser.Scene {
     });
     const applyInteractionHintScale = (scale: number): void => {
       const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);
-      this.interactionHint?.setScale(hintScale).setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);
+      this.interactionHint?.setScale(hintScale).setY(this.interactionHintY());
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
+    this.offInteractionHintSafeArea = onSafeAreaChange(this, () => {
+      applyInteractionHintScale(getUiScale(this));
+    });
 
     // Top-left on-screen buttons for inventory ([I]) and equipment ([G]) so the
     // pack and gear are reachable on touch devices with no keyboard.
@@ -2260,7 +2507,7 @@ export class MainGameScene extends Phaser.Scene {
       onTap: () => void,
     ): Phaser.GameObjects.Text =>
       this.add
-        .text(16, y, label, {
+        .text(MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left, y, label, {
           fontFamily: 'monospace',
           fontSize: '20px',
           fontStyle: 'bold',
@@ -2275,20 +2522,24 @@ export class MainGameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
         .setVisible(false)
         .on('pointerdown', onTap);
-    this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+    const cornerButtonTop = (): number => MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).top;
+    this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.queuedInventoryToggle = true;
     });
-    this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
       this.queuedEquip = true;
     });
-    this.achievementsButton = makeCornerButton(128, '🏆 Awards', () => {
+    this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.queuedAchievementsToggle = true;
     });
-    this.abilitiesButton = makeCornerButton(184, '🔮 Skills', () => {
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(240, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
       this.queuedQuartermasterToggle = true;
+    });
+    this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
+      this.openIssueReport();
     });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
@@ -2297,18 +2548,38 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
+      this.issueButton?.setScale(buttonScale);
+      // Re-anchor to the current safe rect (rotation can change the insets).
+      const top = cornerButtonTop();
+      const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
+      for (const button of [
+        this.inventoryButton,
+        this.equipButton,
+        this.achievementsButton,
+        this.abilitiesButton,
+        this.quartermasterButton,
+        this.issueButton,
+      ]) {
+        button?.setX(left);
+      }
+      this.inventoryButton?.setY(top);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
-      this.equipButton?.setY(16 + bagH);
+      this.equipButton?.setY(top + bagH);
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
-      this.achievementsButton?.setY(16 + bagH + gearH);
+      this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(16 + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
+      const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
+      this.issueButton?.setY(top + bagH + gearH + awardsH + skillsH + shopH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
+    this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
+      applyMobileButtonScale(getUiScale(this));
+    });
 
     // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
     this.dialogueBox = createDialogueBox(this, {
@@ -2384,6 +2655,40 @@ export class MainGameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5, 0.5);
+
+    // Floor-transition progress bar — hidden by default, shown only when the
+    // scene is about to restart into the next floor.
+    const floorBarX = GAME.WIDTH / 2 - FLOOR_TRANS_BAR_W / 2;
+    const floorBarY = GAME.HEIGHT / 2 + 75;
+    this.floorTransitionProgressTrack = this.add
+      .rectangle(floorBarX, floorBarY, FLOOR_TRANS_BAR_W, FLOOR_TRANS_BAR_H, 0x0a0e18, 1)
+      .setStrokeStyle(1, 0x02040a, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressFill = this.add
+      .rectangle(floorBarX + 1, floorBarY + 1, 0, FLOOR_TRANS_BAR_INNER_H, 0x4ea8ff, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressShine = this.add
+      .rectangle(
+        floorBarX + 1,
+        floorBarY + 1,
+        0,
+        Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)),
+        0xffffff,
+        0.18,
+      )
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressLabel = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 100, 'Loading next floor...', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#64748b',
+      })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+
     this.floorCompletionScreen = this.add
       .container(0, 0, [
         completionBackdrop,
@@ -2391,6 +2696,10 @@ export class MainGameScene extends Phaser.Scene {
         this.floorCompletionTitleText,
         this.floorCompletionSubtitleText,
         this.floorCompletionBodyText,
+        this.floorTransitionProgressTrack,
+        this.floorTransitionProgressFill,
+        this.floorTransitionProgressShine,
+        this.floorTransitionProgressLabel,
       ])
       .setDepth(5500)
       .setScrollFactor(0)
@@ -3350,9 +3659,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     const px = this.world.stores.position.x[this.playerEid];
     const py = this.world.stores.position.y[this.playerEid];
+    const playerX = px ?? 0;
+    const playerY = py ?? 0;
+    if (this.playerRenderSampleEid !== this.playerEid) {
+      this.playerRenderSampleEid = this.playerEid;
+      this.playerRenderSampleFrame = this.world.frameCount;
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    } else if (this.playerRenderSampleFrame !== this.world.frameCount) {
+      this.playerRenderPrevX = this.playerRenderCurrX;
+      this.playerRenderPrevY = this.playerRenderCurrY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+      this.playerRenderSampleFrame = this.world.frameCount;
+    } else if (this.playerRenderCurrX !== playerX || this.playerRenderCurrY !== playerY) {
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    }
+    // Follow the SAME extrapolated position the bridge renders the player sprite
+    // at (`position + acceptedStepDisplacement * interpAlpha`).
+    const alpha = this.renderInterpAlpha;
+    const stepDx = this.playerRenderCurrX - this.playerRenderPrevX;
+    const stepDy = this.playerRenderCurrY - this.playerRenderPrevY;
     this.cameras.main.centerOn(
-      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
-      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+      px !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))
+        : GAME.WIDTH * 0.5,
+      py !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))
+        : GAME.HEIGHT * 0.5,
     );
     this.updateSafeRoomZoom();
   }
@@ -3522,6 +3861,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
@@ -3533,6 +3873,7 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton?.setVisible(false);
         this.equipButton?.setVisible(false);
         this.achievementsButton?.setVisible(false);
+        this.issueButton?.setVisible(false);
         this.quartermasterButton
           ?.setDepth(quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(quartermasterOpen2);
@@ -3547,6 +3888,7 @@ export class MainGameScene extends Phaser.Scene {
     this.abilitiesButton?.setDepth(
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
+    const issueOpen = this.issueReportPausedState !== undefined;
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
@@ -3555,6 +3897,9 @@ export class MainGameScene extends Phaser.Scene {
       this.loadoutText?.setVisible(false);
       return;
     }
+
+    const canFileIssue = this.canFileIssue(issueOpen);
+    this.issueButton?.setVisible(canFileIssue);
 
     if (this.world.state === 'loadout') {
       const modalOpen = this.modalPicker?.isOpen() ?? false;
@@ -3661,31 +4006,30 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
-    const outcome = getFloorRunOutcome(this.world);
-    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
+    const completionPresentation = getFloorCompletionPresentation(
+      this.world,
+      typeof this.options.onFloor1Cleared === 'function',
+    );
+    if (!completionPresentation || !this.shouldShowFloorCompletionMessage()) {
       return;
     }
 
-    if (outcome === 'failed_timeout') {
+    this.emitRunBundle(completionPresentation === 'failed_timeout' ? 'timeout' : 'victory');
+
+    if (completionPresentation === 'failed_timeout') {
       this.floorCompletionTitleText?.setText('Game Over');
       this.floorCompletionSubtitleText?.setText('Floor 1 failed');
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
       );
-    } else if (this.world.floorExtendedState?.familyState?.staircaseDiscovered) {
-      this.floorCompletionTitleText?.setText('Victory!');
-      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
-      this.floorCompletionBodyText?.setText(
-        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
-      );
-    } else if (this.options.onFloor1Cleared) {
+    } else if (completionPresentation === 'transition_to_next_floor') {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Heading to Floor 2...');
       this.floorCompletionBodyText?.setText('Prepare yourself for the next challenge!');
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
       this.floorCompletionScreen?.setVisible(true);
-      this.time.delayedCall(1500, () => {
+      this.startFloorTransitionProgress(() => {
         const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
         if (nextOptions) {
           const composedNextOptions =
@@ -3694,6 +4038,12 @@ export class MainGameScene extends Phaser.Scene {
         }
       });
       return;
+    } else if (completionPresentation === 'terminal_victory') {
+      this.floorCompletionTitleText?.setText('Victory!');
+      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+      );
     } else {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
@@ -3702,6 +4052,9 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    if (completionPresentation === 'terminal_victory') {
+      this.showRunSurveyIfNeeded('victory');
+    }
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
     this.floorCompletionScreen?.setVisible(true);
@@ -3712,6 +4065,46 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
+   * Animate the floor-transition progress bar from 0% to 100% over ~1300 ms,
+   * then invoke `onComplete` so the caller can restart the scene.
+   * The bar elements are shown immediately; the tween drives the fill width.
+   */
+  private startFloorTransitionProgress(onComplete: () => void): void {
+    const track = this.floorTransitionProgressTrack;
+    const fill = this.floorTransitionProgressFill;
+    const shine = this.floorTransitionProgressShine;
+    const label = this.floorTransitionProgressLabel;
+
+    if (track) track.setVisible(true);
+    if (fill) fill.setVisible(true);
+    if (shine) shine.setVisible(true);
+    if (label) label.setVisible(true);
+
+    if (!fill || !shine) {
+      // Fallback: no bar elements available — just delay then continue.
+      this.time.delayedCall(1400, onComplete);
+      return;
+    }
+
+    const progress = { value: 0 };
+    this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration: 1300,
+      ease: 'Linear',
+      onUpdate: () => {
+        const w = Math.max(1, Math.round(progress.value * FLOOR_TRANS_BAR_INNER_W));
+        fill.setSize(w, FLOOR_TRANS_BAR_INNER_H);
+        shine.setSize(w, Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)));
+      },
+      onComplete: () => {
+        // Brief pause at 100% before the scene restarts.
+        this.time.delayedCall(150, onComplete);
+      },
+    });
+  }
+
+  /**
    * Shows the death screen when the player was slain (world.state === 'game_over'
    * and no floor-completion screen is handling the transition).
    *
@@ -3719,6 +4112,25 @@ export class MainGameScene extends Phaser.Scene {
    * those cases are already handled by showFloorCompletionScreenIfNeeded() and
    * should not additionally trigger the death screen.
    */
+  private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
+    return (
+      !issueOpen &&
+      !this.issueReportSubmitting &&
+      this.world.state !== 'loadout' &&
+      this.world.state !== 'game_over' &&
+      !this.isBlockingSurfaceOpen()
+    );
+  }
+
+  private nextIssueReportRunId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    this.issueReportAttemptCounter += 1;
+    return `issue-${this.world.seed}-${this.world.frameCount}-${this.issueReportAttemptCounter}`;
+  }
+
   private showDeathScreenIfNeeded(): void {
     if (
       this.world.state !== 'game_over' ||
@@ -3728,7 +4140,386 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.deathScreenShown = true;
+    this.emitRunBundle('death');
+    this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show();
+  }
+
+  private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
+    if (this.runSurveyShown || this.runSurveySubmitted || !this.lastRunBundle) {
+      return;
+    }
+    if (endReason !== 'death' && endReason !== 'victory') {
+      return;
+    }
+    this.runSurveyShown = true;
+    this.runSurveyUI = createRunSurveyUI({
+      onSubmit: async (survey) => {
+        const validSurvey = validatePlaytestSurvey(survey);
+        if (!validSurvey || !this.lastRunBundle) {
+          return false;
+        }
+        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
+          (error: unknown) => {
+            if (typeof console !== 'undefined') {
+              console.warn('Run survey submission failed', error);
+            }
+            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+          },
+        );
+        if (result.ok) {
+          this.runSurveySubmitted = true;
+        }
+        return result.ok;
+      },
+      onSkip: () => {
+        this.runSurveySubmitted = true;
+        // No survey was submitted: emitRunBundle deliberately deferred the
+        // single upload for this run until skip/submit resolved (see
+        // emitRunBundle), so perform that one silent upload now.
+        if (this.lastRunBundle) {
+          this.options.onRunBundle?.(this.lastRunBundle);
+        }
+      },
+    });
+    this.runSurveyUI.show();
+  }
+
+  private nextRunBundleId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    return `run-${this.world.seed}-${this.world.frameCount}`;
+  }
+
+  private emitRunBundle(endReason: RunEndReason): void {
+    if (this.runBundleEmitted || !this.options.runStatsFactory) {
+      return;
+    }
+    const outcome =
+      endReason === 'victory'
+        ? 'victory'
+        : endReason === 'death'
+          ? 'death'
+          : endReason === 'timeout'
+            ? 'timeout'
+            : 'quit';
+    const bundle = createRunBundle({
+      runStats: this.options.runStatsFactory(
+        this.world,
+        this.playerEid,
+        outcome,
+        this.runStartXp,
+        this.sessionRecorder?.getStats(),
+      ),
+      recorderJsonl: this.sessionRecorder?.toJsonl?.() ?? '',
+      logs: readLogsSince(this.runLogCursor),
+      meta: {
+        endReason,
+        floorId: this.options.floorId,
+        seed: this.world.seed,
+        runId: this.nextRunBundleId(),
+      },
+    });
+    this.runBundleEmitted = true;
+    this.lastRunBundle = bundle;
+    if (endReason === 'death' || endReason === 'victory') {
+      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
+      // here too would resend this run under an unrelated stored ID once the
+      // survey is submitted, creating a duplicate; instead defer the single
+      // upload for this run to whichever of skip/submit resolves the survey.
+      return;
+    }
+    this.options.onRunBundle?.(bundle);
+  }
+
+  private createIssueRunBundle(): RunBundle | null {
+    if (!this.options.runStatsFactory) {
+      return null;
+    }
+    const runId = this.issueReportRunId ?? this.nextIssueReportRunId();
+    this.issueReportRunId = runId;
+    return createRunBundle({
+      runStats: this.options.runStatsFactory(
+        this.world,
+        this.playerEid,
+        'quit',
+        this.runStartXp,
+        this.sessionRecorder?.getStats(),
+      ),
+      recorderJsonl: this.sessionRecorder?.toJsonl?.() ?? '',
+      logs: readLogsSince(this.runLogCursor),
+      meta: {
+        endReason: 'quit',
+        floorId: this.options.floorId,
+        seed: this.world.seed,
+        runId,
+      },
+    });
+  }
+
+  private openIssueReport(): void {
+    if (
+      !this.modalPicker ||
+      this.issueReportPausedState !== undefined ||
+      this.issueReportSubmitting ||
+      !this.canFileIssue()
+    ) {
+      return;
+    }
+    if (!this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
+    }
+    const bundle = this.createIssueRunBundle();
+    if (!bundle) {
+      this.flashHint('Issue reporting is unavailable in this build.');
+      return;
+    }
+    this.issueReportPausedState = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    if (this.issueReportRetryPayload) {
+      this.issueReportDescription = this.issueReportRetryPayload.issue_description;
+      this.issueReportIncludeLogs = this.issueReportRetryPayload.logs.length > 0;
+      this.issueReportIncludeScreenshot = !!this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshot = this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = this.issueReportRetryPayload.meta.runId;
+    } else {
+      this.issueReportDescription = '';
+      this.issueReportIncludeLogs = true;
+      this.issueReportIncludeScreenshot = false;
+      this.issueReportScreenshot = undefined;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = bundle.meta.runId;
+    }
+    void this.prepareIssueReport(bundle);
+  }
+
+  private async prepareIssueReport(bundle: RunBundle): Promise<void> {
+    await this.captureIssueScreenshot();
+    if (this.issueReportPausedState !== undefined) {
+      this.showIssueReportPicker(bundle);
+    }
+  }
+
+  private showIssueReportPicker(bundle: RunBundle, feedback?: string): void {
+    if (!this.modalPicker) {
+      this.finishIssueReport();
+      return;
+    }
+    const description = this.issueReportDescription
+      ? `Description: ${this.issueReportDescription.slice(0, 120)}`
+      : 'Description: required';
+    const screenshot = this.issueReportScreenshotError
+      ? `Screenshot unavailable: ${this.issueReportScreenshotError}`
+      : this.issueReportIncludeScreenshot
+        ? this.issueReportScreenshot
+          ? 'Attach screenshot: on'
+          : 'Attach screenshot: waiting'
+        : 'Attach screenshot: off';
+    this.modalPicker.open(
+      {
+        title: 'File an issue',
+        subtitle: feedback ?? 'F8 opens this flow. Simulation is paused while it is open.',
+        body: description,
+        options: [
+          {
+            id: 'description',
+            label: 'Describe issue',
+            description: this.issueReportDescription
+              ? 'Edit the report description.'
+              : 'Required before submit.',
+          },
+          {
+            id: 'logs',
+            label: this.issueReportIncludeLogs ? 'Attach logs: on' : 'Attach logs: off',
+            description: 'Attach the current bounded run log buffer.',
+          },
+          {
+            id: 'screenshot',
+            label: screenshot,
+            description: 'Capture the current Phaser game renderer as PNG.',
+            disabled: this.issueReportIncludeScreenshot && !this.issueReportScreenshot,
+          },
+          {
+            id: 'submit',
+            label: this.issueReportSubmitting ? 'Submitting issue…' : 'Submit issue',
+            description: 'Uploads this run bundle and creates a GitHub issue.',
+            disabled: !this.issueReportDescription.trim() || this.issueReportSubmitting,
+          },
+        ],
+        allowCancel: true,
+      },
+      {
+        onCancel: () => this.finishIssueReport(),
+        onConfirm: ({ option }) => {
+          switch (option.id) {
+            case 'description': {
+              const description = window.prompt(
+                'Describe what happened:',
+                this.issueReportDescription,
+              );
+              if (description !== null) {
+                this.issueReportDescription = description.slice(0, 4_000);
+                this.issueReportRetryPayload = undefined;
+              }
+              this.reopenIssueReportPicker(bundle);
+              break;
+            }
+            case 'logs':
+              this.issueReportIncludeLogs = !this.issueReportIncludeLogs;
+              this.issueReportRetryPayload = undefined;
+              this.reopenIssueReportPicker(bundle);
+              break;
+            case 'screenshot':
+              this.issueReportIncludeScreenshot = !this.issueReportIncludeScreenshot;
+              this.issueReportRetryPayload = undefined;
+              this.reopenIssueReportPicker(bundle);
+              break;
+            case 'submit':
+              void this.submitIssueReport(bundle);
+              break;
+          }
+        },
+      },
+    );
+  }
+
+  private reopenIssueReportPicker(bundle: RunBundle): void {
+    this.time.delayedCall(0, () => this.showIssueReportPicker(bundle));
+  }
+
+  private async captureIssueScreenshot(): Promise<void> {
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        if (!this.game.renderer) {
+          reject(new Error('Renderer is unavailable.'));
+          return;
+        }
+        this.game.renderer.snapshot((snapshot) => {
+          if (snapshot instanceof HTMLImageElement) {
+            resolve(snapshot);
+            return;
+          }
+          reject(new Error('Renderer screenshot did not produce an image.'));
+        });
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const context = canvas.getContext('2d');
+      if (!context || canvas.width <= 0 || canvas.height <= 0) {
+        throw new Error('Renderer screenshot was empty.');
+      }
+      context.drawImage(image, 0, 0);
+      this.issueReportScreenshot = serializeIssueScreenshot(canvas);
+    } catch (error) {
+      this.issueReportScreenshot = undefined;
+      this.issueReportScreenshotError =
+        error instanceof Error ? error.message : 'Screenshot capture failed.';
+      logger.warn('Issue screenshot capture failed', error);
+    }
+  }
+
+  private async submitIssueReport(bundle: RunBundle): Promise<void> {
+    if (this.issueReportSubmitting) {
+      return;
+    }
+    this.issueReportSubmitting = true;
+    this.finishIssueReport();
+    try {
+      const payload =
+        this.issueReportRetryPayload ??
+        buildFileIssuePayload(bundle, this.issueReportDescription, {
+          includeLogs: this.issueReportIncludeLogs,
+          ...(this.issueReportIncludeScreenshot && this.issueReportScreenshot
+            ? { screenshotBase64: this.issueReportScreenshot }
+            : {}),
+        });
+      this.issueReportRetryPayload = payload;
+      const response = await submitFileIssue(payload);
+      this.flashHint(
+        response.issueUrl
+          ? `Issue created: ${response.issueUrl}`
+          : `Run ${response.runId} uploaded. Issue creation is pending.`,
+      );
+      this.issueReportRetryPayload = undefined;
+      this.issueReportRunId = undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Issue submission failed.';
+      this.flashHint(`Could not submit issue: ${message}`);
+    } finally {
+      this.issueReportSubmitting = false;
+    }
+  }
+
+  private finishIssueReport(): void {
+    const wasPaused = this.issueReportPausedState;
+    this.issueReportPausedState = undefined;
+    if (!this.issueReportSubmitting && !this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
+    }
+    if (wasPaused !== undefined) {
+      this.setSimulationPaused(wasPaused);
+    }
+  }
+
+  /**
+   * Open the boss-intro lore sheet when a boss encounter has just started and
+   * has not been introduced yet. No-ops while any other blocking surface owns
+   * the screen (conversation, level-up, reward reveal, ...), while the run is
+   * over, or once this boss has already been introduced — the intro plays
+   * exactly once per boss per run.
+   */
+  private showBossIntroIfNeeded(): void {
+    const bossIntroUI = this.bossIntroUI;
+    if (!bossIntroUI || bossIntroUI.isOpen() || this.isBlockingSurfaceOpen()) {
+      return;
+    }
+    if (this.world.state === 'game_over' || (this.gameOverUI?.isVisible() ?? false)) {
+      return;
+    }
+    const pending = resolvePendingBossIntro(this.world, this.shownBossIntroIds);
+    if (!pending) {
+      return;
+    }
+    // Latch BEFORE opening so a mid-sheet teardown (floor restart, death)
+    // cannot re-trigger the same intro on the next frame.
+    this.shownBossIntroIds.add(pending.content.introId);
+    this.bossIntroAutoHoldFrames = 0;
+    this.clearPendingInteractionInput();
+    bossIntroUI.open({
+      content: pending.content,
+      ...(pending.appearanceKey === undefined ? {} : { appearanceKey: pending.appearanceKey }),
+      reducedMotion: prefersReducedMotion(),
+      onDismiss: () => {
+        this.bossIntroAutoHoldFrames = 0;
+        this.clearPendingInteractionInput();
+      },
+    });
+  }
+
+  /**
+   * AI boss-intro driver. When the run is AI-driven (see
+   * {@link MainGameSceneOptions.isAutoDriven}) there is no human to press a
+   * key, so hold the sheet for {@link BOSS_INTRO_AUTO_HOLD_FRAMES} render
+   * frames — enough for a viewer to read it — then dismiss it and resume the
+   * run. No-op for human play (including the AI Runner Lab's manual-control
+   * mode), where the sheet waits for input.
+   */
+  private driveAutoBossIntro(): void {
+    const autoDriven =
+      this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+    if (!autoDriven || !this.bossIntroUI?.isOpen()) {
+      this.bossIntroAutoHoldFrames = 0;
+      return;
+    }
+    this.bossIntroAutoHoldFrames += 1;
+    if (this.bossIntroAutoHoldFrames < BOSS_INTRO_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    this.bossIntroUI.dismiss();
   }
 
   /**
@@ -3828,26 +4619,26 @@ export class MainGameScene extends Phaser.Scene {
     if (this.conversationNpcEid !== null) {
       const instance = this.world.npcs.get(this.conversationNpcEid);
       if (!instance || !instance.nearbyPlayer) {
-        this.conversationNpcEid = null;
-        this.dialogueBox?.hide();
+        this.closeConversation();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = resolveDialogueLines(
-          instance.defId,
-          this.world,
-          {
-            shopkeeper: this.options.shopkeeper,
-            spellQuestGiver: this.options.spellQuestGiver,
-            shopkeeperJustReturned: this.shopkeeperJustReturned,
-          },
-          this.conversationNpcEid,
-        );
+        const activeDialogue =
+          this.activeConversationLines ??
+          resolveDialogueLines(
+            instance.defId,
+            this.world,
+            {
+              shopkeeper: this.options.shopkeeper,
+              spellQuestGiver: this.options.spellQuestGiver,
+              shopkeeperJustReturned: this.shopkeeperJustReturned,
+            },
+            this.conversationNpcEid,
+          );
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
         if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
-          this.conversationNpcEid = null;
-          this.dialogueBox?.hide();
+          this.closeConversation();
           return;
         }
 
@@ -3859,8 +4650,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'the-broker') {
               this.options.broker?.met(this.world);
             }
-            this.conversationNpcEid = null;
-            this.dialogueBox?.hide();
+            this.closeConversation();
             return;
           }
           instance.dialogueIndex = nextIndex;
@@ -3917,6 +4707,12 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
+          if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
+            const openedModal = this.handleSpellBrokerTalk();
+            if (openedModal) {
+              return;
+            }
+          }
           const activeDialogue = resolveDialogueLines(
             instance.defId,
             this.world,
@@ -3935,6 +4731,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
               this.options.spellQuestGiver.meet(this.world);
             }
+            this.activeConversationLines = [...activeDialogue];
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
             this.dialogueBox?.showLine(def.name, `"${text}"`);
@@ -3998,6 +4795,7 @@ export class MainGameScene extends Phaser.Scene {
     if (!shop) {
       return false;
     }
+
     // Latch the "introduce yourself" objective.
     shop.meet(this.world);
 
@@ -4105,5 +4903,55 @@ export class MainGameScene extends Phaser.Scene {
       return true;
     }
     return false;
+  }
+
+  /** Open the authoritative Floor 1 Spell Broker stock after the quest gate. */
+  private handleSpellBrokerTalk(): boolean {
+    const broker = this.options.spellQuestGiver;
+    if (
+      !broker ||
+      !this.modalPicker ||
+      !broker.getSpellBrokerOffers ||
+      !broker.purchaseSpell ||
+      !broker.canPurchaseSpell
+    ) {
+      return false;
+    }
+    if (this.world.featureUnlocks.spells !== true) return false;
+    broker.meet(this.world);
+    const offers = broker.getSpellBrokerOffers(this.world);
+    const options = offers.map((offer) => ({
+      id: offer.spellId,
+      label: `${getAbilityPresentation(offer.spellId)?.name ?? offer.spellId} (${offer.cost}g)`,
+      description: offer.purchased
+        ? 'Already purchased this run.'
+        : 'A permanent spell for this run. One purchase per offer.',
+      disabled:
+        offer.purchased || !broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+    }));
+    if (options.length === 0 || options.every((option) => option.disabled)) {
+      return false;
+    }
+    if (this.modalPicker.isOpen()) return true;
+    this.modalPicker.open(
+      {
+        kind: 'spell-broker',
+        title: 'The Spell Broker',
+        subtitle: `Gold: ${this.world.playerGold}`,
+        body: 'Choose one expensive spell from the Broker’s rotating stock.',
+        options,
+        allowCancel: true,
+        initialSelectedId: options.find((option) => !option.disabled)?.id,
+      },
+      {
+        onConfirm: ({ option }) => {
+          if (broker.purchaseSpell!(this.world, this.playerEid, option.id)) {
+            this.flashHint('Spell purchased and memorized!');
+            this.updateOverlayText();
+          }
+        },
+      },
+    );
+    return true;
   }
 }

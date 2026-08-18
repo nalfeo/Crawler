@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-07",
+  "session_slug": "sprite-reconciler-ping-pong",
+  "task_title": "Stop the hourly sprite-queue reconciler ping-pong",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "The plan (PR description) proposed blob-history membership checks: (1) staleness — main never carried these bytes, (2) conflict — main current bytes known to source. Alt A: merge-base three-way diff was considered but rejected because the queue branch merge-base goes stale, blocking re-edits. Alt B: timestamp comparisons were rejected as unreliable (rebase/force-push changes timestamps). Alt C: CAS trailer retirement-only approach (the 2026-08-03 fix) was rejected because a stale source always differs by definition. The chosen approach is the minimal convergence gate on the delta. Divergence: convergent — alternatives were not materially superior."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Round 1: apple tier under-declared (2->3, addressed by this ledger) and PNG+shard atomicity bug (A->B->A split-brain addressed by adding paired-counterpart suppression in filterPromotablePaths and a d5 regression test)."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-luna",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "270f0a3f400c57ea77d91031713f15f4017477a8",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The atomicity fix in filterPromotablePaths correctly pairs PNG and shard by key using regex extraction, then suppresses any passing path whose counterpart failed. The paths.includes(counterpart) guard ensures no spurious withholding when only one half of a pair is a candidate. The d5 regression test faithfully reproduces the A->B->A split-brain scenario. The fail-closed behavior from null git results is preserved. Deletion paths are not a concern because candidates come from --diff-filter=AM which excludes deletions. Scope is surgical. Policy compliance is clean."
+    }
+  }
+}

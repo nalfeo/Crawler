@@ -25,10 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "5",
   "type": "enemy",
-  "contentHash": "621cdef9d7ac91184f359ba85274c449a63523dd01157b16c4fb29ee59be5a84",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\panda-bruiser\\2026-07-08T03-42-51-9ac1a99c\\postprocess.pipeline.effective.yaml",
+  "contentHash": "73f7efab90e36a215239ef9f3a8269b02dd7dad8a9516f01a13386ecb978a19e",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

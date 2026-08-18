@@ -28,6 +28,7 @@ import {
   isDispatchBlocked,
   isRepairWakeEligible,
   isRepairWindowSweepEvent,
+  isStaleBaseRecoveryCandidate,
   isRetryableError,
   isPrimaryRateLimitExhausted,
   listRecentOutstandingRunIds,
@@ -48,6 +49,9 @@ import {
   VALIDATION_RUNNER_WEIGHT,
   isManagedCommentEvent,
   selectReaperBatch,
+  settleRetargetedPull,
+  classifyStaleBase,
+  retargetStaleBasePulls,
   waitForDispatchedRunsVisible,
   waitForOutstandingCount,
 } from './router.mjs';
@@ -142,6 +146,205 @@ function automationOwnerState(prNumber, updatedAt, attempt = 1) {
   });
 }
 
+function stackedPullRequest(overrides = {}) {
+  return {
+    number: 2863,
+    state: 'open',
+    draft: false,
+    labels: [],
+    base: { ref: 'nalfeo-spell-broker-progression' },
+    head: { repo: { full_name: 'nalfeo/Crawler' }, sha: 'stacked-head' },
+    ...overrides,
+  };
+}
+
+function mergedBasePull(overrides = {}) {
+  return {
+    number: 2847,
+    state: 'closed',
+    merged_at: '2026-08-13T05:28:31Z',
+    base: { ref: 'main' },
+    head: { ref: 'nalfeo-spell-broker-progression', sha: 'base-head' },
+    ...overrides,
+  };
+}
+
+test('stale-base classifier retargets when a merged base branch was deleted', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [mergedBasePull()],
+      baseBranch: null,
+      comparison: null,
+    }),
+    { action: 'retarget', reason: 'base-branch-missing' },
+  );
+});
+
+test('stale-base classifier retargets when a merged base branch remains at its merged tip', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [mergedBasePull()],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'diverged' },
+    }),
+    { action: 'retarget', reason: 'merged-base-pr', basePrNumber: 2847 },
+  );
+});
+
+test('stale-base classifier leaves a merged base that targeted another stack branch alone', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [mergedBasePull({ base: { ref: 'nalfeo-spell-broker-foundation' } })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'diverged' },
+    }),
+    { action: 'skip', reason: 'base-not-stale' },
+  );
+});
+
+test('stale-base classifier retargets a surviving base branch fully contained in main', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'ahead' },
+    }),
+    { action: 'retarget', reason: 'base-contained-in-main' },
+  );
+});
+
+test('stale-base classifier retargets a base branch identical to main', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'identical' },
+    }),
+    { action: 'retarget', reason: 'base-contained-in-main' },
+  );
+});
+
+test('stale-base classifier leaves an intentional open stacked base alone', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [mergedBasePull({ state: 'open', merged_at: null })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'behind' },
+    }),
+    { action: 'skip', reason: 'base-pr-open' },
+  );
+});
+
+test('stale-base classifier leaves main-targeting PRs alone', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({ base: { ref: 'main' } }),
+      basePulls: [],
+      baseBranch: null,
+      comparison: null,
+    }),
+    { action: 'skip', reason: 'main-base' },
+  );
+  assert.equal(
+    isStaleBaseRecoveryCandidate(stackedPullRequest({ base: { ref: 'main' } }), 'nalfeo/Crawler'),
+    false,
+  );
+});
+
+test('stale-base retarget is idempotent on a repeat scan', async () => {
+  const calls = [];
+  const requestFn = async (_token, path, options = {}) => {
+    calls.push({ path, options });
+    if (options.method === 'PATCH') {
+      return { data: stackedPullRequest({ base: { ref: 'main' } }) };
+    }
+    if (options.method === 'POST') return { data: {} };
+    if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+    if (path.includes('/compare/')) return { data: { status: 'diverged' } };
+    throw new Error(`Unexpected request ${path}`);
+  };
+  const paginateFn = async () => [mergedBasePull()];
+  const first = await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    requestFn,
+    paginateFn,
+    writeLog: () => {},
+  });
+  const second = await retargetStaleBasePulls({
+    scheduledPulls: first,
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    requestFn,
+    paginateFn,
+    writeLog: () => {},
+  });
+  assert.equal(first.length, 1);
+  assert.deepEqual(second, []);
+  assert.equal(calls.filter((call) => call.options.method === 'PATCH').length, 1);
+  assert.equal(calls.filter((call) => call.options.method === 'POST').length, 1);
+});
+
+test('stale-base retarget logs branch lookup API failures and continues the batch', async () => {
+  const logs = [];
+  const retargeted = await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async () => [mergedBasePull()],
+    requestFn: async () => {
+      throw makeError(502, 'base lookup unavailable');
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  assert.deepEqual(retargeted, []);
+  assert.match(
+    logs[0],
+    /action=skip reason=base-branch-lookup-failed error=base lookup unavailable/,
+  );
+});
+
+test('stale-base settlement defers until GitHub resolves the retargeted mergeability', async () => {
+  let calls = 0;
+  const settled = await settleRetargetedPull({
+    pullRequest: stackedPullRequest({ base: { ref: 'main' } }),
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    attempts: 3,
+    sleepFn: async () => {},
+    requestFn: async () => {
+      calls += 1;
+      return {
+        data:
+          calls === 3
+            ? stackedPullRequest({
+                base: { ref: 'main' },
+                mergeable: false,
+                mergeable_state: 'dirty',
+              })
+            : stackedPullRequest({
+                base: { ref: 'main' },
+                mergeable: null,
+                mergeable_state: 'unknown',
+              }),
+      };
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(settled.mergeable_state, 'dirty');
+  assert.equal(settled.mergeable, false);
+});
+
 test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
   const scheduledPulls = Array.from({ length: 12 }, (_, index) => ({
     number: index + 1,
@@ -159,6 +362,38 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
   });
 
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
+});
+
+test('flag-off sweeps leave active stacked PRs out of normal reconciliation', () => {
+  const scheduledPulls = [
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [],
+      base: { ref: 'feature-stack' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  for (const eventName of ['schedule', 'workflow_dispatch']) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: { repository: { default_branch: 'main' } },
+        eventName,
+        repository: 'nalfeo/Crawler',
+        scheduledPulls,
+        trainEnabled: false,
+      }),
+      [1],
+    );
+  }
 });
 
 test('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch', () => {
@@ -3474,7 +3709,10 @@ function startRouterMockServer(routes) {
           handler = entry?.[1];
         }
         const result = (handler ? handler(req.url, parsed) : {}) ?? {};
-        res.writeHead(result.status ?? 200, { 'Content-Type': 'application/json' });
+        res.writeHead(result.status ?? 200, {
+          'Content-Type': 'application/json',
+          ...(result.headers ?? {}),
+        });
         res.end(result.body !== undefined ? JSON.stringify(result.body) : '{}');
       });
     });
@@ -3678,6 +3916,142 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
   );
 });
 
+test('runFromEnv defers normal dispatches instead of failing when runner-pressure telemetry is rate-limited', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const pr30 = {
+    number: 30,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    head: { sha: 'head-30', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const dispatches = [];
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr30] }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep.yml/runs`]: () => ({
+      status: 403,
+      headers: { 'x-ratelimit-remaining': '0' },
+      body: { message: 'API rate limit exceeded for installation' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep-recover.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/weapon-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/merge-train-validate.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-rate-limited-pressure-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.equal(dispatches.length, 0, `rate-limited telemetry must not dispatch; stdout: ${stdout}`);
+  assert.match(
+    stdout,
+    /dispatch budget telemetry rate-limited; deferring normal dispatches step=runner-pressure/,
+  );
+  assert.match(stdout, /global backpressure applied deferred=1 pr_numbers=30 outstanding=unknown /);
+});
+
+test('runFromEnv identifies recovery-outstanding rate limits while deferring normal dispatches', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const pr31 = {
+    number: 31,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    head: { sha: 'head-31', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const dispatches = [];
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr31] }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep-recover.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/weapon-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/merge-train-validate.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: () => ({
+      status: 403,
+      headers: { 'x-ratelimit-remaining': '0' },
+      body: { message: 'API rate limit exceeded for installation' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-rate-limited-outstanding-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.equal(
+    dispatches.length,
+    0,
+    `rate-limited outstanding count must not dispatch; stdout: ${stdout}`,
+  );
+  assert.match(
+    stdout,
+    /dispatch budget telemetry rate-limited; deferring normal dispatches step=recovery-outstanding/,
+  );
+  assert.match(
+    stdout,
+    /global backpressure applied deferred=1 pr_numbers=31 outstanding=unknown .*sweep_runs=0 validation_runs=0/,
+  );
+});
+
 test('runFromEnv hydrates waiting/no-owner candidates and dispatches repair wake via schedule', async (t) => {
   // Exercises the waiting-candidate hydration pass added in runFromEnv:
   // a PR that carries only ci-recovery-waiting (no owner label, no
@@ -3824,7 +4198,9 @@ test('runFromEnv hydrates direct owned train PRs before suppressing repeated R06
     },
     [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: (url) => {
       const parsed = new URL(`http://127.0.0.1${url}`);
-      return { body: { total_count: parsed.searchParams.get('status') ? 0 : 0, workflow_runs: [] } };
+      return {
+        body: { total_count: parsed.searchParams.get('status') ? 0 : 0, workflow_runs: [] },
+      };
     },
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
       dispatches.push(body?.inputs ?? {});

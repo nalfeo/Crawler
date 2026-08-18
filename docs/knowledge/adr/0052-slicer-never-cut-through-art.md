@@ -28,7 +28,7 @@ pixels lying on interior cut lines**, versus **0** for the content-aware honest
 
 The cause was the reconciliation added by the **2026-07-07 grid-reconciliation
 decision** (`docs/knowledge/review-ledgers/2026-07-07-slicer-grid-reconciliation.review-ledger.json`,
-handoff `docs/knowledge/handoffs/2026-07-07-slicer-variance-select-grid.md`).
+handoff `docs/knowledge/handoffs/archive/2026-07-07-slicer-variance-select-grid.md`).
 That change targeted the opposite symptom — **over**-segmentation (a gappy
 rubble sheet detected 20 cells for a commanded 16 and hard-failed the count
 gate). Its fix:

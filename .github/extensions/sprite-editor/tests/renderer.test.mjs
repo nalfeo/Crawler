@@ -147,8 +147,24 @@ async function withEditor(run, options = {}) {
     }
     if (url.pathname === '/api/sprite') {
       const sprite = fixtureSprites.find((entry) => entry.key === url.searchParams.get('key'));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ sprite }));
+      const respond = () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sprite }));
+      };
+      const gate =
+        sprite?.key && options.spriteGateByKey ? options.spriteGateByKey[sprite.key] : null;
+      if (gate) {
+        gate.started.resolve();
+        gate.release.promise.then(() => {
+          try {
+            respond();
+          } catch {
+            // The page/server may have torn down before release.
+          }
+        });
+      } else {
+        respond();
+      }
       return;
     }
     if (url.pathname === '/vendor/opencv.js' && options.openCvFixture) {
@@ -181,8 +197,16 @@ async function withEditor(run, options = {}) {
           const saveResponse = { sprite: fixtureSprites[index] };
           // Optionally simulate the sidecar's durable assets/queue push outcome so
           // tests can exercise the queue-failure surfacing (F-D / FIX 3).
-          if (options.saveQueueStatus) {
-            saveResponse.queue = { status: options.saveQueueStatus };
+          if (options.saveQueueStatus || options.saveQueueCleanupError) {
+            saveResponse.queue = {
+              status: options.saveQueueStatus || 'ok',
+              ...(options.saveQueueCleanupError
+                ? {
+                    localAnnotationCleaned: false,
+                    cleanupError: options.saveQueueCleanupError,
+                  }
+                : {}),
+            };
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(saveResponse));
@@ -347,6 +371,57 @@ async function setControlValue(page, selector, value) {
   }, value);
 }
 
+/**
+ * Installs a fake scale Worker whose failure is delivered only when the test
+ * explicitly asks for it.
+ *
+ * These tests assert that a scale result arriving *after* an interfering change
+ * cannot overwrite it. A fixed `setTimeout` raced the very edit it was supposed
+ * to arrive after: under CI load the interfering edit took longer than the
+ * timer, so the failure landed against still-pristine state and the in-tab
+ * fallback correctly applied the scale — a 4x4-vs-2x2 flake, not a product bug.
+ * Explicit delivery makes "stale" deterministically stale.
+ */
+async function installDeferredFailureWorker(page) {
+  await page.evaluate(() => {
+    window.__failScaleWorker = null;
+    window.Worker = class DeferredFailureWorker {
+      listeners = {};
+
+      addEventListener(type, listener) {
+        this.listeners[type] = listener;
+      }
+
+      postMessage() {
+        window.__failScaleWorker = () => {
+          this.listeners.error?.(new Event('error'));
+        };
+      }
+
+      terminate() {}
+    };
+  });
+}
+
+/** Waits until the editor reports a scale is genuinely in flight. */
+async function waitForScaleInFlight(page) {
+  await page.waitForFunction(
+    () =>
+      typeof window.__failScaleWorker === 'function' &&
+      Boolean(document.querySelector('.tool-panel')?.textContent?.includes('Scaling…')),
+  );
+}
+
+/** Delivers the pending stale scale failure and waits for the editor to settle. */
+async function deliverStaleScaleFailure(page) {
+  await page.evaluate(() => {
+    window.__failScaleWorker?.();
+  });
+  await page.waitForFunction(
+    () => !document.querySelector('.tool-panel')?.textContent?.includes('Scaling…'),
+  );
+}
+
 test('sprite editor wires OpenCV scaling controls and methods', () => {
   const html = renderHtml('x');
   assert.match(html, /\/vendor\/opencv\.js/);
@@ -424,9 +499,17 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(html, /role: 'status'/);
   assert.doesNotMatch(html, /id="app" aria-live/);
   assert.match(EXTENSION_SOURCE, /if \(hasMetadata\) applyMetadataUpdate/);
-  assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
+  assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) annotationToken = applyAnnotationUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
   assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /parts\.push\(`\$\{key\}\\0\$\{stats\.size\}\\0\$\{stats\.mtimeMs\}`\)/,
+  );
+  assert.match(
+    EXTENSION_SOURCE,
+    /requestedVersion === summary\.imageVersion && requestedVersion === sha256Hex\(body\)/,
+  );
   assert.match(
     EXTENSION_SOURCE,
     /if \(hasMetadata \|\| wrotePng\) {\s*writeShard\(key, data\.manifest\.entries\[key\]\)/,
@@ -996,6 +1079,27 @@ test('a failed durable queue push is surfaced even when the operator switches sp
   );
 });
 
+test('a successful queue push with unsafe local cleanup is surfaced with remediation', async () => {
+  await withEditor(
+    async (page) => {
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(() =>
+        (document.querySelector('#status')?.textContent ?? '').includes(
+          'local annotation cleanup FAILED',
+        ),
+      );
+      const status = await page.locator('#status').textContent();
+      assert.match(status ?? '', /git restore --staged/);
+      assert.match(status ?? '', /annotation remains in this worktree/);
+    },
+    {
+      saveQueueStatus: 'ok',
+      saveQueueCleanupError:
+        'The annotations file has a staged edit. Run "git restore --staged -- public/assets/generated/sprite-editor-annotations.json", then re-save.',
+    },
+  );
+});
+
 test('a failed durable queue push is surfaced on revert even when the operator switches sprites mid-revert', async () => {
   // FIX 6 (the revert half of FIX 3): revert also re-queues the reverted state
   // onto the durable assets/queue branch, and that push can take seconds. If the
@@ -1183,34 +1287,90 @@ test('save race baseline uses the normalized server response, not raw submitted 
   );
 });
 
+test('edits made while a sprite image is loading keep the current canvas', async () => {
+  const spriteLoad = { started: deferred(), release: deferred() };
+  await withEditor(
+    async (page) => {
+      const beforePixels = await readCanvasPixels(page);
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await waitWithTimeout(spriteLoad.started.promise, 1_000, 'second sprite load request');
+
+      await page.getByTitle('Erase mode').click();
+      await clickCanvasPixel(page, 0, 0);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+
+      spriteLoad.release.resolve();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Stayed on current sprite: newer edits were made while loading.',
+      );
+
+      assert.equal(await page.locator('.sprite-title').textContent(), 'Fixture Sprite');
+      assert.notDeepEqual(await readCanvasPixels(page), beforePixels);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+    },
+    { spriteGateByKey: { 'fixture-sprite-2': spriteLoad } },
+  );
+});
+
+test('switching sprites repeatedly never reports phantom unsaved edits', async () => {
+  await withEditor(async (page) => {
+    const dialogMessages = [];
+    page.on('dialog', async (dialog) => {
+      dialogMessages.push(dialog.message());
+      await dialog.dismiss();
+    });
+
+    // Regression: loadSprite's post-image guard used to compare a fingerprint
+    // that included canvas bytes. loadImage legitimately replaces the canvas,
+    // so the guard always tripped and returned before resetBaseline(), pinning
+    // the baseline to the first sprite forever. Every later switch then looked
+    // dirty, prompting a save (which pushes to the asset queue branch) with no
+    // user edit at all.
+    for (let round = 0; round < 3; round += 1) {
+      const switchStartedAt = performance.now();
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      assert.ok(
+        performance.now() - switchStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+
+      const returnStartedAt = performance.now();
+      await page.getByRole('button', { name: /Fixture Sprite/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Fixture Sprite',
+      );
+      assert.ok(
+        performance.now() - returnStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+    }
+
+    assert.deepEqual(dialogMessages, [], 'switching sprites must not prompt to save');
+  });
+});
+
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
   await withEditor(async (page) => {
-    await page.evaluate(() => {
-      window.Worker = class DelayedFailureWorker {
-        listeners = {};
-
-        addEventListener(type, listener) {
-          this.listeners[type] = listener;
-        }
-
-        postMessage() {
-          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
-        }
-
-        terminate() {}
-      };
-    });
+    await installDeferredFailureWorker(page);
     await page.locator('#tool-scale').click();
     await page.locator('#scale-factor').evaluate((element) => {
       element.value = '2';
       element.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await waitForScaleInFlight(page);
     await page.getByRole('button', { name: /Second Fixture/ }).click();
     await page.waitForFunction(
       () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
     );
-    await page.waitForTimeout(250);
+    await deliverStaleScaleFailure(page);
 
     assert.deepEqual(
       await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),
@@ -1222,21 +1382,7 @@ test('stale scaling results cannot overwrite a newly selected sprite', async () 
 
 test('stale scaling results cannot overwrite a mid-flight edit', async () => {
   await withEditor(async (page) => {
-    await page.evaluate(() => {
-      window.Worker = class DelayedFailureWorker {
-        listeners = {};
-
-        addEventListener(type, listener) {
-          this.listeners[type] = listener;
-        }
-
-        postMessage() {
-          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
-        }
-
-        terminate() {}
-      };
-    });
+    await installDeferredFailureWorker(page);
 
     await page.locator('#tool-scale').click();
     await page.locator('#scale-factor').evaluate((element) => {
@@ -1253,6 +1399,7 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       };
     });
     await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await waitForScaleInFlight(page);
     await page.locator('#comment').fill('Keep this in-flight note');
     await setControlValue(page, '#frame', 3);
     await page.locator('#favorite-heart').click();
@@ -1270,7 +1417,7 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       });
     });
 
-    await page.waitForTimeout(300);
+    await deliverStaleScaleFailure(page);
 
     assert.deepEqual(
       await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),

@@ -13800,7 +13800,7 @@
       "sizing": "exact",
       "width": 7,
       "height": 7,
-      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
+      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off \u2014 the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
       "tags": ["reality-show", "welcome", "floor1", "named"],
       "placement": {
         "verticalAlign": "top"
@@ -15076,7 +15076,7 @@
       "sizing": "exact",
       "width": 8,
       "height": 8,
-      "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Clustered composition with diagonal weighting: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
+      "description": "Threadbare commercial-break reception. The former-contestant Tutorial Goon runs orientation while the Sweaty Merchant handles gear and the Spell Broker handles the Slime Rat spellbook quest. Clustered composition frames their shared backstage life without fixing the current state of their shifting relationship.",
       "tags": ["tutorial", "welcome", "hub", "production-set", "reality-show"],
       "placement": {
         "verticalAlign": "top"
@@ -15887,24 +15887,6 @@
           ]
         },
         {
-          "id": "broker-side-table",
-          "kind": "decoration",
-          "x": 4.8,
-          "y": 3.1,
-          "width": 0.64,
-          "height": 0.5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-side-table-var-12"
-              },
-              "widthFt": 2.56,
-              "heightFt": 2.6
-            }
-          ]
-        },
-        {
           "id": "call-sheet",
           "kind": "decoration",
           "x": 5.5,
@@ -15956,26 +15938,6 @@
               },
               "widthFt": 4.38,
               "heightFt": 5
-            }
-          ]
-        },
-        {
-          "id": "broker-chair",
-          "kind": "furniture",
-          "x": 4.8,
-          "y": 3,
-          "width": 0.68,
-          "height": 0.75,
-          "solid": true,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-chair-turned-var-0"
-              },
-              "widthFt": 2.72,
-              "heightFt": 3.5,
-              "anchorBase": true
             }
           ]
         },

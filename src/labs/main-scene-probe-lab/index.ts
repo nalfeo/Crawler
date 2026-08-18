@@ -36,6 +36,7 @@ import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
+import { spawnEnemy } from '../../core/spawners/combatants.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -56,13 +57,28 @@ import {
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
+import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
+import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
+import {
+  _ZERO_SAFE_AREA_INSETS as ZERO_SAFE_AREA_INSETS,
+  getSafeAreaInsets,
+  type _SafeAreaInsets as SafeAreaInsets,
+} from '../../engine/safe-area.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
+import { hashStringToSeed } from '../../shared/random.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
+import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
@@ -126,8 +142,21 @@ interface MainSceneInternals {
    * against the flagstone spawn room instead of the cave.
    */
   lightOverlayRt?: { visible: boolean };
+  getInteractionHintBounds?(): ScreenBounds | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
+    getBottomCenterBounds?(): ScreenBounds;
+    getMinimapBounds?(): ScreenBounds | null;
+    getNavigationBounds?(): {
+      radar: ScreenBounds | null;
+      questTracker: ScreenBounds | null;
+      familyPanel: ScreenBounds | null;
+    };
+    getEncounterProbeBounds?(): {
+      timerPanel: ScreenBounds;
+      bossPanel: ScreenBounds | null;
+      announcementPanel: ScreenBounds | null;
+    };
     getFamilyRelationshipsState(): {
       visible: boolean;
       bounds: ScreenBounds | null;
@@ -174,6 +203,8 @@ interface MainSceneInternals {
     tick(deltaMs: number): void;
     skip(): void;
     acknowledge(): void;
+    openNext(): void;
+    getNextRewardLabel(): string | null;
     getPhase(): string | null;
     getBucket(): string | null;
     getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
@@ -209,6 +240,14 @@ interface MainSceneInternals {
     isOpen(): boolean;
     close(): void;
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+  };
+  bossIntroUI?: {
+    isOpen(): boolean;
+    dismiss(): void;
+    getIntroId(): string | null;
+    getLayout(): BossIntroLayoutSnapshot | null;
+    getScrollState(): BossIntroScrollState | null;
+    scrollBy(delta: number): void;
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
@@ -296,6 +335,12 @@ export interface RewardOpeningProbeState {
   readonly bucket: string | null;
   readonly revealed: number;
   readonly total: number;
+  /**
+   * Label of the chained "open next box" action offered on the summary
+   * screen, or `null` when no next box is available (or the sequence is not
+   * at `summary`).
+   */
+  readonly nextLabel: string | null;
 }
 
 /**
@@ -310,6 +355,30 @@ export interface RewardAudioCueLogEntryProbe {
   readonly frequencyHz: number;
   readonly durationMs: number;
   readonly gain: number;
+}
+
+export interface FloatingTextProbe {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly alpha: number;
+}
+
+/**
+ * How one item id's icon resolves against the REAL booted scene's generated
+ * sprite registry. Mirrors exactly what `EquipmentUI`/`InventoryUI` do when
+ * they draw an item icon.
+ */
+export interface ItemIconRenderInfo {
+  readonly itemId: string;
+  /** Resolved brief id, or null when nothing resolved (2-letter text fallback). */
+  readonly briefId: string | null;
+  /** Resolved Phaser texture key, or null when nothing resolved. */
+  readonly textureKey: string | null;
+  /** True when the resolved entry is placeholder art rather than approved art. */
+  readonly isPlaceholder: boolean;
+  /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
+  readonly textureLoaded: boolean;
 }
 
 /**
@@ -405,6 +474,12 @@ export interface MainSceneState {
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
   readonly settlementShopArchetypeIds: readonly string[];
+}
+
+/** Safe-area insets plus every edge-anchored screen-space surface (design space). */
+export interface SafeAreaLayoutProbe {
+  readonly insets: SafeAreaInsets;
+  readonly surfaces: Array<{ readonly name: string; readonly bounds: ScreenBounds }>;
 }
 
 export interface FamilyHudProbeState {
@@ -563,6 +638,20 @@ export interface BloodSurfaceProbeSummary {
   readonly footprintColors: number[];
 }
 
+/** Live boss-intro lore-sheet state as rendered by the real MainGameScene. */
+export interface BossIntroProbeState {
+  /** True while the lore sheet owns the screen. */
+  readonly open: boolean;
+  /** `BossIntroContent.introId` currently shown, or null. */
+  readonly introId: string | null;
+  /** Simulation clock (ms). Frozen while the sheet is open. */
+  readonly worldElapsedMs: number;
+  /** Measured sheet layout while open, else null. */
+  readonly layout: BossIntroLayoutSnapshot | null;
+  /** Flavour-viewport scroll state while open, else null. */
+  readonly scroll: BossIntroScrollState | null;
+}
+
 /**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
@@ -584,8 +673,32 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
+  /**
+   * Start the real Floor-1 staircase boss battle on the live world (spawns a
+   * boss entity and latches the encounter), so the scene's own boss-intro
+   * trigger fires on its next update — no UI is opened directly here.
+   */
+  startStaircaseBossBattle(): number;
+  /**
+   * Arrange the live Floor-1 world at the unlocked stairs for transition-path
+   * e2e coverage. The test still drives the real scene interaction modal,
+   * `onStairDescend`, floor-completion screen, and scene restart.
+   */
+  primeFloor1StairTransition(): void;
+  /** Live boss-intro sheet state plus the world clock (frozen while open). */
+  getBossIntroState(): BossIntroProbeState;
+  /** Scroll the boss-intro flavour copy by `delta` lines. */
+  scrollBossIntro(delta: number): void;
+  /** Dismiss the boss-intro sheet through its real dismiss path. */
+  dismissBossIntro(): void;
   /** Measured layout for the currently open real modal picker. */
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
+  /**
+   * Design-space safe-area insets currently in force plus the bounds of every
+   * edge-anchored screen-space surface, so an e2e gate can assert none of them
+   * intrude into the display-cutout / home-indicator bands.
+   */
+  getSafeAreaLayout(): SafeAreaLayoutProbe;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Advance the paused simulation by N fixed steps using the real scene seam. */
@@ -606,8 +719,17 @@ export interface MainSceneProbeApi {
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Seed three off-screen quests through the real scene's live world. */
   primeQuestWaypointArrows(): void;
+  /** Seed crowded down-right quests through the real scene's live world. */
+  primeCrowdedDownRightQuestWaypointArrows(): void;
   /** Visible quest arrow ids on the real MainGameScene display list. */
   getVisibleQuestArrowIds(): string[];
+  /** Rendered quest arrow positions and rotations from the real display list. */
+  getVisibleQuestArrowStates(): ReadonlyArray<{
+    readonly questId: string;
+    readonly x: number;
+    readonly y: number;
+    readonly rotation: number;
+  }>;
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -619,6 +741,25 @@ export interface MainSceneProbeApi {
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
   queueSkillUsage(skillId: string, metric: UsageMetric, amount: number): void;
+  /**
+   * Equip an active ability on the real player so a subsequent real-sim trigger
+   * (e.g. `queueSkillUsage`) can fire it. Arrangement affordance only — the
+   * activation itself still runs through the shipped `abilitySystem`.
+   * Returns false when the scene/player is not ready.
+   */
+  equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Ability-activation floater labels currently on the REAL scene's display
+   * list, paired with the ability id encoded in the object name.
+   */
+  getAbilityFloaters(): ReadonlyArray<{
+    readonly abilityId: string;
+    readonly label: string;
+    readonly x: number;
+    readonly y: number;
+    readonly visible: boolean;
+    readonly alpha: number;
+  }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
@@ -663,6 +804,11 @@ export interface MainSceneProbeApi {
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
   claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
+  /**
+   * Unlock an achievement through the REAL unlock path (resolving its reward
+   * bundle) without claiming it — arranges a "next box is available" state.
+   */
+  unlockAchievement(achievementId: string): void;
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -725,6 +871,17 @@ export interface MainSceneProbeApi {
   /** Exact generated instance keys currently equipped by the player. */
   getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
   /**
+   * How an item id's icon resolves in the REAL booted scene: the registry the
+   * shipped boot preload populated, resolved by the shipped `resolveItemSprite`,
+   * plus whether Phaser actually has that texture loaded.
+   *
+   * This is the observe seam for equipment art wiring. A lab that force-renders
+   * an icon cannot prove the real boot path loaded the texture, and reading the
+   * diff cannot prove the resolver picked real art over a placeholder — this
+   * reports both against the running game.
+   */
+  getItemIconRenderInfo(itemId: string): ItemIconRenderInfo;
+  /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
    * `clearRewardAudioCueLog()`. Used to prove — against the real scene wiring,
@@ -735,6 +892,8 @@ export interface MainSceneProbeApi {
   getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
   /** Reset the reward-opening audio cue log so a scenario starts from empty. */
   clearRewardAudioCueLog(): void;
+  /** Visible floating world-text objects, optionally filtered by a text prefix. */
+  getVisibleFloatingTexts(prefix?: string): readonly FloatingTextProbe[];
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -932,7 +1091,109 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
+    startStaircaseBossBattle: (): number => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) {
+        throw new Error('MainGameScene is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const battle = world.floorScenario?.objective.bossBattles.get('staircase');
+      if (!battle) {
+        throw new Error('Floor 1 staircase boss battle is unavailable');
+      }
+      const playerEid = scene.playerEid ?? -1;
+      const bossX = (world.stores.position.x[playerEid] ?? 0) + 4;
+      const bossY = world.stores.position.y[playerEid] ?? 0;
+      const bossEid = spawnEnemy(world, bossX, bossY, 200);
+      battle.started = true;
+      battle.defeated = false;
+      battle.bossEid = bossEid;
+      return bossEid;
+    },
+
+    primeFloor1StairTransition: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || playerEid < 0 || !objective) {
+        throw new Error('Floor 1 transition path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.featureUnlocks.spells = true;
+      world.goalFlags.set('floor1-defeat-boss', true);
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      objective.staircaseSpawned = true;
+      objective.staircaseUnlocked = true;
+      objective.staircaseDiscovered = false;
+      world.stores.position.x[playerEid] = objective.staircasePos.x;
+      world.stores.position.y[playerEid] = objective.staircasePos.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+    },
+
+    getBossIntroState: (): BossIntroProbeState => {
+      const scene = getScene();
+      return {
+        open: scene?.bossIntroUI?.isOpen() ?? false,
+        introId: scene?.bossIntroUI?.getIntroId() ?? null,
+        worldElapsedMs: scene?.world?.elapsedMs ?? 0,
+        layout: scene?.bossIntroUI?.getLayout() ?? null,
+        scroll: scene?.bossIntroUI?.getScrollState() ?? null,
+      };
+    },
+
+    scrollBossIntro: (delta: number) => {
+      getScene()?.bossIntroUI?.scrollBy(delta);
+    },
+
+    dismissBossIntro: () => {
+      getScene()?.bossIntroUI?.dismiss();
+    },
+
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
+
+    getSafeAreaLayout: (): SafeAreaLayoutProbe => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const hud = scene?.hudUi;
+      const navigation = hud?.getNavigationBounds?.();
+      const encounter = hud?.getEncounterProbeBounds?.();
+      const surfaces: SafeAreaLayoutProbe['surfaces'] = [];
+      const push = (name: string, bounds: ScreenBounds | null | undefined): void => {
+        if (bounds && bounds.width > 0 && bounds.height > 0) {
+          surfaces.push({ name, bounds });
+        }
+      };
+      // NB: `getAbilityBarBounds()` reports authored design constants, not the
+      // transformed group position, so it is deliberately excluded — the
+      // ability bar is covered by its parent group (`bottomCenter`).
+      push('bottomCenter', hud?.getBottomCenterBounds?.());
+      push('minimap', hud?.getMinimapBounds?.());
+      push('radar', navigation?.radar);
+      push('questTracker', navigation?.questTracker);
+      push('familyPanel', navigation?.familyPanel);
+      push('floorTimer', encounter?.timerPanel);
+      push('bossBar', encounter?.bossPanel);
+      push('announcement', encounter?.announcementPanel);
+      push('interactionHint', scene?.getInteractionHintBounds?.());
+      push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
+      push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);
+      return {
+        insets: phaserScene ? getSafeAreaInsets(phaserScene) : ZERO_SAFE_AREA_INSETS,
+        surfaces,
+      };
+    },
 
     setWorldState: (state) => {
       const world = getScene()?.world;
@@ -1120,6 +1381,42 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.slimeRatRoomPos.y = py - 1;
     },
 
+    primeCrowdedDownRightQuestWaypointArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.welcomeOfficePos.x = px + 100;
+      objective.welcomeOfficePos.y = py + 30;
+      objective.shopRoomPos.x = px + 101;
+      objective.shopRoomPos.y = py + 30;
+      objective.slimeRatRoomPos.x = px + 102;
+      objective.slimeRatRoomPos.y = py + 30;
+      const guideEid = world.floorScenario?.guideNpcEid;
+      const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
+      if (guideEid !== null && guideEid !== undefined) {
+        world.stores.position.x[guideEid] = px + 100;
+        world.stores.position.y[guideEid] = py + 30;
+      }
+      if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
+        world.stores.position.x[shopkeeperEid] = px + 101;
+        world.stores.position.y[shopkeeperEid] = py + 30;
+      }
+    },
+
     getVisibleQuestArrowIds: (): string[] => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) {
@@ -1133,6 +1430,30 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             child.name.startsWith('quest-direction-arrow:'),
         )
         .map((arrow) => arrow.name.slice('quest-direction-arrow:'.length));
+    },
+
+    getVisibleQuestArrowStates: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list.flatMap((child) => {
+        if (
+          !(child instanceof Phaser.GameObjects.Triangle) ||
+          !child.visible ||
+          !child.name.startsWith('quest-direction-arrow:')
+        ) {
+          return [];
+        }
+        return [
+          {
+            questId: child.name.slice('quest-direction-arrow:'.length),
+            x: child.x,
+            y: child.y,
+            rotation: child.rotation,
+          },
+        ];
+      });
     },
 
     requestAchievementsToggle: () => {
@@ -1164,6 +1485,35 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const holderEid = playerEidOf(scene);
       if (!world || holderEid < 0) return;
       world.skillUsageEvents.push({ holderEid, skillId, metric, amount });
+    },
+
+    equipPlayerActiveAbility: (abilityId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!world || holderEid < 0) return false;
+      getOrCreateAbilityState(world, holderEid);
+      equipActiveAbility(world, holderEid, abilityId);
+      return true;
+    },
+
+    getAbilityFloaters: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) return [];
+      return phaserScene.children.list
+        .filter(
+          (child): child is Phaser.GameObjects.Text =>
+            child instanceof Phaser.GameObjects.Text &&
+            child.name.startsWith(ABILITY_FLOATER_NAME_PREFIX),
+        )
+        .map((floater) => ({
+          abilityId: floater.name.slice(ABILITY_FLOATER_NAME_PREFIX.length),
+          label: floater.text,
+          x: floater.x,
+          y: floater.y,
+          visible: floater.visible,
+          alpha: floater.alpha,
+        }));
     },
 
     tapAbilitiesButton: () => {
@@ -1341,6 +1691,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    unlockAchievement: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      unlockAchievement(world, achievementId);
+      scene?.achievementsUI?.refresh(world);
+    },
+
     claimAchievementReward: (achievementId: string) => {
       const scene = getScene();
       const world = scene?.world;
@@ -1437,7 +1795,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const ui = getScene()?.rewardOpeningUI;
       const open = ui?.isOpen() ?? false;
       if (!ui || !open) {
-        return { open: false, phase: null, bucket: null, revealed: 0, total: 0 };
+        return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
       }
       const progress = ui.getRevealProgress();
       return {
@@ -1446,6 +1804,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bucket: ui.getBucket(),
         revealed: progress?.revealed ?? 0,
         total: progress?.total ?? 0,
+        nextLabel: ui.getNextRewardLabel?.() ?? null,
       };
     },
 
@@ -1521,6 +1880,23 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       );
     },
 
+    getItemIconRenderInfo: (itemId: string): ItemIconRenderInfo => {
+      const phaserScene = getPhaserScene();
+      const registry =
+        (phaserScene?.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
+          | GeneratedSpriteRegistry
+          | undefined) ?? emptyGeneratedSpriteRegistry();
+      const worldSeed = getScene()?.world?.seed ?? 0;
+      const entry = resolveItemSprite(registry, itemId, (hashStringToSeed(itemId) ^ worldSeed) | 0);
+      return {
+        itemId,
+        briefId: entry?.briefId ?? null,
+        textureKey: entry?.textureKey ?? null,
+        isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
+        textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
+      };
+    },
+
     getInventoryVisibleItemIds: (): readonly string[] => {
       return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
     },
@@ -1576,6 +1952,28 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene?.rewardAudioCueLog) {
         scene.rewardAudioCueLog.length = 0;
       }
+    },
+    getVisibleFloatingTexts: (prefix = ''): readonly FloatingTextProbe[] => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list
+        .filter(
+          (obj): obj is Phaser.GameObjects.Text =>
+            obj instanceof Phaser.GameObjects.Text &&
+            obj.visible &&
+            obj.active &&
+            obj.alpha > 0 &&
+            obj.text.startsWith(prefix),
+        )
+        .map((text) => ({
+          text: text.text,
+          x: text.x,
+          y: text.y,
+          alpha: text.alpha,
+        }))
+        .sort((a, b) => (a.y - b.y ? a.y - b.y : a.x - b.x));
     },
   };
   probeWindow.__mainSceneProbe = api;

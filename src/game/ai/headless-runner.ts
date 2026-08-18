@@ -33,13 +33,25 @@ import {
   AIState,
   type AIInputProvider,
   type AIPathingModeValue,
+  type LootEfficiencyMetrics,
+  type GoldEconomyMetrics,
+  type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
   type SkillRunMetrics,
 } from './types.js';
+import { assembleRunStats } from '../../shared/run-stats-collector.js';
+import { createRunEventCollector } from '../../core/run-events.js';
+import {
+  captureHeadlessRunDataFrame,
+  createHeadlessRunData,
+  finalizeHeadlessRunData,
+  recordRewardEvent,
+} from './headless-run-data.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import {
@@ -56,13 +68,21 @@ import type { SettlementMaintenanceResult } from './settlement-maintenance-types
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+  planningDeadlineMsFromFrameBudget,
+} from './floor1-run-budget.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { computeVendorInteractions } from './vendor-interactions.js';
+import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
-import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 import {
   classifyGameOverOutcome,
@@ -71,9 +91,6 @@ import {
 } from './headless-runner-invariants.js';
 
 const logger = createLogger('game:headless-runner');
-
-/** Tracks the previous-frame safe-room state per world so the restock fires only on the entry edge. */
-const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -104,6 +121,55 @@ function computeXpOnGroundAtEnd(world: GameWorld): number {
     total += world.stores.xpGem.value[eid] ?? 0;
   }
   return total;
+}
+
+function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
+  const { xpSpawned, xpCollected, goldSpawned, goldCollected } = world.lootLedger;
+  const ratio = (collected: number, spawned: number): number =>
+    spawned > 0 ? collected / spawned : 1;
+  return {
+    xpSpawned,
+    xpCollected,
+    goldSpawned,
+    goldCollected,
+    xpRatio: ratio(xpCollected, xpSpawned),
+    goldRatio: ratio(goldCollected, goldSpawned),
+    combinedRatio: ratio(xpCollected + goldCollected, xpSpawned + goldSpawned),
+  };
+}
+
+function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
+  const ledger = world.goldLedger;
+  const earnedTotal = ledger.earnedFromDrops + ledger.earnedFromLootBoxes;
+  const spentTotal = ledger.spentOnCharm + ledger.spentOnMerchantWeapon + ledger.spentOnSpell;
+  const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
+  const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
+  const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
+  return {
+    earnedFromDrops: ledger.earnedFromDrops,
+    earnedFromLootBoxes: ledger.earnedFromLootBoxes,
+    earnedTotal,
+    spentOnCharm: ledger.spentOnCharm,
+    spentOnMerchantWeapon: ledger.spentOnMerchantWeapon,
+    spentOnSpell: ledger.spentOnSpell,
+    spentTotal,
+    unspentAtExit,
+    unspentFraction: earnedTotal > 0 ? unspentAtExit / earnedTotal : 0,
+    spendableEarned,
+    unspentSpendable,
+    unspentSpendableFraction: spendableEarned > 0 ? unspentSpendable / spendableEarned : 0,
+    charmPurchases: ledger.charmPurchases,
+    merchantWeaponPurchases: ledger.merchantWeaponPurchases,
+    spellPurchases: ledger.spellPurchases,
+    // Distinct *vendors* purchased from, not purchase categories: the charm
+    // and the post-quest weapon are both bought from the single
+    // `floor1-merchant` NPC (see `FLOOR1_MERCHANT_VENDOR_ID`), so buying both
+    // is still one vendor. Only the spell broker (`FLOOR1_SPELL_BROKER_VENDOR_ID`)
+    // is a second, distinct vendor.
+    distinctPurchases:
+      (ledger.charmPurchases > 0 || ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
+      (ledger.spellPurchases > 0 ? 1 : 0),
+  };
 }
 
 interface EquipmentSpendTelemetry {
@@ -140,6 +206,12 @@ export interface HeadlessRunnerConfig {
   seed: number;
   /** Maximum frames to simulate (safety limit) */
   maxFrames?: number;
+  /**
+   * Frame budget exposed to budget-aware AI planning. Defaults to `maxFrames`.
+   * Set this only when `maxFrames` is an observation cutoff rather than the
+   * run's actual evaluation budget.
+   */
+  planningMaxFrames?: number;
   /** Maximum wall-clock time in milliseconds */
   maxWallTimeMs?: number;
   /** Report progress every N frames (0 = never) */
@@ -171,6 +243,16 @@ export interface HeadlessRunnerConfig {
   enemyTelegraphMs?: number;
   /** Scenario floor id to run. */
   floorId?: string;
+  /**
+   * Player state carried in from a previous floor, applied during scenario
+   * configuration exactly as the visual runner does when descending stairs
+   * (`src/bootstrap/floor-main-scene-options.ts`). Omitted starts a fresh run.
+   *
+   * This is what makes a headless multi-floor progression run possible: without
+   * it, a chained Floor 2 run would start from a level-1 empty-inventory player
+   * and would not represent an actual playthrough.
+   */
+  playerCarryover?: PlayerCarryoverSnapshot;
   /**
    * Explicit Floor 2 equipment rollout configuration, applied before scenario
    * configuration. Omitted preserves the world defaults (all disabled); each
@@ -204,7 +286,7 @@ export interface HeadlessRunnerConfig {
    * wander fast-fails with a clear reason instead of burning the whole budget.
    * Sized above the slowest legitimate inter-progress gap on winning seeds and
    * above the in-AI relocate cycle (now 200s on the 240×140 map) so it never
-   * false-fails a healthy run. Set to 0 to disable. Default 21_600 (~360s at
+   * false-fails a healthy run. Set to 0 to disable. Default 36_000 (~600s at
    * 60 FPS).
    */
   questStallFrames?: number;
@@ -223,6 +305,14 @@ export interface HeadlessRunnerConfig {
    */
   onFinish?: (world: GameWorld) => void;
   /**
+   * Invoked with the player's carryover snapshot when the run ends in victory,
+   * before {@link HeadlessRunnerConfig.onFinish}. This is the seam a multi-floor
+   * progression run uses to hand player state to the next floor, mirroring the
+   * visual runner's floor-cleared capture in
+   * `src/bootstrap/floor-main-scene-options.ts`.
+   */
+  onPlayerCarryoverCaptured?: (carryover: PlayerCarryoverSnapshot, world: GameWorld) => void;
+  /**
    * Opt-in: collect per-run weapon-accuracy telemetry (swings, connecting hits,
    * accuracy, multi-hit rate) and expose it as `RunStats.weaponTelemetry`. OFF by
    * default — when false the world's `weaponTelemetry` field stays undefined and
@@ -232,17 +322,40 @@ export interface HeadlessRunnerConfig {
   recordWeaponTelemetry?: boolean;
   /** Use weapon-specific stat and gear personas. Default true; false preserves the legacy control. */
   weaponPersonas?: boolean;
-  /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
+  /**
+   * Enable both optional AI purchases (merchant weapon + Floor 1 Spell Broker)
+   * as a single shared feature flag. Default true.
+   *
+   * When true the merchant-weapon purchase decision and the Spell Broker
+   * purchase decision are both armed. When false neither fires, keeping the AI
+   * on the deterministic required-only path.
+   *
+   * Prefer this flag over the individual `merchantWeaponPurchase` /
+   * `spellBrokerPurchase` fields, which are retained only for compatibility
+   * with tests and callers that have not yet migrated.  When `optionalPurchases`
+   * is supplied it wins over the individual fields.
+   */
+  optionalPurchases?: boolean;
+  /** Optional evaluator cohort label retained in RunStats. */
+  playerPersona?: PlayerPersona;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
   merchantWeaponPurchase?: boolean;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
+  spellBrokerPurchase?: boolean;
   /**
    * Enable the optional latched settlement-return route goal: periodically
    * evaluates whether returning to the Floor 2 settlement to run the
    * maintenance planner (open boxes, equip affinity-maximizing gear, shop,
    * configure abilities) is worth the travel/risk/opportunity cost, using
-   * `settlement-return-router.ts`'s deterministic utility scoring. Default
-   * false — when disabled the router's state machine is never armed and the
-   * AI's Floor 2 progress goal selection is byte-identical to before this
-   * feature.
+   * `settlement-return-router.ts`'s deterministic utility scoring. Defaults to
+   * true on Floor 1, where parity-gated equipment needs a legitimate safe-room
+   * return path, and false on other floors. Callers may explicitly override it.
    */
   settlementReturnRouting?: boolean;
   /**
@@ -264,22 +377,28 @@ const DEFAULT_CONFIG: Required<
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
+    | 'playerPersona'
+    | 'planningMaxFrames'
+    | 'playerCarryover'
+    | 'onPlayerCarryoverCaptured'
   >
 > = {
   seed: 12345,
-  maxFrames: 100_000, // ~27 min at 60 FPS
+  maxFrames: FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES, // ~27 min at 60 FPS
   maxWallTimeMs: 5 * 60 * 1000, // 5 minutes wall time
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
-  questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
+  questStallFrames: FLOOR1_ACTIVE_TIME_BUDGET_MS / GAME.DELTA_MS,
   enemyDamageMultiplier: 1,
   enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
+  optionalPurchases: DEFAULT_OPTIONAL_PURCHASES,
   merchantWeaponPurchase: false,
+  spellBrokerPurchase: false,
   settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
@@ -403,6 +522,41 @@ function collectFamilyTrashKills(world: GameWorld): Record<string, number> {
   return Object.fromEntries(world.floorExtendedState?.familyState?.trashKillsByFamily ?? []);
 }
 
+interface Floor1BossTelemetry {
+  readonly startedFrame: ReadonlyMap<string, number>;
+  readonly startedMs: ReadonlyMap<string, number>;
+  readonly startedBossEid: ReadonlyMap<string, number>;
+  readonly startedLevel: ReadonlyMap<string, number>;
+  readonly startedHealthFraction: ReadonlyMap<string, number>;
+  readonly defeatedFrame: ReadonlyMap<string, number>;
+  readonly defeatedMs: ReadonlyMap<string, number>;
+}
+
+function collectFloor1BossProgression(
+  world: GameWorld,
+  telemetry: Floor1BossTelemetry,
+): NonNullable<RunStats['floor1BossProgression']> | undefined {
+  const bossBattles = world.floorScenario?.objective.bossBattles;
+  if (world.floorId !== 'floor1' || !bossBattles) {
+    return undefined;
+  }
+  const encounters: NonNullable<RunStats['floor1BossProgression']>['encounters'] = {};
+  for (const [bossId, encounter] of bossBattles) {
+    encounters[bossId] = {
+      bossEid: telemetry.startedBossEid.get(bossId) ?? null,
+      encounterStarted: encounter.started,
+      encounterStartedFrame: telemetry.startedFrame.get(bossId) ?? null,
+      encounterStartedMs: telemetry.startedMs.get(bossId) ?? null,
+      playerLevelAtStart: telemetry.startedLevel.get(bossId) ?? null,
+      playerHealthFractionAtStart: telemetry.startedHealthFraction.get(bossId) ?? null,
+      encounterDefeated: encounter.defeated,
+      encounterDefeatedFrame: telemetry.defeatedFrame.get(bossId) ?? null,
+      encounterDefeatedMs: telemetry.defeatedMs.get(bossId) ?? null,
+    };
+  }
+  return { encounters };
+}
+
 function collectFloor2Progression(
   world: GameWorld,
   trashKillsAtDenUnlock: ReadonlyMap<string, number>,
@@ -450,6 +604,15 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
+    mergedConfig.settlementReturnRouting = true;
+  }
+  aiProvider.configurePlanningDeadlineMs?.(
+    planningDeadlineMsFromFrameBudget(
+      config.planningMaxFrames ??
+        (config.maxFrames === undefined ? FLOOR1_DEFAULT_MAX_FRAMES : mergedConfig.maxFrames),
+    ),
+  );
   const startTime = Date.now();
 
   if (mergedConfig.debug) {
@@ -464,11 +627,18 @@ export async function runHeadless(
     seed: mergedConfig.seed,
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
   });
+  world.runEvents = createRunEventCollector();
   if (mergedConfig.floor2EquipmentFlags) {
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
-  configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
+  // `optionalPurchases` is the canonical single flag.  When supplied it
+  // overrides the individual deprecated fields; when absent the individual
+  // fields are used for backward compat with existing callers/tests. A caller
+  // that supplies no purchase flag inherits the canonical default.
+  const purchasesEnabled = resolveOptionalPurchases(config);
+  configureMerchantWeaponPurchase(world, purchasesEnabled);
+  configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
@@ -488,7 +658,11 @@ export async function runHeadless(
 
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
-  scenario.configureWorld(world, playerEid);
+  scenario.configureWorld(
+    world,
+    playerEid,
+    config.playerCarryover ? { playerCarryover: config.playerCarryover } : undefined,
+  );
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
@@ -521,6 +695,12 @@ export async function runHeadless(
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
+  const runData = createHeadlessRunData(
+    forceWeaponId !== undefined
+      ? [startingWeapon]
+      : (world.floorScenario?.starterChoices ?? [startingWeapon]),
+    startingWeapon,
+  );
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -528,7 +708,6 @@ export async function runHeadless(
   }
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
-
   let frameCount = 0;
   // Frames spent in a safe room, where the floor-collapse deadline is paused
   // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
@@ -536,6 +715,8 @@ export async function runHeadless(
   // read after the sim step that runs safeRoomSystem + floorObjectiveSystem,
   // makes `safeRoomMs` match the game's deadline pause frame-for-frame.
   let safeRoomFrames = 0;
+  const currentActiveTimeMs = (): number =>
+    Math.max(0, world.elapsedMs - safeRoomFrames * GAME.DELTA_MS);
   let lastProgressFrame = 0;
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
@@ -544,6 +725,7 @@ export async function runHeadless(
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
   let previousLevel = 0;
+  let previousRewardLevel = world.playerLevel?.level ?? 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
   let combatEventCursor = world.combatEvents.length;
@@ -574,7 +756,44 @@ export async function runHeadless(
   const floor2EncounterStartedMs = new Map<string, number>();
   const floor2EncounterStartedLevel = new Map<string, number>();
   const floor2EncounterDefeatedMs = new Map<string, number>();
+  const floor1BossStartedFrame = new Map<string, number>();
+  const floor1BossStartedMs = new Map<string, number>();
+  const floor1BossStartedEid = new Map<string, number>();
+  const floor1BossStartedLevel = new Map<string, number>();
+  const floor1BossStartedHealthFraction = new Map<string, number>();
+  const floor1BossDefeatedFrame = new Map<string, number>();
+  const floor1BossDefeatedMs = new Map<string, number>();
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
+
+  // Latches the Floor 1 boss encounter transitions for the frame that just ran.
+  // Called immediately after runSimulationStep/frameCount++ so a lethal frame —
+  // which breaks out of the loop before any later telemetry block — still records
+  // the frame, time, level, health, and boss eid of a start/defeat that happened
+  // on that same frame.
+  const captureFloor1BossTransitions = (): void => {
+    const bossBattles = world.floorScenario?.objective.bossBattles;
+    if (world.floorId !== 'floor1' || !bossBattles) {
+      return;
+    }
+    for (const [bossId, encounter] of bossBattles) {
+      if (encounter.started && !floor1BossStartedFrame.has(bossId)) {
+        floor1BossStartedFrame.set(bossId, frameCount);
+        floor1BossStartedMs.set(bossId, world.elapsedMs);
+        floor1BossStartedLevel.set(bossId, world.playerLevel?.level ?? 0);
+        const currentHealth = world.stores.health.current[playerEid] ?? 0;
+        const maxHealth = world.stores.health.max[playerEid] ?? 0;
+        floor1BossStartedHealthFraction.set(bossId, maxHealth > 0 ? currentHealth / maxHealth : 0);
+        if (encounter.bossEid !== null) {
+          floor1BossStartedEid.set(bossId, encounter.bossEid);
+        }
+      }
+      if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
+        floor1BossDefeatedFrame.set(bossId, frameCount);
+        floor1BossDefeatedMs.set(bossId, world.elapsedMs);
+        recordRewardEvent(runData, 'boss_kill', bossId, world.elapsedMs, currentActiveTimeMs());
+      }
+    }
+  };
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
@@ -650,8 +869,8 @@ export async function runHeadless(
     engageRatio: floor2HuntTimeMs > 0 ? floor2HuntEngageTimeMs / floor2HuntTimeMs : 0,
     activeCombatTimeMs: floor2HuntActiveCombatTimeMs,
     activeCombatRatio: floor2HuntTimeMs > 0 ? floor2HuntActiveCombatTimeMs / floor2HuntTimeMs : 0,
-    familyTrashKills: floor2HuntFamilyTrashKills,
-    neutralTrashKills: floor2HuntNeutralTrashKills,
+    huntFamilyTrashKills: floor2HuntFamilyTrashKills,
+    huntNeutralTrashKills: floor2HuntNeutralTrashKills,
     averageNearbyEnemies:
       floor2HuntNearbyEnemySamples > 0
         ? floor2HuntNearbyEnemyTotal / floor2HuntNearbyEnemySamples
@@ -835,25 +1054,20 @@ export async function runHeadless(
       if (world.playerInSafeRoom === true) {
         safeRoomFrames++;
       }
+      // Latch Floor 1 boss lifecycle transitions before any early exit (death
+      // guards) or auto-action helper can run. Capture after the safe-room
+      // counter so active timestamps cannot exceed the finalized duration.
+      captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      // On each new safe-room entry, advance the Quartermaster restock epoch so
-      // sold items are retired and fresh offers are generated. The call is
-      // unconditional: `restockFloor2Quartermaster` guards against a disabled
-      // economy, missing settlement, and backwards/skipped epoch requests and
-      // returns a typed error result rather than throwing, so this is safe on
-      // Floor 1 runs and on every frame after the initial entry-edge.
-      const isNowInSafeRoom = world.playerInSafeRoom === true;
-      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
-      if (isNowInSafeRoom && !wasInSafeRoom) {
-        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
-        if (qmStock) {
-          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
-        }
-      }
-      quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      // NOTE: the runner deliberately does NOT restock the Quartermaster on
+      // safe-room entry. `MainGameScene` never calls
+      // `restockFloor2Quartermaster`, so a human run only ever sees the stock
+      // the scenario generated; an AI-only restock would hand the runner an
+      // item pool no player can reach and quietly inflate the balance oracle.
+      captureHeadlessRunDataFrame(runData, world, playerEid, currentActiveTimeMs(), 0);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed
         // achievements as its navigation signal (utility ∝ unclaimedAchievements).
@@ -868,6 +1082,13 @@ export async function runHeadless(
       void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
+      captureHeadlessRunDataFrame(
+        runData,
+        world,
+        playerEid,
+        currentActiveTimeMs(),
+        world.playerInSafeRoom === true ? 0 : GAME.DELTA_MS,
+      );
 
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
@@ -956,6 +1177,16 @@ export async function runHeadless(
           gameTimeMs: world.elapsedMs,
           frame: frameCount,
         });
+        if (currentLevel > previousRewardLevel) {
+          recordRewardEvent(
+            runData,
+            'level_up',
+            String(currentLevel),
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
+          previousRewardLevel = currentLevel;
+        }
         previousLevel = currentLevel;
         recordEvent?.(buildEvent('levelup', enemyEids, `reached level ${currentLevel}`));
       }
@@ -1072,6 +1303,13 @@ export async function runHeadless(
         }
         if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
           questLogCompletedMs.set(questId, world.elapsedMs);
+          recordRewardEvent(
+            runData,
+            'quest_complete',
+            questId,
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
           recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
         }
       }
@@ -1236,7 +1474,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
-    const crashStats: RunStats = {
+    const crashStats: RunStats = assembleRunStats({
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
@@ -1275,8 +1513,18 @@ export async function runHeadless(
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
       runStartXp,
+      ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
+      floor1BossProgression: collectFloor1BossProgression(world, {
+        startedFrame: floor1BossStartedFrame,
+        startedMs: floor1BossStartedMs,
+        startedBossEid: floor1BossStartedEid,
+        startedLevel: floor1BossStartedLevel,
+        startedHealthFraction: floor1BossStartedHealthFraction,
+        defeatedFrame: floor1BossDefeatedFrame,
+        defeatedMs: floor1BossDefeatedMs,
+      }),
       floor2Progression: collectFloor2Progression(
         world,
         floor2TrashKillsAtDenUnlock,
@@ -1298,7 +1546,11 @@ export async function runHeadless(
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
-    };
+      lootEfficiency: computeLootEfficiency(world),
+      goldEconomy: computeGoldEconomy(world),
+      vendors: computeVendorInteractions(world),
+      ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
+    });
     if (mergedConfig.onFinish) {
       try {
         mergedConfig.onFinish(world);
@@ -1327,7 +1579,7 @@ export async function runHeadless(
   // floor-local collection efficiency.
   const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
 
-  const stats: RunStats = {
+  const stats: RunStats = assembleRunStats({
     totalFrames: frameCount,
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
@@ -1366,8 +1618,18 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
+    ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
+    floor1BossProgression: collectFloor1BossProgression(world, {
+      startedFrame: floor1BossStartedFrame,
+      startedMs: floor1BossStartedMs,
+      startedBossEid: floor1BossStartedEid,
+      startedLevel: floor1BossStartedLevel,
+      startedHealthFraction: floor1BossStartedHealthFraction,
+      defeatedFrame: floor1BossDefeatedFrame,
+      defeatedMs: floor1BossDefeatedMs,
+    }),
     floor2Progression: collectFloor2Progression(
       world,
       floor2TrashKillsAtDenUnlock,
@@ -1389,7 +1651,11 @@ export async function runHeadless(
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
     xpOnGroundAtEnd,
-  };
+    lootEfficiency: computeLootEfficiency(world),
+    goldEconomy: computeGoldEconomy(world),
+    vendors: computeVendorInteractions(world),
+    ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
+  });
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
     logger.info('Headless run complete', {
@@ -1397,6 +1663,15 @@ export async function runHeadless(
       fps: fps.toFixed(0),
       combatTimePercent: ((combatTimeMs / world.elapsedMs) * 100).toFixed(1),
     });
+  }
+
+  // Capture carryover BEFORE the onFinish hook so a chaining caller always sees
+  // the terminal player state, regardless of what a user-supplied hook does to
+  // the world. Only captured on a victory (the visual runner captures at the
+  // same floor-cleared point), so a chained next floor is never handed a
+  // snapshot of a dead or timed-out player.
+  if (mergedConfig.onPlayerCarryoverCaptured && stats.outcome === 'victory') {
+    mergedConfig.onPlayerCarryoverCaptured(capturePlayerCarryover(world, playerEid), world);
   }
 
   if (mergedConfig.onFinish) {

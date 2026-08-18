@@ -53,7 +53,7 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     expect(ghTokenIdx).toBeGreaterThan(patIdx);
   });
 
-  it('dequeues 403 errors and only re-throws unexpected errors (prevents queue deadlock)', () => {
+  it('dequeues 403 errors and never re-throws (prevents queue deadlock)', () => {
     const raw = readFileSync(RECONCILE_PATH, 'utf8');
     // Extract the update-branch try/catch block.
     // The template-literal URL uses backtick quotes: `/repos/.../update-branch`
@@ -69,11 +69,20 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     expect(catchBlock).toContain('err.status === 403');
     expect(catchBlock).toContain('removeLabel');
     expect(catchBlock).toContain('dequeuedFork = true');
-    // 422 must be non-fatal (log to stderr, no throw)
-    expect(catchBlock).toContain('err.status !== 422');
-    expect(catchBlock).toContain('process.stderr.write');
-    // Non-422/non-403 errors must still throw so novel failures stay visible
-    expect(catchBlock).toContain('throw err');
+    // 422 ("already up-to-date" / stale expected_head_sha) is expected and benign.
+    expect(catchBlock).toContain('err.status === 422');
+    expect(catchBlock).toContain('non-fatal:');
+    // Novel statuses (404, 5xx, network) must stay VISIBLE via a distinct,
+    // greppable stderr marker...
+    expect(catchBlock).toContain('unexpected-status:');
+    // ...but must NEVER re-throw. This catch is inside the
+    // `for (const pr of queued)` admission loop, so an escaping throw abandons
+    // every remaining queued PR — the shape that deadlocked the train for
+    // ~90 minutes on 2026-07-29. Visibility comes from the log marker, not
+    // from crashing the reconciler. Also enforced statically by the
+    // `crawler/no-rethrow-in-automation-catch` ESLint rule, which is the
+    // durable guard; this assertion pins the specific call site.
+    expect(catchBlock).not.toContain('throw err');
   });
 
   it('uses break to halt admission after a BEHIND PR to preserve queue ordering', () => {

@@ -24,8 +24,8 @@ run_with_timeout() {
 echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 
 # The production verifier always uses the authoritative project, which includes
-# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, and
-# tools/**/*.ts.
+# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, functions/**/*.ts,
+# and tools/**/*.ts.
 # TypeScript's existing incremental metadata keeps repeat runs fast without
 # changing compiler context.
 TSC_PROJECT="tsconfig.json"
@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|functions|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Returns true for .mjs files that are actively linted in changed-file mode.
@@ -53,6 +53,39 @@ is_known_mjs_path() {
   [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
 }
 
+# Explicit allowlist of hand-written `.d.mts` declaration files that live
+# beside a `.mjs` module under .github/extensions/ (the TS-importing-.mjs
+# pattern: a .ts file imports a sibling .mjs directly and a hand-written
+# .d.mts twin supplies its types without requiring allowJs). These are pure
+# type declarations with no runtime code: ESLint does not lint declaration
+# files anywhere in this repo (see eslint.config.js's *.d.ts ignores), and
+# `tsc --noEmit --project tsconfig.json` already type-checks each one
+# transitively via the specific supported .ts file(s) listed below that import
+# its sibling .mjs -- confirmed by running the full project typecheck after
+# adding one. A NEW `.d.mts` (or one with no real transitively-importing
+# sibling .mjs) must be added here explicitly, rather than broadly matched,
+# so it cannot silently skip both lint and typecheck coverage.
+KNOWN_DMTS_PATHS=(
+  # imported by tests/unit/devtools/achievements-canvas-adapter-parity.test.ts
+  '.github/extensions/achievements/lib/achievements-data.d.mts'
+  # imported by tests/unit/extensions/asset-search-index-builder.test.ts
+  '.github/extensions/asset-search/lib/index-builder.d.mts'
+  # imported by scripts/sprites/generate-one.ts and
+  # tests/integration/generate-one.test.ts
+  '.github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts'
+  # imported by tests/unit/extensions/format-link-host.test.ts
+  '.github/extensions/worktree-server-status/format-link-host.d.mts'
+)
+is_known_dmts_path() {
+  local candidate="$1"
+  for known in "${KNOWN_DMTS_PATHS[@]}"; do
+    if [ "$candidate" = "$known" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
 # is safe: the ESLint config here has NO type-aware or cross-file rules
@@ -61,7 +94,7 @@ is_known_mjs_path() {
 # for its cache even when nothing changed (~22s of pure overhead), whereas a
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
-LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ functions/ tools/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
@@ -110,6 +143,8 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   for f in "${changed_repo_ts[@]}"; do
     if is_supported_ts_path "$f"; then
       changed_ts+=("$f")
+    elif is_known_dmts_path "$f"; then
+      : # known declaration-only file; tsc already covers it transitively above
     else
       unsupported_ts+=("$f")
     fi
@@ -124,7 +159,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     # CI lints them in full-tree mode; verify:fast skips them locally.
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1
@@ -220,11 +255,35 @@ else
   npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 3/3: Physics-defs sync + Size + Weight coverage checks..."
+echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
 # physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
+
+# AI equipment-parity guard: a pure text scan of src/game/ai (~40 files, well
+# under a second) that fails if the AI path forces past the safe-context gate a
+# human player is bound by. Cheap enough to run unconditionally, and the failure
+# it prevents — a silently privileged balance oracle — is invisible in review.
+npx tsx scripts/agent/health/check-ai-equip-parity.ts
+
+# The three integrity guards below are pure JSON/file reads (no sim, no git, no
+# subprocess) and together cost well under a second, so they always run — the
+# whole point is that a data-contract break is caught at edit time rather than by
+# a red CI job or, worse, by a human noticing broken art in-game.
+#
+#  - registry-integrity: duplicate/blank ids WITHIN a registry file and ACROSS
+#    sibling files sharing one logical id namespace. The cross-file case is the
+#    one no per-file loader can see (achievements.floor1 + floor2 tier collision).
+#  - asset-integrity: the shard ↔ PNG ↔ contentHash triple over the entire
+#    committed corpus, so a stale hash or an orphaned shard is found once rather
+#    than by eye (welcome-room stale shard hashes, resurrected walk shard).
+#  - allowlist-expiry: every governed allowlist entry still has a specific
+#    reason and an unexpired / correctly-shaped deadline (npm audit exceptions
+#    went red because an allowlist quietly expired on a date).
+npx tsx scripts/agent/health/check-registry-integrity.ts
+npx tsx scripts/agent/health/check-asset-integrity.ts
+npx tsx scripts/agent/health/check-allowlist-expiry.ts
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
@@ -253,6 +312,39 @@ if [ "$run_size_weight" -eq 1 ]; then
 else
   echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
+fi
+
+# ── Silent merge-revert guard (local, merge-commit-only) ────────────────────
+# The CI job `check-silent-reverts` is the authoritative gate, but it only runs
+# on `pull_request`. That made the guard purely post-hoc: two main-merges (PR
+# #2022's Don Paco boss-ability rows, PR #2365's upstream test-only-exports
+# wrapper) silently discarded upstream content and needed a human to notice and
+# reconstruct it. Running the same guard the moment the merge is created moves
+# the detection from "after review" to "before the next commit".
+#
+# Gated on the branch actually containing a merge commit so the overwhelmingly
+# common linear-branch case pays nothing. Skipped (never failed) on a shallow
+# clone or an unresolvable base: the guard fails closed by design, and a local
+# shallow checkout is a tooling state, not a branch defect. CI re-runs it with
+# fetch-depth: 0 on every PR, so skipping locally cannot weaken the gate.
+if [ -z "${VERIFY_FAST_SKIP_SILENT_REVERTS:-}" ]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  merge_scope="$(bash "$script_dir/ci/merge-scope.sh" 2>/dev/null || true)"
+  has_merge="$(printf '%s\n' "$merge_scope" | grep -E '^has_merge=' | tail -n1 || true)"
+  can_run="$(printf '%s\n' "$merge_scope" | grep -E '^can_run=' | tail -n1 || true)"
+  base_ref="$(printf '%s\n' "$merge_scope" | grep -E '^base_ref=' | tail -n1 | cut -d= -f2- || true)"
+  if [ "$has_merge" = "has_merge=true" ] && [ "$can_run" = "can_run=true" ]; then
+    echo "🔍 Extra step: Silent merge-revert guard (branch contains a merge commit)..."
+    # Forward the ref merge-scope actually resolved. It falls back to a local
+    # `main` for offline work, while the guard defaults to `origin/main`; without
+    # this the guard would die resolving a ref that does not exist here.
+    SILENT_REVERT_BASE_REF="${base_ref:-origin/main}" \
+      npx tsx scripts/agent/health/silent-reverts.ts
+  elif [ "$can_run" = "can_run=false" ]; then
+    echo "   ⏭️  Skipping silent merge-revert guard: history is not resolvable here"
+    echo "      (shallow clone or no merge base). CI runs it on every PR with fetch-depth: 0."
+    echo "      To run it locally: 'git fetch --unshallow origin' then 'npm run check:silent-reverts'."
+  fi
 fi
 
 echo "✅ Fast verification passed."
