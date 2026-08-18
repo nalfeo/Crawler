@@ -170,6 +170,40 @@
     }
   },
   {
+    "commit": "3cf1b3a7b2fd18fe76cf542fe875a1f9ad695b21",
+    "commitDate": "2026-08-18T13:52:35-07:00",
+    "commitSubject": "fix(ci): stop an Ubuntu mirror outage from failing all of main CI and blocking deploys (#3108)",
+    "capturedAt": "2026-08-18T22:10:37.070Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32186620841",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/3cf1b3a7b2fd18fe76cf542fe875a1f9ad695b21.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2866666666666667,
+        "totalWins": 43,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.35333333333333333,
+        "totalWins": 53,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/3cf1b3a7b2fd18fe76cf542fe875a1f9ad695b21.fun-report.json"
+    }
+  },
+  {
     "commit": "6883964f219391e9a69cc2e2af81bd26bba9c9a9",
     "commitDate": "2026-08-18T12:54:35Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (20 art paths) (#3082)",
