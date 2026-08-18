@@ -2,7 +2,7 @@
  * EquipmentUI — Phaser-based paper-doll equipment panel.
  *
  * Features:
- * - 16-slot paper doll laid out from SLOT_REGISTRY uiPositions
+ * - Ten-slot paper doll with an explicit player-facing slot contract
  * - Each slot shows the equipped item (rarity-coloured) or an empty-slot icon
  * - Click an occupied slot to unequip (item returns to the bag)
  * - Live effective-stats readout with buffed stats highlighted
@@ -26,7 +26,12 @@ import {
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
-import { SLOT_REGISTRY, getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import {
+  SLOT_REGISTRY,
+  getSlotLabel,
+  type EquipmentSlotId,
+  type SlotDefinition,
+} from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
@@ -93,6 +98,81 @@ const STATS_W = 290;
 const BAG_CELL = 60;
 const BAG_GAP = 12;
 const BAG_COLS = 4;
+
+/**
+ * The renderer's player-facing contract. Keep this list explicit rather than
+ * rendering every registry entry: deprecated body-part slots must not remain as
+ * hidden or accidental controls when the simulation registry evolves.
+ */
+export const EQUIPMENT_UI_SLOT_IDS = [
+  'head',
+  'neck',
+  'mainHand',
+  'chest',
+  'offHand',
+  'gloves',
+  'legs',
+  'ring1',
+  'feet',
+  'ring2',
+] as const satisfies readonly EquipmentSlotId[];
+
+const EQUIPMENT_UI_SLOT_LABELS: Readonly<Record<(typeof EQUIPMENT_UI_SLOT_IDS)[number], string>> = {
+  head: 'Head',
+  neck: 'Neck',
+  mainHand: 'Main Hand',
+  chest: 'Chest',
+  offHand: 'Off Hand',
+  gloves: 'Gloves',
+  legs: 'Legs',
+  ring1: 'Ring 1',
+  feet: 'Feet',
+  ring2: 'Ring 2',
+};
+
+const LEGACY_RING_SLOT_IDS: Readonly<Record<string, EquipmentSlotId>> = {
+  ring1: 'ringLeft',
+  ring2: 'ringRight',
+};
+
+const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
+  Record<(typeof EQUIPMENT_UI_SLOT_IDS)[number], { x: number; y: number }>
+> = {
+  neck: { x: 0.2, y: 0 },
+  head: { x: 0.5, y: 0 },
+  ring1: { x: 0.8, y: 0 },
+  mainHand: { x: 0.2, y: 0.33 },
+  chest: { x: 0.5, y: 0.33 },
+  offHand: { x: 0.8, y: 0.33 },
+  gloves: { x: 0.2, y: 0.66 },
+  legs: { x: 0.5, y: 0.66 },
+  ring2: { x: 0.8, y: 0.66 },
+  feet: { x: 0.5, y: 1 },
+};
+
+function operationalSlotId(slotId: EquipmentSlotId): EquipmentSlotId {
+  if (SLOT_REGISTRY.some((entry) => entry.id === slotId)) return slotId;
+  return LEGACY_RING_SLOT_IDS[slotId] ?? slotId;
+}
+
+function uiSlotId(slotId: EquipmentSlotId): EquipmentSlotId | null {
+  if ((EQUIPMENT_UI_SLOT_IDS as readonly string[]).includes(slotId)) return slotId;
+  if (slotId === 'ringLeft') return 'ring1';
+  if (slotId === 'ringRight') return 'ring2';
+  return null;
+}
+
+/** Visible slot definitions, with stable labels/positions independent of registry order. */
+export const EQUIPMENT_UI_SLOTS: readonly SlotDefinition[] = EQUIPMENT_UI_SLOT_IDS.map((id) => {
+  const registrySlot = SLOT_REGISTRY.find((entry) => entry.id === id);
+  const fallbackSlot = SLOT_REGISTRY.find((entry) => entry.id === operationalSlotId(id));
+  return {
+    id,
+    label: EQUIPMENT_UI_SLOT_LABELS[id],
+    bodyGroup: registrySlot?.bodyGroup ?? fallbackSlot?.bodyGroup ?? 'equipment',
+    uiPosition: EQUIPMENT_UI_SLOT_POSITIONS[id],
+  };
+});
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -665,7 +745,7 @@ export function createEquipmentUI(
   // filter state so the context isn't lost the moment the pointer leaves a slot.
   function refreshInspectorIdleText(): void {
     if (selectedSlotFilter) {
-      const slot = SLOT_REGISTRY.find((entry) => entry.id === selectedSlotFilter);
+      const slot = EQUIPMENT_UI_SLOTS.find((entry) => entry.id === selectedSlotFilter);
       const label = slot?.label ?? 'slot';
       inspectorPlaceholder.setText(
         truncateToWidth(`Filtered to ${label} — click again to clear`, 10),
@@ -989,7 +1069,15 @@ export function createEquipmentUI(
 
   /** Target slots for an item id, or `[]` when it is not equippable. */
   function targetSlotsForItem(itemId: string): EquipmentSlotId[] {
-    return [...(getEquipmentDefForItem(itemId)?.slots ?? [])];
+    return targetSlotsForRegistrySlots(getEquipmentDefForItem(itemId)?.slots ?? []);
+  }
+
+  function targetSlotsForRegistrySlots(slots: readonly EquipmentSlotId[]): EquipmentSlotId[] {
+    return [
+      ...new Set(
+        slots.map(uiSlotId).filter((slotId): slotId is EquipmentSlotId => slotId !== null),
+      ),
+    ];
   }
 
   function truncateToWidth(text: string, fontPx: number): string {
@@ -1142,7 +1230,10 @@ export function createEquipmentUI(
       statsKnown: true,
     });
     const targetLabel = targets
-      .map((slotId) => SLOT_REGISTRY.find((entry) => entry.id === slotId)?.label ?? slotId)
+      .map(
+        (slotId) =>
+          EQUIPMENT_UI_SLOTS.find((entry) => entry.id === uiSlotId(slotId))?.label ?? slotId,
+      )
       .join(' + ');
     const lines: InspectorLine[] = [
       { text: truncateToWidth(def.name, 12), color: rarityColor, size: 12 },
@@ -1196,7 +1287,7 @@ export function createEquipmentUI(
 
   function unequipSlot(slotId: string): void {
     if (!currentBag || playerEid < 0 || !lastWorld) return;
-    const result = unequip(lastWorld, playerEid, slotId);
+    const result = unequip(lastWorld, playerEid, operationalSlotId(slotId));
     if (result.ok) {
       if (!result.bagUpdated) {
         addItem(currentBag, result.item.def.id, 1);
@@ -1239,7 +1330,7 @@ export function createEquipmentUI(
     setCompare({
       label: instance.frozen.displayName,
       deltas: {},
-      targetSlots: [...instance.frozen.slots],
+      targetSlots: targetSlotsForRegistrySlots(instance.frozen.slots),
       canEquip: true,
       statsKnown: false,
     });
@@ -1251,7 +1342,12 @@ export function createEquipmentUI(
       },
       {
         text: truncateToWidth(
-          instance.frozen.slots.map((slot) => getSlotLabel(slot)).join(' / '),
+          targetSlotsForRegistrySlots(instance.frozen.slots)
+            .map(
+              (slot) =>
+                EQUIPMENT_UI_SLOTS.find((entry) => entry.id === slot)?.label ?? getSlotLabel(slot),
+            )
+            .join(' / '),
           12,
         ),
         color: COLORS.textSecondary,
@@ -1295,7 +1391,7 @@ export function createEquipmentUI(
   /** Deterministic counterpart of the slot pointer-over path for visual probes. */
   function previewSlot(slotId: EquipmentSlotId): void {
     if (!lastWorld || playerEid < 0) return;
-    const slot = SLOT_REGISTRY.find((entry) => entry.id === slotId);
+    const slot = EQUIPMENT_UI_SLOTS.find((entry) => entry.id === slotId);
     if (!slot) return;
     previewEntryIdentity = null;
     const state = getEquipmentState(lastWorld, playerEid);
@@ -1303,7 +1399,7 @@ export function createEquipmentUI(
       showEmptySlotTooltip(slot.label);
       return;
     }
-    const instId = state?.equipped[slotId] ?? null;
+    const instId = state?.equipped[operationalSlotId(slotId)] ?? null;
     const instance =
       instId !== null ? (resolveEquipmentInstance(lastWorld, state, instId) ?? null) : null;
     if (!instance) {
@@ -1375,13 +1471,10 @@ export function createEquipmentUI(
     const spreadNorm = (value: number, spread: number): number =>
       Math.max(0, Math.min(1, 0.5 + (value - 0.5) * spread));
 
-    // The registry's uiPositions only span x 0.2..0.8 (three lanes), so mapping
-    // them straight onto the column left ~20% of the doll frame empty on each
-    // side — a dead band the screenshot judge scores as wasted workspace.
-    // Rescale the actual occupied extent onto the full usable range so the grid
-    // fills its frame. Guarded against a degenerate (single-lane) extent.
-    const xs = SLOT_REGISTRY.map((s) => s.uiPosition.x);
-    const ys = SLOT_REGISTRY.map((s) => s.uiPosition.y);
+    // Rescale the explicit ten-slot layout onto the usable range. This keeps
+    // the contract stable even while the simulation registry is migrated.
+    const xs = EQUIPMENT_UI_SLOTS.map((s) => s.uiPosition.x);
+    const ys = EQUIPMENT_UI_SLOTS.map((s) => s.uiPosition.y);
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
@@ -1389,13 +1482,13 @@ export function createEquipmentUI(
     const fill = (value: number, min: number, max: number): number =>
       max - min < 1e-6 ? 0.5 : (value - min) / (max - min);
 
-    for (const slot of SLOT_REGISTRY) {
+    for (const slot of EQUIPMENT_UI_SLOTS) {
       const px = spreadNorm(fill(slot.uiPosition.x, minX, maxX), SLOT_SPREAD_X);
       const py = spreadNorm(fill(slot.uiPosition.y, minY, maxY), SLOT_SPREAD_Y);
       const cx = dollX + innerPadX + gridOffsetX + SLOT_W / 2 + px * usableW;
       const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
 
-      const instId = state?.equipped[slot.id] ?? null;
+      const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
       const instance =
         instId !== null && state
           ? (resolveEquipmentInstance(lastWorld, state, instId) ?? null)
@@ -1577,7 +1670,7 @@ export function createEquipmentUI(
       }
       slotObjects.push(box, inset, bevelLeft, bevelTop, bevelRight, bevelBottom);
 
-      // Slot identity label. SLOT_REGISTRY has carried a human label for every
+      // Slot identity label. The explicit UI registry carries a human label for every
       // slot since it was written, but the panel never drew it — so an empty
       // slot read as an anonymous square and the player had to hover each one to
       // learn what it took. Rendering it makes the grid self-describing at a
@@ -1840,7 +1933,7 @@ export function createEquipmentUI(
       .__forceEquipmentTooltipSlot;
     if (forcedTooltipSlot) {
       const bounds = slotBounds.get(forcedTooltipSlot);
-      const slot = SLOT_REGISTRY.find((entry) => entry.id === forcedTooltipSlot);
+      const slot = EQUIPMENT_UI_SLOTS.find((entry) => entry.id === forcedTooltipSlot);
       if (bounds && slot) {
         showEmptySlotTooltip(slot.label);
       }
@@ -1858,7 +1951,11 @@ export function createEquipmentUI(
     if (!currentBag) return;
 
     const entries: InventoryBagEntry[] = selectedSlotFilter
-      ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+      ? filterByEquipmentSlot(
+          currentBag,
+          operationalSlotId(selectedSlotFilter),
+          generatedBagMetadata,
+        )
       : filterEquippable(currentBag, generatedBagMetadata);
     entries.forEach((entry, index) => {
       if (entry.kind !== 'stackable-static-item') return;
@@ -1885,7 +1982,7 @@ export function createEquipmentUI(
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
     container.addAt(headingFrame, 5);
     const filterLabel = selectedSlotFilter
-      ? (SLOT_REGISTRY.find((entry) => entry.id === selectedSlotFilter)?.label ?? '')
+      ? (EQUIPMENT_UI_SLOTS.find((entry) => entry.id === selectedSlotFilter)?.label ?? '')
       : 'Equippable';
     const subHeading = crispText(
       bagX + bagW - 12,
@@ -2020,7 +2117,11 @@ export function createEquipmentUI(
   function restorePreviewAfterRender(): void {
     if (!previewEntryIdentity || !currentBag) return;
     const entries: InventoryBagEntry[] = selectedSlotFilter
-      ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+      ? filterByEquipmentSlot(
+          currentBag,
+          operationalSlotId(selectedSlotFilter),
+          generatedBagMetadata,
+        )
       : filterEquippable(currentBag, generatedBagMetadata);
     const entry = entries.find(
       (candidate) => inventoryEntryIdentity(candidate) === previewEntryIdentity,
@@ -2033,8 +2134,9 @@ export function createEquipmentUI(
     const state = getEquipmentState(lastWorld, playerEid);
     let signature = '';
     if (state) {
-      for (const slot of SLOT_REGISTRY) {
-        const instId = state.equipped[slot.id] ?? null;
+      for (const slot of EQUIPMENT_UI_SLOTS) {
+        const operationalId = operationalSlotId(slot.id);
+        const instId = state.equipped[operationalId] ?? null;
         const inst =
           instId !== null ? resolveEquipmentInstance(lastWorld, state, instId) : undefined;
         const itemId = inst?.def.id ?? '';
@@ -2051,7 +2153,7 @@ export function createEquipmentUI(
     if (bag) {
       const world = lastWorld;
       const equippable: InventoryBagEntry[] = selectedSlotFilter
-        ? filterByEquipmentSlot(bag, selectedSlotFilter, generatedBagMetadata)
+        ? filterByEquipmentSlot(bag, operationalSlotId(selectedSlotFilter), generatedBagMetadata)
         : filterEquippable(bag, generatedBagMetadata);
       signature += `bag:${equippable
         .map((entry) => {
@@ -2272,7 +2374,11 @@ export function createEquipmentUI(
     getGeneratedBagCellScreenBounds: (instanceKey: string) => {
       if (!currentBag) return null;
       const entries: InventoryBagEntry[] = selectedSlotFilter
-        ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+        ? filterByEquipmentSlot(
+            currentBag,
+            operationalSlotId(selectedSlotFilter),
+            generatedBagMetadata,
+          )
         : filterEquippable(currentBag, generatedBagMetadata);
       const index = entries.findIndex(
         (entry) => entry.kind === 'generated-instance' && entry.instanceKey === instanceKey,

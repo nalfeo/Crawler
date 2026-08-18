@@ -30,7 +30,6 @@ import {
   physicalGlyphPx,
   seedEquipmentDecisionState,
 } from './helpers/equipment-capture.js';
-import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
   loadUiProbeLab,
@@ -59,6 +58,19 @@ const PROBE_ICON_MAGENTA = { r: 0xff, g: 0x2f, b: 0xd0 };
 // (0x445c89) is ~54 away, so a match at threshold 30 specifically indicates the
 // blue-steel panel background.
 const PANEL_BLUE_STEEL = { r: 0x2f, g: 0x3f, b: 0x61 };
+
+const EQUIPMENT_UI_SLOTS = [
+  { id: 'head', label: 'Head' },
+  { id: 'neck', label: 'Neck' },
+  { id: 'mainHand', label: 'Main Hand' },
+  { id: 'chest', label: 'Chest' },
+  { id: 'offHand', label: 'Off Hand' },
+  { id: 'gloves', label: 'Gloves' },
+  { id: 'legs', label: 'Legs' },
+  { id: 'ring1', label: 'Ring 1' },
+  { id: 'feet', label: 'Feet' },
+  { id: 'ring2', label: 'Ring 2' },
+] as const;
 
 function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
   const left = Math.max(a.x, b.x);
@@ -383,7 +395,11 @@ describe('inventory flow (e2e)', () => {
     await page.waitForTimeout(300);
 
     const boundsBySlot = new Map<string, ScreenBounds>();
-    for (const slot of SLOT_REGISTRY) {
+    expect(
+      EQUIPMENT_UI_SLOTS,
+      'the real-game paper doll must expose exactly ten slots',
+    ).toHaveLength(10);
+    for (const slot of EQUIPMENT_UI_SLOTS) {
       const bounds = await probe.getEquipmentSlotBounds(page, slot.id);
       expect(bounds, `expected bounds for equipment slot "${slot.id}"`).not.toBeNull();
       if (bounds) {
@@ -467,7 +483,7 @@ describe('inventory flow (e2e)', () => {
     // one — the exact failure that made the old design unusable (the equipment
     // modal occluded the bag).
     const slotBounds: ScreenBounds[] = [];
-    for (const slot of SLOT_REGISTRY) {
+    for (const slot of EQUIPMENT_UI_SLOTS) {
       const b = await probe.getEquipmentSlotBounds(page, slot.id);
       if (b) slotBounds.push(b);
     }
@@ -783,7 +799,7 @@ describe('equipment decision gate (e2e)', () => {
     try {
       const runs = await probe.getEquipmentTextRuns(labelPage);
       const dollText = runs.filter((run) => run.region === 'doll').map((run) => run.text);
-      for (const slot of SLOT_REGISTRY) {
+      for (const slot of EQUIPMENT_UI_SLOTS) {
         expect(
           dollText,
           `slot "${slot.id}" must render its "${slot.label}" identity label in the doll region`,
