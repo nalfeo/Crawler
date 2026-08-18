@@ -10,6 +10,7 @@
  * Pure module: no `fs`, no Phaser. Safe to import from labs and tests.
  */
 import { AIState, type AIDecision, type AIDecisionDebug, type AIStateValue } from './types.js';
+import type { DenBossEventPayload } from './den-boss-telemetry.js';
 
 /** Human-readable name for each {@link AIState} value. */
 export const AI_STATE_NAME: Record<AIStateValue, string> = {
@@ -26,7 +27,15 @@ export function getDecisionEventState(decision: Pick<AIDecision, 'state' | 'debu
 }
 
 /** Discriminator for the kind of telemetry record. */
-export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc' | 'control';
+export type SimEventType =
+  | 'sample'
+  | 'state'
+  | 'kill'
+  | 'levelup'
+  | 'quest'
+  | 'npc'
+  | 'control'
+  | 'den';
 
 /**
  * A single telemetry record. Every record carries the full frame context so
@@ -89,8 +98,26 @@ export interface SimEvent {
   urgency?: number | null;
   /** A/B decision-mode axis the AI ran under (e.g. 'legacy' | 'slackAware'). */
   decisionMode?: string;
+  /**
+   * Floor 2 den-boss diagnostic payload. Present on — and only on — `den`
+   * records (see {@link isDenSimEvent}). Identical on every telemetry surface:
+   * headless `RunStats` runs, AI Runner lab recordings, and real player
+   * sessions all emit this same contract.
+   */
+  denBoss?: DenBossEventPayload;
   /** Optional annotation for non-sample events. */
   note?: string;
+}
+
+/** A `den` telemetry record, narrowed so `denBoss` is guaranteed present. */
+export type DenSimEvent = SimEvent & { type: 'den'; denBoss: DenBossEventPayload };
+
+/**
+ * Type guard for den-boss telemetry records. Use it when reading a recording so
+ * the den payload is statically known to exist.
+ */
+export function isDenSimEvent(event: SimEvent): event is DenSimEvent {
+  return event.type === 'den' && event.denBoss !== undefined;
 }
 
 /** A contiguous window of flagged "wasted time" behavior. */

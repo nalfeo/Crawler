@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Blockers: (1) bossEid nulled on defeat -> transitions now carry before/after snapshots + lastKnownBossEid; (2) DenBossDiagnostics rollup fully specified and accumulated independently of the optional recordEvent sink; (3) contract tests must cover both real factories (labs session-recorder-controls + bootstrap floor-main-scene-options), not one impl twice. Non-blocking: per-frame allocation -> scratch-based diff, snapshots materialized only on transition/cadence; EID reuse -> hasComponent validation for boss + doors; reset/baseline semantics -> baseline transition on first observation and after reset. Also: iterate presentFamilies for deterministic order, aggregate periodic den record instead of per-family, and use a fast deterministic seed-42 fixture instead of a second full Floor 2 headless run."
     },
     "code_review": {
       "clean": false,

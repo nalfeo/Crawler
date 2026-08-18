@@ -49,6 +49,12 @@ import {
   recordRewardEvent,
 } from './headless-run-data.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
+import {
+  collectDenBossSnapshots,
+  createDenBossTransitionTracker,
+  denBossSnapshotPayload,
+  denBossTransitionPayload,
+} from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
@@ -806,6 +812,8 @@ export async function runHeadless(
   // Event-log / telemetry state
   const recordEvent = config.recordEvent;
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
+  const denSampleInterval = Math.max(1, sampleInterval * 4);
+  const denBossTracker = createDenBossTransitionTracker();
   const navProvider = aiProvider as AIInputProvider & {
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
     getTacticalRunDebug?: () => {
@@ -1335,6 +1343,33 @@ export async function runHeadless(
           }
         }
       }
+      // Shared den-boss diagnostic contract — the SAME tracker the player /
+      // AI Runner session recorder uses, so all three surfaces emit identical
+      // evidence for identical world state. The rollup is accumulated here
+      // whether or not `recordEvent` is wired, so `RunStats` always carries it.
+      const denTransitions = denBossTracker.poll(world, frameCount, playerEid);
+      if (recordEvent) {
+        for (const transition of denTransitions) {
+          const event = buildEvent(
+            'den',
+            enemyEids,
+            `den ${transition.kind}: ${transition.familyId}`,
+          );
+          event.reason = 'den-boss-telemetry';
+          event.denBoss = denBossTransitionPayload(transition);
+          recordEvent(event);
+        }
+        if (frameCount % denSampleInterval === 0) {
+          const denSnapshots = collectDenBossSnapshots(world, playerEid);
+          if (denSnapshots.length > 0) {
+            const event = buildEvent('den', enemyEids, 'den snapshot');
+            event.reason = 'den-boss-telemetry';
+            event.denBoss = denBossSnapshotPayload(denSnapshots);
+            recordEvent(event);
+          }
+        }
+      }
+
       if (mergedConfig.stopWhen?.(world)) {
         break;
       }
@@ -1533,6 +1568,7 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
@@ -1638,6 +1674,7 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),

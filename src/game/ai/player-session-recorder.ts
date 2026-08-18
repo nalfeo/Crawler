@@ -23,6 +23,13 @@ import type {
   SessionRecorderStats,
 } from '../../shared/session-recorder-types.js';
 import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js';
+import type { DenBossDiagnostics } from './den-boss-telemetry.js';
+import {
+  createDenBossTransitionTracker,
+  collectDenBossSnapshots,
+  denBossSnapshotPayload,
+  denBossTransitionPayload,
+} from './den-boss-telemetry.js';
 
 // ---------------------------------------------------------------------------
 // PlayerSessionEvent
@@ -76,6 +83,17 @@ export interface SessionRecorderOptions {
    * `recordWeaponTelemetry` path. Default `false` → zero behavior/allocation cost.
    */
   recordWeaponTelemetry?: boolean;
+  /**
+   * Frames between periodic aggregate `den` snapshot records on a Floor 2 den
+   * floor (default `sampleInterval * 4`, ≈1 Hz at 60 fps). Discrete den
+   * transitions are always recorded the frame they happen; this only controls
+   * how often the full den state (boss position, visibility, health, door
+   * locks) is re-stamped so a softlock has a position/health history.
+   *
+   * One aggregate record covers every den on the floor, so the cost is one
+   * record per interval regardless of family count. Zero cost off Floor 2.
+   */
+  denSampleInterval?: number;
 }
 
 /**
@@ -100,6 +118,12 @@ export interface SessionRecorderOptions {
 export interface PlayerSessionRecorder extends SessionRecorder {
   /** Return a read-only snapshot of all recorded events. */
   getEvents(): readonly PlayerSessionEvent[];
+  /**
+   * The Floor 2 den-boss diagnostic rollup accumulated so far, or `undefined`
+   * when this session never observed a den floor. Identical in shape to the
+   * rollup the headless runner puts on `RunStats.floor2Progression.denBoss`.
+   */
+  getDenBossDiagnostics(): DenBossDiagnostics | undefined;
   /** Serialize events as JSONL (one JSON object per line). */
   toJsonl(): string;
 }
@@ -115,6 +139,7 @@ export function createPlayerSessionRecorder(
   options: SessionRecorderOptions = {},
 ): PlayerSessionRecorder {
   const sampleInterval = Math.max(1, options.sampleInterval ?? 15);
+  const denSampleInterval = Math.max(1, options.denSampleInterval ?? sampleInterval * 4);
   const initialController: SessionController = options.initialController ?? 'MANUAL';
   const events: PlayerSessionEvent[] = [];
   const recordWeaponTelemetry = options.recordWeaponTelemetry === true;
@@ -148,6 +173,10 @@ export function createPlayerSessionRecorder(
   // Quest log mirror (tracks first-seen and first-completion per quest).
   const questLogSeen = new Set<string>();
   const questLogCompleted = new Set<string>();
+
+  // Floor 2 den-boss diagnostics — the shared contract also emitted by the
+  // headless runner, so a human recording and an AI run are directly comparable.
+  const denTracker = createDenBossTransitionTracker();
 
   // ---------------------------------------------------------------------------
   // Internal helpers
@@ -274,6 +303,43 @@ export function createPlayerSessionRecorder(
         events.push(event);
       }
     }
+
+    recordDenBossTelemetry(inputState, enemyEids, inferredState);
+  }
+
+  /**
+   * Emit the shared Floor 2 den-boss diagnostic contract: one record per
+   * discrete transition the frame it happens, plus a periodic aggregate
+   * snapshot so boss position/visibility/health history survives in the
+   * downloaded JSONL. No-ops (a single map lookup) off a den floor.
+   */
+  function recordDenBossTelemetry(
+    inputState: InputState,
+    enemyEids: ArrayLike<number> & Iterable<number>,
+    inferredState: string,
+  ): void {
+    const transitions = denTracker.poll(world, frameCount, playerEid);
+    for (const transition of transitions) {
+      const event = buildEvent(
+        'den',
+        inputState,
+        enemyEids,
+        `den ${transition.kind}: ${transition.familyId}`,
+      );
+      event.state = inferredState;
+      event.reason = 'den-boss-telemetry';
+      event.denBoss = denBossTransitionPayload(transition);
+      events.push(event);
+    }
+
+    if (frameCount % denSampleInterval !== 0) return;
+    const snapshots = collectDenBossSnapshots(world, playerEid);
+    if (snapshots.length === 0) return;
+    const event = buildEvent('den', inputState, enemyEids, 'den snapshot');
+    event.state = inferredState;
+    event.reason = 'den-boss-telemetry';
+    event.denBoss = denBossSnapshotPayload(snapshots);
+    events.push(event);
   }
 
   function onKill(killIndex: number): void {
@@ -324,7 +390,12 @@ export function createPlayerSessionRecorder(
     return events;
   }
 
+  function getDenBossDiagnostics(): DenBossDiagnostics | undefined {
+    return denTracker.getDiagnostics();
+  }
+
   function getStats(): SessionRecorderStats {
+    const denBossDiagnostics = denTracker.getDiagnostics();
     const samples = events.filter((e) => e.type === 'sample');
     const kills = events.filter((e) => e.type === 'kill');
     const firstMs = samples[0]?.gameMs ?? 0;
@@ -344,6 +415,7 @@ export function createPlayerSessionRecorder(
       ...(recordWeaponTelemetry && world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
+      ...(denBossDiagnostics ? { denBoss: denBossDiagnostics } : {}),
     };
   }
 
@@ -391,6 +463,10 @@ export function createPlayerSessionRecorder(
     pathTravelAccum = 0;
     questLogSeen.clear();
     questLogCompleted.clear();
+    // Re-baseline den telemetry so the next tick re-emits a `baseline` record
+    // for every den; otherwise a cleared log would silently start mid-encounter
+    // with no known starting state.
+    denTracker.reset();
   }
 
   return {
@@ -401,6 +477,7 @@ export function createPlayerSessionRecorder(
     onNpcEvent,
     onControlChange,
     getEvents,
+    getDenBossDiagnostics,
     getStats,
     toJsonl,
     download,
