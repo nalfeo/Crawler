@@ -9,7 +9,7 @@
 > rediscover the same regression the hard way. The branch is being
 > deliberately preserved and deliberately left unmerged as the commit-level
 > record; if it is ever pruned, this file is the surviving evidence. See
-> `git log 8d53c5323..origin/nalfeo-improve-ai-xp-collection -- src/game/ai/bt-ai-provider.ts`
+> `git log b220c37c..origin/nalfeo-improve-ai-xp-collection -- src/game/ai/bt-ai-provider.ts`
 > for the full 8-commit mechanism, including the specific defect commit
 > (`45cd3d11b` / equivalently `d5db91a96`) and its corrective follow-ups.
 >
@@ -42,12 +42,13 @@ ai-behavior-tree, ai-combat-balance, inventory, quests, ci-policy
 
 Branch `nalfeo-improve-ai-xp-collection` HEAD `45cd3d11b` ("hybrid cleanup": local
 post-combat XP cleanup + exit marginal-detour cleanup) raises median Floor 2 XP
-efficiency from 62.58% → 81.87% (paired seeds 1–20, control run `30697064173` vs.
-implementation run `30696983019`), but regresses two control victories to
+efficiency from 62.58% → 81.87% (paired seeds 1–20, control
+`project:sweep-results-viewer runId=30697064173` vs. implementation
+`project:sweep-results-viewer runId=30696983019`), but regresses two control victories to
 implementation timeouts — a direct violation of the user's explicit no-new-timeout
 guard:
 
-| Seed | Control (30697064173)                                                | Implementation (30696983019)                                             |
+| Seed | Control                                                              | Implementation                                                           |
 | ---- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | 9    | victory, 947,533 ms, eff 0.6765, L19, spawned 1326 / collected 897   | **timeout**, 1,200,017 ms, eff 0.7989, L20, spawned 1228 / collected 981 |
 | 11   | victory, 1,008,783 ms, eff 0.6258, L18, spawned 1288 / collected 806 | **timeout**, 1,200,017 ms, eff 0.7085, L18, spawned 1084 / collected 768 |
@@ -175,9 +176,9 @@ better efficiency (0.809 vs. control's 0.626) than both control and the broken
 implementation.
 
 **Seed 9 is NOT fully resolved.** The fix converts the outcome from `timeout`
-to `stalled` — a different, pre-existing, unrelated failure mode (a
-`QuestProgressStallTracker` watchdog in `headless-runner.ts`, default 360s of
-no objective/gold progress, entirely outside the XP-cleanup mechanism). The
+to `stalled` — a different failure mode whose relationship to residual cleanup
+has not been established (a `QuestProgressStallTracker` watchdog in
+`headless-runner.ts`, default 360s of no objective/gold progress). The
 `stallReason` for this run: `quest progress frozen for 360s — completed:
 [floor2-find-settlement, floor2-den-pandas-unlock, floor2-den-raccoons-unlock,
 floor2-den-faeries-unlock], stalled on: [floor2-den-llamas-unlock]`.
@@ -213,7 +214,7 @@ future investigator doesn't rediscover the same red herring.
 2. **Recommended next step:** a targeted trace of the `floor2-den-llamas-unlock`
    objective for seed 9 specifically (what gates its progress; whether the
    AI's post-fix path ever satisfies that gate within the stall watchdog's
-   360-frame-progress window) to determine whether this is a den/quest
+   360-second progress window) to determine whether this is a den/quest
    fragility that exists independent of this fix, or a second, narrower
    instance of the same "cleanup interferes with time-sensitive objectives"
    class of bug.
@@ -289,14 +290,16 @@ matched confirmations cited in the evidence table above.
 The later den-hunt yield gate restored seeds 9 and 11 to victory, but the required
 broad paired panel exposed different outcome regressions. These four GitHub runs
 are the definitive evidence; all earlier runs in this handoff are diagnostic
-history. See `project:sweep-results-viewer runId=30712264985` (Floor 2 control)
-and `project:sweep-results-viewer runId=30712110545` (Floor 2 implementation)
-for the app-native sweep viewers on the definitive runs:
+history. App-native sweep viewers: `project:sweep-results-viewer runId=30712261256`
+(Floor 1 control), `project:sweep-results-viewer runId=30712106883` (Floor 1
+implementation), `project:sweep-results-viewer runId=30712264985` (Floor 2
+control), and `project:sweep-results-viewer runId=30712110545` (Floor 2
+implementation).
 
-| Floor                | Control                                | Implementation                                |
-| -------------------- | -------------------------------------- | --------------------------------------------- |
-| Floor 1, seeds 1–100 | `30712261256`, control SHA `564f91228` | `30712106883`, implementation SHA `82783f3f7` |
-| Floor 2, seeds 1–20  | `30712264985`, control SHA `564f91228` | `30712110545`, implementation SHA `82783f3f7` |
+| Floor                | Control                                                                   | Implementation                                                                   |
+| -------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Floor 1, seeds 1–100 | `project:sweep-results-viewer runId=30712261256`, control SHA `564f91228` | `project:sweep-results-viewer runId=30712106883`, implementation SHA `82783f3f7` |
+| Floor 2, seeds 1–20  | `project:sweep-results-viewer runId=30712264985`, control SHA `564f91228` | `project:sweep-results-viewer runId=30712110545`, implementation SHA `82783f3f7` |
 
 Both SHAs descend from main `b220c37c`; the control has zero diff from main in
 `bt-ai-provider.ts` and `bt-ai-tuning.ts`. Every row ran in a fresh Node process.
