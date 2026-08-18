@@ -19,6 +19,7 @@ describe('run bundle upload delivery', () => {
   const originalNavigator = (globalThis as unknown as { navigator?: Navigator }).navigator;
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     try {
       if (originalWindow === undefined) {
         Reflect.deleteProperty(globalThis as typeof globalThis & { window?: Window }, 'window');
@@ -57,20 +58,19 @@ describe('run bundle upload delivery', () => {
   });
 
   it('resolves the endpoint from VITE_CRAWLER_RUNS_API_ENDPOINT (vite.config.ts define key)', () => {
-    const original = process.env.VITE_CRAWLER_RUNS_API_ENDPOINT;
-    process.env.VITE_CRAWLER_RUNS_API_ENDPOINT = 'https://example.test/api/runs';
-    try {
-      const config = resolveRunBundleUploadConfig();
-      expect(config.enabled).toBe(true);
-      expect(config.endpoint).toBe('https://example.test/api/runs');
-      expect(config.source).toBe('env');
-    } finally {
-      if (original === undefined) {
-        delete process.env.VITE_CRAWLER_RUNS_API_ENDPOINT;
-      } else {
-        process.env.VITE_CRAWLER_RUNS_API_ENDPOINT = original;
-      }
-    }
+    vi.stubEnv('VITE_CRAWLER_RUNS_API_ENDPOINT', 'https://example.test/api/runs');
+    const config = resolveRunBundleUploadConfig();
+    expect(config.enabled).toBe(true);
+    expect(config.endpoint).toBe('https://example.test/api/runs');
+    expect(config.source).toBe('env');
+  });
+
+  it('resolves the endpoint from VITE_RUNS_INGEST_URL via import.meta.env', () => {
+    vi.stubEnv('VITE_RUNS_INGEST_URL', 'https://example.test/api/runs');
+    const config = resolveRunBundleUploadConfig();
+    expect(config.enabled).toBe(true);
+    expect(config.endpoint).toBe('https://example.test/api/runs');
+    expect(config.source).toBe('env');
   });
 
   it('uses sendBeacon during quit/unload-safe submits', async () => {
