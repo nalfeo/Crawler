@@ -1,36 +1,10 @@
-/**
- * Boss-encounter telemetry — turns Floor 2 den encounter state into structured
- * diagnostic snapshots.
- *
- * Motivated by a real Floor 2 (seed 42) softlock: the player entered the faerie
- * den, the encounter latched, the doors relocked behind the encounter flag — but
- * the boss had already wandered out of the den. The result was a sealed room
- * with an invisible-but-damageable boss and doors that could only ever reopen on
- * the boss-death latch. None of that was observable in the recorded session,
- * because the session recorder captured only player position/health/quests.
- *
- * These snapshots make that failure mode a single grep (`bossInDen: false` while
- * `started` and `doorsLocked`) instead of a multi-hour source trace.
- *
- * Pure module: no Phaser, no `fs`. Safe to import from labs, the engine bridge,
- * the headless runner, and tests.
- */
+/** Pure Floor 2 den-encounter diagnostics for player and AI-runner recordings. */
 import { entityExists, hasComponent } from 'bitecs';
 import { DoorState } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import type { BossEncounterSnapshot } from './event-log.js';
 
-/**
- * Build a diagnostic snapshot for every den boss encounter on the current floor.
- *
- * Returns an empty array when the floor has no den encounters (Floor 1, labs
- * without Floor 2 state), so callers can attach the result unconditionally.
- *
- * @param world - Live game world.
- * @param playerEid - Player entity, used to report den occupancy. Pass
- *   `undefined` when there is no player (the `playerInDen` field then reports
- *   `false`).
- */
+/** Build a diagnostic snapshot for every Floor 2 den encounter. */
 export function captureBossEncounterSnapshots(
   world: GameWorld,
   playerEid: number | undefined,
@@ -112,14 +86,7 @@ function areDoorsLocked(world: GameWorld, doorEids: readonly number[]): boolean 
   return false;
 }
 
-/**
- * Detect diagnostically interesting transitions between two snapshot sets.
- *
- * Returns human-readable notes for changes worth a discrete `boss` event —
- * encounter start/defeat, the boss entering or leaving its den, and the door
- * lock flipping. Callers emit one event per note so the JSONL stream carries
- * exact frames for each transition rather than only periodic samples.
- */
+/** Return the encounter transitions that should produce discrete `boss` events. */
 export function diffBossEncounterSnapshots(
   previous: readonly BossEncounterSnapshot[],
   next: readonly BossEncounterSnapshot[],

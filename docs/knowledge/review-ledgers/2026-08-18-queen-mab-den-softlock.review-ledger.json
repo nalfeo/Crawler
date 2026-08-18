@@ -14,8 +14,23 @@
       "notes": "Chosen containment design retained. Resolved: encounter start now refuses to relock when the referenced boss is missing or lacks Enemy/Health; added a stale-boss regression. Added a separate unstick regression for the nearest-passable-outside-den fallback. Recorded spawn positions are already used only after den containment; the fallback remains deterministic. Added explicit bossEntityExists telemetry to distinguish missing from defeated."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
