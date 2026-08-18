@@ -342,20 +342,36 @@ test('stale-base retarget keeps slashes literal in slash-bearing base ref URLs',
 
 test('stale-base retarget logs compare API failures and continues the batch', async () => {
   const logs = [];
+  const failed = stackedPullRequest();
+  const healthy = stackedPullRequest({
+    number: 2864,
+    base: { ref: 'healthy-base' },
+    head: { repo: { full_name: 'nalfeo/Crawler' }, ref: 'healthy-head', sha: 'healthy-sha' },
+  });
   const retargeted = await retargetStaleBasePulls({
-    scheduledPulls: [stackedPullRequest()],
+    scheduledPulls: [failed, healthy],
     repository: 'nalfeo/Crawler',
     token: 'read',
     mutationToken: 'write',
-    paginateFn: async () => [mergedBasePull()],
-    requestFn: async (_token, path) => {
+    paginateFn: async (_token, path) => [
+      mergedBasePull({
+        head: { ref: path.includes('healthy-base') ? 'healthy-base' : failed.base.ref },
+      }),
+    ],
+    requestFn: async (_token, path, options = {}) => {
       if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
-      throw makeError(404, 'Not Found');
+      if (path.includes(`/compare/${failed.base.ref}...`)) throw makeError(404, 'Not Found');
+      if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+      if (options.method === 'PATCH') return { data: healthy };
+      if (options.method === 'POST') return { data: {} };
+      throw new Error(`Unexpected request ${path}`);
     },
     writeLog: (line) => logs.push(line),
   });
-  assert.deepEqual(retargeted, []);
+  assert.deepEqual(retargeted, [healthy]);
+  assert.equal(logs.length, 3);
   assert.match(logs[0], /action=skip reason=base-compare-failed/);
+  assert.match(logs.at(-1), /stale-base-retargeted pr=#2864 from=healthy-base to=main/);
 });
 
 test('stacked-refusal detector distinguishes the stack 422 from other 422s', () => {

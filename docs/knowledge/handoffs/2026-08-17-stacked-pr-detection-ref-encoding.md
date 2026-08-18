@@ -88,6 +88,15 @@ None blocking. The stale-base path now degrades in stages: retarget → merge
 forward → conflict/failed comment for a human, and no failure mode aborts the
 batch.
 
+## Review follow-up
+
+- `runFromEnv()` now accepts the request dependency used by its production adapter,
+  so `review-wake-bridge.test.mjs` executes and verifies a slash-bearing default
+  branch compare URL (`46 pass`).
+- The compare-failure regression now follows a failed candidate with a healthy
+  different-base candidate and verifies it is retargeted (`router.test.mjs`: `184 pass`).
+- `npm run verify:fast` passed after the follow-up.
+
 ## Recommended next steps
 
 1. Consider an assertion or lint rule that flags `encodeURIComponent(<ref>)` in

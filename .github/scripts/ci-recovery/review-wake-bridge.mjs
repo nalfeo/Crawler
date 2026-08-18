@@ -343,7 +343,7 @@ export async function inspectReviewWake({
   };
 }
 
-export async function runFromEnv(env = process.env) {
+export async function runFromEnv(env = process.env, requestFn = request) {
   const token = env.GITHUB_TOKEN;
   const repository = env.GITHUB_REPOSITORY || '';
   const [owner, repo] = repository.split('/');
@@ -367,12 +367,12 @@ export async function runFromEnv(env = process.env) {
     apiBaseUrl: env.GITHUB_API_URL || 'https://api.github.com',
     api: {
       async getRun(runId) {
-        return (await request(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
+        return (await requestFn(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
       },
       async getWorkflowFile(path, ref) {
         try {
           return (
-            await request(
+            await requestFn(
               token,
               `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`,
             )
@@ -383,18 +383,18 @@ export async function runFromEnv(env = process.env) {
         }
       },
       async getGitHubSubtree(subtree, ref) {
-        return getGitHubSubtreeSnapshot({ token, owner, repo, ref, subtree });
+        return getGitHubSubtreeSnapshot({ token, owner, repo, ref, subtree, requestFn });
       },
       async compareCommits(base, head) {
         return (
-          await request(
+          await requestFn(
             token,
             `/repos/${owner}/${repo}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
           )
         ).data;
       },
       async getPull(number) {
-        return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
+        return (await requestFn(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
       },
       async listReviewEvidence(number, event, since) {
         if (event === 'pull_request_review_comment') {
