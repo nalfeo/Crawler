@@ -11,7 +11,7 @@
  * `resolveItemSprite(itemId)` (version-tolerant, placeholder-deprioritized;
  * ADR 0051), so a manifest-only placeholder whose real art is versioned
  * (`iron-ore-v1-var-N`) is a DATA-MIGRATION candidate for
- * `npm run sprites:normalize-item-art` (re-key the real art to the bare item id
+ * `npm run sprites:normalize-names` (re-key the real art to the bare item id
  * and retire the placeholder) — it is NOT auto-resolved by `itemId === briefId`.
  *
  * The CLI wrapper (generate-wiring-cli.ts) does file IO and applies the patches.
@@ -44,7 +44,7 @@ export interface WiringPlan {
   /**
    * Manifest-only placeholders (no mob-def / sprite-registry reference). For an
    * ITEM whose real art is versioned, this is a data-migration candidate
-   * (`sprites:normalize-item-art`), NOT an auto-resolved no-op: the bare item id
+   * (`sprites:normalize-names`), NOT an auto-resolved no-op: the bare item id
    * matches only the placeholder briefId until the real art is re-keyed bare.
    * Runtime resolution is handled separately by `resolveItemSprite` (ADR 0051).
    */
@@ -67,7 +67,7 @@ interface ConceptMapping {
  * Skips manifest-only entries: they carry no mob-def / sprite-registry code
  * reference to patch. Item icons resolve at runtime via `resolveItemSprite`
  * (ADR 0051); a manifest-only item placeholder with versioned real art is a
- * `sprites:normalize-item-art` data-migration candidate, not a code patch.
+ * `sprites:normalize-names` data-migration candidate, not a code patch.
  */
 export function generateWiringPlan(report: PlaceholderAuditReport): WiringPlan {
   const patches: CodePatch[] = [];
@@ -213,7 +213,7 @@ function renderWiringSummary(
   lines.push('');
 
   lines.push(`Replaceable placeholders found: ${replaceable.length}`);
-  lines.push(`  - Manifest-only (migrate via sprites:normalize-item-art): ${manifestOnly.length}`);
+  lines.push(`  - Manifest-only (migrate via sprites:normalize-names): ${manifestOnly.length}`);
   lines.push(`  - Need wiring (code changes): ${needsWiring.length}`);
   lines.push('');
 
@@ -225,7 +225,7 @@ function renderWiringSummary(
   } else {
     lines.push(
       'No code patches needed. Any manifest-only item placeholders are ' +
-        'data-migration candidates (sprites:normalize-item-art), not code wiring.',
+        'data-migration candidates (sprites:normalize-names), not code wiring.',
     );
   }
 

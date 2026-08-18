@@ -1,0 +1,39 @@
+{
+  "briefId": "goblin-elite-joyrider",
+  "spriteName": "goblin-elite-joyrider-var-2",
+  "assetPath": "generated/goblin-elite-joyrider-var-2.png",
+  "approvedAt": "2026-07-09T08:26:32.162Z",
+  "sourceRun": "generated/runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 29,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 29,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 29,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "1e1dce28c8c5daf84f247a3e4c0655f2d9ecf7cd112383f5b8c875cf38f3ab03",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 51,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

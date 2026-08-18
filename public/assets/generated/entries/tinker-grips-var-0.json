@@ -1,0 +1,115 @@
+{
+  "briefId": "tinker-grips",
+  "spriteName": "tinker-grips-var-0",
+  "assetPath": "generated/tinker-grips-var-0.png",
+  "approvedAt": "2026-07-25T05:24:34.254Z",
+  "sourceRun": "generated/runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 30,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:23:17.725Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of fingerless leather gloves with brass knuckles and embedded gear mechanisms fits the dark-fantasy industrial aesthetic of Crawler. The rugged design is clear, but the contradiction could be more pronounced to enhance the authored feel."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering is close to the references in terms of outline weight, shading, and palette depth. However, the brass plates could use more texture or detail to match the intricate style of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering is close to the references in terms of outline weight, shading, and palette depth. However, the brass plates could use more texture or detail to match the intricate style of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the requested gloves with fingerless leather design, brass knuckles, gear mechanisms, and tubes. The oversized and industrial aesthetic is well captured."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the gloves are identifiable at game scale. However, the gear mechanism and tubes could be more distinct to improve instant recognition."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and does not include any extraneous elements like limbs, rooms, or scenes. It is a standalone item as required."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and matches the brief, but has minor issues in design language and style consistency that could be improved.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2611,
+      "completionTokens": 360,
+      "totalTokens": 2971
+    }
+  },
+  "type": "item",
+  "contentHash": "23081a2ad6c8f9a53e1382b246fd68ff472c80587bb17b59d70e746ca1172530",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

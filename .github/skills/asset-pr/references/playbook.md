@@ -96,7 +96,7 @@ derived from the shards at read time.
 The batch PR is art-only by design (fast lane), so it ships PNGs + manifest +
 catalog but **wires nothing**: a sprite renders only once a consumer references
 its brief id. Skipping this leaves approved art checked in but never shown — e.g.
-`rat-v1` / `rat-slime-v1` landed via earlier asset PRs yet rats and the staircase
+`rat` / `rat-slime` landed via earlier asset PRs yet rats and the staircase
 boss still drew Kenney placeholders until wired by hand.
 
 After the batch merges:
@@ -131,7 +131,7 @@ conflicts with newer work, delete the branch on the remote first:
 - If that asset is no longer wanted: close the stale issue
   (`gh issue close <n> --comment "branch pruned; superseded"`) and re-run.
 - If it's still wanted: re-approve via the current flow (`npm run sprites:approve
-  -- <runDir> --variant <N>`, which pushes to `assets/queue`) — the reconciler
+-- <runDir> --variant <N>`, which pushes to `assets/queue`) — the reconciler
   will pick it up. Then remove the stale issue before re-running `sprites:asset-pr`
   if the legacy drain is still needed for other issues.
 

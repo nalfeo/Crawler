@@ -78,6 +78,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
+          sequence: { groupOrder: 1 },
           include: ['tests/{unit,ecs,game,property,determinism,sensors}/**/*.{test,spec}.ts'],
           // Sprite pipeline tests live in their own project — exclude them here
           // so game test runs stay fast and focused on game code.
@@ -123,6 +124,7 @@ export default defineConfig({
           // and vice versa. Includes unit tests for scripts/sprites/** and the
           // integration tests that drive the full pipeline end-to-end.
           name: 'sprites',
+          sequence: { groupOrder: 2 },
           include: [
             'tests/unit/sprites/**/*.{test,spec}.ts',
             'tests/integration/sprites/**/*.{test,spec}.ts',

@@ -199,6 +199,22 @@ describe('approveFrameSequence', () => {
     expect(manifest.entries[briefId]).toEqual(entry);
   });
 
+  it('rejects a malformed nested lineage brief before writing animation art', () => {
+    const { runDir } = writeFakeSequenceRun(repoRoot, { briefId: 'iron-ore-v1-v2' });
+
+    expect(() =>
+      approveFrameSequence({
+        runDir,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      }),
+    ).toThrow(/malformed nested lineage tag/);
+    expect(readManifest(manifestPath).entries).toEqual({});
+  });
+
   it('throws frame-incoherent and writes nothing when a frame is a different-colored subject', () => {
     const { runDir } = writeFakeSequenceRun(repoRoot, {
       frames: [

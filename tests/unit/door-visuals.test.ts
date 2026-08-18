@@ -230,10 +230,10 @@ describe('resolveDoorRenderMode', () => {
     // Lock the constants the renderer depends on so a rename can't silently
     // un-wire a door variant or swap the open/closed frames.
     expect(K).toEqual({
-      closedHorizontal: 'tile-door-v1-var-9',
-      closedVertical: 'tile-door-sideon-v1-var-0',
-      openHorizontal: 'tile-door-open-v1-var-0',
-      openVertical: 'tile-door-open-side-v1-var-0',
+      closedHorizontal: 'tile-door-var-9',
+      closedVertical: 'tile-door-sideon-var-0',
+      openHorizontal: 'tile-door-open-var-0',
+      openVertical: 'tile-door-open-side-var-0',
     });
     expect(new Set(ALL_GENERATED_DOOR_TEXTURE_KEYS).size).toBe(4);
     expect(DOOR_SHEET_KEY).toBe('kenney-tiny-dungeon');

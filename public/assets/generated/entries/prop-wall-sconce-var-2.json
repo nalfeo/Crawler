@@ -1,0 +1,39 @@
+{
+  "briefId": "prop-wall-sconce",
+  "spriteName": "prop-wall-sconce-var-2",
+  "assetPath": "generated/prop-wall-sconce-var-2.png",
+  "approvedAt": "2026-07-06T17:36:23.643Z",
+  "sourceRun": "generated/runs/prop-wall-sconce-v1/imported-f1e64d20a65b",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 33,
+    "y": 60,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 60,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 32,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "2",
+  "type": "prop",
+  "contentHash": "f1e64d20a65b6af804cdcafbc49232d5d2c1aca386757360f052c8ccb71eadd1",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "left",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
