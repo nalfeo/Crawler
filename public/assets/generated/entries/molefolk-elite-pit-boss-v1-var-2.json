@@ -1,0 +1,127 @@
+{
+  "briefId": "molefolk-elite-pit-boss-v1",
+  "spriteName": "molefolk-elite-pit-boss-v1-var-2",
+  "assetPath": "generated/molefolk-elite-pit-boss-v1-var-2.png",
+  "approvedAt": "2026-08-01T06:01:37.949Z",
+  "sourceRun": "generated/runs/molefolk-elite-pit-boss-v1/2026-08-01T05-57-41-4cb88241",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 258,
+    "y": 299,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 258,
+      "y": 299,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 258,
+      "y": 299,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 258,
+        "y": 299
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T06:00:44.495Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The design effectively combines the molefolk identity with the mining pit boss theme, creating a clear and authored contradiction. The scuffed gold-plated hard hat, sweat-stained shirt, and mining ledger add dark humor and align with the Crawler aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, palette depth, and overall finish. The rendering is consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, palette depth, and overall finish. The rendering is consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the brief perfectly, including the scuffed gold-plated hard hat, badge, sweat-stained shirt, suspenders, burly trousers, and mining ledger. The claws on hips and cracked boots are also present."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects or floating elements. The character is easily recognizable as a molefolk pit boss."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a three-quarters turn, providing a dynamic and engaging pose that aligns with the Crawler style."
+    },
+    "bossPresence": {
+      "score": 3,
+      "rationale": "While the character has a commanding presence and a square, bulky silhouette, it does not appear significantly larger or more dominant than a standard mob. It lacks the exaggerated size or distinctiveness expected of a boss."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the character visible and well-proportioned within the sprite."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the mining attire, gold-plated hard hat, badge, and mining ledger, as well as the molefolk identity and pit boss role."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4211,
+      "completionTokens": 528,
+      "totalTokens": 4739
+    }
+  },
+  "type": "enemy",
+  "contentHash": "fe99735b5cf567c32d50b5bce34cce9d3b41990c8119cea58ab89423393d6859",
+  "opaqueBounds": {
+    "x": 30,
+    "y": 30,
+    "width": 452,
+    "height": 488,
+    "canvasWidth": 512,
+    "canvasHeight": 548
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

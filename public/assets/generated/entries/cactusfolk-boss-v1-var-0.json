@@ -1,9 +1,9 @@
 {
-  "briefId": "cactusfolk-boss",
-  "spriteName": "cactusfolk-boss-var-0",
-  "assetPath": "generated/cactusfolk-boss-var-0.png",
-  "approvedAt": "2026-07-17T18:15:33.774Z",
-  "sourceRun": "generated/runs/cactusfolk-boss/2026-07-17T17-53-08-5c0e8bce",
+  "briefId": "cactusfolk-boss-v1",
+  "spriteName": "cactusfolk-boss-v1-var-0",
+  "assetPath": "generated/cactusfolk-boss-v1-var-0.png",
+  "approvedAt": "2026-07-20T04:48:55.650Z",
+  "sourceRun": "generated/runs/cactusfolk-boss-v1/imported-ebc4340684db",
   "variantIndex": 0,
   "anchor": {
     "x": 62,
