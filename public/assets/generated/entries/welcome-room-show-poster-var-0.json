@@ -6,20 +6,20 @@
   "sourceRun": "generated/runs/welcome-room-show-poster/2026-07-25T06-18-14-837b904e",
   "variantIndex": 0,
   "anchor": {
-    "x": 64,
-    "y": 130,
-    "source": "derived"
+    "x": 65,
+    "y": 72,
+    "source": "manual"
   },
   "anchors": {
     "hold": {
-      "x": 64,
-      "y": 130,
-      "source": "derived"
+      "x": 65,
+      "y": 72,
+      "source": "manual"
     },
     "centerOfGravity": {
       "x": 64,
       "y": 69,
-      "source": "derived"
+      "source": "manual"
     }
   },
   "sensorScore": "7/7",
@@ -101,8 +101,8 @@
     }
   },
   "type": "prop",
-  "contentHash": "232ad753d0cb2da291b1d9d9f398558b6ad83cd19453d56521c2d19c80b59197",
-  "effectiveAnchorSource": "derived",
+  "contentHash": "bdac9a56455ef37abb393ce3fa256bd34813841572b4f24f80996e190728b52f",
+  "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {
     "x": 7,
