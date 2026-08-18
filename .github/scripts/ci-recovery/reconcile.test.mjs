@@ -11756,7 +11756,7 @@ test('a later top-level marker reply for the same fingerprint clears an earlier 
   );
 });
 
-test('review-ledger thread blockers include deterministic not-applicable guidance', async (t) => {
+test('review-ledger thread blockers separate validator evidence from policy disagreements', async (t) => {
   const threadId = 'PRRT_review_ledger_guidance';
   const priorTaskFingerprint = '1f2e3d4c5b6a79888796959493929190ffeeddccbbaa99887766554433221100';
   const originalConcern = 'The review ledger still needs a human escalation path.';
@@ -11879,8 +11879,18 @@ test('review-ledger thread blockers include deterministic not-applicable guidanc
   );
   assert.match(
     taskCommentCall.body.body,
-    /✅ Not applicable: review:ledger validates current head;/i,
-    'task body should recommend a marker-bearing not-applicable reply for disproven ledger findings',
+    /validation by itself does not settle policy findings the validator does not enforce/i,
+    'task body should not present validation as sufficient for policy disagreements',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /leave substantive policy disagreements unresolved for human escalation/i,
+    'task body should direct unresolved policy disagreements to human escalation',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /✅ Not applicable: <one-line reason>/i,
+    'task body should keep marker guidance only for deterministically inapplicable findings',
   );
 });
 

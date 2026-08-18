@@ -3325,7 +3325,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           '',
           ...(hasReviewLedgerThreadBlocker
             ? [
-                'If a listed thread targets `docs/knowledge/review-ledgers/*.review-ledger.json`, run `npm run review:ledger -- validate` on the current head. When that validation deterministically disproves the finding, reply in-thread with `✅ Not applicable: review:ledger validates current head; <one-line evidence>` instead of a prose-only disagreement.',
+                'If a listed thread targets `docs/knowledge/review-ledgers/*.review-ledger.json`, run `npm run review:ledger -- validate` on the current head to gather schema/validator evidence. That validation by itself does not settle policy findings the validator does not enforce (for example review-round cap concerns). Only reply in-thread with `✅ Not applicable: <one-line reason>` when validation output or the current diff deterministically proves the exact finding inapplicable; otherwise fix the finding or leave substantive policy disagreements unresolved for human escalation.',
                 '',
               ]
             : []),
