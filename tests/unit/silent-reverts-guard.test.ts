@@ -11,6 +11,7 @@ import {
   dedupeByPath,
   findSilentReverts,
   findUnusedAcks,
+  generatedEntryRenamePreservesContent,
   isDiscarded,
   parseAckTrailers,
   parseDiffLineChanges,
@@ -106,8 +107,58 @@ describe('survivesToHead', () => {
     expect(survivesToHead(triple({ result: 'B', head: 'LATER' }))).toBe(false);
   });
 
+  it('is superseded when the incoming content survives at a renamed path', () => {
+    expect(
+      survivesToHead(
+        triple({ result: null, head: null, side: 'S', sideContentPreservedAtHead: true }),
+      ),
+    ).toBe(false);
+  });
+
   it('survives an `-s ours` discard, where the surviving blob is ours not the base', () => {
     expect(survivesToHead(triple({ base: 'B', result: 'O', head: 'O' }))).toBe(true);
+  });
+
+  describe('generatedEntryRenamePreservesContent', () => {
+    const entry = {
+      briefId: 'legacy-v1',
+      spriteName: 'legacy-v1-var-0',
+      assetPath: 'generated/legacy-v1-var-0.png',
+      variantIndex: 0,
+      sourceRun: 'generated/runs/legacy/imported-abc',
+      contentHash: 'abc',
+      anchor: { x: 1, y: 2 },
+    };
+
+    it('accepts generated-entry renames that change identity fields only', () => {
+      const target = {
+        ...entry,
+        briefId: 'canonical',
+        spriteName: 'canonical-var-7',
+        assetPath: 'generated/canonical-var-7.png',
+        variantIndex: 7,
+      };
+      expect(
+        generatedEntryRenamePreservesContent(
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          'public/assets/generated/entries/canonical-var-7.json',
+          JSON.stringify(entry),
+          JSON.stringify(target),
+        ),
+      ).toBe(true);
+    });
+
+    it('rejects a rename that changes substantive metadata', () => {
+      const target = { ...entry, sourceRun: 'generated/runs/other/imported-def' };
+      expect(
+        generatedEntryRenamePreservesContent(
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          'public/assets/generated/entries/canonical-var-0.json',
+          JSON.stringify(entry),
+          JSON.stringify(target),
+        ),
+      ).toBe(false);
+    });
   });
 });
 
@@ -695,6 +746,92 @@ describe('silent-reverts CLI (real git)', () => {
       writeFileSync(path.join(built.dir, 'ledger.json'), '{"don-paco":"verified","mine":"MINE"}\n');
       built.git('commit', '-qam', 'pr: re-apply main row');
       return built;
+    }
+  });
+
+  function buildGeneratedEntryRenameScenario(
+    preserveIncomingMetadata: boolean,
+    canonicalTargetPreexists = false,
+  ): {
+    dir: string;
+    git: (...a: string[]) => string;
+  } {
+    const { dir, git, write } = makeRepo();
+    const legacyPath = 'public/assets/generated/entries/legacy-v1-var-0.json';
+    const canonicalPath = 'public/assets/generated/entries/canonical-var-0.json';
+    const entry = (sourceRun: string, canonical: boolean): string =>
+      `${JSON.stringify(
+        {
+          briefId: canonical ? 'canonical' : 'legacy-v1',
+          spriteName: canonical ? 'canonical-var-0' : 'legacy-v1-var-0',
+          assetPath: canonical ? 'generated/canonical-var-0.png' : 'generated/legacy-v1-var-0.png',
+          sourceRun,
+          variantIndex: 0,
+          contentHash: 'abc123',
+          anchor: { x: 12, y: 34, source: 'manual' },
+        },
+        null,
+        2,
+      )}\n`;
+
+    write(legacyPath, entry('local/temp/run', false));
+    if (canonicalTargetPreexists) write(canonicalPath, entry('local/temp/run', true));
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    const base = git('rev-parse', 'HEAD');
+
+    write(legacyPath, entry('generated/runs/imported-abc123', false));
+    git('commit', '-qam', 'main: make provenance portable');
+    const mainSha = git('rev-parse', 'HEAD');
+    git('branch', '-f', 'mainline', mainSha);
+
+    git('checkout', '-q', '-b', 'pr', base);
+    if (canonicalTargetPreexists) {
+      git('rm', '-q', legacyPath);
+    } else {
+      git('mv', legacyPath, canonicalPath);
+      write(canonicalPath, entry('local/temp/run', true));
+    }
+    git('commit', '-qam', 'pr: canonicalize generated entry');
+    git('merge', '-s', 'ours', '--no-edit', '-q', mainSha);
+
+    if (preserveIncomingMetadata) {
+      write(canonicalPath, entry('generated/runs/imported-abc123', true));
+      git('commit', '-qam', 'pr: preserve incoming provenance at canonical path');
+    }
+    return { dir, git };
+  }
+
+  it('accepts a generated-entry rename that preserves incoming metadata', () => {
+    const { dir } = buildGeneratedEntryRenameScenario(true);
+    try {
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no surviving silent reverts');
+      expect(status).toBe(0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('still blocks a generated-entry rename that drops incoming metadata', () => {
+    const { dir } = buildGeneratedEntryRenameScenario(false);
+    try {
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*legacy-v1-var-0\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('accepts preservation merged into a canonical target that already existed', () => {
+    const { dir } = buildGeneratedEntryRenameScenario(true, true);
+    try {
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no surviving silent reverts');
+      expect(status).toBe(0);
+    } finally {
+      cleanup(dir);
     }
   });
 

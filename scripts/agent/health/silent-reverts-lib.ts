@@ -89,6 +89,11 @@ export interface FileTriple {
   /** Blob at the PR head, used for the survival filter. */
   readonly head: string | null;
   /**
+   * True when HEAD preserves the incoming blob at a renamed path, including a
+   * generated-entry collision merged into an existing canonical target.
+   */
+  readonly sideContentPreservedAtHead?: boolean;
+  /**
    * True when a clean three-way merge of `base`, `other`, and `side` would
    * still produce `other` at this path. In that case `result === other` does
    * NOT mean the incoming side was discarded — the opposing side already
@@ -319,7 +324,44 @@ export function isDiscarded(f: FileTriple): boolean {
  * superseded and visible as an ordinary reviewable change in the PR diff.
  */
 export function survivesToHead(f: FileTriple): boolean {
+  if (f.sideContentPreservedAtHead === true) return false;
   return f.head === f.result;
+}
+
+const GENERATED_ENTRY_IDENTITY_FIELDS = new Set([
+  'briefId',
+  'spriteName',
+  'assetPath',
+  'variantIndex',
+]);
+
+export function generatedEntryRenamePreservesContent(
+  sourcePath: string,
+  targetPath: string,
+  sourceContent: string,
+  targetContent: string,
+): boolean {
+  const entryPrefix = 'public/assets/generated/entries/';
+  if (
+    !sourcePath.startsWith(entryPrefix) ||
+    !targetPath.startsWith(entryPrefix) ||
+    !sourcePath.endsWith('.json') ||
+    !targetPath.endsWith('.json')
+  ) {
+    return false;
+  }
+
+  try {
+    const source = JSON.parse(sourceContent) as Record<string, unknown>;
+    const target = JSON.parse(targetContent) as Record<string, unknown>;
+    const substantive = (entry: Record<string, unknown>): Record<string, unknown> =>
+      Object.fromEntries(
+        Object.entries(entry).filter(([key]) => !GENERATED_ENTRY_IDENTITY_FIELDS.has(key)),
+      );
+    return JSON.stringify(substantive(source)) === JSON.stringify(substantive(target));
+  } catch {
+    return false;
+  }
 }
 
 /**
