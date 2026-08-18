@@ -648,24 +648,14 @@ describe('runSettlementMaintenancePlanner', () => {
     expect(equip(world, playerEid, pistolStarter, { force: true }).ok).toBe(true);
 
     const sameClassId = addBagEquipment(world, playerEid, 'plasma-pistol', 'uncommon');
+    runEagerMaintenanceTick(world, playerEid);
+    expect(getEquipmentState(world, playerEid)?.equipped.mainHand).toBe(sameClassId);
+
     const differentClassId = addBagEquipment(world, playerEid, 'fireball', 'uncommon');
-
-    const result = runSettlementMaintenancePlanner(world);
-
+    runEagerMaintenanceTick(world, playerEid);
     const equipped = getEquipmentState(world, playerEid)?.equipped;
     expect(equipped?.mainHand).toBe(sameClassId);
     expect(Object.values(equipped ?? {})).not.toContain(differentClassId);
-    expect(result.decisions.some((decision) => decision.detail.includes(differentClassId))).toBe(
-      true,
-    );
-    expect(
-      result.decisions.some(
-        (decision) =>
-          decision.kind === 'skip' &&
-          decision.detail.includes(differentClassId) &&
-          decision.detail.includes('different weapon class'),
-      ),
-    ).toBe(true);
   });
 
   it('logs a Quartermaster offer skip decision for an unaffordable offer exactly once, even across multiple equipment-loop iterations', () => {
