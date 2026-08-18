@@ -6,12 +6,26 @@ import {
   submitRunSurvey,
 } from '../../src/engine/run-bundle-upload.js';
 
+const KEEPALIVE_BODY_LIMIT_BYTES = 64 * 1024;
+
 const makeBundle = () =>
   createRunBundle({
     runStats: { outcome: 'victory', finalLevel: 5 },
     recorderJsonl: 'event=run-start\n',
     logs: ['run start', 'player died'],
     meta: { endReason: 'victory', floorId: 'floor1', seed: 13, runId: 'run-abc123' },
+  });
+
+/**
+ * Mirrors the real shipped failure: a dev-build run bundle serialized to ~67 KB,
+ * just over the browser's 64 KiB keepalive/sendBeacon body quota.
+ */
+const makeOversizedBundle = () =>
+  createRunBundle({
+    runStats: { outcome: 'death', finalLevel: 3 },
+    recorderJsonl: `${'e'.repeat(70 * 1024)}\n`,
+    logs: ['run start', 'player died'],
+    meta: { endReason: 'death', floorId: 'floor1', seed: 13, runId: 'run-oversized' },
   });
 
 describe('run bundle upload delivery', () => {
@@ -170,5 +184,90 @@ describe('run bundle upload delivery', () => {
     expect(body.logs).toEqual(bundle.logs);
     expect(body.meta).toEqual(bundle.meta);
     expect(body.survey).toEqual({ ...payload, comment: payload.comment.trim() });
+  });
+
+  it('drops keepalive for oversized silent uploads so the browser does not reject them', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
+    Object.defineProperty(globalThis, 'window', {
+      value: { __CRAWLER_RUN_BUNDLE_ENDPOINT__: 'https://example.test/uploads/run-bundle' },
+      configurable: true,
+      writable: true,
+    });
+
+    const result = await submitRunBundleUpload(makeOversizedBundle(), {
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(result.ok).toBe(true);
+    const calls = (fetchSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = (calls[0] ?? []) as [unknown, { keepalive?: boolean; body?: string }];
+    expect(init?.keepalive).toBe(false);
+    expect(new TextEncoder().encode(String(init?.body)).length).toBeGreaterThan(
+      KEEPALIVE_BODY_LIMIT_BYTES,
+    );
+  });
+
+  it('drops keepalive for oversized survey uploads', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
+    Object.defineProperty(globalThis, 'window', {
+      value: { __CRAWLER_RUN_BUNDLE_ENDPOINT__: 'https://example.test/uploads/run-bundle' },
+      configurable: true,
+      writable: true,
+    });
+
+    const result = await submitRunSurvey(
+      makeOversizedBundle(),
+      { enjoyment: 4, immersion: 4, mastery: 3, control: 4, tension: 3 },
+      { fetchImpl: fetchSpy as unknown as typeof fetch },
+    );
+
+    expect(result.ok).toBe(true);
+    const calls = (fetchSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = (calls[0] ?? []) as [unknown, { keepalive?: boolean }];
+    expect(init?.keepalive).toBe(false);
+  });
+
+  it('uses fetch instead of sendBeacon when a quit bundle exceeds the keepalive quota', async () => {
+    const beacon = vi.fn(() => true);
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
+    Object.defineProperty(globalThis, 'window', {
+      value: { __CRAWLER_RUN_BUNDLE_ENDPOINT__: 'https://example.test/uploads/run-bundle' },
+      configurable: true,
+      writable: true,
+    });
+
+    const result = await submitRunBundleUpload(makeOversizedBundle(), {
+      endReason: 'quit',
+      navigatorLike: { sendBeacon: beacon } as unknown as Pick<Navigator, 'sendBeacon'>,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(beacon).not.toHaveBeenCalled();
+    expect(result.used).toBe('fetch');
+    expect(result.ok).toBe(true);
+  });
+
+  it('falls back to fetch when sendBeacon refuses the payload', async () => {
+    const beacon = vi.fn(() => false);
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
+    Object.defineProperty(globalThis, 'window', {
+      value: { __CRAWLER_RUN_BUNDLE_ENDPOINT__: 'https://example.test/uploads/run-bundle' },
+      configurable: true,
+      writable: true,
+    });
+
+    const result = await submitRunBundleUpload(makeBundle(), {
+      endReason: 'quit',
+      navigatorLike: { sendBeacon: beacon } as unknown as Pick<Navigator, 'sendBeacon'>,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(beacon).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const calls = (fetchSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const [, init] = (calls[0] ?? []) as [unknown, { keepalive?: boolean }];
+    expect(init?.keepalive).toBe(false);
+    expect(result.used).toBe('fetch');
+    expect(result.ok).toBe(true);
   });
 });
