@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b1381efb458248adead9ba407fbe943ad90a659e",
+    "commitDate": "2026-08-18T14:55:41Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (20 art paths) (#3084)",
+    "capturedAt": "2026-08-18T16:11:37.675Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32152208011",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b1381efb458248adead9ba407fbe943ad90a659e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/b1381efb458248adead9ba407fbe943ad90a659e.fun-report.json"
+    }
+  },
+  {
     "commit": "8323e9a73dc06099a0a8edc574d658935f777133",
     "commitDate": "2026-08-18T13:56:54Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (20 art paths) (#3083)",
