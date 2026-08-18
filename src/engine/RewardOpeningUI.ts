@@ -470,13 +470,18 @@ export function createRewardOpeningUI(
     nextReward = null;
     sequenceState = null;
     lastRenderedPhase = null;
-    clearItemObjects();
-    nextButton.setVisible(false);
-    nextButton.disableInteractive();
-    // Kill any in-flight VFX immediately so particles don't linger over the
-    // game world after the overlay is dismissed.
-    vfx.destroy();
-    container.setVisible(false);
+    // Phaser has already destroyed scene display objects by the time a scene
+    // shutdown listener runs. Avoid calling UI methods on those detached
+    // objects, which would abort the scene restart.
+    if (container.active) {
+      clearItemObjects();
+      nextButton.setVisible(false);
+      nextButton.disableInteractive();
+      // Kill any in-flight VFX immediately so particles don't linger over the
+      // game world after the overlay is dismissed.
+      vfx.destroy();
+      container.setVisible(false);
+    }
     if (wasOpen) {
       hooks.onVisibilityChange?.(false);
     }
@@ -692,11 +697,15 @@ export function createRewardOpeningUI(
         : null;
     },
     destroy(): void {
-      backdrop.off('pointerdown', handleAdvanceInput);
-      nextButton.off('pointerdown', handleOpenNext);
+      if (container.active) {
+        backdrop.off('pointerdown', handleAdvanceInput);
+        nextButton.off('pointerdown', handleOpenNext);
+      }
       scene.input.keyboard?.off('keydown', keyListener);
       close();
-      container.destroy(true);
+      if (container.active) {
+        container.destroy(true);
+      }
     },
   };
 }
