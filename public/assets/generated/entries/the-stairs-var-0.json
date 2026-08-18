@@ -1,0 +1,38 @@
+{
+  "briefId": "the-stairs",
+  "spriteName": "the-stairs-var-0",
+  "assetPath": "generated/the-stairs-var-0.png",
+  "approvedAt": "2026-07-07T00:20:47.108Z",
+  "sourceRun": "generated/runs/the-stairs-v2/imported-dcc6e42b2f21",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 64,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 64,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 255,
+      "y": 255,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "type": "tile",
+  "contentHash": "dcc6e42b2f21cf07a3fb83f1795ef489499d17666b80f43852b45ba10952626c",
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 512,
+    "height": 512,
+    "canvasWidth": 512,
+    "canvasHeight": 512
+  }
+}

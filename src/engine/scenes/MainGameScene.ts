@@ -213,13 +213,13 @@ function markGame(label: string): void {
 function resolveSetPieceLightEmission(
   spriteId: string,
 ): { radiusFt: number; intensity: number } | null {
-  if (/^prop-wall-sconce-v1-var-\d+$/.test(spriteId)) {
+  if (/^prop-wall-sconce-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
-  if (/^prop-torch-v1-var-\d+$/.test(spriteId)) {
+  if (/^prop-torch-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
-  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+  if (/^prop-lantern-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
   return null;

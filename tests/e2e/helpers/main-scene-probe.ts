@@ -14,6 +14,7 @@ import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 import type {
   BloodSurfaceProbeSummary,
   BossIntroProbeState,
+  CarriedWeaponRenderInfo,
   HarvestableRenderSummary,
   FamilyHudProbeState,
   FloatingTextProbe,
@@ -188,6 +189,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getNpcRenderInfo()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
+  equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
+    page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
+  getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCarriedWeaponRenderInfo()),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>

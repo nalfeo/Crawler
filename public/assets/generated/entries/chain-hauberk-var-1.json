@@ -1,0 +1,39 @@
+{
+  "briefId": "chain-hauberk",
+  "spriteName": "chain-hauberk-var-1",
+  "assetPath": "generated/chain-hauberk-var-1.png",
+  "approvedAt": "2026-07-20T04:45:00.118Z",
+  "sourceRun": "generated/runs/chain-hauberk-v3/imported-feefd6631513",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 38,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 38,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 30,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "item",
+  "contentHash": "feefd663151318183d1a18bf3fb9244eb82f6dc8583beb941eb6c8db4ca849bc",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 53,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "briefId": "myconid-clubcap",
+  "spriteName": "myconid-clubcap-var-0",
+  "assetPath": "generated/myconid-clubcap-var-0.png",
+  "approvedAt": "2026-07-09T07:39:39.639Z",
+  "sourceRun": "generated/runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 31,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "7498d079a73b5f6f6cdd8599d63e6f29fb61b28a8771fc80c0f797ed8ed0d967",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 55,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

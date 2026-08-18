@@ -1,0 +1,137 @@
+{
+  "briefId": "llama-curb-stomper",
+  "spriteName": "llama-curb-stomper-var-3",
+  "assetPath": "generated/llama-curb-stomper-var-3.png",
+  "approvedAt": "2026-08-01T18:14:36.110Z",
+  "sourceRun": "generated/runs/llama-curb-stomper/2026-08-01T18-11-28-51e57ee5",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 122,
+    "y": 174,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 122,
+      "y": 174,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 122,
+      "y": 174,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 122,
+        "y": 174
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T18:12:41.343Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a heavy, thuggish llama with oversized stomping boots is well-executed and fits the darkly humorous and absurd tone of Crawler. The combination of a llama with comically large, stylish boots is a strong collision of familiar elements."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the shading on the boots could be slightly more refined to match the level of detail in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the shading on the boots could be slightly more refined to match the level of detail in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a llama with a thick neck, a minimal outfit, and oversized, reinforced stomping boots. The aggressive posture and expression align with the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and easily readable at game scale. The raised leg and oversized boots are immediately recognizable, and the figure stands out well against the dark floor tile."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the body visible, including the raised leg and boots. The pose is dynamic and well-composed."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the llama, oversized boots, and minimal outfit as described in the brief. The boots are stylish and well-crafted, fitting the cartel-dungeon tone. However, the suspenders mentioned in the brief are not clearly visible, which slightly detracts from full adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4446,
+      "completionTokens": 426,
+      "totalTokens": 4872
+    }
+  },
+  "type": "enemy",
+  "contentHash": "04733003e3d001fe3d9f469a348f85d253fbea86f5c3a0b43b5e1a42d903c823",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 17,
+    "width": 222,
+    "height": 285,
+    "canvasWidth": 256,
+    "canvasHeight": 319
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "enemy",
+      "fantasy",
+      "medieval",
+      "dungeon",
+      "horror",
+      "arcane",
+      "large",
+      "dark",
+      "asymmetric",
+      "boss-room",
+      "cave",
+      "magic",
+      "weapon",
+      "pristine"
+    ]
+  }
+}

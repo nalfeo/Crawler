@@ -60,10 +60,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import { shardPathForKey } from './generated-shards.js';
+import { bareConcept, hasResidualLineageTag } from './sprite-name-taxonomy.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -243,6 +243,19 @@ export class ApproveError extends Error {
   }
 }
 
+function canonicalBriefId(rawBriefId: string | undefined, summaryPath: string): string {
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  if (hasResidualLineageTag(rawBriefId)) {
+    throw new ApproveError(
+      'summary-invalid',
+      `summary.json has malformed nested lineage tag in "brief": ${rawBriefId}`,
+    );
+  }
+  return bareConcept(rawBriefId);
+}
+
 interface RunSummaryShape {
   readonly brief?: string;
   readonly briefPath?: string;
@@ -385,15 +398,15 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
   const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  // Recurrence guard (ADR 0051): art for a gameplay item ships BARE. If the brief
-  // is `<item>-vN` and `<item>` is a known item identity (an ItemDef.id or a
-  // weaponId alias), strip the `-vN` so the manifest key / spriteName / assetPath
-  // / briefId are all the bare item id and the icon resolves by item id. Genuine
-  // non-item briefs (enemies, tiles, props) keep their `-vN` lineage untouched.
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  // Recurrence guard: ALL generated art ships BARE. If the brief carries a
+  // generation-time `-vN` lineage tag, strip it so the manifest key /
+  // spriteName / assetPath / briefId are all the bare concept. This is what
+  // keeps `loadGeneratedManifest` grouping every variant of a concept into ONE
+  // bucket — a versioned brief creates a second bucket that
+  // `pickGeneratedVariant` can never draw from, stranding approved art.
+  // Design names that merely look versioned (`angry-roomba-v2`) are remapped,
+  // not stripped, by `DESIGN_NAME_REMAP`.
+  const briefId = canonicalBriefId(rawBriefId, summaryPath);
   const sourceRun = options.sourceRunOverride
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
@@ -638,11 +651,7 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   const sourceRun = options.sourceRunOverride
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
@@ -812,11 +821,7 @@ export function resolveVariantIdentity(
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
   if (!candidate) {
@@ -892,11 +897,7 @@ export function loadApprovedFrameSequenceEntry(options: {
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
@@ -1231,11 +1232,7 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = rawBriefId;
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);

@@ -13823,7 +13823,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
+                "spriteId": "purple-potion-bottle-var-4"
               },
               "widthFt": 0.63,
               "heightFt": 0.77,
@@ -13896,7 +13896,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
+                "spriteId": "purple-potion-bottle-var-4"
               },
               "widthFt": 0.96,
               "heightFt": 1.18,
@@ -13927,7 +13927,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
+                "spriteId": "purple-potion-bottle-var-4"
               },
               "widthFt": 0.85,
               "heightFt": 1.04,
@@ -14294,7 +14294,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-4"
+                "spriteId": "prop-wall-sconce-var-4"
               },
               "widthFt": 1.11,
               "heightFt": 1.6,
@@ -14316,7 +14316,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-2"
+                "spriteId": "prop-wall-sconce-var-2"
               },
               "widthFt": 1.24,
               "heightFt": 1.6,
@@ -14400,7 +14400,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-torch-v1-var-14"
+                "spriteId": "prop-torch-var-14"
               },
               "widthFt": 1.83,
               "heightFt": 2.8,
@@ -14422,7 +14422,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-6"
+                "spriteId": "prop-wall-sconce-var-6"
               },
               "widthFt": 1.24,
               "heightFt": 1.6,
@@ -14453,7 +14453,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
+                "spriteId": "purple-potion-bottle-var-4"
               },
               "widthFt": 1.46,
               "heightFt": 1.8,
@@ -14474,7 +14474,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-torch-v1-var-8"
+                "spriteId": "prop-torch-var-8"
               },
               "widthFt": 1.98,
               "heightFt": 2.8,
@@ -14493,7 +14493,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-1"
+                "spriteId": "prop-wall-sconce-var-1"
               },
               "widthFt": 1.13,
               "heightFt": 1.6,
@@ -15033,7 +15033,7 @@
           "sceneLayer": "default",
           "spriteOverride": {
             "source": "catalog",
-            "spriteId": "spell-broker-v2-var-3"
+            "spriteId": "spell-broker-var-3"
           },
           "widthFt": 5.75,
           "heightFt": 5.75,
@@ -15707,7 +15707,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
+                "spriteId": "purple-potion-bottle-var-4"
               },
               "widthFt": 0.63,
               "heightFt": 0.77,
@@ -16067,7 +16067,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-4"
+                "spriteId": "prop-wall-sconce-var-4"
               },
               "widthFt": 1.11,
               "heightFt": 1.6
@@ -16085,7 +16085,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-6"
+                "spriteId": "prop-wall-sconce-var-6"
               },
               "widthFt": 1.24,
               "heightFt": 1.6
@@ -16103,7 +16103,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-2"
+                "spriteId": "prop-wall-sconce-var-2"
               },
               "widthFt": 1.24,
               "heightFt": 1.6
@@ -16121,7 +16121,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-1"
+                "spriteId": "prop-wall-sconce-var-1"
               },
               "widthFt": 1.13,
               "heightFt": 1.6
@@ -16139,7 +16139,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-torch-v1-var-14"
+                "spriteId": "prop-torch-var-14"
               },
               "widthFt": 1.83,
               "heightFt": 2.8
@@ -16157,7 +16157,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "prop-torch-v1-var-8"
+                "spriteId": "prop-torch-var-8"
               },
               "widthFt": 1.98,
               "heightFt": 2.8

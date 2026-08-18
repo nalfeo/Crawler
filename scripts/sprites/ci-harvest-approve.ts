@@ -120,7 +120,7 @@ const G2B_BRIEF_IDS = new Set([
   'surveyor-map',
 ]);
 
-// Also check the versioned forms (iron-cleaver-v1 etc.) in case
+// Also check the versioned forms (iron-cleaver etc.) in case
 // canonicalization didn't strip the suffix.
 function isG2BBrief(rawBriefId: string): boolean {
   // Direct match (bare key)

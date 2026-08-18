@@ -136,9 +136,9 @@ describe('MainGameScene lighting overlay behavior', () => {
   it('collects harvestable and set-piece light emitters for the light field', () => {
     expect(source).toContain('query(this.world.ecs, [Harvestable, Position])');
     expect(source).toContain('for (const setPieceProp of this.world.setPieceProps)');
-    expect(source).toContain('/^prop-wall-sconce-v1-var-\\d+$/.test(spriteId)');
-    expect(source).toContain('/^prop-lantern-v\\d+-var-\\d+$/.test(spriteId)');
-    expect(source).toContain('/^prop-torch-v1-var-\\d+$/.test(spriteId)');
+    expect(source).toContain('/^prop-wall-sconce-var-\\d+$/.test(spriteId)');
+    expect(source).toContain('/^prop-lantern-var-\\d+$/.test(spriteId)');
+    expect(source).toContain('/^prop-torch-var-\\d+$/.test(spriteId)');
   });
 
   it('includes secondary light-source membership in the stationary cache key', () => {

@@ -1,0 +1,31 @@
+{
+  "briefId": "iron-cleaver",
+  "spriteName": "iron-cleaver-var-5",
+  "assetPath": "generated/iron-cleaver-var-5.png",
+  "approvedAt": "2026-07-20T04:34:21.096Z",
+  "sourceRun": "generated/runs/iron-cleaver-v1/imported-ef2096746a75",
+  "variantIndex": 5,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 33,
+      "y": 26,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": "weapon",
+  "contentHash": "ef2096746a753bbd88d734c4f605f3c25526da8f64ced2cf8ec4eae92c256896",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 3,
+    "width": 32,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

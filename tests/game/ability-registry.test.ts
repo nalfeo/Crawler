@@ -154,7 +154,7 @@ describe('ability registry', () => {
     it('accepts a valid optional iconBriefId', () => {
       expect(() =>
         parseAbilityCatalog([
-          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball-v1' },
+          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball' },
         ]),
       ).not.toThrow();
     });

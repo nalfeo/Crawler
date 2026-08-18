@@ -111,7 +111,7 @@ export interface TileVisualDef {
   readonly frames?: BlobFrames16;
   /**
    * Optional key of a GENERATED single-PNG tile texture (a bare manifest key,
-   * e.g. `tile-stone-floor-v1-var-2`, loaded by `preloadGeneratedSprites`).
+   * e.g. `tile-stone-floor-var-2`, loaded by `preloadGeneratedSprites`).
    *
    * When present AND the texture is loaded with a usable source width,
    * `buildTerrainLayer` stamps the whole texture scaled to `tileSize`,
@@ -234,17 +234,18 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   /**
    * Stone floor — cool grey worn flagstone.
    *
-   * Was `tile-stone-floor-v1-var-2`, which shipped with a magenta chroma-key
-   * matte fused into its border pixels and therefore tiled a hot-pink lattice
-   * across every stone room in the game. v2 is a purpose-generated replacement:
-   * seamless at 2x2, 0% edge magenta, and deliberately cool-grey so props and
-   * NPCs read against it (the warm tan floor destroyed figure/ground with the
-   * warm-brown wall and wood furniture). Guarded by `npm run check:tile-mattes`.
+   * `tile-stone-floor-var-2` is the ORIGINAL art, which shipped with a magenta
+   * chroma-key matte fused into its border pixels and therefore tiled a hot-pink
+   * lattice across every stone room in the game. `-var-0` is the purpose-
+   * generated replacement: seamless at 2x2, 0% edge magenta, and deliberately
+   * cool-grey so props and NPCs read against it (the warm tan floor destroyed
+   * figure/ground with the warm-brown wall and wood furniture). Guarded by
+   * `npm run check:tile-mattes`.
    */
   [TerrainType.STONE_FLOOR]: {
     sheetKey: TD,
     frame: td(0, 4),
-    textureKey: 'tile-stone-floor-v2-var-2',
+    textureKey: 'tile-stone-floor-var-0',
   },
 
   /**
@@ -258,7 +259,7 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
     // `frames`: the generated branch in buildTerrainLayer takes precedence and
     // bypasses autotiling (a single PNG has no per-mask sub-frames). `frames`
     // stays as the Kenney fallback if the generated texture fails to load.
-    textureKey: 'tile-stone-wall-v1-var-5',
+    textureKey: 'tile-stone-wall-var-5',
     frames: [
       td(4, 3), //  0: isolated          (no neighbours)
       td(4, 3), //  1: N
@@ -281,7 +282,7 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
 
   /**
    * Corridor floor — clean cool-gray cobblestone. Generated single-texture art
-   * (`tile-corridor-v1-var-10`) stamps via the generated branch in
+   * (`tile-corridor-var-10`) stamps via the generated branch in
    * buildTerrainLayer; the RPG pack cobblestone frame (row 0, col 8) stays as
    * the fallback if the texture fails to load. var-10 was chosen from six
    * variants as the cleanest, most uniformly-tileable sheet — the others carry
@@ -292,7 +293,7 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.CORRIDOR]: {
     sheetKey: RPG,
     frame: rpg(8, 0),
-    textureKey: 'tile-corridor-v1-var-10',
+    textureKey: 'tile-corridor-var-10',
   },
 
   /**
@@ -401,7 +402,7 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.BOSS_STAIR_FLOOR]: {
     sheetKey: TD,
     frame: td(4, 4),
-    textureKey: 'tile-boss-staircase-floor-v2-var-10',
+    textureKey: 'tile-boss-staircase-floor-var-10',
   },
 
   /**
@@ -414,7 +415,7 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.SAFE_ROOM_FLOOR]: {
     sheetKey: RPG,
     frame: rpg(9, 0),
-    textureKey: 'tile-safe-room-floor-v1-var-0',
+    textureKey: 'tile-safe-room-floor-var-0',
   },
 } as const;
 

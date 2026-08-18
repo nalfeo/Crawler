@@ -401,7 +401,7 @@ describe('hashStringToSeed', () => {
   });
 
   it('differs for different inputs (no trivial collisions on sample set)', () => {
-    const ids = ['skull-mace', 'iron-sword', 'throwing-star', 'bent-pipe-v1', 'a', 'b'];
+    const ids = ['skull-mace', 'iron-sword', 'throwing-star', 'bent-pipe', 'a', 'b'];
     const seeds = new Set(ids.map(hashStringToSeed));
     expect(seeds.size).toBe(ids.length);
   });

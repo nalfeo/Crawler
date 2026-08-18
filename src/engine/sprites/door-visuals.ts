@@ -169,19 +169,19 @@ export function resolveDoorContainFit(input: DoorContainFitInput) {
  * the fallback chain takes over.
  */
 export const GENERATED_DOOR_TEXTURE_KEYS = {
-  closedHorizontal: 'tile-door-v1-var-9',
+  closedHorizontal: 'tile-door-var-9',
   // Genuinely side-on E/W art (shipped by PR #2375): drawn edge-on, not a rotated
   // face-on door, so the renderer applies NO rotation. Contain-fitting makes it
   // bind on height and render as a narrow tall strip, which is the correct edge-on
   // read.
-  closedVertical: 'tile-door-sideon-v1-var-0',
-  openHorizontal: 'tile-door-open-v1-var-0',
+  closedVertical: 'tile-door-sideon-var-0',
+  openHorizontal: 'tile-door-open-var-0',
   // Side-on E/W open art (generated 2026-07-31, closing the last orientation gap).
   // `generatedKeysFor` still lists the face-on open leaf as a second candidate: the
   // fallback is defence-in-depth, not an expected path. When it fires the renderer
   // records a `cross` orientation match, so a regression is measurable rather than
   // invisible — `crossOrientationCount` must be 0 on both floors.
-  openVertical: 'tile-door-open-side-v1-var-0',
+  openVertical: 'tile-door-open-side-var-0',
 } as const satisfies Record<string, string>;
 
 /** Kenney Tiny Dungeon spritesheet key (placeholder fallback art). */

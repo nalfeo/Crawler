@@ -117,7 +117,7 @@ test('rejects an over-long brief on both the raw and collapsed axes', () => {
 test('bareConceptOf strips version and variant suffixes', () => {
   assert.equal(bareConceptOf('generated:welcome-room-stove-v2-var-3'), 'welcome-room-stove');
   assert.equal(bareConceptOf('bearskin-rug'), 'bearskin-rug');
-  assert.equal(bareConceptOf('rhea-vale-v1-var-0'), 'rhea-vale');
+  assert.equal(bareConceptOf('rhea-vale-var-0'), 'rhea-vale');
 });
 
 test('suggestVariantName is a suggestion, bounded to three words', () => {
