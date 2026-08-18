@@ -575,7 +575,12 @@ export function createSceneStub(
 
   const textures =
     options.kenneyLoaded || options.generatedRegistry
-      ? { exists: (key: string) => options.textureExists?.(key) ?? true }
+      ? {
+          exists: (key: string) => options.textureExists?.(key) ?? true,
+          get: (key: string) => ({
+            getSourceImage: () => sizeOf(key) ?? { width: 0, height: 0 },
+          }),
+        }
       : undefined;
 
   const generatedRegistry = options.generatedRegistry;

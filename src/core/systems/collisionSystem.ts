@@ -44,11 +44,11 @@ export function collisionSystem(world: GameWorld): CollisionResult {
     const storedHalfWidth = size.halfWidth[eid] ?? 0;
     const storedHalfHeight = size.halfHeight[eid] ?? 0;
     let halfWidth = storedHalfWidth;
-    if (halfWidth <= 0) {
+    if (!(halfWidth > 0)) {
       halfWidth = radius > 0 ? radius : getBodyHalfWidth(world, eid, 'collisionSystem');
     }
     let halfHeight = storedHalfHeight;
-    if (halfHeight <= 0) {
+    if (!(halfHeight > 0)) {
       halfHeight = radius > 0 ? radius : getBodyHalfHeight(world, eid, 'collisionSystem');
     }
 

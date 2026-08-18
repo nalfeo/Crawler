@@ -17,6 +17,7 @@ import {
   Velocity,
   XpGem,
   Gold,
+  BossChestEntity,
   DroppedItem,
   Harvestable,
   Npc,
@@ -37,6 +38,7 @@ import {
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { resolveFloor2SettlementAnchor } from '../../core/floor2-settlement-anchor.js';
+import { resolveNearestSafeAnchor } from '../../core/safe-anchor.js';
 import { RoomRole, type TerritoryZone } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
@@ -1203,6 +1205,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         // interfere with any in-progress objective.
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
+        // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
+        // equipment, so it is treated as a quest objective rather than as loot
+        // (loot sits at Priority 5, below Engage, which would let a gold coin
+        // outrank it on distance luck). It deliberately sits BELOW Retreat,
+        // ArenaLockin and LocalThreatRecovery — low health, being sealed in a
+        // boss arena, and an immediate local threat all still win — and Track
+        // B's dodge vector blends into the heading regardless of which Track A
+        // branch fired.
+        this.buildBossChestBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -1300,6 +1311,28 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.config.scanRadius,
           true,
         );
+        const lockin = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        if (lockin !== null) {
+          const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
+          const attackRange =
+            threat !== null ? (ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0) : 0;
+          const bossContactEscape =
+            lockin.kind === 'boss' &&
+            threat !== null &&
+            threat.eid === lockin.eid &&
+            threat.distance <= CONTACT_SAFE_ORBIT_FT &&
+            attackRange > retreatEscapeRadius;
+          // In lock-in encounters (boss room / spawner arena), retreating is a
+          // dead-end: the player cannot exit and endlessly kiting in a cage only
+          // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
+          // run its defensive spacing/add-pressure logic instead of retreat loops.
+          // Preserve the bossContactEscape carve-out: a long-range boss already
+          // body-blocking the player is no longer a ranged lock-in problem.
+          if (!bossContactEscape) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
+        }
         if (threat) {
           // LocalThreatRecovery is the bounded follow-up for this same threat.
           // Let melee close/attack instead of re-entering RETREAT at the outer
@@ -1818,10 +1851,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * chain-plan targets (e.g. the far-away staircase) while sealed inside a
    * room it cannot leave.
    *
-   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
-   * life-critical and drops out of arena lock-in only long enough to kite
-   * to a safe tile. Because the arena also traps the threats, the kite is
-   * bounded and returns to lock-in as soon as HP recovers.
+   * Retreat (Priority 1) intentionally yields while lock-in is active: in a
+   * sealed arena there is no meaningful "safe tile" exit route, so lock-in
+   * uses defensive ENGAGE decisions (boss/add pressure handling + spacing)
+   * instead of unbounded retreat loops.
    *
    * Detection lives in `arena-lockin.ts`; the BT node here is purely a
    * priority + blackboard/logging shim so the state machine stays inspect-
@@ -1920,32 +1953,25 @@ export class BehaviorTreeAI implements AIInputProvider {
           return BTStatus.SUCCESS;
         }
 
-        // Route the objective through the appropriate movement plan:
-        //   - Spawners are stationary structures, so orbit/kite is wasted
-        //     motion — walk straight in and let the weapon auto-fire once
-        //     the strike gate is reached. This is critical for melee: the
-        //     spawner's `defensive` mode floods the arena with adds every
-        //     2s, so any second spent orbiting a stationary target is a
-        //     second the swarm grows.
-        //   - Bosses move, so run `planEngagement` (kite/strafe) exactly
-        //     like normal Engage would.
+        // Route both objective kinds through `planEngagement` so the movement
+        // planner keeps its spacing + dodge behavior while lock-in is active.
+        // This avoids body-parking on top of a spawner center under swarm
+        // pressure, while still keeping `targetEid` pinned to the objective.
         this.decision.state = AIState.ENGAGE;
         this.decision.targetEid = target.eid;
+        const objectiveTarget: WorldTarget = {
+          eid: target.eid,
+          x: target.x,
+          y: target.y,
+          distance: targetDistance,
+        };
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, objectiveTarget);
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
         if (target.kind === 'boss') {
-          const bossWt: WorldTarget = {
-            eid: target.eid,
-            x: target.x,
-            y: target.y,
-            distance: targetDistance,
-          };
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
-          this.decision.targetX = plan.targetX;
-          this.decision.targetY = plan.targetY;
           this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
         } else {
-          this.decision.targetX = target.x;
-          this.decision.targetY = target.y;
-          this.decision.reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+          this.decision.reason = `Arena lock-in — ${plan.reason} (spawner ${String(target.eid)})`;
         }
         return BTStatus.SUCCESS;
       }),
@@ -1987,6 +2013,87 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  /**
+   * Boss-chest behavior: walk onto an open boss chest so
+   * `bossChestPickupSystem` (4 ft radius) grants its equipment.
+   *
+   * Routed through {@link createProgressTarget} so the chest reuses the same
+   * pathing, reachability, and dwell-watchdog machinery every other objective
+   * uses — an unreachable or unreachably-stalled chest degrades to the next
+   * Track A branch instead of deadlocking the tree.
+   */
+  private buildBossChestBehavior(): BTNode {
+    return sequence(
+      'Boss Chest',
+      condition('Boss Chest Available', (ctx) => {
+        const target = this.findBossChestObjective(ctx.world, ctx.playerX, ctx.playerY);
+        if (!target) {
+          return false;
+        }
+        ctx.blackboard['bossChestTarget'] = target;
+        return true;
+      }),
+      action('Set Boss Chest State', (ctx) => {
+        const target = ctx.blackboard['bossChestTarget'] as ProgressTarget;
+        this.decision.state = AIState.EXPLORE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = target.x;
+        this.decision.targetY = target.y;
+        this.decision.reason = target.reason;
+        this.decision.npcInteraction = null;
+        this.rememberRetreatObjective(ctx.world, target.x, target.y);
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  /**
+   * Nearest reachable unopened boss chest, or `null`.
+   *
+   * Iterates `world.bossChestEids` (chestId→eid sidecar) rather than querying
+   * ECS so the scan stays O(chests). Unreachable chests are skipped rather
+   * than returned, so a chest sealed behind a locked door does not stall the
+   * AI against a wall; and while the dwell watchdog has position goals
+   * suppressed, the whole branch yields so the watchdog's escape behavior can
+   * run.
+   */
+  private findBossChestObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    if (world.bossChestEids.size === 0) {
+      return null;
+    }
+    if (world.frameCount < this.progressGoalSuppressedUntilFrame) {
+      return null;
+    }
+    const { position } = world.stores;
+    const candidates: WorldTarget[] = [];
+    for (const eid of world.bossChestEids.values()) {
+      if (!entityExists(world.ecs, eid)) {
+        continue;
+      }
+      const x = position.x[eid] ?? 0;
+      const y = position.y[eid] ?? 0;
+      candidates.push({ eid, x, y, distance: Math.hypot(x - playerX, y - playerY) });
+    }
+    candidates.sort((a, b) => a.distance - b.distance);
+    for (const candidate of candidates) {
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return this.createProgressTarget(
+          candidate.x,
+          candidate.y,
+          playerX,
+          playerY,
+          'Claiming boss chest equipment',
+          candidate.eid,
+        );
+      }
+    }
+    return null;
   }
 
   /**
@@ -2601,10 +2708,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       let found = false;
 
       const grabRadius = this.config.opportunisticGrabRadius;
-      const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+      // `kind` is documentation only here (the corridor test is identical for
+      // every pickup type), so the boss chest joins the list with its own label
+      // rather than widening the navigation-level `LootKind` union. Including it
+      // makes the chest's 4 ft auto-open radius far less finicky: the AI curves
+      // onto a chest it is already walking past instead of needing Track A to
+      // re-target it.
+      const candidates: Array<{ kind: LootKind | 'chest'; entities: ReturnType<typeof query> }> = [
         { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
         { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
         { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        { kind: 'chest', entities: query(ctx.world.ecs, [BossChestEntity, Position]) },
       ];
       for (const candidate of candidates) {
         for (const eid of candidate.entities) {
@@ -3970,7 +4084,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerEid,
         playerX,
         playerY,
-        resolveFloor2SettlementAnchor(world),
+        // Generalized from the Floor 2 settlement to "the nearest safe
+        // context": the AI's equipment/achievement/ability actions are
+        // safe-context gated exactly as a human's panels are, so on Floor 1 —
+        // which has no settlement — the return trip must target the nearest
+        // safe room (including a boss room that became safe after the kill)
+        // or the router would never fire and chest loot would go unequipped.
+        resolveNearestSafeAnchor(world, playerX, playerY),
         dangerNearbyForSettlementReturn,
         progressSuppressedForSettlementReturn,
       );
@@ -7080,6 +7200,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
+
+    const settlementReturnIntent = getSettlementReturnIntent(world);
+    if (
+      !progressSuppressed &&
+      (settlementReturnIntent.status === 'armed' || settlementReturnIntent.status === 'traveling')
+    ) {
+      const safeAnchor = resolveNearestSafeAnchor(world, playerX, playerY);
+      if (safeAnchor) {
+        return this.createProgressTarget(
+          safeAnchor.x,
+          safeAnchor.y,
+          playerX,
+          playerY,
+          'Returning to a safe room to run maintenance (equip/claim)',
+        );
+      }
+    }
 
     if (!tutorialAccepted) {
       const tutorialGoonEid = floorScenario.guideNpcEid ?? -1;

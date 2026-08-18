@@ -153,4 +153,36 @@ describe('MainGameScene characterization guards', () => {
       'camera Y delta should equal ftToPx(Δfeet.y)',
     ).toBeLessThanOrEqual(CAMERA_TOLERANCE_PX);
   });
+
+  it('restarts the real scene during a Floor 1 to Floor 2 transition', async () => {
+    const pageErrors: string[] = [];
+    const onPageError = (error: Error): void => {
+      pageErrors.push(error.message);
+    };
+    page.on('pageerror', onPageError);
+
+    try {
+      await loadMainSceneProbeLab(page);
+      await mainSceneProbe.resolveLoadout(page);
+      await mainSceneProbe.primeFloor1StairTransition(page);
+
+      await mainSceneProbe.queueInteraction(page);
+      await waitForState(page, (s) => s.modalOpen, {
+        label: 'descend confirmation modal',
+      });
+      await page.keyboard.press('Enter');
+
+      const floor2State = await waitForState(
+        page,
+        (s) => s.settlementRoomCount > 0 && s.displayObjectCount > 0,
+        { timeoutMs: 15_000, label: 'Floor 2 scene after restart' },
+      );
+
+      expect(new URL(page.url()).searchParams.get('floor')).toBe('floor2');
+      expect(floor2State.settlementRoomCount).toBeGreaterThan(0);
+      expect(pageErrors).toEqual([]);
+    } finally {
+      page.off('pageerror', onPageError);
+    }
+  });
 });

@@ -8,7 +8,7 @@ import {
   Spawner,
   Sprite,
 } from '../../src/core/components.js';
-import { spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { clearEntityStores, spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
   ensureBossBattleSpellReward,
@@ -74,6 +74,7 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
+import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 
 function roomPerimeterEntryCandidates(room: {
   bounds: { x: number; y: number; width: number; height: number };
@@ -854,9 +855,16 @@ describe('floor1Scenario', () => {
     expect(world.stores.position.x[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.x);
     expect(world.stores.position.y[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.y);
     expect(expectedSlimeRatPlacement.preferredMinimumSatisfied).toBe(true);
+    clearEntityStores(world, slimeRatBossEid);
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
+    const slimeRatChestId = createBossChestId('floor1-slime-rat-boss');
+    expect(world.bossChests.has(slimeRatChestId)).toBe(true);
+    const slimeRatChestEid = world.bossChestEids.get(slimeRatChestId);
+    expect(slimeRatChestEid).toBeTypeOf('number');
+    expect(world.stores.position.x[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.x);
+    expect(world.stores.position.y[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.y);
     expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&
@@ -899,6 +907,7 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.staircaseUnlocked).toBe(true);
     expect(objective.bossBattles.get('staircase')!.defeated).toBe(true);
+    expect(world.bossChests.has(createBossChestId('floor1-rat-slime-boss'))).toBe(true);
 
     const descended = confirmFloor1StairDescend(world, player);
     expect(descended).toBe(true);
@@ -1377,7 +1386,10 @@ describe('floor1Scenario', () => {
       expect(world.featureUnlocks.equipment).toBe(true);
       expect(getShopkeeperStage(world)).toBe('awaiting-equip');
 
-      // Equip the charm → quest completes.
+      // Equip the charm → quest completes. Equipping is safe-context gated
+      // (the human opens the equipment panel), and the merchant stands in the
+      // safe welcome room, so the player is in a safe context at this point.
+      world.playerInSafeRoom = true;
       expect(equipPurchasedGear(world, player)).toBe(true);
       questSystem(world);
       expect(getShopkeeperStage(world)).toBe('complete');

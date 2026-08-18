@@ -1,4 +1,5 @@
 import type { GameWorld } from './world.js';
+import type { RoomData } from '../shared/map-types.js';
 
 export interface Floor2SettlementAnchor {
   readonly x: number;
@@ -19,8 +20,26 @@ export function resolveFloor2SettlementAnchor(world: GameWorld): Floor2Settlemen
   }
 
   const room = floorMap.roomGraph.get(settlementRoomId);
-  const cells = room?.interiorCells;
-  if (!room || !cells || cells.length === 0) {
+  if (!room) {
+    return null;
+  }
+  const best = pickRoomAnchorCell(room);
+  if (!best) {
+    return null;
+  }
+  return floorMap.tileToWorld(best.x, best.y);
+}
+
+/**
+ * The interior cell closest to a room's geometric center — the stable walkable
+ * anchor an AI should path to when it wants to be "in" that room.
+ *
+ * Ties break on lowest y then lowest x so the result is deterministic for a
+ * given room regardless of `interiorCells` ordering.
+ */
+export function pickRoomAnchorCell(room: RoomData): { x: number; y: number } | null {
+  const cells = room.interiorCells;
+  if (!cells || cells.length === 0) {
     return null;
   }
 
@@ -43,5 +62,5 @@ export function resolveFloor2SettlementAnchor(world: GameWorld): Floor2Settlemen
     }
   }
 
-  return floorMap.tileToWorld(best.x, best.y);
+  return { x: best.x, y: best.y };
 }

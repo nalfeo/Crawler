@@ -179,6 +179,40 @@ export const KNIP_SUPPRESSIONS: readonly KnipSuppression[] = [
       'is a leftover from PR #2391 and should be removed once a follow-up cleanup lands.',
     expiresOn: '2026-10-31',
   },
+  {
+    file: 'src/core/world.ts',
+    issues: ['exports'],
+    reason:
+      'createGoldLedger and createVendorLedger are exported factory helpers for the new ' +
+      'run-stats ledger surface, but the current merged tree constructs ledgers internally. ' +
+      'Remove the exports or add a production caller once the vendor telemetry API settles.',
+    expiresOn: '2026-09-30',
+  },
+  {
+    file: 'src/game/floorScenario.ts',
+    issues: ['exports'],
+    reason:
+      'Floor 1 vendor stock helpers and the spell-broker vendor id are exported for AI/run-stats ' +
+      'vendor telemetry, but the current merged tree only consumes the merchant id externally. ' +
+      'Remove these exports or wire the remaining telemetry callers when the ledger API settles.',
+    expiresOn: '2026-09-30',
+  },
+  {
+    file: 'src/shared/data/floor3/index.ts',
+    issues: ['files'],
+    reason:
+      'Floor 3 data barrels were added ahead of the first production Floor 3 import path. ' +
+      'Keep the barrel suppressed only until Floor 3 content loading consumes it or deletes it.',
+    expiresOn: '2026-09-30',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    issues: ['exports'],
+    reason:
+      'petSpeciesDefSchema is re-exported for Floor 3 data validation tooling, but no external ' +
+      'caller imports it yet. Consume the schema from Floor 3 loading/tests or drop the export.',
+    expiresOn: '2026-09-30',
+  },
 ];
 
 // ---------------------------------------------------------------------------

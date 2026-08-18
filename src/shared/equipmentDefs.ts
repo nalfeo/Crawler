@@ -15,6 +15,7 @@
  */
 
 import type { EquipmentItemDef } from './equipment-types.js';
+import { FLOOR1_MERCHANTS_CHARM_COST } from './constants.js';
 import {
   FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS,
   FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
@@ -52,8 +53,8 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   ],
 };
 
-/** Cost (in gold) of the merchant's charm. */
-export const MERCHANTS_CHARM_COST = 15;
+/** Cost (in gold) of the merchant's charm. Tunable via `shopPricing.floor1`. */
+export const MERCHANTS_CHARM_COST: number = FLOOR1_MERCHANTS_CHARM_COST;
 
 // ---------------------------------------------------------------------------
 // Weapon equipment defs

@@ -154,6 +154,223 @@ export function createLootLedger(): LootLedger {
   return { xpSpawned: 0, xpCollected: 0, goldSpawned: 0, goldCollected: 0 };
 }
 
+/**
+ * Deterministic gold economy accounting: where the run's gold came from and
+ * where it went. Purely additive counters (never decremented) so
+ * `spentTotal / earnedTotal` is a stable spend-through metric and
+ * `earnedTotal - spentTotal` reconstructs the unspent balance independently
+ * of `playerGold` (which is also mutated by carryover).
+ *
+ * Deliberately **not** part of the player carryover snapshot: it measures a
+ * single floor session's economy, which is exactly the quantity the Floor 1
+ * pricing gate is written against.
+ */
+export interface GoldLedger {
+  /** Gold picked up off the floor (drops, chests, piles). */
+  earnedFromDrops: number;
+  /** Gold granted by claimed achievement loot boxes. */
+  earnedFromLootBoxes: number;
+  /** Gold spent on the Floor 1 merchant's charm. */
+  spentOnCharm: number;
+  /** Gold spent on post-quest merchant weapons. */
+  spentOnMerchantWeapon: number;
+  /** Gold spent at the Floor 1 Spell Broker. */
+  spentOnSpell: number;
+  /** Number of charm purchases (0 or 1 per run). */
+  charmPurchases: number;
+  /** Number of post-quest merchant weapon purchases. */
+  merchantWeaponPurchases: number;
+  /** Number of Spell Broker spell purchases. */
+  spellPurchases: number;
+  /**
+   * Gold earned at the moment the floor exit was confirmed, i.e. the income the
+   * run could still convert into power at a Floor 1 vendor. `null` until the
+   * floor completes.
+   *
+   * This exists because Floor 1 grants a large share of its income through
+   * floor-clear achievement loot boxes that resolve *after* the last vendor
+   * window; that gold is Floor 2 seed money by construction and can never
+   * appear as Floor 1 spend.
+   */
+  earnedBeforeExit: number | null;
+}
+
+/** Create a zeroed gold ledger. */
+export function createGoldLedger(): GoldLedger {
+  return {
+    earnedFromDrops: 0,
+    earnedFromLootBoxes: 0,
+    spentOnCharm: 0,
+    spentOnMerchantWeapon: 0,
+    spentOnSpell: 0,
+    charmPurchases: 0,
+    merchantWeaponPurchases: 0,
+    spellPurchases: 0,
+    earnedBeforeExit: null,
+  };
+}
+
+/**
+ * Latch {@link GoldLedger.earnedBeforeExit} at floor completion, before the
+ * run-end achievement phase grants its loot boxes. Idempotent — the first call
+ * wins, so a re-entered completion path cannot inflate the spendable income.
+ */
+export function markGoldLedgerFloorExit(world: GameWorld): void {
+  if (world.goldLedger.earnedBeforeExit !== null) return;
+  world.goldLedger.earnedBeforeExit =
+    world.goldLedger.earnedFromDrops + world.goldLedger.earnedFromLootBoxes;
+}
+
+/** One item a vendor had on offer at the moment it was visited. */
+export interface VendorStockEntry {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+/** A single interaction with a vendor, with the inventory it was offering. */
+export interface VendorVisitRecord {
+  /** Stable vendor identity (e.g. `floor1-merchant`, `floor1-spell-broker`). */
+  readonly vendorId: string;
+  /** Simulated game time (ms) of the visit. */
+  readonly gameTimeMs: number;
+  /** Simulation frame of the visit; also dedupes same-frame re-entry. */
+  readonly frame: number;
+  /** Gold the player held on arrival — the budget the decision was made against. */
+  readonly playerGold: number;
+  /** Inventory the vendor was offering at that moment. */
+  readonly stock: readonly VendorStockEntry[];
+}
+
+/**
+ * What the shopper decided at a vendor.
+ *
+ * `wanted` — intended to buy a specific item (the intent was formed).
+ * `purchased` — the intent completed and gold changed hands.
+ * `unaffordable` — wanted the item but could not pay for it yet.
+ * `declined` — chose not to buy (e.g. no weapon-class switch this run).
+ * `abandoned` — gave the intent up (deficit unfarmable inside the run budget).
+ */
+export type VendorDecisionOutcome =
+  | 'wanted'
+  | 'purchased'
+  | 'unaffordable'
+  | 'declined'
+  | 'abandoned';
+
+/** A decision made at a vendor, and the budget it was made against. */
+export interface VendorDecisionRecord {
+  readonly vendorId: string;
+  /** Item the decision was about; `null` when no item could be chosen. */
+  readonly itemId: string | null;
+  /** Asking price of `itemId` (0 when unknown). */
+  readonly cost: number;
+  readonly outcome: VendorDecisionOutcome;
+  /** Gold held when the decision was made. */
+  readonly playerGold: number;
+  readonly gameTimeMs: number;
+  readonly frame: number;
+  /** Short machine-stable reason tag, e.g. `insufficient-gold`. */
+  readonly reason: string;
+}
+
+/**
+ * Deterministic per-run vendor telemetry: every merchant visit (with the
+ * inventory on offer) and every shopping decision, including the ones that
+ * *wanted* to buy but could not pay. Purely observational — nothing in the
+ * simulation reads it back, so recording can never change gameplay.
+ */
+export interface VendorLedger {
+  visits: VendorVisitRecord[];
+  decisions: VendorDecisionRecord[];
+  /** Visits/decisions beyond {@link _VENDOR_LEDGER_MAX_ENTRIES}, counted only. */
+  droppedVisits: number;
+  droppedDecisions: number;
+  /**
+   * Same-frame dedup keys, tracked independently of the retained record
+   * arrays. Once the retention cap is hit the tail stops growing, so a
+   * dedup check against `visits[visits.length - 1]`/`decisions[...]` would
+   * keep comparing against a stale entry and double-count every subsequent
+   * same-frame re-entry as a fresh dropped visit/decision.
+   */
+  lastVisitKey: string | null;
+  lastDecisionKey: string | null;
+}
+
+/**
+ * Cap on retained visit/decision records. A run interacts with a vendor many
+ * times (the AI re-targets on a cooldown), so the tail is bounded and the
+ * overflow is counted instead of retained — RunStats must stay a small,
+ * serializable object.
+ */
+export const _VENDOR_LEDGER_MAX_ENTRIES = 64;
+
+/** Create an empty vendor ledger. */
+export function createVendorLedger(): VendorLedger {
+  return {
+    visits: [],
+    decisions: [],
+    droppedVisits: 0,
+    droppedDecisions: 0,
+    lastVisitKey: null,
+    lastDecisionKey: null,
+  };
+}
+
+/**
+ * Record a vendor visit. Same-vendor re-entry inside one frame collapses into
+ * a single visit so a meet + purchase in the same tick is not double counted.
+ */
+export function recordVendorVisit(
+  world: GameWorld,
+  vendorId: string,
+  stock: readonly VendorStockEntry[],
+): void {
+  const ledger = world.vendorLedger;
+  const key = `${vendorId}:${world.frameCount}`;
+  if (ledger.lastVisitKey === key) {
+    return;
+  }
+  ledger.lastVisitKey = key;
+  if (ledger.visits.length >= _VENDOR_LEDGER_MAX_ENTRIES) {
+    ledger.droppedVisits += 1;
+    return;
+  }
+  ledger.visits.push({
+    vendorId,
+    gameTimeMs: world.elapsedMs,
+    frame: world.frameCount,
+    playerGold: world.playerGold,
+    stock: stock.map((entry) => ({ itemId: entry.itemId, cost: entry.cost })),
+  });
+}
+
+/**
+ * Record a vendor decision. Consecutive identical decisions (same vendor, item,
+ * outcome and reason) collapse, because the AI re-polls a pending intent every
+ * tick — the ledger records state *changes*, not poll counts.
+ */
+export function recordVendorDecision(
+  world: GameWorld,
+  decision: Omit<VendorDecisionRecord, 'gameTimeMs' | 'frame' | 'playerGold'>,
+): void {
+  const ledger = world.vendorLedger;
+  const key = `${decision.vendorId}:${decision.itemId}:${decision.outcome}:${decision.reason}`;
+  if (ledger.lastDecisionKey === key) {
+    return;
+  }
+  ledger.lastDecisionKey = key;
+  if (ledger.decisions.length >= _VENDOR_LEDGER_MAX_ENTRIES) {
+    ledger.droppedDecisions += 1;
+    return;
+  }
+  ledger.decisions.push({
+    ...decision,
+    playerGold: world.playerGold,
+    gameTimeMs: world.elapsedMs,
+    frame: world.frameCount,
+  });
+}
+
 export interface GameWorld {
   /** The bitecs ECS world instance */
   ecs: ReturnType<typeof createBitecsWorld>;
@@ -386,6 +603,20 @@ export interface GameWorld {
    * so `collected / spawned` is a stable collection-efficiency metric.
    */
   lootLedger: LootLedger;
+  /**
+   * Deterministic per-floor gold economy accounting (earned split by source,
+   * spent split by vendor). Incremented by `itemPickupSystem` (drops),
+   * `achievementRewards` (loot boxes) and the Floor 1 purchase functions in
+   * `floorScenario`. Drives the Floor 1 pricing gate.
+   */
+  goldLedger: GoldLedger;
+  /**
+   * Deterministic per-run vendor telemetry: merchant visits (with the stock on
+   * offer) and shopping decisions, including intents that could not be paid
+   * for. Written by the Floor 1 vendor entry points and the AI purchase
+   * intents; read only by run-stats assembly.
+   */
+  vendorLedger: VendorLedger;
   /**
    * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
    * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
@@ -739,6 +970,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     lootLedger: createLootLedger(),
+    goldLedger: createGoldLedger(),
+    vendorLedger: createVendorLedger(),
     peakGold: 0,
     floorMap: null,
     floorId: '',

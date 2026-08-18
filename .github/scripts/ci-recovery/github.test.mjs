@@ -203,3 +203,24 @@ test('request does not retry a non-GET (POST) on 503', async (t) => {
     },
   );
 });
+
+test('graphql retries a query on 503 and succeeds on the next attempt', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((_req, res) => {
+    callCount += 1;
+    if (callCount === 1) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Service Unavailable' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ data: { viewer: { login: 'crawler' } } }));
+  });
+  t.after(() => server.close());
+
+  const { graphql: graphqlFromFreshImport } = await importRequestWithApiBase(port);
+  const result = await graphqlFromFreshImport('token', 'query { viewer { login } }');
+
+  assert.equal(callCount, 2);
+  assert.deepEqual(result, { viewer: { login: 'crawler' } });
+});

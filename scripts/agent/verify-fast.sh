@@ -53,6 +53,39 @@ is_known_mjs_path() {
   [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
 }
 
+# Explicit allowlist of hand-written `.d.mts` declaration files that live
+# beside a `.mjs` module under .github/extensions/ (the TS-importing-.mjs
+# pattern: a .ts file imports a sibling .mjs directly and a hand-written
+# .d.mts twin supplies its types without requiring allowJs). These are pure
+# type declarations with no runtime code: ESLint does not lint declaration
+# files anywhere in this repo (see eslint.config.js's *.d.ts ignores), and
+# `tsc --noEmit --project tsconfig.json` already type-checks each one
+# transitively via the specific supported .ts file(s) listed below that import
+# its sibling .mjs -- confirmed by running the full project typecheck after
+# adding one. A NEW `.d.mts` (or one with no real transitively-importing
+# sibling .mjs) must be added here explicitly, rather than broadly matched,
+# so it cannot silently skip both lint and typecheck coverage.
+KNOWN_DMTS_PATHS=(
+  # imported by tests/unit/devtools/achievements-canvas-adapter-parity.test.ts
+  '.github/extensions/achievements/lib/achievements-data.d.mts'
+  # imported by tests/unit/extensions/asset-search-index-builder.test.ts
+  '.github/extensions/asset-search/lib/index-builder.d.mts'
+  # imported by scripts/sprites/generate-one.ts and
+  # tests/integration/generate-one.test.ts
+  '.github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts'
+  # imported by tests/unit/extensions/format-link-host.test.ts
+  '.github/extensions/worktree-server-status/format-link-host.d.mts'
+)
+is_known_dmts_path() {
+  local candidate="$1"
+  for known in "${KNOWN_DMTS_PATHS[@]}"; do
+    if [ "$candidate" = "$known" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
 # is safe: the ESLint config here has NO type-aware or cross-file rules
@@ -110,6 +143,8 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   for f in "${changed_repo_ts[@]}"; do
     if is_supported_ts_path "$f"; then
       changed_ts+=("$f")
+    elif is_known_dmts_path "$f"; then
+      : # known declaration-only file; tsc already covers it transitively above
     else
       unsupported_ts+=("$f")
     fi
@@ -225,6 +260,12 @@ echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
+
+# AI equipment-parity guard: a pure text scan of src/game/ai (~40 files, well
+# under a second) that fails if the AI path forces past the safe-context gate a
+# human player is bound by. Cheap enough to run unconditionally, and the failure
+# it prevents — a silently privileged balance oracle — is invisible in review.
+npx tsx scripts/agent/health/check-ai-equip-parity.ts
 
 # The three integrity guards below are pure JSON/file reads (no sim, no git, no
 # subprocess) and together cost well under a second, so they always run — the

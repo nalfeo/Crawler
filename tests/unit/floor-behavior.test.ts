@@ -5,14 +5,14 @@ import { DEFAULT_FLOOR_BEHAVIOR } from '../../src/shared/floor-behavior';
 import { floor1Manifest, floor2Manifest } from '../../src/shared/floor-manifest';
 
 describe('floor behavior config', () => {
-  it('ships Floor 1 legacy safe-room semantics in the manifest', () => {
+  it('ships Floor 1 safe-room and boss-chest semantics in the manifest', () => {
     expect(floor1Manifest.behavior).toEqual({
       spawnRoomIsSafe: false,
       safeRoomWeaponImmunity: true,
       safeRoomDoorsAutoClose: true,
       lineOfSightAggro: false,
-      equipmentEconomy: false,
-      bossChests: false,
+      equipmentEconomy: true,
+      bossChests: true,
     });
   });
 
