@@ -702,6 +702,64 @@ export function classifyStaleBase({ pullRequest, basePulls, baseBranch, comparis
   return { action: 'skip', reason: 'base-not-stale' };
 }
 
+// GitHub's stacked-pull-request feature refuses the two remediations CI Recovery
+// would normally apply to a BEHIND/stale-base PR:
+//   PATCH /pulls/{n}      base=main  -> 422 "part of a stack"
+//   PUT   /pulls/{n}/update-branch   -> 403 "not supported"
+// Detect that refusal specifically so a genuine 422 (bad base, protected branch)
+// still surfaces as a hard failure rather than being silently downgraded.
+export function isStackedRetargetRefusal(error) {
+  if (error?.status !== 422) return false;
+  const messages = [error?.data?.message, ...(error?.data?.errors || []).map((e) => e?.message)];
+  return messages.some((message) => /part of a stack/i.test(String(message || '')));
+}
+
+// Merge main forward into the PR's head branch. Unlike base retargeting and
+// update-branch, the merges API is not stack-gated, so this is the one path that
+// can clear a stacked PR's BEHIND state automatically. A 409 means the merge
+// conflicts, which is a real reconciliation the conflict coordinator owns.
+export async function mergeMainForward({
+  owner,
+  repo,
+  pullRequest,
+  mutationToken,
+  requestFn = request,
+}) {
+  const headRef = String(pullRequest.head?.ref || '');
+  try {
+    const response = await requestFn(mutationToken, `/repos/${owner}/${repo}/merges`, {
+      method: 'POST',
+      body: {
+        base: headRef,
+        head: 'main',
+        commit_message: `chore(ci-recovery): merge main into ${headRef} (stacked PR cannot be retargeted)`,
+      },
+    });
+    if (response.status === 204) {
+      return {
+        result: 'already-current',
+        message: 'The branch is already up to date with `main`.',
+      };
+    }
+    return {
+      result: 'merged',
+      message: 'Merged `main` forward into the head branch instead, which clears the stale base.',
+    };
+  } catch (error) {
+    if (error?.status === 409) {
+      return {
+        result: 'conflict',
+        message:
+          'Merging `main` forward conflicts, so this PR needs a manual unstack or conflict resolution.',
+      };
+    }
+    return {
+      result: 'failed',
+      message: `Merging \`main\` forward failed (${error.message}), so this PR needs manual attention.`,
+    };
+  }
+}
+
 export async function retargetStaleBasePulls({
   scheduledPulls,
   repository,
@@ -772,12 +830,48 @@ export async function retargetStaleBasePulls({
       );
     }
 
-    const retargeted = (
-      await requestFn(mutationToken, `/repos/${owner}/${repo}/pulls/${pullRequest.number}`, {
-        method: 'PATCH',
-        body: { base: 'main' },
-      })
-    ).data;
+    let retargeted = null;
+    try {
+      retargeted = (
+        await requestFn(mutationToken, `/repos/${owner}/${repo}/pulls/${pullRequest.number}`, {
+          method: 'PATCH',
+          body: { base: 'main' },
+        })
+      ).data;
+    } catch (error) {
+      if (!isStackedRetargetRefusal(error)) {
+        writeLog(
+          `stale-base pr=#${pullRequest.number} base=${baseRef} action=skip reason=retarget-failed error=${error.message}`,
+        );
+        continue;
+      }
+      // GitHub's stacked-PR feature refuses both `PATCH base` (422) and
+      // `PUT /update-branch` (403), so neither normal remediation can run. Merge
+      // main forward into the head branch instead: the merges API is not
+      // stack-gated, and it clears the BEHIND state that blocks the PR while
+      // leaving the stack intact for a human to unstack deliberately.
+      const merged = await mergeMainForward({
+        owner,
+        repo,
+        pullRequest,
+        mutationToken,
+        requestFn,
+      });
+      writeLog(
+        `stale-base-stacked pr=#${pullRequest.number} base=${baseRef} action=merge-forward result=${merged.result}`,
+      );
+      await requestFn(
+        mutationToken,
+        `/repos/${owner}/${repo}/issues/${pullRequest.number}/comments`,
+        {
+          body: {
+            body: `${STALE_BASE_RETARGET_MARKER} base=${baseRef} reason=${decision.reason} outcome=merge-forward-${merged.result} -->\nCI Recovery could not retarget this PR to \`main\` because GitHub's stacked-pull-request feature refuses base changes and \`update-branch\` on a stacked PR. ${merged.message}`,
+          },
+          method: 'POST',
+        },
+      );
+      continue;
+    }
     await requestFn(
       mutationToken,
       `/repos/${owner}/${repo}/issues/${pullRequest.number}/comments`,

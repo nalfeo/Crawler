@@ -60,19 +60,38 @@ Unblocked instead by merging forward with a plain git push (main → #3027's bra
 then #3027's branch → #3033's branch). Both moved from `BEHIND` to
 `MERGEABLE`/`BLOCKED` (CI pending only).
 
+## Stacked-PR remediation (also fixed in this PR)
+
+Both remediations CI Recovery would normally apply are refused by GitHub's
+stacked-pull-request feature (see the two errors above). This path had never been
+exercised because detection always 404'd first.
+
+The router now catches that specific `422` (`isStackedRetargetRefusal`, matched on
+the "part of a stack" message so a genuine bad-base 422 is not silently
+downgraded) and falls back to `mergeMainForward()`:
+`POST /repos/{o}/{r}/merges` with `base=<head ref>`, `head=main`. The merges API
+is **not** stack-gated, so it is the one automatic path that clears a stacked PR's
+`BEHIND` state; it leaves the stack intact rather than unstacking on the human's
+behalf. A `409` is reported as `result=conflict` and any other error as
+`result=failed`, both explained in the PR comment, so a real conflict routes to
+human/conflict-coordinator attention.
+
+Notably, the repo's own `crawler/no-rethrow-in-automation-catch` ESLint rule
+caught a defect in the first draft of this fallback: re-throwing a non-stack 422
+from inside the per-PR loop would have abandoned every remaining PR in the batch —
+the same class of bug that once deadlocked the merge queue. Every failure mode in
+this path now logs and `continue`s.
+
 ## Unresolved issues
 
-**The router's retarget remediation is still blocked for stacked PRs.** This PR
-fixes _detection_; once `classifyStaleBase` returns `retarget`, the follow-up
-`PATCH ... base: 'main'` will hit the same `422` above whenever GitHub considers
-the PR part of a stack. That path has simply never been exercised on a real
-stacked PR because detection always 404'd first.
+None blocking. The stale-base path now degrades in stages: retarget → merge
+forward → conflict/failed comment for a human, and no failure mode aborts the
+batch.
 
 ## Recommended next steps
 
-1. Teach `retargetStaleBasePulls` to handle the stacked-PR `422` explicitly:
-   either fall back to a merge-forward push, or label the PR and file an incident
-   so a human/cloud agent unstacks it, rather than throwing.
-2. Consider an assertion or lint rule that flags `encodeURIComponent(<ref>)` in
+1. Consider an assertion or lint rule that flags `encodeURIComponent(<ref>)` in
    API path construction across `.github/scripts/`, since the same bug existed
    independently in two files.
+2. Watch the first real `stale-base-stacked ... action=merge-forward` log line in
+   production to confirm the merges API behaves as expected against a live stack.
