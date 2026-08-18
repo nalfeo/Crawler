@@ -332,17 +332,21 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       <div id="pairs"></div>
       <section class="feedback-panel" aria-labelledby="feedback-heading">
         <strong id="feedback-heading">Capture review feedback</strong>
+        <label for="feedback-pair">Screenshot pair</label>
         <select id="feedback-pair"><option value="">General screenshot feedback</option></select>
+        <label for="feedback-scope">Feedback scope</label>
         <select id="feedback-scope">
           <option value="task">This task only</option>
           <option value="reusable">Promote to reusable guidance</option>
         </select>
+        <label for="feedback-target">Feedback target</label>
         <select id="feedback-target" hidden>
           <option value="ux-agent">UX Designer agent</option>
           <option value="visual-review-skill">Visual review skill</option>
           <option value="deterministic-eval">Deterministic evaluation</option>
           <option value="workflow">Review workflow</option>
         </select>
+        <label for="feedback-comment">Feedback comment</label>
         <textarea id="feedback-comment" rows="3" placeholder="What should change, and what evidence supports it?"></textarea>
         <button type="button" id="feedback-submit">Save feedback</button>
         <div class="feedback-list" id="feedback-list"></div>

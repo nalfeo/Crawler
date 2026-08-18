@@ -404,7 +404,7 @@ export function createEquipmentUI(
 
   const hint = crispText(
     panelX + PANEL_PADDING,
-    panelY + PANEL_PADDING + 24,
+    panelY + PANEL_PADDING + 34,
     'Click a slot to filter or unequip',
     {
       fontFamily: FONT_FAMILY,
@@ -2110,7 +2110,7 @@ export function createEquipmentUI(
       .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
     hint
-      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 24)
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 34)
       .setResolution(textResolution);
     // dollBg/statsX are derived from panelX/panelY captured at construction; for
     // simplicity we re-render against the originals, which stay valid because the

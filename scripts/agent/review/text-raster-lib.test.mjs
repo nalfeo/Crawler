@@ -85,3 +85,12 @@ test('does not suppress non-text blur findings', () => {
   assert.equal(isFuzzinessFinding('Weapon icon is blurry'), false);
   assert.equal(isFuzzinessFinding('Text is blurry'), true);
 });
+
+test('preserves non-fuzziness clauses from mixed findings', () => {
+  const result = {
+    blocking_findings: ['Text is blurry and contrast is insufficient'],
+    recommended_fixes: [],
+  };
+  assert.equal(suppressUnsupportedFuzziness(result, { passed: true }), 1);
+  assert.deepEqual(result.blocking_findings, ['contrast is insufficient']);
+});

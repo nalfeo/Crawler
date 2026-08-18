@@ -53,10 +53,10 @@ export async function run(argv = process.argv.slice(2)): Promise<void> {
     metadata,
     modelDeployment: response.modelDeployment,
   });
-  assertAdvisoryThresholds(result, options);
   const output = resolve(options.output ?? `files/visual-review/${basename(image)}.review.json`);
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  assertAdvisoryThresholds(result, options);
   console.log(
     JSON.stringify({
       output,

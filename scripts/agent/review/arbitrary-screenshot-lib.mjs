@@ -149,7 +149,8 @@ export function normalizeReview(raw, { image, metadata, modelDeployment }) {
             item.observation &&
             Number.isFinite(item.confidence) &&
             item.confidence >= 0 &&
-            item.confidence <= 1,
+            item.confidence <= 1 &&
+            !BEHAVIOR_CLAIM.test(`${item.criterion} ${item.observation}`),
         )
     : [];
   const textRasterPassed = metadata?.textRaster?.passed === true;

@@ -129,20 +129,35 @@ export function isFuzzinessFinding(value) {
 export function suppressUnsupportedFuzziness(result, report) {
   if (!report?.passed || !result || typeof result !== 'object') return 0;
   let suppressed = 0;
+  const preserveNonFuzzinessClauses = (finding) =>
+    finding
+      .split(/\s*(?:;|,?\s+\b(?:and|but)\b)\s*/i)
+      .filter((clause) => clause && !isFuzzinessFinding(clause))
+      .join('; ');
   for (const field of ['blocking_findings', 'recommended_fixes']) {
     if (!Array.isArray(result[field])) continue;
-    const before = result[field].length;
-    result[field] = result[field].filter((finding) => !isFuzzinessFinding(finding));
-    suppressed += before - result[field].length;
+    result[field] = result[field]
+      .map((finding) => {
+        if (!isFuzzinessFinding(finding)) return finding;
+        const preserved = preserveNonFuzzinessClauses(finding);
+        suppressed += 1;
+        return preserved;
+      })
+      .filter(Boolean);
   }
   const axes = result.axes;
   if (axes && typeof axes === 'object') {
     for (const axis of ['readability', 'typography_clarity']) {
       const candidate = axes[axis];
       if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.issues)) continue;
-      const before = candidate.issues.length;
-      candidate.issues = candidate.issues.filter((finding) => !isFuzzinessFinding(finding));
-      suppressed += before - candidate.issues.length;
+      candidate.issues = candidate.issues
+        .map((finding) => {
+          if (!isFuzzinessFinding(finding)) return finding;
+          const preserved = preserveNonFuzzinessClauses(finding);
+          suppressed += 1;
+          return preserved;
+        })
+        .filter(Boolean);
     }
   }
   return suppressed;

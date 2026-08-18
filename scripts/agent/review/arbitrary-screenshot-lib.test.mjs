@@ -78,6 +78,22 @@ test('fails closed for absent rubric or behavior claims', () => {
   );
 });
 
+test('rejects behavior claims from top-level evidence', () => {
+  const raw = response();
+  raw.evidence = [
+    { criterion: 'legibility', observation: 'Labels are visible', confidence: 0.9 },
+    { criterion: 'input_affordance', observation: 'Hovering reveals stats', confidence: 0.9 },
+  ];
+  const result = normalizeReview(raw, {
+    image: 'screen.png',
+    metadata: {},
+    modelDeployment: 'test',
+  });
+  assert.deepEqual(result.evidence, [
+    { criterion: 'legibility', observation: 'Labels are visible', confidence: 0.9 },
+  ]);
+});
+
 test('caps severe overflow and wasted-space findings', () => {
   const raw = response();
   raw.hard_failures = ['text overflows off-screen'];

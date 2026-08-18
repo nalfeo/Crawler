@@ -108,6 +108,13 @@ test('includes Before/After review and feedback controls', () => {
   assert.match(html, /pairsEl\.innerHTML/);
 });
 
+test('labels feedback controls for assistive technology', () => {
+  const html = renderHtml(OPTS);
+  for (const id of ['feedback-pair', 'feedback-scope', 'feedback-target', 'feedback-comment']) {
+    assert.match(html, new RegExp(`<label for="${id}">`));
+  }
+});
+
 test('keeps feedback controls outside gallery render ownership', () => {
   const html = renderHtml(OPTS);
   const galleryIndex = html.indexOf('<div id="gallery">');
