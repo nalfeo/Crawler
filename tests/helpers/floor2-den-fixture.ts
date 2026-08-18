@@ -29,7 +29,7 @@ import { SeededRandom } from '../../src/shared/random.js';
 import { createTestWorld } from './world-factory.js';
 
 /** The seed from issue #3093 — Floor 2 seed 42, the Queen Mab den softlock. */
-export const FLOOR2_DEN_FIXTURE_SEED = 42;
+const FLOOR2_DEN_FIXTURE_SEED = 42;
 
 export interface Floor2DenFixture {
   world: GameWorld;
@@ -90,7 +90,7 @@ export function stepFloor2(world: GameWorld, deltaMs = 16): void {
 }
 
 /** Teleport an entity to a tile centre. */
-export function moveToTile(world: GameWorld, eid: number, tileX: number, tileY: number): void {
+function moveToTile(world: GameWorld, eid: number, tileX: number, tileY: number): void {
   const point = world.floorMap!.tileToWorld(tileX, tileY);
   world.stores.position.x[eid] = point.x;
   world.stores.position.y[eid] = point.y;

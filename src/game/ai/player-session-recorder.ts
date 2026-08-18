@@ -22,11 +22,10 @@ import type {
   SessionRecorder,
   SessionRecorderStats,
 } from '../../shared/session-recorder-types.js';
-import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js';
+import { AI_STATE_NAME, isDenSimEvent, type SimEvent, type SimEventType } from './event-log.js';
 import type { DenBossDiagnostics } from './den-boss-telemetry.js';
 import {
   createDenBossTransitionTracker,
-  collectDenBossSnapshots,
   denBossSnapshotPayload,
   denBossTransitionPayload,
 } from './den-boss-telemetry.js';
@@ -121,7 +120,7 @@ export interface PlayerSessionRecorder extends SessionRecorder {
   /**
    * The Floor 2 den-boss diagnostic rollup accumulated so far, or `undefined`
    * when this session never observed a den floor. Identical in shape to the
-   * rollup the headless runner puts on `RunStats.floor2Progression.denBoss`.
+   * rollup the headless runner puts on `RunStats.denBoss`.
    */
   getDenBossDiagnostics(): DenBossDiagnostics | undefined;
   /** Serialize events as JSONL (one JSON object per line). */
@@ -333,7 +332,7 @@ export function createPlayerSessionRecorder(
     }
 
     if (frameCount % denSampleInterval !== 0) return;
-    const snapshots = collectDenBossSnapshots(world, playerEid);
+    const snapshots = denTracker.getSnapshots();
     if (snapshots.length === 0) return;
     const event = buildEvent('den', inputState, enemyEids, 'den snapshot');
     event.state = inferredState;
@@ -398,6 +397,7 @@ export function createPlayerSessionRecorder(
     const denBossDiagnostics = denTracker.getDiagnostics();
     const samples = events.filter((e) => e.type === 'sample');
     const kills = events.filter((e) => e.type === 'kill');
+    const denRecords = events.filter(isDenSimEvent);
     const firstMs = samples[0]?.gameMs ?? 0;
     const lastMs = samples[samples.length - 1]?.gameMs ?? firstMs;
     return {
@@ -415,7 +415,9 @@ export function createPlayerSessionRecorder(
       ...(recordWeaponTelemetry && world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
-      ...(denBossDiagnostics ? { denBoss: denBossDiagnostics } : {}),
+      ...(denBossDiagnostics
+        ? { denBoss: denBossDiagnostics, denRecordCount: denRecords.length }
+        : {}),
     };
   }
 

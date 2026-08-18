@@ -222,8 +222,14 @@ export interface DenBossFamilyDiagnostics {
 export interface DenBossDiagnostics {
   schemaVersion: number;
   /**
-   * `SimEvent.type` that carries the matching per-frame stream. Recordings that
-   * include the event stream can be joined to this rollup on `familyId`+`frame`.
+   * `SimEvent.type` that *would* carry the matching per-frame stream if a
+   * caller wired the optional `den` event sink (`recordEvent`). This rollup
+   * field is always populated — even for headless runs with no sink at all —
+   * so it only documents the join key; it does NOT guarantee the named stream
+   * exists. When no sink is wired (or the run predates one), `transitions`
+   * is the only surviving evidence, `transitionsTruncated` records that older
+   * entries past the cap were dropped with no `den` stream to recover them
+   * from, and this rollup is still the complete durable evidence.
    */
   eventStreamType: 'den';
   families: Record<string, DenBossFamilyDiagnostics>;

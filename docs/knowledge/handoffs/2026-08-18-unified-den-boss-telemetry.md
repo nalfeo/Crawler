@@ -33,7 +33,9 @@ den-boss contract.
   carries the identical rollup.
 - Documented the contract, the join between rollup and event stream, and its
   relationship to `floor2Progression` in
-  `docs/knowledge/telemetry/den-boss-telemetry-contract.md`.
+  `docs/knowledge/telemetry/den-boss-telemetry-contract.md`, backed by
+  `docs/knowledge/adr/2026-08-18-den-boss-telemetry-contract.md` (AGENTS.md
+  Rule 6, cross-system decision).
 
 ## Observation
 
@@ -53,7 +55,7 @@ headless rollup are deeply equal for the same world states.
 
 ## Verification
 
-- `npx vitest run tests/game/den-boss-telemetry.test.ts --project unit` — 11 passed
+- `npx vitest run tests/game/den-boss-telemetry.test.ts --project unit` — 13 passed
 - `npx vitest run tests/game/den-boss-telemetry-contract.test.ts --project unit` — 5 passed
 - `npx vitest run tests/headless/floor2-den-boss-telemetry.test.ts --project headless` — 2 passed
 - `npm run verify:fast` — green (139 files, 2296 tests)
@@ -65,11 +67,15 @@ The 3🍎 plan review, code-review loop and independent grade are tracked in
 
 ## Unresolved issues
 
-`npm run docs:check` fails on two **pre-existing, unrelated** items on this
-branch's base: `.github/agents/ux-designer.agent.md` references
-`files/visual-review/reviews/*.review.json` and `docs/knowledge/ux-feedback/`
-(that directory is off-limits to coding-agent sessions), and ADR 0086 references
-`scripts/sprites/normalize-item-art-names.ts` in the very sentence that records
-the file's deletion — the path checker does not understand "is deleted". Neither
-is touched by this change; both need a docs-tooling fix rather than an ADR
-rewrite.
+ADR `2026-08-18-den-boss-telemetry-contract.md` documents this PR's cross-system
+design decision (AGENTS.md Rule 6). The ADR 0086 `docs:check` failure was fixed
+in this branch by de-quoting the deleted-file reference so the path checker no
+longer misreads "is deleted" prose as a live path reference.
+
+`npm run docs:check` still fails on one item, which remains genuinely
+**pre-existing and out of scope**: `.github/agents/ux-designer.agent.md`
+references `files/visual-review/reviews/*.review.json` and
+`docs/knowledge/ux-feedback/`. That file is untouched by this change and lives
+in `.github/agents/`, a directory coding-agent sessions are explicitly
+forbidden from reading or editing — it needs a docs-tooling fix or a
+`ux-designer`-owned session, not this PR.

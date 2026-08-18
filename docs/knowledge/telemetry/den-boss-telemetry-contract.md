@@ -1,7 +1,9 @@
 # Den-boss telemetry contract
 
 One diagnostic schema for Floor 2 den bosses, collected identically by all three
-telemetry surfaces in the project. Tracked by issue #3093.
+telemetry surfaces in the project. Tracked by issue #3093. Cross-system design
+decision recorded in
+[ADR 2026-08-18: Unified den-boss diagnostic telemetry contract](../adr/2026-08-18-den-boss-telemetry-contract.md).
 
 ## Why
 
@@ -23,10 +25,11 @@ Now there is exactly one contract, and every surface emits it.
 | AI Runner lab         | `createSessionRecorderControls` (`src/labs/session-recorder-controls.ts`) | `den` records in the downloaded `.jsonl`, plus `getStats().denBoss` |
 | Real game (player)    | `sessionRecorderFactory` (`src/bootstrap/floor-main-scene-options.ts`)    | same as the lab — same recorder, same records                       |
 
-All three read the same collector: `collectDenBossSnapshots` /
-`createDenBossTransitionTracker` in `src/game/ai/den-boss-telemetry.ts`. The
-lab and the real game literally share `createPlayerSessionRecorder`, and the
-headless runner polls the same tracker once per frame before its stop check.
+All three read the same collector: `createDenBossTransitionTracker` in
+`src/game/ai/den-boss-telemetry.ts` (its internal `_collectDenBossSnapshots`
+builds each den's baseline observation). The lab and the real game literally
+share `createPlayerSessionRecorder`, and the headless runner polls the same
+tracker once per frame before its stop check.
 
 ## Schema
 
@@ -75,9 +78,12 @@ a caller wired the optional event sink:
   `final` snapshot
 - `transitions` — bounded compact log (`DEN_BOSS_ROLLUP_TRANSITION_LIMIT` = 200)
   with `transitionCount` and `transitionsTruncated`
-- `eventStreamType: 'den'` — names the `SimEvent.type` that carries the full
-  per-frame stream, so `RunStats` always links to its event stream even when the
-  transition log is truncated
+- `eventStreamType: 'den'` — names the `SimEvent.type` that _would_ carry the
+  full per-frame stream if a `den` event sink is wired. This field is always
+  populated, including on headless runs with no sink at all, so it documents the
+  join key rather than guaranteeing the stream exists: when no sink is wired,
+  `transitions` (bounded, possibly `transitionsTruncated`) is the only surviving
+  evidence and there is no `den` stream to recover the dropped entries from.
 
 ## Joining a rollup to its event stream
 
@@ -107,7 +113,7 @@ headless-only, while `denBoss` is produced identically by all three surfaces.
 
 ## Cost
 
-`hasDenBossTelemetry` short-circuits on any world without
+`_hasDenBossTelemetry` short-circuits on any world without
 `floorExtendedState.familyState.bossEncounters`, so non-den floors pay nothing —
 no records, no `denBoss` key on `RunStats` or recorder stats. Interactive
 recorders materialize the aggregate snapshot only on the `denSampleInterval`

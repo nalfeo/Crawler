@@ -49,6 +49,8 @@ export interface SessionRecorderStats {
    * the session actually observed a den floor.
    */
   denBoss?: DenBossDiagnostics;
+  /** Count of `den` records emitted into this recorder's event stream (see `denBoss`). */
+  denRecordCount?: number;
 }
 
 /**

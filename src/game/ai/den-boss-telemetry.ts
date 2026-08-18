@@ -17,6 +17,7 @@ import type { GameWorld } from '../../core/world.js';
 import {
   DEN_BOSS_ROLLUP_TRANSITION_LIMIT,
   DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
+  DEN_BOSS_TRANSITION_ORDER,
   type DenBossDiagnostics,
   type DenBossEventPayload,
   type DenBossFamilyDiagnostics,
@@ -28,7 +29,6 @@ import {
 import { denUnlockGoalId } from '../floor2Scenario.js';
 
 export {
-  DEN_BOSS_ROLLUP_TRANSITION_LIMIT,
   DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
   DEN_BOSS_TRANSITION_ORDER,
 } from '../../shared/den-boss-telemetry-types.js';
@@ -73,7 +73,7 @@ export function denBossSnapshotPayload(snapshots: readonly DenBossSnapshot[]): D
 // ---------------------------------------------------------------------------
 
 /** True when this world currently has Floor 2 den encounters to report on. */
-export function hasDenBossTelemetry(world: GameWorld): boolean {
+export function _hasDenBossTelemetry(world: GameWorld): boolean {
   const familyState = world.floorExtendedState?.familyState;
   return (
     familyState !== undefined &&
@@ -114,9 +114,12 @@ function isLiveBoss(world: GameWorld, eid: number | null): eid is number {
 
 /**
  * Fill `target` with the current state of one den. Writing into a caller-owned
- * object keeps the per-frame diff allocation-free: the tracker reuses a single
- * scratch snapshot per den and only materializes a durable object when a
- * transition actually fires.
+ * object keeps the snapshot bookkeeping itself allocation-free: the tracker
+ * reuses a single scratch snapshot per den and only materializes a durable
+ * object when a transition actually fires. `tileOf`/`roomAt` still allocate a
+ * small `{x, y}` coordinate object per boss/player lookup via
+ * `floorMap.worldToTile` — this only avoids the *snapshot/array* churn, not
+ * every allocation on the path.
  */
 function writeSnapshot(
   world: GameWorld,
@@ -150,7 +153,7 @@ function writeSnapshot(
   target.familyId = encounter.familyId;
   target.displayName = encounter.displayName;
   target.denRoomId = encounter.roomId;
-  target.bossEid = bossEid ?? null;
+  target.bossEid = bossAlive ? bossEid : null;
   target.lastKnownBossEid = resolvedLastKnown;
   target.bossAlive = bossAlive;
   target.bossTileX = bossTile ? bossTile.x : null;
@@ -237,13 +240,18 @@ function cloneSnapshot(source: DenBossSnapshot): DenBossSnapshot {
  * Returns `[]` on any floor without den encounters, so non-Floor-2 callers pay
  * only a map lookup.
  */
-export function collectDenBossSnapshots(
+export function _collectDenBossSnapshots(
   world: GameWorld,
   playerEid: number | null = null,
 ): DenBossSnapshot[] {
+  if (!_hasDenBossTelemetry(world)) {
+    return [];
+  }
   const familyState = world.floorExtendedState?.familyState;
   const encounters = familyState?.bossEncounters;
-  if (!familyState || !encounters || encounters.size === 0) {
+  // `_hasDenBossTelemetry` already guaranteed both are present; re-narrow for
+  // the type checker without re-deriving the boolean logic.
+  if (!familyState || !encounters) {
     return [];
   }
   const playerRoomId = playerEid === null ? null : roomAt(world, tileOf(world, playerEid));
@@ -291,7 +299,9 @@ export interface DenBossTransitionTracker {
   /**
    * Observe the world for `frame`. Returns the transitions that fired this
    * frame, ordered by family (`presentFamilies` order) then by the fixed
-   * {@link TRANSITION_ORDER}. Allocates nothing when nothing changed.
+   * {@link TRANSITION_ORDER}. Avoids snapshot/array churn when nothing
+   * changed (per-den bookkeeping is reused, not reallocated), though the
+   * underlying tile/room lookups still allocate small coordinate objects.
    */
   poll(world: GameWorld, frame: number, playerEid?: number | null): DenBossTransition[];
   /** Snapshot of every den as of the last poll, in `presentFamilies` order. */
@@ -306,6 +316,10 @@ export interface DenBossTransitionTracker {
 
 const EMPTY_TRANSITIONS: DenBossTransition[] = [];
 const EMPTY_KINDS: DenBossTransitionKind[] = [];
+/** O(1) rank lookup for `DEN_BOSS_TRANSITION_ORDER`, built once at module load. */
+const DEN_BOSS_TRANSITION_RANK: ReadonlyMap<DenBossTransitionKind, number> = new Map(
+  DEN_BOSS_TRANSITION_ORDER.map((kind, index) => [kind, index]),
+);
 
 function toTransitionRecord(transition: DenBossTransition): DenBossTransitionRecord {
   const after = transition.after;
@@ -334,29 +348,63 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
   let transitionLog: DenBossTransitionRecord[] = [];
 
   function classify(before: DenBossSnapshot, after: DenBossSnapshot): DenBossTransitionKind[] {
-    // The checks below are written in DEN_BOSS_TRANSITION_ORDER, so pushing as
-    // we go yields the contract order without a Set or a per-frame filter pass.
+    // Written in DEN_BOSS_TRANSITION_ORDER, so pushing as we go yields the
+    // contract order without a Set or a per-frame filter pass.
     // `classify-emits-DEN_BOSS_TRANSITION_ORDER` in the unit tests pins this.
+    // Deliberately no local closure here (e.g. a `push` helper): that would
+    // allocate a new function on every call, including every quiet per-den
+    // frame, defeating the point of the lazily-allocated `fired` array below.
     let fired: DenBossTransitionKind[] | null = null;
-    const push = (kind: DenBossTransitionKind): void => {
-      fired ??= [];
-      fired.push(kind);
-    };
-    if (!before.denUnlocked && after.denUnlocked) push('den-unlocked');
-    if (before.denSealed && !after.denSealed) push('den-doors-unlocked');
-    if (!before.denSealed && after.denSealed) push('den-doors-locked');
-    if (!before.playerInDen && after.playerInDen) push('player-entered-den');
-    if (before.playerInDen && !after.playerInDen) push('player-left-den');
-    if (!before.encounterStarted && after.encounterStarted) push('encounter-started');
-    if (before.bossAlive && after.bossAlive) {
-      if (before.bossInDen && !after.bossInDen) push('boss-left-den');
-      if (!before.bossInDen && after.bossInDen) push('boss-returned-to-den');
+    if (!before.denUnlocked && after.denUnlocked) {
+      (fired ??= []).push('den-unlocked');
     }
-    if (before.bossAlive && !after.bossAlive) push('boss-despawned');
-    if (!before.encounterDefeated && after.encounterDefeated) push('encounter-defeated');
-    if (!before.encounterGoalActive && after.encounterGoalActive) push('encounter-goal-set');
+    if (before.denSealed && !after.denSealed) {
+      (fired ??= []).push('den-doors-unlocked');
+    }
+    if (!before.denSealed && after.denSealed) {
+      (fired ??= []).push('den-doors-locked');
+    }
+    if (!before.playerInDen && after.playerInDen) {
+      (fired ??= []).push('player-entered-den');
+    }
+    if (before.playerInDen && !after.playerInDen) {
+      (fired ??= []).push('player-left-den');
+    }
+    if (!before.encounterStarted && after.encounterStarted) {
+      (fired ??= []).push('encounter-started');
+    }
+    if (before.bossAlive && after.bossAlive) {
+      if (before.bossInDen && !after.bossInDen) {
+        (fired ??= []).push('boss-left-den');
+      }
+      if (!before.bossInDen && after.bossInDen) {
+        (fired ??= []).push('boss-returned-to-den');
+      }
+    }
+    if (before.bossAlive && !after.bossAlive) {
+      (fired ??= []).push('boss-despawned');
+    }
+    if (!before.encounterDefeated && after.encounterDefeated) {
+      (fired ??= []).push('encounter-defeated');
+    }
+    if (!before.encounterGoalActive && after.encounterGoalActive) {
+      (fired ??= []).push('encounter-goal-set');
+    }
     if (before.encounterGoalActive && !after.encounterGoalActive) {
-      push('encounter-goal-cleared');
+      (fired ??= []).push('encounter-goal-cleared');
+    }
+    // Defense in depth: the ifs above are already written in
+    // DEN_BOSS_TRANSITION_ORDER, but re-sorting against the canonical order
+    // keeps emission order correct — and provably tied to the exported
+    // contract constant — even if a future edit reorders the checks above.
+    // Only runs when two-plus transitions fired the same frame, so it never
+    // costs anything on the (overwhelmingly common) single-transition frame.
+    if (fired && fired.length > 1) {
+      fired.sort(
+        (a, b) =>
+          (DEN_BOSS_TRANSITION_RANK.get(a) ?? Infinity) -
+          (DEN_BOSS_TRANSITION_RANK.get(b) ?? Infinity),
+      );
     }
     return fired ?? EMPTY_KINDS;
   }
@@ -402,9 +450,14 @@ export function createDenBossTransitionTracker(): DenBossTransitionTracker {
     frame: number,
     playerEid: number | null = null,
   ): DenBossTransition[] {
+    if (!_hasDenBossTelemetry(world)) {
+      return EMPTY_TRANSITIONS;
+    }
     const familyState = world.floorExtendedState?.familyState;
     const encounters = familyState?.bossEncounters;
-    if (!familyState || !encounters || encounters.size === 0) {
+    // `_hasDenBossTelemetry` already guaranteed both are present; re-narrow for
+    // the type checker without re-deriving the boolean logic.
+    if (!familyState || !encounters) {
       return EMPTY_TRANSITIONS;
     }
     const gameMs = world.elapsedMs;

@@ -50,7 +50,6 @@ import {
 } from './headless-run-data.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import {
-  collectDenBossSnapshots,
   createDenBossTransitionTracker,
   denBossSnapshotPayload,
   denBossTransitionPayload,
@@ -1098,6 +1097,40 @@ export async function runHeadless(
         world.playerInSafeRoom === true ? 0 : GAME.DELTA_MS,
       );
 
+      // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
+      const enemyEids = query(world.ecs, [Enemy]);
+
+      // Shared den-boss diagnostic contract — the SAME tracker the player /
+      // AI Runner session recorder uses, so all three surfaces emit identical
+      // evidence for identical world state. The rollup is accumulated here
+      // whether or not `recordEvent` is wired, so `RunStats` always carries it.
+      // Polled before the win/loss checks below so a lethal frame that also
+      // carries a boss/door transition is still observed — the real-game
+      // recorder ticks before its terminal-state break, and headless must
+      // match it rather than dropping the frame the loop breaks on.
+      const denTransitions = denBossTracker.poll(world, frameCount, playerEid);
+      if (recordEvent) {
+        for (const transition of denTransitions) {
+          const event = buildEvent(
+            'den',
+            enemyEids,
+            `den ${transition.kind}: ${transition.familyId}`,
+          );
+          event.reason = 'den-boss-telemetry';
+          event.denBoss = denBossTransitionPayload(transition);
+          recordEvent(event);
+        }
+        if (frameCount % denSampleInterval === 0) {
+          const denSnapshots = denBossTracker.getSnapshots();
+          if (denSnapshots.length > 0) {
+            const event = buildEvent('den', enemyEids, 'den snapshot');
+            event.reason = 'den-boss-telemetry';
+            event.denBoss = denBossSnapshotPayload(denSnapshots);
+            recordEvent(event);
+          }
+        }
+      }
+
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
       // is skipped and damageTaken under-counts on one-shot deaths).
@@ -1121,8 +1154,6 @@ export async function runHeadless(
         break;
       }
 
-      // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
-      const enemyEids = query(world.ecs, [Enemy]);
       const currentEnemyCount = enemyEids.length;
       if (mergedConfig.settlementReturnRouting) {
         const settlementReturnIntent = getSettlementReturnIntent(world);
@@ -1343,33 +1374,6 @@ export async function runHeadless(
           }
         }
       }
-      // Shared den-boss diagnostic contract — the SAME tracker the player /
-      // AI Runner session recorder uses, so all three surfaces emit identical
-      // evidence for identical world state. The rollup is accumulated here
-      // whether or not `recordEvent` is wired, so `RunStats` always carries it.
-      const denTransitions = denBossTracker.poll(world, frameCount, playerEid);
-      if (recordEvent) {
-        for (const transition of denTransitions) {
-          const event = buildEvent(
-            'den',
-            enemyEids,
-            `den ${transition.kind}: ${transition.familyId}`,
-          );
-          event.reason = 'den-boss-telemetry';
-          event.denBoss = denBossTransitionPayload(transition);
-          recordEvent(event);
-        }
-        if (frameCount % denSampleInterval === 0) {
-          const denSnapshots = collectDenBossSnapshots(world, playerEid);
-          if (denSnapshots.length > 0) {
-            const event = buildEvent('den', enemyEids, 'den snapshot');
-            event.reason = 'den-boss-telemetry';
-            event.denBoss = denBossSnapshotPayload(denSnapshots);
-            recordEvent(event);
-          }
-        }
-      }
-
       if (mergedConfig.stopWhen?.(world)) {
         break;
       }

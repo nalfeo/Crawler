@@ -11,11 +11,11 @@ import { describe, expect, it } from 'vitest';
 import {
   DEN_BOSS_TELEMETRY_SCHEMA_VERSION,
   DEN_BOSS_TRANSITION_ORDER,
-  collectDenBossSnapshots,
+  _collectDenBossSnapshots,
   createDenBossTransitionTracker,
   denBossSnapshotPayload,
   denBossTransitionPayload,
-  hasDenBossTelemetry,
+  _hasDenBossTelemetry,
   type DenBossSnapshot,
   type DenBossTransition,
   type DenBossTransitionKind,
@@ -35,15 +35,15 @@ function kindsOf(transitions: readonly DenBossTransition[]): DenBossTransitionKi
 describe('den-boss telemetry — collection', () => {
   it('reports no den telemetry on a world without den encounters', () => {
     const world = createTestWorld({ seed: 42 });
-    expect(hasDenBossTelemetry(world)).toBe(false);
-    expect(collectDenBossSnapshots(world, null)).toEqual([]);
+    expect(_hasDenBossTelemetry(world)).toBe(false);
+    expect(_collectDenBossSnapshots(world, null)).toEqual([]);
     expect(createDenBossTransitionTracker().poll(world, 1, null)).toEqual([]);
     expect(createDenBossTransitionTracker().getDiagnostics()).toBeUndefined();
   });
 
   it('snapshots every den with the full diagnostic contract', () => {
     const fixture = createFloor2DenFixture();
-    const snapshots = collectDenBossSnapshots(fixture.world, fixture.playerEid);
+    const snapshots = _collectDenBossSnapshots(fixture.world, fixture.playerEid);
     const families = fixture.world.floorExtendedState!.familyState!.presentFamilies;
 
     expect(snapshots.length).toBe(families.length);
@@ -75,7 +75,7 @@ describe('den-boss telemetry — collection', () => {
 
   it('is JSON round-trippable so JSONL recordings stay self-describing', () => {
     const fixture = createFloor2DenFixture();
-    const snapshots = collectDenBossSnapshots(fixture.world, fixture.playerEid);
+    const snapshots = _collectDenBossSnapshots(fixture.world, fixture.playerEid);
     const payload = denBossSnapshotPayload(snapshots);
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     expect(payload.kind).toBe('snapshot');
@@ -172,7 +172,7 @@ describe('den-boss telemetry — transitions', () => {
 
     const transitions = tracker.poll(fixture.world, 1, fixture.playerEid);
     expect(kindsOf(transitions)).toContain('boss-despawned');
-    const snapshot = collectDenBossSnapshots(fixture.world, fixture.playerEid)[0]!;
+    const snapshot = _collectDenBossSnapshots(fixture.world, fixture.playerEid)[0]!;
     expect(snapshot.bossAlive).toBe(false);
     expect(snapshot.bossInDen).toBe(false);
     expect(snapshot.bossTileX).toBeNull();
