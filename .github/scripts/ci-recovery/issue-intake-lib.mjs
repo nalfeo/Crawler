@@ -1,7 +1,11 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
-import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './markers.mjs';
+import {
+  FOLLOWUP_BACKLOG_MARKER,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+} from './markers.mjs';
 
-export { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
+export { FOLLOWUP_BACKLOG_MARKER, ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
@@ -205,6 +209,62 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   if (!mentionsMissingPlanRequirement) return [];
 
   const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
+  const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
+    Number.parseInt(match[1], 10),
+  );
+  if (explicitReferences.length === 0) return [];
+  if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
+  return [...new Set(explicitReferences)];
+}
+
+// `closingIssuesReferences` can reference issues in other repositories, and the
+// follow-up issue is always filed in this repository.  Restrict the matchable
+// closing issues to the current repository so a cross-repository reference
+// (e.g. `other/repo#3120`) never resolves to a same-numbered local issue.  A
+// missing repository fails closed so no caller can bypass the check.
+function sameRepositoryClosingIssues(closingIssues, repository) {
+  const target = String(repository || '').toLowerCase();
+  if (!target) return [];
+  return (closingIssues || []).filter(
+    (issue) => String(issue?.repository?.nameWithOwner || '').toLowerCase() === target,
+  );
+}
+
+export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues, repository) {
+  const rootComment = thread?.comments?.nodes?.[0];
+  const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
+  const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();
+  if (
+    !PLAN_REQUIREMENT_REVIEWER_LOGINS.has(rootLogin) &&
+    !TRUSTED_ASSOCIATIONS.has(rootAssociation)
+  ) {
+    return [];
+  }
+
+  const text = String(rootComment?.body || '').toLowerCase();
+  const mentionsFollowupBacklogIssue =
+    /\bfollow[- ]?up\b[^.!?\n]{0,100}\bbacklog\s+issue\b/i.test(text) ||
+    /\bbacklog\s+issue\b[^.!?\n]{0,100}\bfollow[- ]?up\b/i.test(text);
+  if (!mentionsFollowupBacklogIssue) return [];
+
+  const asksToFileIssue =
+    /\b(?:file|filing|create|creating|open|opening)\b[^.!?\n]{0,140}\b(?:follow[- ]?up\s+)?backlog\s+issue\b/i.test(
+      text,
+    ) ||
+    /\b(?:follow[- ]?up\s+)?backlog\s+issue\b[^.!?\n]{0,140}\b(?:filed|created|opened|missing)\b/i.test(
+      text,
+    );
+  if (!asksToFileIssue) return [];
+
+  const requiresUnassignedCopilot =
+    /\b(?:unassigned|not\s+assigned|without\s+assigning|without\s+being\s+assigned)\b[^.!?\n]{0,100}\bcopilot\b/i.test(
+      text,
+    ) || /\bcopilot\b[^.!?\n]{0,100}\b(?:unassigned|not\s+assigned)\b/i.test(text);
+  if (!requiresUnassignedCopilot) return [];
+
+  const issueNumbers = sameRepositoryClosingIssues(closingIssues, repository)
+    .map((issue) => issue.number)
+    .filter(Number.isInteger);
   const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
     Number.parseInt(match[1], 10),
   );
