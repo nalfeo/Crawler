@@ -216,6 +216,17 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
 }
 
 /**
+ * Reference footprint in feet for a floor-decoration `Prop` at
+ * `DecorationDef.scale === 1.0`. `scale` is documented as a "size multiplier
+ * relative to base (1.0 = 100%)", so the Prop render pass multiplies by this
+ * constant rather than treating `scale` as an absolute feet value (see the
+ * Prop render pass below for the bug this fixes). `3` reads as a "normal
+ * sized" hand-placed prop (e.g. a barrel at `scale: 0.9` → 2.7 ft, close to a
+ * real barrel's footprint).
+ */
+const PROP_VISUAL_BASE_SIZE_FT = 3;
+
+/**
  * On-floor render scale for a harvestable node's generated sprite. The art is
  * authored at 64px; `0.4` (~26px) matches the enemy node footprint so a
  * harvestable reads at the same visual weight as a small creature and stays
@@ -2291,7 +2302,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
         const defId = DECORATION_INDEX_TO_ID[defIdIndex];
         const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
-        const scalePx = ftToPx(decorationDef?.scale ?? 1.0);
+        // `DecorationDef.scale` is documented as a "size multiplier relative to
+        // base (1.0 = 100%)", NOT a feet value — but this line used to feed it
+        // straight into `ftToPx()`, so a torch authored at `scale: 1.2` rendered
+        // at 1.2 ft (~10 px), comically small next to the 3 ft player. Multiply
+        // by a reference footprint (a "normal-sized" prop, matching the
+        // `prop-torch` asset brief's "reads clearly at gameplay scale") to
+        // restore the intended multiplier semantics.
+        const scalePx = ftToPx(PROP_VISUAL_BASE_SIZE_FT * (decorationDef?.scale ?? 1.0));
         const depth =
           decorationDef?.depthLayer === 'back'
             ? PROP_DEPTH.back
