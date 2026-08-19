@@ -80,7 +80,6 @@ const FLOOR2_EQUIPMENT_STABLE_IDS = [
   'weapon.bone-chakram',
   'weapon.echo-bell',
   'weapon.void-rapier',
-  'head.iron-visor',
   'head.quartermaster-cap',
   'head.batfolk-hood',
   'head.alchemist-goggles',
@@ -94,7 +93,6 @@ const FLOOR2_EQUIPMENT_STABLE_IDS = [
   'feet.iron-greaves',
   'feet.shadow-boots',
   'feet.merchant-sandals',
-  'accessory.blood-vial',
   'accessory.compass-charm',
   'accessory.lucky-feather',
   'accessory.gearwork-locket',
@@ -111,13 +109,8 @@ const FLOOR2_EQUIPMENT_STABLE_IDS = [
   'weapon.wooden-club',
   'head.leather-cap',
   'accessory.leather-collar',
-  'torso.cloth-cloak',
-  'torso.leather-shoulder-pads',
-  'hands.leather-arm-wraps',
-  'hands.leather-bracers',
   'torso.leather-tunic',
   'hands.leather-gloves',
-  'accessory.leather-belt',
   'feet.leather-pants',
   'feet.leather-boots',
   'accessory.iron-ring',
@@ -222,7 +215,6 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
     category: 'armor',
     family: 'headgear',
     ids: [
-      'head.iron-visor',
       'head.quartermaster-cap',
       'head.batfolk-hood',
       'head.alchemist-goggles',
@@ -238,8 +230,6 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
       'torso.velvet-coat',
       'torso.scavenger-harness',
       'torso.runed-cuirass',
-      'torso.cloth-cloak',
-      'torso.leather-shoulder-pads',
       'torso.leather-tunic',
     ],
   },
@@ -251,8 +241,6 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
       'hands.duelist-gloves',
       'hands.thorn-gauntlets',
       'hands.tinker-grips',
-      'hands.leather-arm-wraps',
-      'hands.leather-bracers',
       'hands.leather-gloves',
     ],
   },
@@ -273,14 +261,12 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
     category: 'accessory',
     family: 'accessory',
     ids: [
-      'accessory.blood-vial',
       'accessory.compass-charm',
       'accessory.lucky-feather',
       'accessory.gearwork-locket',
       'accessory.warding-bell',
       'accessory.surveyor-map',
       'accessory.leather-collar',
-      'accessory.leather-belt',
       'accessory.iron-ring',
     ],
   },
@@ -390,9 +376,9 @@ function buildDefinitions(): readonly Floor2EquipmentArtDefinition[] {
 }
 
 function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[]): void {
-  if (definitions.length !== 88) {
+  if (definitions.length !== 81) {
     throw new Error(
-      `Expected 88 Floor 2 equipment art definitions, received ${definitions.length}`,
+      `Expected 81 Floor 2 equipment art definitions, received ${definitions.length}`,
     );
   }
   const unique = (values: readonly string[], label: string): void => {
@@ -413,9 +399,9 @@ function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[
     'placeholder path',
   );
   const weapons = definitions.filter((entry) => entry.category === 'weapon');
-  if (weapons.length !== 56 || definitions.length - weapons.length !== 32) {
+  if (weapons.length !== 56 || definitions.length - weapons.length !== 25) {
     throw new Error(
-      'Floor 2 equipment art definitions must contain exactly 56 weapons and 32 others',
+      'Floor 2 equipment art definitions must contain exactly 56 weapons and 25 others',
     );
   }
   // Every legacy (Wave A + Wave B) family stays fixed at 5 bases; the Classic

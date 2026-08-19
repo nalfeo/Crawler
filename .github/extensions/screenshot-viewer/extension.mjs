@@ -134,13 +134,32 @@ function reviewResults() {
       if (!entry.isFile() || !entry.name.endsWith('.review.json')) continue;
       try {
         const review = JSON.parse(readFileSync(path, 'utf8'));
-        if (review?.schemaVersion !== 1 || typeof review.image !== 'string') continue;
-        results.set(normalize(resolve(review.image)), {
+        const isWrappedReview = review?.schemaVersion === 1 && typeof review.image === 'string';
+        const isRawAzureReview =
+          Number.isFinite(review?.overall?.score) &&
+          review.overall.score >= 1 &&
+          review.overall.score <= 5;
+        if (!isWrappedReview && !isRawAzureReview) continue;
+        const imagePath = isWrappedReview
+          ? review.image
+          : join(resolve(path, '..'), entry.name.replace(/\.review\.json$/, '.png'));
+        const score = isWrappedReview ? review.score : review.overall.score;
+        const findings = isWrappedReview
+          ? Array.isArray(review.prioritizedFindings)
+            ? review.prioritizedFindings
+            : []
+          : Array.isArray(review.blocking_findings)
+            ? review.blocking_findings
+            : Array.isArray(review.recommended_fixes)
+              ? review.recommended_fixes
+              : [];
+        results.set(normalize(resolve(imagePath)), {
           path,
-          score: review.score,
-          coverage: review.coverage,
+          score,
+          scale: isWrappedReview ? 100 : 5,
+          coverage: isWrappedReview ? review.coverage : 100,
           hardFailures: Array.isArray(review.hardFailures) ? review.hardFailures : [],
-          findings: Array.isArray(review.prioritizedFindings) ? review.prioritizedFindings : [],
+          findings,
         });
       } catch {
         // A partially-written optional review artifact must not break screenshot browsing.
