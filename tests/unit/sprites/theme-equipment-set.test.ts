@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   NON_HAND_EQUIPMENT_SLOT_IDS,
@@ -1126,7 +1125,7 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
   });
 
   it('rejects retired slots while loading an authored plan', async () => {
-    const directory = mkdtempSync(path.join(tmpdir(), 'crawler-theme-plan-'));
+    const directory = mkdtempSync(path.join(process.cwd(), 'tests', 'theme-plan-'));
     const planPath = path.join(directory, 'retired-slot.json');
     writeFileSync(
       planPath,
