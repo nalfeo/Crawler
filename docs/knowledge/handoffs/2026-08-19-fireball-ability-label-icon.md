@@ -18,6 +18,7 @@ was being selected for this ability.
 
 - `src/shared/ability-presentation.ts`
 - `public/assets/generated/entries/ability-icon-fireball-var-0.json` (deleted)
+- `public/assets/generated/ability-icon-fireball-var-0.png` (deleted)
 - `tests/game/ability-registry.test.ts`
 - `tests/integration/ability-icon-art.test.ts`
 
@@ -25,6 +26,25 @@ was being selected for this ability.
 
 - `npm test -- tests/game/ability-registry.test.ts tests/integration/ability-icon-art.test.ts`
 - `npm run verify:fast`
+
+## Observe before done (rule #9)
+
+Deterministic headless observation of the **real** shipped render path —
+`getAbilityIconEntry` (`src/engine/ability-icon.ts`) over the real
+`public/assets/generated/manifest.json` shards, plus the shipped
+`getAbilityPresentation('fireball')` label — run once on the pre-fix tree and
+once on the fixed tree:
+
+| State                     | Label       | Resolved textureKey                                |
+| ------------------------- | ----------- | -------------------------------------------------- |
+| Before (`HEAD~1` sources) | `Fire Wand` | `ability-icon-fireball-var-0` (slime-like variant) |
+| After (this branch)       | `Fireball`  | `ability-icon-fireball-var-11`                     |
+
+The before/after difference is locked in permanently by
+`tests/integration/ability-icon-art.test.ts` (asserts fireball never resolves to
+`ability-icon-fireball-var-0`) and `tests/game/ability-registry.test.ts`
+(asserts the `Fireball` label), so this stays a deterministic check rather than
+a one-off manual run.
 
 ## Unresolved issues
 
