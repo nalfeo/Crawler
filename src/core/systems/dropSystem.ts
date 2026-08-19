@@ -50,7 +50,7 @@ import { getFloorManifest } from '../../shared/floor-registry.js';
 import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
 import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
 import { SHAPE_CIRCLE } from '../physics-defs.js';
-import { CORPSE } from '../../shared/constants.js';
+import { CORPSE, MINI_SLIME_COLLISION_EPSILON_FT } from '../../shared/constants.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -93,8 +93,6 @@ const MINI_SLIME_SPAWN_MAX_ATTEMPTS = 8;
 // Sample just inside the candidate footprint so exact tile-edge contact does
 // not read as a wall hit because of floating-point rounding. Mirrors
 // knockbackSystem's COLLISION_EPSILON.
-export const MINI_SLIME_COLLISION_EPSILON = 0.001;
-
 /**
  * Whether a baby slime's full footprint (not just its center point) would fit
  * on passable ground at (x, y). Without this check, a candidate position
@@ -116,12 +114,13 @@ function isMiniSlimeSpawnPassable(
 
   const halfWidth = width / 2;
   const halfHeight = height / 2;
-  const left = x - halfWidth + MINI_SLIME_COLLISION_EPSILON;
-  const right = x + halfWidth - MINI_SLIME_COLLISION_EPSILON;
-  const top = y - halfHeight + MINI_SLIME_COLLISION_EPSILON;
-  const bottom = y + halfHeight - MINI_SLIME_COLLISION_EPSILON;
+  const left = x - halfWidth + MINI_SLIME_COLLISION_EPSILON_FT;
+  const right = x + halfWidth - MINI_SLIME_COLLISION_EPSILON_FT;
+  const top = y - halfHeight + MINI_SLIME_COLLISION_EPSILON_FT;
+  const bottom = y + halfHeight - MINI_SLIME_COLLISION_EPSILON_FT;
 
   return (
+    floorMap.isPassableAt(x, y) &&
     floorMap.isPassableAt(left, top) &&
     floorMap.isPassableAt(right, top) &&
     floorMap.isPassableAt(left, bottom) &&
