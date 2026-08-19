@@ -36,7 +36,11 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
-import type { EquipmentTextRasterMetadata, EquipmentTextRun } from '../../engine/EquipmentUI.js';
+import type {
+  EmptySlotCue,
+  EquipmentTextRasterMetadata,
+  EquipmentTextRun,
+} from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -121,6 +125,7 @@ export interface UiProbeApi {
   getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EmptySlotCue | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
@@ -567,6 +572,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
         getEquipmentSlotIconBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotIconScreenBounds(slotId) ?? null,
+        getEquipmentEmptySlotCue: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getEmptySlotCue(slotId) ?? null,
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,

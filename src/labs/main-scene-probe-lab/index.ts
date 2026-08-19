@@ -193,6 +193,7 @@ interface MainSceneInternals {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    getScrollIndex(): number;
   };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
@@ -276,6 +277,7 @@ interface MainSceneInternals {
     instanceId?: GeneratedEquipmentInstanceKey;
   };
   resumePendingRewardPresentations?(): void;
+  update?(time: number, delta: number): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
   isSimulationPaused(): boolean;
@@ -448,6 +450,8 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
+  /** Current first visible achievement row in the rendered Awards panel. */
+  readonly achievementsScrollIndex: number;
   /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
@@ -873,6 +877,26 @@ export interface MainSceneProbeApi {
   resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
   getRewardOpeningState(): RewardOpeningProbeState;
+  /**
+   * Drive the real `MainGameScene.update()` reward-opening freeze branch for a
+   * fixed number of render frames, returning the overlay state before the
+   * browser's RAF loop can run another frame.
+   */
+  advanceRewardOpeningRenderFrames(frames: number, deltaMs?: number): RewardOpeningProbeState;
+  /**
+   * Drive two back-to-back auto-driven render-frame batches without letting the
+   * normal RAF loop reset the hold counter between samples.
+   */
+  sampleAutoDrivenRewardOpeningRenderFrames(
+    firstFrames: number,
+    nextFrames: number,
+    deltaMs?: number,
+  ): {
+    readonly first: RewardOpeningProbeState;
+    readonly next: RewardOpeningProbeState;
+  };
+  /** Current probe-controlled value returned by MainGameSceneOptions.isAutoDriven. */
+  isRewardOpeningAutoDrivenForProbe(): boolean;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
   tickRewardOpening(deltaMs: number): void;
   /** Jump the open reward-opening sequence straight to `summary`. */
@@ -980,9 +1004,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   // distinguishing value end-to-end (see readAmbientOverride). Absent → default.
   const baseOptions = createFloorMainSceneOptions(floorId);
   const ambientOverride = readAmbientOverride();
+  let autoDrivenForProbe = false;
   const sceneOptions = {
     ...baseOptions,
     worldSeed: PROBE_SEED,
+    isAutoDriven: () => autoDrivenForProbe,
     ...(ambientOverride !== null
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
       : {}),
@@ -1029,6 +1055,38 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return null;
     }
     return { x: floorMap.widthFt, y: floorMap.heightFt };
+  };
+
+  const getRewardOpeningState = (): RewardOpeningProbeState => {
+    const ui = getScene()?.rewardOpeningUI;
+    const open = ui?.isOpen() ?? false;
+    if (!ui || !open) {
+      return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
+    }
+    const progress = ui.getRevealProgress();
+    return {
+      open: true,
+      phase: ui.getPhase(),
+      bucket: ui.getBucket(),
+      revealed: progress?.revealed ?? 0,
+      total: progress?.total ?? 0,
+      nextLabel: ui.getNextRewardLabel?.() ?? null,
+    };
+  };
+
+  const advanceRewardOpeningRenderFrames = (
+    frames: number,
+    deltaMs = 16,
+    startTimeMs = 0,
+  ): RewardOpeningProbeState => {
+    const scene = getScene();
+    const frameCount = Math.max(0, Math.floor(frames));
+    let renderTimeMs = startTimeMs;
+    for (let i = 0; scene && i < frameCount; i += 1) {
+      renderTimeMs += deltaMs;
+      scene.update?.(renderTimeMs, deltaMs);
+    }
+    return getRewardOpeningState();
   };
 
   const probeWindow = window as unknown as { __mainSceneProbe?: MainSceneProbeApi };
@@ -1087,6 +1145,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
+        achievementsScrollIndex: scene?.achievementsUI?.getScrollIndex() ?? 0,
         bossChestOpen,
         quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
@@ -1932,22 +1991,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.resumePendingRewardPresentations?.();
     },
 
-    getRewardOpeningState: (): RewardOpeningProbeState => {
-      const ui = getScene()?.rewardOpeningUI;
-      const open = ui?.isOpen() ?? false;
-      if (!ui || !open) {
-        return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
+    getRewardOpeningState,
+
+    advanceRewardOpeningRenderFrames,
+
+    sampleAutoDrivenRewardOpeningRenderFrames: (
+      firstFrames: number,
+      nextFrames: number,
+      deltaMs = 16,
+    ) => {
+      const previous = autoDrivenForProbe;
+      autoDrivenForProbe = true;
+      try {
+        const firstFrameCount = Math.max(0, Math.floor(firstFrames));
+        // The threshold sample intentionally starts from a fresh probe clock;
+        // only the second batch needs continuity with the first batch.
+        const first = advanceRewardOpeningRenderFrames(firstFrameCount, deltaMs);
+        // `advanceRewardOpeningRenderFrames` increments before each update, so
+        // starting the second sample at the first batch's end time makes its
+        // first frame land at `(firstFrameCount + 1) * deltaMs`.
+        const firstBatchEndTimeMs = firstFrameCount * deltaMs;
+        const next = advanceRewardOpeningRenderFrames(nextFrames, deltaMs, firstBatchEndTimeMs);
+        return { first, next };
+      } finally {
+        autoDrivenForProbe = previous;
       }
-      const progress = ui.getRevealProgress();
-      return {
-        open: true,
-        phase: ui.getPhase(),
-        bucket: ui.getBucket(),
-        revealed: progress?.revealed ?? 0,
-        total: progress?.total ?? 0,
-        nextLabel: ui.getNextRewardLabel?.() ?? null,
-      };
     },
+
+    isRewardOpeningAutoDrivenForProbe: () => autoDrivenForProbe,
 
     tickRewardOpening: (deltaMs: number) => {
       getScene()?.rewardOpeningUI?.tick(deltaMs);

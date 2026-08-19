@@ -1,6 +1,6 @@
 /**
- * Equipment slot definitions — data-driven, append-only registry.
- * Adding a slot = append to SLOT_REGISTRY. No migration needed.
+ * Equipment slot definitions — the active persistence/runtime contract.
+ * Retired slot ids must not be reintroduced without a schema migration.
  */
 
 export interface SlotDefinition {
@@ -10,41 +10,17 @@ export interface SlotDefinition {
   readonly uiPosition: { readonly x: number; readonly y: number };
 }
 
-// Paper-doll layout is a deterministic 6-row × 3-column lane grid.
-//
-// Columns are the left limb column (x 0.2), the central body spine (x 0.5), and
-// the right limb column (x 0.8). Rows are evenly spaced lanes (y 0, 0.2, 0.4,
-// 0.6, 0.8, 1.0). Because every slot lands on a fixed lane intersection, slot
-// boxes are uniformly spaced and can never overlap regardless of slot size —
-// paired slots (arms/wrists/hands/rings) stay row-aligned for body symmetry.
-//
-//   lane │ left (0.2)   center (0.5)  right (0.8)
-//   ─────┼──────────────────────────────────────
-//    0.0 │ neck         head          back
-//    0.2 │ leftArm      face          rightArm
-//    0.4 │ leftWrist    shoulders     rightWrist
-//    0.6 │ mainHand     chest         offHand
-//    0.8 │ gloves       legs          belt
-//    1.0 │ ringLeft     feet          ringRight
 export const SLOT_REGISTRY: readonly SlotDefinition[] = [
   { id: 'head', label: 'Head', bodyGroup: 'head', uiPosition: { x: 0.5, y: 0.0 } },
   { id: 'neck', label: 'Neck', bodyGroup: 'torso', uiPosition: { x: 0.2, y: 0.0 } },
-  { id: 'back', label: 'Back', bodyGroup: 'torso', uiPosition: { x: 0.8, y: 0.0 } },
-  { id: 'leftArm', label: 'L Arm', bodyGroup: 'arms', uiPosition: { x: 0.2, y: 0.2 } },
-  { id: 'face', label: 'Face', bodyGroup: 'head', uiPosition: { x: 0.5, y: 0.2 } },
-  { id: 'rightArm', label: 'R Arm', bodyGroup: 'arms', uiPosition: { x: 0.8, y: 0.2 } },
-  { id: 'leftWrist', label: 'L Wrist', bodyGroup: 'arms', uiPosition: { x: 0.2, y: 0.4 } },
-  { id: 'shoulders', label: 'Shoulders', bodyGroup: 'torso', uiPosition: { x: 0.5, y: 0.4 } },
-  { id: 'rightWrist', label: 'R Wrist', bodyGroup: 'arms', uiPosition: { x: 0.8, y: 0.4 } },
-  { id: 'mainHand', label: 'Main Hand', bodyGroup: 'hands', uiPosition: { x: 0.2, y: 0.6 } },
-  { id: 'chest', label: 'Chest', bodyGroup: 'torso', uiPosition: { x: 0.5, y: 0.6 } },
-  { id: 'offHand', label: 'Off Hand', bodyGroup: 'hands', uiPosition: { x: 0.8, y: 0.6 } },
-  { id: 'gloves', label: 'Gloves', bodyGroup: 'hands', uiPosition: { x: 0.2, y: 0.8 } },
-  { id: 'legs', label: 'Legs', bodyGroup: 'legs', uiPosition: { x: 0.5, y: 0.8 } },
-  { id: 'belt', label: 'Belt', bodyGroup: 'torso', uiPosition: { x: 0.8, y: 0.8 } },
-  { id: 'ringLeft', label: 'L Ring', bodyGroup: 'hands', uiPosition: { x: 0.2, y: 1.0 } },
-  { id: 'feet', label: 'Feet', bodyGroup: 'legs', uiPosition: { x: 0.5, y: 1.0 } },
-  { id: 'ringRight', label: 'R Ring', bodyGroup: 'hands', uiPosition: { x: 0.8, y: 1.0 } },
+  { id: 'mainHand', label: 'Main Hand', bodyGroup: 'hands', uiPosition: { x: 0.2, y: 0.33 } },
+  { id: 'chest', label: 'Chest', bodyGroup: 'torso', uiPosition: { x: 0.5, y: 0.33 } },
+  { id: 'offHand', label: 'Off Hand', bodyGroup: 'hands', uiPosition: { x: 0.8, y: 0.33 } },
+  { id: 'gloves', label: 'Gloves', bodyGroup: 'hands', uiPosition: { x: 0.2, y: 0.66 } },
+  { id: 'legs', label: 'Legs', bodyGroup: 'legs', uiPosition: { x: 0.5, y: 0.66 } },
+  { id: 'ring1', label: 'Ring 1', bodyGroup: 'hands', uiPosition: { x: 0.8, y: 0.66 } },
+  { id: 'feet', label: 'Feet', bodyGroup: 'legs', uiPosition: { x: 0.35, y: 1.0 } },
+  { id: 'ring2', label: 'Ring 2', bodyGroup: 'hands', uiPosition: { x: 0.65, y: 1.0 } },
 ] as const;
 
 const SLOT_BY_ID: ReadonlyMap<string, SlotDefinition> = new Map(
@@ -81,11 +57,8 @@ export function getSlotLabel(slotId: EquipmentSlotId): string {
  * tooling can enforce "one unified item per mirror pair" from a single source
  * of truth colocated with `SLOT_REGISTRY`, and every id is guaranteed valid.
  */
-export const MIRROR_SLOT_PAIRS: readonly (readonly [EquipmentSlotId, EquipmentSlotId])[] = [
-  ['leftArm', 'rightArm'],
-  ['leftWrist', 'rightWrist'],
-  ['ringLeft', 'ringRight'],
-] as const;
+export const MIRROR_SLOT_PAIRS: readonly (readonly [EquipmentSlotId, EquipmentSlotId])[] =
+  [] as const;
 export const _MIRROR_SLOT_PAIRS_FOR_TESTS = MIRROR_SLOT_PAIRS;
 
 // Fail fast at module load if a pair ever names a slot that is not in the
@@ -105,8 +78,8 @@ export const MIRROR_SLOT_IDS: ReadonlySet<EquipmentSlotId> = new Set(MIRROR_PART
 export const _MIRROR_SLOT_IDS_FOR_TESTS = MIRROR_SLOT_IDS;
 
 /**
- * The mirror partner of `slotId` (e.g. `getMirrorSlot('ringLeft') === 'ringRight'`),
- * or `undefined` when the slot is not part of a mirror pair.
+ * The mirror partner of `slotId`, or `undefined` when the slot is not part of
+ * a mirror pair. The ten-slot contract has no mirror pairs.
  */
 export function getMirrorSlot(slotId: EquipmentSlotId): EquipmentSlotId | undefined {
   return MIRROR_PARTNER_BY_ID.get(slotId);
