@@ -1505,6 +1505,16 @@ export function restoreGeneratedEquipmentRegistry(
         `$.snapshot.instances[${index}].generation.ordinal`,
       );
     }
+    // Sparse mode tolerates GAPS (retired instances were filtered out) but not
+    // REORDERING: restore preserves array insertion order, so a reordered
+    // payload would silently change deterministic registry iteration order.
+    if (options.allowSparseOrdinals && generation.ordinal <= largestOrdinal) {
+      fail(
+        'ordinal-gap',
+        `Generated ordinal ${generation.ordinal} must be greater than the preceding ordinal ${largestOrdinal}`,
+        `$.snapshot.instances[${index}].generation.ordinal`,
+      );
+    }
     if (restored.has(instance.instanceId)) {
       fail(
         'duplicate-instance',

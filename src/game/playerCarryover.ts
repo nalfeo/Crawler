@@ -627,11 +627,48 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
         })
       : rawBossChests
   ) as unknown[];
+  // A claimed equipment reward keeps an unacknowledged presentation snapshot so
+  // the reward-opening UI can redisplay it after a reload. Those snapshots only
+  // hold instance-key strings, so a retired instance would otherwise be
+  // redisplayed as an unresolvable item: drop the retired keys, and drop the
+  // whole presentation once nothing grantable is left in it.
+  const migratePendingPresentations = (entries: unknown): unknown => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.flatMap((entry) => {
+      if (!Array.isArray(entry) || entry.length !== 2) return [entry];
+      const presentation: unknown = entry[1];
+      if (
+        typeof presentation !== 'object' ||
+        presentation === null ||
+        Array.isArray(presentation) ||
+        (presentation as { kind?: unknown }).kind !== 'equipment' ||
+        !Array.isArray((presentation as { instanceKeys?: unknown }).instanceKeys)
+      ) {
+        return [entry];
+      }
+      const instanceKeys = (presentation as { instanceKeys: readonly unknown[] }).instanceKeys;
+      const survivingKeys = instanceKeys.filter(
+        (key) => typeof key !== 'string' || !retiredGeneratedInstanceKeys.has(key),
+      );
+      if (survivingKeys.length === instanceKeys.length) return [entry];
+      if (survivingKeys.length === 0) return [];
+      return [[entry[0], { ...presentation, instanceKeys: survivingKeys }]];
+    });
+  };
   const migratedAchievements = {
     ...legacy.achievements,
     claimedIds: Array.isArray(legacy.achievements?.claimedIds)
       ? [...new Set([...legacy.achievements.claimedIds, ...retiredAchievementIds])]
       : legacy.achievements?.claimedIds,
+    pendingPresentations: migratePendingPresentations(
+      legacy.achievements?.pendingPresentations,
+    ) as PlayerCarryoverSnapshot['achievements']['pendingPresentations'],
+  };
+  const isRetiredGeneratedGrantSourceId = (sourceId: unknown): boolean => {
+    if (typeof sourceId !== 'string' || !sourceId.startsWith('equipment:')) return false;
+    const lastColon = sourceId.lastIndexOf(':');
+    if (lastColon <= 'equipment:'.length) return false;
+    return retiredGeneratedInstanceKeys.has(sourceId.slice('equipment:'.length, lastColon));
   };
   const removeRetiredGeneratedSources = (state: unknown): unknown => {
     if (typeof state !== 'object' || state === null || Array.isArray(state)) return state;
@@ -655,11 +692,46 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
             ];
           })
         : value;
+    // `grantOwnership` is the authoritative ownership record; the legacy
+    // grant-source objects above are only a mirror. A retired instance's
+    // `equipment:<instanceId>:<ordinal>` id must go from both, or restore
+    // either resurrects the ability forever or fails closed on a stale source.
+    // Independent `learned:`/`skill:` sources for the same ability survive.
+    const filterOwnershipSources = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.flatMap((entry) => {
+            if (!Array.isArray(entry) || entry.length !== 2 || !Array.isArray(entry[1]))
+              return [entry];
+            const sources = entry[1].filter(
+              (sourceId) => !isRetiredGeneratedGrantSourceId(sourceId),
+            );
+            if (sources.length === (entry[1] as readonly unknown[]).length) return [entry];
+            if (sources.length === 0) return [];
+            return [[entry[0], sources]];
+          })
+        : value;
     const abilityState = state as Record<string, unknown>;
+    const grantOwnership = abilityState.grantOwnership;
     return {
       ...abilityState,
       activeAbilityGrantSources: filterSources(abilityState.activeAbilityGrantSources),
       passiveAbilityGrantSources: filterSources(abilityState.passiveAbilityGrantSources),
+      ...(typeof grantOwnership === 'object' &&
+      grantOwnership !== null &&
+      !Array.isArray(grantOwnership)
+        ? {
+            grantOwnership: {
+              ...(grantOwnership as Record<string, unknown>),
+              activeSourcesByAbilityId: filterOwnershipSources(
+                (grantOwnership as { activeSourcesByAbilityId?: unknown }).activeSourcesByAbilityId,
+              ),
+              passiveSourcesByAbilityId: filterOwnershipSources(
+                (grantOwnership as { passiveSourcesByAbilityId?: unknown })
+                  .passiveSourcesByAbilityId,
+              ),
+            },
+          }
+        : {}),
     };
   };
 

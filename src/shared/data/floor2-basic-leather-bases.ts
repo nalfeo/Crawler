@@ -187,7 +187,7 @@ const NON_WEAPON_INPUTS: readonly BasicLeatherNonWeaponInput[] = [
   {
     stableId: 'accessory.iron-ring',
     name: 'Iron Ring',
-    slots: ['ring1', 'ring2'],
+    slots: ['ring1'],
     statBonuses: { luck: 1 },
     weightLb: 0.25,
   },

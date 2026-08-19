@@ -602,12 +602,12 @@ describe('runSettlementMaintenancePlanner', () => {
     const baseIds = [
       'iron-helm',
       'iron-breastplate',
-      'accessory.gearwork-locket',
+      'accessory.leather-collar',
       'leather-gloves',
       'iron-greaves',
       'leather-boots',
       'band-of-fortune',
-      'signet-of-focus',
+      'accessory.compass-charm',
       'iron-sword',
     ];
     expect(baseIds.length).toBe(9); // 1 more than the equipment action cap (8)
@@ -617,9 +617,9 @@ describe('runSettlementMaintenancePlanner', () => {
 
     const result = runSettlementMaintenancePlanner(world);
 
-    expect(result.terminationReason).toBe('exhausted');
+    expect(result.terminationReason).toBe('action-cap-equipment');
     const equipCount = result.decisions.filter((d) => d.kind === 'equip-instance').length;
-    expect(equipCount).toBeLessThanOrEqual(8);
+    expect(equipCount).toBe(8);
   });
 
   it('configures at most ACTIVE_ABILITY_SLOT_LIMIT owned-but-unequipped abilities, skipping the rest without throwing', () => {
@@ -920,12 +920,12 @@ describe('runEagerMaintenanceTick', () => {
     const baseIds = [
       'iron-helm',
       'iron-breastplate',
-      'accessory.gearwork-locket',
+      'accessory.leather-collar',
       'leather-gloves',
       'iron-greaves',
       'leather-boots',
       'band-of-fortune',
-      'signet-of-focus',
+      'accessory.compass-charm',
       'iron-sword',
     ];
     for (const baseId of baseIds) {

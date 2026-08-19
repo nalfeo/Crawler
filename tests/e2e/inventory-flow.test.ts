@@ -426,8 +426,25 @@ describe('inventory flow (e2e)', () => {
     await probe.openEquipment(page);
     await page.waitForTimeout(300);
 
-    expect(await probe.getEquipmentEmptySlotCue(page, 'ring1')).toBe('ring1');
-    expect(await probe.getEquipmentEmptySlotCue(page, 'ring2')).toBe('ring2');
+    for (const ringSlot of ['ring1', 'ring2'] as const) {
+      const cue = await probe.getEquipmentEmptySlotCue(page, ringSlot);
+      expect(cue, `expected an empty-slot cue for "${ringSlot}"`).not.toBeNull();
+      // The ring placeholder branch must actually have drawn (not the generic
+      // fallback), and the caption must be parented by the panel container so
+      // it inherits panel visibility/scale and is cleaned up on rerender.
+      expect(cue!.glyph, `wrong placeholder glyph for "${ringSlot}"`).toBe('ring');
+      expect(cue!.captionText).toBe('Empty');
+      expect(cue!.captionInPanel, `"${ringSlot}" cue is not parented by the panel`).toBe(true);
+      expect(cue!.captionBounds.width).toBeGreaterThan(0);
+      expect(cue!.captionBounds.height).toBeGreaterThan(0);
+
+      const slotBounds = await probe.getEquipmentSlotBounds(page, ringSlot);
+      expect(slotBounds).not.toBeNull();
+      expect(cue!.captionBounds.x).toBeGreaterThanOrEqual(slotBounds!.x - 2);
+      expect(cue!.captionBounds.x + cue!.captionBounds.width).toBeLessThanOrEqual(
+        slotBounds!.x + slotBounds!.width + 2,
+      );
+    }
   });
 
   it('double-clicks an inventory item to equip it onto the paper-doll', async () => {
