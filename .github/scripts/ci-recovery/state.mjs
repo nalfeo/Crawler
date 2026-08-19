@@ -155,6 +155,10 @@ export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQ
  * @param {boolean} prFacts.draft
  * @param {boolean} [prFacts.mergeable] - true when GitHub API says PR is mergeable
  * @param {boolean} [prFacts.hasMergeConflict] - true when PR has a merge conflict
+ * @param {object} [prFacts.stack] - GitHub's stacked-PR `stack` object, present when
+ *   this PR belongs to a stack (another open PR is based on its head branch, or it
+ *   is itself based on another open PR's head branch). Non-null blocks admission:
+ *   see the `stacked-pr` reason below.
  * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
  * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
  * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
@@ -168,6 +172,7 @@ export function evaluateAdmission(prFacts, config = {}) {
     draft,
     mergeable,
     hasMergeConflict = false,
+    stack = null,
     checkRuns = [],
     reviewThreads = [],
     reviews = [],
@@ -188,6 +193,19 @@ export function evaluateAdmission(prFacts, config = {}) {
   // Accept either the GitHub API mergeable=false or a hasMergeConflict flag
   // (used when the caller already computed the conflict state from mergeable_state).
   if (mergeable === false || hasMergeConflict === true) reasons.push('not-mergeable');
+  // GitHub's classic synchronous merge endpoint (used by mergePullRequest / the
+  // sequential squash-merge promotion loop) 403s on ANY pull request that is
+  // part of a stack -- "Merging stacked PRs via this endpoint is not supported.
+  // Use the asynchronous merge endpoint instead." That is a hard, ambiguous
+  // (non-retryable) failure in createMergePullRequest, and previously escaped
+  // admission entirely: a stacked PR could be admitted, reach the merge PUT,
+  // 403, and crash the whole reconcile run -- blocking every other queued PR
+  // behind it (see incident: PR #3027, stacked under #3033, parked the train
+  // for 24h+). Reject a stacked PR at admission so it is dequeued with a clear
+  // reason instead of ever reaching the merge call. A stacked PR should be
+  // rebased/un-stacked onto `main` before it re-enters the queue -- either the
+  // child PR merges/closes first (dissolving the stack) or a human detaches it.
+  if (stack) reasons.push('stacked-pr');
 
   reasons.push(
     ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {
