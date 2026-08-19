@@ -340,6 +340,7 @@ export function createEquipmentUI(
   getDollScreenBounds(): ScreenBounds;
   getSlotScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
   getTooltipScreenBounds(): ScreenBounds | null;
   isTooltipVisible(): boolean;
   isTooltipTopmost(): boolean;
@@ -673,6 +674,7 @@ export function createEquipmentUI(
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
   const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
   const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
+  const emptySlotCues = new Map<EquipmentSlotId, EquipmentSlotId>();
   /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
   const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
@@ -1611,6 +1613,17 @@ export function createEquipmentUI(
         : instance
           ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
           : createSlotPlaceholder(slot.id, cx, cy + 2);
+      const emptyCue = instance
+        ? null
+        : crispText(snap(cx), snap(cy + 18), 'Empty', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '9px',
+            color: hex(COLORS.textSecondary),
+            padding: { top: 1, bottom: 2 },
+          });
+      if (emptyCue) emptySlotCues.set(slot.id, slot.id);
+      else emptySlotCues.delete(slot.id);
+      if (emptyCue) centerTextOnPixels(emptyCue, cx, cy + 18);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -2368,6 +2381,7 @@ export function createEquipmentUI(
     },
     getSlotScreenBounds: (slotId: EquipmentSlotId) => slotBounds.get(slotId) ?? null,
     getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
+    getEmptySlotCue: (slotId: EquipmentSlotId) => emptySlotCues.get(slotId) ?? null,
     getTooltipScreenBounds: () => tooltipBounds,
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipTopmost,
