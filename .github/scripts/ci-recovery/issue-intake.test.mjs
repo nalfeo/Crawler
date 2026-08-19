@@ -321,12 +321,9 @@ test('kickoff comment body includes the required planning instructions', () => {
   assert.match(ISSUE_INTAKE_BODY, /A checklist of the concrete steps you will take\./);
   assert.match(
     ISSUE_INTAKE_BODY,
-    /Post this plan comment on the issue itself so the maintainer can review it before you open a PR\./,
+    /Put this plan in the pull request description so the maintainer can review it there\./,
   );
-  assert.match(
-    ISSUE_INTAKE_BODY,
-    /Then, when you open the PR, include the same high-level summary in the PR description\./,
-  );
+  assert.match(ISSUE_INTAKE_BODY, /Do not post a separate plan comment on this issue\./);
 });
 
 test('posts kickoff comment before assigning Copilot and preserves existing assignees', async () => {
@@ -397,7 +394,7 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
   assert.match(calls[2][2].body.body, /\*\*Before writing any code\*\*/);
   assert.match(
     calls[2][2].body.body,
-    /Then, when you open the PR, include the same high-level summary in the PR description\./,
+    /Put this plan in the pull request description so the maintainer can review it there\./,
   );
 });
 
