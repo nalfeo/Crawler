@@ -2065,7 +2065,7 @@ async function getOrCreateFollowupBacklogIssue({ sourceIssue, thread }) {
   const existing = (await managedFollowupIssues()).find((issue) =>
     issueHasFollowupBacklogMarker(issue, sourceIssue.number),
   );
-  if (existing) return existing;
+  if (existing) return { issue: existing, action: 'reused' };
 
   await assertExpectedMetadataUnchanged('followup-backlog-issue');
   const created = (
@@ -2074,13 +2074,13 @@ async function getOrCreateFollowupBacklogIssue({ sourceIssue, thread }) {
       body: {
         title: followupBacklogIssueTitle(sourceIssue),
         body: followupBacklogIssueBody({ sourceIssue, thread, pr }),
-        labels: ['automation', 'enhancement', 'unmeasured'],
+        labels: ['automation'],
         assignees: [],
       },
     })
   ).data;
   existingManagedFollowupIssues.push(created);
-  return created;
+  return { issue: created, action: 'created' };
 }
 
 const closingIssueByNumber = new Map(closingIssues.map((issue) => [issue.number, issue]));
@@ -2100,14 +2100,27 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
   }
 
   const followupIssues = [];
-  for (const sourceIssueNumber of sourceIssueNumbers) {
-    const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
-    if (!sourceIssue) continue;
-    const followupIssue = await getOrCreateFollowupBacklogIssue({ sourceIssue, thread });
-    followupIssues.push({ sourceIssueNumber, followupIssue });
-    process.stdout.write(
-      `${followupIssue.created_at ? 'created-or-reused' : 'reused'} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
+  try {
+    for (const sourceIssueNumber of sourceIssueNumbers) {
+      const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
+      if (!sourceIssue) continue;
+      const { issue: followupIssue, action } = await getOrCreateFollowupBacklogIssue({
+        sourceIssue,
+        thread,
+      });
+      followupIssues.push({ sourceIssueNumber, followupIssue });
+      process.stdout.write(
+        `${action} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
+      );
+    }
+  } catch (issueErr) {
+    const safeMsg = String(issueErr?.message || issueErr)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(
+      `followup-backlog-issue-failed thread=${thread.id} status=${issueErr?.status ?? 'n/a'} err=${safeMsg}\n`,
     );
+    continue;
   }
   if (followupIssues.length === 0) continue;
 
@@ -2118,15 +2131,47 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
     .map(({ followupIssue }) => `#${followupIssue.number}`)
     .join(', ');
   const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
-  await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
-  await request(
-    pat,
-    `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
-    {
-      method: 'POST',
-      body: { body: markerBody },
-    },
-  );
+  try {
+    await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
+    await request(
+      pat,
+      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+      {
+        method: 'POST',
+        body: { body: markerBody },
+      },
+    );
+  } catch (replyErr) {
+    const safeMsg = String(replyErr?.message || replyErr)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(
+      `followup-backlog-reply-failed thread=${thread.id} status=${replyErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+    );
+    continue;
+  }
+  try {
+    await assertExpectedMetadataUnchanged('resolve-thread');
+    await graphql(
+      pat,
+      `
+        mutation ($threadId: ID!) {
+          resolveReviewThread(input: { threadId: $threadId }) {
+            thread {
+              isResolved
+            }
+          }
+        }
+      `,
+      { threadId: thread.id },
+    );
+  } catch (resolveErr) {
+    const safeMsg = String(resolveErr?.message || resolveErr)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
+    continue;
+  }
   if (!thread.comments) thread.comments = { nodes: [] };
   thread.comments.nodes.push({
     id: `reconciler-followup-backlog-marker:${thread.id}`,
@@ -2135,20 +2180,6 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
     author: { login: '' },
     authorAssociation: 'OWNER',
   });
-  await assertExpectedMetadataUnchanged('resolve-thread');
-  await graphql(
-    pat,
-    `
-      mutation ($threadId: ID!) {
-        resolveReviewThread(input: { threadId: $threadId }) {
-          thread {
-            isResolved
-          }
-        }
-      }
-    `,
-    { threadId: thread.id },
-  );
   thread.isResolved = true;
   process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
 }
