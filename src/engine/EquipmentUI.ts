@@ -694,7 +694,10 @@ export function createEquipmentUI(
    * panel container. Deliberately NOT the slot id — echoing the key back would
    * make every probe assertion pass even if the placeholder never rendered.
    */
-  const emptySlotCues = new Map<EquipmentSlotId, EmptySlotCue>();
+  const emptySlotCues = new Map<
+    EquipmentSlotId,
+    { readonly glyph: string; readonly caption: Phaser.GameObjects.Text }
+  >();
   /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
   const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
@@ -1748,17 +1751,9 @@ export function createEquipmentUI(
       if (emptyCue) {
         container.add(emptyCue);
         slotObjects.push(emptyCue);
-        const cueBounds = emptyCue.getBounds();
         emptySlotCues.set(slot.id, {
           glyph: (iconObject.getData('placeholderGlyph') as string | undefined) ?? 'unknown',
-          captionText: emptyCue.text,
-          captionInPanel: container.exists(emptyCue),
-          captionBounds: {
-            x: cueBounds.x,
-            y: cueBounds.y,
-            width: cueBounds.width,
-            height: cueBounds.height,
-          },
+          caption: emptyCue,
         });
       }
     }
@@ -2438,7 +2433,25 @@ export function createEquipmentUI(
     },
     getSlotScreenBounds: (slotId: EquipmentSlotId) => slotBounds.get(slotId) ?? null,
     getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
-    getEmptySlotCue: (slotId: EquipmentSlotId) => emptySlotCues.get(slotId) ?? null,
+    getEmptySlotCue: (slotId: EquipmentSlotId): EmptySlotCue | null => {
+      // Resolved from the live Text object at probe time, not snapshotted at
+      // render time: an orphaned or destroyed caption reports the truth here,
+      // where a value captured immediately after `container.add` could not.
+      const cue = emptySlotCues.get(slotId);
+      if (!cue) return null;
+      const bounds = cue.caption.getBounds();
+      return {
+        glyph: cue.glyph,
+        captionText: cue.caption.text,
+        captionInPanel: container.exists(cue.caption),
+        captionBounds: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        },
+      };
+    },
     getTooltipScreenBounds: () => tooltipBounds,
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipTopmost,
