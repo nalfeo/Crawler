@@ -1314,6 +1314,28 @@ export function createMergePullRequest({
           reason: `merge API rejected the merge (${status}): ${error?.message ?? String(error)}`,
         };
       }
+      // Defense-in-depth: `eligible` (via evaluateAdmission's `stacked-pr`
+      // reason) rejects a PR with a `stack` object at admission, so this
+      // should never be reached in the normal path. But a PR can become
+      // stacked (another PR opened against its head branch) in the narrow
+      // window between admission and this PUT, and GitHub 403s the classic
+      // synchronous merge endpoint for ANY stacked PR: "Merging stacked PRs
+      // via this endpoint is not supported. Use the asynchronous merge
+      // endpoint instead." Nothing merged, so treat it exactly like the
+      // other definitively-nothing-landed statuses above: retryable, not a
+      // hard throw. The next reconcile's admission check now dequeues the PR
+      // via `stacked-pr` instead of looping on this same 403 forever. Prior
+      // to this fix this fell through to the ambiguous 5xx/network branch,
+      // which throws a MergeTrainPromotionError and aborts the ENTIRE batch --
+      // blocking every other queued PR behind it (incident: PR #3027 stacked
+      // under #3033 parked the train for 24h+).
+      if (status === 403 && /stacked pr/i.test(String(error?.message ?? ''))) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge API rejected the merge (403 stacked PR): ${error?.message ?? String(error)}`,
+        };
+      }
       // 5xx/network failures are AMBIGUOUS: GitHub may have merged the PR before
       // the response was lost. Disambiguate by re-reading the PR -- if it is now
       // merged with a real merge commit, return that SHA as success so the
