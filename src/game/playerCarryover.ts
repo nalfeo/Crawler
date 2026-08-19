@@ -10,7 +10,7 @@ import {
 } from '../core/systems/equipmentSystem.js';
 import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, isValidSlotId, type EquipmentSlotId } from '../shared/equipment-slots.js';
-import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
+import { getEquipmentDefForItem, RETIRED_EQUIPMENT_ITEM_IDS } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
@@ -64,18 +64,6 @@ import { listGeneratedEquipmentReferences, listStaticInventorySlots } from '../s
 import { spawnBossChestEntity } from '../core/spawners/world-objects.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
-
-// These IDs existed before the ten-slot contract. Their retired categories
-// have no safe one-to-one replacement, so legacy equipped copies are dropped.
-const RETIRED_STATIC_EQUIPMENT_IDS = new Set([
-  'iron-visor',
-  'steel-pauldrons',
-  'travelers-cloak',
-  'sturdy-belt',
-  'iron-armguard',
-  'leather-bracer',
-  'beaded-bracelet',
-]);
 
 class PlayerCarryoverSnapshotError extends Error {
   constructor(message: string) {
@@ -526,20 +514,97 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     });
   };
 
+  const retiredGeneratedInstanceKeys = new Set<string>();
+  const generatedRegistry = partial.generatedEquipmentRegistry;
+  const migratedGeneratedRegistry =
+    typeof generatedRegistry === 'object' &&
+    generatedRegistry !== null &&
+    !Array.isArray(generatedRegistry) &&
+    Array.isArray((generatedRegistry as { instances?: unknown }).instances)
+      ? {
+          ...(generatedRegistry as unknown as Record<string, unknown>),
+          instances: (
+            generatedRegistry as unknown as { instances: readonly unknown[] }
+          ).instances.filter((instance) => {
+            if (typeof instance !== 'object' || instance === null || Array.isArray(instance)) {
+              return true;
+            }
+            const record = instance as Record<string, unknown>;
+            const frozen = record.frozen;
+            const slots =
+              typeof frozen === 'object' && frozen !== null && !Array.isArray(frozen)
+                ? (frozen as { slots?: unknown }).slots
+                : undefined;
+            const isRetired =
+              Array.isArray(slots) &&
+              slots.some((slot) => typeof slot === 'string' && !isValidSlotId(slot));
+            if (isRetired && typeof record.instanceId === 'string') {
+              retiredGeneratedInstanceKeys.add(record.instanceId);
+            }
+            return !isRetired;
+          }),
+        }
+      : generatedRegistry;
+  const withoutRetiredGeneratedKeys = (entries: unknown[]): unknown[] =>
+    Array.isArray(entries)
+      ? entries.filter(
+          (entry) => typeof entry !== 'string' || !retiredGeneratedInstanceKeys.has(entry),
+        )
+      : entries;
+  const removeRetiredGeneratedSources = (state: unknown): unknown => {
+    if (typeof state !== 'object' || state === null || Array.isArray(state)) return state;
+    const filterSources = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map((entry) => {
+            if (!Array.isArray(entry) || entry.length !== 2 || !Array.isArray(entry[1]))
+              return entry;
+            return [
+              entry[0],
+              entry[1].filter(
+                (source) =>
+                  typeof source !== 'object' ||
+                  source === null ||
+                  (source as { kind?: unknown; instanceId?: unknown }).kind !==
+                    'generated-equipment' ||
+                  !retiredGeneratedInstanceKeys.has(
+                    (source as { instanceId?: string }).instanceId ?? '',
+                  ),
+              ),
+            ];
+          })
+        : value;
+    const abilityState = state as Record<string, unknown>;
+    return {
+      ...abilityState,
+      activeAbilityGrantSources: filterSources(abilityState.activeAbilityGrantSources),
+      passiveAbilityGrantSources: filterSources(abilityState.passiveAbilityGrantSources),
+    };
+  };
+
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
+    inventorySlots: Array.isArray(legacy.inventorySlots)
+      ? legacy.inventorySlots.filter(
+          (slot) =>
+            typeof slot !== 'object' ||
+            slot === null ||
+            !RETIRED_EQUIPMENT_ITEM_IDS.has((slot as { itemId?: string }).itemId ?? ''),
+        )
+      : legacy.inventorySlots,
     equippedItemIds: Array.isArray(legacy.equippedItemIds)
       ? legacy.equippedItemIds.filter(
-          (itemId) => typeof itemId !== 'string' || !RETIRED_STATIC_EQUIPMENT_IDS.has(itemId),
+          (itemId) => typeof itemId !== 'string' || !RETIRED_EQUIPMENT_ITEM_IDS.has(itemId),
         )
       : legacy.equippedItemIds,
-    generatedInventoryInstanceKeys: readArrayField(
-      'generatedInventoryInstanceKeys',
+    generatedInventoryInstanceKeys: withoutRetiredGeneratedKeys(
+      readArrayField('generatedInventoryInstanceKeys'),
     ) as PlayerCarryoverSnapshot['generatedInventoryInstanceKeys'],
-    generatedEquippedInstanceKeys: readArrayField(
-      'generatedEquippedInstanceKeys',
+    generatedEquippedInstanceKeys: withoutRetiredGeneratedKeys(
+      readArrayField('generatedEquippedInstanceKeys'),
     ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
+    generatedEquipmentRegistry:
+      migratedGeneratedRegistry as PlayerCarryoverSnapshot['generatedEquipmentRegistry'],
     generatedEquipmentRewardBundles: migrateBundleBossChestTier(
       readArrayField('generatedEquipmentRewardBundles'),
     ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
@@ -554,6 +619,9 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
           (slotId) => typeof slotId !== 'string' || isValidSlotId(slotId),
         )
       : legacy.disabledEquipmentSlots,
+    abilityState: removeRetiredGeneratedSources(
+      legacy.abilityState,
+    ) as PlayerCarryoverSnapshot['abilityState'],
   };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
@@ -1175,7 +1243,9 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       generationPolicy: world.generatedEquipmentRegistry.generationPolicy,
     }),
   };
-  restoreGeneratedEquipmentRegistry(validationWorld, snapshot.generatedEquipmentRegistry);
+  restoreGeneratedEquipmentRegistry(validationWorld, snapshot.generatedEquipmentRegistry, {
+    allowSparseOrdinals: true,
+  });
   const instances = listGeneratedEquipmentInstances(validationWorld);
   const instancesByKey = new Map(instances.map((instance) => [instance.instanceId, instance]));
 
@@ -1940,7 +2010,9 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   }
 
   if (snapshot.generatedEquipmentRegistry) {
-    restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry);
+    restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry, {
+      allowSparseOrdinals: true,
+    });
   }
   // Rebuild the reward-bundle map immediately after the registry restore and
   // BEFORE any bag/equipped restore. Bundles are registry owners, so having them

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -1123,6 +1123,26 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
 
   it('rejects a malformed plan shape', () => {
     expect(() => buildThemeEquipmentSetStateFromPlan({ id: 'bad' }, { updatedAt: NOW })).toThrow();
+  });
+
+  it('rejects retired slots while loading an authored plan', async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'crawler-theme-plan-'));
+    const planPath = path.join(directory, 'retired-slot.json');
+    writeFileSync(
+      planPath,
+      JSON.stringify({
+        ...minimalPlan,
+        equipment: [{ id: 'belt', displayName: 'Belt', slots: ['belt'] }],
+      }),
+    );
+
+    try {
+      expect(() => loadThemeEquipmentSetPlan('retired-slot', { planPath })).toThrow(
+        /retired or unknown equipment slot/,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

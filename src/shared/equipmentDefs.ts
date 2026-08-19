@@ -25,6 +25,22 @@ import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 import { getWeaponDef } from './weaponDefs.js';
 
 /**
+ * Static equipment that was intentionally retired with the ten-slot contract.
+ * Carryover uses this list to discard obsolete inventory/equip references rather
+ * than treating an old save as corrupt or retargeting the item to a new slot.
+ */
+export const RETIRED_EQUIPMENT_ITEM_IDS: ReadonlySet<string> = new Set([
+  'iron-visor',
+  'steel-pauldrons',
+  'travelers-cloak',
+  'sturdy-belt',
+  'bronze-vambrace',
+  'iron-armguard',
+  'leather-bracer',
+  'beaded-bracelet',
+]);
+
+/**
  * The magic charm the Floor 1 merchant gives as a quest reward — a necklace
  * (neck slot) granting +1 charisma. Modest, slightly cursed, fully wearable.
  *

@@ -26,6 +26,14 @@ Carryover validation now rejects retired equipped slots and filters retired
 disabled-slot entries. Tests cover the exact registry, invalid slot handling,
 theme plan validation, and the updated equipment fixtures.
 
+Follow-up review added deterministic retirement migration for older snapshots:
+static retired items are dropped from inventory/equipment, and generated
+instances with retired frozen slots are removed from the registry and player
+ownership before restore. Surviving generated instance IDs remain stable, so
+the registry permits sparse historical ordinals only on carryover restore.
+Theme roster prompts and persisted-plan parsing now reject retired slot
+literals. ADR 0083 records the cross-system contract.
+
 ## Verification
 
 - `npm run verify:fast` passed.

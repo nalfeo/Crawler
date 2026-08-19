@@ -33,12 +33,6 @@ import {
   themeEquipmentSetPlanSchema,
   type ThemeEquipmentSetPlan,
 } from './theme-equipment-set.js';
-import { _MIRROR_SLOT_PAIRS_FOR_TESTS } from '../../src/shared/equipment-slots.js';
-
-/** Human-readable mirror-pair list for the roster prompt, from the canonical pairs. */
-const MIRROR_PAIR_PROMPT_LIST = _MIRROR_SLOT_PAIRS_FOR_TESTS
-  .map(([a, b]) => `${a}+${b}`)
-  .join(', ');
 
 /**
  * Minimal chat surface this module needs: a single structured-JSON
@@ -188,10 +182,7 @@ export function buildRosterSystemPrompt(): string {
     `- Cover at least ${THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS} DISTINCT equipment slots.`,
     `- Valid slot ids (use only these): ${NON_HAND_EQUIPMENT_SLOT_IDS.join(', ')}.`,
     '- Each equipment entry lists the slots that ONE item occupies.',
-    MIRROR_PAIR_PROMPT_LIST.length > 0
-      ? `- Mirror-pair slots MUST be a single unified item that lists BOTH sides — never a left item and a right item. Pairs: ${MIRROR_PAIR_PROMPT_LIST}.`
-      : '- There are no mirror-pair slots. Each equipment entry occupies exactly one valid slot.',
-    '- Every other item occupies exactly one slot.',
+    '- Every equipment item occupies exactly one listed slot.',
     '- Prefer plain, archetypal gear for the theme. These are BASE items that later get recoloured and resized into variants, so avoid one-off named artifacts.',
     '- Names must be evocative of the theme but readable at 32px: concrete objects, not abstractions.',
   ].join('\n');
@@ -212,9 +203,7 @@ export function buildRosterUserPrompt(
   }
   lines.push(
     '',
-    MIRROR_PAIR_PROMPT_LIST.length > 0
-      ? `Propose the roster. Aim for ${THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES + 1} weapons across that many distinct weapon types, and cover the equipment slots — one item per slot, except mirror pairs (${MIRROR_PAIR_PROMPT_LIST}) which are each a single unified item listing both sides.`
-      : `Propose the roster. Aim for ${THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES + 1} weapons across that many distinct weapon types, and cover the ten equipment slots with one item per slot.`,
+    `Propose the roster. Aim for ${THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES + 1} weapons across that many distinct weapon types, and cover the equipment slots with one item per slot.`,
   );
   if (previousFailure) {
     lines.push(

@@ -45,7 +45,11 @@ import {
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
-import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
+import {
+  addItem,
+  listGeneratedEquipmentReferences,
+  listStaticInventorySlots,
+} from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 describe('player floor carryover', () => {
@@ -65,6 +69,53 @@ describe('player floor carryover', () => {
     expect(getEquipmentState(destination, destinationPlayer)?.disabledSlots).toEqual(
       new Set(['ring1']),
     );
+  });
+
+  it('retires static and generated equipment that used removed slots during restore', () => {
+    const runKey = 'carryover-retired-equipment';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'accessory.legacy-belt', slots: ['head'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      inventorySlots: [...snapshot.inventorySlots, { itemId: 'sturdy-belt', quantity: 1 }],
+      equippedItemIds: [...snapshot.equippedItemIds, 'sturdy-belt'],
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['belt'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(
+      listStaticInventorySlots(destination.inventories.get(destinationPlayer)!).map(
+        (slot) => slot.itemId,
+      ),
+    ).not.toContain('sturdy-belt');
+    expect(getEquipmentState(destination, destinationPlayer)?.instances).toEqual(new Map());
+    expect(
+      listGeneratedEquipmentReferences(destination.inventories.get(destinationPlayer)!),
+    ).toEqual([]);
   });
 
   it('restores run-wide progression without copying the previous floor modifier', () => {
