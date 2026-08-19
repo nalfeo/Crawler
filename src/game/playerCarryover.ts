@@ -695,9 +695,11 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
     disabledEquipmentSlots: Array.isArray(legacy.disabledEquipmentSlots)
-      ? legacy.disabledEquipmentSlots.filter(
-          (slotId) => typeof slotId !== 'string' || isValidSlotId(slotId),
-        )
+      ? legacy.disabledEquipmentSlots
+          .map((slotId) =>
+            typeof slotId === 'string' ? (legacyGeneratedSlotIds[slotId] ?? slotId) : slotId,
+          )
+          .filter((slotId) => typeof slotId !== 'string' || isValidSlotId(slotId))
       : legacy.disabledEquipmentSlots,
     abilityState: removeRetiredGeneratedSources(
       legacy.abilityState,

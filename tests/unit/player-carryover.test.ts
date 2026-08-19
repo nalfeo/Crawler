@@ -60,7 +60,7 @@ describe('player floor carryover', () => {
     const snapshot = capturePlayerCarryover(source, sourcePlayer);
     const legacySnapshot = {
       ...snapshot,
-      disabledEquipmentSlots: ['ringLeft', 'ring1'],
+      disabledEquipmentSlots: ['ringLeft'],
     };
 
     const destination = createTestWorld({ seed: 7 });
