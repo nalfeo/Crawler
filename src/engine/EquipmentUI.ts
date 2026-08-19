@@ -79,7 +79,7 @@ const SLOT_SPREAD_Y = 1;
 // label an empty slot is an anonymous grey square: the player cannot tell a
 // wrist from a ring from a belt, which is the single biggest task-readiness
 // defect the screenshot judge reports against this panel.
-const SLOT_LABEL_BAND = 30;
+const SLOT_LABEL_BAND = 40;
 const SLOT_LABEL_PX = 12;
 // Header/footer bands around the doll. These were 58/82 and held ~40px of real
 // content between them, leaving wide dead bands at the top and bottom of the
@@ -417,7 +417,7 @@ export function createEquipmentUI(
     text.setOrigin(0, 0).setPosition(snap(rightX - text.width), snap(centerY - text.height / 2));
 
   const panelWidth = config.width ?? 1240;
-  const panelHeight = config.height ?? 700;
+  const panelHeight = config.height ?? 720;
 
   let uiScale = crispUiScale();
   textResolution = Math.max(MIN_TEXT_RESOLUTION, getTextResolution(scene));
@@ -539,10 +539,10 @@ export function createEquipmentUI(
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
   const INSPECTOR_H = 96;
-  const INSPECTOR_GAP = 32;
+  const INSPECTOR_GAP = 52;
   const inspectorX = dollX + 10;
   const inspectorW = dollW - 20;
-  const inspectorY = dollY + dollH - INSPECTOR_H - 30;
+  const inspectorY = dollY + dollH - INSPECTOR_H - 50;
   const inspectorBg = scene.add.rectangle(
     inspectorX + inspectorW / 2,
     inspectorY + INSPECTOR_H / 2,
