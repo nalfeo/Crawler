@@ -376,7 +376,7 @@ export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CH
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
 export function isAdmissible(prFacts, requiredChecks = DEFAULT_ADMISSION_CHECKS) {
-  return evaluateAdmission(prFacts, { requiredChecks });
+  return evaluateAdmission(prFacts, { requiredChecks, allowBottomStackAsync: true });
 }
 
 // A candidate check normally completes within the validator's own

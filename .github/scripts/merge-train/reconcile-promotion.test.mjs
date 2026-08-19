@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   applyLandedRecoveryDecision,
+  createMergeBottomOfStackPr,
   createMergePullRequest,
   isMergeTrainPromotionError,
   landedCommitProofError,
@@ -1022,6 +1023,145 @@ test('createMergePullRequest returns non-retryable when an ambiguous PUT failure
   assert.equal(result.ok, false);
   assert.equal(result.retryable, false);
   assert.match(result.reason, /merge API failed \(504\)/);
+});
+
+// ---- createMergeBottomOfStackPr ----
+
+test('createMergeBottomOfStackPr submits an async merge and returns the merge SHA once merged immediately', async () => {
+  const { request, calls } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      return { status: 'merged', details: { expected_head_sha: LAND1 } };
+    }
+    // Post-merge re-read to fetch the real merge commit SHA.
+    return { merged: true, merge_commit_sha: LAND1 };
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 'feat (#1)', commitMessage: 'Merge-Train-PR: 1' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+  const put = calls.find((c) => c.path.endsWith('/merge-async') && c.options.method === 'PUT');
+  assert.equal(put.options.body.sha, HEAD1);
+  assert.equal(put.options.body.merge_method, 'squash');
+});
+
+test('createMergeBottomOfStackPr polls the async result when the submit returns pending', async () => {
+  let pollCount = 0;
+  const { request } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      return { status: 'pending', details: { uuid: 'u1' } };
+    }
+    if (path.endsWith('/merge-async/u1')) {
+      pollCount += 1;
+      if (pollCount < 2) return { status: 'pending', details: { uuid: 'u1' } };
+      return { status: 'merged', details: { expected_head_sha: LAND1 } };
+    }
+    return { merged: true, merge_commit_sha: LAND1 };
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.sha, LAND1);
+  assert.ok(pollCount >= 2);
+});
+
+test('createMergeBottomOfStackPr returns non-retryable when the async merge reports failed', async () => {
+  const { request } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      return { status: 'pending', details: { uuid: 'u1' } };
+    }
+    if (path.endsWith('/merge-async/u1')) {
+      return { status: 'failed', details: { message: 'stack conflict' } };
+    }
+    throw new Error('unexpected request');
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, false);
+  assert.match(result.reason, /stack conflict/);
+});
+
+test('createMergeBottomOfStackPr treats a submit failure as retryable and never throws', async () => {
+  const { request } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      const error = new Error('service unavailable');
+      error.status = 503;
+      return error;
+    }
+    throw new Error('unexpected request');
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, true);
+  assert.match(result.reason, /merge-async submit failed \(503\)/);
+});
+
+test('createMergeBottomOfStackPr resumes polling using 409 async-operation uuid', async () => {
+  let pollCount = 0;
+  const { request } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      const error = new Error('conflict: operation already exists');
+      error.status = 409;
+      error.data = { details: { uuid: 'u-409' } };
+      return error;
+    }
+    if (path.endsWith('/merge-async/u-409')) {
+      pollCount += 1;
+      return pollCount >= 2
+        ? { status: 'merged', details: { expected_head_sha: LAND1 } }
+        : { status: 'pending', details: { uuid: 'u-409' } };
+    }
+    return { merged: true, merge_commit_sha: LAND1 };
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+  assert.equal(pollCount, 2);
 });
 
 // ---- landedCommitProofError ----
