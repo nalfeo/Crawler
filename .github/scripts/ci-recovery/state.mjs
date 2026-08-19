@@ -181,6 +181,7 @@ export function evaluateAdmission(prFacts, config = {}) {
     reviewThreads = [],
     reviews = [],
     requiredChecks = config.requiredChecks || DEFAULT_REQUIRED_CHECKS,
+    allowBottomStackAsync = config.allowBottomStackAsync ?? false,
     lifecyclePhase = null,
     humanApprovalDisposition = null,
     skipSubstantiveReview = config.skipSubstantiveReview ?? false,
@@ -212,17 +213,13 @@ export function evaluateAdmission(prFacts, config = {}) {
   // in everything below it too), and the reconciler only ever merges one PR
   // at a time. It must wait for the PR(s) below it to merge/dissolve first.
   //
-  // A BOTTOM-of-stack PR (position === 1) is admitted: the reconciler routes
-  // it to GitHub's async merge-stack endpoint instead of the classic PUT.
-  // That endpoint merges only PRs from the stack base up through the target
-  // PR -- calling it on the bottom-most PR merges just that one PR. GitHub
-  // then automatically rebases the PR(s) above it directly onto `main`,
-  // dissolving the stack so they become ordinary, independently-mergeable
-  // PRs. This preserves the whole point of stacking: chunked, independently
-  // reviewable/mergeable work, rather than force-merging the entire stack at
-  // once (which is what calling the async endpoint on a non-bottom PR would
-  // do).
-  if (stack && stack.position !== 1) reasons.push('stacked-pr');
+  // A BOTTOM-of-stack PR (position === 1) is only admitted for callers that
+  // explicitly support GitHub's async merge-stack endpoint.
+  //
+  // CI Recovery's auto-merge path does NOT support stacked PRs, so callers
+  // that do not pass `allowBottomStackAsync: true` keep the prior behavior:
+  // any stacked PR is blocked with `stacked-pr`.
+  if (stack && (stack.position !== 1 || !allowBottomStackAsync)) reasons.push('stacked-pr');
 
   reasons.push(
     ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {

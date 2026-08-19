@@ -500,14 +500,13 @@ async function mainAttributionSignal() {
 // completion semantics the old atomic force-push could never produce. The
 // bounded mergeability poll absorbs GitHub's async `mergeable` computation.
 const mergePullRequest = createMergePullRequest({ request, token, owner, repo });
-
-// Bottom-of-stack PRs (`stack.position === 1`) are admitted by evaluateAdmission
-// but must never go through the classic batch-promotion path above: the
-// classic PUT /merge endpoint 403s on any stacked PR. Instead they are merged
-// individually, immediately, via GitHub's async merge-stack endpoint, which
-// merges only that PR and lets GitHub rebase the PR(s) above it directly onto
-// `main` -- dissolving the stack while preserving independent mergeability.
 const mergeBottomOfStackPr = createMergeBottomOfStackPr({ request, token, owner, repo });
+const mergePullRequestWithStackHandling = async (entry, options) => {
+  if (options?.stack?.position === 1) {
+    return mergeBottomOfStackPr(entry, options);
+  }
+  return mergePullRequest(entry, options);
+};
 
 // Fetch a landed commit's REST object (tree + parents) for the post-merge
 // proof in promoteExactBatch.
@@ -875,33 +874,13 @@ for (const pr of queued) {
       // current and required CI passes. Skip the break for dequeued forks: the
       // blocking PR is gone from the queue so later entries can still be admitted.
       if (!dequeuedFork) break;
-    } else if (livePr.stack?.position === 1) {
-      // Bottom-of-stack PR: never enters the classic sequential batch (the
-      // classic PUT /merge endpoint 403s on any stacked PR). Merge it alone,
-      // right now, via the async merge-stack endpoint. GitHub then rebases
-      // the PR(s) above it directly onto `main`, so they naturally fall out
-      // of the stack and become ordinary, independently-mergeable PRs.
-      await disableAutoMerge(pr);
-      const result = await mergeBottomOfStackPr(
-        { number: pr.number },
-        {
-          expectedHeadSha: livePr.head.sha,
-          commitTitle: squashCommitTitle(livePr),
-          commitMessage: squashCommitMessage(livePr),
-        },
-      );
-      if (result.ok) {
-        process.stdout.write(
-          `merge-async pr=#${pr.number} reason=bottom-of-stack sha=${result.sha}\n`,
-        );
-      } else {
-        process.stderr.write(
-          `merge-async pr=#${pr.number} reason=bottom-of-stack failed retryable=${result.retryable}: ${result.reason}\n`,
-        );
-      }
     } else {
       // Fence the legacy auto-merge path before this PR can be sequentially
-      // squash-merged, so it cannot land out of order underneath the promotion.
+      // squash-merged, so it cannot land out of order underneath promotion.
+      // Bottom-of-stack stacked PRs are now promoted through the same
+      // candidate-validated promotion loop as every other admitted PR; the
+      // per-entry merge helper switches those entries to GitHub's async
+      // merge-stack endpoint at merge time.
       await disableAutoMerge(pr);
       admitted.push(pr);
     }
@@ -1033,7 +1012,7 @@ async function promotePrefix(prefixLength, validationIndex) {
     fetchCommit,
     eligible,
     git,
-    mergePullRequest,
+    mergePullRequest: mergePullRequestWithStackHandling,
     setLabel,
     removeLabel,
     updateStatus,

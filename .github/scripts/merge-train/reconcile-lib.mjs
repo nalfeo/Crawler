@@ -910,6 +910,7 @@ export async function promoteExactBatch({
       expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
+      stack: postSlotPr.stack ?? null,
     });
     if (!merge.ok) {
       if (merge.retryable) {
@@ -1410,6 +1411,7 @@ export function createMergeBottomOfStackPr({
     { expectedHeadSha, commitTitle, commitMessage },
   ) {
     let submitted;
+    let resumedUuid = null;
     try {
       submitted = (
         await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge-async`, {
@@ -1424,20 +1426,28 @@ export function createMergeBottomOfStackPr({
         })
       ).data;
     } catch (error) {
-      // Nothing merged if the submit itself failed -- retryable, never throw
-      // (this function shares createMergePullRequest's never-throws contract).
-      return {
-        ok: false,
-        retryable: true,
-        reason: `merge-async submit failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
-      };
+      resumedUuid = String(error?.data?.details?.uuid || error?.details?.uuid || '').trim() || null;
+      if (error?.status === 409 && resumedUuid) {
+        // GitHub reports an already-running async merge with HTTP 409 and its
+        // operation UUID. Resume polling that operation instead of repeatedly
+        // re-submitting and receiving the same 409.
+        submitted = { status: 'pending', details: { uuid: resumedUuid } };
+      } else {
+        // Nothing merged if the submit itself failed -- retryable, never throw
+        // (this function shares createMergePullRequest's never-throws contract).
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async submit failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
+        };
+      }
     }
 
     if (submitted.status === 'merged') {
       return { ok: true, sha: String(submitted.details?.expected_head_sha || expectedHeadSha) };
     }
 
-    const uuid = submitted.details?.uuid;
+    const uuid = submitted.details?.uuid || resumedUuid;
     if (!uuid) {
       return {
         ok: false,

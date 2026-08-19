@@ -204,11 +204,7 @@ test('evaluateAdmission rejects a non-bottom stacked PR (GitHub `stack` object, 
   assert.deepEqual(result.reasons, ['stacked-pr']);
 });
 
-test('evaluateAdmission admits a green bottom-of-stack PR (stack.position === 1)', () => {
-  // A bottom-of-stack PR is admitted: the reconciler routes it to GitHub's
-  // async merge-stack endpoint instead of the classic PUT, which merges only
-  // this PR and lets GitHub rebase the PR(s) above it directly onto `main`,
-  // dissolving the stack without force-merging everything at once.
+test('evaluateAdmission keeps bottom-of-stack PRs blocked by default (CI-recovery mode)', () => {
   const result = evaluateAdmission({
     state: 'open',
     draft: false,
@@ -218,6 +214,25 @@ test('evaluateAdmission admits a green bottom-of-stack PR (stack.position === 1)
     reviewThreads: [],
     reviews: substantiveCopilotReviews(),
   });
+
+  assert.deepEqual(result, { eligible: false, reasons: ['stacked-pr'] });
+});
+
+test('evaluateAdmission admits a green bottom-of-stack PR when async stacked merges are enabled', () => {
+  // Merge-train mode explicitly enables async stacked merges. In that mode a
+  // bottom-of-stack PR can be admitted and merged via merge-async.
+  const result = evaluateAdmission(
+    {
+      state: 'open',
+      draft: false,
+      mergeable: true,
+      stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 1, size: 2 },
+      checkRuns: greenChecks(),
+      reviewThreads: [],
+      reviews: substantiveCopilotReviews(),
+    },
+    { allowBottomStackAsync: true },
+  );
 
   assert.deepEqual(result, { eligible: true, reasons: [] });
 });

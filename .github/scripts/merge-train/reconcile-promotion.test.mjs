@@ -1132,6 +1132,38 @@ test('createMergeBottomOfStackPr treats a submit failure as retryable and never 
   assert.match(result.reason, /merge-async submit failed \(503\)/);
 });
 
+test('createMergeBottomOfStackPr resumes polling using 409 async-operation uuid', async () => {
+  let pollCount = 0;
+  const { request } = mergeRequestStub((path, options) => {
+    if (path.endsWith('/merge-async') && options.method === 'PUT') {
+      const error = new Error('conflict: operation already exists');
+      error.status = 409;
+      error.data = { details: { uuid: 'u-409' } };
+      return error;
+    }
+    if (path.endsWith('/merge-async/u-409')) {
+      pollCount += 1;
+      return pollCount >= 2
+        ? { status: 'merged', details: { expected_head_sha: LAND1 } }
+        : { status: 'pending', details: { uuid: 'u-409' } };
+    }
+    return { merged: true, merge_commit_sha: LAND1 };
+  });
+  const mergeBottomOfStackPr = createMergeBottomOfStackPr({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergeBottomOfStackPr(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+  assert.equal(pollCount, 2);
+});
+
 // ---- landedCommitProofError ----
 
 const proofDefaults = {
