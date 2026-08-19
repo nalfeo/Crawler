@@ -69,11 +69,15 @@ function overlapNoun(a, b) {
  *   and overlay kinds (`panel`, `tooltip`, `icon`) are excluded from this pass.
  * - Touch = zero overlap but gap <= 1px along one axis while sharing >= 8px of
  *   extent on the other (matches the legacy equipment thresholds).
- * - Icon escape = a `kind:'icon'` region whose box leaves its declared parent
- *   region's box by more than 1px on any edge.
+ * - Container overrun = ANY region whose box leaves its declared parent region's
+ *   box by more than 1px on any edge. An `icon` reports as the legacy
+ *   "Icon escapes its box"; everything else reports the overrun edges + pixels.
+ * - Paired-slot alignment = two halves of a pair (`*1`/`*2`, or `left*`/`right*`)
+ *   that do not share a row baseline within 1px. See `computeAlignmentBlockers`.
  *
  * Output order is deterministic: overlap/touch pairs in region declaration order
- * (grouped by parent, i<j), then icon escapes in declaration order.
+ * (grouped by parent, i<j), then containment in declaration order, then
+ * alignment in first-seen pair order.
  *
  * @param {readonly VisualReviewRegion[]} regions
  * @returns {string[]}
@@ -133,23 +137,116 @@ export function computeGeometryBlockers(regions) {
     }
   }
 
-  // 2. Icon regions escaping their declared parent box by more than 1px.
+  // 2. Any child region escaping its declared parent box by more than 1px.
   /** @type {Map<string, VisualReviewRegion>} */
   const byId = new Map();
   for (const r of valid) if (!byId.has(r.id)) byId.set(r.id, r);
   for (const r of valid) {
-    if (r.kind !== 'icon' || r.parentId === undefined) continue;
+    if (r.parentId === undefined) continue;
     const parent = byId.get(r.parentId);
-    if (!parent) continue;
+    if (!parent || parent.id === r.id) continue;
     const t = 1;
-    const inside =
-      r.box.x >= parent.box.x - t &&
-      r.box.y >= parent.box.y - t &&
-      r.box.x + r.box.width <= parent.box.x + parent.box.width + t &&
-      r.box.y + r.box.height <= parent.box.y + parent.box.height + t;
-    if (!inside) blockers.push(`Icon escapes its box: ${r.id} (outside ${parent.id}).`);
+    const overflowLeft = parent.box.x - t - r.box.x;
+    const overflowTop = parent.box.y - t - r.box.y;
+    const overflowRight = r.box.x + r.box.width - (parent.box.x + parent.box.width + t);
+    const overflowBottom = r.box.y + r.box.height - (parent.box.y + parent.box.height + t);
+    const worst = Math.max(overflowLeft, overflowTop, overflowRight, overflowBottom);
+    if (worst <= 0) continue;
+    if (r.kind === 'icon') {
+      blockers.push(`Icon escapes its box: ${r.id} (outside ${parent.id}).`);
+      continue;
+    }
+    /** @type {string[]} */
+    const edges = [];
+    if (overflowLeft > 0) edges.push(`left by ${round1(overflowLeft)}px`);
+    if (overflowTop > 0) edges.push(`top by ${round1(overflowTop)}px`);
+    if (overflowRight > 0) edges.push(`right by ${round1(overflowRight)}px`);
+    if (overflowBottom > 0) edges.push(`bottom by ${round1(overflowBottom)}px`);
+    blockers.push(
+      `Region overruns its container: ${r.id} crosses ${parent.id} ${edges.join(', ')}.`,
+    );
   }
 
+  // 3. Paired slots (ring1/ring2, left*/right*) must share a row baseline.
+  blockers.push(...computeAlignmentBlockers(valid));
+
+  return blockers;
+}
+
+/**
+ * Derive a pair identity from a region id, so `slot:ring1` and `slot:ring2` — or
+ * `slot:leftWrist` and `slot:rightWrist` — are recognized as two halves of one
+ * pair. Returns `{ group, half }` or null when the id is not part of a pair.
+ *
+ * @param {string} id
+ * @returns {{ group: string, half: string } | null}
+ */
+export function pairIdentity(id) {
+  const numbered = /^(.*?)([_-]?)(\d+)$/.exec(id);
+  if (numbered && (numbered[3] === '1' || numbered[3] === '2')) {
+    return { group: `${numbered[1]}#`, half: numbered[3] };
+  }
+  const sided = /(left|right)/i.exec(id);
+  if (sided) {
+    const side = sided[1].toLowerCase();
+    return { group: id.replace(/left|right|Left|Right/, '*'), half: side === 'left' ? '1' : '2' };
+  }
+  return null;
+}
+
+/**
+ * Paired slots must sit on the same row baseline. A pair whose halves differ in
+ * `y` (or in height) by more than 1px is a defect the LLM judge reports
+ * inconsistently, so it is measured here instead.
+ *
+ * Only `slot`-kind regions participate, and only when BOTH halves are present
+ * and share a parent, so a lone `ring1` or a cross-panel coincidence never fires.
+ *
+ * @param {readonly VisualReviewRegion[]} regions
+ * @returns {string[]}
+ */
+export function computeAlignmentBlockers(regions) {
+  const slots = (Array.isArray(regions) ? regions : []).filter(
+    (r) => r && r.kind === 'slot' && typeof r.id === 'string' && isValidBox(r.box),
+  );
+  /** @type {Map<string, Map<string, VisualReviewRegion>>} */
+  const groups = new Map();
+  /** @type {string[]} */
+  const order = [];
+  for (const slot of slots) {
+    const identity = pairIdentity(slot.id);
+    if (!identity) continue;
+    const key = `${slot.parentId ?? '__root__'}::${identity.group}`;
+    let halves = groups.get(key);
+    if (!halves) {
+      halves = new Map();
+      groups.set(key, halves);
+      order.push(key);
+    }
+    if (!halves.has(identity.half)) halves.set(identity.half, slot);
+  }
+
+  /** @type {string[]} */
+  const blockers = [];
+  for (const key of order) {
+    const halves = /** @type {Map<string, VisualReviewRegion>} */ (groups.get(key));
+    const first = halves.get('1');
+    const second = halves.get('2');
+    if (!first || !second) continue;
+    const dy = round1(second.box.y - first.box.y);
+    if (Math.abs(dy) > 1) {
+      blockers.push(
+        `Paired slots are not row-aligned: ${first.id} and ${second.id} differ in y by ${Math.abs(dy)}px.`,
+      );
+      continue;
+    }
+    const dh = round1(second.box.height - first.box.height);
+    if (Math.abs(dh) > 1) {
+      blockers.push(
+        `Paired slots differ in height: ${first.id} and ${second.id} differ by ${Math.abs(dh)}px.`,
+      );
+    }
+  }
   return blockers;
 }
 

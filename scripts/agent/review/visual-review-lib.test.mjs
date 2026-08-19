@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeGeometryBlockers,
+  computeAlignmentBlockers,
+  pairIdentity,
   normalizeOverallScore,
   findingKey,
   findingKeys,
@@ -108,6 +110,149 @@ test('computeGeometryBlockers: overlap pairs come before icon escapes (stable or
     'Slot boxes overlap: a intersects b.',
     'Icon escapes its box: a.icon (outside a).',
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// containment (container overrun)
+// ---------------------------------------------------------------------------
+
+test('containment: a slot crossing its panel top edge is reported with pixels', () => {
+  const blockers = computeGeometryBlockers([
+    region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+    region('slot:head', box(20, 90, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(
+    blockers[0],
+    /^Region overruns its container: slot:head crosses panel top by 9px\.$/,
+  );
+});
+
+test('containment: a fully-inside child is not reported', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([
+      region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+      region('slot:head', box(20, 120, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('containment: 1px is tolerated (matches the icon-escape threshold)', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([
+      region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+      region('slot:head', box(20, 99, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('containment: multiple crossed edges are listed together', () => {
+  const blockers = computeGeometryBlockers([
+    region('panel', box(100, 100, 200, 200), { kind: 'panel' }),
+    region('text:title', box(90, 90, 300, 300), { kind: 'text', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(blockers[0], /left by 9px, top by 9px, right by 89px, bottom by 89px/);
+});
+
+test('containment: an icon still reports with the legacy wording', () => {
+  const blockers = computeGeometryBlockers([
+    region('slot:head', box(20, 120, 40, 40), { kind: 'slot' }),
+    region('slot:head.icon', box(10, 120, 40, 40), { kind: 'icon', parentId: 'slot:head' }),
+  ]);
+  assert.deepEqual(blockers, ['Icon escapes its box: slot:head.icon (outside slot:head).']);
+});
+
+test('containment: a region with no declared parent is never reported', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([region('slot:head', box(-50, -50, 40, 40), { kind: 'slot' })]),
+    [],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// paired-slot alignment
+// ---------------------------------------------------------------------------
+
+test('pairIdentity: numbered and sided ids pair, others do not', () => {
+  assert.deepEqual(pairIdentity('slot:ring1'), { group: 'slot:ring#', half: '1' });
+  assert.deepEqual(pairIdentity('slot:ring2'), { group: 'slot:ring#', half: '2' });
+  assert.equal(pairIdentity('slot:ring3'), null);
+  assert.equal(pairIdentity('slot:head'), null);
+  const left = pairIdentity('slot:leftWrist');
+  const right = pairIdentity('slot:rightWrist');
+  assert.equal(left.half, '1');
+  assert.equal(right.half, '2');
+  assert.equal(left.group, right.group);
+});
+
+test('alignment: ring1/ring2 off by 2px is reported', () => {
+  const blockers = computeAlignmentBlockers([
+    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(120, 202, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.deepEqual(blockers, [
+    'Paired slots are not row-aligned: slot:ring1 and slot:ring2 differ in y by 2px.',
+  ]);
+});
+
+test('alignment: a 1px difference is tolerated', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:ring2', box(120, 201, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: aligned pairs with differing height are reported', () => {
+  const blockers = computeAlignmentBlockers([
+    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(120, 200, 40, 48), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.deepEqual(blockers, [
+    'Paired slots differ in height: slot:ring1 and slot:ring2 differ by 8px.',
+  ]);
+});
+
+test('alignment: a lone half never fires', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: halves in different parents are not compared', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panelA' }),
+      region('slot:ring2', box(120, 400, 40, 40), { kind: 'slot', parentId: 'panelB' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: non-slot kinds do not participate', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('text:ring1', box(20, 200, 40, 40), { kind: 'text', parentId: 'panel' }),
+      region('text:ring2', box(120, 260, 40, 40), { kind: 'text', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment blockers surface through computeGeometryBlockers', () => {
+  const blockers = computeGeometryBlockers([
+    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(120, 210, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.ok(blockers.some((b) => /not row-aligned/.test(b)));
 });
 
 // ---------------------------------------------------------------------------

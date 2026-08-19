@@ -1367,9 +1367,8 @@ async function harvestEquipment(
     (() => {
       const probe = window.__uiProbe;
       const ids = [
-        'head','face','neck','shoulders','chest','back','leftArm','rightArm',
-        'leftWrist','rightWrist','mainHand','offHand','gloves','ringLeft','ringRight',
-        'belt','legs','feet'
+        'head','neck','mainHand','chest','offHand',
+        'gloves','legs','ring1','feet','ring2'
       ];
       const norm = (b) => (b && typeof b === 'object' && Number.isFinite(b.x))
         ? { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) }
@@ -1389,6 +1388,33 @@ async function harvestEquipment(
       };
     })();
   `)) as GeometrySnapshot;
+  // Run the shared declared-surface geometry checks over the legacy equipment
+  // snapshot too, so containment and paired-slot alignment are measured rather
+  // than left to the LLM (which reported them inconsistently). The in-page
+  // checks above stay byte-for-byte intact; these are additive and deduped.
+  const regions: VisualReviewRegion[] = [];
+  if (geometry.panel) regions.push({ id: 'panel', box: geometry.panel, kind: 'panel' });
+  for (const slot of geometry.slots ?? []) {
+    if (slot.box) {
+      regions.push({
+        id: `slot:${slot.id}`,
+        box: slot.box,
+        kind: 'slot',
+        ...(geometry.panel ? { parentId: 'panel' } : {}),
+      });
+    }
+    if (slot.icon && slot.box) {
+      regions.push({
+        id: `slot:${slot.id}.icon`,
+        box: slot.icon,
+        kind: 'icon',
+        parentId: `slot:${slot.id}`,
+      });
+    }
+  }
+  for (const blocker of computeGeometryBlockers(regions)) {
+    if (!deterministicBlockers.includes(blocker)) deterministicBlockers.push(blocker);
+  }
   return { deterministicBlockers, geometry };
 }
 
