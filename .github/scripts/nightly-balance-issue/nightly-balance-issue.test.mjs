@@ -126,7 +126,7 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /local smoke never accepts\/rejects/,
     /never substitute 10-seed indicative results/,
     /inability to run independent canonical sweep => no implementation\/PR/,
-    /Gameplay PR contains `Closes #<this issue number>`/,
+    /Gameplay PR contains `Closes nalfeo\/Crawler#<this issue number>`/,
     /labels `human-approval-required` \+ `merge-train-blocked`/,
     /Only an approving GitHub review from owner `nalfeo`, or their exact standalone trimmed comment `APPROVED FOR CHECK-IN`, unlocks/,
     /Every terminal outcome that produces no implementation PR .* is not complete until you post a final rationale\/ledger comment .* then close this issue/,
@@ -155,7 +155,8 @@ test('hardened prompt encodes every evidence and approval gate', () => {
 
 test('issue body builder injects the exact issue number for the live approval gate', () => {
   const body = buildIssueBody(1253);
-  assert.match(body, /Gameplay PR contains `Closes #1253`/);
+  assert.match(body, /Gameplay PR contains `Closes nalfeo\/Crawler#1253`/);
+  assert.doesNotMatch(body, /Gameplay PR contains `Closes #1253`/);
   assert.equal(body.includes('weapon-sweep-<weapon>'), false);
 });
 
