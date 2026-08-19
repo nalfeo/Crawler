@@ -18,8 +18,10 @@ import { getItemCount, hasItem, listStaticInventorySlots } from '../../shared/in
 import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
 import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
 import {
+  FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
   objectiveTarget,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type QuestDef,
   type QuestObjectiveDef,
@@ -290,9 +292,28 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   if (!world.featureUnlocks.inventory && hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)) {
     world.featureUnlocks.inventory = true;
   }
-  // Equipment unlocks once the player holds anything equippable (the purchase).
+  const hasMerchantCharm =
+    hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID) ||
+    Object.values(equipmentState?.equipped ?? {}).some((instanceId) => {
+      if (!equipmentState) {
+        return false;
+      }
+      if (instanceId === null) {
+        return false;
+      }
+      const inst = resolveEquipmentInstance(world, equipmentState, instanceId);
+      return inst?.def.id === SHOPKEEPER_EQUIPMENT_ITEM_ID;
+    });
+  const floor1NeedsMerchantCharmGate =
+    world.floorId === 'floor1' &&
+    world.questLog.has(FLOOR1_SHOP_QUEST_ID) &&
+    world.goalFlags.get('floor1-shop-quest-complete') !== true;
+  // Equipment unlocks once the player holds anything equippable. During Floor 1's
+  // merchant errand, this is additionally gated behind acquiring the merchant charm
+  // so unrelated loot (e.g. boss chest drops) cannot unlock Gear early.
   if (
     !world.featureUnlocks.equipment &&
+    (!floor1NeedsMerchantCharmGate || hasMerchantCharm) &&
     (listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
       Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null))
   ) {
