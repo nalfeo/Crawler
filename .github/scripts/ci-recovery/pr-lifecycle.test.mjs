@@ -181,6 +181,41 @@ test('evaluateAdmission reports every blocking reason from current facts only', 
   ]);
 });
 
+test('evaluateAdmission rejects a stacked PR (GitHub `stack` object present) even when otherwise green', () => {
+  // Incident: PR #3027 was stacked under #3033 (`stack` present on the API
+  // response for both), was admitted, and 403'd at the merge PUT --
+  // "Merging stacked PRs via this endpoint is not supported" -- which
+  // crashed the whole merge-train reconcile run and blocked every other
+  // queued PR for 24h+. A stacked PR must never be admitted in the first
+  // place; it should rebase/un-stack onto `main` before requeueing.
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 1, size: 2 },
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.equal(result.eligible, false);
+  assert.deepEqual(result.reasons, ['stacked-pr']);
+});
+
+test('evaluateAdmission admits a green, non-stacked PR (stack absent/null is a no-op)', () => {
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: null,
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.deepEqual(result, { eligible: true, reasons: [] });
+});
+
 test('a not-yet-admissible PR evaluates to REPAIRING with the blocking reason', () => {
   const decision = evaluatePhase(
     greenPrFacts({ reviewThreads: [{ isResolved: false }] }),
