@@ -18,6 +18,7 @@ import {
   issueIntakeEligibility,
   openBlockingIssues,
   removeIssueAssignees,
+  reviewThreadFollowupBacklogIssueNumbers,
   reviewThreadPlanIssueNumbers,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
@@ -307,6 +308,109 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
       },
       closingIssues,
     ),
+    [],
+  );
+});
+
+test('review follow-up backlog issue selection fails closed and requires unassigned Copilot wording', () => {
+  const closingIssues = [{ number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } }];
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
+  const threadFor = (root) => ({ comments: { nodes: [root] } });
+
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot(
+          'Issue #3120 also requires filing a follow-up backlog issue for improving this rendering, explicitly without assigning it to Copilot. The repository issue list currently ends at #3120 and searches found no such follow-up, so this acceptance item is still missing. Please create and link the unassigned backlog issue before closing this PR.',
+        ),
+      ),
+      closingIssues,
+      'nalfeo/Crawler',
+    ),
+    [3120],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot(
+          'Issue #999 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        ),
+      ),
+      closingIssues,
+      'nalfeo/Crawler',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot('Issue #3120 also requires filing a follow-up backlog issue for later.'),
+      ),
+      closingIssues,
+      'nalfeo/Crawler',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor({
+        body: 'Issue #3120 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        author: { login: 'random-user' },
+        authorAssociation: 'NONE',
+      }),
+      closingIssues,
+      'nalfeo/Crawler',
+    ),
+    [],
+  );
+});
+
+test('review follow-up backlog issue selection fails closed on cross-repository closing issues', () => {
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
+  const thread = {
+    comments: {
+      nodes: [
+        trustedRoot(
+          'Issue #3120 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        ),
+      ],
+    },
+  };
+
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      [{ number: 3120, repository: { nameWithOwner: 'other/repo' } }],
+      'nalfeo/Crawler',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      [{ number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } }],
+      'nalfeo/Crawler',
+    ),
+    [3120],
+  );
+  // Closing issues missing repository metadata fail closed when a repository is supplied.
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(thread, [{ number: 3120 }], 'nalfeo/Crawler'),
+    [],
+  );
+  // A missing repository argument also fails closed rather than matching by number alone.
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(thread, [
+      { number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } },
+    ]),
     [],
   );
 });

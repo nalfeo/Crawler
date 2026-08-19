@@ -32,7 +32,8 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Harvestable } from '../../core/components.js';
+import { Harvestable, Prop } from '../../core/components.js';
+import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
@@ -529,6 +530,20 @@ export interface HarvestableRenderSummary {
 }
 
 /**
+ * On-screen size of a live floor-decoration `Prop` display-list Image, keyed
+ * by its texture (== `DecorationDef.spriteId`). Used by the prop-visual-size
+ * e2e to observe the real Prop render pass in `PhaserBridge.ts` (torches
+ * used to render at ~10px because `scale` was fed straight into `ftToPx()`
+ * instead of being treated as a multiplier over a reference footprint).
+ */
+export interface PropRenderSize {
+  /** Texture key backing the prop's Image, i.e. its `DecorationDef.spriteId`. */
+  readonly textureKey: string;
+  readonly displayWidthPx: number;
+  readonly displayHeightPx: number;
+}
+
+/**
  * Display-list state of the player's persistent carried main-hand weapon.
  * The carried sprite is named `carried-weapon:<eid>` by the render bridge, so
  * this reads the real scene's display list rather than inferring from pixels.
@@ -812,6 +827,11 @@ export interface MainSceneProbeApi {
   getNpcRenderInfo(): NpcRenderInfo[];
   /** Live harvestable node count + how many render a generated sprite. */
   getHarvestableRenderSummary(): HarvestableRenderSummary;
+  /**
+   * On-screen sizes of every live floor-decoration `Prop` Image on the real
+   * display list, keyed by texture (`DecorationDef.spriteId`).
+   */
+  getPropRenderSizes(): PropRenderSize[];
   /**
    * Equip a static weapon def into the player's main hand through the shipped
    * equip path, so the carried-weapon render can be observed for a chosen
@@ -1785,6 +1805,40 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }).filter((d) => d.nodeEntities > 0 || d.spriteImages > 0);
 
       return { nodeEntities, spriteImages, byDef };
+    },
+
+    getPropRenderSizes: (): PropRenderSize[] => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return [];
+      }
+      // Every live Prop's wired spriteId identifies which display-list Images
+      // are prop renders (the render pass keys `scene.add.image` by spriteId).
+      const propSpriteIds = new Set<string>();
+      for (const propEid of query(world.ecs, [Prop])) {
+        const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
+        const defId = DECORATION_INDEX_TO_ID[defIdIndex];
+        const spriteId = defId !== undefined ? getDecorationDef(defId)?.spriteId : undefined;
+        if (spriteId !== undefined) {
+          propSpriteIds.add(spriteId);
+        }
+      }
+      const sizes: PropRenderSize[] = [];
+      for (const obj of phaserScene.children.list) {
+        if (!(obj instanceof Phaser.GameObjects.Image)) {
+          continue;
+        }
+        const textureKey = obj.texture?.key;
+        if (typeof textureKey === 'string' && propSpriteIds.has(textureKey)) {
+          sizes.push({
+            textureKey,
+            displayWidthPx: obj.displayWidth,
+            displayHeightPx: obj.displayHeight,
+          });
+        }
+      }
+      return sizes;
     },
 
     getTerrainRenderSummary: (): TerrainRenderSummary => {
