@@ -526,16 +526,16 @@ describe('equipment loadout expected-run-value evaluator', () => {
     const current = [
       currentWeapon,
       generated('iron-helm', 'erv-current-helm'),
-      generated('steel-pauldrons', 'erv-current-shoulders'),
-      generated('travelers-cloak', 'erv-current-cloak'),
+      generated('iron-breastplate', 'erv-current-chest'),
+      generated('accessory.gearwork-locket', 'erv-current-locket'),
       generated('iron-greaves', 'erv-current-greaves'),
       generated('leather-gloves', 'erv-current-gloves'),
     ];
-    const armor = generated('iron-breastplate', 'erv-armor');
+    const armor = generated('torso.runed-cuirass', 'erv-armor');
     // Use incomingHitDamage=20 so armor still has room to reduce damage after
     // the current loadout's armor is accounted for. Under the decoupled model,
-    // accessories (travelers-cloak, leather-gloves) contribute
-    // zero armor; only armor-kind bases (iron-helm=2, steel-pauldrons=2,
+    // accessories (gearwork-locket, leather-gloves) contribute
+    // zero armor; only armor-kind bases (iron-helm=2, iron-breastplate=4,
     // iron-greaves=3) total=7 contribute. At incomingHitDamage=8
     // defense is already at the min-1 floor, so we need a higher fixture.
     const defensiveEncounter = { ...SINGLE_TARGET, incomingHitDamage: 20 };

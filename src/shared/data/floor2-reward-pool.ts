@@ -74,16 +74,16 @@ export const FLOOR2_REWARD_POOL_WEAPON_IDS: readonly Floor2EquipmentStableId[] =
   ...FLOOR2_BASIC_LEATHER_WEAPON_IDS,
 ]);
 
-/** Non-weapon-only subset of the pool (32 entries: 20 + 12). */
+/** Non-weapon-only subset of the pool (25 entries: 18 + 7). */
 export const FLOOR2_REWARD_POOL_NON_WEAPON_IDS: readonly Floor2EquipmentStableId[] = Object.freeze([
   ...FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS,
   ...FLOOR2_BASIC_LEATHER_NON_WEAPON_IDS,
 ]);
 
 function validateRewardPool(): void {
-  if (FLOOR2_REWARD_POOL_STABLE_IDS.length !== 88) {
+  if (FLOOR2_REWARD_POOL_STABLE_IDS.length !== 81) {
     throw new Error(
-      `Floor 2 reward pool must contain exactly 88 bases; received ${FLOOR2_REWARD_POOL_STABLE_IDS.length}`,
+      `Floor 2 reward pool must contain exactly 81 bases; received ${FLOOR2_REWARD_POOL_STABLE_IDS.length}`,
     );
   }
   if (FLOOR2_REWARD_POOL_WEAPON_IDS.length !== 56) {
@@ -91,9 +91,9 @@ function validateRewardPool(): void {
       `Floor 2 reward pool must contain exactly 56 weapon bases; received ${FLOOR2_REWARD_POOL_WEAPON_IDS.length}`,
     );
   }
-  if (FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length !== 32) {
+  if (FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length !== 25) {
     throw new Error(
-      `Floor 2 reward pool must contain exactly 32 non-weapon bases; received ${FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length}`,
+      `Floor 2 reward pool must contain exactly 25 non-weapon bases; received ${FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length}`,
     );
   }
   if (
@@ -111,7 +111,7 @@ function validateRewardPool(): void {
     seen.add(stableId);
   }
 
-  // The pool must be exactly the 88-entry art manifest, set-for-set — every
+  // The pool must be exactly the active art manifest, set-for-set — every
   // playable base has art, and every art entry is backed by a playable base.
   const manifestIds = new Set(FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((def) => def.stableId));
   if (manifestIds.size !== seen.size) {

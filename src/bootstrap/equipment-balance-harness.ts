@@ -106,11 +106,11 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
       1: COMMON_STAGE,
       6: {
         coreStats: { strength: 3, dexterity: 2 },
-        gear: [{ baseId: 'iron-armguard' }],
+        gear: [{ baseId: 'band-of-fortune' }],
       },
       11: {
         coreStats: { strength: 6, dexterity: 4 },
-        gear: [{ baseId: 'iron-armguard' }, { baseId: 'steel-pauldrons' }],
+        gear: [{ baseId: 'band-of-fortune' }, { baseId: 'iron-breastplate' }],
       },
     },
   },
@@ -158,18 +158,18 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
       1: COMMON_STAGE,
       6: {
         coreStats: { dexterity: 3, luck: 2 },
-        gear: [{ baseId: 'beaded-bracelet' }],
+        gear: [{ baseId: 'leather-gloves' }],
       },
       11: {
         coreStats: { dexterity: 6, luck: 4 },
-        gear: [{ baseId: 'beaded-bracelet' }, { baseId: 'band-of-fortune' }],
+        gear: [{ baseId: 'leather-gloves' }, { baseId: 'band-of-fortune' }],
       },
     },
   },
   'active-ability': {
     id: 'active-ability',
-    label: 'Sword with equipment-granted fireball',
-    focus: 'active ability',
+    label: 'Sword with focused ring equipment',
+    focus: 'ring equipment',
     seedBase: 4400,
     weaponBaseId: 'iron-sword',
     encounter: {
@@ -188,7 +188,6 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
         gear: [
           { baseId: 'band-of-fortune', rarity: 'rare' },
           { baseId: 'signet-of-focus', rarity: 'rare' },
-          { baseId: 'beaded-bracelet', rarity: 'rare' },
         ],
       },
       11: {
@@ -196,7 +195,6 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
         gear: [
           { baseId: 'band-of-fortune', rarity: 'rare' },
           { baseId: 'signet-of-focus', rarity: 'rare' },
-          { baseId: 'beaded-bracelet', rarity: 'rare' },
         ],
       },
     },
@@ -229,7 +227,7 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
         gear: [
           { baseId: 'iron-helm' },
           { baseId: 'iron-breastplate' },
-          { baseId: 'travelers-cloak' },
+          { baseId: 'accessory.gearwork-locket' },
           { baseId: 'iron-greaves' },
           { baseId: 'leather-boots' },
           { baseId: 'leather-gloves' },

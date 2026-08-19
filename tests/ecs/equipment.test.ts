@@ -993,7 +993,7 @@ describe('equippable slot coverage', () => {
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(equipmentDefsTestSeams.GEAR_ITEM_IDS).toHaveLength(15);
+    expect(equipmentDefsTestSeams.GEAR_ITEM_IDS).toHaveLength(7);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
   });

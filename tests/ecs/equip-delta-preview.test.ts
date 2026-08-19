@@ -156,11 +156,10 @@ describe('previewEquipDelta', () => {
   });
 
   it('includes secondary re-derivation from a primary bonus in the delta', () => {
-    // beaded-bracelet: { critChance: 0.02, luck: 1 } on the rightWrist slot.
-    const preview = previewEquipDelta(world, entity, 'beaded-bracelet')!;
+    // band-of-fortune: { luck: 1, xpBonus: 0.05 } on the ring1 slot.
+    const preview = previewEquipDelta(world, entity, 'band-of-fortune')!;
     expect(preview.deltas.luck).toBe(1);
-    // Flat crit + derived crit from the +1 luck.
-    expect(preview.deltas.critChance).toBeCloseTo(0.02 + 1 * LUCK_TO_CRIT, 6);
+    expect(preview.deltas.critChance).toBeCloseTo(LUCK_TO_CRIT, 6);
   });
 
   it('nets to zero and lists the swapped-out item when replacing an identical item', () => {

@@ -25,25 +25,25 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const LEGAL_RARITIES = ['common', 'uncommon', 'rare'] as const;
 
 describe('Floor 2 central reward pool — derived counts and coverage', () => {
-  it('contains exactly 88 bases: 56 weapons + 32 non-weapons, partitioning cleanly', () => {
-    expect(FLOOR2_REWARD_POOL_STABLE_IDS).toHaveLength(88);
+  it('contains exactly 81 bases: 56 weapons + 25 non-weapons, partitioning cleanly', () => {
+    expect(FLOOR2_REWARD_POOL_STABLE_IDS).toHaveLength(81);
     expect(FLOOR2_REWARD_POOL_WEAPON_IDS).toHaveLength(56);
-    expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS).toHaveLength(32);
+    expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS).toHaveLength(25);
     expect(FLOOR2_REWARD_POOL_WEAPON_IDS.length + FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length).toBe(
       FLOOR2_REWARD_POOL_STABLE_IDS.length,
     );
     // No duplicates within the pool, and the weapon/non-weapon subsets are
     // disjoint (every ID appears in exactly one subset).
-    expect(new Set(FLOOR2_REWARD_POOL_STABLE_IDS).size).toBe(88);
+    expect(new Set(FLOOR2_REWARD_POOL_STABLE_IDS).size).toBe(81);
     const weaponSet = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS);
     const nonWeaponSet = new Set(FLOOR2_REWARD_POOL_NON_WEAPON_IDS);
     for (const id of weaponSet) expect(nonWeaponSet.has(id)).toBe(false);
   });
 
-  it('is derived (not hand-copied): includes all 18 Classic Fantasy Basic Leather bases (6 weapons + 12 non-weapons)', () => {
-    expect(FLOOR2_BASIC_LEATHER_STABLE_IDS).toHaveLength(18);
+  it('is derived (not hand-copied): includes all 13 active Basic Leather bases (6 weapons + 7 non-weapons)', () => {
+    expect(FLOOR2_BASIC_LEATHER_STABLE_IDS).toHaveLength(13);
     expect(FLOOR2_BASIC_LEATHER_WEAPON_IDS).toHaveLength(6);
-    expect(FLOOR2_BASIC_LEATHER_NON_WEAPON_IDS).toHaveLength(12);
+    expect(FLOOR2_BASIC_LEATHER_NON_WEAPON_IDS).toHaveLength(7);
     for (const id of FLOOR2_BASIC_LEATHER_STABLE_IDS) {
       expect(FLOOR2_REWARD_POOL_STABLE_IDS).toContain(id);
     }
@@ -55,9 +55,9 @@ describe('Floor 2 central reward pool — derived counts and coverage', () => {
     }
   });
 
-  it('exactly matches the 88-entry art manifest, set-for-set', () => {
+  it('exactly matches the active art manifest, set-for-set', () => {
     const manifestIds = new Set(FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => entry.stableId));
-    expect(manifestIds.size).toBe(88);
+    expect(manifestIds.size).toBe(81);
     expect(new Set(FLOOR2_REWARD_POOL_STABLE_IDS)).toEqual(manifestIds);
   });
 
@@ -140,8 +140,8 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
   });
 
   it('non-armor base stat bonuses are NOT copied into generated frozen stats (affix-driven model)', () => {
-    // leather-collar (charisma), leather-belt (luck), iron-ring (luck) are
-    // the 3 Basic Leather non-weapon bases that carry an inherent non-armor
+    // leather-collar (charisma) and iron-ring (luck) are the two Basic Leather
+    // non-weapon bases that carry an inherent non-armor
     // stat bonus in the catalog (see floor2-basic-leather-bases.ts).
     // Under the decoupled model, `generateEquipmentInstance` does NOT copy
     // non-armor base stats into the frozen instance. Non-armor power comes
@@ -157,9 +157,9 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
         ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
       ),
     );
-    expect(basesWithInherentNonArmorBonus).toHaveLength(3);
+    expect(basesWithInherentNonArmorBonus).toHaveLength(2);
     expect(new Set(basesWithInherentNonArmorBonus.map((def) => def.id))).toEqual(
-      new Set(['accessory.leather-collar', 'accessory.leather-belt', 'accessory.iron-ring']),
+      new Set(['accessory.leather-collar', 'accessory.iron-ring']),
     );
     for (const def of basesWithInherentNonArmorBonus) {
       expect(

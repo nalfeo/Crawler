@@ -602,11 +602,11 @@ describe('runSettlementMaintenancePlanner', () => {
     const baseIds = [
       'iron-helm',
       'iron-breastplate',
-      'travelers-cloak',
+      'accessory.gearwork-locket',
       'leather-gloves',
       'iron-greaves',
       'leather-boots',
-      'bronze-vambrace',
+      'band-of-fortune',
       'signet-of-focus',
       'iron-sword',
     ];
@@ -920,11 +920,11 @@ describe('runEagerMaintenanceTick', () => {
     const baseIds = [
       'iron-helm',
       'iron-breastplate',
-      'travelers-cloak',
+      'accessory.gearwork-locket',
       'leather-gloves',
       'iron-greaves',
       'leather-boots',
-      'bronze-vambrace',
+      'band-of-fortune',
       'signet-of-focus',
       'iron-sword',
     ];
