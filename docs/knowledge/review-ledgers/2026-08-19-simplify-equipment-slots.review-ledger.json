@@ -24,6 +24,13 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     },
@@ -37,6 +44,14 @@
           "concerns_count": 1,
           "valid_count": 0,
           "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]
