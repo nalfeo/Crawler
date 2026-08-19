@@ -222,9 +222,11 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
  * constant rather than treating `scale` as an absolute feet value (see the
  * Prop render pass below for the bug this fixes). `3` reads as a "normal
  * sized" hand-placed prop (e.g. a barrel at `scale: 0.9` → 2.7 ft, close to a
- * real barrel's footprint).
+ * real barrel's footprint). Exported (with a leading underscore) only so the
+ * regression test can assert against the production value instead of
+ * duplicating the magic number; it has no production caller outside this file.
  */
-export const PROP_VISUAL_BASE_SIZE_FT = 3;
+export const _PROP_VISUAL_BASE_SIZE_FT = 3;
 
 /**
  * On-floor render scale for a harvestable node's generated sprite. The art is
@@ -2309,7 +2311,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         // by a reference footprint (a "normal-sized" prop, matching the
         // `prop-torch` asset brief's "reads clearly at gameplay scale") to
         // restore the intended multiplier semantics.
-        const scalePx = ftToPx(PROP_VISUAL_BASE_SIZE_FT * (decorationDef?.scale ?? 1.0));
+        const scalePx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * (decorationDef?.scale ?? 1.0));
         const depth =
           decorationDef?.depthLayer === 'back'
             ? PROP_DEPTH.back

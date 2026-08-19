@@ -16,6 +16,7 @@ import type {
   BossIntroProbeState,
   CarriedWeaponRenderInfo,
   HarvestableRenderSummary,
+  PropRenderSize,
   FamilyHudProbeState,
   FloatingTextProbe,
   ItemIconRenderInfo,
@@ -189,6 +190,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getNpcRenderInfo()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
+  getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>

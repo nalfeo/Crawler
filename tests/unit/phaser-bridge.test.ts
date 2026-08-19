@@ -18,7 +18,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
-import { createPhaserBridge, PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
+import { createPhaserBridge, _PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -456,7 +456,7 @@ describe('createPhaserBridge', () => {
     const torchScale = getDecorationDef('torch')!.scale;
     // torch.scale × the "normal prop" base ft is well above the pre-fix
     // `ftToPx(torch.scale)` (~10 px) that made torches read as comically small.
-    const expectedPx = ftToPx(PROP_VISUAL_BASE_SIZE_FT * torchScale);
+    const expectedPx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * torchScale);
     expect(torchImage!.displayWidth).toBeCloseTo(expectedPx);
     expect(torchImage!.displayHeight).toBeCloseTo(expectedPx);
   });
