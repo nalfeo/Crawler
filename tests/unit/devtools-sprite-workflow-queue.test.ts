@@ -430,14 +430,14 @@ describe('stage helpers', () => {
 describe('approvedItemPatch', () => {
   it('advances a fresh approval to the approved stage with a score summary', () => {
     const patch = approvedItemPatch({
-      briefId: 'green-slime-baby-v1',
+      briefId: 'green-slime-baby',
       variantIndex: 2,
-      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      assetPath: 'generated/green-slime-baby-var-2.png',
       sensorScore: '6/7',
       judgeScore: '4',
     });
     expect(patch.stage).toBe('approved');
-    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-v1-var-2.png');
+    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-var-2.png');
     expect(patch.generationRequestedAt).toBeNull();
     expect(patch.lastError).toBeNull();
     expect(patch.checkinBranch).toBeNull();
@@ -446,30 +446,30 @@ describe('approvedItemPatch', () => {
     expect(patch.checkinIssueBody).toBeNull();
     expect(patch.checkinSummary).toBeNull();
     expect(patch.approvalSummary).toBe(
-      'Approved green-slime-baby-v1 variant 2 -> generated/green-slime-baby-v1-var-2.png ' +
+      'Approved green-slime-baby variant 2 -> generated/green-slime-baby-var-2.png ' +
         '(6/7, judge 4). Now Tag to add catalog metadata.',
     );
   });
 
   it('omits the judge segment when there is no judge score', () => {
     const patch = approvedItemPatch({
-      briefId: 'bent-pipe-v1',
+      briefId: 'bent-pipe',
       variantIndex: 0,
-      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      assetPath: 'generated/bent-pipe-var-0.png',
       sensorScore: '7/7',
       judgeScore: null,
     });
     expect(patch.approvalSummary).toBe(
-      'Approved bent-pipe-v1 variant 0 -> generated/bent-pipe-v1-var-0.png (7/7). ' +
+      'Approved bent-pipe variant 0 -> generated/bent-pipe-var-0.png (7/7). ' +
         'Now Tag to add catalog metadata.',
     );
   });
 
   it('notes a judge override in the summary', () => {
     const patch = approvedItemPatch({
-      briefId: 'slime-king-v1',
+      briefId: 'slime-king',
       variantIndex: 4,
-      assetPath: 'generated/slime-king-v1-var-4.png',
+      assetPath: 'generated/slime-king-var-4.png',
       sensorScore: '5/7',
       judgeScore: '2',
       judgeOverride: true,
@@ -481,13 +481,13 @@ describe('approvedItemPatch', () => {
     // Regression: re-approving an already-approved variant must NOT dead-end on
     // the Approve step — the asset is in the catalog, so it has to reach `approved`.
     const patch = approvedItemPatch({
-      briefId: 'green-slime-baby-v1',
+      briefId: 'green-slime-baby',
       variantIndex: 2,
-      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      assetPath: 'generated/green-slime-baby-var-2.png',
       alreadyApproved: true,
     });
     expect(patch.stage).toBe('approved');
-    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-v1-var-2.png');
+    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-var-2.png');
     expect(patch.lastError).toBeNull();
     expect(patch.approvalSummary).toContain('already approved with identical content');
     expect(patch.approvalSummary).toContain('Tag to add catalog metadata');
@@ -499,9 +499,9 @@ describe('approvedItemPatch', () => {
     // so recompute's re-render keeps it and the operator does not discard the
     // worktree with an un-persisted approval.
     const patch = approvedItemPatch({
-      briefId: 'green-slime-baby-v1',
+      briefId: 'green-slime-baby',
       variantIndex: 2,
-      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      assetPath: 'generated/green-slime-baby-var-2.png',
       sensorScore: '6/7',
       judgeScore: '4',
       queueCommitFailed: true,
@@ -510,7 +510,7 @@ describe('approvedItemPatch', () => {
     expect(patch.stage).toBe('approved');
     // The base approval summary is preserved…
     expect(patch.approvalSummary).toContain(
-      'Approved green-slime-baby-v1 variant 2 -> generated/green-slime-baby-v1-var-2.png',
+      'Approved green-slime-baby variant 2 -> generated/green-slime-baby-var-2.png',
     );
     // …and the durability warning + reason are appended.
     expect(patch.approvalSummary).toContain('Durable queue push FAILED');
@@ -519,9 +519,9 @@ describe('approvedItemPatch', () => {
 
   it('omits the reason parenthetical when a failed push has no error string', () => {
     const patch = approvedItemPatch({
-      briefId: 'bent-pipe-v1',
+      briefId: 'bent-pipe',
       variantIndex: 0,
-      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      assetPath: 'generated/bent-pipe-var-0.png',
       sensorScore: '7/7',
       judgeScore: null,
       queueCommitFailed: true,
@@ -532,16 +532,16 @@ describe('approvedItemPatch', () => {
 
   it('leaves the summary unchanged on a successful (non-failed) queue push', () => {
     const patch = approvedItemPatch({
-      briefId: 'bent-pipe-v1',
+      briefId: 'bent-pipe',
       variantIndex: 0,
-      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      assetPath: 'generated/bent-pipe-var-0.png',
       sensorScore: '7/7',
       judgeScore: null,
       queueCommitFailed: false,
     });
     expect(patch.approvalSummary).not.toContain('Durable queue push FAILED');
     expect(patch.approvalSummary).toBe(
-      'Approved bent-pipe-v1 variant 0 -> generated/bent-pipe-v1-var-0.png (7/7). ' +
+      'Approved bent-pipe variant 0 -> generated/bent-pipe-var-0.png (7/7). ' +
         'Now Tag to add catalog metadata.',
     );
   });
@@ -551,9 +551,9 @@ describe('approvedItemPatch', () => {
     // color the approved summary. A failed durable push must set it to 'failed' so
     // the status stays red instead of being erased by a later green re-render.
     const patch = approvedItemPatch({
-      briefId: 'bent-pipe-v1',
+      briefId: 'bent-pipe',
       variantIndex: 0,
-      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      assetPath: 'generated/bent-pipe-var-0.png',
       sensorScore: '7/7',
       judgeScore: null,
       queueCommitFailed: true,
@@ -564,9 +564,9 @@ describe('approvedItemPatch', () => {
   it('sets queueDurability to "ok" on a successful or no-op push', () => {
     expect(
       approvedItemPatch({
-        briefId: 'bent-pipe-v1',
+        briefId: 'bent-pipe',
         variantIndex: 0,
-        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        assetPath: 'generated/bent-pipe-var-0.png',
         sensorScore: '7/7',
         judgeScore: null,
         queueCommitFailed: false,
@@ -580,9 +580,9 @@ describe('approvedItemPatch', () => {
     // old server). This is NOT the same as success — do not fabricate 'ok'.
     expect(
       approvedItemPatch({
-        briefId: 'bent-pipe-v1',
+        briefId: 'bent-pipe',
         variantIndex: 0,
-        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        assetPath: 'generated/bent-pipe-var-0.png',
         alreadyApproved: true,
       }).queueDurability,
     ).toBeNull();
@@ -596,9 +596,9 @@ describe('approvedItemPatch', () => {
     expect(stageActiveStep(getItem(state, item.id)!.stage)).toBe(5);
 
     const patch = approvedItemPatch({
-      briefId: 'green-slime-baby-v1',
+      briefId: 'green-slime-baby',
       variantIndex: 2,
-      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      assetPath: 'generated/green-slime-baby-var-2.png',
       alreadyApproved: true,
     });
     state = updateItem(state, item.id, patch);
@@ -806,9 +806,7 @@ describe('serialize / deserialize', () => {
     state = updateItem(state, 'item-1', {
       stage: 'variants',
       resolvedType: 'item',
-      candidates: [
-        { id: 'purple-potion-bottle-v1', yamlPath: 'a.yaml', description: 'd', yaml: 'y' },
-      ],
+      candidates: [{ id: 'purple-potion-bottle', yamlPath: 'a.yaml', description: 'd', yaml: 'y' }],
       chosenCandidatePath: 'a.yaml',
       briefPath: 'briefs/draft/items/purple-potion-bottle.yaml',
       generationRequestedAt: '2026-06-20T00:00:00.000Z',

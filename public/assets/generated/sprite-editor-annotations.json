@@ -18,6 +18,7 @@
     },
     "sunpetal-flower-v1-var-0": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "welcome-room-rug-var-0": {
@@ -27,18 +28,22 @@
     },
     "purple-potion-bottle-v1-var-4": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "prop-rubble-pile-var-1": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "moonbloom-flower-v1-var-0": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "bone-shard-var-1": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "ability-icon-fireball-v1-var-11": {
@@ -277,7 +282,7 @@
       "comment": ""
     },
     "welcome-room-desk-var-0": {
-      "favorite": false,
+      "favorite": true,
       "disliked": false,
       "comment": ""
     },
@@ -338,66 +343,66 @@
     },
     "sweaty-merchant-v2-var-10": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "sweaty-merchant-v2-var-5": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "sweaty-merchant-v2-var-7": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "sweaty-merchant-v2-var-9": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-10": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-3": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-4": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-5": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-6": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-7": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-goon-v2-var-9": {
       "favorite": false,
-      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
-      "disliked": true
+      "disliked": true,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference."
     },
     "welcome-room-cable-coil-var-0": {
       "favorite": false,
-      "disliked": false,
+      "disliked": true,
       "comment": ""
     },
     "welcome-room-wall-shelf-var-0": {
-      "favorite": false,
+      "favorite": true,
       "disliked": false,
       "comment": ""
     },
@@ -408,6 +413,171 @@
     },
     "ability-icon-frost-nova": {
       "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "player-walk-cycle": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "welcome-room-wall-banner-var-6": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-side-table-var-12": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-show-poster-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-lounge-stool-var-1": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-kitchenette-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-floor-plate-cable-run-var-4": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "welcome-room-exit-sign-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-crate-stack-var-3": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-camera-rig-var-4": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-bunk-bed-var-6": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "warding-bell-v1-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "beetlefolk-boss-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "batfolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "cactusfolk-boss-v1-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "cactusfolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "cactusfolk-boss-v1-var-3": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "cactusfolk-boss-v1-var-2": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "crabfolk-boss-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "faerie-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "gnome-boss-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "imps-boss-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "kobold-boss-var-2": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "llama-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "llama-curb-stomper-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "molefolk-elite-pit-boss-v1-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "molefolk-elite-pit-boss-v1-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "molefolk-elite-pit-boss-v1-var-2": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "myconid-boss-var-2": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "ratfolk-elite-underboss-v1-var-6": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "ratfolk-elite-underboss-v1-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "ratfolk-elite-underboss-v1-var-5": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "toadkin-boss-var-1": {
+      "favorite": true,
       "disliked": false,
       "comment": ""
     }

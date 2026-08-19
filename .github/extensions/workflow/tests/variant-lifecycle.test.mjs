@@ -208,15 +208,15 @@ test('accepted-staged: manifest-approved variant with NO corresponding art-plan 
     backlogReports: [], // no plan references this briefId at all
     manifestApprovals: [
       {
-        briefId: 'iron-cleaver-v1',
-        assetPath: 'generated/iron-cleaver-v1-var-0.png',
-        sourceRun: 'iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7',
+        briefId: 'iron-cleaver',
+        assetPath: 'generated/iron-cleaver-var-0.png',
+        sourceRun: 'iron-cleaver/2026-07-18T03-40-12-d4269ad7',
         variantIndex: 0,
         exists: true,
       },
     ],
     acceptanceEntry: null,
-    briefId: 'iron-cleaver-v1',
+    briefId: 'iron-cleaver',
     runId: '2026-07-18T03-40-12-d4269ad7',
     variantIndex: 0,
   });
@@ -229,15 +229,15 @@ test('unverified: manifest-approved (plan-less) variant whose file is missing on
     backlogReports: [],
     manifestApprovals: [
       {
-        briefId: 'iron-cleaver-v1',
-        assetPath: 'generated/iron-cleaver-v1-var-5.png',
-        sourceRun: 'iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7',
+        briefId: 'iron-cleaver',
+        assetPath: 'generated/iron-cleaver-var-5.png',
+        sourceRun: 'iron-cleaver/2026-07-18T03-40-12-d4269ad7',
         variantIndex: 5,
         exists: false,
       },
     ],
     acceptanceEntry: null,
-    briefId: 'iron-cleaver-v1',
+    briefId: 'iron-cleaver',
     runId: '2026-07-18T03-40-12-d4269ad7',
     variantIndex: 5,
   });

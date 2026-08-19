@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
-  canonicalItemBriefId,
   _isPlaceholderEntry,
-  itemArtIdentitySet,
   itemSpriteConcepts,
   resolveItemSprite,
 } from '../../src/shared/item-sprites.js';
@@ -299,7 +297,7 @@ describe('resolveItemSprite', () => {
 
 describe('themed equipment art (theme-set registry)', () => {
   // The Classic Fantasy [Basic Leather] wave keys its manifest entries by THEME
-  // (`classic-fantasy-basic-leather-wooden-bow-v1`), not by item. Before the
+  // (`classic-fantasy-basic-leather-wooden-bow`), not by item. Before the
   // shared theme-set registry existed, that art was invisible to the resolver
   // and was force-aliased by a hardcoded helper in the ENGINE layer
   // (`resolveBasicLeatherAliasEntry` in generatedAssets/preload.ts). These tests
@@ -356,20 +354,20 @@ describe('themed equipment art (theme-set registry)', () => {
         assetPath: 'generated/wooden-bow-placeholder.png',
       }),
       [
-        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
-        'classic-fantasy-basic-leather-wooden-bow-v1',
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
       ],
     ]);
     const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
-    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow-v1');
+    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow');
     expect(_isPlaceholderEntry(result!)).toBe(false);
   });
 
   it("prefers the item's own bare-real art over themed art", () => {
     const registry = makeRegistry([
       [
-        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
-        'classic-fantasy-basic-leather-wooden-bow-v1',
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
       ],
       ['wooden-bow-var-0', 'wooden-bow'],
     ]);
@@ -414,18 +412,18 @@ describe('themed equipment art (theme-set registry)', () => {
     const build = () =>
       makeRegistry([
         [
-          'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
-          'classic-fantasy-basic-leather-wooden-bow-v1',
+          'classic-fantasy-basic-leather-wooden-bow-var-0',
+          'classic-fantasy-basic-leather-wooden-bow',
           { variantIndex: 0 },
         ],
         [
-          'classic-fantasy-basic-leather-wooden-bow-v1-var-1',
-          'classic-fantasy-basic-leather-wooden-bow-v1',
+          'classic-fantasy-basic-leather-wooden-bow-var-1',
+          'classic-fantasy-basic-leather-wooden-bow',
           { variantIndex: 1 },
         ],
         [
-          'classic-fantasy-basic-leather-wooden-bow-v1-var-2',
-          'classic-fantasy-basic-leather-wooden-bow-v1',
+          'classic-fantasy-basic-leather-wooden-bow-var-2',
+          'classic-fantasy-basic-leather-wooden-bow',
           { variantIndex: 2 },
         ],
       ]);
@@ -454,86 +452,8 @@ describe('themedArtConceptsFor', () => {
   });
 });
 
-describe('itemArtIdentitySet', () => {
-  const identity = itemArtIdentitySet();
-
-  it('includes plain item ids across types (material, weapon, character-art item)', () => {
-    // Spans multiple sprite `type`s on purpose — the set is keyed on gameplay
-    // item identity, not sprite `type` (classified-dossier art is `character`).
-    expect(identity.has('iron-ore')).toBe(true); // material
-    expect(identity.has('flame-dagger')).toBe(true); // weapon-typed item
-    expect(identity.has('throwing-knife')).toBe(true); // starter weapon item
-    expect(identity.has('fireball')).toBe(true); // starter weapon item
-    expect(identity.has('classified-dossier')).toBe(true); // character-typed art
-    expect(identity.has('bone-club')).toBe(true); // the bat item id
-  });
-
-  it('includes weaponId aliases that are not themselves item ids (baseball-bat)', () => {
-    // `baseball-bat` is the bone-club weaponId, not an ItemDef.id — it must still
-    // be an item identity so `baseball-bat-vN` art is normalized to bare.
-    expect(identity.has('baseball-bat')).toBe(true);
-    expect(itemSpriteConcepts('bone-club')).toContain('baseball-bat');
-  });
-
-  it('excludes non-item concepts (enemies, set-pieces)', () => {
-    expect(identity.has('angry-roomba')).toBe(false);
-    expect(identity.has('rat')).toBe(false);
-    expect(identity.has('welcome-sign-left')).toBe(false);
-  });
-
-  it('excludes harvestable world-node ids (they ship VERSIONED, not bare) — guardrail', () => {
-    // Harvestable materials (azure-mushroom, etc.) ARE Materials ItemDefs, but
-    // their art is a versioned world-node key owned by the harvestable render
-    // path (mirrors the enemy pinned-key contract). They must NOT be item
-    // art-naming identities, or the approve-time recurrence guard would bare-key
-    // `azure-mushroom-v1` and break that live lane.
-    expect(identity.has('azure-mushroom')).toBe(false);
-    expect(identity.has('crimson-mushroom')).toBe(false);
-    expect(identity.has('sunpetal-flower')).toBe(false);
-    expect(identity.has('frost-lichen')).toBe(false);
-  });
-});
-
-describe('canonicalItemBriefId', () => {
-  const identity = itemArtIdentitySet();
-
-  it('strips a single trailing -vN for a weapon-typed item', () => {
-    expect(canonicalItemBriefId('flame-dagger-v2', identity)).toBe('flame-dagger');
-    expect(canonicalItemBriefId('fireball-v1', identity)).toBe('fireball');
-  });
-
-  it('strips -vN for character-typed item art (classified-dossier)', () => {
-    expect(canonicalItemBriefId('classified-dossier-v1', identity)).toBe('classified-dossier');
-  });
-
-  it('strips -vN for a weaponId alias that is not an ItemDef.id (baseball-bat)', () => {
-    expect(canonicalItemBriefId('baseball-bat-v1', identity)).toBe('baseball-bat');
-    expect(canonicalItemBriefId('baseball-bat-v3', identity)).toBe('baseball-bat');
-  });
-
-  it('leaves genuinely non-item versioned concepts versioned', () => {
-    expect(canonicalItemBriefId('angry-roomba-v2', identity)).toBe('angry-roomba-v2');
-    expect(canonicalItemBriefId('rat-v1', identity)).toBe('rat-v1');
-    expect(canonicalItemBriefId('welcome-sign-left-v2', identity)).toBe('welcome-sign-left-v2');
-  });
-
-  it('leaves harvestable world-node -vN briefs versioned (guardrail)', () => {
-    // The approve recurrence guard must never canonicalize a harvestable
-    // world-node brief to bare — `azure-mushroom-v1` stays `azure-mushroom-v1`
-    // so the harvestable render path keeps its versioned key.
-    expect(canonicalItemBriefId('azure-mushroom-v1', identity)).toBe('azure-mushroom-v1');
-    expect(canonicalItemBriefId('crimson-mushroom-v2', identity)).toBe('crimson-mushroom-v2');
-  });
-
-  it('is a no-op for an already-bare item id', () => {
-    expect(canonicalItemBriefId('iron-ore', identity)).toBe('iron-ore');
-    expect(canonicalItemBriefId('classified-dossier', identity)).toBe('classified-dossier');
-  });
-
-  it('only strips a single trailing -vN (base must itself be an item identity)', () => {
-    // `iron-ore-v1` base is `iron-ore-v1`, not an identity → left unchanged.
-    expect(canonicalItemBriefId('iron-ore-v1-v2', identity)).toBe('iron-ore-v1-v2');
-    // Non-versioned non-item name is untouched.
-    expect(canonicalItemBriefId('goblin', identity)).toBe('goblin');
-  });
-});
+// NOTE: `itemArtIdentitySet` / `canonicalItemBriefId` were removed when the
+// repo-wide bare-concept taxonomy superseded ADR 0051's item-only rule. Every
+// asset class is now bare-keyed by `bareConcept`, so an item-specific identity
+// set no longer has anything to decide. Coverage lives in
+// `tests/unit/sprites/sprite-name-taxonomy.test.ts`.

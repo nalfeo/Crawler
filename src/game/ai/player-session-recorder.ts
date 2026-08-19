@@ -23,6 +23,11 @@ import type {
   SessionRecorderStats,
 } from '../../shared/session-recorder-types.js';
 import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js';
+import type { BossEncounterSnapshot } from './event-log.js';
+import {
+  captureBossEncounterSnapshots,
+  diffBossEncounterSnapshots,
+} from './boss-encounter-telemetry.js';
 
 // ---------------------------------------------------------------------------
 // PlayerSessionEvent
@@ -149,6 +154,10 @@ export function createPlayerSessionRecorder(
   const questLogSeen = new Set<string>();
   const questLogCompleted = new Set<string>();
 
+  // Boss-encounter diagnostics. Sampled alongside `sample` records and diffed
+  // every frame so den-softlock transitions get exact frame numbers.
+  let lastBossSnapshots: BossEncounterSnapshot[] = [];
+
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
@@ -249,9 +258,28 @@ export function createPlayerSessionRecorder(
       lastLoggedState = inferredState;
     }
 
+    // Boss-encounter diagnostics: emit a discrete `boss` record on every
+    // interesting transition (encounter start/defeat, boss leaving or returning
+    // to its den, door lock flipping) so a softlock has an exact frame in the
+    // log rather than only showing up between periodic samples.
+    const bossSnapshots = captureBossEncounterSnapshots(world, playerEid);
+    if (bossSnapshots.length > 0) {
+      for (const note of diffBossEncounterSnapshots(lastBossSnapshots, bossSnapshots)) {
+        const event = buildEvent('boss', inputState, enemyEids, note);
+        event.state = inferredState;
+        event.reason = 'boss-encounter';
+        event.bossEncounters = bossSnapshots;
+        events.push(event);
+      }
+    }
+    lastBossSnapshots = bossSnapshots;
+
     if (frameCount % sampleInterval === 0) {
       const event = buildEvent('sample', inputState, enemyEids);
       event.state = inferredState;
+      if (bossSnapshots.length > 0) {
+        event.bossEncounters = bossSnapshots;
+      }
       events.push(event);
       // Reset per-sample window.
       pathTravelAccum = 0;
@@ -391,6 +419,7 @@ export function createPlayerSessionRecorder(
     pathTravelAccum = 0;
     questLogSeen.clear();
     questLogCompleted.clear();
+    lastBossSnapshots = [];
   }
 
   return {

@@ -19,7 +19,7 @@
  *
  * A manifest-approved variant with NO corresponding art-plan asset (verified
  * against a live sidecar + this repo's real manifest during development — see
- * the `iron-cleaver-v1` case in the module's tests) would otherwise show as
+ * the `iron-cleaver` case in the module's tests) would otherwise show as
  * `unaccepted` even though it plainly has a manifest entry, since the
  * backlog's `reports[].assets[]` is scoped to PLAN-declared assets only. Such
  * a variant falls back to matching the raw `manifestApprovals` list instead —

@@ -1,0 +1,175 @@
+{
+  "briefId": "classic-fantasy-basic-leather-wooden-bow",
+  "spriteName": "classic-fantasy-basic-leather-wooden-bow-var-0",
+  "assetPath": "generated/classic-fantasy-basic-leather-wooden-bow-var-0.png",
+  "approvedAt": "2026-07-30T00:30:16.437Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-wooden-bow-v1/2026-07-28T04-08-27-a31d01b3",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 39,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 426 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 38,
+          "y": 9
+        },
+        {
+          "x": 36,
+          "y": 10
+        },
+        {
+          "x": 37,
+          "y": 10
+        },
+        {
+          "x": 38,
+          "y": 10
+        },
+        {
+          "x": 35,
+          "y": 11
+        },
+        {
+          "x": 36,
+          "y": 11
+        },
+        {
+          "x": 37,
+          "y": 11
+        },
+        {
+          "x": 38,
+          "y": 11
+        },
+        {
+          "x": 34,
+          "y": 12
+        },
+        {
+          "x": 35,
+          "y": 12
+        },
+        {
+          "x": 36,
+          "y": 12
+        },
+        {
+          "x": 37,
+          "y": 12
+        },
+        {
+          "x": 38,
+          "y": 12
+        },
+        {
+          "x": 33,
+          "y": 13
+        },
+        {
+          "x": 34,
+          "y": 13
+        },
+        {
+          "x": 35,
+          "y": 13
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=41 is outside ±3 of center 32"
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:39:11.261Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The bow is simple and utilitarian, fitting the grounded aesthetic of Floor 1. The lack of ornamentation aligns with the dark-fantasy theme, though it could benefit from a slightly more authored contradiction to elevate its uniqueness."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The crisp edges and consistent pixel treatment are well-executed."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The crisp edges and consistent pixel treatment are well-executed."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a longbow with an ash wood body, leather grip, and linen bowstring as described in the brief. The silhouette and materials are unambiguous."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale. The bowstring and grip are distinct, and the sprite does not blend into the floor tile."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The materials and design align with the theme's specified details, including plain leather, oiled wood, and coarse linen. However, the sprite could emphasize the wear on the bowstring more visibly to fully adhere to the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3165,
+      "completionTokens": 345,
+      "totalTokens": 3510
+    }
+  },
+  "type": null,
+  "contentHash": "f82f342aa9bfc2b4499710b08c905768ca3fb2af4586aa5668934ac46f6758cd",
+  "opaqueBounds": {
+    "x": 20,
+    "y": 3,
+    "width": 24,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": null,
+  "facingDirection": "right"
+}

@@ -22,9 +22,11 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CI_YML = path.join(REPO_ROOT, '.github/workflows/ci.yml');
+const SETUP_NODE_ACTION_YML = path.join(REPO_ROOT, '.github/actions/setup-node/action.yml');
 
 interface WorkflowStep {
   name?: string;
+  if?: string | boolean;
   run?: string;
   uses?: string;
   with?: Record<string, unknown>;
@@ -34,11 +36,18 @@ interface WorkflowJob {
   name?: string;
   if?: string | boolean;
   needs?: string | string[];
+  'timeout-minutes'?: number;
   steps?: WorkflowStep[];
 }
 
 interface WorkflowDoc {
   jobs: Record<string, WorkflowJob>;
+}
+
+interface SetupNodeAction {
+  runs: {
+    steps: WorkflowStep[];
+  };
 }
 
 function loadCi(): { doc: WorkflowDoc; raw: string } {
@@ -50,6 +59,10 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
   const job = doc.jobs[name];
   if (!job) throw new Error(`job "${name}" not found in ci.yml`);
   return job;
+}
+
+function loadSetupNodeAction(): SetupNodeAction {
+  return parse(readFileSync(SETUP_NODE_ACTION_YML, 'utf8')) as SetupNodeAction;
 }
 
 const E2E_JOBS = [
@@ -69,6 +82,8 @@ const E2E_JOBS = [
     project: 'e2e-devtools',
   },
 ] as const;
+
+const PLAYWRIGHT_JOBS = ['check-lightweight', ...E2E_JOBS.map(({ jobId }) => jobId)] as const;
 
 describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => {
   it('parses ci.yml and finds merge-gate and all three e2e jobs', () => {
@@ -102,6 +117,31 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     expect(runStep!.run, `${jobId} must invoke --project ${project}`).toContain(
       `--project ${project}`,
     );
+  });
+
+  it.each(PLAYWRIGHT_JOBS)('%s has a 20-minute job timeout', (jobId) => {
+    const { doc } = loadCi();
+    expect(getJob(doc, jobId)['timeout-minutes']).toBe(20);
+  });
+
+  it('keeps system dependency installation best-effort while retaining cache-aware browser installation and the launch gate', () => {
+    const steps = loadSetupNodeAction().runs.steps;
+    const dependencyInstall = steps.find((step) =>
+      step.name?.startsWith('Install Playwright system dependencies'),
+    );
+    const browserInstall = steps.find((step) => step.name === 'Install Playwright browser');
+    const launchCheck = steps.find((step) => step.name === 'Verify Chromium launches');
+
+    expect(dependencyInstall?.run).toContain(
+      'timeout --kill-after=30s 5m npx playwright install-deps chromium',
+    );
+    // A nonzero apt status must warn and continue, never re-raise: an Ubuntu
+    // mirror outage must not fail CI.
+    expect(dependencyInstall?.run).toContain('::warning::');
+    expect(dependencyInstall?.run).not.toContain('exit "$status"');
+    expect(browserInstall?.if).toContain("steps.pw-cache.outputs.cache-hit != 'true'");
+    expect(browserInstall?.run).toBe('npx playwright install chromium');
+    expect(launchCheck?.run).toContain('scripts/agent/verify-chromium-launch.mjs');
   });
 
   it('merge-gate check calls each e2e job with allow_skipped semantics ("true")', () => {

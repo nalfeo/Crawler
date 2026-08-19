@@ -26,7 +26,38 @@ export function getDecisionEventState(decision: Pick<AIDecision, 'state' | 'debu
 }
 
 /** Discriminator for the kind of telemetry record. */
-export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc' | 'control';
+export type SimEventType =
+  | 'sample'
+  | 'state'
+  | 'kill'
+  | 'levelup'
+  | 'quest'
+  | 'npc'
+  | 'control'
+  | 'boss';
+
+/** Per-boss-encounter diagnostic snapshot for Floor 2 den softlocks. */
+export interface BossEncounterSnapshot {
+  familyId: string;
+  displayName: string;
+  bossEid: number | null;
+  /** True only when `bossEid` still resolves to this family's live boss entity. */
+  bossEntityExists: boolean;
+  started: boolean;
+  defeated: boolean;
+  denRoomId: number;
+  bossRoomId: number | null;
+  bossInDen: boolean | null;
+  bossTileX: number | null;
+  bossTileY: number | null;
+  bossHealth: number | null;
+  bossHealthMax: number | null;
+  bossVisible: boolean | null;
+  activeGoalId: string;
+  activeGoalValue: boolean;
+  doorsLocked: boolean;
+  playerInDen: boolean;
+}
 
 /**
  * A single telemetry record. Every record carries the full frame context so
@@ -89,6 +120,11 @@ export interface SimEvent {
   urgency?: number | null;
   /** A/B decision-mode axis the AI ran under (e.g. 'legacy' | 'slackAware'). */
   decisionMode?: string;
+  /**
+   * Boss-encounter diagnostics for this frame. Present on `sample` records and
+   * on every `boss` transition record when the floor has den encounters.
+   */
+  bossEncounters?: BossEncounterSnapshot[];
   /** Optional annotation for non-sample events. */
   note?: string;
 }

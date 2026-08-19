@@ -1,0 +1,39 @@
+{
+  "briefId": "cactusfolk-elite-desert-capo",
+  "spriteName": "cactusfolk-elite-desert-capo-var-1",
+  "assetPath": "generated/cactusfolk-elite-desert-capo-var-1.png",
+  "approvedAt": "2026-07-09T08:40:21.162Z",
+  "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 30,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "de181bda594892bfe812aaffa9623dd0fdf1628ad934a749d55454922e1e63aa",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 57,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

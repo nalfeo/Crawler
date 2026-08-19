@@ -116,7 +116,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | AI aggregate shards       | `npm run ai:aggregate-shards`                                                                                                               |
 | Sprite check-in           | `npm run sprites:checkin`                                                                                                                   |
 | Sprite asset PR           | `npm run sprites:asset-pr`                                                                                                                  |
-| Sprite normalize items    | `npm run sprites:normalize-item-art`                                                                                                        |
+| Sprite normalize names    | `npm run sprites:normalize-names`                                                                                                           |
 | Sprite sort assets        | `npm run sprites:sort-assets`                                                                                                               |
 | Sprite gen placeholders   | `npm run sprites:gen-placeholders`                                                                                                          |
 | Sprite fetch gear icons   | `npm run sprites:fetch-gear-icons`                                                                                                          |

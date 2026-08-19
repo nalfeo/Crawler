@@ -1,0 +1,38 @@
+{
+  "briefId": "angry-roomba",
+  "spriteName": "angry-roomba-var-4",
+  "assetPath": "generated/angry-roomba-var-4.png",
+  "approvedAt": "2026-07-06T17:33:28.458Z",
+  "sourceRun": "generated/runs/angry-roomba-v1/imported-4b177b43ad8b",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 30,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "5",
+  "type": null,
+  "contentHash": "4b177b43ad8be8601110fb76ad0b9a7b78f5042b3907012a2c13449f5bb07710",
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 5,
+    "width": 58,
+    "height": 53,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

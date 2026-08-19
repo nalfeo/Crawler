@@ -502,12 +502,12 @@ describe('buildServer routes (inject)', () => {
     // map (200) so it can render the pre-baked pipeline — just flagged degraded so
     // the client stops trusting cell indices.
     const runId = '2026-07-03T00-02-09-e362a01d';
-    const runDir = path.join(root, 'runs', 'tile-corridor-v1', runId);
+    const runDir = path.join(root, 'runs', 'tile-corridor', runId);
     mkdirSync(runDir, { recursive: true });
     writeFileSync(
       path.join(runDir, 'summary.json'),
       JSON.stringify({
-        brief: 'tile-corridor-v1',
+        brief: 'tile-corridor',
         runId,
         briefPath: 'briefs/draft/tiles/tile-corridor.yaml',
         promptHash: 'e362a01d',
@@ -519,7 +519,7 @@ describe('buildServer routes (inject)', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/runs/tile-corridor-v1/${runId}/slice-map`,
+      url: `/api/runs/tile-corridor/${runId}/slice-map`,
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();

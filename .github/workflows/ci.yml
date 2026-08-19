@@ -204,6 +204,7 @@ jobs:
   check-lightweight:
     name: Lightweight Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     # No docs_only skip here: the human-approval step must run unconditionally
     # so a docs-only PR that carries (or closes an issue with) the
@@ -305,6 +306,17 @@ jobs:
       - name: Generated-manifest invariants
         if: env.DOCS_ONLY != 'true'
         run: npm run sprites:check-manifest
+
+      # Sprite name taxonomy (ADR 0086): every generated brief id must be a BARE
+      # concept with `-var-N` variants only. A lineage-tagged id (`rat-v1`)
+      # silently splits a concept into a second variant bucket in
+      # `loadGeneratedManifest`, stranding approved art that `pickGeneratedVariant`
+      # can never draw. This runs on art-only PRs too — the asset queue and
+      # issue-driven waves are exactly the paths that can reintroduce it, and
+      # they never execute the local `verify.sh`.
+      - name: Sprite name taxonomy guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:sprite-name-taxonomy
       # Manifest hard-block invariant: no approved shard entry may carry
       # judgeScorecard.hardBlocked=true. The judge hard-block is a veto, not a
       # score to be weighed. approve.ts gates this at approval-time; this
@@ -973,6 +985,7 @@ jobs:
   test-e2e-game:
     name: E2E Visual — Game/UI
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1001,6 +1014,7 @@ jobs:
   test-e2e-assets:
     name: E2E Visual — Asset Smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.asset_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
@@ -1029,6 +1043,7 @@ jobs:
   test-e2e-devtools:
     name: E2E Visual — Devtools
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes]
     if: needs.changes.outputs.devtool_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:

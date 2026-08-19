@@ -1,0 +1,39 @@
+{
+  "briefId": "crimson-mushroom",
+  "spriteName": "crimson-mushroom-var-3",
+  "assetPath": "generated/crimson-mushroom-var-3.png",
+  "approvedAt": "2026-07-08T07:38:25.394Z",
+  "sourceRun": "generated/runs/crimson-mushroom-v1/2026-07-08T07-14-02-929810b5",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 33,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "item",
+  "contentHash": "f2115d53a2c353871fe51bfc46d0dc53215e739b4408855343562c9ac123a508",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 54,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

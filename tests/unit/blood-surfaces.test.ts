@@ -219,7 +219,7 @@ describe('blood surface helpers', () => {
   //
   // The footprint constants must track the shipping player sprite. When
   // #2254 swapped the player from the 3.2 ft Kenney knight to the 5.22 ft
-  // `rhea-vale-v1` sprite, these were left behind: stride spacing (0.42 ft)
+  // `rhea-vale` sprite, these were left behind: stride spacing (0.42 ft)
   // was SHORTER than one print (0.52-0.64 ft), so the trail rendered as a
   // continuous streak instead of discrete alternating steps.
   describe('player-sprite calibration', () => {

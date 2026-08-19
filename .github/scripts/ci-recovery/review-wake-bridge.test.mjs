@@ -10,6 +10,7 @@ import {
   getWorkflowTreeSnapshot,
   inspectReviewWake,
   PROTECTED_WORKFLOW_PATHS,
+  runFromEnv,
 } from './review-wake-bridge.mjs';
 
 const repository = 'nalfeo/Crawler';
@@ -221,6 +222,43 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
         [path, 'a'.repeat(40)],
       ],
     );
+  }
+});
+
+test('runFromEnv keeps slashes literal in default-branch compare URLs', async () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'review-wake-bridge-test-'));
+  const eventPath = path.join(tempDir, 'event.json');
+  const outputPath = path.join(tempDir, 'output.txt');
+  const data = fixture();
+  data.payload.repository.default_branch = 'copilot/default-branch';
+  writeFileSync(eventPath, JSON.stringify(data.payload));
+  const paths = [];
+  const stop = new Error('stop after compare');
+  const comparePath = `/repos/${repository}/compare/copilot/default-branch...${data.run.head_sha}`;
+
+  try {
+    await assert.rejects(
+      runFromEnv(
+        {
+          GITHUB_TOKEN: 'test-token',
+          GITHUB_REPOSITORY: repository,
+          GITHUB_EVENT_NAME: 'workflow_run',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+        async (_token, requestPath) => {
+          paths.push(requestPath);
+          if (requestPath.endsWith('/actions/runs/123')) return { data: data.run };
+          if (requestPath.includes('/compare/')) throw stop;
+          throw new Error(`Unexpected request ${requestPath}`);
+        },
+      ),
+      stop,
+    );
+    assert.ok(paths.includes(comparePath));
+    assert.ok(!paths.some((requestPath) => requestPath.includes('%2F')));
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
 });
 

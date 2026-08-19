@@ -1,0 +1,119 @@
+{
+  "briefId": "kobold-elite-dragon-capo",
+  "spriteName": "kobold-elite-dragon-capo-var-1",
+  "assetPath": "generated/kobold-elite-dragon-capo-var-1.png",
+  "approvedAt": "2026-08-01T00:22:19.092Z",
+  "sourceRun": "generated/runs/kobold-elite-dragon-capo-v1/2026-08-01T00-18-28-593c60eb",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 122,
+    "y": 143,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 122,
+      "y": 143,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 122,
+      "y": 143,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 122,
+        "y": 143
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:20:13.977Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a kobold in a dragon-scale coat with a gold chain is a strong fit for the Crawler aesthetic, combining a commanding presence with a touch of dark humor. However, the contradiction could be pushed further to make it more memorable."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar outline weight, shading style, and color palette to the references, but the shading could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar outline weight, shading style, and color palette to the references, but the shading could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a tall kobold with a dragon-scale coat, gold chain, and a commanding pose, matching the brief perfectly."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the key elements (coat, chain, snout) are distinguishable, but the arms could be slightly more defined to enhance clarity."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a one-third turn, facing the camera appropriately for the game style."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates the dragon-scale coat, gold chain, and a commanding pose, which align with the Emberkin Clan's aesthetic and the 'Family Matters' floor theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3990,
+      "completionTokens": 376,
+      "totalTokens": 4366
+    }
+  },
+  "type": "enemy",
+  "contentHash": "8b6a45a11a4020685c6a1ee719c3a3a842438b6a273255c99e90baa0661886c8",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 236,
+    "canvasWidth": 256,
+    "canvasHeight": 264
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

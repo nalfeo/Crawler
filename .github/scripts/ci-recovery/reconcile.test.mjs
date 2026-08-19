@@ -8,10 +8,12 @@
  */
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 import {
   automationProgressKey,
@@ -33,6 +35,9 @@ import {
 } from './review-request.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
+const CI_WORKFLOW = parseYaml(
+  readFileSync(new URL('../../workflows/ci.yml', import.meta.url), 'utf8'),
+);
 const OWNER = 'test-owner';
 const REPO = 'test-repo';
 const PR_NUM = 42;
@@ -1015,6 +1020,189 @@ for (const attempt of [1, 2]) {
     }
   });
 }
+
+// Regression (PR #3040 / incident #3064 "no progress after 2 attempts"):
+// dispatchCopilot computed actorIds as the union of existing assignees plus
+// Copilot's id, then issued a single replaceActorsForAssignable mutation. On
+// a redispatch of a PR that already carries Copilot as an assignee (exactly
+// the R33 stale-automation-retry scenario exercised above), that union set is
+// IDENTICAL to the currently-assigned set, so the mutation is a no-op
+// assignee-list transition that does not reliably signal a fresh Copilot
+// coding session. The fix forces a genuine unassign-then-reassign edge
+// whenever Copilot was already assigned, mirroring the remove-then-add
+// pattern already used for linked-issue reassignment in
+// pr-ready-reviewer-guard.mjs.
+test('redispatch to a PR where Copilot is already assigned forces an unassign-then-reassign edge', async (t) => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: failedCheck.html_url,
+    },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 8801,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9901 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('removeAssigneesFromAssignable')) {
+        return {
+          body: {
+            data: {
+              removeAssigneesFromAssignable: {
+                assignable: { assignees: { nodes: [] } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // Copilot is already an assignee, simulating a redispatch (as opposed to
+      // the first-ever dispatch, where assignees would be empty).
+      return {
+        body: {
+          data: {
+            repository: {
+              pullRequest: {
+                id: 'PR_test_id',
+                assignees: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                closingIssuesReferences: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [],
+                },
+                reviews: reviewConnection([substantiveCopilotReview()]),
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [],
+                },
+              },
+            },
+          },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  const removeMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      call.body?.query?.includes('removeAssigneesFromAssignable'),
+  );
+  assert.equal(
+    removeMutations.length,
+    1,
+    'expected exactly one unassign mutation to force a genuine unassign transition',
+  );
+  assert.deepEqual(
+    removeMutations[0].body.variables.assigneeIds,
+    ['BOT_copilot'],
+    'unassign mutation must target only Copilot, leaving other assignees untouched',
+  );
+
+  const replaceMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      call.body?.query?.includes('replaceActorsForAssignable'),
+  );
+  assert.equal(replaceMutations.length, 1, 'expected exactly one reassign mutation');
+  assert.ok(
+    replaceMutations[0].body.variables.actorIds.includes('BOT_copilot'),
+    'reassign mutation must re-add Copilot to force a genuine reassign transition',
+  );
+  assert.ok(
+    mutatingCalls.indexOf(removeMutations[0]) < mutatingCalls.indexOf(replaceMutations[0]),
+    'the unassign mutation must happen before the reassign mutation',
+  );
+});
 
 // Regression (deadlock fix): the automation stale-lock GC lives AFTER the
 // merge-train-owned / ci-conflict-order-wait / hasMergeConflict short-circuits,
@@ -3787,6 +3975,22 @@ test('failed job-level continue-on-error checks (including matrix-suffixed repor
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });
 
+  test('advisory check names match every job-level continue-on-error CI job', () => {
+    const source = readFileSync(SCRIPT, 'utf8');
+    const match = source.match(/const ADVISORY_CHECK_NAMES = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(match, 'expected the recovery advisory check-name set');
+    const configuredNames = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+    const workflowNames = Object.values(CI_WORKFLOW.jobs)
+      .filter((job) => job['continue-on-error'] === true)
+      .map((job) => String(job.name).toLowerCase())
+      .sort();
+    assert.deepEqual(
+      configuredNames.sort(),
+      workflowNames,
+      'recovery advisory filtering must remain aligned with every advisory CI job',
+    );
+  });
+
   t.after(() => server.close());
 
   const { code, stdout, stderr } = await runScript(port, {
@@ -6208,40 +6412,32 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'fresh review-thread blocker should not include the outdated annotation',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('not the ID of this task comment'),
+    taskCommentCall.body.body.includes('(not this task comment)'),
     'task comment should instruct the agent NOT to reply to the task comment itself',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'a marker reply on the review-thread comment is the only form recognised by the reconciler',
-    ),
-    'task comment should state that only a review-thread reply is recognised by the reconciler',
+    taskCommentCall.body.body.includes('exact **Reply target comment ID**'),
+    'task comment should direct the marker to the exact review-thread reply target',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'A top-level PR comment is never sufficient for a review-thread blocker',
-    ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
+    taskCommentCall.body.body.includes('A top-level PR comment cannot resolve a thread'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'post the `✅ Addressed in <post-push-head-sha>: <one-line note>` reply',
+      'use that full SHA in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
     ),
     'top-level-comment warning should require the post-push HEAD marker',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'replace `<post-push-head-sha>` in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+      'After required verification and one consolidated push, run `git rev-parse HEAD`',
     ),
-    'reply_to_comment instruction should require replacing the post-push HEAD placeholder',
+    'reply_to_comment instruction should require deriving the marker from post-push HEAD',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('push your consolidated repair commit first'),
-    'task comment should require pushing before posting addressed markers',
-  );
-  assert.ok(
-    taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
-    'task comment should require deriving the marker SHA from post-push HEAD',
+    taskCommentCall.body.body.includes('only for deterministic non-applicability'),
+    'task comment should reserve Not applicable for deterministic non-applicability',
   );
   assert.equal(
     taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
@@ -6249,10 +6445,8 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'task comment must not contain the generic <sha> placeholder in marker instructions',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(
-      'validated `✅ Addressed in <post-push-head-sha>: <one-line note>` result',
-    ),
-    'task comment should require a post-push SHA for ordinary Addressed markers',
+    taskCommentCall.body.body.includes('leave substantive disagreements unresolved for escalation'),
+    'task comment should leave substantive disagreement unresolved for escalation',
   );
   assert.ok(
     taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
@@ -6264,17 +6458,34 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'task comment should not prefill dispatch-time HEAD in marker instruction',
   );
   assert.equal(
-    taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
+    taskCommentCall.body.body.includes('update_pull_request'),
     false,
-    'task comment should not advertise a bare Addressed marker',
+    'ordinary thread tasks should omit prior-recovery-only PR-body instructions',
   );
   assert.ok(
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('use the session `update_pull_request` tool'),
-    'task comment should direct PR-body edits through the supported update_pull_request tool path',
+    taskCommentCall.body.body.includes(
+      '**Required phases:** review feedback → CI failures → thread resolution.',
+    ),
+    'task phases should include only present review and CI phases in recovery order',
+  );
+  assert.ok(
+    taskCommentCall.body.body.indexOf('**review-thread**') <
+      taskCommentCall.body.body.indexOf('**ci-failure**'),
+    'blockers should follow the same review-before-CI phase order',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /merge-conflict resolution|validation/,
+    'task phases should omit absent conflict and validation phases',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `ci`/,
+    'a sole actionable ci aggregate should remain visible as the CI blocker',
   );
 });
 
@@ -6331,10 +6542,24 @@ test('ci-only task body omits review-thread protocol and requires push-based pro
         check_runs: [
           {
             id: 1,
-            name: 'Lightweight Checks',
+            name: 'ci',
             status: 'completed',
             conclusion: 'failure',
             html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/2`,
+          },
+          {
+            id: 3,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/3`,
           },
         ],
       },
@@ -6397,6 +6622,256 @@ test('ci-only task body omits review-thread protocol and requires push-based pro
     taskCommentCall.body.body.includes('thread resolution'),
     false,
     'ci-only recovery task should omit thread-resolution step from required-order line',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Lightweight Checks`/,
+    'a concrete failed check should remain actionable',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `(?:ci|Merge gate)`/,
+    'aggregate CI conclusions should be suppressed when a concrete failure exists',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('merge-conflict resolution'),
+    false,
+    'ci-only recovery task should omit the absent merge-conflict phase',
+  );
+});
+
+test('aggregate CI failures survive a concrete failure in an unrelated workflow', async (t) => {
+  // The check-runs endpoint carries every workflow on the head SHA. A failed
+  // job in a different workflow (here: security scanning) does not explain the
+  // `ci` / `Merge gate` aggregates, so those must remain visible blockers.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/2`,
+          },
+          {
+            id: 3,
+            name: 'CodeQL scan',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/22/job/3`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          { id: 11, path: '.github/workflows/ci.yml', event: 'pull_request' },
+          { id: 22, path: '.github/workflows/security.yml', event: 'pull_request' },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `CodeQL scan`/,
+    'the concrete cross-workflow failure should remain actionable',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `ci`/,
+    'the ci aggregate should survive a failure in an unrelated workflow',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Merge gate`/,
+    'the Merge gate aggregate should survive a failure in an unrelated workflow',
+  );
+});
+
+test('aggregate CI failures are suppressed by a concrete failure in the same workflow', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/1`,
+          },
+          {
+            id: 2,
+            name: 'Merge gate',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11/job/2`,
+          },
+          {
+            id: 4,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            // Re-dispatched ci.yml run: a different run id, same workflow path.
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/12/job/4`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          { id: 11, path: '.github/workflows/ci.yml', event: 'pull_request' },
+          { id: 12, path: '.github/workflows/ci.yml', event: 'pull_request' },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.match(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `Lightweight Checks`/,
+    'the concrete same-workflow failure should remain actionable',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /\*\*ci-failure\*\* `(?:ci|Merge gate)`/,
+    'aggregates should be suppressed by a concrete failure from the same workflow',
   );
 });
 
@@ -6515,6 +6990,10 @@ test('merge-train-noop task body uses generic repair protocol, not ci-only or re
     taskCommentCall.body.body.includes('thread resolution'),
     false,
     'merge-train-noop task should omit thread-resolution from required-order line',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('**Required phases:** merge-train cleanup.'),
+    'merge-train-noop task should render its own non-empty recovery phase',
   );
 });
 
@@ -11083,6 +11562,14 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
     ),
     'task body must include the prior blocked reply text inside the blocker hint',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes('A listed thread has a prior-recovery hint:'),
+    'a prior-reply blocker should retain the conditional external-action recovery instruction',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('update_pull_request'),
+    'a prior-reply blocker should retain the conditional PR-body edit instruction',
+  );
 
   // The stale-marker hint must NOT appear (prior reply, not a stale marker).
   assert.doesNotMatch(
@@ -11266,6 +11753,144 @@ test('a later top-level marker reply for the same fingerprint clears an earlier 
     taskCommentCall.body.body,
     new RegExp(escapeRegex(originalConcern.slice(0, 40))),
     'task body must still include the original reviewer concern',
+  );
+});
+
+test('review-ledger thread blockers separate validator evidence from policy disagreements', async (t) => {
+  const threadId = 'PRRT_review_ledger_guidance';
+  const priorTaskFingerprint = '1f2e3d4c5b6a79888796959493929190ffeeddccbbaa99887766554433221100';
+  const originalConcern = 'The review ledger still needs a human escalation path.';
+  const priorBlockedReply =
+    'No ledger change needed: review:ledger validates and the finding appears to be a policy interpretation mismatch.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/knowledge/review-ledgers/2026-08-18-unified-den-boss-telemetry.review-ledger.json',
+    line: 41,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_ledger_guidance',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r11`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`${thread.path}:41\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  const priorTopLevelReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '',
+    priorBlockedReply,
+  ].join('\n');
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 11050,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+        {
+          id: 11051,
+          body: priorTopLevelReply,
+          user: { login: 'Copilot' },
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([thread]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1105 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the ledger review thread');
+  assert.match(
+    taskCommentCall.body.body,
+    /run `npm run review:ledger -- validate` on the current head/i,
+    'task body should include deterministic ledger-validation guidance',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /validation by itself does not settle policy findings the validator does not enforce/i,
+    'task body should not present validation as sufficient for policy disagreements',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /leave substantive policy disagreements unresolved for human escalation/i,
+    'task body should direct unresolved policy disagreements to human escalation',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /✅ Not applicable: <one-line reason>/i,
+    'task body should keep marker guidance only for deterministically inapplicable findings',
   );
 });
 

@@ -1,0 +1,39 @@
+{
+  "briefId": "rat-king",
+  "spriteName": "rat-king-var-7",
+  "assetPath": "generated/rat-king-var-7.png",
+  "approvedAt": "2026-07-03T01:46:58.548Z",
+  "sourceRun": "generated/runs/rat-king-v1/imported-be4108057f1c",
+  "variantIndex": 7,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "5/8",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "be4108057f1cb00a3ce5b42ceb202d921f67a1816f9532fe925517957ad7901e",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 49,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

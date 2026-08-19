@@ -16,7 +16,7 @@
  *   4. Enemy-pack archetypes — any configured enemy archetype id that still has
  *      no dedicated real generated asset under its own concept id.
  *
- * Real generated assets carry a versioned briefId (`slime-queen-v1`), so they
+ * Real generated assets carry a versioned briefId (`slime-queen`), so they
  * do NOT auto-wire over a bare-concept placeholder (`slime-queen`); that
  * version asymmetry is exactly the wiring gap this audit surfaces.
  *
@@ -45,9 +45,9 @@ export interface PlaceholderRef {
 
 /** A real (non-placeholder) generated asset. */
 export interface RealAssetRef {
-  /** Versioned brief id, e.g. `slime-queen-v1`. */
+  /** Versioned brief id, e.g. `slime-queen`. */
   readonly briefId: string;
-  /** Variant texture/sprite name, e.g. `slime-queen-v1-var-0`. */
+  /** Variant texture/sprite name, e.g. `slime-queen-var-0`. */
   readonly spriteName: string;
   /** `public/`-relative asset path, forward-slashed. */
   readonly assetPath: string;
@@ -132,7 +132,7 @@ export interface PlaceholderAuditInput {
  * replacement collapse to the same key.
  *
  * Examples:
- *   `slime-queen-v1-var-0` -> `slime-queen`
+ *   `slime-queen-var-0` -> `slime-queen`
  *   `iron-sword-v1`        -> `iron-sword`
  *   `aether-dust-placeholder` -> `aether-dust`
  *   `enemy.slime`          -> `slime`

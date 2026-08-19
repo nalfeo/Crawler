@@ -2,28 +2,28 @@
   "briefId": "toadkin-bouncer",
   "spriteName": "toadkin-bouncer-var-1",
   "assetPath": "generated/toadkin-bouncer-var-1.png",
-  "approvedAt": "2026-08-01T17:05:51.728Z",
-  "sourceRun": "generated/runs/toadkin-bouncer/2026-08-01T17-02-32-88367d6a",
+  "approvedAt": "2026-08-01T00:27:54.343Z",
+  "sourceRun": "generated/runs/toadkin-bouncer-v1/2026-08-01T00-22-31-7b9a5e6f",
   "variantIndex": 1,
   "anchor": {
-    "x": 140,
-    "y": 124,
+    "x": 125,
+    "y": 145,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 140,
-      "y": 124,
+      "x": 125,
+      "y": 145,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 140,
-      "y": 124,
+      "x": 125,
+      "y": 145,
       "source": "derived"
     }
   },
   "sensorScore": "7/7",
-  "judgeScore": "4",
+  "judgeScore": "5",
   "sensorBreakdown": [
     {
       "ok": true,
@@ -53,82 +53,67 @@
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 140,
-        "y": 124
+        "x": 125,
+        "y": 145
       }
     }
   ],
   "judgeScorecard": {
     "variantIndex": 1,
     "modelDeployment": "gpt-4o",
-    "judgedAt": "2026-08-01T17:03:46.676Z",
+    "judgedAt": "2026-08-01T00:25:01.182Z",
     "designLanguage": {
       "score": 5,
-      "rationale": "The concept of a toadkin bouncer is well-executed, with a clear identity as a stocky, intimidating figure in a sharp bouncer jacket. The combination of a formal outfit with a brutish, warty toad appearance creates a strong authored contradiction that fits the Crawler aesthetic."
+      "rationale": "The concept of a toadkin bouncer with a menacing stance, velvet jacket, and brass knuckles is a strong fit for the Crawler design language. The combination of a formal bouncer aesthetic with the grotesque toadkin form is both darkly humorous and appropriately strange for the theme."
     },
     "referenceStyleMatch": {
-      "score": 4,
-      "rationale": "The sprite adheres closely to the reference style in terms of outline, shading, and palette. However, the shading on the jacket could use slightly more contrast to match the depth seen in the references."
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
     },
     "styleMatch": {
-      "score": 4,
-      "rationale": "The sprite adheres closely to the reference style in terms of outline, shading, and palette. However, the shading on the jacket could use slightly more contrast to match the depth seen in the references."
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
     },
     "briefMatch": {
       "score": 5,
-      "rationale": "The sprite matches the brief perfectly, with a squat, barrel-chested toadkin in a dark purple jacket with gold trim, a visible earpiece, and brass knuckles. The scowl is clear, and the pose is appropriately intimidating."
+      "rationale": "The sprite clearly depicts a hulking toadkin bouncer with crossed arms, a scowling expression, a purple velvet jacket with gold epaulets, and brass knuckles. The earpiece is also visible, fulfilling the brief requirements."
     },
     "readability": {
       "score": 5,
-      "rationale": "The silhouette is clear and reads well at game scale. The fists are tucked close to the torso, and the overall shape is compact and grounded, as specified in the brief."
+      "rationale": "The silhouette is clear and distinct at game scale, with the crossed arms and wide stance immediately conveying the bouncer role. The details like the jacket, epaulets, and brass knuckles are legible."
     },
-    "figureFraming": {
+    "poseOrientation": {
       "score": 5,
-      "rationale": "The entire figure is fully contained within the frame, with no cropped elements or floating accessories. The character is centered and well-framed."
+      "rationale": "The character is oriented at a one-third turn, facing the camera in a way that emphasizes the crossed arms and scowl, which is ideal for the intended role."
     },
     "themeAdherence": {
       "score": 5,
-      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the tailored bouncer jacket, gold trim, earpiece, and brass knuckles. The warty skin and scowl further emphasize the toadkin's role as an intimidating enforcer for the Croak Family."
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the toadkin form, purple velvet jacket, gold epaulets, brass knuckles, and earpiece. These elements clearly communicate the Croak Family's swamp crime dynasty aesthetic and the bouncer's role."
     },
     "passed": true,
-    "minScore": 4,
+    "minScore": 5,
     "rejectedBy": [],
     "hardBlockEvaluated": true,
     "hardBlocked": false,
     "hardBlockInstruction": null,
     "hardBlockRationale": null,
-    "confidence": 0.92,
+    "confidence": 0.95,
     "usage": {
-      "promptTokens": 4257,
-      "completionTokens": 462,
-      "totalTokens": 4719
+      "promptTokens": 3980,
+      "completionTokens": 464,
+      "totalTokens": 4444
     }
   },
   "type": "enemy",
-  "contentHash": "c3aa6e798b0424736f4f5821326b756e787aff4dec938e4f9985c15a43125a02",
+  "contentHash": "d19106d7380744f0f4188fa52dc12a13052c54e74bec4e963670126357ba528c",
   "opaqueBounds": {
     "x": 15,
     "y": 15,
-    "width": 239,
-    "height": 226,
-    "canvasWidth": 269,
-    "canvasHeight": 256
+    "width": 226,
+    "height": 252,
+    "canvasWidth": 256,
+    "canvasHeight": 282
   },
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right",
-  "catalog": {
-    "tags": [
-      "enemy",
-      "fantasy",
-      "dungeon",
-      "cave",
-      "horror",
-      "small",
-      "dark",
-      "arcane",
-      "creature",
-      "monster",
-      "toad"
-    ]
-  }
+  "facingDirection": "right"
 }

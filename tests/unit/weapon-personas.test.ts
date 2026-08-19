@@ -10,6 +10,7 @@ import {
 } from '../../src/game/ai/weapon-personas.js';
 import { computeAutoStatAllocation } from '../../src/game/scenarios/playerStatAllocationPolicy.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const STARTING_WEAPONS = [
@@ -88,6 +89,41 @@ describe('weapon AI personas', () => {
     // An equipped weapon wins over the scenario's recorded selection.
     setActiveWeaponDef(world, getWeaponDef('sword')!);
     expect(getWeaponPersonaForWorld(world)?.name).toBe('Vanguard');
+  });
+
+  it('uses a generated weapon type-skill persona fallback only when no exact persona exists', () => {
+    const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: 'persona-fallback' });
+    const generated = generateEquipmentInstance(world, {
+      baseId: 'plasma-pistol',
+      itemLevel: 2,
+      rarity: 'common',
+      enhancementLevel: 0,
+    });
+    setActiveWeaponDef(world, generated.frozen.activeWeaponSnapshot!);
+    expect(getWeaponPersonaForWorld(world)?.name).toBe('Gunslinger');
+
+    // Exact weapon ids remain authoritative even when the generated snapshot
+    // has the same type skill as a different fallback persona.
+    const exact = generateEquipmentInstance(world, {
+      baseId: 'fireball',
+      itemLevel: 2,
+      rarity: 'common',
+      enhancementLevel: 0,
+    });
+    setActiveWeaponDef(world, exact.frozen.activeWeaponSnapshot!);
+    expect(getWeaponPersonaForWorld(world)?.name).toBe('Arcanist');
+  });
+
+  it('keeps the generic allocator for generated unarmed weapons', () => {
+    const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: 'persona-unarmed' });
+    const generated = generateEquipmentInstance(world, {
+      baseId: 'punch',
+      itemLevel: 2,
+      rarity: 'common',
+      enhancementLevel: 0,
+    });
+    setActiveWeaponDef(world, generated.frozen.activeWeaponSnapshot!);
+    expect(getWeaponPersonaForWorld(world)).toBeUndefined();
   });
 
   it('allocates nothing for zero, negative, or non-finite point budgets', () => {

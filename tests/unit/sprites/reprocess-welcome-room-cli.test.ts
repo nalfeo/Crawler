@@ -18,7 +18,7 @@ describe('reprocess-welcome-room-cli helpers', () => {
             {
               layers: [
                 { sprite: { source: 'catalog', spriteId: 'welcome-room-rug-var-0' } },
-                { sprite: { source: 'catalog', spriteId: 'prop-wall-sconce-v1-var-1' } },
+                { sprite: { source: 'catalog', spriteId: 'prop-wall-sconce-var-1' } },
                 { sprite: { source: 'sheet', spriteId: 'welcome-room-desk-var-0' } },
               ],
             },
