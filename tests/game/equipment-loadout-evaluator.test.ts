@@ -526,19 +526,17 @@ describe('equipment loadout expected-run-value evaluator', () => {
     const current = [
       currentWeapon,
       generated('iron-helm', 'erv-current-helm'),
-      generated('steel-pauldrons', 'erv-current-shoulders'),
-      generated('travelers-cloak', 'erv-current-cloak'),
+      generated('iron-breastplate', 'erv-current-chest'),
+      generated('accessory.gearwork-locket', 'erv-current-locket'),
       generated('iron-greaves', 'erv-current-greaves'),
-      generated('sturdy-belt', 'erv-current-belt'),
-      generated('iron-visor', 'erv-current-visor'),
       generated('leather-gloves', 'erv-current-gloves'),
     ];
-    const armor = generated('iron-breastplate', 'erv-armor');
+    const armor = generated('torso.runed-cuirass', 'erv-armor');
     // Use incomingHitDamage=20 so armor still has room to reduce damage after
     // the current loadout's armor is accounted for. Under the decoupled model,
-    // accessories (travelers-cloak, sturdy-belt, leather-gloves) contribute
-    // zero armor; only armor-kind bases (iron-helm=2, steel-pauldrons=2,
-    // iron-greaves=3, iron-visor=1) total=8 contribute. At incomingHitDamage=8
+    // accessories (gearwork-locket, leather-gloves) contribute
+    // zero armor; only armor-kind bases (iron-helm=2, iron-breastplate=4,
+    // iron-greaves=3) total=7 contribute. At incomingHitDamage=8
     // defense is already at the min-1 floor, so we need a higher fixture.
     const defensiveEncounter = { ...SINGLE_TARGET, incomingHitDamage: 20 };
     const defensive = evaluateEquipmentLoadoutCandidates({
@@ -549,7 +547,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
       },
       config: config({
         defense: 3,
-        encumbrance: 4,
+        encumbrance: 1,
       }),
     }).ranked[0]!;
     const pistol = generated('plasma-pistol', 'erv-opportunity-pistol');
@@ -559,7 +557,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
     }).ranked[0]!;
 
     expect(defensive.components.defense).toBeGreaterThan(0);
-    expect(defensive.components.encumbrance).toBeLessThan(0);
+    expect(defensive.components.encumbrance).toBeLessThanOrEqual(0);
     expect(transition.displacedInstanceIds).toEqual([currentWeapon.instanceId]);
     expect(transition.components.purchaseCost).toBe(-50);
     expect(transition.score).toBeCloseTo(

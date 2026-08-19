@@ -137,8 +137,8 @@ interface BasicLeatherNonWeaponInput {
 }
 
 // Conservative Common baselines: mostly pure-armor, sized against the
-// nearest existing Wave A/B item for the same real game slot. Three items
-// (leather-collar, leather-belt, iron-ring) deliberately carry one inherent
+// nearest existing Wave A/B item for the same real game slot. Two items
+// (leather-collar, iron-ring) deliberately carry one inherent
 // non-armor stat, making them eligible for Uncommon/Rare reward draws while
 // preserving identical base stats across every acquisition source.
 const NON_WEAPON_INPUTS: readonly BasicLeatherNonWeaponInput[] = [
@@ -157,34 +157,6 @@ const NON_WEAPON_INPUTS: readonly BasicLeatherNonWeaponInput[] = [
     weightLb: 0.5,
   },
   {
-    stableId: 'torso.cloth-cloak',
-    name: 'Cloth Cloak',
-    slots: ['back'],
-    statBonuses: { armor: 1 },
-    weightLb: 2,
-  },
-  {
-    stableId: 'torso.leather-shoulder-pads',
-    name: 'Leather Shoulder Pads',
-    slots: ['shoulders'],
-    statBonuses: { armor: 2 },
-    weightLb: 2,
-  },
-  {
-    stableId: 'hands.leather-arm-wraps',
-    name: 'Leather Arm Wraps',
-    slots: ['leftArm', 'rightArm'],
-    statBonuses: { armor: 1 },
-    weightLb: 1,
-  },
-  {
-    stableId: 'hands.leather-bracers',
-    name: 'Leather Bracers',
-    slots: ['leftWrist', 'rightWrist'],
-    statBonuses: { armor: 1 },
-    weightLb: 1,
-  },
-  {
     stableId: 'torso.leather-tunic',
     name: 'Leather Tunic',
     slots: ['chest'],
@@ -196,13 +168,6 @@ const NON_WEAPON_INPUTS: readonly BasicLeatherNonWeaponInput[] = [
     name: 'Leather Gloves',
     slots: ['gloves'],
     statBonuses: { armor: 1 },
-    weightLb: 1,
-  },
-  {
-    stableId: 'accessory.leather-belt',
-    name: 'Leather Belt',
-    slots: ['belt'],
-    statBonuses: { armor: 1, luck: 1 },
     weightLb: 1,
   },
   {
@@ -222,7 +187,7 @@ const NON_WEAPON_INPUTS: readonly BasicLeatherNonWeaponInput[] = [
   {
     stableId: 'accessory.iron-ring',
     name: 'Iron Ring',
-    slots: ['ringLeft', 'ringRight'],
+    slots: ['ring1'],
     statBonuses: { luck: 1 },
     weightLb: 0.25,
   },
@@ -261,9 +226,9 @@ function validateBasicLeatherBases(): void {
       `Floor 2 Basic Leather bases must contain exactly 6 weapons; received ${FLOOR2_BASIC_LEATHER_WEAPON_BASES.length}`,
     );
   }
-  if (FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES.length !== 12) {
+  if (FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES.length !== 7) {
     throw new Error(
-      `Floor 2 Basic Leather bases must contain exactly 12 non-weapons; received ${FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES.length}`,
+      `Floor 2 Basic Leather bases must contain exactly 7 non-weapons; received ${FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES.length}`,
     );
   }
   const stableIds = new Set<string>();
