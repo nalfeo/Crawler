@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-19",
+  "session_slug": "awards-touch-scroll",
+  "task_title": "Fix touch scrolling in Awards",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Independent design review required panel-space drag deltas, scene-level panel hit testing, and input reset on panel transitions; all were incorporated."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
