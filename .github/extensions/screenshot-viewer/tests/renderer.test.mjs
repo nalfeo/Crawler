@@ -203,3 +203,50 @@ test('orders lineage by capture time rather than backend array order', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /takenTime\(a\.after\) - takenTime\(b\.after\)/);
 });
+
+test('orders lineage newest-first by executing the real ordering block', () => {
+  const src = renderHtml(OPTS);
+  const start = src.indexOf('const comparablePairs = pairs.filter');
+  const end = src.indexOf('const pairHtml = orderedPairs.map');
+  assert.ok(start > -1 && end > start, 'ordering block must be locatable');
+  const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
+  const shot = (iso) => ({ path: 'p' + iso, takenAt: iso });
+  // Deliberately supplied oldest-last, mimicking the backend's newest-first sort.
+  const pairs = [
+    {
+      key: 'equipment (v5)',
+      before: shot('2026-08-19T16:24:28Z'),
+      after: shot('2026-08-19T20:14:12Z'),
+      states: { before: 'v4', after: 'v5' },
+      reviews: {},
+    },
+    {
+      key: 'equipment (v4)',
+      before: shot('2026-08-19T00:07:06Z'),
+      after: shot('2026-08-19T16:24:28Z'),
+      states: { before: 'v3', after: 'v4' },
+      reviews: {},
+    },
+    {
+      key: 'equipment (v3)',
+      before: shot('2026-08-19T00:09:45Z'),
+      after: shot('2026-08-19T00:07:06Z'),
+      states: { before: 'main', after: 'v3' },
+      reviews: {},
+    },
+  ];
+  const ordered = new Function(
+    'pairs',
+    'scenarioOf',
+    src.slice(start, end) + '; return orderedPairs;',
+  )(pairs, scenarioOf);
+  assert.deepEqual(
+    ordered.map((p) => p.states.before + '|' + p.states.after),
+    ['main|v5', 'v4|v5', 'v3|v4', 'main|v3'],
+  );
+});
+
+test('warns that the panel is stale when the backend is unreachable', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /showing STALE content/);
+});

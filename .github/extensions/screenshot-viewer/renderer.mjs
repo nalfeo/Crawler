@@ -665,7 +665,14 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           const state = await response.json();
           applyState(state);
         } catch (error) {
-          renderError(error instanceof Error ? error.message : String(error));
+          // A dead backend previously left the last-rendered content on screen
+          // with no signal, so stale ordering/timestamps looked like live data.
+          renderError(
+            'Backend unreachable — this panel is showing STALE content from a previous session. ' +
+            'Close and reopen the Screenshot Viewer canvas to reconnect. (' +
+            (error instanceof Error ? error.message : String(error)) + ')'
+          );
+          liveBadge.hidden = true;
         } finally {
           refreshButton.disabled = false;
         }
