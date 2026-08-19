@@ -885,8 +885,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
       /**
        * Draw (or hide) the player's equipped main-hand weapon as a persistent
-       * carried sprite, so the weapon is visible between swings and for weapon
-       * types that never spawn a swing entity at all.
+       * carried sprite when the floor enables `carriedMainHandWeapon`. When
+       * disabled, this path only hides any existing carried sprite.
+       *
+       * With the flag enabled, the weapon stays visible between swings and for
+       * weapon types that never spawn a swing entity at all.
        *
        * Art resolution mirrors the swing branch's preference order: approved
        * generated art first, then the Kenney placeholder for melee weapons,
@@ -2024,8 +2027,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   }
                 }
                 playPlayerWalkAnimation(img, eid);
-                // The equipped main-hand weapon is always carried, not just
-                // drawn for the duration of a swing.
+                // The equipped main-hand weapon is carried between swings only
+                // when floor behavior enables persistent carry rendering.
                 updateCarriedWeapon(eid, x, y, img.visible !== false);
               } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
