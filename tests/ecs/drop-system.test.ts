@@ -23,7 +23,7 @@ import {
   spawnEnemy,
   spawnPlayer,
 } from '../../src/core/helpers.js';
-import { dropSystem } from '../../src/core/systems/dropSystem.js';
+import { dropSystem, MINI_SLIME_COLLISION_EPSILON } from '../../src/core/systems/dropSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { MeleeStyle, TeamId } from '../../src/shared/constants.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
@@ -386,10 +386,16 @@ describe('dropSystem', () => {
         const my = world.stores.position.y[miniEid] ?? 0;
         const halfWidth = (world.stores.sprite.width[miniEid] ?? 0) / 2;
         const halfHeight = (world.stores.sprite.height[miniEid] ?? 0) / 2;
-        expect(wallMap.isPassableAt(mx - halfWidth, my - halfHeight)).toBe(true);
-        expect(wallMap.isPassableAt(mx + halfWidth, my - halfHeight)).toBe(true);
-        expect(wallMap.isPassableAt(mx - halfWidth, my + halfHeight)).toBe(true);
-        expect(wallMap.isPassableAt(mx + halfWidth, my + halfHeight)).toBe(true);
+        // Mirror the exact inset `isMiniSlimeSpawnPassable` applies so this
+        // assertion checks the same invariant the production code enforces.
+        const left = mx - halfWidth + MINI_SLIME_COLLISION_EPSILON;
+        const right = mx + halfWidth - MINI_SLIME_COLLISION_EPSILON;
+        const top = my - halfHeight + MINI_SLIME_COLLISION_EPSILON;
+        const bottom = my + halfHeight - MINI_SLIME_COLLISION_EPSILON;
+        expect(wallMap.isPassableAt(left, top)).toBe(true);
+        expect(wallMap.isPassableAt(right, top)).toBe(true);
+        expect(wallMap.isPassableAt(left, bottom)).toBe(true);
+        expect(wallMap.isPassableAt(right, bottom)).toBe(true);
       }
     }
 

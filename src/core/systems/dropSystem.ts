@@ -93,7 +93,7 @@ const MINI_SLIME_SPAWN_MAX_ATTEMPTS = 8;
 // Sample just inside the candidate footprint so exact tile-edge contact does
 // not read as a wall hit because of floating-point rounding. Mirrors
 // knockbackSystem's COLLISION_EPSILON.
-const MINI_SLIME_COLLISION_EPSILON = 0.001;
+export const MINI_SLIME_COLLISION_EPSILON = 0.001;
 
 /**
  * Whether a baby slime's full footprint (not just its center point) would fit
