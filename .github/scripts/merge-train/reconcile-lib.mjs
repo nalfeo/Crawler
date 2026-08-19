@@ -53,6 +53,21 @@ export function isMergeTrainPromotionError(error) {
   return error instanceof MergeTrainPromotionError;
 }
 
+// GitHub's legacy synchronous merge endpoint (`PUT /pulls/{n}/merge`, the only
+// one this script uses) permanently 403s for a PR that GitHub has attached to
+// a "stacked pull requests" group, directing callers to the async merge
+// endpoint instead. That is a structural incompatibility with THIS specific
+// PR, not a transient promotion failure -- retrying the same synchronous call
+// will never succeed. Detected by message text (GitHub does not expose a
+// distinct error code for this case) so the caller can eject just the one
+// affected PR instead of treating it as a generic fatal promotion error that
+// aborts the whole batch.
+export function isStackedPrMergeRejection(reason) {
+  return /stacked (?:pull requests?|prs?)\b.*\basync(?:hronous)? merge endpoint/i.test(
+    String(reason || ''),
+  );
+}
+
 export function isMergeTrainConflictError(error) {
   return error instanceof MergeTrainConflictError;
 }
@@ -925,9 +940,12 @@ export async function promoteExactBatch({
       // opaque git blobs and are never real commit objects on GitHub, so a
       // check-run attached to one would not resolve.
       await publishPostcondition(mainBeforeMerge);
-      throw new MergeTrainPromotionError(
+      const promotionError = new MergeTrainPromotionError(
         `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
       );
+      promotionError.prNumber = entry.number;
+      promotionError.stackedPrRejection = isStackedPrMergeRejection(merge.reason);
+      throw promotionError;
     }
     const landedSha = merge.sha;
     const proofError = await landedCommitProofError({

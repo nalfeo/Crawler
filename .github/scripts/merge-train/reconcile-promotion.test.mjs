@@ -5,6 +5,7 @@ import {
   applyLandedRecoveryDecision,
   createMergePullRequest,
   isMergeTrainPromotionError,
+  isStackedPrMergeRejection,
   landedCommitProofError,
   planLandedRecovery,
   promoteExactBatch,
@@ -312,6 +313,56 @@ test('promoteExactBatch publishes postcondition on the just-landed prior commit 
   assert.equal(records.postconditions.length, 1);
   assert.equal(records.postconditions[0].sha, LAND1);
   assert.deepEqual(records.landedLabels, [{ number: 1, name: LANDED_LABEL }]);
+});
+
+test('isStackedPrMergeRejection recognizes the legacy synchronous merge-endpoint 403', () => {
+  assert.ok(
+    isStackedPrMergeRejection(
+      'merge API failed (403): GitHub PUT /repos/o/r/pulls/1/merge failed (403): ' +
+        'Merging stacked PRs via this endpoint is not supported. Use the asynchronous ' +
+        'merge endpoint instead.',
+    ),
+  );
+  assert.equal(isStackedPrMergeRejection('policy rejected'), false);
+  assert.equal(isStackedPrMergeRejection(undefined), false);
+});
+
+test('promoteExactBatch tags the thrown error with prNumber + stackedPrRejection for a stacked-PR merge rejection', async () => {
+  const { promise } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    mergePullRequest: async () => ({
+      ok: false,
+      retryable: false,
+      reason:
+        'merge API failed (403): Merging stacked PRs via this endpoint is not supported. ' +
+        'Use the asynchronous merge endpoint instead.',
+    }),
+  });
+  try {
+    await promise;
+    assert.fail('expected promotion to throw');
+  } catch (error) {
+    assert.ok(isMergeTrainPromotionError(error));
+    assert.equal(error.prNumber, 1);
+    assert.equal(error.stackedPrRejection, true);
+  }
+});
+
+test('promoteExactBatch does not tag stackedPrRejection for an unrelated non-retryable merge failure', async () => {
+  const { promise } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    mergePullRequest: async () => ({ ok: false, retryable: false, reason: 'policy rejected' }),
+  });
+  try {
+    await promise;
+    assert.fail('expected promotion to throw');
+  } catch (error) {
+    assert.ok(isMergeTrainPromotionError(error));
+    assert.equal(error.prNumber, 1);
+    assert.equal(error.stackedPrRejection, false);
+  }
 });
 
 test('promoteExactBatch fails closed (returns false) when main moved before a merge (base-CAS)', async () => {

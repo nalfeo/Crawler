@@ -29,6 +29,7 @@ import {
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
+  isMergeTrainPromotionError,
   mainAttributionVerdict,
   mergeTrainGitEnvironment,
   planLandedRecovery,
@@ -1142,6 +1143,32 @@ if (plan.attribution) {
 }
 
 if (plan.greenPrefixLength > 0) {
-  await promotePrefix(plan.greenPrefixLength, plan.validationIndex);
+  try {
+    await promotePrefix(plan.greenPrefixLength, plan.validationIndex);
+  } catch (error) {
+    // A "stacked pull requests" 403 from the legacy synchronous merge
+    // endpoint is a structural, permanent incompatibility with the specific
+    // PR GitHub attached to a stack, not a transient promotion failure --
+    // retrying via this same endpoint will never succeed (see
+    // isStackedPrMergeRejection). Eject only that PR (mirrors the
+    // first-failing-addition isolation above) so the rest of the queue is
+    // not held hostage by a process crash; any other promotion error keeps
+    // the existing fail-loud behavior.
+    if (!isMergeTrainPromotionError(error) || !error.stackedPrRejection || !error.prNumber) {
+      throw error;
+    }
+    const stuckEntry = train.find((entry) => entry.number === error.prNumber);
+    if (!stuckEntry) {
+      throw error;
+    }
+    process.stdout.write(
+      `promotion blocked pr=#${stuckEntry.number}; GitHub rejects the legacy synchronous merge endpoint for this PR (stacked pull requests); ejecting from the queue for manual/async remediation: ${error.message}\n`,
+    );
+    await blockEntry(stuckEntry, {
+      detail:
+        'GitHub rejected the squash-merge API call because this PR is part of a "stacked pull requests" group; the merge train only supports the legacy synchronous merge endpoint. Dissolve the stack (or merge manually via the async endpoint / GitHub UI), then re-add the queue label.',
+    });
+    await dispatchRecoveryGated(stuckEntry.number, 'merge-train-stacked-pr-unsupported');
+  }
 }
 process.exit(0);
