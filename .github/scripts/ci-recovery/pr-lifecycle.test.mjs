@@ -181,13 +181,34 @@ test('evaluateAdmission reports every blocking reason from current facts only', 
   ]);
 });
 
-test('evaluateAdmission rejects a stacked PR (GitHub `stack` object present) even when otherwise green', () => {
-  // Incident: PR #3027 was stacked under #3033 (`stack` present on the API
-  // response for both), was admitted, and 403'd at the merge PUT --
-  // "Merging stacked PRs via this endpoint is not supported" -- which
+test('evaluateAdmission rejects a non-bottom stacked PR (GitHub `stack` object, position !== 1) even when otherwise green', () => {
+  // Incident: PR #3027 (bottom, position 1) was stacked under #3033 (top,
+  // position 2). The classic merge PUT 403s ("Merging stacked PRs via this
+  // endpoint is not supported") for ANY PR in a stack, which previously
   // crashed the whole merge-train reconcile run and blocked every other
-  // queued PR for 24h+. A stacked PR must never be admitted in the first
-  // place; it should rebase/un-stack onto `main` before requeueing.
+  // queued PR for 24h+. A non-bottom stacked PR must never be admitted: the
+  // classic merge endpoint cannot land it in isolation (it would pull in
+  // everything below it too), so it must wait for the PR(s) below it to
+  // merge/dissolve the stack first.
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 2, size: 2 },
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.equal(result.eligible, false);
+  assert.deepEqual(result.reasons, ['stacked-pr']);
+});
+
+test('evaluateAdmission admits a green bottom-of-stack PR (stack.position === 1)', () => {
+  // A bottom-of-stack PR is admitted: the reconciler routes it to GitHub's
+  // async merge-stack endpoint instead of the classic PUT, which merges only
+  // this PR and lets GitHub rebase the PR(s) above it directly onto `main`,
+  // dissolving the stack without force-merging everything at once.
   const result = evaluateAdmission({
     state: 'open',
     draft: false,
@@ -198,8 +219,7 @@ test('evaluateAdmission rejects a stacked PR (GitHub `stack` object present) eve
     reviews: substantiveCopilotReviews(),
   });
 
-  assert.equal(result.eligible, false);
-  assert.deepEqual(result.reasons, ['stacked-pr']);
+  assert.deepEqual(result, { eligible: true, reasons: [] });
 });
 
 test('evaluateAdmission admits a green, non-stacked PR (stack absent/null is a no-op)', () => {

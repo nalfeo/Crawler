@@ -157,8 +157,12 @@ export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQ
  * @param {boolean} [prFacts.hasMergeConflict] - true when PR has a merge conflict
  * @param {object} [prFacts.stack] - GitHub's stacked-PR `stack` object, present when
  *   this PR belongs to a stack (another open PR is based on its head branch, or it
- *   is itself based on another open PR's head branch). Non-null blocks admission:
- *   see the `stacked-pr` reason below.
+ *   is itself based on another open PR's head branch). `stack.position` is
+ *   1-indexed from the bottom (closest to `main`). Only a NON-bottom position
+ *   blocks admission: see the `stacked-pr` reason below. A bottom-of-stack PR
+ *   (`position === 1`) is admitted and merged via GitHub's async merge-stack
+ *   endpoint, which merges only that PR -- GitHub then automatically rebases
+ *   the PR(s) above it directly onto `main`, dissolving the stack.
  * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
  * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
  * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
@@ -201,11 +205,24 @@ export function evaluateAdmission(prFacts, config = {}) {
   // admission entirely: a stacked PR could be admitted, reach the merge PUT,
   // 403, and crash the whole reconcile run -- blocking every other queued PR
   // behind it (see incident: PR #3027, stacked under #3033, parked the train
-  // for 24h+). Reject a stacked PR at admission so it is dequeued with a clear
-  // reason instead of ever reaching the merge call. A stacked PR should be
-  // rebased/un-stacked onto `main` before it re-enters the queue -- either the
-  // child PR merges/closes first (dissolving the stack) or a human detaches it.
-  if (stack) reasons.push('stacked-pr');
+  // for 24h+).
+  //
+  // A NON-bottom stacked PR (position !== 1) is still rejected here: the
+  // classic merge endpoint cannot land it in isolation (merging it would pull
+  // in everything below it too), and the reconciler only ever merges one PR
+  // at a time. It must wait for the PR(s) below it to merge/dissolve first.
+  //
+  // A BOTTOM-of-stack PR (position === 1) is admitted: the reconciler routes
+  // it to GitHub's async merge-stack endpoint instead of the classic PUT.
+  // That endpoint merges only PRs from the stack base up through the target
+  // PR -- calling it on the bottom-most PR merges just that one PR. GitHub
+  // then automatically rebases the PR(s) above it directly onto `main`,
+  // dissolving the stack so they become ordinary, independently-mergeable
+  // PRs. This preserves the whole point of stacking: chunked, independently
+  // reviewable/mergeable work, rather than force-merging the entire stack at
+  // once (which is what calling the async endpoint on a non-bottom PR would
+  // do).
+  if (stack && stack.position !== 1) reasons.push('stacked-pr');
 
   reasons.push(
     ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {
