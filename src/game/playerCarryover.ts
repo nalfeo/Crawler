@@ -551,6 +551,75 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
           (entry) => typeof entry !== 'string' || !retiredGeneratedInstanceKeys.has(entry),
         )
       : entries;
+  const retiredAchievementIds = new Set<string>();
+  const rawRewardBundles = readArrayField('generatedEquipmentRewardBundles');
+  const migratedRewardBundles = (
+    Array.isArray(rawRewardBundles)
+      ? migrateBundleBossChestTier(rawRewardBundles).filter((entry) => {
+          if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return true;
+          const bundle = entry as { achievementId?: unknown; instanceKeys?: unknown };
+          if (
+            typeof bundle.achievementId !== 'string' ||
+            !Array.isArray(bundle.instanceKeys) ||
+            !bundle.instanceKeys.some(
+              (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+            )
+          ) {
+            return true;
+          }
+          if (!bundle.achievementId.startsWith(BOSS_CHEST_ID_PREFIX)) {
+            retiredAchievementIds.add(bundle.achievementId);
+          }
+          return false;
+        })
+      : rawRewardBundles
+  ) as unknown[];
+  const rawBossChests = readArrayField('bossChests');
+  const migratedBossChests = (
+    Array.isArray(rawBossChests)
+      ? migrateBossChestTier(rawBossChests).filter((entry) => {
+          if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return true;
+          const chest = entry as {
+            chestId?: unknown;
+            revealedGrant?: { instanceKeys?: unknown };
+          };
+          const hasRetiredReveal =
+            chest.revealedGrant !== undefined &&
+            Array.isArray(chest.revealedGrant.instanceKeys) &&
+            chest.revealedGrant.instanceKeys.some(
+              (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+            );
+          const hasRetiredAvailableBundle =
+            typeof chest.chestId === 'string' &&
+            migratedRewardBundles.some(
+              (bundle) =>
+                typeof bundle === 'object' &&
+                bundle !== null &&
+                !Array.isArray(bundle) &&
+                (bundle as { achievementId?: unknown }).achievementId === chest.chestId,
+            ) === false &&
+            readArrayField('generatedEquipmentRewardBundles').some(
+              (bundle) =>
+                typeof bundle === 'object' &&
+                bundle !== null &&
+                !Array.isArray(bundle) &&
+                (bundle as { achievementId?: unknown; instanceKeys?: unknown }).achievementId ===
+                  chest.chestId &&
+                Array.isArray((bundle as { instanceKeys?: unknown }).instanceKeys) &&
+                (bundle as { instanceKeys: unknown[] }).instanceKeys.some(
+                  (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+                ),
+            );
+          return !hasRetiredReveal && !hasRetiredAvailableBundle;
+        })
+      : rawBossChests
+  ) as unknown[];
+  const migratedAchievements = {
+    ...legacy.achievements,
+    claimedIds: Array.isArray(legacy.achievements?.claimedIds)
+      ? [...new Set([...legacy.achievements.claimedIds, ...retiredAchievementIds])]
+      : legacy.achievements?.claimedIds,
+  };
   const removeRetiredGeneratedSources = (state: unknown): unknown => {
     if (typeof state !== 'object' || state === null || Array.isArray(state)) return state;
     const filterSources = (value: unknown): unknown =>
@@ -584,6 +653,7 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
+    achievements: migratedAchievements,
     inventorySlots: Array.isArray(legacy.inventorySlots)
       ? legacy.inventorySlots.filter(
           (slot) =>
@@ -605,12 +675,9 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
     generatedEquipmentRegistry:
       migratedGeneratedRegistry as PlayerCarryoverSnapshot['generatedEquipmentRegistry'],
-    generatedEquipmentRewardBundles: migrateBundleBossChestTier(
-      readArrayField('generatedEquipmentRewardBundles'),
-    ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
-    bossChests: migrateBossChestTier(
-      readArrayField('bossChests'),
-    ) as PlayerCarryoverSnapshot['bossChests'],
+    generatedEquipmentRewardBundles:
+      migratedRewardBundles as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
+    bossChests: migratedBossChests as PlayerCarryoverSnapshot['bossChests'],
     lootBoxRewardBundles: readArrayField(
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],

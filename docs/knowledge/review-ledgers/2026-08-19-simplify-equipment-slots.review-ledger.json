@@ -6,23 +6,40 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review identified migration, authored-content, ring-cue, and durable-evidence gaps; all were addressed in subsequent commits."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
