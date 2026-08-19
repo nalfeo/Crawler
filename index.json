@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d1ba33dfff41cfc12125d69af21280adb306998e",
+    "commitDate": "2026-08-19T13:06:07-07:00",
+    "commitSubject": "fix(ci): reject stacked PRs in merge-train admission instead of crashing reconcile (#3156)",
+    "capturedAt": "2026-08-19T21:39:33.943Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32298775953",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/d1ba33dfff41cfc12125d69af21280adb306998e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2866666666666667,
+        "totalWins": 43,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.35333333333333333,
+        "totalWins": 53,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/d1ba33dfff41cfc12125d69af21280adb306998e.fun-report.json"
+    }
+  },
+  {
     "commit": "fa2aa226635543b10236d11952c79817a013372b",
     "commitDate": "2026-08-18T22:51:59Z",
     "commitSubject": "CI recovery: add deterministic ledger-thread resolution guidance to prevent retry loops (#3113)",
