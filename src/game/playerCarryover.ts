@@ -515,6 +515,10 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   };
 
   const retiredGeneratedInstanceKeys = new Set<string>();
+  const legacyGeneratedSlotIds: Readonly<Record<string, EquipmentSlotId>> = {
+    ringLeft: 'ring1',
+    ringRight: 'ring2',
+  };
   const generatedRegistry = partial.generatedEquipmentRegistry;
   const migratedGeneratedRegistry =
     typeof generatedRegistry === 'object' &&
@@ -525,9 +529,9 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
           ...(generatedRegistry as unknown as Record<string, unknown>),
           instances: (
             generatedRegistry as unknown as { instances: readonly unknown[] }
-          ).instances.filter((instance) => {
+          ).instances.flatMap((instance) => {
             if (typeof instance !== 'object' || instance === null || Array.isArray(instance)) {
-              return true;
+              return [instance];
             }
             const record = instance as Record<string, unknown>;
             const frozen = record.frozen;
@@ -535,13 +539,22 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
               typeof frozen === 'object' && frozen !== null && !Array.isArray(frozen)
                 ? (frozen as { slots?: unknown }).slots
                 : undefined;
-            const isRetired =
-              Array.isArray(slots) &&
-              slots.some((slot) => typeof slot === 'string' && !isValidSlotId(slot));
+            if (!Array.isArray(slots)) return [instance];
+            const migratedSlots = slots.map((slot) =>
+              typeof slot === 'string' ? (legacyGeneratedSlotIds[slot] ?? slot) : slot,
+            );
+            const isRetired = migratedSlots.some(
+              (slot) => typeof slot !== 'string' || !isValidSlotId(slot),
+            );
             if (isRetired && typeof record.instanceId === 'string') {
               retiredGeneratedInstanceKeys.add(record.instanceId);
             }
-            return !isRetired;
+            if (isRetired) return [];
+            return [
+              migratedSlots.some((slot, index) => slot !== slots[index])
+                ? { ...record, frozen: { ...(frozen as object), slots: migratedSlots } }
+                : instance,
+            ];
           }),
         }
       : generatedRegistry;

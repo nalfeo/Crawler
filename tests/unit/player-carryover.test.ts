@@ -42,6 +42,7 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import {
   createGeneratedEquipmentInstance,
+  listGeneratedEquipmentInstances,
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
@@ -141,6 +142,38 @@ describe('player floor carryover', () => {
     expect(getEquipmentState(destination, destinationPlayer)?.equipped).not.toHaveProperty(
       'iron-visor',
     );
+  });
+
+  it('migrates legacy generated ring slots instead of retiring the instance', () => {
+    const runKey = 'carryover-legacy-ring';
+    const source = createTestWorld({ seed: 10, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'accessory.legacy-ring', slots: ['ring1'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      schemaVersion: 'player-carryover/v1' as const,
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['ringLeft'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 10, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    const restored = listGeneratedEquipmentInstances(destination);
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.frozen.slots).toEqual(['ring1']);
   });
 
   it('restores run-wide progression without copying the previous floor modifier', () => {
