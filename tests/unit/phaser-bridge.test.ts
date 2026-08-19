@@ -46,6 +46,8 @@ import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTeleg
 import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
 import { ftToPx } from '../../src/shared/units.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { registerFloorManifest } from '../../src/shared/floor-registry.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -1496,7 +1498,7 @@ describe('createPhaserBridge', () => {
     expect(img.setTextureCalls).toBe(1);
   });
 
-  // --- Carried main-hand weapon (always visible, not just during a swing) ---
+  // --- Carried main-hand weapon (feature-flagged; default-off) ---
 
   function makePlayerWithWeapon(
     world: ReturnType<typeof createTestWorld>,
@@ -1512,7 +1514,20 @@ describe('createPhaserBridge', () => {
     return player;
   }
 
-  it('carries the equipped main-hand weapon on the player when no swing is active', () => {
+  function enableCarriedMainHandWeaponFlag(world: ReturnType<typeof createTestWorld>): void {
+    const floorId = 'test-carried-main-hand-weapon-enabled';
+    registerFloorManifest(floorId, {
+      ...floor1Manifest,
+      id: floorId,
+      behavior: {
+        ...floor1Manifest.behavior,
+        carriedMainHandWeapon: true,
+      },
+    });
+    world.floorId = floorId;
+  }
+
+  it('does not render the carried main-hand weapon while the feature flag is disabled', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -1520,13 +1535,8 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    // Player sprite + the carried weapon sprite.
-    expect(images).toHaveLength(2);
-    const weaponImage = images[1]!;
-    expect(weaponImage.textureKey).toBe('kenney-tiny-dungeon');
-    expect(weaponImage.frame).toBe(getSprite('weapon.sword')?.frame);
-    expect(weaponImage.visible).toBe(true);
-    expect(weaponImage.depth).toBeGreaterThan(ENTITY_DEPTH);
+    // Player sprite only: carried-weapon rendering is default-off.
+    expect(images).toHaveLength(1);
   });
 
   it('uses loaded generated baseball-bat art for the carried weapon instead of the Kenney fallback', () => {
@@ -1554,6 +1564,7 @@ describe('createPhaserBridge', () => {
     });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const batDef = WEAPON_DEFS.get('baseball-bat');
     expect(batDef).toBeDefined();
     makePlayerWithWeapon(world, 'baseball-bat');
@@ -1575,6 +1586,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1592,6 +1604,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
     addComponent(world.ecs, player, set(Velocity, { x: 5, y: 0 }));
 
@@ -1611,6 +1624,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true, withGraphics: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1661,6 +1675,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     makePlayerWithWeapon(world, 'bow');
 
     bridge.sync(world);
@@ -1672,6 +1687,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);

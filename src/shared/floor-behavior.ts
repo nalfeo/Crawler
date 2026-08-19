@@ -41,6 +41,11 @@ export const floorBehaviorSchema = z
      * achievement reward bundles) on this floor.
      */
     equipmentEconomy: z.boolean().default(false),
+    /**
+     * Render the persistent carried main-hand weapon sprite while the player is
+     * idle. When false, weapons only render through attack-time effects.
+     */
+    carriedMainHandWeapon: z.boolean().default(false),
     /** Enable boss-defeat reward chests on this floor. */
     bossChests: z.boolean().default(false),
   })

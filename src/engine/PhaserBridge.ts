@@ -12,6 +12,7 @@ import {
   Sprite,
 } from '../core/components.js';
 import { getActiveWeaponDef } from '../core/active-weapon.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
@@ -905,6 +906,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         };
         if (typeof scene.add.image !== 'function') {
+          return;
+        }
+        if (!getWorldFloorBehavior(world).carriedMainHandWeapon) {
+          hideCarried();
           return;
         }
         const weaponDef = getActiveWeaponDef(world);
