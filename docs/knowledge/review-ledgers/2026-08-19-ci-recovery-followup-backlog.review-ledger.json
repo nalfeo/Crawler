@@ -6,16 +6,24 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "rubber-duck agent",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Plan review found the core design sound but flagged unguarded GitHub mutations and extra labels as a blocking reliability risk. The implementation was updated to catch/log issue/reply/resolve failures, continue without synthetic resolution on failed mutations, and create the follow-up issue with only the automation label."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["code_review tool"],
+          "clean": true,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Automated code_review found no code defects; it flagged the in-progress 3🍎 ledger as incomplete. This is resolved by completing and validating the ledger before publication."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
