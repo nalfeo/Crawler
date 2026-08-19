@@ -42,13 +42,245 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import {
   createGeneratedEquipmentInstance,
+  listGeneratedEquipmentInstances,
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
-import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
+import {
+  addItem,
+  listGeneratedEquipmentReferences,
+  listStaticInventorySlots,
+} from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 describe('player floor carryover', () => {
+  it('drops retired disabled slots while migrating a saved snapshot', () => {
+    const source = createTestWorld({ seed: 7 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      disabledEquipmentSlots: ['ringLeft'],
+    };
+
+    const destination = createTestWorld({ seed: 7 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(getEquipmentState(destination, destinationPlayer)?.disabledSlots).toEqual(
+      new Set(['ring1']),
+    );
+  });
+
+  it('retires static and generated equipment that used removed slots during restore', () => {
+    const runKey = 'carryover-retired-equipment';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'accessory.legacy-belt', slots: ['head'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      inventorySlots: [...snapshot.inventorySlots, { itemId: 'sturdy-belt', quantity: 1 }],
+      equippedItemIds: [...snapshot.equippedItemIds, 'sturdy-belt'],
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['belt'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(
+      listStaticInventorySlots(destination.inventories.get(destinationPlayer)!).map(
+        (slot) => slot.itemId,
+      ),
+    ).not.toContain('sturdy-belt');
+    expect(getEquipmentState(destination, destinationPlayer)?.instances).toEqual(new Map());
+    expect(
+      listGeneratedEquipmentReferences(destination.inventories.get(destinationPlayer)!),
+    ).toEqual([]);
+  });
+
+  it('drops retired static items from a versioned v1 snapshot', () => {
+    const source = createTestWorld({ seed: 9 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      schemaVersion: 'player-carryover/v1' as const,
+      inventorySlots: [...snapshot.inventorySlots, { itemId: 'iron-visor', quantity: 1 }],
+      equippedItemIds: [...snapshot.equippedItemIds, 'iron-visor'],
+    };
+
+    const destination = createTestWorld({ seed: 9 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(
+      listStaticInventorySlots(destination.inventories.get(destinationPlayer)!).map(
+        (slot) => slot.itemId,
+      ),
+    ).not.toContain('iron-visor');
+    expect(getEquipmentState(destination, destinationPlayer)?.equipped).not.toHaveProperty(
+      'iron-visor',
+    );
+  });
+
+  it('migrates legacy generated ring slots instead of retiring the instance', () => {
+    const runKey = 'carryover-legacy-ring';
+    const source = createTestWorld({ seed: 10, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'accessory.legacy-ring', slots: ['ring1'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      schemaVersion: 'player-carryover/v1' as const,
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['ringLeft'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 10, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    const restored = listGeneratedEquipmentInstances(destination);
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.frozen.slots).toEqual(['ring1']);
+  });
+
+  it('drops grant-ownership sources owned by a retired generated instance', () => {
+    const runKey = 'carryover-retired-grant-ownership';
+    const source = createTestWorld({ seed: 11, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    memorizeSpell(source, sourcePlayer, 'magic-missile');
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'accessory.retired-grant',
+        slots: ['head'],
+        grants: true,
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = JSON.parse(
+      JSON.stringify(capturePlayerCarryover(source, sourcePlayer)),
+    ) as ReturnType<typeof capturePlayerCarryover>;
+    const equipmentSourceIds = (
+      snapshot.abilityState?.grantOwnership?.activeSourcesByAbilityId ?? []
+    ).flatMap(([, sources]) => sources.filter((id) => id.startsWith('equipment:')));
+    expect(equipmentSourceIds.length).toBeGreaterThan(0);
+    // Retire the instance by moving it onto a slot that no longer exists.
+    const legacySnapshot = {
+      ...snapshot,
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['belt'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 11, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    const restoredState = destination.abilityStatesByEntity.get(destinationPlayer);
+    const allSourceIds = [
+      ...(restoredState?.grantOwnership?.activeSourcesByAbilityId.values() ?? []),
+      ...(restoredState?.grantOwnership?.passiveSourcesByAbilityId.values() ?? []),
+    ].flatMap((sources) => [...sources]);
+    expect(allSourceIds.some((id) => id.startsWith(`equipment:${generated.instanceId}:`))).toBe(
+      false,
+    );
+    // The independent learned source for the same ability survives.
+    expect(restoredState?.grantOwnership?.activeSourcesByAbilityId.get('magic-missile')).toEqual(
+      new Set(['learned:magic-missile']),
+    );
+    // The retired item's passive-only grant is not resurrected.
+    expect(restoredState?.grantOwnership?.passiveSourcesByAbilityId.has('combat-flow')).toBe(false);
+  });
+
+  it('drops a pending reward presentation that only referenced a retired generated instance', () => {
+    const runKey = 'carryover-retired-presentation';
+    const source = createTestWorld({ seed: 12, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'accessory.retired-presentation',
+        slots: ['head'],
+        rarity: 'rare',
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    source.achievements.unlockedIds.add('floor2-field-kit');
+    source.achievements.claimedIds.add('floor2-field-kit');
+    source.achievements.pendingPresentations.set('floor2-field-kit', {
+      kind: 'equipment',
+      tier: 'tier1',
+      instanceKeys: [generated.instanceId],
+    });
+    const snapshot = JSON.parse(
+      JSON.stringify(capturePlayerCarryover(source, sourcePlayer)),
+    ) as ReturnType<typeof capturePlayerCarryover>;
+    const legacySnapshot = {
+      ...snapshot,
+      generatedEquipmentRegistry: {
+        ...snapshot.generatedEquipmentRegistry!,
+        instances: snapshot.generatedEquipmentRegistry!.instances.map((instance) =>
+          instance.instanceId === generated.instanceId
+            ? { ...instance, frozen: { ...instance.frozen, slots: ['belt'] } }
+            : instance,
+        ),
+      },
+    };
+
+    const destination = createTestWorld({ seed: 12, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(destination.achievements.pendingPresentations.has('floor2-field-kit')).toBe(false);
+    expect(destination.achievements.claimedIds.has('floor2-field-kit')).toBe(true);
+  });
+
   it('restores run-wide progression without copying the previous floor modifier', () => {
     const source = createTestWorld({ seed: 42 });
     const sourcePlayer = spawnPlayer(source, 0, 0);
