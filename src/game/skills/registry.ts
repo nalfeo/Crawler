@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { SKILL_HARD_CAP } from '../../shared/skills.js';
 import { STAT_KEYS } from '../../shared/stats.js';
-import { SPELL_SKILL_ID_BY_SPELL_ID } from '../../shared/spell-skills.js';
+import { SPELL_SKILL_ID_BY_SPELL_ID, SPELL_SKILL_THRESHOLDS } from '../../shared/spell-skills.js';
 import type { SkillDefinition } from './types.js';
 
 const skillMilestoneLevelSchema = z.union([
@@ -904,9 +904,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
     description,
     category: 'utility' as const,
     usageMetric: 'spell_used' as const,
-    usageThresholds: [
-      2, 5, 10, 18, 30, 45, 65, 90, 120, 155, 195, 240, 290, 345, 405, 470, 540, 615, 695, 780,
-    ],
+    usageThresholds: [...SPELL_SKILL_THRESHOLDS],
     perLevelBonus: {},
     milestones: [
       {
