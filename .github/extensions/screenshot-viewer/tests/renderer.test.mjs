@@ -170,27 +170,11 @@ test('uses delegated image error handling instead of inline fallback markup', ()
   assert.match(html, /image\?\.classList\.contains\('pair-image'\)/);
 });
 
-test('keeps incomplete comparisons out of the Before / After pane', () => {
-  const html = renderHtml(OPTS);
-  assert.match(
-    html,
-    /const comparablePairs = pairs\.filter\(\(pair\) => pair\.before && pair\.after\)/,
-  );
-  assert.match(html, /comparablePairs\.map/);
-  assert.doesNotMatch(html, /empty-state">missing/);
-});
-
 test('exposes a scenario filter for comparing treatments in one session', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /id="scenario-filter"/);
   assert.match(html, /All scenarios/);
   assert.match(html, /scenarioFilter\.addEventListener\('change'/);
-});
-
-test('leads each scenario with a Main-to-latest overview pair', () => {
-  const html = renderHtml(OPTS);
-  assert.match(html, /\(overall\)/);
-  assert.match(html, /orderedPairs\.push\(\.\.\.lineage\.reverse\(\)\)/);
 });
 
 test('shows capture time for each A/B screenshot', () => {
@@ -199,54 +183,14 @@ test('shows capture time for each A/B screenshot', () => {
   assert.match(html, /time unknown/);
 });
 
-test('orders lineage by capture time rather than backend array order', () => {
-  const html = renderHtml(OPTS);
-  assert.match(html, /takenTime\(a\.after\) - takenTime\(b\.after\)/);
-});
-
-test('orders lineage newest-first by executing the real ordering block', () => {
-  const src = renderHtml(OPTS);
-  const start = src.indexOf('const comparablePairs = pairs.filter');
-  const end = src.indexOf('const pairHtml = orderedPairs.map');
-  assert.ok(start > -1 && end > start, 'ordering block must be locatable');
-  const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
-  const shot = (iso) => ({ path: 'p' + iso, takenAt: iso });
-  // Deliberately supplied oldest-last, mimicking the backend's newest-first sort.
-  const pairs = [
-    {
-      key: 'equipment (v5)',
-      before: shot('2026-08-19T16:24:28Z'),
-      after: shot('2026-08-19T20:14:12Z'),
-      states: { before: 'v4', after: 'v5' },
-      reviews: {},
-    },
-    {
-      key: 'equipment (v4)',
-      before: shot('2026-08-19T00:07:06Z'),
-      after: shot('2026-08-19T16:24:28Z'),
-      states: { before: 'v3', after: 'v4' },
-      reviews: {},
-    },
-    {
-      key: 'equipment (v3)',
-      before: shot('2026-08-19T00:09:45Z'),
-      after: shot('2026-08-19T00:07:06Z'),
-      states: { before: 'main', after: 'v3' },
-      reviews: {},
-    },
-  ];
-  const ordered = new Function(
-    'pairs',
-    'scenarioOf',
-    src.slice(start, end) + '; return orderedPairs;',
-  )(pairs, scenarioOf);
-  assert.deepEqual(
-    ordered.map((p) => p.states.before + '|' + p.states.after),
-    ['main|v5', 'v4|v5', 'v3|v4', 'main|v3'],
-  );
-});
-
 test('warns that the panel is stale when the backend is unreachable', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /showing STALE content/);
+});
+
+test('renders pairs in backend order without client-side re-sorting', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /const orderedPairs = comparablePairs;/);
+  assert.doesNotMatch(html, /orderedPairs\.push/);
+  assert.match(html, /pair\.before && pair\.after/);
 });

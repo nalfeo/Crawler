@@ -224,7 +224,34 @@ function pairs(reviews = reviewResults()) {
       });
     }
   }
-  return result;
+  // Emit newest-first, with a Main-to-latest overview leading each scenario, so
+  // display order is authoritative here rather than a client-side concern.
+  const ordered = [];
+  const comparable = result.filter((pair) => pair.before && pair.after);
+  const takenTime = (shot) => {
+    const parsed = shot?.takenAt ? new Date(shot.takenAt).getTime() : NaN;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
+  for (const scenario of [...new Set(comparable.map(scenarioOf))]) {
+    const lineage = comparable
+      .filter((pair) => scenarioOf(pair) === scenario)
+      .sort((a, b) => takenTime(a.after) - takenTime(b.after));
+    const first = lineage[0];
+    const last = lineage[lineage.length - 1];
+    if (lineage.length > 1 && first.states.before === 'main') {
+      ordered.push({
+        ...last,
+        key: `${scenario} (overall)`,
+        before: first.before,
+        states: { before: first.states.before, after: last.states.after },
+        reviews: { before: first.reviews.before, after: last.reviews.after },
+      });
+    }
+    ordered.push(...lineage.reverse());
+  }
+  ordered.push(...result.filter((pair) => !(pair.before && pair.after)));
+  return ordered;
 }
 
 // ── live tool-use tracking ─────────────────────────────────────────────────

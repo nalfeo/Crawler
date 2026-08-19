@@ -525,32 +525,9 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
 
         const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
-        const takenTime = (shot) => {
-          const parsed = shot?.takenAt ? new Date(shot.takenAt).getTime() : NaN;
-          return Number.isFinite(parsed) ? parsed : 0;
-        };
-        // Group by scenario so each scenario leads with a Main | latest overview
-        // pair, followed by its step-by-step lineage newest-first. Order by the
-        // after-image capture time so display order never depends on the
-        // backend's incidental array order.
-        const orderedPairs = [];
-        for (const scenario of [...new Set(comparablePairs.map(scenarioOf))]) {
-          const lineage = comparablePairs
-            .filter((p) => scenarioOf(p) === scenario)
-            .sort((a, b) => takenTime(a.after) - takenTime(b.after));
-          const first = lineage[0];
-          const last = lineage[lineage.length - 1];
-          if (lineage.length > 1 && first.states?.before === 'main') {
-            orderedPairs.push({
-              ...last,
-              key: scenario + ' (overall)',
-              before: first.before,
-              states: { before: first.states?.before ?? null, after: last.states?.after ?? null },
-              reviews: { before: first.reviews?.before ?? null, after: last.reviews?.after ?? null },
-            });
-          }
-          orderedPairs.push(...lineage.reverse());
-        }
+        // Order is decided by the backend (newest-first, overview pair leading
+        // each scenario), so the client never re-sorts and cannot drift from it.
+        const orderedPairs = comparablePairs;
         const pairHtml = orderedPairs.map((pair) => {
           const reviewMeta = (review) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
