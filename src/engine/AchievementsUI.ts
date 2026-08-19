@@ -613,7 +613,7 @@ export function createAchievementsUI(
       dragRemainder += ROW_SCROLL_STEP;
       scrollIndex -= 1;
     }
-    scrollIndex = Math.max(0, scrollIndex);
+    scrollIndex = Math.max(0, Math.min(scrollIndex, unlockedDefs(lastWorld).length - 1));
     if (scrollIndex === previousScrollIndex) return;
     lastSignature = null;
     refresh(lastWorld);

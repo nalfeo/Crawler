@@ -1928,12 +1928,11 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    this.inputCapture.poll(this.inputState);
     if (this.achievementsUI?.isOpen()) {
       this.inputState.moveX = 0;
       this.inputState.moveY = 0;
       this.inputState.action = false;
-    } else {
-      this.inputCapture.poll(this.inputState);
     }
 
     if (this.world.state === 'loadout') {
