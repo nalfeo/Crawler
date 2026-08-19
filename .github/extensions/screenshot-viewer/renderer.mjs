@@ -318,6 +318,8 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       <header>
         <h1>UX Screenshot Review</h1>
         <div class="toolbar">
+          <label for="scenario-filter">Scenario</label>
+          <select id="scenario-filter"><option value="">All scenarios</option></select>
           <button type="button" id="refresh-button">↻ Refresh</button>
         </div>
       </header>
@@ -391,6 +393,8 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       const liveBadge = document.getElementById('live-badge');
       const errorBox = document.getElementById('error-box');
       const refreshButton = document.getElementById('refresh-button');
+      const scenarioFilter = document.getElementById('scenario-filter');
+      let lastState = null;
       const lightbox = document.getElementById('lightbox');
       const lightboxImg = document.getElementById('lightbox-img');
       const lightboxCaption = document.getElementById('lightbox-caption');
@@ -501,7 +505,14 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
         liveBadge.hidden = !state.liveTracking;
 
-        const pairs = Array.isArray(state.pairs) ? state.pairs : [];
+        const allPairs = Array.isArray(state.pairs) ? state.pairs : [];
+        const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
+        const scenarios = [...new Set(allPairs.filter((p) => p.before && p.after).map(scenarioOf))].sort();
+        const selected = scenarios.includes(scenarioFilter.value) ? scenarioFilter.value : '';
+        scenarioFilter.innerHTML = '<option value="">All scenarios</option>' +
+          scenarios.map((s) => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+        scenarioFilter.value = selected;
+        const pairs = selected ? allPairs.filter((p) => scenarioOf(p) === selected) : allPairs;
         if (count === 0) {
           galleryEl.innerHTML = \`
             <div class="empty-state">
@@ -514,7 +525,25 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
 
         const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
-        const pairHtml = comparablePairs.map((pair) => {
+        // Group by scenario so each scenario leads with a Main | latest overview
+        // pair, followed by its step-by-step lineage newest-first.
+        const orderedPairs = [];
+        for (const scenario of [...new Set(comparablePairs.map(scenarioOf))]) {
+          const lineage = comparablePairs.filter((p) => scenarioOf(p) === scenario);
+          const first = lineage[0];
+          const last = lineage[lineage.length - 1];
+          if (lineage.length > 1 && first.states?.before === 'main') {
+            orderedPairs.push({
+              ...last,
+              key: scenario + ' (overall)',
+              before: first.before,
+              states: { before: first.states?.before ?? null, after: last.states?.after ?? null },
+              reviews: { before: first.reviews?.before ?? null, after: last.reviews?.after ?? null },
+            });
+          }
+          orderedPairs.push(...lineage.slice().reverse());
+        }
+        const pairHtml = orderedPairs.map((pair) => {
           const reviewMeta = (review) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
@@ -528,9 +557,13 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
         galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
-        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + comparablePairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
+        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + orderedPairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
         feedbackList.innerHTML = (state.feedback ?? []).slice().reverse().map((item) => '<div class="feedback-item"><strong>' + escapeHtml(item.scope) + '</strong> · ' + escapeHtml(item.target || item.pairKey || 'general') + '<br>' + escapeHtml(item.comment) + '</div>').join('');
       }
+
+      scenarioFilter.addEventListener('change', () => {
+        if (lastState) renderGallery(lastState);
+      });
 
       feedbackScope.addEventListener('change', () => {
         feedbackTarget.hidden = feedbackScope.value !== 'reusable';
@@ -561,6 +594,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       }
 
       function applyState(state) {
+        lastState = state;
         renderError(state.error || null);
         renderGallery(state);
       }

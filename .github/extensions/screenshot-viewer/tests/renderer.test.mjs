@@ -179,3 +179,16 @@ test('keeps incomplete comparisons out of the Before / After pane', () => {
   assert.match(html, /comparablePairs\.map/);
   assert.doesNotMatch(html, /empty-state">missing/);
 });
+
+test('exposes a scenario filter for comparing treatments in one session', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /id="scenario-filter"/);
+  assert.match(html, /All scenarios/);
+  assert.match(html, /scenarioFilter\.addEventListener\('change'/);
+});
+
+test('leads each scenario with a Main-to-latest overview pair', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /\(overall\)/);
+  assert.match(html, /lineage\.slice\(\)\.reverse\(\)/);
+});

@@ -331,6 +331,13 @@ async function scanWorkspace(workspacePath) {
       });
     }
   }
+  // Drop registry entries whose file no longer exists, so a deleted capture
+  // stops producing a phantom before/after state in the pair lineage.
+  const seen = new Set(found.map((p) => normalize(resolve(p))));
+  for (const [path, entry] of screenshotRegistry) {
+    if (entry.source === 'scanned' && !seen.has(path)) screenshotRegistry.delete(path);
+  }
+
   lastScannedAt = new Date().toISOString();
 }
 
