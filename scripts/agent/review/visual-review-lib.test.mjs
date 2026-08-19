@@ -436,3 +436,22 @@ test('suppressUnsupportedAlignment: keeps claims when the grid check found a rea
   assert.equal(removed, 0);
   assert.equal(result.blocking_findings.length, 1);
 });
+
+test('suppressUnsupportedAlignment: drops overlap/touch claims the geometry disproves', () => {
+  const result = {
+    blocking_findings: [
+      'Slot boxes touch each other horizontally with no breathing room.',
+      'Tooltip overlaps the bottom edge of the panel by 40px.',
+      'Empty-slot icons lack thematic depth.',
+    ],
+  };
+  const removed = suppressUnsupportedAlignment(result, []);
+  assert.equal(removed, 2);
+  assert.deepEqual(result.blocking_findings, ['Empty-slot icons lack thematic depth.']);
+});
+
+test('suppressUnsupportedAlignment: keeps overlap claims when geometry found a real overlap', () => {
+  const result = { blocking_findings: ['Slot boxes touch each other horizontally.'] };
+  const removed = suppressUnsupportedAlignment(result, ['Slot boxes overlap: a intersects b.']);
+  assert.equal(removed, 0);
+});

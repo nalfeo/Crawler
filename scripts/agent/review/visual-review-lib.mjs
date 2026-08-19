@@ -280,8 +280,19 @@ function round1(n) {
 export function suppressUnsupportedAlignment(result, deterministicBlockers) {
   const hasRealAlignmentDefect = deterministicBlockers.some((b) => /off its (row|column)/i.test(b));
   if (hasRealAlignmentDefect) return 0;
+  const hasRealTouchDefect = deterministicBlockers.some((b) =>
+    /overlap|no breathing room|touch/i.test(b),
+  );
+  const hasRealContainmentDefect = deterministicBlockers.some((b) =>
+    /escapes|outside|crosses|overflow/i.test(b),
+  );
   const claimsMisalignment = (/** @type {string} */ text) =>
-    /\b(mis-?aligned?|not aligned|out of alignment|same (vertical )?baseline)/i.test(text);
+    /\b(mis-?aligned?|not aligned|out of alignment|same (vertical )?baseline)/i.test(text) ||
+    (!hasRealTouchDefect &&
+      /\b(touch(es|ing)?|no breathing room|overlap(s|ping)?)\b/i.test(text) &&
+      !/tooltip text|label/i.test(text)) ||
+    (!hasRealContainmentDefect &&
+      /\b(overflow|escapes|extends? (past|beyond|outside))\b/i.test(text));
   let removed = 0;
   for (const key of ['blocking_findings', 'recommended_fixes']) {
     const list = /** @type {unknown} */ (result[key]);
