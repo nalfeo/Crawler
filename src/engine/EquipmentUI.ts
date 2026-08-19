@@ -131,8 +131,8 @@ const EQUIPMENT_UI_SLOT_LABELS: Readonly<Record<(typeof EQUIPMENT_UI_SLOT_IDS)[n
 };
 
 const LEGACY_RING_SLOT_IDS: Readonly<Record<string, EquipmentSlotId>> = {
-  ring1: 'ringLeft',
-  ring2: 'ringRight',
+  ringLeft: 'ring1',
+  ringRight: 'ring2',
 };
 
 const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
@@ -151,7 +151,6 @@ const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
 };
 
 function operationalSlotId(slotId: EquipmentSlotId): EquipmentSlotId {
-  if (SLOT_REGISTRY.some((entry) => entry.id === slotId)) return slotId;
   return LEGACY_RING_SLOT_IDS[slotId] ?? slotId;
 }
 

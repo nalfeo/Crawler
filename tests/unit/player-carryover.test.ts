@@ -118,6 +118,31 @@ describe('player floor carryover', () => {
     ).toEqual([]);
   });
 
+  it('drops retired static items from a versioned v1 snapshot', () => {
+    const source = createTestWorld({ seed: 9 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      schemaVersion: 'player-carryover/v1' as const,
+      inventorySlots: [...snapshot.inventorySlots, { itemId: 'iron-visor', quantity: 1 }],
+      equippedItemIds: [...snapshot.equippedItemIds, 'iron-visor'],
+    };
+
+    const destination = createTestWorld({ seed: 9 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(
+      listStaticInventorySlots(destination.inventories.get(destinationPlayer)!).map(
+        (slot) => slot.itemId,
+      ),
+    ).not.toContain('iron-visor');
+    expect(getEquipmentState(destination, destinationPlayer)?.equipped).not.toHaveProperty(
+      'iron-visor',
+    );
+  });
+
   it('restores run-wide progression without copying the previous floor modifier', () => {
     const source = createTestWorld({ seed: 42 });
     const sourcePlayer = spawnPlayer(source, 0, 0);
