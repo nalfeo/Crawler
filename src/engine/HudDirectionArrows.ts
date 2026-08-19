@@ -278,16 +278,29 @@ export function resolveDirectionArrowStates(
           readonly label: ReturnType<typeof labelLayout>;
         }
       | undefined;
-    for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
-      const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
-      const candidateLabel = labelLayout(candidateX, candidateY, labelText);
-      const avoidsHud = forbiddenRegions.every(
-        (region) =>
-          !boundsOverlap(arrowBounds(candidateX, candidateY), region, LABEL_COLLISION_PADDING) &&
-          !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
-      );
-      const clear =
-        states.every(
+    let sawLabelOnlyHudConflict = false;
+    for (const allowHudOverlappingLabel of [false, true]) {
+      if (allowHudOverlappingLabel && !sawLabelOnlyHudConflict) {
+        break;
+      }
+      for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+        const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
+        const candidateLabel = labelLayout(candidateX, candidateY, labelText);
+        const arrowAvoidsHud = forbiddenRegions.every(
+          (region) =>
+            !boundsOverlap(arrowBounds(candidateX, candidateY), region, LABEL_COLLISION_PADDING),
+        );
+        if (!arrowAvoidsHud) {
+          continue;
+        }
+        const labelAvoidsHud = forbiddenRegions.every(
+          (region) => !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
+        );
+        if (!labelAvoidsHud && !allowHudOverlappingLabel) {
+          sawLabelOnlyHudConflict = true;
+          continue;
+        }
+        const clear = states.every(
           (state) =>
             Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
               MIN_ARROW_SEPARATION &&
@@ -297,9 +310,13 @@ export function resolveDirectionArrowStates(
               width: state.labelWidth,
               height: state.labelHeight,
             }),
-        ) && avoidsHud;
-      if (clear) {
-        placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
+        );
+        if (clear) {
+          placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
+          break;
+        }
+      }
+      if (placement) {
         break;
       }
     }
