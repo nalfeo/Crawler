@@ -108,6 +108,11 @@ test('includes Before/After review and feedback controls', () => {
   assert.match(html, /pairsEl\.innerHTML/);
 });
 
+test('supports both 1-100 wrapped reviews and 1-5 Azure surface reviews', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /review\.scale \?\? 100/);
+});
+
 test('labels feedback controls for assistive technology', () => {
   const html = renderHtml(OPTS);
   for (const id of ['feedback-pair', 'feedback-scope', 'feedback-target', 'feedback-comment']) {

@@ -60,6 +60,10 @@ export function collectHumanRunStats(
     startingWeapon:
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
     vendors: computeVendorInteractions(world),
+    // Floor 2 den-boss diagnostics come from the session recorder's tracker,
+    // which accumulated them frame-by-frame; the same rollup the headless
+    // runner puts on `RunStats.denBoss`, so both paths are directly comparable.
+    ...(recorderStats?.denBoss ? { denBoss: recorderStats.denBoss } : {}),
   };
   return assembleRunStats(stats);
 }

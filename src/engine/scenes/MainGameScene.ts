@@ -171,6 +171,15 @@ const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
  * headless-adjacent AI playthrough. Human play dismisses on input instead.
  */
 const BOSS_INTRO_AUTO_HOLD_FRAMES = 60;
+/**
+ * Render frames the reward-opening `summary` screen is held open before an
+ * AI-driven run (`isAutoDriven`/`autoLevelUpAllocator` wired) auto-acknowledges
+ * it. ~1s at 60fps — long enough for a viewer/recording to read the reveal,
+ * short enough not to stall an AI playthrough forever. Human play (including
+ * the AI Runner Lab's manual-control mode) waits for a click/Enter/Space
+ * instead — see `RewardOpeningUI`'s own input handling.
+ */
+const REWARD_OPENING_AUTO_HOLD_FRAMES = 60;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -716,6 +725,14 @@ export class MainGameScene extends Phaser.Scene {
   private readonly notifiedBossChestIds = new Set<string>();
 
   /**
+   * Frames the reward-opening `summary` screen has been held open for an
+   * AI-driven run. Reset whenever the overlay is not open or not yet at
+   * `summary` (the `anticipation`/`revealing` phases already advance on their
+   * own via `tick()`).
+   */
+  private rewardOpeningAutoHoldFrames = 0;
+
+  /**
    * Frames the level-up modal has been held open while an `autoLevelUpAllocator`
    * (AI driver) is wired. Counts render frames so the modal stays visible briefly
    * before the AI auto-confirms it. Reset whenever the modal is not open.
@@ -1047,6 +1064,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
+      onVisibilityChange: () => {
+        this.clearPendingInteractionInput();
+      },
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
       },
@@ -1854,6 +1874,7 @@ export class MainGameScene extends Phaser.Scene {
     // pause gameplay exactly like the level-up screen.
     if (this.rewardOpeningUI?.isOpen()) {
       this.rewardOpeningUI.tick(delta);
+      this.driveAutoRewardOpening();
       this.bridge.sync(this.world);
       this.updateCamera();
       this.updateOverlayText();
@@ -1926,6 +1947,11 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
+    if (this.achievementsUI?.isOpen()) {
+      this.inputState.moveX = 0;
+      this.inputState.moveY = 0;
+      this.inputState.action = false;
+    }
 
     if (this.world.state === 'loadout') {
       this.openLoadoutModal();
@@ -4550,6 +4576,38 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.levelUpUI.autoResolve(allocations);
     this.levelUpAutoHoldFrames = 0;
+  }
+
+  /**
+   * AI reward-opening driver. `RewardOpeningUI.tick()` already auto-advances
+   * `anticipation` -> `revealing` -> `summary` on its own, but `summary` only
+   * ever exits via an explicit `acknowledge()`/`skip()`+`acknowledge()` input
+   * (a click, Enter, Space, or Escape) — there is no human to press one when
+   * the run is AI-driven (see {@link MainGameSceneOptions.isAutoDriven}), so
+   * the reveal would otherwise sit at `summary` forever, freezing the sim
+   * (mirrors `driveAutoBossIntro`'s freeze-the-simulation-while-open
+   * contract). Hold the summary for {@link REWARD_OPENING_AUTO_HOLD_FRAMES}
+   * render frames so a viewer/recording can still read the reveal, then
+   * acknowledge it and resume the run. No-op for human play (including the
+   * AI Runner Lab's manual-control mode), where the overlay waits for input.
+   */
+  private driveAutoRewardOpening(): void {
+    const autoDriven =
+      this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+    if (
+      !autoDriven ||
+      !this.rewardOpeningUI?.isOpen() ||
+      this.rewardOpeningUI.getPhase() !== 'summary'
+    ) {
+      this.rewardOpeningAutoHoldFrames = 0;
+      return;
+    }
+    this.rewardOpeningAutoHoldFrames += 1;
+    if (this.rewardOpeningAutoHoldFrames < REWARD_OPENING_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    this.rewardOpeningUI.acknowledge();
+    this.rewardOpeningAutoHoldFrames = 0;
   }
 
   /**

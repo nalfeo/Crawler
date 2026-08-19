@@ -328,7 +328,7 @@ function equipFixtureBuild(
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: `${build.id}-ring-l${level}`,
       artKey: `equipment.${build.id}.ring`,
-      slots: ['ringRight'],
+      slots: ['ring1'],
       tags: ['trinket'],
       weightLb: 1,
       statBonuses,
