@@ -92,7 +92,7 @@ const FOOTER_BAND = 0;
 // (heavily-iterated) geometry regardless of the wider panel; the leftover space
 // on the right becomes the integrated equippable-bag column. Decoupling these
 // from panelWidth is what lets us add the bag without disturbing slot layout.
-const DOLL_W = 470;
+const DOLL_W = 390;
 const STATS_W = 290;
 // Bag grid cells (mirrors InventoryUI's cell metrics for visual consistency).
 const BAG_CELL = 60;
@@ -417,7 +417,7 @@ export function createEquipmentUI(
   ): Phaser.GameObjects.Text =>
     text.setOrigin(0, 0).setPosition(snap(rightX - text.width), snap(centerY - text.height / 2));
 
-  const panelWidth = config.width ?? 1240;
+  const panelWidth = config.width ?? 1080;
   const panelHeight = config.height ?? 720;
 
   let uiScale = crispUiScale();
@@ -539,11 +539,11 @@ export function createEquipmentUI(
   // lives in a reserved region below the grid, its content can never overlap a
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
-  const INSPECTOR_H = 96;
-  const INSPECTOR_GAP = 52;
+  const INSPECTOR_H = 100;
+  const INSPECTOR_GAP = 62;
   const inspectorX = dollX + 10;
   const inspectorW = dollW - 20;
-  const inspectorY = dollY + dollH - INSPECTOR_H - 50;
+  const inspectorY = dollY + dollH - INSPECTOR_H - 42;
   const inspectorBg = scene.add.rectangle(
     inspectorX + inspectorW / 2,
     inspectorY + INSPECTOR_H / 2,
@@ -1457,13 +1457,16 @@ export function createEquipmentUI(
     slotCenters.clear();
     if (!lastWorld || playerEid < 0) return;
     const state = getEquipmentState(lastWorld, playerEid);
-    const innerPadX = 22;
-    const innerPadY = 10;
+    const innerPadX = 18;
+    // Top row previously sat only ~2px inside the doll's inset border (10px
+    // pad minus the 8px inset), which read as overlapping the panel's top
+    // edge. Push the grid down enough to clear the inset with real margin.
+    const innerPadY = 26;
     // The doll is far wider than the 3-column body layout needs. Spreading the
     // columns edge-to-edge reads as scattered floating boxes rather than a
     // figure, so cap the column pitch and centre the grid in the leftover
     // width instead of stretching into it.
-    const MAX_COL_PITCH = 155;
+    const MAX_COL_PITCH = 125;
     const rawUsableW = dollW - SLOT_W - innerPadX * 2;
     const usableW = Math.min(rawUsableW, MAX_COL_PITCH * 2);
     const gridOffsetX = (rawUsableW - usableW) / 2;
@@ -1491,13 +1494,14 @@ export function createEquipmentUI(
       const px = spreadNorm(fill(slot.uiPosition.x, minX, maxX), SLOT_SPREAD_X);
       const py = spreadNorm(fill(slot.uiPosition.y, minY, maxY), SLOT_SPREAD_Y);
       const cx = dollX + innerPadX + gridOffsetX + SLOT_W / 2 + px * usableW;
-      const slotYOffset =
-        slot.id === 'gloves' || slot.id === 'legs'
-          ? 10
-          : slot.id === 'feet' || slot.id === 'ring1' || slot.id === 'ring2'
-            ? -10
-            : 0;
-      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH + slotYOffset;
+      // Every slot is placed strictly by its row's `py` value now. Per-slot Y
+      // nudges previously applied here (+10 for gloves/legs, -10 for
+      // feet/ring1/ring2) broke row alignment: ring1 shares its row with
+      // head/neck (both py=0) but was pulled up 10px relative to them, and
+      // ring2 shares its row with gloves/legs (both py=0.66) but moved the
+      // opposite direction from them — a 20px mismatch. Row-only placement
+      // keeps every slot on the same row visually level with its siblings.
+      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
 
       const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
       const instance =
@@ -1742,19 +1746,12 @@ export function createEquipmentUI(
 
     const heading = crispText(statsX + 10, statsY + 26, 'Stats', {
       fontFamily: FONT_FAMILY,
-      fontSize: '16px',
-      color: hex(COLORS.accent),
+      fontSize: '18px',
+      color: hex(COLORS.textPrimary),
     });
     container.add(heading);
     statObjects.push(heading);
-    const headingFrame = scene.add.rectangle(
-      statsX + 96,
-      statsY + 26,
-      172,
-      30,
-      COLORS.sectionHeader,
-      0.95,
-    );
+    const headingFrame = scene.add.rectangle(statsX + 96, statsY + 26, 172, 30, 0x355180, 0.95);
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
     container.addAt(headingFrame, 5);
     statObjects.push(headingFrame);
@@ -1763,7 +1760,7 @@ export function createEquipmentUI(
 
     // Fixed-height comparison banner. Present in BOTH states (idle text vs.
     // "VS <item>") so turning a preview on/off cannot move a single stat row.
-    const compareBarY = statsY + 52;
+    const compareBarY = statsY + 58;
     const compareBg = scene.add.rectangle(
       statsX + colW / 2 + 6,
       compareBarY,
@@ -1794,7 +1791,7 @@ export function createEquipmentUI(
     container.add(compareText);
     statObjects.push(compareBg, compareText);
 
-    let rowY = statsY + 68;
+    let rowY = statsY + 74;
     const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
     const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
     // The shipped local face has an 18px glyph box at 12px (including explicit
@@ -1993,8 +1990,8 @@ export function createEquipmentUI(
     // Header row.
     const heading = crispText(bagX + 12, bagY + 26, 'Bag', {
       fontFamily: FONT_FAMILY,
-      fontSize: '16px',
-      color: hex(COLORS.accent),
+      fontSize: '18px',
+      color: hex(COLORS.textPrimary),
     });
     leftCenterTextOnPixels(heading, bagX + 12, bagY + 26);
     const headingFrame = scene.add.rectangle(
@@ -2002,7 +1999,7 @@ export function createEquipmentUI(
       bagY + 26,
       bagW - 20,
       30,
-      COLORS.sectionHeader,
+      0x355180,
       0.95,
     );
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
