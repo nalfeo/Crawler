@@ -76,8 +76,8 @@ re-introduce the problem.
   `scripts/sprites/sprite-name-taxonomy.ts` is the single source of truth, shared by the
   migration, the guard, and `approve.ts` — they cannot disagree.
 - `itemArtIdentitySet` / `canonicalItemBriefId` and
-  `scripts/sprites/normalize-item-art-names.ts` are deleted. An item-specific identity set
-  has nothing left to decide once every class is bare.
+  scripts/sprites/normalize-item-art-names.ts (deleted) are gone. An item-specific
+  identity set has nothing left to decide once every class is bare.
 
 **Costs, accepted.**
 
