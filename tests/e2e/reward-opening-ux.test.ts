@@ -42,6 +42,7 @@ import { DEFAULT_PER_ITEM_REVEAL_MS } from '../../src/shared/reward-opening-sequ
 const TRASH_TIER_ACHIEVEMENT_ID = 'first-bonk';
 /** Rare-tier achievement (mid/high `LOOT_BOX_TIERS` rung) — exciting bucket. */
 const RARE_TIER_ACHIEVEMENT_ID = 'room-sweeper';
+const REWARD_OPENING_AUTO_HOLD_FRAMES = 60;
 
 async function newPage(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
@@ -350,6 +351,63 @@ describe('real reward-opening UX (achievement path)', () => {
       await page.waitForTimeout(300);
       const afterClose = await mainSceneProbe.getWorldElapsedMs(page);
       expect(afterClose).toBeGreaterThan(openedAt ?? 0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('auto-acknowledges the summary only after the auto-driven hold threshold', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.resolveLoadout(page);
+      await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+        label: 'loadout resolved before reward auto-driver coverage',
+      });
+
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      const autoReward = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'auto-driven reward overlay to open',
+      });
+      await advanceRewardOpeningToSummary(page, autoReward.total);
+      const summary = await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
+        label: 'auto-driven reward summary',
+      });
+      expect(summary.open).toBe(true);
+
+      const autoSamples = await mainSceneProbe.sampleAutoDrivenRewardOpeningRenderFrames(
+        page,
+        REWARD_OPENING_AUTO_HOLD_FRAMES - 1,
+        1,
+      );
+      const beforeThreshold = autoSamples.first;
+      expect(beforeThreshold.phase).toBe('summary');
+      expect(beforeThreshold.open).toBe(true);
+
+      // `driveAutoRewardOpening()` calls `acknowledge()` synchronously inside
+      // the same render update that reaches the hold threshold.
+      const atThreshold = autoSamples.next;
+      expect(atThreshold).toEqual({
+        open: false,
+        phase: null,
+        bucket: null,
+        revealed: 0,
+        total: 0,
+        nextLabel: null,
+      });
+
+      await mainSceneProbe.claimAchievementReward(page, RARE_TIER_ACHIEVEMENT_ID);
+      const manualReward = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'manual-mode reward overlay to open',
+      });
+      await advanceRewardOpeningToSummary(page, manualReward.total);
+      expect(await mainSceneProbe.isRewardOpeningAutoDrivenForProbe(page)).toBe(false);
+
+      const manualAfterThreshold = await mainSceneProbe.advanceRewardOpeningRenderFrames(
+        page,
+        REWARD_OPENING_AUTO_HOLD_FRAMES,
+      );
+      expect(manualAfterThreshold.phase).toBe('summary');
+      expect(manualAfterThreshold.open).toBe(true);
     } finally {
       await context.close();
     }
