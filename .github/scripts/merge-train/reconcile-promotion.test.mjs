@@ -850,6 +850,43 @@ test('createMergePullRequest returns a non-retryable result on a policy/configur
   assert.match(result.reason, /\(403\)/);
 });
 
+test('createMergePullRequest treats a 403 "stacked PRs" rejection as retryable, not a hard failure', async () => {
+  // Incident: PR #3027 was stacked under #3033. GitHub's classic synchronous
+  // merge endpoint 403s ANY stacked PR ("Merging stacked PRs via this
+  // endpoint is not supported. Use the asynchronous merge endpoint
+  // instead."). Before this fix that fell into the generic-403
+  // non-retryable branch, which throws MergeTrainPromotionError in
+  // promoteExactBatch and aborts the entire batch -- blocking every other
+  // queued PR for 24h+. `eligible`'s `stacked-pr` admission check should
+  // normally dequeue a stacked PR before it ever reaches this call; this is
+  // defense-in-depth for the narrow window where a PR becomes stacked
+  // between admission and the merge PUT.
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') {
+      const error = new Error(
+        'Merging stacked PRs via this endpoint is not supported. Use the asynchronous merge endpoint instead.',
+      );
+      error.status = 403;
+      return error;
+    }
+    return mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, true);
+  assert.match(result.reason, /stacked/i);
+});
+
 test('createMergePullRequest returns a non-retryable result when the merge is not recorded merged', async () => {
   const { request } = mergeRequestStub((path, options) => {
     if (options.method === 'PUT') return { merged: false, sha: null };
