@@ -976,8 +976,8 @@ export function createEquipmentUI(
         icon.fillRect(sx - 9, sy - 13, 14, 9);
         icon.fillRect(sx + 6, sy - 8, 5, 9);
         break;
-      case 'ringLeft':
-      case 'ringRight': // ring + gem
+      case 'ring1':
+      case 'ring2': // ring + gem
         icon.lineStyle(4, light, 0.9);
         icon.strokeCircle(sx, sy + 4, 11);
         useLight();

@@ -65,6 +65,18 @@ import { spawnBossChestEntity } from '../core/spawners/world-objects.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
 
+// These IDs existed before the ten-slot contract. Their retired categories
+// have no safe one-to-one replacement, so legacy equipped copies are dropped.
+const RETIRED_STATIC_EQUIPMENT_IDS = new Set([
+  'iron-visor',
+  'steel-pauldrons',
+  'travelers-cloak',
+  'sturdy-belt',
+  'iron-armguard',
+  'leather-bracer',
+  'beaded-bracelet',
+]);
+
 class PlayerCarryoverSnapshotError extends Error {
   constructor(message: string) {
     super(message);
@@ -517,6 +529,11 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
+    equippedItemIds: Array.isArray(legacy.equippedItemIds)
+      ? legacy.equippedItemIds.filter(
+          (itemId) => typeof itemId !== 'string' || !RETIRED_STATIC_EQUIPMENT_IDS.has(itemId),
+        )
+      : legacy.equippedItemIds,
     generatedInventoryInstanceKeys: readArrayField(
       'generatedInventoryInstanceKeys',
     ) as PlayerCarryoverSnapshot['generatedInventoryInstanceKeys'],
