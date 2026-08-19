@@ -8,6 +8,20 @@ interface CdpSession {
   detach(): Promise<void>;
 }
 
+/**
+ * Wait for at least one full rendered frame so `MainGameScene.update()` (the
+ * only place `InputCapture` is sampled) observes the current touch state
+ * before it changes again.
+ */
+async function nextRenderedFrame(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 async function dragTouch(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
   const context = page.context() as BrowserContext & {
     newCDPSession(page: Page): Promise<CdpSession>;
@@ -22,6 +36,10 @@ async function dragTouch(page: Page, from: { x: number; y: number }, to: { x: nu
       type: 'touchMove',
       touchPoints: [{ x: to.x, y: to.y, id: 1 }],
     });
+    // Keep the moved touch active for at least one complete frame before
+    // releasing it, otherwise `touchEnd` can remove the active touch before
+    // gameplay's per-frame poll ever observes the drag.
+    await nextRenderedFrame(page);
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } finally {
     await session.detach();
