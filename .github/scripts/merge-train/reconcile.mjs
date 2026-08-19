@@ -364,6 +364,13 @@ async function eligible(pr) {
     state: pr.state,
     draft: pr.draft,
     hasMergeConflict: pr.mergeable === false || pr.mergeable_state === 'dirty',
+    // `pr.stack` is GitHub's stacked-PR object (present on both the list-pulls
+    // and single-PR responses whenever another open PR is based on this PR's
+    // head branch, or this PR is based on another open PR's head branch).
+    // evaluateAdmission rejects it with reason `stacked-pr`: the classic
+    // synchronous merge endpoint 403s on any stacked PR, so it must never be
+    // admitted into the sequential squash-merge promotion loop.
+    stack: pr.stack ?? null,
     checkRuns: runs,
     reviewThreads: review.threads,
     reviews: review.reviews || [],
