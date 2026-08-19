@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   computeGeometryBlockers,
   computeAlignmentBlockers,
-  pairIdentity,
   normalizeOverallScore,
   findingKey,
   findingKeys,
@@ -173,65 +172,61 @@ test('containment: a region with no declared parent is never reported', () => {
 });
 
 // ---------------------------------------------------------------------------
-// paired-slot alignment
+// grid alignment
 // ---------------------------------------------------------------------------
 
-test('pairIdentity: numbered and sided ids pair, others do not', () => {
-  assert.deepEqual(pairIdentity('slot:ring1'), { group: 'slot:ring#', half: '1' });
-  assert.deepEqual(pairIdentity('slot:ring2'), { group: 'slot:ring#', half: '2' });
-  assert.equal(pairIdentity('slot:ring3'), null);
-  assert.equal(pairIdentity('slot:head'), null);
-  const left = pairIdentity('slot:leftWrist');
-  const right = pairIdentity('slot:rightWrist');
-  assert.equal(left.half, '1');
-  assert.equal(right.half, '2');
-  assert.equal(left.group, right.group);
+test('alignment: a slot 2px off its row is reported', () => {
+  const blockers = computeAlignmentBlockers([
+    region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:legs', box(120, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(220, 202, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(
+    blockers[0],
+    /^Slot is off its row: slot:ring2 top edge is 2px off the row shared by slot:gloves, slot:legs\.$/,
+  );
 });
 
-test('alignment: ring1/ring2 off by 2px is reported', () => {
+test('alignment: deliberate separate rows are NOT reported (the ring1/ring2 false positive)', () => {
+  // Crawler's paper doll puts Ring 1 in the top row and Ring 2 two rows below.
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:neck', box(20, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:head', box(120, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:ring1', box(220, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:gloves', box(20, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:legs', box(120, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:ring2', box(220, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: a slot off its column is reported', () => {
   const blockers = computeAlignmentBlockers([
-    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
-    region('slot:ring2', box(120, 202, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:head', box(120, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:chest', box(120, 100, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:feet', box(123, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
   ]);
-  assert.deepEqual(blockers, [
-    'Paired slots are not row-aligned: slot:ring1 and slot:ring2 differ in y by 2px.',
-  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(blockers[0], /off its column: slot:feet left edge is 3px/);
 });
 
 test('alignment: a 1px difference is tolerated', () => {
   assert.deepEqual(
     computeAlignmentBlockers([
-      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
-      region('slot:ring2', box(120, 201, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:legs', box(120, 201, 40, 40), { kind: 'slot', parentId: 'panel' }),
     ]),
     [],
   );
 });
 
-test('alignment: aligned pairs with differing height are reported', () => {
-  const blockers = computeAlignmentBlockers([
-    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
-    region('slot:ring2', box(120, 200, 40, 48), { kind: 'slot', parentId: 'panel' }),
-  ]);
-  assert.deepEqual(blockers, [
-    'Paired slots differ in height: slot:ring1 and slot:ring2 differ by 8px.',
-  ]);
-});
-
-test('alignment: a lone half never fires', () => {
+test('alignment: a lone slot never fires', () => {
   assert.deepEqual(
     computeAlignmentBlockers([
       region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
-    ]),
-    [],
-  );
-});
-
-test('alignment: halves in different parents are not compared', () => {
-  assert.deepEqual(
-    computeAlignmentBlockers([
-      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panelA' }),
-      region('slot:ring2', box(120, 400, 40, 40), { kind: 'slot', parentId: 'panelB' }),
     ]),
     [],
   );
@@ -240,8 +235,8 @@ test('alignment: halves in different parents are not compared', () => {
 test('alignment: non-slot kinds do not participate', () => {
   assert.deepEqual(
     computeAlignmentBlockers([
-      region('text:ring1', box(20, 200, 40, 40), { kind: 'text', parentId: 'panel' }),
-      region('text:ring2', box(120, 260, 40, 40), { kind: 'text', parentId: 'panel' }),
+      region('text:a', box(20, 200, 40, 40), { kind: 'text', parentId: 'panel' }),
+      region('text:b', box(120, 206, 40, 40), { kind: 'text', parentId: 'panel' }),
     ]),
     [],
   );
@@ -249,10 +244,11 @@ test('alignment: non-slot kinds do not participate', () => {
 
 test('alignment blockers surface through computeGeometryBlockers', () => {
   const blockers = computeGeometryBlockers([
-    region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
-    region('slot:ring2', box(120, 210, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:legs', box(120, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(220, 206, 40, 40), { kind: 'slot', parentId: 'panel' }),
   ]);
-  assert.ok(blockers.some((b) => /not row-aligned/.test(b)));
+  assert.ok(blockers.some((b) => /off its row/.test(b)));
 });
 
 // ---------------------------------------------------------------------------

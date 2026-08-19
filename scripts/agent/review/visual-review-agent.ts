@@ -751,9 +751,17 @@ async function captureScreenshot(
 
   const harvest = await harvestSurface(page);
   if (harvest.source === 'equipment-legacy') {
+    // A surface that predates the text-raster probe (e.g. an older commit being
+    // baselined) has no font-load state to wait on. Treat a missing probe as
+    // "nothing to wait for" rather than hanging until the timeout, so older
+    // revisions remain reviewable for A/B comparison.
     await page.waitForFunction(
       () => {
-        const state = window.__uiProbe?.getEquipmentTextRasterMetadata?.()?.fontLoadState;
+        const probe = window.__uiProbe;
+        if (typeof probe?.getEquipmentTextRasterMetadata !== 'function') {
+          return document.readyState === 'complete';
+        }
+        const state = probe.getEquipmentTextRasterMetadata()?.fontLoadState;
         return state === 'loaded' || state === 'unavailable';
       },
       undefined,

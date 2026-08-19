@@ -72,8 +72,8 @@ function overlapNoun(a, b) {
  * - Container overrun = ANY region whose box leaves its declared parent region's
  *   box by more than 1px on any edge. An `icon` reports as the legacy
  *   "Icon escapes its box"; everything else reports the overrun edges + pixels.
- * - Paired-slot alignment = two halves of a pair (`*1`/`*2`, or `left*`/`right*`)
- *   that do not share a row baseline within 1px. See `computeAlignmentBlockers`.
+ * - Paired-slot alignment = a slot that sits nearly-but-not-exactly on the row or
+ *   column shared by its neighbours. See `computeAlignmentBlockers`.
  *
  * Output order is deterministic: overlap/touch pairs in region declaration order
  * (grouped by parent, i<j), then containment in declaration order, then
@@ -167,40 +167,25 @@ export function computeGeometryBlockers(regions) {
     );
   }
 
-  // 3. Paired slots (ring1/ring2, left*/right*) must share a row baseline.
+  // 3. Slots that sit off their row/column grid.
   blockers.push(...computeAlignmentBlockers(valid));
 
   return blockers;
 }
 
 /**
- * Derive a pair identity from a region id, so `slot:ring1` and `slot:ring2` — or
- * `slot:leftWrist` and `slot:rightWrist` — are recognized as two halves of one
- * pair. Returns `{ group, half }` or null when the id is not part of a pair.
+ * Slots laid out on a grid must line up on that grid: every slot sharing a row
+ * must share a top edge, and every slot sharing a column must share a left edge.
  *
- * @param {string} id
- * @returns {{ group: string, half: string } | null}
- */
-export function pairIdentity(id) {
-  const numbered = /^(.*?)([_-]?)(\d+)$/.exec(id);
-  if (numbered && (numbered[3] === '1' || numbered[3] === '2')) {
-    return { group: `${numbered[1]}#`, half: numbered[3] };
-  }
-  const sided = /(left|right)/i.exec(id);
-  if (sided) {
-    const side = sided[1].toLowerCase();
-    return { group: id.replace(/left|right|Left|Right/, '*'), half: side === 'left' ? '1' : '2' };
-  }
-  return null;
-}
-
-/**
- * Paired slots must sit on the same row baseline. A pair whose halves differ in
- * `y` (or in height) by more than 1px is a defect the LLM judge reports
- * inconsistently, so it is measured here instead.
+ * This replaces an earlier name-based pairing heuristic (`ring1`/`ring2`), which
+ * produced a false positive on Crawler's paper doll: Ring 1 sits in the top row
+ * and Ring 2 two rows below, so they are legitimately ~200px apart in y. What the
+ * eye actually reads as "not aligned" is a slot that is nearly-but-not-exactly on
+ * its neighbours' row or column, which is what this measures.
  *
- * Only `slot`-kind regions participate, and only when BOTH halves are present
- * and share a parent, so a lone `ring1` or a cross-panel coincidence never fires.
+ * Clustering is tolerant (half the median slot extent) but the assertion is
+ * strict (<= 1px), so a deliberate row/column is detected and then held to a
+ * pixel-accurate edge. A cluster of one never reports.
  *
  * @param {readonly VisualReviewRegion[]} regions
  * @returns {string[]}
@@ -209,45 +194,68 @@ export function computeAlignmentBlockers(regions) {
   const slots = (Array.isArray(regions) ? regions : []).filter(
     (r) => r && r.kind === 'slot' && typeof r.id === 'string' && isValidBox(r.box),
   );
-  /** @type {Map<string, Map<string, VisualReviewRegion>>} */
-  const groups = new Map();
-  /** @type {string[]} */
-  const order = [];
-  for (const slot of slots) {
-    const identity = pairIdentity(slot.id);
-    if (!identity) continue;
-    const key = `${slot.parentId ?? '__root__'}::${identity.group}`;
-    let halves = groups.get(key);
-    if (!halves) {
-      halves = new Map();
-      groups.set(key, halves);
-      order.push(key);
-    }
-    if (!halves.has(identity.half)) halves.set(identity.half, slot);
-  }
+  if (slots.length < 2) return [];
 
-  /** @type {string[]} */
-  const blockers = [];
-  for (const key of order) {
-    const halves = /** @type {Map<string, VisualReviewRegion>} */ (groups.get(key));
-    const first = halves.get('1');
-    const second = halves.get('2');
-    if (!first || !second) continue;
-    const dy = round1(second.box.y - first.box.y);
-    if (Math.abs(dy) > 1) {
-      blockers.push(
-        `Paired slots are not row-aligned: ${first.id} and ${second.id} differ in y by ${Math.abs(dy)}px.`,
-      );
-      continue;
+  /**
+   * @param {'row' | 'column'} axis
+   * @returns {string[]}
+   */
+  const check = (axis) => {
+    const isRow = axis === 'row';
+    const pos = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.y : s.box.x);
+    const extent = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.height : s.box.width);
+    const extents = slots.map(extent).sort((a, b) => a - b);
+    const median = extents[Math.floor(extents.length / 2)];
+    const tolerance = median / 2;
+
+    const sorted = slots.slice().sort((a, b) => pos(a) - pos(b) || a.id.localeCompare(b.id));
+    /** @type {VisualReviewRegion[][]} */
+    const clusters = [];
+    for (const slot of sorted) {
+      const last = clusters[clusters.length - 1];
+      if (last && Math.abs(pos(slot) - pos(last[0])) <= tolerance) last.push(slot);
+      else clusters.push([slot]);
     }
-    const dh = round1(second.box.height - first.box.height);
-    if (Math.abs(dh) > 1) {
-      blockers.push(
-        `Paired slots differ in height: ${first.id} and ${second.id} differ by ${Math.abs(dh)}px.`,
+
+    /** @type {string[]} */
+    const found = [];
+    for (const cluster of clusters) {
+      if (cluster.length < 2) continue;
+      // Members of a row must be distinct along x (and of a column, along y).
+      // Two slots sitting side by side in the same row are not a column, so
+      // requiring perpendicular separation stops a wide row from being read as
+      // a mis-aligned column (and vice versa).
+      const perp = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.x : s.box.y);
+      const perpExtent = (/** @type {VisualReviewRegion} */ s) =>
+        isRow ? s.box.width : s.box.height;
+      const perpValues = cluster.map(perp).sort((a, b) => a - b);
+      const minPerpGap = Math.min(
+        ...perpValues.slice(1).map((v, i) => v - perpValues[i]),
+        Number.POSITIVE_INFINITY,
       );
+      const perpMedian = cluster.map(perpExtent).sort((a, b) => a - b)[
+        Math.floor(cluster.length / 2)
+      ];
+      if (minPerpGap <= perpMedian / 2) continue;
+
+      const base = pos(cluster[0]);
+      const strays = cluster.filter((s) => Math.abs(pos(s) - base) > 1);
+      if (strays.length === 0) continue;
+      const edge = isRow ? 'top' : 'left';
+      const peers = cluster
+        .filter((s) => !strays.includes(s))
+        .map((s) => s.id)
+        .join(', ');
+      for (const stray of strays) {
+        found.push(
+          `Slot is off its ${axis}: ${stray.id} ${edge} edge is ${round1(Math.abs(pos(stray) - base))}px off the ${axis} shared by ${peers}.`,
+        );
+      }
     }
-  }
-  return blockers;
+    return found;
+  };
+
+  return [...check('row'), ...check('column')];
 }
 
 /**

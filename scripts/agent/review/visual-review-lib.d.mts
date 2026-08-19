@@ -35,7 +35,6 @@ export interface FindingDiff {
 
 export function computeGeometryBlockers(regions: readonly VisualReviewRegion[]): string[];
 export function computeAlignmentBlockers(regions: readonly VisualReviewRegion[]): string[];
-export function pairIdentity(id: string): { group: string; half: string } | null;
 
 export function normalizeOverallScore(result: unknown): NormalizedScore;
 
