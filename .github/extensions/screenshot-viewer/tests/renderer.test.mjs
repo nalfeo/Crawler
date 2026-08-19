@@ -190,5 +190,16 @@ test('exposes a scenario filter for comparing treatments in one session', () => 
 test('leads each scenario with a Main-to-latest overview pair', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /\(overall\)/);
-  assert.match(html, /lineage\.slice\(\)\.reverse\(\)/);
+  assert.match(html, /orderedPairs\.push\(\.\.\.lineage\.reverse\(\)\)/);
+});
+
+test('shows capture time for each A/B screenshot', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /formatTime\(pair\[side\]\.takenAt\)/);
+  assert.match(html, /time unknown/);
+});
+
+test('orders lineage by capture time rather than backend array order', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /takenTime\(a\.after\) - takenTime\(b\.after\)/);
 });

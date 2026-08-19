@@ -525,11 +525,19 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
 
         const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
+        const takenTime = (shot) => {
+          const parsed = shot?.takenAt ? new Date(shot.takenAt).getTime() : NaN;
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
         // Group by scenario so each scenario leads with a Main | latest overview
-        // pair, followed by its step-by-step lineage newest-first.
+        // pair, followed by its step-by-step lineage newest-first. Order by the
+        // after-image capture time so display order never depends on the
+        // backend's incidental array order.
         const orderedPairs = [];
         for (const scenario of [...new Set(comparablePairs.map(scenarioOf))]) {
-          const lineage = comparablePairs.filter((p) => scenarioOf(p) === scenario);
+          const lineage = comparablePairs
+            .filter((p) => scenarioOf(p) === scenario)
+            .sort((a, b) => takenTime(a.after) - takenTime(b.after));
           const first = lineage[0];
           const last = lineage[lineage.length - 1];
           if (lineage.length > 1 && first.states?.before === 'main') {
@@ -541,7 +549,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
               reviews: { before: first.reviews?.before ?? null, after: last.reviews?.after ?? null },
             });
           }
-          orderedPairs.push(...lineage.slice().reverse());
+          orderedPairs.push(...lineage.reverse());
         }
         const pairHtml = orderedPairs.map((pair) => {
           const reviewMeta = (review) => review
@@ -549,7 +557,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
             : '<div class="meta">No evaluator result attached.</div>';
           const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
+            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
           const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
