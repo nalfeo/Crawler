@@ -192,6 +192,7 @@ interface MainSceneInternals {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    getScrollIndex(): number;
   };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
@@ -448,6 +449,8 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
+  /** Current first visible achievement row in the rendered Awards panel. */
+  readonly achievementsScrollIndex: number;
   /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
@@ -1122,6 +1125,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
+        achievementsScrollIndex: scene?.achievementsUI?.getScrollIndex() ?? 0,
         bossChestOpen,
         quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,

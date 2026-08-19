@@ -1064,6 +1064,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
+      onVisibilityChange: () => {
+        this.clearPendingInteractionInput();
+      },
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
       },
@@ -1944,6 +1947,11 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
+    if (this.achievementsUI?.isOpen()) {
+      this.inputState.moveX = 0;
+      this.inputState.moveY = 0;
+      this.inputState.action = false;
+    }
 
     if (this.world.state === 'loadout') {
       this.openLoadoutModal();
