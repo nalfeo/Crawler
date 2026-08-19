@@ -37,7 +37,7 @@ export function computeGeometryBlockers(regions: readonly VisualReviewRegion[]):
 export function computeAlignmentBlockers(regions: readonly VisualReviewRegion[]): string[];
 
 export function suppressUnsupportedAlignment(
-  result: Record<string, unknown>,
+  result: object,
   deterministicBlockers: readonly string[],
 ): number;
 
