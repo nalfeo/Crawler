@@ -220,16 +220,17 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
 // `closingIssuesReferences` can reference issues in other repositories, and the
 // follow-up issue is always filed in this repository.  Restrict the matchable
 // closing issues to the current repository so a cross-repository reference
-// (e.g. `other/repo#3120`) never resolves to a same-numbered local issue.
+// (e.g. `other/repo#3120`) never resolves to a same-numbered local issue.  A
+// missing repository fails closed so no caller can bypass the check.
 function sameRepositoryClosingIssues(closingIssues, repository) {
   const target = String(repository || '').toLowerCase();
-  if (!target) return closingIssues || [];
+  if (!target) return [];
   return (closingIssues || []).filter(
     (issue) => String(issue?.repository?.nameWithOwner || '').toLowerCase() === target,
   );
 }
 
-export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues, repository = '') {
+export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues, repository) {
   const rootComment = thread?.comments?.nodes?.[0];
   const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
   const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();

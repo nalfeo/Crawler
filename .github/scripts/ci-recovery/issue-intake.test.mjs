@@ -313,7 +313,7 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
 });
 
 test('review follow-up backlog issue selection fails closed and requires unassigned Copilot wording', () => {
-  const closingIssues = [{ number: 3120 }];
+  const closingIssues = [{ number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } }];
   const trustedRoot = (body) => ({
     body,
     author: { login: 'copilot-pull-request-reviewer' },
@@ -329,6 +329,7 @@ test('review follow-up backlog issue selection fails closed and requires unassig
         ),
       ),
       closingIssues,
+      'nalfeo/Crawler',
     ),
     [3120],
   );
@@ -340,6 +341,7 @@ test('review follow-up backlog issue selection fails closed and requires unassig
         ),
       ),
       closingIssues,
+      'nalfeo/Crawler',
     ),
     [],
   );
@@ -349,6 +351,7 @@ test('review follow-up backlog issue selection fails closed and requires unassig
         trustedRoot('Issue #3120 also requires filing a follow-up backlog issue for later.'),
       ),
       closingIssues,
+      'nalfeo/Crawler',
     ),
     [],
   );
@@ -360,6 +363,7 @@ test('review follow-up backlog issue selection fails closed and requires unassig
         authorAssociation: 'NONE',
       }),
       closingIssues,
+      'nalfeo/Crawler',
     ),
     [],
   );
@@ -400,6 +404,13 @@ test('review follow-up backlog issue selection fails closed on cross-repository 
   // Closing issues missing repository metadata fail closed when a repository is supplied.
   assert.deepEqual(
     reviewThreadFollowupBacklogIssueNumbers(thread, [{ number: 3120 }], 'nalfeo/Crawler'),
+    [],
+  );
+  // A missing repository argument also fails closed rather than matching by number alone.
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(thread, [
+      { number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } },
+    ]),
     [],
   );
 });
