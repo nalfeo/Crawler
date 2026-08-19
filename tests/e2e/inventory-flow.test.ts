@@ -420,6 +420,16 @@ describe('inventory flow (e2e)', () => {
     }
   });
 
+  it('renders identity cues for both empty ring slots', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openEquipment(page);
+    await page.waitForTimeout(300);
+
+    expect(await probe.getEquipmentEmptySlotCue(page, 'ring1')).toBe('ring1');
+    expect(await probe.getEquipmentEmptySlotCue(page, 'ring2')).toBe('ring2');
+  });
+
   it('double-clicks an inventory item to equip it onto the paper-doll', async () => {
     await loadUiProbeLab(page);
     await hideLabChrome(page);

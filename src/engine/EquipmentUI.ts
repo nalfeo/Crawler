@@ -340,6 +340,7 @@ export function createEquipmentUI(
   getDollScreenBounds(): ScreenBounds;
   getSlotScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
   getTooltipScreenBounds(): ScreenBounds | null;
   isTooltipVisible(): boolean;
   isTooltipTopmost(): boolean;
@@ -673,6 +674,7 @@ export function createEquipmentUI(
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
   const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
   const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
+  const emptySlotCues = new Map<EquipmentSlotId, EquipmentSlotId>();
   /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
   const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
@@ -976,6 +978,8 @@ export function createEquipmentUI(
         icon.fillRect(sx - 9, sy - 13, 14, 9);
         icon.fillRect(sx + 6, sy - 8, 5, 9);
         break;
+      case 'ring1':
+      case 'ring2':
       case 'ringLeft':
       case 'ringRight': // ring + gem
         icon.lineStyle(4, light, 0.9);
@@ -1625,6 +1629,8 @@ export function createEquipmentUI(
             color: hex(COLORS.textSecondary),
             padding: { top: 1, bottom: 2 },
           });
+      if (emptyCue) emptySlotCues.set(slot.id, slot.id);
+      else emptySlotCues.delete(slot.id);
       if (emptyCue) centerTextOnPixels(emptyCue, cx, cy + 18);
       const occupiedFill =
         instance !== null
@@ -2387,6 +2393,7 @@ export function createEquipmentUI(
     },
     getSlotScreenBounds: (slotId: EquipmentSlotId) => slotBounds.get(slotId) ?? null,
     getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
+    getEmptySlotCue: (slotId: EquipmentSlotId) => emptySlotCues.get(slotId) ?? null,
     getTooltipScreenBounds: () => tooltipBounds,
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipTopmost,

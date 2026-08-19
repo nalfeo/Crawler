@@ -121,6 +121,7 @@ export interface UiProbeApi {
   getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
@@ -567,6 +568,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
         getEquipmentSlotIconBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotIconScreenBounds(slotId) ?? null,
+        getEquipmentEmptySlotCue: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getEmptySlotCue(slotId) ?? null,
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
