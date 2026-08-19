@@ -6243,6 +6243,130 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
+test('live reconcile files unassigned follow-up backlog issue and resolves matching review thread', async (t) => {
+  const sourceIssueNumber = 3120;
+  const followupReviewCommentId = '3810312490';
+  const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${followupReviewCommentId}`;
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'src/shared/floor-behavior.ts',
+    line: 48,
+    comments: {
+      nodes: [
+        {
+          id: 'comment-followup-backlog',
+          body: 'Issue #3120 also requires filing a follow-up backlog issue for improving this rendering, explicitly without assigning it to Copilot. The repository issue list currently ends at #3120 and searches found no such follow-up, so this acceptance item is still missing. Please create and link the unassigned backlog issue before closing this PR.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'NONE',
+          url: threadUrl,
+        },
+      ],
+    },
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+      body: {
+        number: 4001,
+        body: '<!-- crawler-ci-followup-backlog:v1 sourceIssue=3120 pr=42 thread=PRRT_kwDOSvo2Ms6aWzBs -->',
+        labels: [{ name: 'automation' }],
+      },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`]:
+      () => ({
+        body: { id: 4002 },
+      }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3120',
+                        number: sourceIssueNumber,
+                        title: 'Disable the player sprite holds its weapon at all times feature',
+                        state: 'OPEN',
+                        labels: { nodes: [] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: WAITING_LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 4003 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const issueCreateCall = mutatingCalls.find(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.ok(issueCreateCall, 'expected a follow-up backlog issue to be created');
+  assert.match(issueCreateCall.body.body, /crawler-ci-followup-backlog:v1 sourceIssue=3120/);
+  assert.deepEqual(issueCreateCall.body.assignees, []);
+  assert.ok(issueCreateCall.body.labels.includes('automation'));
+
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a marker reply on the exact review-thread comment');
+  assert.match(replyCall.body.body, new RegExp(`✅ Addressed in ${HEAD_SHA}`));
+  assert.match(replyCall.body.body, /#4001/);
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
+  assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
+  assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+});
+
 test('live reconcile auto-resolves outdated threads and keeps reply targets on remaining review-thread blockers', async (t) => {
   const outdatedReviewCommentId = '3606008324';
   const freshReviewCommentId = '3606008325';

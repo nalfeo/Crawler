@@ -58,6 +58,7 @@ import {
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
   removeIssueAssignees,
+  reviewThreadFollowupBacklogIssueNumbers,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
 import {
@@ -74,7 +75,11 @@ import {
   LIFECYCLE_MARKER,
   parseLifecycleComment,
 } from './pr-lifecycle.mjs';
-import { MERGE_TRAIN_STATUS_MARKER, TASK_COMMENT_MARKER } from './markers.mjs';
+import {
+  FOLLOWUP_BACKLOG_MARKER,
+  MERGE_TRAIN_STATUS_MARKER,
+  TASK_COMMENT_MARKER,
+} from './markers.mjs';
 import { DISPATCH_ACTION, selectEarlyAction, selectTerminalAction } from './dispatch-table.mjs';
 import {
   buildEarlyDecisionRecord,
@@ -263,6 +268,36 @@ function extractTaskReviewThreadBlockerIds(body) {
 
 function extractStableReviewThreadId(blockerId) {
   return String(blockerId ?? '').match(REVIEW_THREAD_BLOCKER_ID_PATTERN)?.[1] ?? null;
+}
+
+function followupBacklogMarker({ sourceIssueNumber, threadId }) {
+  return `${FOLLOWUP_BACKLOG_MARKER} sourceIssue=${sourceIssueNumber} pr=${prNumber} thread=${String(threadId || '').replace(/\s+/g, '-')} -->`;
+}
+
+function issueHasFollowupBacklogMarker(issue, sourceIssueNumber) {
+  const body = String(issue?.body || '');
+  return (
+    body.includes(FOLLOWUP_BACKLOG_MARKER) &&
+    new RegExp(`\\bsourceIssue=${sourceIssueNumber}\\b`).test(body)
+  );
+}
+
+function followupBacklogIssueTitle(sourceIssue) {
+  const sourceTitle = String(sourceIssue?.title || '').trim();
+  const suffix = sourceTitle ? `: ${sourceTitle}` : '';
+  return `Follow up from #${sourceIssue.number}${suffix}`.slice(0, 256);
+}
+
+function followupBacklogIssueBody({ sourceIssue, thread, pr }) {
+  return [
+    followupBacklogMarker({ sourceIssueNumber: sourceIssue.number, threadId: thread.id }),
+    '',
+    `Track the follow-up backlog work requested by #${sourceIssue.number} and required before ${pr.html_url} can close that source issue.`,
+    '',
+    '- Keep this issue unassigned to Copilot unless a maintainer explicitly re-scopes it.',
+    `- Source PR: #${pr.number}`,
+    `- Source review thread: ${thread.comments?.nodes?.[0]?.url || thread.id}`,
+  ].join('\n');
 }
 
 function isTrustedComment(comment) {
@@ -2014,6 +2049,108 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   }
   thread.isResolved = true;
   process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+}
+
+let existingManagedFollowupIssues = null;
+async function managedFollowupIssues() {
+  if (existingManagedFollowupIssues) return existingManagedFollowupIssues;
+  existingManagedFollowupIssues = await paginate(
+    readToken,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent('automation')}`,
+  );
+  return existingManagedFollowupIssues;
+}
+
+async function getOrCreateFollowupBacklogIssue({ sourceIssue, thread }) {
+  const existing = (await managedFollowupIssues()).find((issue) =>
+    issueHasFollowupBacklogMarker(issue, sourceIssue.number),
+  );
+  if (existing) return existing;
+
+  await assertExpectedMetadataUnchanged('followup-backlog-issue');
+  const created = (
+    await request(pat, `/repos/${owner}/${repo}/issues`, {
+      method: 'POST',
+      body: {
+        title: followupBacklogIssueTitle(sourceIssue),
+        body: followupBacklogIssueBody({ sourceIssue, thread, pr }),
+        labels: ['automation', 'enhancement', 'unmeasured'],
+        assignees: [],
+      },
+    })
+  ).data;
+  existingManagedFollowupIssues.push(created);
+  return created;
+}
+
+const closingIssueByNumber = new Map(closingIssues.map((issue) => [issue.number, issue]));
+for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
+  const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues);
+  if (sourceIssueNumbers.length === 0) continue;
+
+  const root = thread.comments?.nodes?.[0];
+  const replyCommentId = reviewThreadReplyCommentId(root?.url);
+  if (!replyCommentId) {
+    process.stdout.write(`skip followup-backlog thread=${thread.id} reason=no-reply-target\n`);
+    continue;
+  }
+  if (!live) {
+    process.stdout.write(`would-file followup-backlog thread=${thread.id}\n`);
+    continue;
+  }
+
+  const followupIssues = [];
+  for (const sourceIssueNumber of sourceIssueNumbers) {
+    const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
+    if (!sourceIssue) continue;
+    const followupIssue = await getOrCreateFollowupBacklogIssue({ sourceIssue, thread });
+    followupIssues.push({ sourceIssueNumber, followupIssue });
+    process.stdout.write(
+      `${followupIssue.created_at ? 'created-or-reused' : 'reused'} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
+    );
+  }
+  if (followupIssues.length === 0) continue;
+
+  const sourceList = followupIssues
+    .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
+    .join(', ');
+  const followupList = followupIssues
+    .map(({ followupIssue }) => `#${followupIssue.number}`)
+    .join(', ');
+  const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
+  await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
+  await request(
+    pat,
+    `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+    {
+      method: 'POST',
+      body: { body: markerBody },
+    },
+  );
+  if (!thread.comments) thread.comments = { nodes: [] };
+  thread.comments.nodes.push({
+    id: `reconciler-followup-backlog-marker:${thread.id}`,
+    body: markerBody,
+    url: '',
+    author: { login: '' },
+    authorAssociation: 'OWNER',
+  });
+  await assertExpectedMetadataUnchanged('resolve-thread');
+  await graphql(
+    pat,
+    `
+      mutation ($threadId: ID!) {
+        resolveReviewThread(input: { threadId: $threadId }) {
+          thread {
+            isResolved
+          }
+        }
+      }
+    `,
+    { threadId: thread.id },
+  );
+  thread.isResolved = true;
+  process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
 }
 
 // Detect threads whose last trusted comment carries a ✅ Addressed marker that

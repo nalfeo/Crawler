@@ -18,6 +18,7 @@ import {
   issueIntakeEligibility,
   openBlockingIssues,
   removeIssueAssignees,
+  reviewThreadFollowupBacklogIssueNumbers,
   reviewThreadPlanIssueNumbers,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
@@ -305,6 +306,59 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
           nodes: [trustedRoot('Issue #1307: please post a plan at your convenience.')],
         },
       },
+      closingIssues,
+    ),
+    [],
+  );
+});
+
+test('review follow-up backlog issue selection fails closed and requires unassigned Copilot wording', () => {
+  const closingIssues = [{ number: 3120 }];
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
+  const threadFor = (root) => ({ comments: { nodes: [root] } });
+
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot(
+          'Issue #3120 also requires filing a follow-up backlog issue for improving this rendering, explicitly without assigning it to Copilot. The repository issue list currently ends at #3120 and searches found no such follow-up, so this acceptance item is still missing. Please create and link the unassigned backlog issue before closing this PR.',
+        ),
+      ),
+      closingIssues,
+    ),
+    [3120],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot(
+          'Issue #999 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        ),
+      ),
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor(
+        trustedRoot('Issue #3120 also requires filing a follow-up backlog issue for later.'),
+      ),
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      threadFor({
+        body: 'Issue #3120 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        author: { login: 'random-user' },
+        authorAssociation: 'NONE',
+      }),
       closingIssues,
     ),
     [],
