@@ -540,7 +540,9 @@ export function createEquipmentUI(
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
   const INSPECTOR_H = 100;
-  const INSPECTOR_GAP = 62;
+  // Minimum clearance between the bottom row's label band and the inspector.
+  // Matches the grid's top inset so the centring maths is symmetric.
+  const INSPECTOR_GRID_CLEARANCE = 26;
   const inspectorX = dollX + 10;
   const inspectorW = dollW - 20;
   const inspectorY = dollY + dollH - INSPECTOR_H - 42;
@@ -586,12 +588,15 @@ export function createEquipmentUI(
   // Stats column (middle) — fixed compact width so the bag column has room.
   const statsX = dollX + dollW + PANEL_PADDING;
   const statsCenterX = statsX + STATS_W / 2;
-  // The Equipment title/hint belong to the doll interaction model, not to the
-  // adjacent Stats or Bag columns. Let those columns start at the panel padding
-  // instead of inheriting the doll's header band; the reclaimed 54px is what
-  // makes 12px stat rows feasible without hiding rows below the frame.
-  const statsY = panelY + PANEL_PADDING;
-  const statsH = panelHeight - PANEL_PADDING * 2;
+  // All three column headings ("Equipment", "Stats", "Bag") live in the same
+  // header band ABOVE their bounding boxes, so they read as one title row
+  // rather than as a panel title plus two headings floating inside their own
+  // frames. That means the Stats/Bag frames start at the same y as the doll.
+  const columnHeadingTextY = panelY + PANEL_PADDING + 2;
+  const columnHeadingFrameY = panelY + PANEL_PADDING + 10;
+  const columnHeadingFrameH = 28;
+  const statsY = panelY + PANEL_PADDING + HEADER_BAND;
+  const statsH = panelHeight - PANEL_PADDING - HEADER_BAND - PANEL_PADDING;
   const divider = scene.add.line(
     0,
     0,
@@ -678,6 +683,14 @@ export function createEquipmentUI(
   /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
   const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
+  /**
+   * Text objects that render in the shared header band above their column
+   * frames ("Stats", "Bag", and the bag's filter sub-heading). They are pooled
+   * with their column so they clear on re-render, but they are reported to the
+   * deterministic text-containment probe as `header` runs, because that is the
+   * region they are actually laid out in.
+   */
+  const columnHeadingObjects = new Set<Phaser.GameObjects.GameObject>();
   /** Target-slot markers for the active preview — an overlay, NOT part of renderSlots. */
   const targetMarkerObjects: Phaser.GameObjects.GameObject[] = [];
   const targetMarkerBounds = new Map<EquipmentSlotId, ScreenBounds>();
@@ -723,6 +736,7 @@ export function createEquipmentUI(
 
   function clearPool(pool: Phaser.GameObjects.GameObject[]): void {
     for (const obj of pool) {
+      columnHeadingObjects.delete(obj);
       obj.destroy();
     }
     pool.length = 0;
@@ -1474,8 +1488,18 @@ export function createEquipmentUI(
     // into (or overlap) the detail panel below the grid. The label band is part
     // of each slot's footprint, so it comes out of the usable height too —
     // otherwise the bottom row's labels would render over the inspector.
+    // Vertically centre the whole grid in the region between the top of the
+    // doll frame and the inspector strip, rather than letting the rows stretch
+    // to fill it. `MAX_ROW_PITCH` keeps the figure compact; the leftover height
+    // is split evenly above and below so the doll reads as centred in its pane.
     const slotFootprintH = SLOT_H + SLOT_LABEL_BAND;
-    const usableH = dollH - slotFootprintH - innerPadY * 2 - (INSPECTOR_H + INSPECTOR_GAP);
+    const gridRegionTop = dollY + innerPadY;
+    const gridRegionBottom = inspectorY - INSPECTOR_GRID_CLEARANCE;
+    const gridRegionH = gridRegionBottom - gridRegionTop;
+    // Row `py` values run 0 → 1 across four rows, i.e. three row pitches.
+    const MAX_ROW_PITCH = 100;
+    const usableH = Math.max(0, Math.min(gridRegionH - slotFootprintH, MAX_ROW_PITCH * 3));
+    const gridOffsetY = Math.max(0, Math.round((gridRegionH - (usableH + slotFootprintH)) / 2));
     const spreadNorm = (value: number, spread: number): number =>
       Math.max(0, Math.min(1, 0.5 + (value - 0.5) * spread));
 
@@ -1501,7 +1525,7 @@ export function createEquipmentUI(
       // ring2 shares its row with gloves/legs (both py=0.66) but moved the
       // opposite direction from them — a 20px mismatch. Row-only placement
       // keeps every slot on the same row visually level with its siblings.
-      const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
+      const cy = dollY + innerPadY + gridOffsetY + SLOT_H / 2 + py * usableH;
 
       const instId = state?.equipped[operationalSlotId(slot.id)] ?? null;
       const instance =
@@ -1744,14 +1768,23 @@ export function createEquipmentUI(
     const effective = getEffectiveStats(lastWorld, playerEid);
     const baseStore = lastWorld.stores.baseStats;
 
-    const heading = crispText(statsX + 10, statsY + 26, 'Stats', {
+    const heading = crispText(statsX + 10, columnHeadingTextY, 'Stats', {
       fontFamily: FONT_FAMILY,
       fontSize: '18px',
       color: hex(COLORS.textPrimary),
+      padding: { top: 4, bottom: 2 },
     });
     container.add(heading);
     statObjects.push(heading);
-    const headingFrame = scene.add.rectangle(statsX + 96, statsY + 26, 172, 30, 0x355180, 0.95);
+    columnHeadingObjects.add(heading);
+    const headingFrame = scene.add.rectangle(
+      statsCenterX,
+      columnHeadingFrameY,
+      STATS_W,
+      columnHeadingFrameH,
+      0x355180,
+      0.95,
+    );
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
     container.addAt(headingFrame, 5);
     statObjects.push(headingFrame);
@@ -1760,7 +1793,9 @@ export function createEquipmentUI(
 
     // Fixed-height comparison banner. Present in BOTH states (idle text vs.
     // "VS <item>") so turning a preview on/off cannot move a single stat row.
-    const compareBarY = statsY + 58;
+    // The heading now lives above the frame, so the comparison banner is the
+    // first thing inside it.
+    const compareBarY = statsY + 20;
     const compareBg = scene.add.rectangle(
       statsX + colW / 2 + 6,
       compareBarY,
@@ -1791,7 +1826,7 @@ export function createEquipmentUI(
     container.add(compareText);
     statObjects.push(compareBg, compareText);
 
-    let rowY = statsY + 74;
+    let rowY = statsY + 36;
     const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
     const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
     // The shipped local face has an 18px glyph box at 12px (including explicit
@@ -1987,18 +2022,20 @@ export function createEquipmentUI(
     });
     bagCellBounds = new Array(entries.length).fill(null);
 
-    // Header row.
-    const heading = crispText(bagX + 12, bagY + 26, 'Bag', {
+    // Header row — heading sits ABOVE the bag frame, in the shared header band
+    // with "Equipment" and "Stats".
+    const heading = crispText(bagX + 12, columnHeadingTextY, 'Bag', {
       fontFamily: FONT_FAMILY,
       fontSize: '18px',
       color: hex(COLORS.textPrimary),
+      padding: { top: 4, bottom: 2 },
     });
-    leftCenterTextOnPixels(heading, bagX + 12, bagY + 26);
+    leftCenterTextOnPixels(heading, bagX + 12, columnHeadingFrameY);
     const headingFrame = scene.add.rectangle(
       bagX + bagW / 2,
-      bagY + 26,
-      bagW - 20,
-      30,
+      columnHeadingFrameY,
+      bagW,
+      columnHeadingFrameH,
       0x355180,
       0.95,
     );
@@ -2009,7 +2046,7 @@ export function createEquipmentUI(
       : 'Equippable';
     const subHeading = crispText(
       bagX + bagW - 12,
-      bagY + 26,
+      columnHeadingFrameY,
       `${filterLabel} · ${entries.length}`,
       {
         fontFamily: FONT_FAMILY,
@@ -2018,16 +2055,20 @@ export function createEquipmentUI(
         padding: { top: 2, bottom: 3 },
       },
     );
-    rightCenterTextOnPixels(subHeading, bagX + bagW - 12, bagY + 26);
+    rightCenterTextOnPixels(subHeading, bagX + bagW - 12, columnHeadingFrameY);
     container.add(heading);
     container.add(subHeading);
+    columnHeadingObjects.add(heading);
+    columnHeadingObjects.add(subHeading);
     bagObjects.push(heading, headingFrame, subHeading);
 
     // Grid geometry.
     const cell = BAG_CELL;
     const gap = BAG_GAP;
     const cols = BAG_COLS;
-    const headerH = 48;
+    // The heading moved into the shared header band above this frame, so only a
+    // small top inset is reserved inside the bag frame itself.
+    const headerH = 14;
     const gridW = cols * cell + (cols - 1) * gap;
     const gridX = bagX + Math.round((bagW - gridW) / 2);
     const gridTop = bagY + headerH;
@@ -2280,8 +2321,11 @@ export function createEquipmentUI(
     push(hint, 'header');
     push(inspectorPlaceholder, 'inspector');
     for (const obj of slotObjects) push(obj, 'doll');
-    for (const obj of statObjects) push(obj, 'stats');
-    for (const obj of bagObjects) push(obj, 'bag');
+    // The "Stats" and "Bag" headings render in the shared header band above
+    // their frames (matching "Equipment"), so they belong to the header region
+    // even though their lifetimes are owned by the stats/bag pools.
+    for (const obj of statObjects) push(obj, columnHeadingObjects.has(obj) ? 'header' : 'stats');
+    for (const obj of bagObjects) push(obj, columnHeadingObjects.has(obj) ? 'header' : 'bag');
     for (const obj of tooltipObjects) push(obj, 'inspector');
     return runs;
   }
