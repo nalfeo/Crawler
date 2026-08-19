@@ -3275,6 +3275,13 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   const hasPriorRecoveryHint = commentBlockers.some((blocker) =>
     blocker.summary.startsWith('[Prior recovery reply (no marker posted'),
   );
+  const hasReviewLedgerThreadBlocker = commentBlockers.some(
+    (blocker) =>
+      blocker.kind === 'review-thread' &&
+      /^docs\/knowledge\/review-ledgers\/.+\.review-ledger\.json$/i.test(
+        String(blocker.path ?? ''),
+      ),
+  );
   const hasCiOnlyBlockers =
     commentBlockers.length > 0 &&
     commentBlockers.every(
@@ -3316,6 +3323,12 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       ? [
           `**Review-thread protocol:** Validate every listed thread with a different model and fix applicable findings. Use \`✅ Not applicable: <one-line reason>\` only for deterministic non-applicability; leave substantive disagreements unresolved for escalation.`,
           '',
+          ...(hasReviewLedgerThreadBlocker
+            ? [
+                'If a listed thread targets `docs/knowledge/review-ledgers/*.review-ledger.json`, run `npm run review:ledger -- validate` on the current head to gather schema/validator evidence. That validation by itself does not settle policy findings the validator does not enforce (for example review-round cap concerns). Only reply in-thread with `✅ Not applicable: <one-line reason>` when validation output or the current diff deterministically proves the exact finding inapplicable; otherwise fix the finding or leave substantive policy disagreements unresolved for human escalation.',
+                '',
+              ]
+            : []),
           ...(hasPriorRecoveryHint
             ? [
                 'A listed thread has a prior-recovery hint: do not repeat its identical reply. Complete any needed external action with GitHub API tools, edit the PR body with the session `update_pull_request` tool (not `gh pr edit`), then mark it addressed; otherwise leave it unresolved for human escalation.',

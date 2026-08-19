@@ -1,0 +1,68 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "ai-floor1-boss-chest-weapon-upgrade",
+  "task_title": "AI runner equips Floor 1 boss chest weapon upgrades",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 16,
+      "resolved_count": 16,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "3 rounds with gpt-5.6-sol. Round 1 forked the design (rejected planner-side DPS pre-pass) in favor of a canonical static weapon baseline inside the evaluator. Round 2 was the adversarial pass (3 alternatives argued: planner pre-pass, synthetic generated instance, evaluator static baseline) and raised the weapon-class-switch policy, structural WeaponDef input, and static affinity weights. Round 3 pushed back on the same-weaponTypeSkillId restriction with data (it rejects ~80% of Wave-A drops and 100% for baseball-bat/punch starters, and does not preserve personas because WEAPON_PERSONAS keys on WeaponDef id); reviewer accepted the counter-remedy (deterministic weaponTypeSkillId persona fallback + 25-seed gate as arbiter) and signed off with no remaining blockers."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-terra"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.6-terra"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "3edbb24",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0
+    }
+  }
+}
