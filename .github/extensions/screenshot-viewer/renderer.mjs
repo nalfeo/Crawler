@@ -516,7 +516,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
         const pairHtml = comparablePairs.map((pair) => {
           const reviewMeta = (review) => review
-            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/100</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
+            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
           const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>
