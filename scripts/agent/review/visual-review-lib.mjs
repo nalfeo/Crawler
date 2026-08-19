@@ -267,6 +267,45 @@ function round1(n) {
 }
 
 /**
+ * Drop LLM claims that slots are mis-aligned when the deterministic grid-alignment
+ * check found no such defect. Mirrors the text-raster fuzziness suppressor: the
+ * measured geometry is authoritative, so an unsupported "these two slots are off by
+ * 2px" claim must not cost the surface points run after run. Only free-text findings
+ * are removed; axis prose is left alone.
+ *
+ * @param {Record<string, unknown>} result
+ * @param {string[]} deterministicBlockers
+ * @returns {number} how many findings were suppressed
+ */
+export function suppressUnsupportedAlignment(result, deterministicBlockers) {
+  const hasRealAlignmentDefect = deterministicBlockers.some((b) => /off its (row|column)/i.test(b));
+  if (hasRealAlignmentDefect) return 0;
+  const claimsMisalignment = (/** @type {string} */ text) =>
+    /\b(mis-?aligned?|not aligned|out of alignment|same (vertical )?baseline)/i.test(text);
+  let removed = 0;
+  for (const key of ['blocking_findings', 'recommended_fixes']) {
+    const list = /** @type {unknown} */ (result[key]);
+    if (!Array.isArray(list)) continue;
+    result[key] = list.filter((entry) => {
+      if (typeof entry !== 'string' || !claimsMisalignment(entry)) return true;
+      removed += 1;
+      return false;
+    });
+  }
+  const fixes = /** @type {unknown} */ (result.precise_fixes);
+  if (Array.isArray(fixes)) {
+    result.precise_fixes = fixes.filter((fix) => {
+      const reason =
+        fix && typeof fix === 'object' ? /** @type {Record<string, unknown>} */ (fix).reason : null;
+      if (typeof reason !== 'string' || !claimsMisalignment(reason)) return true;
+      removed += 1;
+      return false;
+    });
+  }
+  return removed;
+}
+
+/**
  * Repair `overall.score` when the model returns something outside the 0-100 scale
  * (a recurring bug: it sometimes returns the SUM of the 7 axis scores). Returns the
  * score to use plus the raw value for provenance. Only synthesizes a replacement

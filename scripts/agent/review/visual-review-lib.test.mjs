@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   computeGeometryBlockers,
   computeAlignmentBlockers,
+  suppressUnsupportedAlignment,
   normalizeOverallScore,
   findingKey,
   findingKeys,
@@ -403,4 +404,35 @@ test('lacksPixelGroundedGeometry: equipment-legacy never warns (geometry comes f
 test('lacksPixelGroundedGeometry: non-positive / non-finite region counts count as empty for declared', () => {
   assert.equal(lacksPixelGroundedGeometry('declared', -1), true);
   assert.equal(lacksPixelGroundedGeometry('declared', Number.NaN), true);
+});
+
+test('suppressUnsupportedAlignment: drops misalignment claims the grid check disproves', () => {
+  const result = {
+    blocking_findings: [
+      'Paired slots Ring 1 and Ring 2 are misaligned vertically by 2px.',
+      'Tooltip text is cramped.',
+    ],
+    recommended_fixes: ['Align Ring 1 and Ring 2 to the same vertical baseline.'],
+    precise_fixes: [
+      { kind: 'move', id: 'slot:ring1', reason: 'Ring 1 is misaligned with Ring 2.' },
+      { kind: 'pad', id: 'tooltip', reason: 'Tooltip text is cramped.' },
+    ],
+  };
+  const removed = suppressUnsupportedAlignment(result, []);
+  assert.equal(removed, 3);
+  assert.deepEqual(result.blocking_findings, ['Tooltip text is cramped.']);
+  assert.deepEqual(result.recommended_fixes, []);
+  assert.equal(result.precise_fixes.length, 1);
+  assert.equal(result.precise_fixes[0].id, 'tooltip');
+});
+
+test('suppressUnsupportedAlignment: keeps claims when the grid check found a real defect', () => {
+  const result = {
+    blocking_findings: ['Head and Neck are misaligned.'],
+  };
+  const removed = suppressUnsupportedAlignment(result, [
+    'Slot is off its row: neck top edge is 4px off the row shared by head.',
+  ]);
+  assert.equal(removed, 0);
+  assert.equal(result.blocking_findings.length, 1);
 });

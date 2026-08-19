@@ -26,6 +26,7 @@ import {
   findingKeys,
   lacksPixelGroundedGeometry,
   normalizeOverallScore,
+  suppressUnsupportedAlignment,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
 import {
@@ -169,6 +170,8 @@ interface VisualReviewResult {
   text_raster?: TextRasterReport;
   /** Azure-only fuzzy-text claims suppressed by text-raster evidence. */
   suppressed_text_raster_findings?: number;
+  /** Azure-only slot-misalignment claims suppressed by the deterministic grid check. */
+  suppressed_alignment_findings?: number;
 }
 
 interface TextRasterEntry {
@@ -1837,6 +1840,10 @@ async function main(): Promise<number> {
       capture.textRaster,
     );
   }
+  result.suppressed_alignment_findings = suppressUnsupportedAlignment(
+    result,
+    capture.deterministicBlockers,
+  );
   const mergedBlockers = new Set<string>([
     ...(result.blocking_findings ?? []),
     ...capture.deterministicBlockers,

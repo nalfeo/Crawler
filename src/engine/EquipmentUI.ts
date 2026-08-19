@@ -93,7 +93,7 @@ const FOOTER_BAND = 0;
 // on the right becomes the integrated equippable-bag column. Decoupling these
 // from panelWidth is what lets us add the bag without disturbing slot layout.
 const DOLL_W = 390;
-const STATS_W = 290;
+const STATS_W = 320;
 // Bag grid cells (mirrors InventoryUI's cell metrics for visual consistency).
 const BAG_CELL = 60;
 const BAG_GAP = 12;
@@ -141,12 +141,12 @@ const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
   neck: { x: 0.2, y: 0 },
   head: { x: 0.5, y: 0 },
   ring1: { x: 0.8, y: 0 },
-  mainHand: { x: 0.2, y: 0.33 },
-  chest: { x: 0.5, y: 0.33 },
-  offHand: { x: 0.8, y: 0.33 },
-  gloves: { x: 0.2, y: 0.66 },
-  legs: { x: 0.5, y: 0.66 },
-  ring2: { x: 0.8, y: 0.66 },
+  mainHand: { x: 0.2, y: 1 / 3 },
+  chest: { x: 0.5, y: 1 / 3 },
+  offHand: { x: 0.8, y: 1 / 3 },
+  gloves: { x: 0.2, y: 2 / 3 },
+  legs: { x: 0.5, y: 2 / 3 },
+  ring2: { x: 0.8, y: 2 / 3 },
   feet: { x: 0.5, y: 1 },
 };
 
@@ -539,22 +539,22 @@ export function createEquipmentUI(
   // lives in a reserved region below the grid, its content can never overlap a
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
-  const INSPECTOR_H = 100;
+  const INSPECTOR_H = 112;
   // Minimum clearance between the bottom row's label band and the inspector.
   // Matches the grid's top inset so the centring maths is symmetric.
   const INSPECTOR_GRID_CLEARANCE = 26;
-  const inspectorX = dollX + 10;
-  const inspectorW = dollW - 20;
+  const inspectorX = dollX + 2;
+  const inspectorW = dollW - 4;
   const inspectorY = dollY + dollH - INSPECTOR_H - 42;
   const inspectorBg = scene.add.rectangle(
     inspectorX + inspectorW / 2,
     inspectorY + INSPECTOR_H / 2,
     inspectorW,
     INSPECTOR_H,
-    0x1f2c47,
+    0x16223a,
     0.98,
   );
-  inspectorBg.setStrokeStyle(2, COLORS.slotEmptyBorder);
+  inspectorBg.setStrokeStyle(2, COLORS.headerAccent);
   container.add(inspectorBg);
   const inspectorPlaceholder = crispText(
     inspectorX + 14,
@@ -1136,8 +1136,8 @@ export function createEquipmentUI(
     inspectorPlaceholder.setVisible(false);
     // Keep the optional fourth generated-equipment line inside the fixed strip
     // without asking it to overlap 12px glyph boxes.
-    const lineH = lines.length <= 3 ? 28 : 22;
-    const textPaddingH = 15;
+    const lineH = lines.length <= 3 ? 30 : 24;
+    const textPaddingH = 20;
     const blockH = (lines.length - 1) * lineH + textPaddingH;
     const yStart = inspectorY + Math.max(6, Math.round((INSPECTOR_H - blockH) / 2));
     lines.forEach((line, index) => {
@@ -1838,8 +1838,8 @@ export function createEquipmentUI(
     // Fit the rows into the space that exists. MIN_STAT_ROW_STEP keeps 12px text
     // legible (glyph box ~15px) even at the tightest fit; MAX keeps the column
     // from looking gappy when the stat list is short.
-    const MIN_STAT_ROW_STEP = 19;
-    const MAX_STAT_ROW_STEP = 22;
+    const MIN_STAT_ROW_STEP = 20;
+    const MAX_STAT_ROW_STEP = 24;
     const rowStep = Math.max(
       MIN_STAT_ROW_STEP,
       Math.min(

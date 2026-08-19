@@ -36,6 +36,11 @@ export interface FindingDiff {
 export function computeGeometryBlockers(regions: readonly VisualReviewRegion[]): string[];
 export function computeAlignmentBlockers(regions: readonly VisualReviewRegion[]): string[];
 
+export function suppressUnsupportedAlignment(
+  result: Record<string, unknown>,
+  deterministicBlockers: readonly string[],
+): number;
+
 export function normalizeOverallScore(result: unknown): NormalizedScore;
 
 export function findingKey(text: unknown): string;
