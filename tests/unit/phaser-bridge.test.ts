@@ -18,7 +18,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
-import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { createPhaserBridge, _PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -38,7 +38,7 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
-import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { DECORATION_DEF_INDEX, getDecorationDef } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -414,6 +414,53 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
     expect(propImages.every((img) => img.destroyed)).toBe(true);
     expect(propRects.every((rect) => rect.destroyed)).toBe(true);
+  });
+
+  it('renders a floor-decoration torch prop at a normal gameplay size, not scale-as-feet (regression: #3127)', () => {
+    // `DecorationDef.scale` is documented as a "size multiplier relative to
+    // base (1.0 = 100%)", not an absolute feet value. The Prop render pass
+    // used to feed it straight into `ftToPx()`, so the torch (`scale: 1.2`)
+    // rendered at 1.2 ft (~10 px) — comically small next to the 3 ft player.
+    const propImages: MockImage[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayWidth = w;
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayHeight = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn(() => ({ setSize: vi.fn(), setFillStyle: vi.fn(), setDepth: vi.fn() })),
+      },
+      textures: {
+        exists: (key: string) => key === 'prop-torch-var-10',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    const torchProp = addEntity(world.ecs);
+    addComponent(world.ecs, torchProp, Prop);
+    addComponent(world.ecs, torchProp, set(Position, { x: 1, y: 2 }));
+    world.stores.prop.defIdIndex[torchProp] = DECORATION_DEF_INDEX['torch']!;
+
+    bridge.sync(world);
+
+    const torchImage = propImages.find((img) => img.textureKey === 'prop-torch-var-10');
+    expect(torchImage).toBeDefined();
+    const torchScale = getDecorationDef('torch')!.scale;
+    // torch.scale × the "normal prop" base ft is well above the pre-fix
+    // `ftToPx(torch.scale)` (~10 px) that made torches read as comically small.
+    const expectedPx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * torchScale);
+    expect(torchImage!.displayWidth).toBeCloseTo(expectedPx);
+    expect(torchImage!.displayHeight).toBeCloseTo(expectedPx);
   });
 
   it('renders set-piece prop layers with straddling depth, footprint and tint', () => {

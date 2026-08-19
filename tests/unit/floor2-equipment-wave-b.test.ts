@@ -33,18 +33,18 @@ describe('Floor 2 equipment Wave B', () => {
   it('complements the coordinated Wave A roster in deterministic manifest order', () => {
     // The full art manifest now also carries the 18 Classic Fantasy [Basic
     // Leather] entries (see floor2-basic-leather-bases.ts / floor2-reward-pool.ts)
-    // alongside Wave A (25) + Wave B (45) = 70, for 88 total. This test's
+    // alongside Wave A (25) + Wave B (43) = 68, for 81 total. This test's
     // invariant is scoped to "Wave A + Wave B fully account for the
     // non-Basic-Leather manifest entries" — Basic Leather coverage is
     // asserted separately (see floor2-reward-pool.test.ts).
-    expect(FLOOR2_EQUIPMENT_ART_DEFINITIONS).toHaveLength(88);
+    expect(FLOOR2_EQUIPMENT_ART_DEFINITIONS).toHaveLength(81);
     const basicLeatherIds = new Set<string>(FLOOR2_BASIC_LEATHER_STABLE_IDS);
     const waveAAndBManifest = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
       (entry) => !basicLeatherIds.has(entry.stableId),
     );
-    expect(waveAAndBManifest).toHaveLength(70);
+    expect(waveAAndBManifest).toHaveLength(68);
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toHaveLength(25);
-    expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toHaveLength(20);
+    expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toHaveLength(18);
     const manifestWeaponIds = waveAAndBManifest
       .filter((entry) => entry.category === 'weapon')
       .map((entry) => entry.stableId);
@@ -69,8 +69,8 @@ describe('Floor 2 equipment Wave B', () => {
     expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS.map((def) => def.id)).toEqual(
       FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS,
     );
-    expect(new Set(FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS).size).toBe(45);
-    expect(getEquippableItemIds().length).toBeGreaterThanOrEqual(70);
+    expect(new Set(FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS).size).toBe(43);
+    expect(getEquippableItemIds().length).toBeGreaterThanOrEqual(60);
   });
 
   it('inherits the frozen shared weapon defaults while preserving explicit overrides', () => {
@@ -117,9 +117,7 @@ describe('Floor 2 equipment Wave B', () => {
       return definition?.name;
     });
     expect(new Set(displayNames).size).toBe(displayNames.length);
-    expect(getEquipmentDefForItem('head.iron-visor')?.name).toBe('Iron Faceplate');
     expect(getEquipmentDefForItem('feet.iron-greaves')?.name).toBe('Iron Legguards');
-    expect(getEquipmentDefForItem('iron-visor')?.name).toBe('Iron Visor');
     expect(getEquipmentDefForItem('iron-greaves')?.name).toBe('Iron Greaves');
   });
 

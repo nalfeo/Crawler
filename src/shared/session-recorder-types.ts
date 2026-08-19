@@ -10,6 +10,7 @@
  * about the concrete implementation.
  */
 import type { InputState } from './input.js';
+import type { DenBossDiagnostics } from './den-boss-telemetry-types.js';
 import type { WeaponTelemetrySummary } from './weapon-telemetry-types.js';
 
 /**
@@ -42,6 +43,14 @@ export interface SessionRecorderStats {
    * and the world therefore has an active telemetry collector; omitted otherwise.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /**
+   * Floor 2 den-boss diagnostic rollup accumulated by the recorder — the same
+   * contract the headless runner puts on `RunStats.denBoss`. Present only when
+   * the session actually observed a den floor.
+   */
+  denBoss?: DenBossDiagnostics;
+  /** Count of `den` records emitted into this recorder's event stream (see `denBoss`). */
+  denRecordCount?: number;
 }
 
 /**

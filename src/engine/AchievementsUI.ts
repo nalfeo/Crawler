@@ -33,6 +33,8 @@ const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 const ROW_HEIGHT = 98;
 const ROW_GAP = 8;
+const ROW_SCROLL_STEP = ROW_HEIGHT + ROW_GAP;
+const DRAG_SLOP = 8;
 const ACHIEVEMENT_ICON_SIZE = 32;
 const ACHIEVEMENT_ICON_GAP = 10;
 
@@ -101,6 +103,8 @@ function rewardReveal(reward: AchievementReward): string {
 export interface AchievementsUIConfig {
   width?: number;
   height?: number;
+  /** Notifies the scene so gameplay input can be cleared when the panel opens. */
+  onVisibilityChange?: (visible: boolean) => void;
   /**
    * Invoked when a claim's grant fails (e.g. the player's inventory is full),
    * so the caller can surface feedback — the panel button gives no other
@@ -132,6 +136,7 @@ export function createAchievementsUI(
    */
   claimReward(achievementId: string): void;
   isOpen(): boolean;
+  getScrollIndex(): number;
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
@@ -158,6 +163,11 @@ export function createAchievementsUI(
   let lastWorld: GameWorld | null = null;
   let lastSignature: string | null = null;
   let scrollIndex = 0;
+  let dragPointerId: number | null = null;
+  let dragLastY: number | null = null;
+  let dragRemainder = 0;
+  let dragTravel = 0;
+  let draggedPointerId: number | null = null;
   const expandedIds = new Set<string>();
   /** Cache of measured full flavor text height keyed by achievement id. */
   const flavorHeightCache = new Map<string, number>();
@@ -393,12 +403,16 @@ export function createAchievementsUI(
         fontSize: '10px',
         color: hex(COLORS.textSecondary),
       });
-      expander.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-        if (expandedIds.has(def.id)) expandedIds.delete(def.id);
-        else expandedIds.add(def.id);
-        lastSignature = null;
-        if (lastWorld) refresh(lastWorld);
-      });
+      expander
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', onPointerDown)
+        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          if (pointer.id === draggedPointerId) return;
+          if (expandedIds.has(def.id)) expandedIds.delete(def.id);
+          else expandedIds.add(def.id);
+          lastSignature = null;
+          if (lastWorld) refresh(lastWorld);
+        });
       container.add(expander);
       rowObjects.push(expander);
     }
@@ -421,7 +435,10 @@ export function createAchievementsUI(
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => btn.setBackgroundColor(hex(COLORS.btnHover)))
         .on('pointerout', () => btn.setBackgroundColor(hex(COLORS.btnBg)))
-        .on('pointerdown', () => open(def.id));
+        .on('pointerdown', onPointerDown)
+        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          if (pointer.id !== draggedPointerId) open(def.id);
+        });
     }
     container.add(btn);
     rowObjects.push(btn);
@@ -555,6 +572,7 @@ export function createAchievementsUI(
   function toggle(world: GameWorld): void {
     visible = !visible;
     container.setVisible(visible);
+    config.onVisibilityChange?.(visible);
     if (visible) {
       scrollIndex = 0;
       expandedIds.clear();
@@ -570,7 +588,48 @@ export function createAchievementsUI(
     lastSignature = null;
     refresh(lastWorld);
   };
+  function onPointerDown(pointer: Phaser.Input.Pointer): void {
+    if (!visible || !bg.getBounds().contains(pointer.x, pointer.y)) return;
+    dragPointerId = pointer.id;
+    dragLastY = pointer.y;
+    dragRemainder = 0;
+    dragTravel = 0;
+    draggedPointerId = null;
+  }
+  const onPointerMove = (pointer: Phaser.Input.Pointer): void => {
+    if (!visible || !lastWorld || pointer.id !== dragPointerId || dragLastY === null) return;
+    const deltaY = (dragLastY - pointer.y) / uiScale;
+    dragLastY = pointer.y;
+    dragTravel += Math.abs(deltaY);
+    if (dragTravel < DRAG_SLOP) return;
+    draggedPointerId = pointer.id;
+    dragRemainder += deltaY;
+    const previousScrollIndex = scrollIndex;
+    while (dragRemainder >= ROW_SCROLL_STEP) {
+      dragRemainder -= ROW_SCROLL_STEP;
+      scrollIndex += 1;
+    }
+    while (dragRemainder <= -ROW_SCROLL_STEP) {
+      dragRemainder += ROW_SCROLL_STEP;
+      scrollIndex -= 1;
+    }
+    scrollIndex = Math.max(0, Math.min(scrollIndex, unlockedDefs(lastWorld).length - 1));
+    if (scrollIndex === previousScrollIndex) return;
+    lastSignature = null;
+    refresh(lastWorld);
+  };
+  const onPointerUp = (pointer: Phaser.Input.Pointer): void => {
+    if (pointer.id !== dragPointerId) return;
+    dragPointerId = null;
+    dragLastY = null;
+    dragRemainder = 0;
+    dragTravel = 0;
+  };
+  scene.input.on('pointerdown', onPointerDown);
   scene.input.on('wheel', onWheel);
+  scene.input.on('pointermove', onPointerMove);
+  scene.input.on('pointerup', onPointerUp);
+  scene.input.on('pointerupoutside', onPointerUp);
   scene.scale.on('resize', applyLayout);
 
   return {
@@ -579,8 +638,13 @@ export function createAchievementsUI(
     resumePendingPresentation,
     claimReward: open,
     isOpen: () => visible,
+    getScrollIndex: () => scrollIndex,
     destroy() {
       scene.input.off('wheel', onWheel);
+      scene.input.off('pointerdown', onPointerDown);
+      scene.input.off('pointermove', onPointerMove);
+      scene.input.off('pointerup', onPointerUp);
+      scene.input.off('pointerupoutside', onPointerUp);
       scene.scale.off('resize', applyLayout);
       clearRows();
       if (scrollbarTrack) scrollbarTrack.destroy();

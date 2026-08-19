@@ -37,6 +37,8 @@ const ICON_EXPECTATIONS: ReadonlyArray<{ abilityId: string; legacyBriefIdLineage
   { abilityId: 'heal', legacyBriefIdLineage: 'ability-icon-heal' },
   { abilityId: 'pulse-shield', legacyBriefIdLineage: 'ability-icon-pulse-shield' },
 ];
+// Issue #3136: this approved variant was a slime-like icon and must never resolve for fireball.
+const REMOVED_FIREBALL_VARIANT_KEY = 'ability-icon-fireball-var-0';
 
 /**
  * Build a minimal Phaser.Scene stand-in that:
@@ -90,6 +92,9 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
         registry.entries().some((e) => e.textureKey === entry!.textureKey),
         `textureKey "${entry!.textureKey}" not found in registry entries`,
       ).toBe(true);
+      if (abilityId === 'fireball') {
+        expect(entry!.textureKey).not.toBe(REMOVED_FIREBALL_VARIANT_KEY);
+      }
     }
   });
 

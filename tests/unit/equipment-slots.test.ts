@@ -1,11 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SLOT_REGISTRY,
   _getMirrorSlotForTests,
   _MIRROR_SLOT_IDS_FOR_TESTS,
   _MIRROR_SLOT_PAIRS_FOR_TESTS,
   _VALID_SLOT_IDS_FOR_TESTS,
   getSlotLabel,
 } from '../../src/shared/equipment-slots.js';
+
+describe('active equipment slot contract', () => {
+  it('contains exactly the ten persisted gameplay slots', () => {
+    expect(SLOT_REGISTRY.map((slot) => slot.id)).toEqual([
+      'head',
+      'neck',
+      'mainHand',
+      'chest',
+      'offHand',
+      'gloves',
+      'legs',
+      'ring1',
+      'feet',
+      'ring2',
+    ]);
+    for (const retired of [
+      'face',
+      'leftArm',
+      'rightArm',
+      'shoulders',
+      'leftWrist',
+      'rightWrist',
+      'back',
+      'belt',
+      'ringLeft',
+      'ringRight',
+    ]) {
+      expect(_VALID_SLOT_IDS_FOR_TESTS.has(retired)).toBe(false);
+    }
+  });
+});
 
 describe('getSlotLabel', () => {
   it('returns the user-facing label for known slot ids', () => {

@@ -92,6 +92,12 @@ export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
  */
 export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
 
+/**
+ * Leading prefix for CI-recovery-created follow-up backlog issues. Full format:
+ * `<!-- crawler-ci-followup-backlog:v1 sourceIssue=<n> pr=<n> thread=<id> -->`.
+ */
+export const FOLLOWUP_BACKLOG_MARKER = '<!-- crawler-ci-followup-backlog:v1';
+
 // ---------------------------------------------------------------------------
 // CI-conflict-coordinator comment
 // ---------------------------------------------------------------------------
@@ -168,6 +174,7 @@ export const MANAGED_COMMENT_MARKERS = [
   COORDINATOR_DATA_PREFIX,
   ISSUE_INTAKE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
+  FOLLOWUP_BACKLOG_MARKER,
   LOOP_INCIDENT_MARKER,
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,

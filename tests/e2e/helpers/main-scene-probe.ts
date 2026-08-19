@@ -16,6 +16,7 @@ import type {
   BossIntroProbeState,
   CarriedWeaponRenderInfo,
   HarvestableRenderSummary,
+  PropRenderSize,
   FamilyHudProbeState,
   FloatingTextProbe,
   ItemIconRenderInfo,
@@ -189,6 +190,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getNpcRenderInfo()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
+  getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
@@ -213,6 +216,40 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.resumePendingRewardPresentations()),
   getRewardOpeningState: (page: Page): Promise<RewardOpeningProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardOpeningState()),
+  advanceRewardOpeningRenderFrames: (
+    page: Page,
+    frames: number,
+    deltaMs = 16,
+  ): Promise<RewardOpeningProbeState> =>
+    page.evaluate(
+      ({ frameCount, frameDeltaMs }) =>
+        window.__mainSceneProbe!.advanceRewardOpeningRenderFrames(frameCount, frameDeltaMs),
+      { frameCount: frames, frameDeltaMs: deltaMs },
+    ),
+  sampleAutoDrivenRewardOpeningRenderFrames: (
+    page: Page,
+    firstFrames: number,
+    nextFrames: number,
+    deltaMs = 16,
+  ): Promise<{
+    readonly first: RewardOpeningProbeState;
+    readonly next: RewardOpeningProbeState;
+  }> =>
+    page.evaluate(
+      ({ firstFrameCount, nextFrameCount, frameDeltaMs }) =>
+        window.__mainSceneProbe!.sampleAutoDrivenRewardOpeningRenderFrames(
+          firstFrameCount,
+          nextFrameCount,
+          frameDeltaMs,
+        ),
+      {
+        firstFrameCount: firstFrames,
+        nextFrameCount: nextFrames,
+        frameDeltaMs: deltaMs,
+      },
+    ),
+  isRewardOpeningAutoDrivenForProbe: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.isRewardOpeningAutoDrivenForProbe()),
   tickRewardOpening: (page: Page, deltaMs: number): Promise<void> =>
     page.evaluate((ms) => window.__mainSceneProbe!.tickRewardOpening(ms), deltaMs),
   skipRewardOpening: (page: Page): Promise<void> =>
