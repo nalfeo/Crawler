@@ -1,5 +1,39 @@
 [
   {
+    "commit": "cc74df258a1d812f1a191039c40511171472222e",
+    "commitDate": "2026-08-19T21:34:08Z",
+    "commitSubject": "Prevent quest arrows from disappearing when HUD reservations only block labels (#3131)",
+    "capturedAt": "2026-08-19T23:30:21.151Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32308626943",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/cc74df258a1d812f1a191039c40511171472222e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36666666666666664,
+        "totalWins": 55,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.78,
+      "gatePass": false,
+      "path": "by-sha/cc74df258a1d812f1a191039c40511171472222e.fun-report.json"
+    }
+  },
+  {
     "commit": "d1ba33dfff41cfc12125d69af21280adb306998e",
     "commitDate": "2026-08-19T13:06:07-07:00",
     "commitSubject": "fix(ci): reject stacked PRs in merge-train admission instead of crashing reconcile (#3156)",
