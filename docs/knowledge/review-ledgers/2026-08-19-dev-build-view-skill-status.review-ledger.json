@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-19",
+  "session_slug": "dev-build-view-skill-status",
+  "task_title": "Add spell-skill rows to combat skills HUD",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Alt A (expandable/pageable tracker) and Alt B (per-slot skill indicators on HudAbilityBar) were both weighed against the chosen fixed-2-row extension of HudSkillTracker; both add material input/layout complexity for a combat HUD where 3+ simultaneously-equipped trackable spells is an edge case, not the common case, so neither displaced the chosen design (divergence=minor, not major_fork). Concerns resolved: (1) BLOCKING - silent 2-row cap could hide skills when >2 trackable spells equipped -> added a non-blocking +N overflow indicator in the title strip (countMatchingSpellSkills) plus a unit test, so the cap is now visible instead of silent; (2) unarmed/spell-only visibility gap -> confirmed non-applicable: getActiveWeaponDef(world) is never undefined during real gameplay (equipmentSystem.ts always calls setActiveWeaponDef on spawn/equip), so panel-hidden-when-unarmed is not a reachable player state; (3) panel mislabeled WEAPON SKILLS after adding spell rows -> renamed title to SKILLS; (4) shared-threshold-drift foot-gun -> confirmed the game-layer registry already generates all 10 spell skills from one array literal (SPELL_SKILL_THRESHOLDS spread via .map), so there is structurally one source of truth, not two; added a regression test asserting every spell skill still uses SPELL_SKILL_THRESHOLDS so a future divergent-curve edit cannot silently break the HUD; (5) automated coverage weaker than runtime behavior -> accepted as consistent with the existing HudSkillTracker/HudAbilityBar test convention in this repo (pure-logic unit tests + source-regex wiring test + e2e visual-regression test, no Phaser-scene HUD test harness exists for any HUD widget); mitigated further by a real hud-lab manual verification with seeded world.skillStatesByEntity confirming the reused progress-bar math renders correctly for a spell skill (fill grew 2.5px -> 82px on usage change)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -8,6 +8,7 @@ coverage/
 .vitest-cache/
 .eslintcache
 .cache/
+test-results/
 tmp/
 artifacts/experiments/
 
