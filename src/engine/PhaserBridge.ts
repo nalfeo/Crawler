@@ -224,7 +224,7 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
  * sized" hand-placed prop (e.g. a barrel at `scale: 0.9` → 2.7 ft, close to a
  * real barrel's footprint).
  */
-const PROP_VISUAL_BASE_SIZE_FT = 3;
+export const PROP_VISUAL_BASE_SIZE_FT = 3;
 
 /**
  * On-floor render scale for a harvestable node's generated sprite. The art is

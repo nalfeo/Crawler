@@ -18,7 +18,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
-import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { createPhaserBridge, PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -38,7 +38,7 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
-import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { DECORATION_DEF_INDEX, getDecorationDef } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -453,9 +453,10 @@ describe('createPhaserBridge', () => {
 
     const torchImage = propImages.find((img) => img.textureKey === 'prop-torch-var-10');
     expect(torchImage).toBeDefined();
-    // torch.scale (1.2) × the 3 ft "normal prop" base = 3.6 ft, well above the
-    // pre-fix 1.2 ft (~10 px) that made torches read as comically small.
-    const expectedPx = ftToPx(3 * 1.2);
+    const torchScale = getDecorationDef('torch')!.scale;
+    // torch.scale × the "normal prop" base ft is well above the pre-fix
+    // `ftToPx(torch.scale)` (~10 px) that made torches read as comically small.
+    const expectedPx = ftToPx(PROP_VISUAL_BASE_SIZE_FT * torchScale);
     expect(torchImage!.displayWidth).toBeCloseTo(expectedPx);
     expect(torchImage!.displayHeight).toBeCloseTo(expectedPx);
   });
