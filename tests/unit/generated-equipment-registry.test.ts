@@ -331,6 +331,46 @@ describe('generated equipment instance registry', () => {
     );
   });
 
+  it('restores a sparse snapshot with a surviving ordinal gap in ascending order', () => {
+    const source = createTestWorld({ generatedEquipmentRunKey: 'run-sparse-gap' });
+    const first = createGeneratedEquipmentInstance(source, createInput());
+    createGeneratedEquipmentInstance(source, createInput('rare'));
+    const third = createGeneratedEquipmentInstance(source, createInput('uncommon'));
+    const snapshot = snapshotGeneratedEquipmentRegistry(source);
+    // Retirement filtering drops the middle instance but preserves order.
+    const sparse = {
+      ...snapshot,
+      instances: [snapshot.instances[0], snapshot.instances[2]],
+    };
+    const target = createTestWorld({ generatedEquipmentRunKey: 'run-sparse-gap' });
+
+    restoreGeneratedEquipmentRegistry(target, sparse, { allowSparseOrdinals: true });
+
+    expect(listGeneratedEquipmentInstances(target).map((item) => item.instanceId)).toEqual([
+      first.instanceId,
+      third.instanceId,
+    ]);
+  });
+
+  it('rejects a sparse snapshot whose ordinals are reordered rather than merely gapped', () => {
+    const source = createTestWorld({ generatedEquipmentRunKey: 'run-sparse-reorder' });
+    createGeneratedEquipmentInstance(source, createInput());
+    createGeneratedEquipmentInstance(source, createInput('rare'));
+    createGeneratedEquipmentInstance(source, createInput('uncommon'));
+    const snapshot = snapshotGeneratedEquipmentRegistry(source);
+    const reordered = {
+      ...snapshot,
+      instances: [snapshot.instances[2], snapshot.instances[0]],
+    };
+    const target = createTestWorld({ generatedEquipmentRunKey: 'run-sparse-reorder' });
+
+    expectRegistryError(
+      () => restoreGeneratedEquipmentRegistry(target, reordered, { allowSparseOrdinals: true }),
+      'ordinal-gap',
+    );
+    expect(listGeneratedEquipmentInstances(target)).toEqual([]);
+  });
+
   it('restores atomically when a later snapshot record is invalid', () => {
     const source = createTestWorld({ generatedEquipmentRunKey: 'run-atomic-restore' });
     createGeneratedEquipmentInstance(source, createInput());

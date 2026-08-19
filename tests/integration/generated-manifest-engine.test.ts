@@ -264,7 +264,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     const expectedDefinitions = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((definition) =>
       FLOOR2_BASIC_LEATHER_STABLE_IDS.includes(definition.stableId),
     );
-    expect(expectedDefinitions).toHaveLength(18);
+    expect(expectedDefinitions).toHaveLength(FLOOR2_BASIC_LEATHER_STABLE_IDS.length);
 
     for (const definition of expectedDefinitions) {
       const alias = queued.find((entry) => entry.textureKey === definition.runtimeKey);

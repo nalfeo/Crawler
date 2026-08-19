@@ -30,7 +30,6 @@ import {
   physicalGlyphPx,
   seedEquipmentDecisionState,
 } from './helpers/equipment-capture.js';
-import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
   loadUiProbeLab,
@@ -59,6 +58,19 @@ const PROBE_ICON_MAGENTA = { r: 0xff, g: 0x2f, b: 0xd0 };
 // (0x445c89) is ~54 away, so a match at threshold 30 specifically indicates the
 // blue-steel panel background.
 const PANEL_BLUE_STEEL = { r: 0x2f, g: 0x3f, b: 0x61 };
+
+const EQUIPMENT_UI_SLOTS = [
+  { id: 'head', label: 'Head' },
+  { id: 'neck', label: 'Neck' },
+  { id: 'mainHand', label: 'Main Hand' },
+  { id: 'chest', label: 'Chest' },
+  { id: 'offHand', label: 'Off Hand' },
+  { id: 'gloves', label: 'Gloves' },
+  { id: 'legs', label: 'Legs' },
+  { id: 'ring1', label: 'Ring 1' },
+  { id: 'feet', label: 'Feet' },
+  { id: 'ring2', label: 'Ring 2' },
+] as const;
 
 function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
   const left = Math.max(a.x, b.x);
@@ -383,7 +395,11 @@ describe('inventory flow (e2e)', () => {
     await page.waitForTimeout(300);
 
     const boundsBySlot = new Map<string, ScreenBounds>();
-    for (const slot of SLOT_REGISTRY) {
+    expect(
+      EQUIPMENT_UI_SLOTS,
+      'the real-game paper doll must expose exactly ten slots',
+    ).toHaveLength(10);
+    for (const slot of EQUIPMENT_UI_SLOTS) {
       const bounds = await probe.getEquipmentSlotBounds(page, slot.id);
       expect(bounds, `expected bounds for equipment slot "${slot.id}"`).not.toBeNull();
       if (bounds) {
@@ -401,6 +417,33 @@ describe('inventory flow (e2e)', () => {
           `equipment slots overlap: ${slotA} intersects ${slotB}`,
         ).toBe(false);
       }
+    }
+  });
+
+  it('renders identity cues for both empty ring slots', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openEquipment(page);
+    await page.waitForTimeout(300);
+
+    for (const ringSlot of ['ring1', 'ring2'] as const) {
+      const cue = await probe.getEquipmentEmptySlotCue(page, ringSlot);
+      expect(cue, `expected an empty-slot cue for "${ringSlot}"`).not.toBeNull();
+      // The ring placeholder branch must actually have drawn (not the generic
+      // fallback), and the caption must be parented by the panel container so
+      // it inherits panel visibility/scale and is cleaned up on rerender.
+      expect(cue!.glyph, `wrong placeholder glyph for "${ringSlot}"`).toBe('ring');
+      expect(cue!.captionText).toBe('Empty');
+      expect(cue!.captionInPanel, `"${ringSlot}" cue is not parented by the panel`).toBe(true);
+      expect(cue!.captionBounds.width).toBeGreaterThan(0);
+      expect(cue!.captionBounds.height).toBeGreaterThan(0);
+
+      const slotBounds = await probe.getEquipmentSlotBounds(page, ringSlot);
+      expect(slotBounds).not.toBeNull();
+      expect(cue!.captionBounds.x).toBeGreaterThanOrEqual(slotBounds!.x - 2);
+      expect(cue!.captionBounds.x + cue!.captionBounds.width).toBeLessThanOrEqual(
+        slotBounds!.x + slotBounds!.width + 2,
+      );
     }
   });
 
@@ -467,7 +510,7 @@ describe('inventory flow (e2e)', () => {
     // one — the exact failure that made the old design unusable (the equipment
     // modal occluded the bag).
     const slotBounds: ScreenBounds[] = [];
-    for (const slot of SLOT_REGISTRY) {
+    for (const slot of EQUIPMENT_UI_SLOTS) {
       const b = await probe.getEquipmentSlotBounds(page, slot.id);
       if (b) slotBounds.push(b);
     }
@@ -783,7 +826,7 @@ describe('equipment decision gate (e2e)', () => {
     try {
       const runs = await probe.getEquipmentTextRuns(labelPage);
       const dollText = runs.filter((run) => run.region === 'doll').map((run) => run.text);
-      for (const slot of SLOT_REGISTRY) {
+      for (const slot of EQUIPMENT_UI_SLOTS) {
         expect(
           dollText,
           `slot "${slot.id}" must render its "${slot.label}" identity label in the doll region`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -246,10 +246,10 @@ function readyForPhase(
 
 describe('theme equipment set coverage validation', () => {
   it('derives the non-hand slot coverage threshold from SLOT_REGISTRY', () => {
-    expect(NON_HAND_EQUIPMENT_SLOT_IDS).toHaveLength(16);
+    expect(NON_HAND_EQUIPMENT_SLOT_IDS).toHaveLength(8);
     expect(NON_HAND_EQUIPMENT_SLOT_IDS).not.toContain('mainHand');
     expect(NON_HAND_EQUIPMENT_SLOT_IDS).not.toContain('offHand');
-    expect(THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS).toBe(11);
+    expect(THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS).toBe(6);
   });
 
   it('rejects insufficient weapon and non-hand slot coverage', () => {
@@ -1124,6 +1124,26 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
   it('rejects a malformed plan shape', () => {
     expect(() => buildThemeEquipmentSetStateFromPlan({ id: 'bad' }, { updatedAt: NOW })).toThrow();
   });
+
+  it('rejects retired slots while loading an authored plan', async () => {
+    const directory = mkdtempSync(path.join(process.cwd(), 'tests', 'theme-plan-'));
+    const planPath = path.join(directory, 'retired-slot.json');
+    writeFileSync(
+      planPath,
+      JSON.stringify({
+        ...minimalPlan,
+        equipment: [{ id: 'belt', displayName: 'Belt', slots: ['belt'] }],
+      }),
+    );
+
+    try {
+      expect(() => loadThemeEquipmentSetPlan('retired-slot', { planPath })).toThrow(
+        /retired or unknown equipment slot/,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('mirror-pair unified-slot authoring rule', () => {
@@ -1155,51 +1175,30 @@ describe('mirror-pair unified-slot authoring rule', () => {
     };
   }
 
-  it('validateThemeSetPlanMirrorSlots returns no reasons for unified mirror items', () => {
+  it('validateThemeSetPlanMirrorSlots accepts the active slot contract', () => {
     expect(
       validateThemeSetPlanMirrorSlots([
-        { id: 'bracers', slots: ['leftWrist', 'rightWrist'] },
-        { id: 'ring', slots: ['ringLeft', 'ringRight'] },
+        { id: 'gloves', slots: ['gloves'] },
+        { id: 'rings', slots: ['ring1', 'ring2'] },
         { id: 'helm', slots: ['head'] },
       ]),
     ).toEqual([]);
   });
 
-  it('flags a lone single-side mirror item (singleton)', () => {
-    const reasons = validateThemeSetPlanMirrorSlots([{ id: 'ring-left', slots: ['ringLeft'] }]);
-    expect(reasons).toHaveLength(1);
-    expect(reasons[0]).toMatchObject({
-      code: 'mirror-slot-unpaired',
-      path: ['equipment', 0, 'slots'],
-    });
-    expect(reasons[0]!.message).toContain('ringRight');
+  it('does not report retired mirror slots', () => {
+    expect(validateThemeSetPlanMirrorSlots([{ id: 'ring', slots: ['ring1'] }])).toEqual([]);
   });
 
-  it('flags two separate single-side items (one reason per offending item)', () => {
-    const reasons = validateThemeSetPlanMirrorSlots([
-      { id: 'bracer-left', slots: ['leftWrist'] },
-      { id: 'bracer-right', slots: ['rightWrist'] },
-    ]);
-    expect(reasons).toHaveLength(2);
-    expect(reasons.map((reason) => reason.path?.[1])).toEqual([0, 1]);
-    for (const reason of reasons) expect(reason.code).toBe('mirror-slot-unpaired');
-  });
-
-  it('build rejects a plan whose mirror pair is split into two items', () => {
+  it('build accepts a plan using the active slots', () => {
     const base = unifiedPlan();
-    const splitPlan = {
+    const activePlan = {
       ...base,
       equipment: [
-        ...base.equipment.filter(
-          (item) => !item.slots.includes('leftWrist') && !item.slots.includes('rightWrist'),
-        ),
-        { id: 'left-bracer', displayName: 'Left Bracer', slots: ['leftWrist'] },
-        { id: 'right-bracer', displayName: 'Right Bracer', slots: ['rightWrist'] },
+        ...base.equipment,
+        { id: 'extra-ring', displayName: 'Extra Ring', slots: ['ring2'] },
       ],
     };
-    expect(() => buildThemeEquipmentSetStateFromPlan(splitPlan, { updatedAt: NOW })).toThrow(
-      /mirror slot/,
-    );
+    expect(() => buildThemeEquipmentSetStateFromPlan(activePlan, { updatedAt: NOW })).not.toThrow();
   });
 
   it('build accepts the coalesced unified-mirror fixture', () => {
@@ -1208,19 +1207,8 @@ describe('mirror-pair unified-slot authoring rule', () => {
     ).not.toThrow();
   });
 
-  it('state-load path still accepts legacy split single-side mirror items', () => {
-    // The mirror rule guards the plan-authoring boundary ONLY. Existing stored
-    // states (incl. in-progress Azure-blob states) with split left/right items
-    // must keep loading via parseThemeEquipmentSetState.
-    const state = makeState();
-    const splitItem = state.items.find(
-      (item) =>
-        item.kind === 'equipment' &&
-        item.slots.length === 1 &&
-        _getMirrorSlotForTests(item.slots[0]!) !== undefined,
-    );
-    expect(splitItem).toBeDefined();
-    expect(() => cloneState(state)).not.toThrow();
+  it('state-load path accepts the active slot contract', () => {
+    expect(() => cloneState(makeState())).not.toThrow();
   });
 });
 

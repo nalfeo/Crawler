@@ -1492,13 +1492,31 @@ const themeEquipmentSetPlanEquipmentSchema = z
   })
   .strict();
 
+function validateThemeSetPlanSlots(
+  equipment: readonly { readonly id: string; readonly slots: readonly string[] }[],
+): readonly ThemeSetGateReason[] {
+  const reasons: ThemeSetGateReason[] = [];
+  equipment.forEach((item, index) => {
+    for (const slot of item.slots) {
+      if (!VALID_NON_HAND_SLOT_IDS.has(slot)) {
+        reasons.push({
+          code: 'unknown-slot',
+          message: `Item "${item.id}" references retired or unknown equipment slot "${slot}".`,
+          path: ['equipment', index, 'slots'],
+        });
+      }
+    }
+  });
+  return reasons;
+}
+
 /**
  * Reject split left/right mirror-pair items. Themed sets default to ONE unified
  * item covering both sides of a mirror pair (a pair of bracers, arm wraps for
  * both arms, a ring usable in either hand). An equipment item that lists one
  * side of a mirror pair without its partner on the SAME item is invalid — this
- * catches both a lone singleton ("signet-ring-left" with only `ringLeft`) and
- * two separate single-side items (each fails on its own missing partner).
+ * catches both a lone singleton and two separate single-side items (each fails
+ * on its own missing partner).
  *
  * Pure and side-effect free; returns one reason per offending slot so callers
  * (and the roster-synth repair loop) get an actionable, per-slot message. The
@@ -1544,6 +1562,13 @@ export const themeEquipmentSetPlanSchema = z
   // through any path. Deliberately NOT on the state schema — existing stored
   // states with legacy split items must still load.
   .superRefine((plan, ctx) => {
+    for (const reason of validateThemeSetPlanSlots(plan.equipment)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reason.message,
+        path: reason.path ? [...reason.path] : ['equipment'],
+      });
+    }
     for (const reason of validateThemeSetPlanMirrorSlots(plan.equipment)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
