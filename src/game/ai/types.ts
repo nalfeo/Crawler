@@ -7,6 +7,7 @@ import type { GameWorld } from '../../core/world.js';
 import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
+import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
 
 /**
  * AI behavioral state machine states.
@@ -746,6 +747,20 @@ export interface RunStats {
   floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
+  /**
+   * Shared den-boss diagnostic rollup — the SAME contract emitted as `den`
+   * telemetry records by the player / AI Runner session recorder, so a headless
+   * run and an interactive recording can be compared field-for-field. Carries
+   * boss position relative to its den, visibility, health, den-door lock state,
+   * the active encounter goal flag, and the discrete transition log; join it to
+   * a recording's `den` event stream on `familyId` + `frame`.
+   *
+   * Set by BOTH `runHeadless` and the human `collectHumanRunStats` path.
+   * Undefined when the run never observed a den floor. See
+   * `src/shared/den-boss-telemetry-types.ts` and
+   * `docs/knowledge/telemetry/den-boss-telemetry-contract.md`.
+   */
+  denBoss?: DenBossDiagnostics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
   /** Optional evaluator cohort that produced this run. */

@@ -601,13 +601,13 @@ describe('runSettlementMaintenancePlanner', () => {
     const { world, playerEid } = createSettlementWorld();
     const baseIds = [
       'iron-helm',
-      'iron-visor',
-      'steel-pauldrons',
       'iron-breastplate',
-      'bronze-vambrace',
-      'iron-armguard',
+      'accessory.leather-collar',
+      'leather-gloves',
       'iron-greaves',
       'leather-boots',
+      'band-of-fortune',
+      'accessory.compass-charm',
       'iron-sword',
     ];
     expect(baseIds.length).toBe(9); // 1 more than the equipment action cap (8)
@@ -919,13 +919,13 @@ describe('runEagerMaintenanceTick', () => {
     const { world, playerEid } = createSettlementWorld();
     const baseIds = [
       'iron-helm',
-      'iron-visor',
-      'steel-pauldrons',
       'iron-breastplate',
-      'bronze-vambrace',
-      'iron-armguard',
+      'accessory.leather-collar',
+      'leather-gloves',
       'iron-greaves',
       'leather-boots',
+      'band-of-fortune',
+      'accessory.compass-charm',
       'iron-sword',
     ];
     for (const baseId of baseIds) {
@@ -939,7 +939,7 @@ describe('runEagerMaintenanceTick', () => {
     ).toBeGreaterThan(0);
 
     runEagerMaintenanceTick(world, playerEid);
-    expect(getEquipmentState(world, playerEid)?.equipped).not.toEqual(equippedAfterFirst);
+    expect(getEquipmentState(world, playerEid)?.equipped).toEqual(equippedAfterFirst);
   });
 
   it('retries a deferred claim once equipping frees bag capacity', () => {

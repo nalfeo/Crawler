@@ -64,7 +64,7 @@ function inputForIndex(
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: `Distribution Fixture ${index}`,
       artKey: `equipment.distribution.${index}`,
-      slots: ['ringLeft'],
+      slots: ['ring1'],
       tags: ['fixture'],
       weightLb: 1,
       statBonuses: {},

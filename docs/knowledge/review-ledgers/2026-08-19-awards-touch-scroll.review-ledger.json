@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-19",
+  "session_slug": "awards-touch-scroll",
+  "task_title": "Fix touch scrolling in Awards",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Independent design review required panel-space drag deltas, scene-level panel hit testing, and input reset on panel transitions; all were incorporated."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "cc3a63f1ea4d20c715ab9fd11efdcaa2094b515e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation introduces touch-drag scrolling for the achievements panel cleanly and correctly. The logic tracks drag state, calculates scroll steps accurately, prevents accidental clicks on release, and gracefully suppresses gameplay input when the panel is open. The scope is disciplined, the code is maintainable, and the provided E2E test using CDP robustly verifies both the scrolling mechanics and the proper nullification of player movement."
+    }
+  }
+}

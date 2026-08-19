@@ -635,7 +635,7 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(hasItem(swordBag, 'signet-of-focus')).toBe(true);
     expect(hasItem(fireballBag, 'signet-of-focus')).toBe(false);
     const fireballEquipment = getEquipmentState(fireballWorld, fireballPlayer)!;
-    expect(fireballEquipment.instances.get(fireballEquipment.equipped.ringRight!)?.def.id).toBe(
+    expect(fireballEquipment.instances.get(fireballEquipment.equipped.ring2!)?.def.id).toBe(
       'signet-of-focus',
     );
   });
@@ -684,7 +684,7 @@ describe('autoFloor1ProgressionSystem', () => {
 
     expect(hasItem(bag, 'signet-of-focus')).toBe(false);
     const equipment = getEquipmentState(world, player)!;
-    expect(equipment.instances.get(equipment.equipped.ringRight!)?.def.id).toBe('signet-of-focus');
+    expect(equipment.instances.get(equipment.equipped.ring2!)?.def.id).toBe('signet-of-focus');
   });
 
   it("still equips the Merchant's Charm even when persona scoring is zero", () => {
