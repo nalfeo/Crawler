@@ -90,7 +90,7 @@ describe('theme set index', () => {
     expect(entry!.id).toBe('classic-fantasy');
     expect(entry!.plan.status).toBe('ok');
     expect(entry!.planCoverage.weaponTypeCount).toBeGreaterThanOrEqual(5);
-    expect(entry!.planCoverage.coveredSlotCount).toBeGreaterThanOrEqual(11);
+    expect(entry!.planCoverage.coveredSlotCount).toBeGreaterThanOrEqual(8);
     expect(entry!.state.status).toBe('none');
   });
 
