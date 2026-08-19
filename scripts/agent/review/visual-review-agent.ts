@@ -265,7 +265,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     labUrl: 'http://127.0.0.1:4176/lab.html?lab=ui-probe-lab',
     outputDir: resolve(process.cwd(), 'files', 'visual-review'),
-    minScore: 4,
+    minScore: 80,
     uxName: 'equipment + inventory character panel',
     uxGoal:
       'clear slot layout, readable typography, strong hierarchy, coherent spacing, icon-first item representation',
@@ -299,8 +299,8 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--min-score' && next) {
       const score = Number(next);
-      if (!Number.isFinite(score) || score < 1 || score > 5) {
-        throw new Error(`invalid --min-score "${next}" (expected 1..5)`);
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        throw new Error(`invalid --min-score "${next}" (expected 0..100)`);
       }
       opts.minScore = score;
       i += 1;
@@ -587,7 +587,7 @@ Design intent for this surface: ${opts.uxGoal}.
 MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
 ${geometryText}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
 
-Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
+Score each axis 0-100 (0 = unacceptable, 100 = shippable quality):
 - layout_consistency
 - spacing_balance
 - visual_hierarchy
@@ -596,17 +596,43 @@ Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
 - typography_clarity
 - thematic_fidelity
 
-"overall.score" is a single 1-5 rating for the whole surface — never the sum of the per-axis scores.
+"overall.score" is a single 0-100 rating for the whole surface — never the sum or mean of the per-axis scores.
+
+Use the FULL 0-100 range with real granularity. Do NOT round to multiples of 10, and do
+not cluster every axis on the same number: a 62 and a 68 are meaningfully different
+judgements and small fixes between rounds must be able to move the score. Calibration:
+- 0-39 broken: a defect blocks the user from reading state or completing the task.
+- 40-59 poor: usable but with obvious defects a player would notice immediately.
+- 60-74 mediocre: no blocking defect, several visible polish problems remain.
+- 75-84 good: solid, with minor refinements outstanding.
+- 85-94 very good: shippable; only subjective or nice-to-have items remain.
+- 95-100 exemplary: reserved for surfaces you cannot suggest a concrete improvement for.
 
 Typography spacing standard is strict:
 - Every text block must have visible top/bottom breathing room inside its container.
 - Flag cramped text when cap-height/ascenders sit too close to borders, dividers, or neighboring rows.
 
+Panel-composition standard (these are recurring, human-reported defects on this project —
+check each one explicitly and report it in "precise_fixes" with a pixel delta):
+- HEADING PLACEMENT CONSISTENCY: sibling section headings must share one convention. If one
+  heading sits ABOVE its bounding box, every peer heading must too. A heading rendered inside
+  its box while a sibling sits above it is a defect, even if each panel looks fine alone.
+- PAIRED-SLOT ALIGNMENT: slots that form a left/right or numbered pair (e.g. ring 1 / ring 2)
+  must share a row baseline and an identical vertical rhythm with the surrounding column.
+  A pair whose two halves sit at different y is a defect.
+- CONTAINER OVERRUN: no child element may touch or cross its container's top/bottom/side edge.
+  Report the exact overlap in pixels.
+- EXCESSIVE PADDING / OVER-WIDE LAYOUT: interior padding that dwarfs the content, or a surface
+  stretched to full viewport width when its content does not need it, is a defect — not neutral.
+  Say how many pixels to shrink and whether the content should be re-centred after.
+- CENTERING: a focal cluster (paper doll, portrait, primary grid) must be optically centred in
+  its pane both horizontally and vertically unless a deliberate alternative reads clearly.
+
 ${readabilityLines}
 
 Thematic standard is strict: this is a **pixel dungeon crawler** UX.
 If the UI reads as generic modern app chrome (flat/sterile panels, non-dungeon mood, weak pixel-art identity),
-score thematic_fidelity <= 2 and include it as a blocking finding.
+score thematic_fidelity <= 40 and include it as a blocking finding.
 
 ${hardRequirementLines}
 ${assetIntegrityBlock}
@@ -1384,7 +1410,7 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
       `${result.surface ? ` surface=${result.surface}` : ''}`,
   );
   console.log(
-    `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/5${normalizedNote}`,
+    `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/100${normalizedNote}`,
   );
   console.log(`[visual-review-agent] summary: ${summary}`);
   if (blockers.length > 0) {

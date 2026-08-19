@@ -137,9 +137,21 @@ function reviewResults() {
         const isWrappedReview = review?.schemaVersion === 1 && typeof review.image === 'string';
         const isRawAzureReview =
           Number.isFinite(review?.overall?.score) &&
-          review.overall.score >= 1 &&
-          review.overall.score <= 5;
+          review.overall.score >= 0 &&
+          review.overall.score <= 100;
         if (!isWrappedReview && !isRawAzureReview) continue;
+        // Legacy raw reviews were scored 1-5; current ones are 0-100. Axis scores
+        // disambiguate the two, since a genuine 0-100 surface scoring <=5 on every
+        // axis is indistinguishable from a legacy review by the overall score alone.
+        const axisScores = Object.values(review?.axes ?? {})
+          .map((axis) => Number(axis?.score))
+          .filter((value) => Number.isFinite(value));
+        const isLegacyFiveScale =
+          !isWrappedReview &&
+          review.overall.score <= 5 &&
+          axisScores.length > 0 &&
+          axisScores.every((value) => value <= 5);
+        const rawScale = isLegacyFiveScale ? 5 : 100;
         const imagePath = isWrappedReview
           ? review.image
           : join(resolve(path, '..'), entry.name.replace(/\.review\.json$/, '.png'));
@@ -156,7 +168,7 @@ function reviewResults() {
         results.set(normalize(resolve(imagePath)), {
           path,
           score,
-          scale: isWrappedReview ? 100 : 5,
+          scale: isWrappedReview ? 100 : rawScale,
           coverage: isWrappedReview ? review.coverage : 100,
           hardFailures: Array.isArray(review.hardFailures) ? review.hardFailures : [],
           findings,

@@ -114,38 +114,49 @@ test('computeGeometryBlockers: overlap pairs come before icon escapes (stable or
 // normalizeOverallScore
 // ---------------------------------------------------------------------------
 
-test('normalizeOverallScore: in-range score is kept (not normalized)', () => {
-  const r = normalizeOverallScore({ overall: { score: 4 }, axes: { a: { score: 4 } } });
-  assert.deepEqual(r, { score: 4, raw: 4, normalized: false });
+test('normalizeOverallScore: in-range 0-100 score is kept (not normalized)', () => {
+  const r = normalizeOverallScore({ overall: { score: 72 }, axes: { a: { score: 70 } } });
+  assert.deepEqual(r, { score: 72, raw: 72, normalized: false });
 });
 
 test('normalizeOverallScore: in-range decimal is preserved to 1 dp', () => {
-  const r = normalizeOverallScore({ overall: { score: 3.5 }, axes: { a: { score: 3 } } });
-  assert.equal(r.score, 3.5);
+  const r = normalizeOverallScore({ overall: { score: 63.5 }, axes: { a: { score: 60 } } });
+  assert.equal(r.score, 63.5);
   assert.equal(r.normalized, false);
 });
 
-test('normalizeOverallScore: SUM-of-axes bug (22) is repaired to the clamped mean', () => {
+test('normalizeOverallScore: legacy 1-5 answer is rescaled to 0-100', () => {
   const axes = {
     layout_consistency: { score: 3 },
-    spacing_balance: { score: 3 },
-    visual_hierarchy: { score: 3 },
-    readability: { score: 3 },
-    icon_usage: { score: 3 },
-    typography_clarity: { score: 3 },
-    thematic_fidelity: { score: 4 },
+    spacing_balance: { score: 4 },
   };
-  const r = normalizeOverallScore({ overall: { score: 22 }, axes });
-  // mean = 22/7 = 3.142857... -> 3.1
-  assert.equal(r.score, 3.1);
-  assert.equal(r.raw, 22);
+  const r = normalizeOverallScore({ overall: { score: 3.5 }, axes });
+  assert.equal(r.score, 70);
+  assert.equal(r.raw, 3.5);
+  assert.equal(r.normalized, true);
+});
+
+test('normalizeOverallScore: SUM-of-axes bug is repaired to the clamped mean', () => {
+  const axes = {
+    layout_consistency: { score: 60 },
+    spacing_balance: { score: 60 },
+    visual_hierarchy: { score: 60 },
+    readability: { score: 60 },
+    icon_usage: { score: 60 },
+    typography_clarity: { score: 60 },
+    thematic_fidelity: { score: 80 },
+  };
+  const r = normalizeOverallScore({ overall: { score: 440 }, axes });
+  // mean = 440/7 = 62.857... -> 62.9
+  assert.equal(r.score, 62.9);
+  assert.equal(r.raw, 440);
   assert.equal(r.normalized, true);
 });
 
 test('normalizeOverallScore: out-of-range with non-finite axes falls back to clamped raw', () => {
-  const r = normalizeOverallScore({ overall: { score: 22 }, axes: { a: { score: 'nope' } } });
-  assert.equal(r.score, 5); // clamp(22) -> 5
-  assert.equal(r.raw, 22);
+  const r = normalizeOverallScore({ overall: { score: 440 }, axes: { a: { score: 'nope' } } });
+  assert.equal(r.score, 100); // clamp(440) -> 100
+  assert.equal(r.raw, 440);
   assert.equal(r.normalized, false);
 });
 

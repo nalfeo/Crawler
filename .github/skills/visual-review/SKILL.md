@@ -129,7 +129,7 @@ npm run review:visual:llm -- \
 ### Actionability tips
 
 - **Declare regions** so feedback is pixel-grounded — the tool prints a normalized
-  `X.X/5` score, tags each blocker `[deterministic]` vs `[llm]`, and labels findings
+  `X.X/100` score, tags each blocker `[deterministic]` vs `[llm]`, and labels findings
   `NEW` vs `RECURRING` across runs (by finding identity), so you can track a fix
   across rounds instead of re-reading reworded prose.
 - **Only opt into `expect.*` checks your surface actually has.** Equipment sets all

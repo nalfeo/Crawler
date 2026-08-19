@@ -162,12 +162,14 @@ function round1(n) {
 }
 
 /**
- * Repair `overall.score` when the model returns something outside the 1-5 scale
- * (a recurring bug: it sometimes returns the SUM of the 7 axis scores, e.g. 22).
- * Returns the score to use plus the raw value for provenance. Only synthesizes a
- * replacement (clamped mean of the axis scores, 1 dp) when EVERY axis score is
- * finite; otherwise it leaves the (clamped) raw value alone. Callers must still
- * gate on blockers independently of the score.
+ * Repair `overall.score` when the model returns something outside the 0-100 scale
+ * (a recurring bug: it sometimes returns the SUM of the 7 axis scores). Returns the
+ * score to use plus the raw value for provenance. Only synthesizes a replacement
+ * (clamped mean of the axis scores, 1 dp) when EVERY axis score is finite;
+ * otherwise it leaves the (clamped) raw value alone. A model that ignores the
+ * scale instruction and answers on the legacy 1-5 scale (raw <= 5 AND every axis
+ * <= 5) is rescaled by 20 rather than reported as a near-zero score. Callers must
+ * still gate on blockers independently of the score.
  *
  * @param {unknown} result
  * @returns {NormalizedScore}
@@ -194,17 +196,29 @@ export function normalizeOverallScore(result) {
   const allAxesFinite = axisScores.length > 0 && axisScores.every((s) => Number.isFinite(s));
 
   const rawNum = Number(rawOriginal);
-  const rawInRange = Number.isFinite(rawNum) && rawNum >= 1 && rawNum <= 5;
+
+  // Legacy 1-5 answer from a model that ignored the 0-100 instruction.
+  if (
+    Number.isFinite(rawNum) &&
+    rawNum > 0 &&
+    rawNum <= 5 &&
+    allAxesFinite &&
+    axisScores.every((s) => s > 0 && s <= 5)
+  ) {
+    return { score: round1(rawNum * 20), raw: rawOriginal, normalized: true };
+  }
+
+  const rawInRange = Number.isFinite(rawNum) && rawNum >= 0 && rawNum <= 100;
 
   if (rawInRange) {
     return { score: round1(rawNum), raw: rawOriginal, normalized: false };
   }
   if (allAxesFinite) {
     const mean = axisScores.reduce((sum, s) => sum + s, 0) / axisScores.length;
-    const clamped = Math.min(5, Math.max(1, mean));
+    const clamped = Math.min(100, Math.max(0, mean));
     return { score: round1(clamped), raw: rawOriginal, normalized: true };
   }
-  const fallback = Number.isFinite(rawNum) ? Math.min(5, Math.max(1, rawNum)) : 0;
+  const fallback = Number.isFinite(rawNum) ? Math.min(100, Math.max(0, rawNum)) : 0;
   return { score: round1(fallback), raw: rawOriginal, normalized: false };
 }
 
