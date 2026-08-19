@@ -296,10 +296,6 @@ export function resolveDirectionArrowStates(
         const labelAvoidsHud = forbiddenRegions.every(
           (region) => !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
         );
-        if (!labelAvoidsHud && !allowHudOverlappingLabel) {
-          sawLabelOnlyHudConflict = true;
-          continue;
-        }
         const clear = states.every(
           (state) =>
             Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
@@ -311,6 +307,12 @@ export function resolveDirectionArrowStates(
               height: state.labelHeight,
             }),
         );
+        if (!labelAvoidsHud && !allowHudOverlappingLabel) {
+          if (clear) {
+            sawLabelOnlyHudConflict = true;
+          }
+          continue;
+        }
         if (clear) {
           placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
           break;
