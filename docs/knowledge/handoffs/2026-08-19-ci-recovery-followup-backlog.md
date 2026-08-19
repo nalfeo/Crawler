@@ -18,7 +18,8 @@ Fix:
   - requires the root comment to come from Copilot reviewer/trusted association,
   - requires explicit follow-up backlog issue wording,
   - requires explicit unassigned/not-assigned-to-Copilot wording,
-  - fails closed when any referenced issue is not one of the PR's closing issues.
+  - fails closed when any referenced issue is not one of the PR's closing issues,
+  - fails closed on cross-repository closing issues so a `other/repo#N` reference never resolves to the same-numbered local issue.
 - Added a managed follow-up backlog marker for idempotency.
 - Taught `reconcile.mjs` to create or reuse an open automation-labelled follow-up issue with no assignees, reply in the exact review thread with `✅ Addressed in <head>`, and resolve the thread without redispatching Copilot.
 - Hardened the new issue/reply/resolve mutations with catch-and-log behavior so transient GitHub failures do not crash the reconciler before normal terminal handling.

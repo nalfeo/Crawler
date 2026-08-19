@@ -2083,9 +2083,20 @@ async function getOrCreateFollowupBacklogIssue({ sourceIssue, thread }) {
   return { issue: created, action: 'created' };
 }
 
-const closingIssueByNumber = new Map(closingIssues.map((issue) => [issue.number, issue]));
+// Follow-up issues are always filed in this repository, so only same-repository
+// closing issues may source one.  Cross-repository closing references (e.g.
+// `other/repo#3120`) are dropped so a same-numbered local issue is never used.
+const localClosingIssues = closingIssues.filter(
+  (issue) =>
+    String(issue?.repository?.nameWithOwner || '').toLowerCase() === repository.toLowerCase(),
+);
+const closingIssueByNumber = new Map(localClosingIssues.map((issue) => [issue.number, issue]));
 for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
-  const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues);
+  const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
+    thread,
+    localClosingIssues,
+    repository,
+  );
   if (sourceIssueNumbers.length === 0) continue;
 
   const root = thread.comments?.nodes?.[0];

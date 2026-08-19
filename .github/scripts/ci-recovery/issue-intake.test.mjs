@@ -365,6 +365,45 @@ test('review follow-up backlog issue selection fails closed and requires unassig
   );
 });
 
+test('review follow-up backlog issue selection fails closed on cross-repository closing issues', () => {
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
+  const thread = {
+    comments: {
+      nodes: [
+        trustedRoot(
+          'Issue #3120 also requires filing a follow-up backlog issue, explicitly without assigning it to Copilot.',
+        ),
+      ],
+    },
+  };
+
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      [{ number: 3120, repository: { nameWithOwner: 'other/repo' } }],
+      'nalfeo/Crawler',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      [{ number: 3120, repository: { nameWithOwner: 'nalfeo/Crawler' } }],
+      'nalfeo/Crawler',
+    ),
+    [3120],
+  );
+  // Closing issues missing repository metadata fail closed when a repository is supplied.
+  assert.deepEqual(
+    reviewThreadFollowupBacklogIssueNumbers(thread, [{ number: 3120 }], 'nalfeo/Crawler'),
+    [],
+  );
+});
+
 test('kickoff comment body includes the required planning instructions', () => {
   assert.match(ISSUE_INTAKE_BODY, /\*\*Before writing any code\*\*/);
   assert.match(ISSUE_INTAKE_BODY, /High-level design and approach for the work\./);

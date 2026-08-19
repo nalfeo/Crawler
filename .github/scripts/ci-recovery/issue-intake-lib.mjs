@@ -217,7 +217,19 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   return [...new Set(explicitReferences)];
 }
 
-export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues) {
+// `closingIssuesReferences` can reference issues in other repositories, and the
+// follow-up issue is always filed in this repository.  Restrict the matchable
+// closing issues to the current repository so a cross-repository reference
+// (e.g. `other/repo#3120`) never resolves to a same-numbered local issue.
+function sameRepositoryClosingIssues(closingIssues, repository) {
+  const target = String(repository || '').toLowerCase();
+  if (!target) return closingIssues || [];
+  return (closingIssues || []).filter(
+    (issue) => String(issue?.repository?.nameWithOwner || '').toLowerCase() === target,
+  );
+}
+
+export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues, repository = '') {
   const rootComment = thread?.comments?.nodes?.[0];
   const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
   const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();
@@ -249,7 +261,9 @@ export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues) {
     ) || /\bcopilot\b[^.!?\n]{0,100}\b(?:unassigned|not\s+assigned)\b/i.test(text);
   if (!requiresUnassignedCopilot) return [];
 
-  const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
+  const issueNumbers = sameRepositoryClosingIssues(closingIssues, repository)
+    .map((issue) => issue.number)
+    .filter(Number.isInteger);
   const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
     Number.parseInt(match[1], 10),
   );
