@@ -4,8 +4,44 @@
     "label": "Equipment Panel",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
-    "setupFile": "src/labs/ui-probe-lab.ts",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment.js",
     "enabled": true,
     "description": "Ten-slot equipment panel at 1280x800 viewport using Phaser ui-probe-lab capture. First tracked UX baseline for release reference."
+  },
+  {
+    "id": "equipment-hover-equipped",
+    "label": "Hover: Equipped Item",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an equipped item to verify the equipped-only tooltip presentation."
+  },
+  {
+    "id": "equipment-hover-duplicate",
+    "label": "Hover: Duplicate Inventory Item",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an inventory item duplicating an equipped item to verify candidate comparison and no-change deltas."
+  },
+  {
+    "id": "equipment-hover-empty-slot",
+    "label": "Hover: Inventory Item for Empty Slot",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an inventory item targeting a slot with no equipped item."
+  },
+  {
+    "id": "equipment-hover-mixed-delta",
+    "label": "Hover: Mixed Better and Worse Stats",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an inventory item with both better and worse stats than the equipped comparison item."
   }
 ]

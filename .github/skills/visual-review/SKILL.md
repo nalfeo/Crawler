@@ -269,9 +269,13 @@ the lightbox.
 
 ### Capturing an explicit A|B iteration (use `--lineage-*`, don't hand-copy files)
 
-Use `--lineage-scenario`/`--lineage-state`/`--lineage-side` on
-`review:visual:llm` whenever a capture is a tracked iteration step in an A|B
-comparison — not a one-off speculative/exploratory screenshot. These flags make
+**Default to `--lineage-*` for any UX review/update task.** Use
+`--lineage-scenario`/`--lineage-state`/`--lineage-side` on
+`review:visual:llm` from the first capture whenever you are reviewing or
+updating a real UX surface — this is the default, not an opt-in for
+multi-round work. Only skip it for a genuinely one-off
+speculative/exploratory screenshot (checking a hunch, an unrelated surface)
+that isn't part of the tracked change. These flags make
 `visual-review-agent.ts` copy the raw timestamped capture + review into the
 exact `<side>/<state>/<scenario>.png` + `.review.json` layout the viewer's
 lineage grouping requires, using ONE stable filename (`scenario`) across every

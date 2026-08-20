@@ -71,6 +71,27 @@ describe('Release UX Baselines', () => {
       assert.strictEqual(equipment.viewport.width, 1280, 'equipment viewport width should be 1280');
       assert.strictEqual(equipment.viewport.height, 800, 'equipment viewport height should be 800');
     });
+
+    test('manifest includes all required equipment tooltip scenarios', () => {
+      const manifestPath = resolve('docs/knowledge/ux-baselines/manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const required = [
+        'equipment-hover-equipped',
+        'equipment-hover-duplicate',
+        'equipment-hover-empty-slot',
+        'equipment-hover-mixed-delta',
+      ];
+      for (const id of required) {
+        const surface = manifest.find((entry) => entry.id === id);
+        assert.ok(surface, `${id} should be in manifest`);
+        assert.strictEqual(surface.enabled, true, `${id} should be enabled`);
+        assert.match(
+          surface.setupFile,
+          /ui-probe-equipment-scenarios\.js$/,
+          `${id} should use the scenario setup`,
+        );
+      }
+    });
   });
 
   describe('baseline-manifest.schema.json', () => {
@@ -138,7 +159,8 @@ describe('Release UX Baselines', () => {
 
       const content = readFileSync(scriptPath, 'utf-8');
       assert.ok(content.includes('readManifest'), 'script should read manifest');
-      assert.ok(content.includes('captureEquipmentSurface'), 'script should capture equipment');
+      assert.ok(content.includes('captureSurface'), 'script should capture manifest surfaces');
+      assert.ok(content.includes('lineage-scenario'), 'script should preserve lineage metadata');
     });
 
     test('capture script has proper argument parsing', () => {

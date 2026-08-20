@@ -8,8 +8,8 @@
  *    state and write a PNG of the panel. The output directory is selected by
  *    `EQUIPMENT_CAPTURE_PHASE` (`before` | `after`, default `after`) so the same
  *    code path produces both halves of a visual-review pair:
- *      files/visual-review/before/equipment.png
- *      files/visual-review/after/equipment.png
+ *      files/e2e-captures/equipment/before/equipment.png
+ *      files/e2e-captures/equipment/after/equipment.png
  *
  * 2. **Text geometry** — read every `Phaser.GameObjects.Text` inside the
  *    equipment panel's container out of the live scene, in design space
@@ -78,11 +78,17 @@ function capturePhase(): CapturePhase {
   return process.env.EQUIPMENT_CAPTURE_PHASE === 'before' ? 'before' : 'after';
 }
 
-/** Canonical visual-review artifact path for the current phase. */
+/**
+ * Path for deterministic e2e captures.
+ *
+ * These PNGs are probe fixtures, not LLM-reviewed evidence. Keeping them
+ * outside files/visual-review prevents the screenshot viewer from presenting
+ * them as incomplete A|B comparisons without evaluator results.
+ */
 export function captureArtifactPath(name: string, phase: CapturePhase = capturePhase()): string {
   const version = process.env.EQUIPMENT_CAPTURE_VERSION?.trim();
   const statePath = version ? join(phase, version) : phase;
-  return resolve(process.cwd(), 'files', 'visual-review', statePath, `${name}.png`);
+  return resolve(process.cwd(), 'files', 'e2e-captures', 'equipment', statePath, `${name}.png`);
 }
 
 function writeArtifact(buffer: Buffer, absolutePath: string): void {

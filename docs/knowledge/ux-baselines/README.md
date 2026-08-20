@@ -21,6 +21,10 @@ docs/knowledge/ux-baselines/
 │   │   │   ├── equipment.png               (1280x800 screenshot)
 │   │   │   ├── equipment.review.json       (deterministic+LLM findings)
 │   │   │   └── metadata.json               (viewport, commit SHA, timestamp)
+│   │   ├── equipment-hover-equipped/
+│   │   ├── equipment-hover-duplicate/
+│   │   ├── equipment-hover-empty-slot/
+│   │   ├── equipment-hover-mixed-delta/
 │   │   └── ...other-surfaces...
 │   └── ...other-releases...
 └── schemas/                                (JSON schemas for validation)
@@ -70,6 +74,22 @@ Each release/{ref}/<surface>/metadata.json records:
   "determinismCheck": "passed"
 }
 ```
+
+## Required equipment tooltip scenarios
+
+Every release baseline captures the equipment panel plus these four important
+interaction states, each compared against the release's `main` baseline:
+
+| Surface                       | Required state                                           |
+| ----------------------------- | -------------------------------------------------------- |
+| `equipment-hover-equipped`    | Hover an equipped item                                   |
+| `equipment-hover-duplicate`   | Hover an inventory item duplicating an equipped item     |
+| `equipment-hover-empty-slot`  | Hover an inventory item for a slot with no equipped item |
+| `equipment-hover-mixed-delta` | Hover an item with both better and worse stats           |
+
+These are registered in `manifest.json`; do not replace them with unreviewed
+e2e-only screenshots. Each capture must include its `.review.json` evaluator
+artifact.
 
 ## Review JSON
 

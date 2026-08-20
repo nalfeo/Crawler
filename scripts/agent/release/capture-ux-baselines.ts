@@ -79,45 +79,56 @@ function getTimestamp() {
   return new Date().toISOString();
 }
 
-async function captureEquipmentSurface(opts: {
+type BaselineSurface = {
+  id: string;
+  label: string;
+  viewport: { width: number; height: number };
+  captureSource: string;
+  setupFile: string;
+  enabled: boolean;
+  description?: string;
+};
+
+async function captureSurface(opts: {
   ref: string;
   releaseDir: string;
+  surface: BaselineSurface;
 }): Promise<{ success: boolean; surface: string; score?: number }> {
-  const { ref, releaseDir } = opts;
-  const surfaceDir = join(releaseDir, 'equipment');
+  const { ref, releaseDir, surface } = opts;
+  const surfaceDir = join(releaseDir, surface.id);
   mkdirSync(surfaceDir, { recursive: true });
 
-  // 2. Launch ui-probe-lab and capture equipment panel
-  // This reuses the visual-review-agent setup for ui-probe-lab capture at 1280x800
-  const screenshotName = 'equipment.png';
+  const screenshotName = `${surface.id}.png`;
   const screenshotPath = join(surfaceDir, screenshotName);
-  const reviewPath = join(surfaceDir, 'equipment.review.json');
+  const reviewPath = join(surfaceDir, `${surface.id}.review.json`);
   const metadataPath = join(surfaceDir, 'metadata.json');
 
-  console.log(`⏱  Capturing equipment panel at 1280x800 from ui-probe-lab...`);
+  console.log(
+    `⏱  Capturing ${surface.label} at ${surface.viewport.width}x${surface.viewport.height} from ${surface.captureSource}...`,
+  );
 
   // Build the visual-review command to capture equipment lab
   const visualReviewCmd = [
     'tsx',
     'scripts/agent/review/visual-review-agent.ts',
     '--url',
-    'http://localhost:5173/lab.html?lab=ui-probe-lab',
+    `http://localhost:5173/lab.html?lab=ui-probe-lab&uxScenario=${encodeURIComponent(surface.id)}`,
     '--output-dir',
     surfaceDir,
     '--screenshot-name',
-    'equipment',
+    surface.id,
     '--viewport',
-    '1280x800',
+    `${surface.viewport.width}x${surface.viewport.height}`,
     '--min-score',
     '65',
     '--ux-name',
-    'Equipment Panel',
+    surface.label,
     '--ux-goal',
-    'Ten-slot inventory UX baseline',
+    surface.description ?? surface.label,
     '--setup-file',
-    'scripts/agent/review/setup/ui-probe-equipment.js',
+    surface.setupFile,
     '--lineage-scenario',
-    'equipment',
+    surface.id,
     '--lineage-state',
     ref,
     '--lineage-side',
@@ -189,14 +200,14 @@ async function captureEquipmentSurface(opts: {
 
     // Write metadata
     const metadata = {
-      surface: 'equipment',
+      surface: surface.id,
       release: ref,
-      viewport: { width: 1280, height: 800 },
-      captureSource: 'ui-probe-lab',
+      viewport: surface.viewport,
+      captureSource: surface.captureSource,
       sourceCommit: getCurrentCommitSha(),
       capturedAt: getTimestamp(),
       screenshotPath: screenshotName,
-      reviewPath: 'equipment.review.json',
+      reviewPath: `${surface.id}.review.json`,
       screenshotHash,
       determinismCheck: 'passed',
     };
@@ -215,11 +226,11 @@ async function captureEquipmentSurface(opts: {
       }
     }
 
-    console.log(`✓ Equipment baseline captured: ${surfaceDir} (score: ${scoreDisplay})`);
+    console.log(`✓ ${surface.label} baseline captured: ${surfaceDir} (score: ${scoreDisplay})`);
 
     return {
       success: true,
-      surface: 'equipment',
+      surface: surface.id,
       score: typeof scoreDisplay === 'number' ? scoreDisplay : undefined,
     };
   } finally {
@@ -274,11 +285,17 @@ async function main() {
   const results = [];
 
   try {
-    for (const surface of enabledSurfaces) {
-      if (surface.id === 'equipment') {
-        const result = await captureEquipmentSurface({
+    for (const rawSurface of enabledSurfaces) {
+      if (typeof rawSurface !== 'object' || rawSurface === null) {
+        console.warn('⚠️  Invalid manifest surface (skipped)');
+        continue;
+      }
+      const surface = rawSurface as BaselineSurface;
+      if (surface.captureSource === 'ui-probe-lab') {
+        const result = await captureSurface({
           ref,
           releaseDir,
+          surface,
         });
         results.push(result);
         if (result.success) capturedCount++;
