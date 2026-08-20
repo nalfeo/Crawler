@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert';
-import { readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('Release UX Baselines', () => {
@@ -22,7 +22,10 @@ describe('Release UX Baselines', () => {
       const requiredFields = ['id', 'label', 'viewport', 'captureSource', 'setupFile', 'enabled'];
       for (const surface of manifest) {
         for (const field of requiredFields) {
-          assert.ok(surface.hasOwnProperty(field), `Surface should have ${field}`);
+          assert.ok(
+            Object.prototype.hasOwnProperty.call(surface, field),
+            `Surface should have ${field}`,
+          );
         }
       }
     });

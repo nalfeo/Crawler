@@ -13,8 +13,8 @@
  * Pass --with-llm-review to include LLM assessment in the baseline.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import process from 'node:process';
 import { execSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -22,12 +22,19 @@ import { createHash } from 'node:crypto';
 const MANIFEST_PATH = resolve('docs/knowledge/ux-baselines/manifest.json');
 const BASELINES_DIR = resolve('docs/knowledge/ux-baselines/releases');
 
-function parseArgs(argv) {
-  const flags = {};
-  const positional = [];
+function parseArgs(argv: string[]): {
+  flags: Record<string, string | boolean>;
+  positional: string[];
+} {
+  const flags: Record<string, string | boolean> = {};
+  const positional: string[] = [];
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
+    if (!arg) {
+      i++;
+      continue;
+    }
     if (arg.startsWith('--')) {
       const eqIdx = arg.indexOf('=');
       if (eqIdx !== -1) {
@@ -50,12 +57,12 @@ function parseArgs(argv) {
   return { flags, positional };
 }
 
-function readManifest() {
+function readManifest(): Record<string, unknown> {
   if (!existsSync(MANIFEST_PATH)) {
     throw new Error(`Manifest not found: ${MANIFEST_PATH}`);
   }
   const content = readFileSync(MANIFEST_PATH, 'utf-8');
-  return JSON.parse(content);
+  return JSON.parse(content) as Record<string, unknown>;
 }
 
 function getCurrentCommitSha() {
@@ -72,10 +79,12 @@ function getTimestamp() {
   return new Date().toISOString();
 }
 
-async function captureEquipmentSurface(opts) {
+async function captureEquipmentSurface(opts: {
+  ref: string;
+  releaseDir: string;
+  withLLMReview?: boolean;
+}): Promise<{ success: boolean; surface: string; score?: number }> {
   const { ref, releaseDir, withLLMReview } = opts;
-
-  // 1. Build output directory for this surface
   const surfaceDir = join(releaseDir, 'equipment');
   mkdirSync(surfaceDir, { recursive: true });
 
@@ -120,7 +129,6 @@ async function captureEquipmentSurface(opts) {
     // Server not running, start it in the background
     console.log('Starting Vite dev server for capture...');
     const serverProc = spawnSync('npm', ['run', 'lab'], {
-      detached: true,
       stdio: 'ignore',
       timeout: 120000, // 2 minutes to boot
     });
@@ -163,10 +171,10 @@ async function captureEquipmentSurface(opts) {
     }
 
     // Read the auto-generated review JSON and ensure it has the right structure
-    let reviewJson = {};
+    let reviewJson: Record<string, unknown> = {};
     if (existsSync(reviewPath)) {
       const reviewContent = readFileSync(reviewPath, 'utf-8');
-      reviewJson = JSON.parse(reviewContent);
+      reviewJson = JSON.parse(reviewContent) as Record<string, unknown>;
     } else {
       console.warn(`Warning: No review JSON found at ${reviewPath}`);
       reviewJson = {
@@ -195,11 +203,25 @@ async function captureEquipmentSurface(opts) {
 
     writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 
-    console.log(
-      `✓ Equipment baseline captured: ${surfaceDir} (score: ${reviewJson.overall?.score || 'unknown'})`,
-    );
+    // Extract score for logging (with type safety)
+    let scoreDisplay: string | number = 'unknown';
+    if (reviewJson && typeof reviewJson === 'object') {
+      const overall = (reviewJson as Record<string, unknown>).overall;
+      if (overall && typeof overall === 'object') {
+        const score = (overall as Record<string, unknown>).score;
+        if (typeof score === 'number' || typeof score === 'string') {
+          scoreDisplay = score;
+        }
+      }
+    }
 
-    return { success: true, surface: 'equipment', score: reviewJson.overall?.score };
+    console.log(`✓ Equipment baseline captured: ${surfaceDir} (score: ${scoreDisplay})`);
+
+    return {
+      success: true,
+      surface: 'equipment',
+      score: typeof scoreDisplay === 'number' ? scoreDisplay : undefined,
+    };
   } finally {
     if (serverStarted) {
       try {
@@ -215,8 +237,10 @@ async function main() {
   const { flags } = parseArgs(process.argv.slice(2));
 
   // Determine release ref and output directory
-  let ref = flags.ref || 'main';
-  let releaseDir = flags['release-dir'] || join(BASELINES_DIR, ref);
+  const ref = (typeof flags.ref === 'string' ? flags.ref : 'main') as string;
+  const releaseDir = (
+    typeof flags['release-dir'] === 'string' ? flags['release-dir'] : join(BASELINES_DIR, ref)
+  ) as string;
 
   console.log(`📸 Capturing UX baselines for release: ${ref}`);
   console.log(`📁 Output directory: ${releaseDir}`);
@@ -226,7 +250,8 @@ async function main() {
   try {
     manifest = readManifest();
   } catch (e) {
-    console.error(`❌ Failed to read manifest: ${e.message}`);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`❌ Failed to read manifest: ${msg}`);
     process.exit(1);
   }
 
@@ -254,7 +279,7 @@ async function main() {
         const result = await captureEquipmentSurface({
           ref,
           releaseDir,
-          withLLMReview: flags['with-llm-review'],
+          withLLMReview: flags['with-llm-review'] === true || flags['with-llm-review'] === 'true',
         });
         results.push(result);
         if (result.success) capturedCount++;
@@ -263,7 +288,8 @@ async function main() {
       }
     }
   } catch (e) {
-    console.error(`❌ Capture failed: ${e.message}`);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`❌ Capture failed: ${msg}`);
     process.exit(1);
   }
 
@@ -273,6 +299,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(`Fatal: ${e.message}`);
+  const msg = e instanceof Error ? e.message : String(e);
+  console.error(`Fatal: ${msg}`);
   process.exit(1);
 });
