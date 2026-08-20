@@ -151,5 +151,8 @@ test('the entrypoint resolves the git release baseline and never dispatches a sw
     await import('node:fs/promises')
   ).readFile(new URL('./run.mjs', import.meta.url), 'utf8');
   assert.match(entrypoint, /resolveLatestReleaseBaselineSafely/);
-  assert.doesNotMatch(entrypoint, /dispatches/);
+  // Match the dispatch API path/method rather than the word "dispatch", so a
+  // comment explaining that nothing is dispatched cannot fail this guard.
+  assert.doesNotMatch(entrypoint, /actions\/workflows\/[^\s'"`]*\/dispatches/);
+  assert.doesNotMatch(entrypoint, /workflow_dispatch/);
 });
