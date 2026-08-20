@@ -188,7 +188,9 @@ test('renders judge score details and full raw response expanders', () => {
   assert.match(html, /Score details \+ judge comments/);
   assert.match(html, /Full raw judge response JSON/);
   assert.match(html, /JSON\.stringify\(details\.rawReview, null, 2\)/);
-  assert.match(html, /renderReviewDetails\(review\)/);
+  assert.match(html, /renderReviewDetails\(review, reviewKey\)/);
+  assert.match(html, /data-details-key/);
+  assert.match(html, /openDetails/);
 });
 
 test('warns that the panel is stale when the backend is unreachable', () => {

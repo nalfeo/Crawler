@@ -534,7 +534,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           '</ul></div>';
       }
 
-      function renderReviewDetails(review) {
+      function renderReviewDetails(review, reviewKey) {
         const details = review?.details;
         if (!details) return '';
         const summary = details.summary
@@ -567,9 +567,9 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
             }).join('') + '</ul></div>'
           : '';
         const rawResponse = details.rawReview
-          ? '<details class="review-details"><summary>Full raw judge response JSON</summary><pre class="review-pre">' + escapeHtml(JSON.stringify(details.rawReview, null, 2)) + '</pre></details>'
+          ? '<details class="review-details" data-details-key="' + escapeHtml(reviewKey + ':raw') + '"><summary>Full raw judge response JSON</summary><pre class="review-pre">' + escapeHtml(JSON.stringify(details.rawReview, null, 2)) + '</pre></details>'
           : '';
-        return '<details class="review-details"><summary>Score details + judge comments</summary><div class="review-details-body">' +
+        return '<details class="review-details" data-details-key="' + escapeHtml(reviewKey) + '"><summary>Score details + judge comments</summary><div class="review-details-body">' +
           verdict +
           rawScore +
           summary +
@@ -624,19 +624,27 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         // Order is decided by the backend (newest-first, overview pair leading
         // each scenario), so the client never re-sorts and cannot drift from it.
         const orderedPairs = comparablePairs;
+        const openDetails = new Set(
+          [...pairsEl.querySelectorAll('details[data-details-key][open]')]
+            .map((details) => details.getAttribute('data-details-key'))
+            .filter(Boolean),
+        );
         const pairHtml = orderedPairs.map((pair) => {
-          const reviewMeta = (review) => review
-            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review) + '</div>'
+          const reviewMeta = (review, reviewKey) => review
+            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review, reviewKey) + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
           const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
+            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
           const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
           return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml(pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
+        for (const details of pairsEl.querySelectorAll('details[data-details-key]')) {
+          details.open = openDetails.has(details.getAttribute('data-details-key'));
+        }
         galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
         feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + orderedPairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
         feedbackList.innerHTML = (state.feedback ?? []).slice().reverse().map((item) => '<div class="feedback-item"><strong>' + escapeHtml(item.scope) + '</strong> · ' + escapeHtml(item.target || item.pairKey || 'general') + '<br>' + escapeHtml(item.comment) + '</div>').join('');
