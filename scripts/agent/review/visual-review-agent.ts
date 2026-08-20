@@ -583,7 +583,13 @@ Treat each listed asset as if it WILL be replaced. Do NOT mention it in any axis
 Evaluate ONLY what is visible in the screenshot and output strict JSON.
 Do not excuse prototype quality. Call out spacing, overlap, alignment, hierarchy, typography, icon usage, text breathing-room, and readability defects explicitly.
 You are given the exact measured pixel geometry of every element. Use it to make positional feedback concrete and numeric — never vague.
-The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap, or alignment conflicts with the geometry numbers, trust the numbers, not your visual impression.`,
+The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap, or alignment conflicts with the geometry numbers, trust the numbers, not your visual impression.
+Calibration — these exact claim patterns have been screenshot-vs-geometry false positives before; before making one of them, compute the actual delta from the geometry table and only report it if the number itself crosses the stated threshold:
+- "slots touch" / "no breathing room" — only valid if the measured gap between the two boxes is <= 1px. A visible seam of several pixels is NOT touching.
+- "tooltip overlaps the panel" — only valid if the tooltip box's edge coordinates actually exceed the panel box's edge coordinates. A tooltip fully inside the panel bounds is not an overlap, however close it looks.
+- "icon is off-center in its slot" — only valid if the icon's centroid offset from its parent slot's centroid exceeds a few px both axes; a dx/dy of 0-1px is intentional centering, not a defect.
+- "ring1/ring2 (or any named pair) are misaligned" — two elements are only "misaligned" if they share the same row or column in the geometry table; elements that are intentionally on different rows are not misaligned with each other.
+If you cannot point to the specific geometry numbers that satisfy one of these thresholds, do not report the finding.`,
     user: `Review the attached screenshot of Crawler's "${opts.uxName}" UX surface.
 Design intent for this surface: ${opts.uxGoal}.
 
