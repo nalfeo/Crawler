@@ -1,0 +1,11 @@
+[
+  {
+    "id": "equipment",
+    "label": "Equipment Panel",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "src/labs/ui-probe-lab.ts",
+    "enabled": true,
+    "description": "Ten-slot equipment panel at 1280x800 viewport using Phaser ui-probe-lab capture. First tracked UX baseline for release reference."
+  }
+]
