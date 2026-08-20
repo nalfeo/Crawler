@@ -3,7 +3,6 @@ import { createRunBundle } from '../../src/shared/run-bundle.js';
 import {
   buildRunBundleUploadRequest,
   buildRunSurveyAppendRequest,
-  buildRunSurveyRequest,
 } from '../../src/shared/run-bundle-telemetry.js';
 
 const makeBundle = () =>
@@ -38,7 +37,7 @@ describe('run bundle telemetry request builders', () => {
       tension: 2,
       comment: 'The tension was excellent.',
     };
-    const request = buildRunSurveyRequest(bundle, survey);
+    const request = buildRunSurveyAppendRequest(bundle.meta.runId, survey);
 
     expect(request).toEqual({
       meta: { runId: bundle.meta.runId },
@@ -49,7 +48,7 @@ describe('run bundle telemetry request builders', () => {
   it('keeps the bundle runId stable across completion and survey request shapes', () => {
     const bundle = makeBundle();
     const silentRequest = buildRunBundleUploadRequest(bundle);
-    const surveyRequest = buildRunSurveyRequest(bundle, {
+    const surveyRequest = buildRunSurveyAppendRequest(bundle.meta.runId, {
       enjoyment: 1,
       immersion: 1,
       mastery: 1,

@@ -27,13 +27,6 @@ export function buildRunBundleUploadRequest(bundle: RunBundle): RunBundleUploadR
   };
 }
 
-export function buildRunSurveyRequest(
-  bundle: RunBundle,
-  survey: PlaytestSurvey,
-): RunSurveyAppendRequest {
-  return buildRunSurveyAppendRequest(bundle.meta.runId, survey);
-}
-
 export function buildRunSurveyAppendRequest(
   runId: string | undefined,
   survey: PlaytestSurvey,
