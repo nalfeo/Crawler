@@ -1,5 +1,39 @@
 [
   {
+    "commit": "578ffc9d5f0fac64b986cac8fa7bef8a6ec8274e",
+    "commitDate": "2026-08-20T07:29:59Z",
+    "commitSubject": "Harden nightly balance issue prompt to require fully-qualified PR close reference (#3150)",
+    "capturedAt": "2026-08-20T08:45:32.263Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32345869317",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/578ffc9d5f0fac64b986cac8fa7bef8a6ec8274e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.93,
+      "gatePass": false,
+      "path": "by-sha/578ffc9d5f0fac64b986cac8fa7bef8a6ec8274e.fun-report.json"
+    }
+  },
+  {
     "commit": "8ed30488b6197cc72c472b03eeb1510124154bae",
     "commitDate": "2026-08-19T23:13:40Z",
     "commitSubject": "fix(ci): merge bottom-of-stack PRs via async endpoint instead of rejecting them forever (#3157)",
