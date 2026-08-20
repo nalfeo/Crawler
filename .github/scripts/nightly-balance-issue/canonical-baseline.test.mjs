@@ -155,6 +155,28 @@ test('treats expired aggregate artifacts as unavailable', async () => {
   assert.ok(calls.some((call) => call.options?.method === 'POST'));
 });
 
+test('dispatches when every canonical run at head fails the artifact check', async () => {
+  const { requestFn, calls } = createRequestFn({
+    runs: [canonicalRun({ id: 5 }), canonicalRun({ id: 6 })],
+    artifactsByRun: { 5: [], 6: allFinalAggregates().slice(2) },
+  });
+
+  const result = await ensureCanonicalBaselineSweep({ token, owner, repo, requestFn });
+
+  assert.equal(result.status, 'dispatched');
+  assert.ok(calls.some((call) => call.options?.method === 'POST'));
+});
+
+test('scopes the runs query to the exact head SHA instead of paging branch history', async () => {
+  const { requestFn, calls } = createRequestFn();
+
+  await ensureCanonicalBaselineSweep({ token, owner, repo, requestFn });
+
+  const runsQuery = calls.find((call) => call.path.includes('/runs?'));
+  assert.ok(runsQuery.path.includes(`head_sha=${headSha}`));
+  assert.ok(runsQuery.path.includes('branch=main'));
+});
+
 test('reuses an eligible canonical run at the current head instead of dispatching', async () => {
   const { requestFn, calls } = createRequestFn({
     runs: [canonicalRun({ id: 7 })],

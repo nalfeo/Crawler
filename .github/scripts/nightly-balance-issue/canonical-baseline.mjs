@@ -82,14 +82,19 @@ export async function ensureCanonicalBaselineSweep({
   const targetBranch = branch || (await resolveDefaultBranch({ requestFn, token, owner, repo }));
   const headSha = await resolveHeadSha({ requestFn, token, owner, repo, branch: targetBranch });
 
+  // Ask GitHub for runs at this exact SHA rather than paging the branch's whole
+  // history: on an active `main` a qualifying run can easily sit past the first
+  // 100 branch runs, and missing it would fire a redundant 600-run sweep.
   const runsResponse = await requestFn(
     token,
-    `/repos/${owner}/${repo}/actions/workflows/${CANONICAL_SWEEP_WORKFLOW}/runs?branch=${encodeURIComponent(targetBranch)}&per_page=100`,
+    `/repos/${owner}/${repo}/actions/workflows/${CANONICAL_SWEEP_WORKFLOW}/runs?branch=${encodeURIComponent(targetBranch)}&head_sha=${encodeURIComponent(headSha)}&per_page=100`,
   );
   const runsAtHead = (runsResponse?.data?.workflow_runs ?? []).filter(
     (run) => run?.head_sha === headSha && isCanonicalSweepRun(run, inputs),
   );
 
+  // Every non-`completed` status (`queued`, `in_progress`, `waiting`, …) counts as
+  // in flight, so a slot-queued sweep is never double dispatched.
   const pending = runsAtHead.find((run) => run?.status !== 'completed');
   if (pending) {
     return { status: 'pending', branch: targetBranch, headSha, runId: pending.id };
