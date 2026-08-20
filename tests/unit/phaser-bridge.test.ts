@@ -18,7 +18,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
-import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { createPhaserBridge, _PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -38,7 +38,7 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
-import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { DECORATION_DEF_INDEX, getDecorationDef } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -46,6 +46,8 @@ import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTeleg
 import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
 import { ftToPx } from '../../src/shared/units.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { registerFloorManifest } from '../../src/shared/floor-registry.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -412,6 +414,53 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
     expect(propImages.every((img) => img.destroyed)).toBe(true);
     expect(propRects.every((rect) => rect.destroyed)).toBe(true);
+  });
+
+  it('renders a floor-decoration torch prop at a normal gameplay size, not scale-as-feet (regression: #3127)', () => {
+    // `DecorationDef.scale` is documented as a "size multiplier relative to
+    // base (1.0 = 100%)", not an absolute feet value. The Prop render pass
+    // used to feed it straight into `ftToPx()`, so the torch (`scale: 1.2`)
+    // rendered at 1.2 ft (~10 px) — comically small next to the 3 ft player.
+    const propImages: MockImage[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayWidth = w;
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayHeight = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn(() => ({ setSize: vi.fn(), setFillStyle: vi.fn(), setDepth: vi.fn() })),
+      },
+      textures: {
+        exists: (key: string) => key === 'prop-torch-var-10',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    const torchProp = addEntity(world.ecs);
+    addComponent(world.ecs, torchProp, Prop);
+    addComponent(world.ecs, torchProp, set(Position, { x: 1, y: 2 }));
+    world.stores.prop.defIdIndex[torchProp] = DECORATION_DEF_INDEX['torch']!;
+
+    bridge.sync(world);
+
+    const torchImage = propImages.find((img) => img.textureKey === 'prop-torch-var-10');
+    expect(torchImage).toBeDefined();
+    const torchScale = getDecorationDef('torch')!.scale;
+    // torch.scale × the "normal prop" base ft is well above the pre-fix
+    // `ftToPx(torch.scale)` (~10 px) that made torches read as comically small.
+    const expectedPx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * torchScale);
+    expect(torchImage!.displayWidth).toBeCloseTo(expectedPx);
+    expect(torchImage!.displayHeight).toBeCloseTo(expectedPx);
   });
 
   it('renders set-piece prop layers with straddling depth, footprint and tint', () => {
@@ -1496,7 +1545,7 @@ describe('createPhaserBridge', () => {
     expect(img.setTextureCalls).toBe(1);
   });
 
-  // --- Carried main-hand weapon (always visible, not just during a swing) ---
+  // --- Carried main-hand weapon (feature-flagged; default-off) ---
 
   function makePlayerWithWeapon(
     world: ReturnType<typeof createTestWorld>,
@@ -1512,7 +1561,20 @@ describe('createPhaserBridge', () => {
     return player;
   }
 
-  it('carries the equipped main-hand weapon on the player when no swing is active', () => {
+  function enableCarriedMainHandWeaponFlag(world: ReturnType<typeof createTestWorld>): void {
+    const floorId = 'test-carried-main-hand-weapon-enabled';
+    registerFloorManifest(floorId, {
+      ...floor1Manifest,
+      id: floorId,
+      behavior: {
+        ...floor1Manifest.behavior,
+        carriedMainHandWeapon: true,
+      },
+    });
+    world.floorId = floorId;
+  }
+
+  it('does not render the carried main-hand weapon while the feature flag is disabled', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -1520,13 +1582,8 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    // Player sprite + the carried weapon sprite.
-    expect(images).toHaveLength(2);
-    const weaponImage = images[1]!;
-    expect(weaponImage.textureKey).toBe('kenney-tiny-dungeon');
-    expect(weaponImage.frame).toBe(getSprite('weapon.sword')?.frame);
-    expect(weaponImage.visible).toBe(true);
-    expect(weaponImage.depth).toBeGreaterThan(ENTITY_DEPTH);
+    // Player sprite only: carried-weapon rendering is default-off.
+    expect(images).toHaveLength(1);
   });
 
   it('uses loaded generated baseball-bat art for the carried weapon instead of the Kenney fallback', () => {
@@ -1554,6 +1611,7 @@ describe('createPhaserBridge', () => {
     });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const batDef = WEAPON_DEFS.get('baseball-bat');
     expect(batDef).toBeDefined();
     makePlayerWithWeapon(world, 'baseball-bat');
@@ -1575,6 +1633,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1592,6 +1651,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
     addComponent(world.ecs, player, set(Velocity, { x: 5, y: 0 }));
 
@@ -1611,6 +1671,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true, withGraphics: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1661,6 +1722,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     makePlayerWithWeapon(world, 'bow');
 
     bridge.sync(world);
@@ -1672,6 +1734,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);

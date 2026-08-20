@@ -46,21 +46,6 @@
       "slots": ["neck"]
     },
     {
-      "id": "patched-cloak",
-      "displayName": "Patched Cloak",
-      "slots": ["back"]
-    },
-    {
-      "id": "linen-arm-wraps",
-      "displayName": "Linen Arm Wraps",
-      "slots": ["leftArm", "rightArm"]
-    },
-    {
-      "id": "simple-cloth-mask",
-      "displayName": "Simple Cloth Mask",
-      "slots": ["face"]
-    },
-    {
       "id": "cord-tied-tunic",
       "displayName": "Cord-Tied Tunic",
       "slots": ["chest"]
@@ -76,29 +61,14 @@
       "slots": ["legs"]
     },
     {
-      "id": "frayed-rope-belt",
-      "displayName": "Frayed Rope Belt",
-      "slots": ["belt"]
-    },
-    {
       "id": "woven-cloth-band",
       "displayName": "Woven Cloth Band",
-      "slots": ["ringLeft", "ringRight"]
+      "slots": ["ring1", "ring2"]
     },
     {
       "id": "simple-cloth-sandals",
       "displayName": "Simple Cloth Sandals",
       "slots": ["feet"]
-    },
-    {
-      "id": "patched-cloth-bracers",
-      "displayName": "Patched Cloth Bracers",
-      "slots": ["leftWrist", "rightWrist"]
-    },
-    {
-      "id": "simple-cloth-shoulder-wrap",
-      "displayName": "Simple Cloth Shoulder Wrap",
-      "slots": ["shoulders"]
     }
   ]
 }

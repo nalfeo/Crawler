@@ -50,7 +50,7 @@ import { getFloorManifest } from '../../shared/floor-registry.js';
 import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
 import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
 import { SHAPE_CIRCLE } from '../physics-defs.js';
-import { CORPSE } from '../../shared/constants.js';
+import { CORPSE, MINI_SLIME_COLLISION_EPSILON_FT } from '../../shared/constants.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -84,6 +84,49 @@ const MINI_SLIME_SPAWN_MIN_DIST = 1.5;
  * Increased from 2.0 to 3.5 so babies are ejected further from parent body for greater separation.
  */
 const MINI_SLIME_SPAWN_MAX_DIST = 3.5;
+/**
+ * How many randomized angle/distance candidates to try before giving up and
+ * falling back to the parent's own (necessarily-passable) death position.
+ * Bounded so a fully wall-hemmed death spot can't loop indefinitely.
+ */
+const MINI_SLIME_SPAWN_MAX_ATTEMPTS = 8;
+// Sample just inside the candidate footprint so exact tile-edge contact does
+// not read as a wall hit because of floating-point rounding. Mirrors
+// knockbackSystem's COLLISION_EPSILON.
+/**
+ * Whether a baby slime's full footprint (not just its center point) would fit
+ * on passable ground at (x, y). Without this check, a candidate position
+ * offset from the parent's death spot by up to MINI_SLIME_SPAWN_MAX_DIST can
+ * land inside a wall whenever the parent dies near one, leaving the baby
+ * stuck. Falls back to `true` when there is no floor map (e.g. labs/tests).
+ */
+function isMiniSlimeSpawnPassable(
+  world: GameWorld,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return true;
+  }
+
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const left = x - halfWidth + MINI_SLIME_COLLISION_EPSILON_FT;
+  const right = x + halfWidth - MINI_SLIME_COLLISION_EPSILON_FT;
+  const top = y - halfHeight + MINI_SLIME_COLLISION_EPSILON_FT;
+  const bottom = y + halfHeight - MINI_SLIME_COLLISION_EPSILON_FT;
+
+  return (
+    floorMap.isPassableAt(x, y) &&
+    floorMap.isPassableAt(left, top) &&
+    floorMap.isPassableAt(right, top) &&
+    floorMap.isPassableAt(left, bottom) &&
+    floorMap.isPassableAt(right, bottom)
+  );
+}
 
 export interface DropSystemOptions {
   readonly spawnLoot?: boolean;
@@ -243,14 +286,31 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
     : undefined;
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
-    const angle = world.rng.next() * Math.PI * 2;
-    const distance =
-      MINI_SLIME_SPAWN_MIN_DIST +
-      world.rng.next() * (MINI_SLIME_SPAWN_MAX_DIST - MINI_SLIME_SPAWN_MIN_DIST);
+    // Try several randomized angle/distance offsets and only keep one whose
+    // full footprint lands on passable ground; a fixed offset from the
+    // parent's death spot can otherwise land inside a wall whenever the
+    // parent dies near one (spawning a baby stuck in the wall). Falls back to
+    // the parent's own death position — which was necessarily passable —
+    // if every attempt fails (e.g. a fully wall-hemmed corner).
+    let miniX = x;
+    let miniY = y;
+    for (let attempt = 0; attempt < MINI_SLIME_SPAWN_MAX_ATTEMPTS; attempt += 1) {
+      const angle = world.rng.next() * Math.PI * 2;
+      const distance =
+        MINI_SLIME_SPAWN_MIN_DIST +
+        world.rng.next() * (MINI_SLIME_SPAWN_MAX_DIST - MINI_SLIME_SPAWN_MIN_DIST);
+      const candidateX = x + Math.cos(angle) * distance;
+      const candidateY = y + Math.sin(angle) * distance;
+      if (isMiniSlimeSpawnPassable(world, candidateX, candidateY, miniWidth, miniHeight)) {
+        miniX = candidateX;
+        miniY = candidateY;
+        break;
+      }
+    }
     const miniEid = spawnBehaviorEnemy(
       world,
-      x + Math.cos(angle) * distance,
-      y + Math.sin(angle) * distance,
+      miniX,
+      miniY,
       miniHp,
       SLIME_LEAPER_AI_TYPE,
       Math.max(0.05, parentSpeed),

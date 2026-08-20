@@ -181,6 +181,76 @@ test('evaluateAdmission reports every blocking reason from current facts only', 
   ]);
 });
 
+test('evaluateAdmission rejects a non-bottom stacked PR (GitHub `stack` object, position !== 1) even when otherwise green', () => {
+  // Incident: PR #3027 (bottom, position 1) was stacked under #3033 (top,
+  // position 2). The classic merge PUT 403s ("Merging stacked PRs via this
+  // endpoint is not supported") for ANY PR in a stack, which previously
+  // crashed the whole merge-train reconcile run and blocked every other
+  // queued PR for 24h+. A non-bottom stacked PR must never be admitted: the
+  // classic merge endpoint cannot land it in isolation (it would pull in
+  // everything below it too), so it must wait for the PR(s) below it to
+  // merge/dissolve the stack first.
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 2, size: 2 },
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.equal(result.eligible, false);
+  assert.deepEqual(result.reasons, ['stacked-pr']);
+});
+
+test('evaluateAdmission keeps bottom-of-stack PRs blocked by default (CI-recovery mode)', () => {
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 1, size: 2 },
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.deepEqual(result, { eligible: false, reasons: ['stacked-pr'] });
+});
+
+test('evaluateAdmission admits a green bottom-of-stack PR when async stacked merges are enabled', () => {
+  // Merge-train mode explicitly enables async stacked merges. In that mode a
+  // bottom-of-stack PR can be admitted and merged via merge-async.
+  const result = evaluateAdmission(
+    {
+      state: 'open',
+      draft: false,
+      mergeable: true,
+      stack: { base: { ref: 'main', sha: HEAD }, id: 1, number: 2, position: 1, size: 2 },
+      checkRuns: greenChecks(),
+      reviewThreads: [],
+      reviews: substantiveCopilotReviews(),
+    },
+    { allowBottomStackAsync: true },
+  );
+
+  assert.deepEqual(result, { eligible: true, reasons: [] });
+});
+
+test('evaluateAdmission admits a green, non-stacked PR (stack absent/null is a no-op)', () => {
+  const result = evaluateAdmission({
+    state: 'open',
+    draft: false,
+    mergeable: true,
+    stack: null,
+    checkRuns: greenChecks(),
+    reviewThreads: [],
+    reviews: substantiveCopilotReviews(),
+  });
+
+  assert.deepEqual(result, { eligible: true, reasons: [] });
+});
+
 test('a not-yet-admissible PR evaluates to REPAIRING with the blocking reason', () => {
   const decision = evaluatePhase(
     greenPrFacts({ reviewThreads: [{ isResolved: false }] }),

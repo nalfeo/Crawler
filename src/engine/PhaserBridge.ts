@@ -12,6 +12,7 @@ import {
   Sprite,
 } from '../core/components.js';
 import { getActiveWeaponDef } from '../core/active-weapon.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
@@ -214,6 +215,19 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
   }
   return null;
 }
+
+/**
+ * Reference footprint in feet for a floor-decoration `Prop` at
+ * `DecorationDef.scale === 1.0`. `scale` is documented as a "size multiplier
+ * relative to base (1.0 = 100%)", so the Prop render pass multiplies by this
+ * constant rather than treating `scale` as an absolute feet value (see the
+ * Prop render pass below for the bug this fixes). `3` reads as a "normal
+ * sized" hand-placed prop (e.g. a barrel at `scale: 0.9` → 2.7 ft, close to a
+ * real barrel's footprint). Exported (with a leading underscore) only so the
+ * regression test can assert against the production value instead of
+ * duplicating the magic number; it has no production caller outside this file.
+ */
+export const _PROP_VISUAL_BASE_SIZE_FT = 3;
 
 /**
  * On-floor render scale for a harvestable node's generated sprite. The art is
@@ -884,8 +898,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
       /**
        * Draw (or hide) the player's equipped main-hand weapon as a persistent
-       * carried sprite, so the weapon is visible between swings and for weapon
-       * types that never spawn a swing entity at all.
+       * carried sprite when the floor enables `carriedMainHandWeapon`. When
+       * disabled, this path only hides any existing carried sprite.
+       *
+       * With the flag enabled, the weapon stays visible between swings and for
+       * weapon types that never spawn a swing entity at all.
        *
        * Art resolution mirrors the swing branch's preference order: approved
        * generated art first, then the Kenney placeholder for melee weapons,
@@ -905,6 +922,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         };
         if (typeof scene.add.image !== 'function') {
+          return;
+        }
+        if (!getWorldFloorBehavior(world).carriedMainHandWeapon) {
+          hideCarried();
           return;
         }
         const weaponDef = getActiveWeaponDef(world);
@@ -2019,8 +2040,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   }
                 }
                 playPlayerWalkAnimation(img, eid);
-                // The equipped main-hand weapon is always carried, not just
-                // drawn for the duration of a swing.
+                // The equipped main-hand weapon is carried between swings only
+                // when floor behavior enables persistent carry rendering.
                 updateCarriedWeapon(eid, x, y, img.visible !== false);
               } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
@@ -2291,7 +2312,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
         const defId = DECORATION_INDEX_TO_ID[defIdIndex];
         const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
-        const scalePx = ftToPx(decorationDef?.scale ?? 1.0);
+        // `DecorationDef.scale` is documented as a "size multiplier relative to
+        // base (1.0 = 100%)", NOT a feet value — but this line used to feed it
+        // straight into `ftToPx()`, so a torch authored at `scale: 1.2` rendered
+        // at 1.2 ft (~10 px), comically small next to the 3 ft player. Multiply
+        // by a reference footprint (a "normal-sized" prop, matching the
+        // `prop-torch` asset brief's "reads clearly at gameplay scale") to
+        // restore the intended multiplier semantics.
+        const scalePx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * (decorationDef?.scale ?? 1.0));
         const depth =
           decorationDef?.depthLayer === 'back'
             ? PROP_DEPTH.back

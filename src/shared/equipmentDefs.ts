@@ -25,6 +25,22 @@ import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 import { getWeaponDef } from './weaponDefs.js';
 
 /**
+ * Static equipment that was intentionally retired with the ten-slot contract.
+ * Carryover uses this list to discard obsolete inventory/equip references rather
+ * than treating an old save as corrupt or retargeting the item to a new slot.
+ */
+export const RETIRED_EQUIPMENT_ITEM_IDS: ReadonlySet<string> = new Set([
+  'iron-visor',
+  'steel-pauldrons',
+  'travelers-cloak',
+  'sturdy-belt',
+  'bronze-vambrace',
+  'iron-armguard',
+  'leather-bracer',
+  'beaded-bracelet',
+]);
+
+/**
  * The magic charm the Floor 1 merchant gives as a quest reward — a necklace
  * (neck slot) granting +1 charisma. Modest, slightly cursed, fully wearable.
  *
@@ -181,7 +197,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
 /**
  * Placeholder wearable gear covering every non-weapon, non-neck body slot so
  * the paper-doll is fully fillable and the equip-from-inventory flow is
- * testable across all 18 slots. Each `id` matches a `gear(...)` item slug in
+ * testable across the active slots. Each `id` matches a `gear(...)` item slug in
  * `items.ts`. Primary-stat bonuses are integers (the equipment validator
  * rejects fractional primaries); secondary stats (armor, moveSpeed, crit,
  * etc.) may be fractional. Rings are split into two distinct items because a
@@ -198,44 +214,12 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     weightLb: 5,
   },
   {
-    id: 'iron-visor',
-    name: 'Iron Visor',
-    slots: ['face'],
-    statBonuses: { armor: 1, critChance: 0.03 },
-    rarity: 'common',
-    weightLb: 2,
-  },
-  {
-    id: 'steel-pauldrons',
-    name: 'Steel Pauldrons',
-    slots: ['shoulders'],
-    statBonuses: { armor: 2, strength: 1 },
-    rarity: 'uncommon',
-    weightLb: 6,
-  },
-  {
     id: 'iron-breastplate',
     name: 'Iron Breastplate',
     slots: ['chest'],
     statBonuses: { armor: 4, constitution: 1 },
     rarity: 'uncommon',
     weightLb: 15,
-  },
-  {
-    id: 'travelers-cloak',
-    name: "Traveler's Cloak",
-    slots: ['back'],
-    statBonuses: { moveSpeed: 0.05, dodgeChance: 0.03 },
-    rarity: 'uncommon',
-    weightLb: 2,
-  },
-  {
-    id: 'sturdy-belt',
-    name: 'Sturdy Belt',
-    slots: ['belt'],
-    statBonuses: { hpRegen: 0.5, constitution: 1 },
-    rarity: 'common',
-    weightLb: 1,
   },
   {
     id: 'iron-greaves',
@@ -262,41 +246,9 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     weightLb: 1,
   },
   {
-    id: 'bronze-vambrace',
-    name: 'Bronze Vambrace',
-    slots: ['leftArm'],
-    statBonuses: { armor: 1, strength: 1 },
-    rarity: 'common',
-    weightLb: 2,
-  },
-  {
-    id: 'iron-armguard',
-    name: 'Iron Armguard',
-    slots: ['rightArm'],
-    statBonuses: { armor: 1, damageBonus: 2 },
-    rarity: 'common',
-    weightLb: 2,
-  },
-  {
-    id: 'leather-bracer',
-    name: 'Leather Bracer',
-    slots: ['leftWrist'],
-    statBonuses: { dexterity: 1, dodgeChance: 0.02 },
-    rarity: 'common',
-    weightLb: 0.5,
-  },
-  {
-    id: 'beaded-bracelet',
-    name: 'Beaded Bracelet',
-    slots: ['rightWrist'],
-    statBonuses: { critChance: 0.02, luck: 1 },
-    rarity: 'uncommon',
-    weightLb: 0.25,
-  },
-  {
     id: 'band-of-fortune',
     name: 'Band of Fortune',
-    slots: ['ringLeft'],
+    slots: ['ring1'],
     statBonuses: { luck: 1, xpBonus: 0.05 },
     rarity: 'rare',
     weightLb: 0.25,
@@ -304,7 +256,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   {
     id: 'signet-of-focus',
     name: 'Signet of Focus',
-    slots: ['ringRight'],
+    slots: ['ring2'],
     statBonuses: { intelligence: 1, cooldownReduction: 0.03 },
     rarity: 'rare',
     weightLb: 0.25,

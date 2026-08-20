@@ -15,7 +15,7 @@ import {
 } from '../../src/core/systems/questSystem.js';
 import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { addItem, createInventoryBag } from '../../src/shared/inventory.js';
-import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+import { MERCHANTS_CHARM_DEF, getEquippableItemIds } from '../../src/shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
@@ -138,6 +138,33 @@ describe('questSystem', () => {
     world.inventories.set(player, createInventoryBag());
     questSystem(world);
     expect(shop.done['buy-gear']).toBe(true);
+  });
+
+  it('does not unlock Floor 1 equipment from non-merchant equippable loot', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    const bag = world.inventories.get(player)!;
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    const nonMerchantEquippable = getEquippableItemIds().find(
+      (itemId) => itemId !== SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+    expect(nonMerchantEquippable).toBeDefined();
+    addItem(bag, nonMerchantEquippable!, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(false);
+  });
+
+  it('still unlocks equipment once the merchant charm is acquired', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    addItem(world.inventories.get(player)!, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(true);
   });
 
   it('setTrackedQuest focuses a single active quest', () => {

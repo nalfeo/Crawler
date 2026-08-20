@@ -77,10 +77,10 @@ describe('theme equipment review command bridge', () => {
     expect(result).toMatchObject({
       id: 'classic-fantasy',
       stateRevision: 0,
-      coverage: { weaponTypeCount: 6, coveredSlotCount: 16 },
+      coverage: { weaponTypeCount: 6, coveredSlotCount: 8 },
       gate: { canAdvance: false },
     });
-    expect(result.items).toHaveLength(19);
+    expect(result.items).toHaveLength(13);
   });
 
   it('persists item review through the canonical mutation and rejects stale revisions', async () => {
