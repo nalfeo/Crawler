@@ -378,6 +378,87 @@ export function normalizeOverallScore(result) {
 }
 
 /**
+ * Penalty applied per blocking finding when deriving the anchored score.
+ * Deterministic (geometry/raster) blockers are objective defects and cost more
+ * than an LLM-only claim, which is one noisy sample of a subjective opinion.
+ */
+export const DETERMINISTIC_BLOCKER_PENALTY = 8;
+export const LLM_BLOCKER_PENALTY = 3;
+
+/**
+ * Derive a reproducible `overall` score instead of trusting the number the model
+ * invents.
+ *
+ * Why this exists: three judge runs over BYTE-IDENTICAL captures of the same
+ * surface returned `overall.score` 72 / 72 / 72 while their blocking-finding
+ * counts were 2 / 0 / 3. The model anchors the headline number and barely moves
+ * it, so it reported no difference between a clean surface and one it had just
+ * claimed three defects in. Meanwhile the axis scores repeated near-verbatim
+ * across a dozen runs regardless of findings. The headline number therefore
+ * measured nothing, and small deltas in it were being read as progress.
+ *
+ * The anchored score keeps the model's per-axis judgement (which is what a
+ * vision model is actually being asked for) but makes the composite a pure
+ * function of it plus the findings, so an unchanged surface cannot drift and a
+ * surface that gains or loses defects MUST move.
+ *
+ * @param {unknown} result
+ * @returns {AnchoredScore}
+ */
+export function deriveAnchoredScore(result) {
+  const obj =
+    result && typeof result === 'object' ? /** @type {Record<string, unknown>} */ (result) : {};
+  const axesObj = obj.axes && typeof obj.axes === 'object' ? obj.axes : {};
+  const axisScores = Object.values(axesObj)
+    .map((a) =>
+      a && typeof a === 'object'
+        ? Number(/** @type {Record<string, unknown>} */ (a).score)
+        : Number.NaN,
+    )
+    .filter((s) => Number.isFinite(s) && s >= 0 && s <= 100);
+
+  const modelScore = normalizeOverallScore(result);
+  if (axisScores.length === 0) {
+    return {
+      score: modelScore.score,
+      axisMean: null,
+      penalty: 0,
+      deterministicBlockers: 0,
+      llmBlockers: 0,
+      modelScore: modelScore.score,
+      anchored: false,
+    };
+  }
+
+  const axisMean = axisScores.reduce((sum, s) => sum + s, 0) / axisScores.length;
+  const all = Array.isArray(obj.blocking_findings) ? obj.blocking_findings : [];
+  const deterministicList = Array.isArray(obj.deterministic_blocking_findings)
+    ? obj.deterministic_blocking_findings
+    : [];
+  const deterministicKeys = new Set(findingKeys(deterministicList));
+  let deterministicBlockers = 0;
+  let llmBlockers = 0;
+  for (const finding of all) {
+    if (typeof finding !== 'string') continue;
+    if (deterministicKeys.has(findingKey(finding))) deterministicBlockers += 1;
+    else llmBlockers += 1;
+  }
+
+  const penalty =
+    deterministicBlockers * DETERMINISTIC_BLOCKER_PENALTY + llmBlockers * LLM_BLOCKER_PENALTY;
+  const score = round1(Math.min(100, Math.max(0, axisMean - penalty)));
+  return {
+    score,
+    axisMean: round1(axisMean),
+    penalty,
+    deterministicBlockers,
+    llmBlockers,
+    modelScore: modelScore.score,
+    anchored: true,
+  };
+}
+
+/**
  * Stable identity key for a finding so the same defect, reworded round-to-round,
  * maps to one key. Lowercases, collapses whitespace, drops trailing punctuation,
  * and strips ONLY pixel/coordinate MEASUREMENTS (e.g. "18px", "x=384", "dx=-12").

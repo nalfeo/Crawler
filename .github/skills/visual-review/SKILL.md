@@ -317,6 +317,41 @@ feedback paths in the handoff.
 The viewer is review evidence, not a CI gate; deterministic geometry and
 behavior checks remain authoritative in CI.
 
+## Judge noise: do not over-read the score
+
+The LLM's own headline number is **not** a measurement. Three judge runs over
+**byte-identical** captures of the same surface returned `overall.score`
+**72 / 72 / 72** while their blocking-finding counts were **2 / 0 / 3**. The model
+anchors that number and barely moves it, so it reported no difference between a
+surface it called clean and one it had just claimed three defects in. Per-axis
+scores repeated near-verbatim across a dozen runs regardless of findings.
+
+Two mitigations are now built into `visual-review-agent`:
+
+1. **The reported score is derived, not quoted.** `overall.score` is
+   `mean(axes) - penalty`, where penalty is `8` per deterministic blocker and `3`
+   per LLM-only blocker. The model's self-reported number is kept only as
+   `overall.raw_score`, and the arithmetic is echoed to stdout and stored in
+   `score_derivation` so any reader can audit it. Identical input now always
+   yields an identical score.
+2. **Unchanged captures are flagged.** Each review records `capture_hash`, and a
+   capture byte-identical to the previous one for that surface sets
+   `capture_unchanged_from_prior` and prints a loud warning. In one real
+   12-round iteration loop, **six** captures were byte-identical to their
+   predecessor, and the resulting score wobble was misread as a
+   regression-then-fix.
+
+**Rules of thumb when reading a review:**
+
+- Treat the axis mean as the stable part and the LLM blocker list as one noisy
+  sample. Observed spread on an unchanged surface was ~0 on the axis mean but
+  0–3 on the LLM blocker count.
+- **Never claim an improvement from a small score delta.** A few points is inside
+  the noise band. Claim an improvement only when the **deterministic** blocker
+  count drops, or when the change is visible in the before/after images.
+- If a run warns that the capture is unchanged, discard the run as evidence — you
+  did not change any pixels.
+
 ## Policy
 
 - LLM visual review is **dev-session only** and **never CI-gating**.

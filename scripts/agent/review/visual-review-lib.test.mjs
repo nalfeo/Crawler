@@ -5,6 +5,7 @@ import {
   computeAlignmentBlockers,
   suppressUnsupportedAlignment,
   normalizeOverallScore,
+  deriveAnchoredScore,
   findingKey,
   findingKeys,
   dedupeFindings,
@@ -306,6 +307,97 @@ test('normalizeOverallScore: missing score with no usable axes yields 0', () => 
   const r = normalizeOverallScore({ overall: {}, axes: {} });
   assert.equal(r.score, 0);
   assert.equal(r.normalized, false);
+});
+
+// ---------------------------------------------------------------------------
+// deriveAnchoredScore
+// ---------------------------------------------------------------------------
+
+/** Three judge runs over BYTE-IDENTICAL captures actually returned this. */
+const NOISE_AXES = {
+  layout_consistency: { score: 78 },
+  spacing_balance: { score: 68 },
+  visual_hierarchy: { score: 75 },
+  readability: { score: 65 },
+  icon_usage: { score: 60 },
+  typography_clarity: { score: 80 },
+  thematic_fidelity: { score: 70 },
+};
+
+test('deriveAnchoredScore: clean surface scores the axis mean with no penalty', () => {
+  const r = deriveAnchoredScore({
+    overall: { score: 72 },
+    axes: NOISE_AXES,
+    blocking_findings: [],
+    deterministic_blocking_findings: [],
+  });
+  assert.equal(r.penalty, 0);
+  assert.equal(r.score, r.axisMean);
+  assert.equal(r.anchored, true);
+  assert.equal(r.modelScore, 72);
+});
+
+test('deriveAnchoredScore: the real 2/0/3-blocker noise triplet now separates', () => {
+  const base = { overall: { score: 72 }, axes: NOISE_AXES, deterministic_blocking_findings: [] };
+  const a = deriveAnchoredScore({ ...base, blocking_findings: ['x', 'y'] });
+  const b = deriveAnchoredScore({ ...base, blocking_findings: [] });
+  const c = deriveAnchoredScore({ ...base, blocking_findings: ['x', 'y', 'z'] });
+  // The model gave all three the same 72; the anchored score must not.
+  assert.ok(b.score > a.score, 'zero blockers must beat two');
+  assert.ok(a.score > c.score, 'two blockers must beat three');
+});
+
+test('deriveAnchoredScore: a deterministic blocker costs more than an llm claim', () => {
+  const det = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['Slot boxes overlap: a intersects b.'],
+    deterministic_blocking_findings: ['Slot boxes overlap: a intersects b.'],
+  });
+  const llm = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['the header feels cramped'],
+    deterministic_blocking_findings: [],
+  });
+  assert.equal(det.deterministicBlockers, 1);
+  assert.equal(det.llmBlockers, 0);
+  assert.equal(llm.llmBlockers, 1);
+  assert.ok(det.score < llm.score);
+});
+
+test('deriveAnchoredScore: deterministic classification survives rewording (findingKey)', () => {
+  const r = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['Shift tooltip left ~18px to sit flush beside it'],
+    deterministic_blocking_findings: ['Shift tooltip left ~24px to sit flush beside it'],
+  });
+  assert.equal(r.deterministicBlockers, 1);
+  assert.equal(r.llmBlockers, 0);
+});
+
+test('deriveAnchoredScore: score is clamped at 0 when penalties exceed the mean', () => {
+  const r = deriveAnchoredScore({
+    axes: { a: { score: 10 } },
+    blocking_findings: Array.from({ length: 20 }, (_, i) => `d${i}`),
+    deterministic_blocking_findings: Array.from({ length: 20 }, (_, i) => `d${i}`),
+  });
+  assert.equal(r.score, 0);
+});
+
+test('deriveAnchoredScore: falls back to the model score when no usable axes exist', () => {
+  const r = deriveAnchoredScore({ overall: { score: 72 }, axes: {}, blocking_findings: ['x'] });
+  assert.equal(r.anchored, false);
+  assert.equal(r.score, 72);
+  assert.equal(r.axisMean, null);
+});
+
+test('deriveAnchoredScore: identical input is deterministic across calls', () => {
+  const input = {
+    overall: { score: 72 },
+    axes: NOISE_AXES,
+    blocking_findings: ['x', 'y'],
+    deterministic_blocking_findings: ['x'],
+  };
+  assert.deepEqual(deriveAnchoredScore(input), deriveAnchoredScore(input));
 });
 
 // ---------------------------------------------------------------------------

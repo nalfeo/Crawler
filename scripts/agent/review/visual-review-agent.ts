@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -22,11 +23,13 @@ import {
 } from './text-raster-lib.mjs';
 import {
   computeGeometryBlockers,
+  deriveAnchoredScore,
   diffFindings,
   findingKeys,
   lacksPixelGroundedGeometry,
-  normalizeOverallScore,
   suppressUnsupportedAlignment,
+  DETERMINISTIC_BLOCKER_PENALTY,
+  LLM_BLOCKER_PENALTY,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
 import {
@@ -153,10 +156,18 @@ interface EvidenceRegionShot {
 interface VisualReviewResult {
   overall?: {
     score?: number;
-    /** Raw model-returned score, preserved when `score` was normalized (defect #4). */
+    /** Headline number the MODEL returned, kept only for provenance — it is anchored noise. */
     raw_score?: unknown;
     verdict?: string;
     summary?: string;
+  };
+  /** How `overall.score` was derived from axes + findings, so a reader can audit it. */
+  score_derivation?: {
+    axis_mean: number | null;
+    penalty: number;
+    deterministic_blockers: number;
+    llm_blockers: number;
+    model_reported_score: number;
   };
   axes?: Record<string, VisualAxis>;
   blocking_findings?: string[];
@@ -172,6 +183,10 @@ interface VisualReviewResult {
   regions_declared?: string[];
   /** NEW vs RECURRING split of blocking findings against the most recent prior review. */
   finding_trajectory?: { new: string[]; recurring: string[] };
+  /** SHA-256 of the captured PNG, so an unchanged "iteration" is detectable after the fact. */
+  capture_hash?: string;
+  /** True when this capture is byte-identical to the prior one — any score delta is noise. */
+  capture_unchanged_from_prior?: boolean;
   /** Art-asset-level defects (art-review mode). Layout defects stay in blocking_findings. */
   asset_findings?: AssetFinding[];
   /** Assets suppressed this run because they are already on the art-regen ledger. */
@@ -1480,9 +1495,10 @@ async function harvestEquipment(
 function printResult(result: VisualReviewResult, screenshotPath: string, reviewPath: string): void {
   const score = result.overall?.score ?? 0;
   const rawScore = result.overall?.raw_score;
+  const derivation = result.score_derivation;
   const normalizedNote =
     rawScore !== undefined && rawScore !== score
-      ? ` (normalized from raw ${JSON.stringify(rawScore)})`
+      ? ` (anchored; model self-reported ${JSON.stringify(rawScore)})`
       : '';
   const verdict = result.overall?.verdict ?? 'fail';
   const summary = result.overall?.summary ?? 'no summary returned';
@@ -1498,6 +1514,23 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
     `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/100${normalizedNote}`,
   );
   console.log(`[visual-review-agent] summary: ${summary}`);
+  if (derivation) {
+    console.log(
+      `[visual-review-agent] score = axisMean ${derivation.axis_mean} - penalty ${derivation.penalty}` +
+        ` (${derivation.deterministic_blockers} deterministic x${DETERMINISTIC_BLOCKER_PENALTY}` +
+        ` + ${derivation.llm_blockers} llm x${LLM_BLOCKER_PENALTY})`,
+    );
+    console.log(
+      "[visual-review-agent] NOTE: the model's own headline score is anchored noise " +
+        '(byte-identical captures scored 72/72/72 with 2/0/3 blockers) and is NOT used.',
+    );
+  }
+  if (result.capture_unchanged_from_prior) {
+    console.log(
+      '[visual-review-agent] CAPTURE UNCHANGED: byte-identical to the prior capture. Do not ' +
+        'report any score/finding movement from this run as an improvement.',
+    );
+  }
   if (blockers.length > 0) {
     console.log('[visual-review-agent] blocking findings:');
     for (const finding of blockers) {
@@ -1570,6 +1603,41 @@ function loadPriorFindingKeys(
   try {
     const raw = JSON.parse(readFileSync(resolve(outputDir, latest), 'utf-8')) as VisualReviewResult;
     return findingKeys(raw.blocking_findings ?? []);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hash of the most recent prior capture for this surface, so an "iteration" that
+ * changed no pixels can be flagged instead of being re-judged and mistaken for
+ * progress. This is not hypothetical: in one 12-round iteration loop, six
+ * captures were byte-identical to their predecessor (iter01≡02, 03≡04, 09≡10,
+ * 11≡12) yet the judge returned different scores and blocker counts for them,
+ * and that noise was read as a real regression-then-fix.
+ */
+function loadPriorCaptureHash(
+  outputDir: string,
+  screenshotName: string,
+  currentScreenshotFile: string,
+): { file: string; hash: string } | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(outputDir);
+  } catch {
+    return null;
+  }
+  const prefix = `${screenshotName}-`;
+  const latest = entries
+    .filter(
+      (name) => name.startsWith(prefix) && name.endsWith('.png') && name !== currentScreenshotFile,
+    )
+    .sort()
+    .at(-1);
+  if (!latest) return null;
+  try {
+    const buf = readFileSync(resolve(outputDir, latest));
+    return { file: latest, hash: createHash('sha256').update(buf).digest('hex') };
   } catch {
     return null;
   }
@@ -1872,6 +1940,20 @@ async function main(): Promise<number> {
     ledgerAssets: ledger?.assets.filter((a) => a.status === 'needs-regen') ?? [],
   });
   const png = readFileSync(screenshotPath);
+  const priorCapture = loadPriorCaptureHash(
+    opts.outputDir,
+    opts.screenshotName,
+    basename(screenshotPath),
+  );
+  const captureHash = createHash('sha256').update(png).digest('hex');
+  const captureUnchanged = priorCapture !== null && priorCapture.hash === captureHash;
+  if (captureUnchanged) {
+    console.warn(
+      `[visual-review-agent] WARNING: this capture is BYTE-IDENTICAL to the prior capture ` +
+        `(${priorCapture.file}). Nothing you changed affected these pixels, so any score or ` +
+        `finding difference from the previous run is model noise, not progress.`,
+    );
+  }
   const evaluation = await provider.evaluate({
     systemInstructions: prompt.system,
     userPrompt: prompt.user,
@@ -1903,11 +1985,23 @@ async function main(): Promise<number> {
   if (capture.surface) result.surface = capture.surface;
   if (capture.regions.length > 0) result.regions_declared = capture.regions.map((r) => r.id);
 
-  // Repair a non-1..5 overall.score (e.g. the model returned the SUM of the axes).
-  const normalized = normalizeOverallScore(result);
-  result.overall = { ...result.overall, score: normalized.score };
-  if (normalized.normalized) {
-    result.overall.raw_score = normalized.raw;
+  // The model's own `overall.score` is anchored noise: three judge runs over
+  // byte-identical captures returned 72/72/72 while their blocker counts were
+  // 2/0/3. Derive a reproducible composite from the axes + findings instead, and
+  // keep the model's number only as provenance.
+  const anchored = deriveAnchoredScore(result);
+  result.capture_hash = captureHash;
+  result.capture_unchanged_from_prior = captureUnchanged;
+  result.overall = { ...result.overall, score: anchored.score };
+  if (anchored.anchored) {
+    result.overall.raw_score = anchored.modelScore;
+    result.score_derivation = {
+      axis_mean: anchored.axisMean,
+      penalty: anchored.penalty,
+      deterministic_blockers: anchored.deterministicBlockers,
+      llm_blockers: anchored.llmBlockers,
+      model_reported_score: anchored.modelScore,
+    };
   }
 
   // NEW vs RECURRING trajectory against the most recent prior review for this surface.
@@ -2005,14 +2099,14 @@ async function main(): Promise<number> {
       uxName: opts.uxName,
       uxGoal: opts.uxGoal,
       screenshotPath,
-      score: normalized.score,
+      score: anchored.score,
       result,
       regions: capture.evidenceRegions,
     });
     console.log(`[visual-review-agent] evidence bundle: ${dir}`);
   }
 
-  const score = normalized.score;
+  const score = anchored.score;
   const blockers = result.blocking_findings ?? [];
   if (score < opts.minScore || blockers.length > 0) {
     console.error(
