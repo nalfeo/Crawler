@@ -272,14 +272,18 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 ## Merge Policy
 
 - **Always create PRs as ready for review — never as draft.** When using the `create_pull_request` tool, always pass `draft: false` or omit the draft parameter entirely. The CI pipeline and review + fix automation are only triggered on non-draft PRs, so draft PRs stall the whole pipeline.
-- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
+- **The merge-train, not native GitHub auto-merge, owns landing.** `.github/scripts/merge-train/reconcile.mjs` actively **disables** GitHub's native auto-merge on every PR it admits (`disableAutoMerge()`), and blocks promotion if auto-merge gets re-armed mid-flight. Arming `gh pr merge --auto --squash` is therefore a no-op once CI Recovery has queued a PR — it does not make the PR land. To get a PR merged: ensure required checks (`ci`, `Security checks`, etc.) pass and review threads resolve — CI Recovery then applies the `merge-train` label itself (`QUEUE_MERGE_TRAIN` dispatch action), and the merge-train's own admission/build/promote pipeline lands it in sequence. `gh pr merge --auto --squash` is safe to run as a fallback (harmless if the train ignores it) but do not treat "auto-merge armed" as evidence a PR will merge, and do not rely on it as the primary mechanism.
+- Diagnose a stuck PR by checking its actual queue state, not just CI status:
+  1. `gh pr view <pr-number> --json mergeStateStatus,mergeable,autoMergeRequest,labels` — confirm it carries the `merge-train` label and isn't `BEHIND`/`DIRTY`.
+  2. `gh api repos/<owner>/<repo>/issues/<pr-number>/events` — check for label churn (the `merge-train` label being added/removed repeatedly is a sign the reconciler is dequeuing it every cycle, not that it's simply unqueued).
+  3. Check the latest `Merge Train` workflow run logs for this PR number for `update-branch`, `dequeu`, or `blocked promotion` messages — these explain _why_ the train rejects it, which `gh pr checks` alone will never show.
 - **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.
   2. Run `gh run list --branch <branch>` then `gh run view <run-id> --log-failed` to read actual error output.
-  3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
+  3. Fix the underlying CI failure; if checks are green but the PR still isn't landing, follow the merge-train diagnosis steps above instead of re-arming auto-merge.
 - Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
-- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Rely on the armed `--auto --squash` merge; do not add manual poll/wait loops.
+- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Do not add manual poll/wait loops; let CI Recovery and the merge-train pick the PR back up.
 
 ### Resolving addressed review comments
 
@@ -294,6 +298,8 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   forever. Fix: push one commit under a **human or a different GitHub App
   identity** (an empty no-op commit — `git commit --allow-empty -m "chore: retrigger CI"` — is fine) to re-trigger the runs.
   <!-- Source handoff: 2026-06-24-safe-room-zoom-shepherd.md -->
+- **A `copilot/*` head branch that stays BEHIND may need a manual local push, not a re-queue.** GitHub restricts pushes to Copilot coding-agent branches to the Copilot App/branch owner, so the merge-train's bot token (`CRAWLER_CI_PAT`/`GITHUB_TOKEN`) gets a 403 on `update-branch` for these PRs even though they are same-repo, not forks. `reconcile.mjs` now leaves such PRs queued and dispatches recovery instead of dequeuing them as "fork" (fixed 2026-08-17; see PR #3027 incident), but the branch still won't actually update itself — from a session with push rights to that branch, run `git fetch origin main && git merge origin/main --no-edit && git push origin HEAD` to clear BEHIND manually if the PR sits stalled.
+  <!-- Source handoff: 2026-08-17-nightly-perf-collision-clear.md -->
 
 ## Known Environment Quirks
 

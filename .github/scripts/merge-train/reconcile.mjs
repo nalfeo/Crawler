@@ -38,6 +38,7 @@ import {
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
+  sameRepository,
   EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
   stalledAdmissionEligiblePulls,
   trainCheckTitle,
@@ -838,7 +839,7 @@ for (const pr of queued) {
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        if (err.status === 403) {
+        if (err.status === 403 && !sameRepository(livePr, repository)) {
           // The token cannot update a fork's head branch. Dequeue the PR so
           // it does not poison every subsequent reconcile cycle. A human must
           // manually rebase the fork branch, then re-add the merge-train label.
@@ -847,6 +848,22 @@ for (const pr of queued) {
           );
           await removeLabel(pr.number, QUEUE_LABEL);
           dequeuedFork = true;
+        } else if (err.status === 403) {
+          // Same-repo PR: a 403 here is NOT proof of a fork (isCrossRepository
+          // is false), so this must not be treated the same as the fork case.
+          // The most common cause is a restricted branch our bot token cannot
+          // push to (e.g. a `copilot/*` coding-agent branch, which GitHub
+          // restricts to the Copilot App / branch owner). Dequeuing here would
+          // just get the PR silently re-labeled by CI Recovery and re-hit the
+          // same 403 on the next reconcile pass, producing an indefinite
+          // label-churn livelock (observed on PR #3027: merge-train label
+          // added/removed every 1-2 min for 3+ days). Leave the PR queued and
+          // let the branch owner/agent session update it out-of-band; dispatch
+          // recovery so the stall is visible instead of silently repeating.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} same-repo-restricted-branch (403): leaving queued, dispatching recovery\n`,
+          );
+          await dispatchRecoveryGated(pr.number, 'merge-train-restricted-branch-update');
         } else if (err.status === 422) {
           // 422 covers "already up-to-date" and stale expected_head_sha —
           // expected, benign, logged so stale-head races stay visible.
