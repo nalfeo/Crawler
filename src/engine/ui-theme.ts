@@ -10,14 +10,15 @@
  */
 
 /**
- * Minimum crisp-text resolution (supersample) for pixel-font HUD text.
+ * Minimum crisp-text resolution (supersample) for small HUD text.
  *
- * Small pixel fonts need a higher supersample than the shared HUD default
- * (MAX_TEXT_RESOLUTION = 4) or the tiny labels blur. Panels must apply this
- * floor consistently across construction AND relayout — otherwise every resize
- * silently drops text from 6 back to 4, which reads as blurry labels.
+ * Equipment and inventory labels stay readable at their intentionally compact
+ * sizes when panels are rendered through Phaser's canvas text pipeline.
  */
 export const MIN_TEXT_RESOLUTION = 6;
+
+/** Legibility-first face shared by the equipment and inventory surfaces. */
+export const UI_FONT_FAMILY = '"Arial", "Segoe UI", sans-serif';
 
 /** Convert a 0xRRGGBB colour number to a Phaser "#rrggbb" CSS colour string. */
 export function hex(value: number): string {

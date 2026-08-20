@@ -909,10 +909,10 @@ describe('equipment decision gate (e2e)', () => {
         const regions = { header, doll, bag, stats, inspector };
         expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
         expect(raster, 'the live panel should expose raster metadata').not.toBeNull();
-        expect(raster?.intendedFontIdentity).toBe('Press Start 2P');
-        expect(raster?.loadedFontIdentity).toBe('Press Start 2P');
+        expect(raster?.intendedFontIdentity).toBe('Arial');
+        expect(raster?.loadedFontIdentity).toBe('Arial');
         expect(raster?.fontLoadState).toBe('loaded');
-        expect(raster?.fontSourceUrl).toMatch(/\/fonts\/PressStart2P-Regular\.ttf$/);
+        expect(raster?.fontSourceUrl).toBeNull();
         expect(raster?.textResolution).toBeGreaterThanOrEqual(6);
         expect(
           Number.isInteger(raster?.containerScale),

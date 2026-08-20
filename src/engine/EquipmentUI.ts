@@ -56,21 +56,15 @@ import {
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import { resolvePublicAssetUrl } from './generatedAssets/preload.js';
-import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
+import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const PANEL_PADDING = 22;
-const EQUIPMENT_FONT_IDENTITY = 'Press Start 2P';
-// A private alias ensures the equipment panel uses the shipped, OFL-licensed
-// asset below rather than depending on a remote stylesheet or another UI's
-// FontFace with the same public family name.
-const EQUIPMENT_FONT_FAMILY = 'Crawler Equipment Pixel';
-const FONT_FAMILY = `"${EQUIPMENT_FONT_FAMILY}", "Courier New", monospace`;
-const LOCAL_EQUIPMENT_FONT_URL = resolvePublicAssetUrl('fonts/PressStart2P-Regular.ttf');
+const EQUIPMENT_FONT_IDENTITY = 'Arial';
+const FONT_FAMILY = UI_FONT_FAMILY;
 const SLOT_W = 84;
 const SLOT_H = 56;
 const SLOT_SPREAD_X = 1;
@@ -198,30 +192,17 @@ type EquipmentFontLoadState = 'loading' | 'loaded' | 'unavailable';
 let equipmentFontLoad: Promise<boolean> | null = null;
 
 /**
- * Load the equipment face from the shipped public asset exactly once.
- *
- * The app may also load the public Google Fonts family for other surfaces, but
- * this alias makes EquipmentUI independent of that network request and lets the
- * probe report a deterministic source identity.
+ * Resolve the platform sans face exactly once. It is intentionally system-backed:
+ * unlike the former pixel face, it stays sharp at compact sizes without a
+ * network or asset-load dependency.
  */
 function loadEquipmentFont(): Promise<boolean> {
   if (equipmentFontLoad) return equipmentFontLoad;
-  if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') {
+  if (typeof document === 'undefined' || !document.fonts) {
     equipmentFontLoad = Promise.resolve(false);
     return equipmentFontLoad;
   }
-  const face = new FontFace(
-    EQUIPMENT_FONT_FAMILY,
-    `url("${LOCAL_EQUIPMENT_FONT_URL}") format("truetype")`,
-    { style: 'normal', weight: '400' },
-  );
-  equipmentFontLoad = face
-    .load()
-    .then((loadedFace) => {
-      document.fonts.add(loadedFace);
-      return true;
-    })
-    .catch(() => false);
+  equipmentFontLoad = Promise.resolve(document.fonts.check(`12px ${FONT_FAMILY}`));
   return equipmentFontLoad;
 }
 
@@ -310,12 +291,12 @@ export interface EquipmentTextRun {
 export interface EquipmentTextRasterMetadata {
   /** The visual face the equipment treatment intends to use. */
   readonly intendedFontIdentity: typeof EQUIPMENT_FONT_IDENTITY;
-  /** The intended face when its local asset has loaded, otherwise null. */
+  /** The intended face when the browser reports it available, otherwise null. */
   readonly loadedFontIdentity: typeof EQUIPMENT_FONT_IDENTITY | null;
-  /** Whether the local FontFace asset is still loading, resolved, or unavailable. */
+  /** Whether the browser reports the intended face available. */
   readonly fontLoadState: EquipmentFontLoadState;
-  /** The exact local asset URL requested by the FontFace API. */
-  readonly fontSourceUrl: typeof LOCAL_EQUIPMENT_FONT_URL;
+  /** System-backed faces have no local asset URL. */
+  readonly fontSourceUrl: null;
   /** Phaser's glyph-texture supersample factor currently in use. */
   readonly textResolution: number;
   /** The final EquipmentUI container scale applied in scene space. */
@@ -573,8 +554,7 @@ export function createEquipmentUI(
   container.add(inspectorPlaceholder);
 
   // Phaser snapshots a Text object's glyph texture at construction. Re-raster
-  // every static/dynamic run once the local face resolves, so an early fallback
-  // cannot persist after the deterministic asset is ready.
+  // every static/dynamic run once the browser confirms the system face.
   void loadEquipmentFont().then((loaded) => {
     fontLoadState = loaded ? 'loaded' : 'unavailable';
     if (destroyed) return;
@@ -1099,19 +1079,18 @@ export function createEquipmentUI(
   }
 
   function truncateToWidth(text: string, fontPx: number): string {
-    // "Press Start 2P" is monospace at a full 1em advance — the older 0.58em
-    // Segoe-derived factor under-truncated and let inspector lines run past the
-    // panel edge. 0.95 keeps a small safety margin against the real glyph box.
+    // Keep a small safety margin against the real sans glyph box so inspector
+    // lines never run past the panel edge.
     const budget = Math.max(4, Math.floor((inspectorW - 24) / (fontPx * 0.95)));
     if (text.length <= budget) return text;
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
 
   /**
-   * Conservative advance width for 12px pixel-font stats-column text.
+   * Conservative advance width for 12px stats-column text.
    *
-   * Press Start 2P advances at roughly 1em; this lower estimate leaves room for
-   * the value column while retaining the full common stat names.
+   * This estimate leaves room for the value column while retaining the full
+   * common stat names.
    * fitted text leaves a small safety margin. The e2e gate measures real glyph
    * boxes, so this remains intentionally conservative.
    */
@@ -1819,9 +1798,9 @@ export function createEquipmentUI(
 
     // Fixed-height comparison banner. Present in BOTH states (idle text vs.
     // "VS <item>") so turning a preview on/off cannot move a single stat row.
-    // The heading now lives above the frame, so the comparison banner is the
-    // first thing inside it.
-    const compareBarY = statsY + 20;
+    // Give the sans face a little more vertical separation from the heading;
+    // its proportional glyph box is taller than the former pixel face.
+    const compareBarY = statsY + 56;
     const compareBg = scene.add.rectangle(
       statsX + colW / 2 + 6,
       compareBarY,
@@ -1855,9 +1834,8 @@ export function createEquipmentUI(
     let rowY = statsY + 36;
     const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
     const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
-    // The shipped local face has an 18px glyph box at 12px (including explicit
-    // descender padding). Leave a full pixel between a final row and the next
-    // section title rather than letting their glyph textures share a scanline.
+    // Leave a full pixel between a final row and the next section title rather
+    // than letting their glyph textures share a scanline.
     const SECTION_STEP = 23;
     const reservedSectionSpace = SECTION_STEP * 3; // PRIMARY + SECONDARY + MASS headers
     const rowsEndY = statsY + statsH - 12;
@@ -2362,7 +2340,7 @@ export function createEquipmentUI(
       intendedFontIdentity: EQUIPMENT_FONT_IDENTITY,
       loadedFontIdentity: fontLoadState === 'loaded' ? EQUIPMENT_FONT_IDENTITY : null,
       fontLoadState,
-      fontSourceUrl: LOCAL_EQUIPMENT_FONT_URL,
+      fontSourceUrl: null,
       textResolution,
       containerScale: uiScale,
       roundPixels: scene.cameras.main.roundPixels,

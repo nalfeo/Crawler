@@ -40,11 +40,11 @@ export interface PanelTextBox {
 
 /**
  * Minimum physical glyph height, in device-independent CSS pixels, that we
- * accept as readable for the panel's 8px pixel font.
+ * accept as readable for the panel's compact body text.
  *
- * `Press Start 2P` is a full-height pixel face (no descender slack), so a glyph
- * box maps 1:1 to the authored font size. Below ~6 CSS px the stat rows stop
- * resolving into distinct characters on a standard display.
+ * The equipment face uses a platform sans font, so a glyph box maps closely to
+ * the authored font size. Below ~6 CSS px the stat rows stop resolving into
+ * distinct characters on a standard display.
  */
 export const MIN_READABLE_GLYPH_PX = 6;
 
