@@ -1800,7 +1800,7 @@ export function createEquipmentUI(
     // "VS <item>") so turning a preview on/off cannot move a single stat row.
     // Give the sans face a little more vertical separation from the heading;
     // its proportional glyph box is taller than the former pixel face.
-    const compareBarY = statsY + 56;
+    const compareBarY = statsY + 20;
     const compareBg = scene.add.rectangle(
       statsX + colW / 2 + 6,
       compareBarY,
