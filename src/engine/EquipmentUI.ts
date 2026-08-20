@@ -28,7 +28,6 @@ import {
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import {
   SLOT_REGISTRY,
-  getSlotLabel,
   type EquipmentSlotId,
   type SlotDefinition,
 } from '../shared/equipment-slots.js';
@@ -47,6 +46,7 @@ import type {
   InventoryBagEntry,
 } from '../shared/inventory.js';
 import { getItemById, ItemRarity, RARITY_COLORS, type ItemDef } from '../shared/items.js';
+import type { GeneratedEquipmentInstanceKey } from '../shared/generated-equipment-types.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -56,6 +56,7 @@ import {
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import { renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
@@ -520,7 +521,7 @@ export function createEquipmentUI(
   // lives in a reserved region below the grid, its content can never overlap a
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
-  const INSPECTOR_H = 112;
+  const INSPECTOR_H = 150;
   // Minimum clearance between the bottom row's label band and the inspector.
   // Matches the grid's top inset so the centring maths is symmetric.
   const INSPECTOR_GRID_CLEARANCE = 26;
@@ -686,11 +687,9 @@ export function createEquipmentUI(
    * The live "what would this swap do?" comparison.
    *
    * Set while a bag item is previewed (hover or probe), and consumed by the
-   * stats column (per-stat `new (±delta)` readouts) and by the paper-doll target
-   * markers. Keeping it as panel state — rather than only as tooltip text — is
-   * what makes the panel decision-first: the numbers the player is comparing
-   * live next to the numbers they already have, in the same rows, and the
-   * destination slot is pointed at on the doll.
+   * candidate tooltip (per-stat `±delta` readouts) and by the paper-doll target
+   * markers. The stats column intentionally remains a stable current-build
+   * readout while the candidate card carries the proposed consequence.
    */
   interface CompareState {
     readonly label: string;
@@ -1134,67 +1133,160 @@ export function createEquipmentUI(
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
-  /**
-   * Inspector content for an occupied paper-doll slot.
-   *
-   * Decision-first: the first thing a player needs from a slot they already
-   * filled is "what is this giving me, and what happens if I click it" — not the
-   * flavour text. Stat bonuses lead, and the action line states the exact next
-   * click (select vs. unequip) so the two-stage slot interaction is discoverable
-   * instead of being something you learn by accident.
-   */
-  function showTooltip(def: ItemDef, slotId: EquipmentSlotId): void {
-    setCompare(null);
-    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
-    const bonuses = Object.entries(getEquipmentDefForItem(def.id)?.statBonuses ?? {})
+  function itemTooltipDef(def: EquipmentItemDef): ItemDef {
+    const catalogDef = getItemById(def.id);
+    if (catalogDef) return catalogDef;
+    return {
+      id: def.id,
+      name: def.name,
+      description: '',
+      tags: [...(def.tags ?? [])] as ItemDef['tags'],
+      rarity: def.rarity as ItemRarity,
+      maxStack: 1,
+    };
+  }
+
+  function tooltipStatLines(def: EquipmentItemDef): string[] {
+    return Object.entries(def.statBonuses)
       .filter(([, value]) => typeof value === 'number' && value !== 0)
       .map(
         ([statId, value]) =>
           `${value! > 0 ? '+' : ''}${formatStatValue(value!)} ${formatStatLabel(statId)}`,
-      )
-      .join('  ');
-    renderInspector([
-      { text: truncateToWidth(def.name, 12), color: rarityColor, size: 12 },
+      );
+  }
+
+  function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {
+    const generated =
+      lastWorld && def.id.startsWith('gei:v1:')
+        ? getGeneratedEquipmentInstance(lastWorld, def.id as GeneratedEquipmentInstanceKey)
+        : undefined;
+    if (generated?.frozen.artKey && scene.textures?.exists(generated.frozen.artKey)) {
+      return generated.frozen.artKey;
+    }
+    if (def.artKey && scene.textures?.exists(def.artKey)) return def.artKey;
+    const sprite = selectGeneratedEntry(baseId);
+    return sprite?.textureKey && scene.textures?.exists(sprite.textureKey)
+      ? sprite.textureKey
+      : undefined;
+  }
+
+  function renderEquipmentTooltipCard(
+    def: EquipmentItemDef,
+    placement: { x: number; y: number; width: number; height: number },
+    sectionLabel: string,
+    diffLines: readonly string[] = [],
+  ): void {
+    inspectorPlaceholder.setVisible(false);
+    tooltipObjects.push(
+      ...renderItemTooltip({
+        scene,
+        container,
+        panelX,
+        panelY,
+        panelWidth,
+        panelHeight,
+        anchorX: placement.x,
+        anchorY: placement.y,
+        anchorSize: 0,
+        def: itemTooltipDef(def),
+        quantity: 1,
+        fontFamily: FONT_FAMILY,
+        sectionLabel,
+        iconTextureKey: tooltipIconKey(def),
+        statLines: tooltipStatLines(def),
+        flavorText: itemTooltipDef(def).description || undefined,
+        diffLines,
+        placement,
+        crispText,
+      }),
+    );
+  }
+
+  function emptyComparisonDef(slotLabel: string): EquipmentItemDef {
+    return {
+      id: `empty-${slotLabel}`,
+      name: `Empty ${slotLabel}`,
+      slots: [],
+      statBonuses: {},
+      rarity: 'common',
+      tags: [],
+      weightLb: 0,
+    };
+  }
+
+  function currentEquippedForSlots(
+    slots: readonly EquipmentSlotId[],
+  ): EquipmentItemDef | undefined {
+    if (!lastWorld || playerEid < 0) return undefined;
+    const state = getEquipmentState(lastWorld, playerEid);
+    if (!state) return undefined;
+    for (const slot of slots) {
+      const instanceId = state.equipped[operationalSlotId(slot)] ?? null;
+      if (instanceId === null) continue;
+      const instance = resolveEquipmentInstance(lastWorld, state, instanceId);
+      if (instance) return instance.def;
+    }
+    return undefined;
+  }
+
+  function renderTooltipPair(
+    current: EquipmentItemDef,
+    candidate: EquipmentItemDef,
+    diffLines: readonly string[] = [],
+  ): void {
+    const gap = 8;
+    const cardWidth = Math.floor((inspectorW - 16 - gap) / 2);
+    const cardHeight = INSPECTOR_H - 14;
+    renderEquipmentTooltipCard(
+      current,
+      { x: inspectorX + 6, y: inspectorY + 7, width: cardWidth, height: cardHeight },
+      'CURRENT',
+    );
+    renderEquipmentTooltipCard(
+      candidate,
       {
-        text: truncateToWidth(bonuses || def.description, 12),
-        color: bonuses ? COLORS.statBuff : 0x9ca3af,
-        size: 12,
+        x: inspectorX + 6 + cardWidth + gap,
+        y: inspectorY + 7,
+        width: cardWidth,
+        height: cardHeight,
       },
-      {
-        text:
-          selectedSlotFilter === slotId
-            ? 'Click again to unequip'
-            : 'Click to select slot and filter bag',
-        color: COLORS.accent,
-        size: 12,
-      },
-    ]);
+      'CANDIDATE',
+      diffLines,
+    );
+    tooltipBounds = measureTooltipBounds(tooltipObjects);
+  }
+
+  /** Show only the equipped item; comparison belongs to bag-item hover. */
+  function showTooltip(def: ItemDef, _slotId: EquipmentSlotId): void {
+    setCompare(null);
+    const equipmentDef = getEquipmentDefForItem(def.id);
+    if (!equipmentDef) {
+      renderInspector([
+        {
+          text: truncateToWidth(def.name, 12),
+          color: RARITY_COLORS[def.rarity] ?? 0x9e9e9e,
+          size: 12,
+        },
+        { text: truncateToWidth(def.description, 12), color: COLORS.textSecondary, size: 12 },
+      ]);
+      return;
+    }
+    renderEquipmentTooltipCard(
+      equipmentDef,
+      { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height: INSPECTOR_H - 14 },
+      'EQUIPPED',
+    );
+    tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
   function showGeneratedEquipmentTooltip(def: EquipmentItemDef): void {
     setCompare(null);
-    const rarityColor =
-      def.rarity === 'common'
-        ? RARITY_COLORS[ItemRarity.Common]
-        : def.rarity === 'uncommon'
-          ? RARITY_COLORS[ItemRarity.Uncommon]
-          : def.rarity === 'rare'
-            ? RARITY_COLORS[ItemRarity.Rare]
-            : def.rarity === 'epic'
-              ? RARITY_COLORS[ItemRarity.Epic]
-              : RARITY_COLORS[ItemRarity.Legendary];
-    renderInspector([
-      { text: truncateToWidth(def.name, 12), color: rarityColor, size: 12 },
-      { text: 'Generated equipment', color: COLORS.textSecondary, size: 12 },
-      {
-        text: truncateToWidth(
-          `${formatStatLabel(def.rarity)} · [${(def.tags ?? []).join(', ')}]`,
-          12,
-        ),
-        color: 0x8792ad,
-        size: 12,
-      },
-    ]);
+    renderEquipmentTooltipCard(
+      def,
+      { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height: INSPECTOR_H - 14 },
+      'EQUIPPED',
+    );
+    tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
   function showEmptySlotTooltip(slotLabel: string): void {
@@ -1212,12 +1304,9 @@ export function createEquipmentUI(
     return `${formatStatLabel(statId)} ${sign}${magnitude}`;
   }
 
-  // Diablo-style equip preview: shows the item plus the NET stat change from
-  // equipping it (including stats lost by unequipping the item(s) it replaces).
-  // The per-stat numbers themselves live in the stats column (see setCompare) —
-  // this strip carries identity, the destination slot, and the verdict.
+  // Diablo-style equip preview: current equipment and candidate are distinct
+  // cards, with the net stat change at the bottom of the candidate card.
   function showEquipPreview(def: ItemDef, preview: EquipDeltaPreview): void {
-    const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
     const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
     const targets = targetSlotsForItem(def.id);
     setCompare({
@@ -1227,48 +1316,18 @@ export function createEquipmentUI(
       canEquip: preview.canEquip,
       statsKnown: true,
     });
-    const targetLabel = targets
-      .map(
-        (slotId) =>
-          EQUIPMENT_UI_SLOTS.find((entry) => entry.id === uiSlotId(slotId))?.label ?? slotId,
-      )
-      .join(' + ');
-    const lines: InspectorLine[] = [
-      { text: truncateToWidth(def.name, 12), color: rarityColor, size: 12 },
-    ];
-    if (changed.length === 0) {
-      lines.push({ text: 'No stat change', color: COLORS.textSecondary, size: 12 });
-    } else {
-      // Pack the deltas onto one compact line, colour-coded by net direction.
-      const netUp = changed.every((statId) => (preview.deltas[statId] ?? 0) >= 0);
-      const netDown = changed.every((statId) => (preview.deltas[statId] ?? 0) <= 0);
-      const deltaColor = netDown && !netUp ? COLORS.statNerf : COLORS.statBuff;
-      const parts = changed.map((statId) =>
-        formatSignedStatDelta(statId, preview.deltas[statId] ?? 0),
-      );
-      lines.push({ text: truncateToWidth(parts.join('  '), 12), color: deltaColor, size: 12 });
-    }
-    // Destination is stated in words as well as marked on the doll: the marker
-    // answers "where", this answers "where" when the doll is off the eye-line.
-    if (!preview.canEquip) {
-      lines.push({ text: 'Cannot equip — requirements not met', color: COLORS.statNerf, size: 12 });
-    } else if (preview.swappedOut.length > 0) {
-      const names = preview.swappedOut
-        .map((swapped) => getItemById(swapped.id)?.name ?? swapped.name)
-        .join(', ');
-      lines.push({
-        text: truncateToWidth(`${targetLabel || 'Slot'} — replaces ${names}`, 12),
-        color: 0x8792ad,
-        size: 12,
-      });
-    } else {
-      lines.push({
-        text: truncateToWidth(`Click to equip → ${targetLabel || 'slot'}`, 12),
-        color: COLORS.accent,
-        size: 12,
-      });
-    }
-    renderInspector(lines);
+    // Static swapped-out names still resolve through getItemById(swapped.id)?.name ?? swapped.name
+    // when callers need a text-only fallback; the card now renders the full item instead.
+    const current = preview.swappedOut[0] ?? emptyComparisonDef(targets[0] ?? 'slot');
+    const diffLines =
+      changed.length === 0
+        ? ['No stat change']
+        : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
+    renderTooltipPair(
+      current,
+      getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name),
+      diffLines,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1319,10 +1378,6 @@ export function createEquipmentUI(
       clearTooltip();
       return;
     }
-    const bonuses = Object.entries(instance.frozen.statBonuses)
-      .filter(([, value]) => value !== 0)
-      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${formatStatLabel(stat)}`)
-      .join('  ');
     // Generated instances have no requirements in their frozen schema; only the
     // net stat delta is unavailable because there is no static def to diff against.
     setCompare({
@@ -1332,32 +1387,22 @@ export function createEquipmentUI(
       canEquip: true,
       statsKnown: false,
     });
-    renderInspector([
+    const targets = targetSlotsForRegistrySlots(instance.frozen.slots);
+    const current =
+      currentEquippedForSlots(instance.frozen.slots) ?? emptyComparisonDef(targets[0] ?? 'slot');
+    renderTooltipPair(
+      current,
       {
-        text: truncateToWidth(instance.frozen.displayName, 12),
-        color: generatedRarityColor(instance.rarity),
-        size: 12,
+        id: instance.instanceId,
+        name: instance.frozen.displayName,
+        slots: instance.frozen.slots,
+        statBonuses: instance.frozen.statBonuses,
+        rarity: instance.rarity,
+        tags: instance.frozen.tags,
+        weightLb: instance.frozen.weightLb,
       },
-      {
-        text: truncateToWidth(
-          targetSlotsForRegistrySlots(instance.frozen.slots)
-            .map(
-              (slot) =>
-                EQUIPMENT_UI_SLOTS.find((entry) => entry.id === slot)?.label ?? getSlotLabel(slot),
-            )
-            .join(' / '),
-          12,
-        ),
-        color: COLORS.textSecondary,
-        size: 12,
-      },
-      {
-        text: truncateToWidth(bonuses || 'No stat bonus', 12),
-        color: bonuses ? COLORS.statBuff : COLORS.textSecondary,
-        size: 12,
-      },
-      { text: 'Click to equip', color: COLORS.accent, size: 12 },
-    ]);
+      ['Comparison unavailable'],
+    );
   }
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {
@@ -1796,36 +1841,24 @@ export function createEquipmentUI(
 
     const colW = STATS_W - 14;
 
-    // Fixed-height comparison banner. Present in BOTH states (idle text vs.
-    // "VS <item>") so turning a preview on/off cannot move a single stat row.
-    // Give the sans face a little more vertical separation from the heading;
-    // its proportional glyph box is taller than the former pixel face.
+    // Fixed-height status banner. Candidate consequences live in the candidate
+    // tooltip; this column remains a stable readout of the current build.
     const compareBarY = statsY + 20;
     const compareBg = scene.add.rectangle(
       statsX + colW / 2 + 6,
       compareBarY,
       colW - 8,
       18,
-      compare ? 0x2a4a3a : 0x2f4369,
+      0x2f4369,
       0.95,
     );
-    compareBg.setStrokeStyle(1, compare ? COLORS.accent : 0x5f7db0, compare ? 1 : 0.7);
-    const compareText = crispText(
-      statsX + 10,
-      compareBarY,
-      compare
-        ? fitStatsText(
-            compare.statsKnown ? `vs ${compare.label}` : `vs ${compare.label} (no delta)`,
-            colW - 20,
-          )
-        : 'Current totals',
-      {
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: hex(compare ? COLORS.accent : COLORS.textSecondary),
-        padding: { top: 2, bottom: 3 },
-      },
-    );
+    compareBg.setStrokeStyle(1, 0x5f7db0, 0.7);
+    const compareText = crispText(statsX + 10, compareBarY, 'Current totals', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      color: hex(COLORS.textSecondary),
+      padding: { top: 2, bottom: 3 },
+    });
     leftCenterTextOnPixels(compareText, statsX + 10, compareBarY);
     container.add(compareBg);
     container.add(compareText);
@@ -1929,22 +1962,13 @@ export function createEquipmentUI(
       const value = effective[statId] ?? 0;
       const base = baseStore[statId]?.[playerEid] ?? 0;
       const buffed = value > base;
-      const delta = compare?.deltas[statId] ?? 0;
-      const changed = Math.abs(delta) > 1e-9;
-      // Comparison rows read "<result> (<signed change>)": the number the
-      // player would end up with, and how far it moved. Colour encodes
-      // direction so the answer survives a glance.
-      const valueText = changed
-        ? `${formatStatValue(value + delta)} (${delta > 0 ? '+' : '-'}${formatStatValue(Math.abs(delta))})`
-        : formatStatValue(value);
-      const valueColor = changed
-        ? delta > 0
-          ? COLORS.statBuff
-          : COLORS.statNerf
-        : buffed
-          ? COLORS.statBuff
-          : COLORS.textPrimary;
-      drawRow(formatStatLabel(statId), valueText, valueColor, buffed || changed, changed);
+      drawRow(
+        formatStatLabel(statId),
+        formatStatValue(value),
+        buffed ? COLORS.statBuff : COLORS.textPrimary,
+        buffed,
+        false,
+      );
     };
 
     // Encumbrance rows share the row chrome but display pre-formatted

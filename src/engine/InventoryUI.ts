@@ -930,6 +930,21 @@ export function createInventoryUI(
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
     const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
+    const equipmentDef =
+      entry.kind === 'stackable-static-item' ? getEquipmentDefForItem(entry.itemId) : undefined;
+    const generatedInstance =
+      entry.kind === 'generated-instance' && currentWorld
+        ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
+        : undefined;
+    const statLines = Object.entries(
+      generatedInstance?.frozen.statBonuses ?? equipmentDef?.statBonuses ?? {},
+    )
+      .filter(([, value]) => typeof value === 'number' && value !== 0)
+      .map(([stat, value]) => `${value! > 0 ? '+' : ''}${value} ${stat}`);
+    const iconTextureKey =
+      generatedInstance?.frozen.artKey && scene.textures?.exists(generatedInstance.frozen.artKey)
+        ? generatedInstance.frozen.artKey
+        : selectGeneratedEntry(generatedInstance?.baseId ?? def.id)?.textureKey;
     tooltipObjects.push(
       ...renderItemTooltip({
         scene,
@@ -946,6 +961,9 @@ export function createInventoryUI(
         fontFamily: FONT_FAMILY,
         footerHint,
         statLine: dpsLine,
+        statLines,
+        flavorText: statLines.length > 0 ? def.description || undefined : undefined,
+        iconTextureKey,
         crispText,
       }),
     );
