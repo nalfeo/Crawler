@@ -8,8 +8,8 @@
 import type { RunBundle } from '../shared/run-bundle.js';
 import type { PlaytestSurvey } from '../shared/playtest-survey.js';
 import {
+  buildRunSurveyAppendRequest,
   buildRunBundleUploadRequest,
-  buildRunSurveyRequest,
 } from '../shared/run-bundle-telemetry.js';
 
 export interface RunBundleUploadConfig {
@@ -193,11 +193,19 @@ export async function submitRunSurvey(
   survey: PlaytestSurvey,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<RunSurveyUploadResult> {
+  return submitRunSurveyAppend(bundle.meta.runId, survey, options);
+}
+
+export async function submitRunSurveyAppend(
+  runId: string | undefined,
+  survey: PlaytestSurvey,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<RunSurveyUploadResult> {
   const config = resolveRunBundleUploadConfig();
   if (!config.enabled || !config.endpoint) {
     return { ok: false, used: 'disabled', reason: config.reason ?? 'disabled' };
   }
-  const payload = buildRunSurveyRequest(bundle, survey);
+  const payload = buildRunSurveyAppendRequest(runId, survey);
   const body = JSON.stringify(payload);
   const fetchImpl = options.fetchImpl ?? fetch;
   try {

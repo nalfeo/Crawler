@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRunBundle } from '../../src/shared/run-bundle.js';
 import {
   buildRunBundleUploadRequest,
+  buildRunSurveyAppendRequest,
   buildRunSurveyRequest,
 } from '../../src/shared/run-bundle-telemetry.js';
 
@@ -24,10 +25,10 @@ describe('run bundle telemetry request builders', () => {
       logs: bundle.logs,
       meta: bundle.meta,
     });
-    expect(request.survey).toBeUndefined();
+    expect('survey' in request).toBe(false);
   });
 
-  it('serializes the survey request with the same top-level fields plus survey', () => {
+  it('serializes the survey request as a runId-based append payload', () => {
     const bundle = makeBundle();
     const survey = {
       enjoyment: 5,
@@ -40,15 +41,12 @@ describe('run bundle telemetry request builders', () => {
     const request = buildRunSurveyRequest(bundle, survey);
 
     expect(request).toEqual({
-      runStats: bundle.runStats,
-      recorderJsonl: bundle.recorderJsonl,
-      logs: bundle.logs,
-      meta: bundle.meta,
+      meta: { runId: bundle.meta.runId },
       survey,
     });
   });
 
-  it('keeps the bundle runId stable across both request shapes', () => {
+  it('keeps the bundle runId stable across completion and survey request shapes', () => {
     const bundle = makeBundle();
     const silentRequest = buildRunBundleUploadRequest(bundle);
     const surveyRequest = buildRunSurveyRequest(bundle, {
@@ -61,5 +59,17 @@ describe('run bundle telemetry request builders', () => {
 
     expect(silentRequest.meta.runId).toBe('run-abc123');
     expect(surveyRequest.meta.runId).toBe('run-abc123');
+  });
+
+  it('requires a runId for survey append payloads', () => {
+    expect(() =>
+      buildRunSurveyAppendRequest(undefined, {
+        enjoyment: 1,
+        immersion: 1,
+        mastery: 1,
+        control: 1,
+        tension: 1,
+      }),
+    ).toThrow('runId is required');
   });
 });
