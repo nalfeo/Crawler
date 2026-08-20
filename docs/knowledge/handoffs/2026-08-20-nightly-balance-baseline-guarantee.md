@@ -57,40 +57,55 @@ tuned, and no seed-level or shard-level data was used to manufacture a candidate
 
 ### Systemic fix landed instead (automation only, no gameplay change)
 
-The nightly issue is filed daily, but nothing ever produced the canonical baseline it
-requires — the sweeps on `main` were ad-hoc human dispatches (30 seeds, or a 3-weapon
-subset), and Copilot sessions cannot dispatch workflows. Every nightly therefore
-terminates on the same gate. Changes:
+The nightly issue is filed daily, but its baseline gate pointed at ad-hoc
+`weapon-sweep.yml` dispatches: the sweeps on `main` were human-run (30 seeds, or a
+3-weapon subset), Actions artifacts expire after 30 days, and Copilot sessions cannot
+dispatch workflows. Every nightly therefore terminated on the same gate.
 
-- `.github/workflows/weapon-sweep.yml` now stamps its dispatch inputs into `run-name`
-  (`Weapon Sweep · seeds=… · weapons=… · personas=… · frames=…`), so baseline
-  eligibility is auditable from the runs list instead of only by downloading every
-  aggregate artifact.
-- `.github/scripts/nightly-balance-issue/canonical-baseline.mjs` (new) resolves the
-  default branch head SHA, looks for a canonical run at that exact SHA with all six
-  unexpired FINAL aggregates, and dispatches one with `CRAWLER_CI_PAT` when none
-  exists. It never dispatches a duplicate while a canonical run is queued/in progress,
-  and never blocks issue filing on failure.
-- `.github/scripts/nightly-balance-issue/run.mjs` calls it before filing.
+The repository already publishes a durable release sweep: after every successful main
+deploy, `deploy.yml` commits the full baseline to the `baselines` branch
+(`by-sha/<commit>.json` plus a newest-first `index.json`). That data is always in git,
+never expires, and its shape follows whatever the release sweep currently measures —
+including the floor-2 and chained legs added when the 600-run Floor-1 sweep was
+rebalanced. Changes:
+
+- `.github/scripts/nightly-balance-issue/release-baseline.mjs` (new) resolves the
+  newest entry of `baselines/index.json` (sorting defensively by commit date rather
+  than trusting index order) and returns it with blob links to the payload and fun
+  report. It validates only `commit` and `path`; the sweep formulation — weapons, seed
+  range, floor legs, budgets — is deliberately never asserted.
+- The issue body's baseline gate now names that release baseline, stamps the resolved
+  commit/date/run counts/legs into the issue at filing time, and instructs the session
+  to read the sweep's shape from `meta.sweep`/`legs`/`perWeapon`/`runs` instead of
+  assuming a fixed formulation. It no longer requires six FINAL weapon aggregates at
+  100 seeds/weapon, and no longer asks the session to dispatch a baseline sweep it
+  cannot dispatch: the next release publishes the next baseline.
+- `.github/scripts/nightly-balance-issue/run.mjs` resolves the baseline (a read-only
+  lookup) and binds it into the body builder; a lookup failure is reported and never
+  blocks issue filing.
 - `package.json` `test:guards` now includes
   `.github/scripts/nightly-balance-issue/*.test.mjs`, which was missing (its sibling
   velocity/perf filers were already registered), so these tests actually run in CI.
 
-`CRAWLER_CI_PAT` is used for the dispatch deliberately: workflow_dispatch calls made
-with the workflow's own `GITHUB_TOKEN` do not create a new workflow run.
+An earlier revision of this session instead dispatched a canonical 100-seed six-weapon
+`weapon-sweep.yml` run from the filer. The repository owner rejected that design: it
+pinned one sweep formulation that has since been rebalanced, and it ignored the
+release sweep data that is already durably in git. That approach and its
+`weapon-sweep.yml` run-name stamping were reverted.
 
 ## Key Decisions Made
 
 - **Refused to manufacture candidates.** Sub-sample (30-seed), partial-weapon, and
   stale-SHA data are all explicitly ineligible; proposing tuning from them would have
   violated the issue's hard gates and rule #11/#12.
-- **Fixed the cause, not the symptom.** The recurring terminal outcome is a missing
-  canonical baseline, not a shortage of ideas; wiring the sweep dispatch into the
-  filer is the smallest change that unblocks every future nightly run.
-- **Eligibility is proven from `run-name`, not inferred.** The Actions API exposes no
-  dispatch inputs for a run, so a 30-seed sweep and a 100-seed sweep were previously
-  indistinguishable in the runs list. Stamping inputs into the run title makes the
-  check deterministic.
+- **Fixed the cause, not the symptom.** The recurring terminal outcome is an
+  unreachable baseline definition, not a shortage of ideas; pointing the gate at the
+  git-persisted release baseline is the smallest change that unblocks every future
+  nightly run.
+- **The gate must not pin a sweep formulation.** Weapon list, seed count, floor legs,
+  and frame budgets all change as the release sweep is rebalanced, so the contract
+  names the newest published baseline and requires the session to record whatever that
+  payload actually contains.
 
 ## What's Next / Blockers
 
@@ -98,9 +113,10 @@ with the workflow's own `GITHUB_TOKEN` do not create a new workflow run.
   issue comments or close issues (all GitHub write endpoints are blocked at the agent
   sandbox proxy), so the accompanying PR carries `Closes nalfeo/Crawler#3185` and this
   ledger; merging it closes the issue and unblocks future nightly filings.
-- The next nightly run (08:00 UTC) will dispatch the first canonical 100-seed,
-  six-weapon sweep on `main`. The session after that is the first one with an eligible
-  baseline and should proceed to actual candidate ranking.
+- The next nightly run resolves the newest `baselines/index.json` entry (at the time of
+  writing, release baseline `578ffc9d` captured 2026-08-20T08:45Z, 300 floor-1 runs
+  plus floor-2 and floor-1-chain legs) and starts from a named, unexpired baseline
+  instead of hunting for an eligible Actions run.
 
 ## Retrospective
 
@@ -110,6 +126,9 @@ with the workflow's own `GITHUB_TOKEN` do not create a new workflow run.
   (`HTTP 403 Blocked by DNS monitoring proxy`), including `workflow_dispatch`. Any
   contract that asks a session to "run a canonical sweep itself" is unsatisfiable —
   the dispatch has to come from a workflow.
+- Durable evidence already existed on the `baselines` branch; the gate was reaching for
+  ephemeral Actions artifacts instead. Prefer git-persisted telemetry over artifacts
+  whenever a contract has to hold for longer than the 30-day retention window.
 - Artifact **names** are not evidence of sample size. `weapon-sweep-sword` looked like
   a valid FINAL aggregate; only opening the JSON revealed `runs: 30`. Always read
   `seeds`/`runs`/`maxFrames` out of the aggregate before calling a baseline canonical.
@@ -128,10 +147,10 @@ with the workflow's own `GITHUB_TOKEN` do not create a new workflow run.
 
 ### Opportunities for Future Improvement
 
-- The nightly balance issue body could embed the canonical run ID the filer just
-  dispatched, so the session starts from a named baseline instead of rediscovering it.
-- Consider having the sweep aggregate assert its own eligibility (e.g. emit
-  `canonical: true` when seeds/weapons/frames match the contract) so downstream
-  consumers do not have to re-derive it.
+- The filer could also stamp the delta between the baseline commit and current main
+  (gameplay-affecting commit count), so the session does not recompute it.
+- Candidate evaluation still relies on dispatched `weapon-sweep.yml` runs, which a
+  Copilot session cannot start; a comparable evaluation path built on release
+  baselines, or a dispatch trampoline workflow, would close the remaining gap.
 - The velocity/perf nightly filers have the same "no fresh evidence" exposure and may
   deserve the same pre-flight evidence guarantee.
