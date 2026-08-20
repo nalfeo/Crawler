@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-20",
+  "session_slug": "immediate-completion-telemetry",
+  "task_title": "Publish completion telemetry before optional survey",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer identified a load-bearing incompatibility: immutable bundle idempotency rejects survey-bearing resubmits. Revised design is a two-phase contract: publish immutable completion telemetry immediately; append survey separately by server-side runId-to-issue mapping. The implementation will cover the completion/survey race, duplicate completion and survey, human terminal-vs-transition eligibility, AI normal and error finalization, and corrected survey disclosure."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
