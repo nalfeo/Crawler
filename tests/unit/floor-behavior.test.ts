@@ -12,6 +12,7 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: true,
       lineOfSightAggro: false,
       equipmentEconomy: true,
+      carriedMainHandWeapon: false,
       bossChests: true,
     });
   });
@@ -23,6 +24,7 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: true,
       equipmentEconomy: true,
+      carriedMainHandWeapon: false,
       bossChests: true,
     });
   });
@@ -34,6 +36,7 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: false,
       equipmentEconomy: false,
+      carriedMainHandWeapon: false,
       bossChests: false,
     });
   });

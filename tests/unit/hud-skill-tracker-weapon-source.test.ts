@@ -20,4 +20,26 @@ describe('HudSkillTracker weapon source', () => {
     // This ensures removing the false-branch would break this test.
     expect(source).toMatch(/if\s*\(!def\)\s*\{[\s\S]*?setAllVisible\(false\)/);
   });
+
+  it('renders spell-skill rows for the player equipped spells, using the shared thresholds', () => {
+    const source = readFileSync('src/engine/HudSkillTracker.ts', 'utf8');
+
+    expect(source).toMatch(
+      /import\s+\{\s*countMatchingSpellSkills,\s*selectSpellSkillRows\s*\}\s+from\s+'\.\/hud-spell-skill-rows\.js'/,
+    );
+    expect(source).toMatch(
+      /import\s+\{\s*SPELL_SKILL_THRESHOLDS\s*\}\s+from\s+'\.\.\/shared\/spell-skills\.js'/,
+    );
+    expect(source).toMatch(/selectSpellSkillRows\(equippedActiveAbilityIds, spellRows\.length\)/);
+    expect(source).toMatch(/SPELL_SKILL_THRESHOLDS/);
+  });
+
+  it('shows a "+N" overflow indicator instead of silently dropping equipped spell skills', () => {
+    const source = readFileSync('src/engine/HudSkillTracker.ts', 'utf8');
+
+    expect(source).toMatch(/countMatchingSpellSkills\(equippedActiveAbilityIds\)/);
+    expect(source).toMatch(
+      /overflowText\.setText\(overflowCount > 0 \? `\+\$\{overflowCount\}` : ''\)/,
+    );
+  });
 });

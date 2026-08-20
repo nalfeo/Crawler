@@ -157,8 +157,12 @@ export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQ
  * @param {boolean} [prFacts.hasMergeConflict] - true when PR has a merge conflict
  * @param {object} [prFacts.stack] - GitHub's stacked-PR `stack` object, present when
  *   this PR belongs to a stack (another open PR is based on its head branch, or it
- *   is itself based on another open PR's head branch). Non-null blocks admission:
- *   see the `stacked-pr` reason below.
+ *   is itself based on another open PR's head branch). `stack.position` is
+ *   1-indexed from the bottom (closest to `main`). Only a NON-bottom position
+ *   blocks admission: see the `stacked-pr` reason below. A bottom-of-stack PR
+ *   (`position === 1`) is admitted and merged via GitHub's async merge-stack
+ *   endpoint, which merges only that PR -- GitHub then automatically rebases
+ *   the PR(s) above it directly onto `main`, dissolving the stack.
  * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
  * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
  * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
@@ -177,6 +181,7 @@ export function evaluateAdmission(prFacts, config = {}) {
     reviewThreads = [],
     reviews = [],
     requiredChecks = config.requiredChecks || DEFAULT_REQUIRED_CHECKS,
+    allowBottomStackAsync = config.allowBottomStackAsync ?? false,
     lifecyclePhase = null,
     humanApprovalDisposition = null,
     skipSubstantiveReview = config.skipSubstantiveReview ?? false,
@@ -201,11 +206,20 @@ export function evaluateAdmission(prFacts, config = {}) {
   // admission entirely: a stacked PR could be admitted, reach the merge PUT,
   // 403, and crash the whole reconcile run -- blocking every other queued PR
   // behind it (see incident: PR #3027, stacked under #3033, parked the train
-  // for 24h+). Reject a stacked PR at admission so it is dequeued with a clear
-  // reason instead of ever reaching the merge call. A stacked PR should be
-  // rebased/un-stacked onto `main` before it re-enters the queue -- either the
-  // child PR merges/closes first (dissolving the stack) or a human detaches it.
-  if (stack) reasons.push('stacked-pr');
+  // for 24h+).
+  //
+  // A NON-bottom stacked PR (position !== 1) is still rejected here: the
+  // classic merge endpoint cannot land it in isolation (merging it would pull
+  // in everything below it too), and the reconciler only ever merges one PR
+  // at a time. It must wait for the PR(s) below it to merge/dissolve first.
+  //
+  // A BOTTOM-of-stack PR (position === 1) is only admitted for callers that
+  // explicitly support GitHub's async merge-stack endpoint.
+  //
+  // CI Recovery's auto-merge path does NOT support stacked PRs, so callers
+  // that do not pass `allowBottomStackAsync: true` keep the prior behavior:
+  // any stacked PR is blocked with `stacked-pr`.
+  if (stack && (stack.position !== 1 || !allowBottomStackAsync)) reasons.push('stacked-pr');
 
   reasons.push(
     ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {
