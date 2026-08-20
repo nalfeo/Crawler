@@ -45,7 +45,8 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 1. `bash scripts/agent/preflight.sh`.
 2. **Capture the broken state before you change anything** — invoke the `visual-review` skill or an existing `tests/e2e/helpers/ui-probe.ts` probe. A UX fix with no "before" screenshot or probe reading is unverifiable.
 3. Read `.github/instructions/engine.instructions.md`.
-4. **Declare an apple estimate.**
+4. For equipment/inventory/item-tooltip work, read `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`. It is the durable extracted RPG inventory UX lookbook; do not rely on session-local PDF attachments.
+5. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -102,6 +103,7 @@ session-local and not durable.
 
 - Persona: `docs/agent-os/personas/ux-designer.md`
 - Visual review skill: `.github/skills/visual-review/SKILL.md`
+- Inventory UX lookbook: `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`
 - Arbitrary screenshots: `.github/skills/screenshot-evaluation/SKILL.md`
 - Browser tooling: `.github/skills/chrome-devtools/SKILL.md`
 - Test generation: `.github/skills/playwright-generate-test/SKILL.md`

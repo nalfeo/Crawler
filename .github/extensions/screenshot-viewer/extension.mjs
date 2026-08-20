@@ -44,6 +44,25 @@ const FEEDBACK_TARGETS = new Set([
   'workflow',
 ]);
 
+const AXIS_LABELS = {
+  layout_consistency: 'Layout consistency',
+  spacing_balance: 'Spacing balance',
+  visual_hierarchy: 'Visual hierarchy',
+  readability: 'Readability',
+  icon_usage: 'Icon usage',
+  typography_clarity: 'Typography clarity',
+  thematic_fidelity: 'Thematic fidelity',
+  task_readiness: 'Task readiness',
+  decision_delta: 'Decision delta',
+  legibility: 'Legibility',
+  semantic_grammar: 'Semantic grammar',
+  workspace_use: 'Workspace use',
+  whitespace_quality: 'Whitespace quality',
+  visible_input_affordance: 'Visible input affordance',
+  ownership_context: 'Ownership and context',
+  accessibility_robustness: 'Accessibility robustness',
+};
+
 /** Maximum depth when scanning a directory (1 = immediate children only). */
 const SCAN_MAX_DEPTH = 5;
 
@@ -121,6 +140,56 @@ function readFeedback() {
     });
 }
 
+function cleanStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => typeof entry === 'string' && entry.trim().length > 0);
+}
+
+function reviewDetails(review, isWrappedReview, scale) {
+  const overall = isWrappedReview
+    ? { verdict: review.verdict ?? null, summary: review.summary ?? null, rawScore: null }
+    : {
+        verdict: review.overall?.verdict ?? null,
+        summary: review.overall?.summary ?? null,
+        rawScore: review.overall?.raw_score ?? null,
+      };
+  const axes = Object.entries(review?.axes ?? {})
+    .filter(([, axis]) => axis && typeof axis === 'object')
+    .map(([id, axis]) => ({
+      id,
+      label: AXIS_LABELS[id] ?? id.replaceAll('_', ' '),
+      score: Number.isFinite(Number(axis.score)) ? Number(axis.score) : null,
+      strengths: cleanStringList(axis.strengths),
+      issues: cleanStringList(axis.issues),
+    }));
+  const preciseFixes = Array.isArray(review?.precise_fixes)
+    ? review.precise_fixes
+        .filter((fix) => fix && typeof fix === 'object')
+        .map((fix) => ({
+          element: typeof fix.element === 'string' ? fix.element : '',
+          action: typeof fix.action === 'string' ? fix.action : '',
+          dx: Number.isFinite(Number(fix.dx)) ? Number(fix.dx) : null,
+          dy: Number.isFinite(Number(fix.dy)) ? Number(fix.dy) : null,
+          dw: Number.isFinite(Number(fix.dw)) ? Number(fix.dw) : null,
+          dh: Number.isFinite(Number(fix.dh)) ? Number(fix.dh) : null,
+          reason: typeof fix.reason === 'string' ? fix.reason : '',
+        }))
+    : [];
+  return {
+    scale,
+    verdict: overall.verdict,
+    summary: overall.summary,
+    rawScore: overall.rawScore,
+    axes,
+    scoreDerivation: review.score_derivation ?? null,
+    deterministicFindings: cleanStringList(review.deterministic_blocking_findings),
+    blockingFindings: cleanStringList(review.blocking_findings),
+    recommendedFixes: cleanStringList(review.recommended_fixes),
+    preciseFixes,
+    rawReview: review,
+  };
+}
+
 function reviewResults() {
   const workspacePath = getWorkspacePath();
   if (!workspacePath) return new Map();
@@ -172,6 +241,7 @@ function reviewResults() {
           coverage: isWrappedReview ? review.coverage : 100,
           hardFailures: Array.isArray(review.hardFailures) ? review.hardFailures : [],
           findings,
+          details: reviewDetails(review, isWrappedReview, isWrappedReview ? 100 : rawScale),
         });
       } catch {
         // A partially-written optional review artifact must not break screenshot browsing.

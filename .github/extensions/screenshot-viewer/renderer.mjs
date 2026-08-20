@@ -177,6 +177,45 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; cursor: zoom-in; }
       .pair-images img:focus-visible { outline: 2px solid var(--color-focus-outline, #58a6ff); outline-offset: 2px; }
       figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
+      .review-details {
+        margin-top: 6px;
+        border: 1px solid var(--border-color-default, #30363d);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--background-color-default, #0d1117) 94%, white);
+      }
+      .review-details summary {
+        cursor: pointer;
+        padding: 6px 8px;
+        color: var(--text-color-default, #c9d1d9);
+        font-size: 12px;
+        font-weight: var(--font-weight-semibold, 600);
+      }
+      .review-details-body {
+        display: grid;
+        gap: 8px;
+        padding: 0 8px 8px;
+        color: var(--text-color-muted, #8b949e);
+        font-size: 11px;
+        line-height: 16px;
+      }
+      .review-axis {
+        padding-top: 6px;
+        border-top: 1px solid var(--border-color-default, #30363d);
+      }
+      .review-list {
+        margin: 2px 0 0;
+        padding-left: 16px;
+      }
+      .review-list li {
+        margin: 2px 0;
+      }
+      .review-pre {
+        margin: 0;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text-color-default, #c9d1d9);
+      }
       .feedback-panel { margin: 16px 0; display: grid; gap: 8px; }
       textarea, select { width: 100%; font: inherit; padding: 8px; color: inherit; background: var(--background-color-default, #0d1117); border: 1px solid var(--border-color-default, #30363d); border-radius: 5px; }
       .feedback-list { display: grid; gap: 6px; }
@@ -487,6 +526,63 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         \`;
       }
 
+      function renderList(title, items) {
+        const list = Array.isArray(items) ? items.filter(Boolean) : [];
+        if (list.length === 0) return '';
+        return '<div><strong>' + escapeHtml(title) + '</strong><ul class="review-list">' +
+          list.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') +
+          '</ul></div>';
+      }
+
+      function renderReviewDetails(review) {
+        const details = review?.details;
+        if (!details) return '';
+        const summary = details.summary
+          ? '<div><strong>Summary</strong><br>' + escapeHtml(details.summary) + '</div>'
+          : '';
+        const verdict = details.verdict
+          ? '<div><strong>Verdict</strong> ' + escapeHtml(details.verdict) + '</div>'
+          : '';
+        const rawScore = details.rawScore !== null && details.rawScore !== undefined
+          ? '<div><strong>Model raw score</strong> ' + escapeHtml(details.rawScore) + '/' + escapeHtml(details.scale ?? 100) + '</div>'
+          : '';
+        const derivation = details.scoreDerivation
+          ? '<div><strong>Score derivation</strong><pre class="review-pre">' + escapeHtml(JSON.stringify(details.scoreDerivation, null, 2)) + '</pre></div>'
+          : '';
+        const axes = Array.isArray(details.axes) ? details.axes.map((axis) => {
+          const score = axis.score === null || axis.score === undefined ? 'n/a' : axis.score;
+          return '<div class="review-axis"><strong>' + escapeHtml(axis.label) + '</strong> · ' +
+            escapeHtml(score) + '/' + escapeHtml(details.scale ?? 100) +
+            renderList('Strengths', axis.strengths) +
+            renderList('Issues', axis.issues) +
+            '</div>';
+        }).join('') : '';
+        const precise = Array.isArray(details.preciseFixes) && details.preciseFixes.length > 0
+          ? '<div><strong>Precise fixes</strong><ul class="review-list">' + details.preciseFixes.map((fix) => {
+              const deltas = ['dx', 'dy', 'dw', 'dh']
+                .filter((key) => fix[key] !== null && fix[key] !== undefined && fix[key] !== 0)
+                .map((key) => key + '=' + fix[key])
+                .join(' ');
+              return '<li>' + escapeHtml([fix.action, fix.element, deltas, fix.reason].filter(Boolean).join(' · ')) + '</li>';
+            }).join('') + '</ul></div>'
+          : '';
+        const rawResponse = details.rawReview
+          ? '<details class="review-details"><summary>Full raw judge response JSON</summary><pre class="review-pre">' + escapeHtml(JSON.stringify(details.rawReview, null, 2)) + '</pre></details>'
+          : '';
+        return '<details class="review-details"><summary>Score details + judge comments</summary><div class="review-details-body">' +
+          verdict +
+          rawScore +
+          summary +
+          derivation +
+          renderList('Deterministic findings', details.deterministicFindings) +
+          renderList('Blocking findings', details.blockingFindings) +
+          renderList('Recommended fixes', details.recommendedFixes) +
+          precise +
+          axes +
+          rawResponse +
+          '</div></details>';
+      }
+
       function renderGallery(state) {
         const screenshots = Array.isArray(state.screenshots) ? state.screenshots : [];
         const count = screenshots.length;
@@ -530,7 +626,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         const orderedPairs = comparablePairs;
         const pairHtml = orderedPairs.map((pair) => {
           const reviewMeta = (review) => review
-            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
+            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review) + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
           const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>

@@ -57,3 +57,9 @@ test('a review with no usable score is rejected', () => {
   assert.equal(r.isWrappedReview, false);
   assert.equal(r.isRawAzureReview, false);
 });
+
+test('backend keeps the full raw review payload for the expander', () => {
+  assert.match(SRC, /rawReview: review/);
+  assert.doesNotMatch(SRC, /slice\(0, 12\)/);
+  assert.doesNotMatch(SRC, /slice\(0, 20\)/);
+});

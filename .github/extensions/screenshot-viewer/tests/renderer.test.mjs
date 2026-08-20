@@ -183,6 +183,14 @@ test('shows capture time for each A/B screenshot', () => {
   assert.match(html, /time unknown/);
 });
 
+test('renders judge score details and full raw response expanders', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /Score details \+ judge comments/);
+  assert.match(html, /Full raw judge response JSON/);
+  assert.match(html, /JSON\.stringify\(details\.rawReview, null, 2\)/);
+  assert.match(html, /renderReviewDetails\(review\)/);
+});
+
 test('warns that the panel is stale when the backend is unreachable', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /showing STALE content/);

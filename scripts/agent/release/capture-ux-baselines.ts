@@ -16,7 +16,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import process from 'node:process';
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const MANIFEST_PATH = resolve('docs/knowledge/ux-baselines/manifest.json');
@@ -82,9 +82,8 @@ function getTimestamp() {
 async function captureEquipmentSurface(opts: {
   ref: string;
   releaseDir: string;
-  withLLMReview?: boolean;
 }): Promise<{ success: boolean; surface: string; score?: number }> {
-  const { ref, releaseDir, withLLMReview } = opts;
+  const { ref, releaseDir } = opts;
   const surfaceDir = join(releaseDir, 'equipment');
   mkdirSync(surfaceDir, { recursive: true });
 
@@ -101,42 +100,43 @@ async function captureEquipmentSurface(opts: {
   const visualReviewCmd = [
     'tsx',
     'scripts/agent/review/visual-review-agent.ts',
-    `--lab-url=http://localhost:5173/?lab=ui-probe`,
-    `--output-dir=${surfaceDir}`,
-    '--screenshot-name=equipment.png',
-    '--viewport-width=1280',
-    '--viewport-height=800',
-    '--min-score=65',
-    '--ux-name=Equipment Panel',
-    '--ux-goal=Ten-slot inventory UX baseline',
-    '--setup-file=src/labs/ui-probe-lab.ts',
-    '--lineage-scenario=equipment',
-    `--lineage-state=${ref}`,
-    '--lineage-side=after',
+    '--url',
+    'http://localhost:5173/lab.html?lab=ui-probe-lab',
+    '--output-dir',
+    surfaceDir,
+    '--screenshot-name',
+    'equipment',
+    '--viewport',
+    '1280x800',
+    '--min-score',
+    '65',
+    '--ux-name',
+    'Equipment Panel',
+    '--ux-goal',
+    'Ten-slot inventory UX baseline',
+    '--setup-file',
+    'scripts/agent/review/setup/ui-probe-equipment.js',
+    '--lineage-scenario',
+    'equipment',
+    '--lineage-state',
+    ref,
+    '--lineage-side',
+    'after',
   ];
-
-  // Optionally add LLM review
-  if (withLLMReview) {
-    visualReviewCmd.push('--enable-llm-review');
-  }
 
   // We need a running dev server. Check if one is already running, or start one.
   let serverStarted = false;
+  let serverProcess: ReturnType<typeof spawn> | undefined;
   try {
     // Quick health check
     execSync('curl -s http://localhost:5173/ > /dev/null', { timeout: 5000 });
   } catch {
     // Server not running, start it in the background
     console.log('Starting Vite dev server for capture...');
-    const serverProc = spawnSync('npm', ['run', 'lab'], {
+    serverProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lab'], {
       stdio: 'ignore',
-      timeout: 120000, // 2 minutes to boot
+      windowsHide: true,
     });
-    if (serverProc.status !== 0 && serverProc.status !== null) {
-      throw new Error(
-        `Failed to start dev server: ${serverProc.stderr?.toString() || 'unknown error'}`,
-      );
-    }
     serverStarted = true;
     // Wait for server to be ready
     let ready = false;
@@ -225,9 +225,9 @@ async function captureEquipmentSurface(opts: {
   } finally {
     if (serverStarted) {
       try {
-        execSync('pkill -f "vite"', { stdio: 'ignore' });
+        serverProcess?.kill();
       } catch {
-        // Ignore if kill fails
+        // Ignore if the server already exited.
       }
     }
   }
@@ -279,7 +279,6 @@ async function main() {
         const result = await captureEquipmentSurface({
           ref,
           releaseDir,
-          withLLMReview: flags['with-llm-review'] === true || flags['with-llm-review'] === 'true',
         });
         results.push(result);
         if (result.success) capturedCount++;

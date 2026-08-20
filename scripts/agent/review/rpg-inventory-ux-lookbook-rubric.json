@@ -1,0 +1,99 @@
+{
+  "source": "docs/knowledge/game-design/rpg-inventory-ux-lookbook.md",
+  "caseMinimum": [
+    "task",
+    "viewport",
+    "input modality",
+    "at least one screenshot",
+    "target player question",
+    "explicit behavior evidence status"
+  ],
+  "dimensions": [
+    {
+      "id": "task_readiness",
+      "label": "Task readiness",
+      "weight": 15,
+      "visibleQuestion": "Can the stated task be understood and started immediately?"
+    },
+    {
+      "id": "decision_delta",
+      "label": "Decision delta",
+      "weight": 12,
+      "visibleQuestion": "Are consequences visible without memory or arithmetic?"
+    },
+    {
+      "id": "visual_hierarchy",
+      "label": "Visual hierarchy",
+      "weight": 12,
+      "visibleQuestion": "Do priority, selection, and scan order read clearly?"
+    },
+    {
+      "id": "legibility",
+      "label": "Legibility",
+      "weight": 12,
+      "visibleQuestion": "Are text, numbers, contrast, and alignment readable?"
+    },
+    {
+      "id": "semantic_grammar",
+      "label": "Semantic grammar",
+      "weight": 10,
+      "visibleQuestion": "Do color, icons, labels, and regions have stable meanings?"
+    },
+    {
+      "id": "workspace_use",
+      "label": "Workspace use",
+      "weight": 10,
+      "visibleQuestion": "Is PC canvas devoted to useful state, action, or context?"
+    },
+    {
+      "id": "whitespace_quality",
+      "label": "Whitespace quality",
+      "weight": 8,
+      "visibleQuestion": "Does empty area group or target rather than merely exist?"
+    },
+    {
+      "id": "visible_input_affordance",
+      "label": "Visible input affordance",
+      "weight": 7,
+      "visibleQuestion": "Are mouse and keyboard actions discoverable on-screen?"
+    },
+    {
+      "id": "ownership_context",
+      "label": "Ownership and context",
+      "weight": 7,
+      "visibleQuestion": "Are player, party, stash, vendor, and selection unambiguous?"
+    },
+    {
+      "id": "accessibility_robustness",
+      "label": "Accessibility robustness",
+      "weight": 7,
+      "visibleQuestion": "Does meaning survive color loss, scaling, and low vision?"
+    }
+  ],
+  "hardFailureCaps": [
+    "Unreadable decisive text caps verdict at 59.",
+    "Hidden selection caps verdict at 59.",
+    "Tooltip occluding the decision target caps verdict at 59.",
+    "Ambiguous ownership caps verdict at 59.",
+    "Any decisive text below 14px, clipped, overlapping, or missing sign/unit is a hard failure."
+  ],
+  "verdictBands": {
+    "reference": "90-100",
+    "ship": "75-89",
+    "revise": "60-74",
+    "majorRedesign": "40-59",
+    "taskFailure": "0-39"
+  },
+  "constraints": [
+    "Do not make players mentally subtract two long tooltips.",
+    "Do not use red and green as the only signal for gains and losses.",
+    "Do not move paperdoll slots or command locations between contexts.",
+    "Do not give every stat, currency, and ornament equal visual weight.",
+    "Do not let a tooltip cover the item, target slot, or number it explains.",
+    "Do not hide sort, filter, search, transfer-all, or compare in tutorial text.",
+    "Do not reset selection, scroll position, filters, or category after an action.",
+    "Do not require drag-and-drop for common equip, move, or consume actions.",
+    "Do not truncate decisive affixes without a reliable full-detail path.",
+    "Do not conceal capacity, incompatibility, encumbrance, or requirements until after the player acts."
+  ]
+}

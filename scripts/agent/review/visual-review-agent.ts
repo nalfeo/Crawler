@@ -253,6 +253,20 @@ interface GeometrySnapshot {
 
 type HarvestSource = 'declared' | 'equipment-legacy' | 'none';
 
+interface LookbookDimension {
+  id: string;
+  label: string;
+  weight: number;
+  visibleQuestion: string;
+}
+
+interface LookbookRubric {
+  source: string;
+  dimensions: LookbookDimension[];
+  hardFailureCaps: string[];
+  constraints: string[];
+}
+
 /**
  * Which conditional (surface-specific) hard requirements the prompt should assert.
  * Legacy equipment sets all three true so its prompt matches today's byte-for-byte;
@@ -511,6 +525,32 @@ function nowStamp(): string {
   return iso.replace(/[:.]/g, '-');
 }
 
+const INVENTORY_UX_LOOKBOOK_RUBRIC = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('./rpg-inventory-ux-lookbook-rubric.json', import.meta.url)),
+    'utf-8',
+  ),
+) as LookbookRubric;
+
+function formatInventoryLookbookRubric(rubric: LookbookRubric): string {
+  const dimensions = rubric.dimensions
+    .map((d) => `- ${d.label} (${d.weight}): ${d.visibleQuestion}`)
+    .join('\n');
+  const caps = rubric.hardFailureCaps.map((cap) => `- ${cap}`).join('\n');
+  const constraints = rubric.constraints.map((constraint) => `- ${constraint}`).join('\n');
+  return `RPG INVENTORY UX LOOKBOOK REFERENCE (${rubric.source})
+Use this when the surface is equipment, inventory, item tooltip, loot triage, or build inspection. Judge the screenshot by the player decision it supports, not by whether the chrome looks polished.
+
+Weighted decision rubric:
+${dimensions}
+
+Hard-failure caps:
+${caps}
+
+Product constraints to enforce:
+${constraints}`;
+}
+
 function buildPrompt(
   opts: Pick<CliOptions, 'uxName' | 'uxGoal' | 'rebuttals'>,
   geometryText: string,
@@ -594,6 +634,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     context.regionIds.length > 0
       ? `\n\nDECLARED REGION IDS (reference these EXACT ids in precise_fixes.element and when citing elements): ${context.regionIds.join(', ')}.`
       : '';
+  const inventoryLookbookBlock = formatInventoryLookbookRubric(INVENTORY_UX_LOOKBOOK_RUBRIC);
   // ART-REVIEW MODE (opt-in): critique the ART ASSETS themselves, maintain a
   // regen ledger, and suppress already-queued assets. These blocks are EMPTY
   // for non-art surfaces so equipment/inventory prompts stay byte-for-byte.
@@ -641,6 +682,7 @@ Evaluate ONLY what is visible in the screenshot and output strict JSON.
 Do not excuse prototype quality. Call out spacing, overlap, alignment, hierarchy, typography, icon usage, text breathing-room, and readability defects explicitly.
 You are given the exact measured pixel geometry of every element. Use it to make positional feedback concrete and numeric — never vague.
 The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap, or alignment conflicts with the geometry numbers, trust the numbers, not your visual impression.
+For equipment/inventory/item-tooltip surfaces, apply the checked-in RPG inventory UX lookbook rubric. Favor task readiness, decision delta, stable state/candidate/delta separation, visible constraints, expert throughput, and text safety over decorative polish.
 Calibration — these exact claim patterns have been screenshot-vs-geometry false positives before; before making one of them, compute the actual delta from the geometry table and only report it if the number itself crosses the stated threshold:
 - "slots touch" / "no breathing room" — only valid if the measured gap between the two boxes is <= 1px. A visible seam of several pixels is NOT touching.
 - "tooltip overlaps the panel" — only valid if the tooltip box's edge coordinates actually exceed the panel box's edge coordinates. A tooltip fully inside the panel bounds is not an overlap, however close it looks.
@@ -652,6 +694,8 @@ Design intent for this surface: ${opts.uxGoal}.
 
 MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
 ${geometryText}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
+
+${inventoryLookbookBlock}
 
 Score each axis 0-100 (0 = unacceptable, 100 = shippable quality):
 - layout_consistency

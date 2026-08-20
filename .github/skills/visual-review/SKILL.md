@@ -190,6 +190,12 @@ consistency.
 
 ## What the screenshot judge penalizes
 
+For equipment, inventory, item-tooltip, loot-triage, and build-inspection
+surfaces, the LLM prompt loads the checked-in RPG inventory UX lookbook rubric from
+`scripts/agent/review/rpg-inventory-ux-lookbook-rubric.json`, which is extracted
+from `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`. The original
+lookbook PDF and third-party screenshots are not required at runtime.
+
 The arbitrary-screenshot evaluator applies deterministic score caps when it
 reports a matching finding, so these are the failure classes worth designing
 against before capture:
