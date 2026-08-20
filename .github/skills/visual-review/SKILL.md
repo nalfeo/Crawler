@@ -260,6 +260,46 @@ revision back to main, shows the state labels, and keeps review feedback
 directly beneath the Before/After pane. Re-score every captured state and
 attach its `.review.json` beside the image. Click either image to zoom it in
 the lightbox.
+
+### Capturing an explicit A|B iteration (use `--lineage-*`, don't hand-copy files)
+
+Use `--lineage-scenario`/`--lineage-state`/`--lineage-side` on
+`review:visual:llm` whenever a capture is a tracked iteration step in an A|B
+comparison — not a one-off speculative/exploratory screenshot. These flags make
+`visual-review-agent.ts` copy the raw timestamped capture + review into the
+exact `<side>/<state>/<scenario>.png` + `.review.json` layout the viewer's
+lineage grouping requires, using ONE stable filename (`scenario`) across every
+state. This is the deterministic fix for two bugs hit in practice: (1) most
+iterations of a 10-round revision loop were never copied into `before/`/`after/`
+at all, so they were invisible in the viewer despite being scored; (2) one
+iteration was captured under a different filename than the rest of the lineage,
+which silently orphaned it into its own ungrouped pair with no evaluator match.
+
+```bash
+# Baseline capture (main), scenario "equipment", lineage side "before":
+npm run review:visual:llm -- \
+  --url "http://127.0.0.1:4176/lab.html?lab=ui-probe-lab" \
+  --setup-file "scripts/agent/review/setup/ui-probe-equipment.js" \
+  --ux-name "equipment panel" --ux-goal "..." \
+  --screenshot-name equipment-panel \
+  --lineage-scenario equipment --lineage-state main --lineage-side before
+
+# Each subsequent iteration, lineage side defaults to "after":
+npm run review:visual:llm -- \
+  --url "..." --setup-file "..." --ux-name "equipment panel" --ux-goal "..." \
+  --screenshot-name equipment-panel \
+  --lineage-scenario equipment --lineage-state v1
+# ... --lineage-state v2, v3, ... for every iteration you want in the A|B history
+```
+
+- Use the SAME `--lineage-scenario` value across the whole loop (it becomes the
+  viewer's grouping key) and a NEW `--lineage-state` per iteration (`v1`, `v2`, ...).
+- Omit `--lineage-scenario`/`--lineage-state` entirely for a speculative or
+  exploratory capture (checking a hunch, a one-off zoom, an unrelated surface) —
+  those should NOT pollute the tracked A|B history.
+- The raw timestamped capture in `files/visual-review/` is still written as
+  before (unaffected); the lineage copy is additive.
+
 Classify feedback as:
 
 - **This task only** — keep the note attached to the current implementation.

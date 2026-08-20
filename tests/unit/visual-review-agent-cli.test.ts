@@ -40,3 +40,57 @@ describe('visual-review-agent viewport parsing', () => {
     expect(parseArgs(['--setup-file', 'setup.js', '--no-probe-wait']).skipProbeWait).toBe(true);
   });
 });
+
+describe('visual-review-agent lineage capture flags', () => {
+  it('defaults to no lineage tracking (speculative/exploratory capture)', () => {
+    const opts = parseArgs([]);
+    expect(opts.lineageScenario).toBeNull();
+    expect(opts.lineageState).toBeNull();
+    expect(opts.lineageSide).toBe('after');
+  });
+
+  it('parses an explicit A|B iteration capture', () => {
+    const opts = parseArgs([
+      '--lineage-scenario',
+      'equipment',
+      '--lineage-state',
+      'v3',
+      '--lineage-side',
+      'before',
+    ]);
+    expect(opts.lineageScenario).toBe('equipment');
+    expect(opts.lineageState).toBe('v3');
+    expect(opts.lineageSide).toBe('before');
+  });
+
+  it('defaults --lineage-side to "after" when omitted', () => {
+    expect(
+      parseArgs(['--lineage-scenario', 'equipment', '--lineage-state', 'main']).lineageSide,
+    ).toBe('after');
+  });
+
+  it('sanitizes scenario/state to filesystem-safe slugs', () => {
+    const opts = parseArgs(['--lineage-scenario', 'equipment panel!', '--lineage-state', 'v/../1']);
+    expect(opts.lineageScenario).toBe('equipment-panel-');
+    expect(opts.lineageState).toBe('v-1');
+  });
+
+  it('rejects an unknown --lineage-side value', () => {
+    expect(() =>
+      parseArgs([
+        '--lineage-scenario',
+        'equipment',
+        '--lineage-state',
+        'v1',
+        '--lineage-side',
+        'sideways',
+      ]),
+    ).toThrow(/invalid --lineage-side/);
+  });
+
+  it('requires --lineage-state whenever --lineage-scenario is set', () => {
+    expect(() => parseArgs(['--lineage-scenario', 'equipment'])).toThrow(
+      /--lineage-scenario requires --lineage-state/,
+    );
+  });
+});

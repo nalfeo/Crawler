@@ -79,6 +79,24 @@ export interface CliOptions {
   artLedger: string | null;
   /** Root dir for the labeled evidence corpus (art-review mode). Defaults under outputDir. */
   evidenceDir: string | null;
+  /**
+   * Deterministic A|B iteration lineage capture (opt-in). When `lineageScenario`
+   * is set, this run is an explicit iteration step in a tracked A|B comparison
+   * (not a one-off speculative screenshot): in addition to the usual timestamped
+   * raw capture, the screenshot + review are ALSO copied into
+   * `outputDir/<lineageSide>/<lineageState>/<lineageScenario>.png` (and
+   * `.review.json`), which is the exact filename/state contract the Screenshot
+   * Viewer's `pairs()` lineage grouping requires. This removes the manual
+   * copy/rename step that has twice caused broken lineage chains (missing
+   * iterations never copied in, and a filename mismatch that orphaned a state
+   * from its lineage). Omit these flags for a speculative/exploratory capture
+   * that should NOT be tracked as a scored iteration step.
+   */
+  lineageScenario: string | null;
+  /** Lineage state label, e.g. "main", "v1", "v2". Required when lineageScenario is set. */
+  lineageState: string | null;
+  /** Which side of the lineage this capture belongs to. Defaults to "after". */
+  lineageSide: 'before' | 'after';
 }
 
 type ScreenClip = { x: number; y: number; width: number; height: number };
@@ -285,6 +303,9 @@ export function parseArgs(argv: string[]): CliOptions {
     artReview: false,
     artLedger: null,
     evidenceDir: null,
+    lineageScenario: null,
+    lineageState: null,
+    lineageSide: 'after',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -364,6 +385,24 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+    if (arg === '--lineage-scenario' && next) {
+      opts.lineageScenario = next.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
+      i += 1;
+      continue;
+    }
+    if (arg === '--lineage-state' && next) {
+      opts.lineageState = next.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
+      i += 1;
+      continue;
+    }
+    if (arg === '--lineage-side' && next) {
+      if (next !== 'before' && next !== 'after') {
+        throw new Error(`invalid --lineage-side "${next}" (expected "before" or "after")`);
+      }
+      opts.lineageSide = next;
+      i += 1;
+      continue;
+    }
     if ((arg === '--viewport-width' || arg === '--viewport-height') && next) {
       const value = Number(next);
       if (!Number.isInteger(value) || value < 320 || value > 7680) {
@@ -408,6 +447,9 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+  }
+  if (opts.lineageScenario && !opts.lineageState) {
+    throw new Error('--lineage-scenario requires --lineage-state (e.g. "main", "v1", "v2")');
   }
   return opts;
 }
@@ -1942,6 +1984,18 @@ async function main(): Promise<number> {
 
   writeFileSync(reviewPath, `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
   printResult(result, screenshotPath, reviewPath);
+
+  if (opts.lineageScenario && opts.lineageState) {
+    const lineageDir = resolve(opts.outputDir, opts.lineageSide, opts.lineageState);
+    mkdirSync(lineageDir, { recursive: true });
+    const lineagePng = resolve(lineageDir, `${opts.lineageScenario}.png`);
+    const lineageJson = resolve(lineageDir, `${opts.lineageScenario}.review.json`);
+    copyFileSync(screenshotPath, lineagePng);
+    copyFileSync(reviewPath, lineageJson);
+    console.log(
+      `[visual-review-agent] lineage: ${opts.lineageSide}/${opts.lineageState}/${opts.lineageScenario}.{png,review.json}`,
+    );
+  }
 
   if (opts.artReview && evidenceBundleDir) {
     const dir = writeEvidenceBundle({
