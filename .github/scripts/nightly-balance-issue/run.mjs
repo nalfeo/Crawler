@@ -1,4 +1,15 @@
+import { ensureCanonicalBaselineSweepSafely } from './canonical-baseline.mjs';
 import { runNightlyBalanceIssue } from './nightly-balance-issue.mjs';
+
+// Copilot sessions cannot dispatch workflows, so the filer starts the canonical
+// baseline sweep the session's evidence gate requires.
+const baseline = await ensureCanonicalBaselineSweepSafely({
+  token: process.env.CRAWLER_CI_PAT || '',
+  repository: process.env.GITHUB_REPOSITORY || '',
+});
+process.stdout.write(
+  `canonical baseline sweep: ${baseline.status}${baseline.headSha ? ` head=${baseline.headSha}` : ''}${baseline.runId ? ` run=${baseline.runId}` : ''}${baseline.reason ? ` reason=${baseline.reason}` : ''}\n`,
+);
 
 const result = await runNightlyBalanceIssue({
   githubToken: process.env.GITHUB_TOKEN || '',

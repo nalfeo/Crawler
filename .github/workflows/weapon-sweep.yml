@@ -1,4 +1,8 @@
 name: Weapon Sweep
+# Stamp the dispatch inputs into the run title so baseline eligibility (seed
+# count, weapon list, persona flag, frame budget) is auditable straight from the
+# runs list instead of requiring every aggregate artifact to be downloaded.
+run-name: Weapon Sweep · seeds=${{ inputs.seed_count }} · weapons=${{ inputs.weapons }} · personas=${{ inputs.weapon_personas }} · frames=${{ inputs.max_frames }}
 
 on:
   workflow_dispatch:
