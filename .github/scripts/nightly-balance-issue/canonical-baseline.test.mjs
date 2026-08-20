@@ -264,3 +264,18 @@ test('the safe wrapper dispatches for a well-formed repository', async () => {
     ),
   );
 });
+
+test('the entrypoint only dispatches the baseline after the issue decision', async () => {
+  const entrypoint = await readFile(new URL('./run.mjs', import.meta.url), 'utf8');
+  const issueCallIndex = entrypoint.indexOf('runNightlyBalanceIssue({');
+  const baselineCallIndex = entrypoint.indexOf('ensureCanonicalBaselineSweepSafely({');
+  assert.ok(issueCallIndex > 0, 'entrypoint must call runNightlyBalanceIssue');
+  assert.ok(baselineCallIndex > 0, 'entrypoint must call ensureCanonicalBaselineSweepSafely');
+  // An already-open issue means the prior night's work is still active, so that
+  // nightly must no-op instead of re-dispatching a 100-seed six-weapon sweep.
+  assert.ok(
+    issueCallIndex < baselineCallIndex,
+    'the baseline sweep must be dispatched after the open-issue check',
+  );
+  assert.match(entrypoint, /canonical baseline sweep: skipped reason=issue-already-open/);
+});
