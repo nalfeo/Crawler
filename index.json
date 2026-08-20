@@ -1,5 +1,39 @@
 [
   {
+    "commit": "8ed30488b6197cc72c472b03eeb1510124154bae",
+    "commitDate": "2026-08-19T23:13:40Z",
+    "commitSubject": "fix(ci): merge bottom-of-stack PRs via async endpoint instead of rejecting them forever (#3157)",
+    "capturedAt": "2026-08-20T00:37:17.039Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32314292832",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/8ed30488b6197cc72c472b03eeb1510124154bae.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/8ed30488b6197cc72c472b03eeb1510124154bae.fun-report.json"
+    }
+  },
+  {
     "commit": "cc74df258a1d812f1a191039c40511171472222e",
     "commitDate": "2026-08-19T21:34:08Z",
     "commitSubject": "Prevent quest arrows from disappearing when HUD reservations only block labels (#3131)",
