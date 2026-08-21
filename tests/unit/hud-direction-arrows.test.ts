@@ -188,6 +188,44 @@ describe('resolveDirectionArrowStates', () => {
     expect(states).toHaveLength(0);
   });
 
+  it('keeps an arrow visible when only its label region is reserved', () => {
+    const reserved = [{ x: 1000, y: 130, width: 160, height: 300 }];
+    const states = resolveDirectionArrowStates(
+      [
+        {
+          ...waypoint('ne-label-blocked', 100, -36),
+          label: 'Find the distant Welcome Office proprietor',
+        },
+      ],
+      0,
+      0,
+      1,
+      reserved,
+    );
+    expect(states).toHaveLength(1);
+    const [state] = states;
+    const [region] = reserved;
+    expect(state!.screenX).toBeGreaterThan(region!.x + region!.width);
+  });
+
+  it('fans to a different placement when the baseline label region is reserved', () => {
+    const [baseline] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1);
+    expect(baseline).toBeDefined();
+    const reserved = [
+      {
+        x: baseline!.labelScreenX - baseline!.labelWidth / 2 - 4,
+        y: baseline!.labelScreenY - baseline!.labelHeight / 2 - 4,
+        width: baseline!.labelWidth + 8,
+        height: baseline!.labelHeight + 8,
+      },
+    ];
+    const [state] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1, reserved);
+
+    expect(state).toBeDefined();
+    expect(state!.screenX).toBe(baseline!.screenX);
+    expect(state!.screenY).not.toBe(baseline!.screenY);
+  });
+
   it('keeps a down-left arrow on the left half of the screen', () => {
     const states = resolveDirectionArrowStates(
       Array.from({ length: 6 }, (_, index) => waypoint(`sw-${index}`, -60 - index, 100)),

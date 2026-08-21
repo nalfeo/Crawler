@@ -171,6 +171,15 @@ const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
  * headless-adjacent AI playthrough. Human play dismisses on input instead.
  */
 const BOSS_INTRO_AUTO_HOLD_FRAMES = 60;
+/**
+ * Render frames the reward-opening `summary` screen is held open before an
+ * AI-driven run (`isAutoDriven`/`autoLevelUpAllocator` wired) auto-acknowledges
+ * it. ~1s at 60fps — long enough for a viewer/recording to read the reveal,
+ * short enough not to stall an AI playthrough forever. Human play (including
+ * the AI Runner Lab's manual-control mode) waits for a click/Enter/Space
+ * instead — see `RewardOpeningUI`'s own input handling.
+ */
+const REWARD_OPENING_AUTO_HOLD_FRAMES = 60;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -213,13 +222,13 @@ function markGame(label: string): void {
 function resolveSetPieceLightEmission(
   spriteId: string,
 ): { radiusFt: number; intensity: number } | null {
-  if (/^prop-wall-sconce-v1-var-\d+$/.test(spriteId)) {
+  if (/^prop-wall-sconce-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
-  if (/^prop-torch-v1-var-\d+$/.test(spriteId)) {
+  if (/^prop-torch-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
-  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+  if (/^prop-lantern-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
   return null;
@@ -360,7 +369,7 @@ export interface MainGameSceneOptions {
     recorderStats?: ReturnType<SessionRecorder['getStats']>,
   ) => unknown;
   /** Receives the completed run artifact before reload or scene restart. */
-  onRunBundle?: (bundle: RunBundle) => void;
+  onRunBundle?: (bundle: RunBundle) => Promise<unknown> | void;
   /**
    * Per-floor lighting overrides, merged over {@link DEFAULT_LIGHTING_CONFIG}
    * when the scene is created. The shipped game passes the floor manifest's
@@ -531,6 +540,7 @@ export class MainGameScene extends Phaser.Scene {
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
   private lastRunBundle?: RunBundle;
+  private lastRunBundleUpload?: Promise<unknown>;
   private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
   private runSurveyShown = false;
   private runSurveySubmitted = false;
@@ -714,6 +724,14 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Chest ids already surfaced via a one-time "ready to open" toast. */
   private readonly notifiedBossChestIds = new Set<string>();
+
+  /**
+   * Frames the reward-opening `summary` screen has been held open for an
+   * AI-driven run. Reset whenever the overlay is not open or not yet at
+   * `summary` (the `anticipation`/`revealing` phases already advance on their
+   * own via `tick()`).
+   */
+  private rewardOpeningAutoHoldFrames = 0;
 
   /**
    * Frames the level-up modal has been held open while an `autoLevelUpAllocator`
@@ -904,6 +922,7 @@ export class MainGameScene extends Phaser.Scene {
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
     this.lastRunBundle = undefined;
+    this.lastRunBundleUpload = undefined;
     this.runSurveyShown = false;
     this.runSurveySubmitted = false;
 
@@ -1047,6 +1066,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
+      onVisibilityChange: () => {
+        this.clearPendingInteractionInput();
+      },
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
       },
@@ -1854,6 +1876,7 @@ export class MainGameScene extends Phaser.Scene {
     // pause gameplay exactly like the level-up screen.
     if (this.rewardOpeningUI?.isOpen()) {
       this.rewardOpeningUI.tick(delta);
+      this.driveAutoRewardOpening();
       this.bridge.sync(this.world);
       this.updateCamera();
       this.updateOverlayText();
@@ -1926,6 +1949,11 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
+    if (this.achievementsUI?.isOpen()) {
+      this.inputState.moveX = 0;
+      this.inputState.moveY = 0;
+      this.inputState.action = false;
+    }
 
     if (this.world.state === 'loadout') {
       this.openLoadoutModal();
@@ -4159,14 +4187,18 @@ export class MainGameScene extends Phaser.Scene {
         if (!validSurvey || !this.lastRunBundle) {
           return false;
         }
-        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
-          (error: unknown) => {
-            if (typeof console !== 'undefined') {
-              console.warn('Run survey submission failed', error);
-            }
-            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
-          },
-        );
+        const bundle = this.lastRunBundle;
+        await this.lastRunBundleUpload?.catch((error: unknown) => {
+          if (typeof console !== 'undefined') {
+            console.warn('Run completion upload failed before survey append', error);
+          }
+        });
+        const result = await submitRunSurvey(bundle, validSurvey).catch((error: unknown) => {
+          if (typeof console !== 'undefined') {
+            console.warn('Run survey submission failed', error);
+          }
+          return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+        });
         if (result.ok) {
           this.runSurveySubmitted = true;
         }
@@ -4174,12 +4206,6 @@ export class MainGameScene extends Phaser.Scene {
       },
       onSkip: () => {
         this.runSurveySubmitted = true;
-        // No survey was submitted: emitRunBundle deliberately deferred the
-        // single upload for this run until skip/submit resolved (see
-        // emitRunBundle), so perform that one silent upload now.
-        if (this.lastRunBundle) {
-          this.options.onRunBundle?.(this.lastRunBundle);
-        }
       },
     });
     this.runSurveyUI.show();
@@ -4224,14 +4250,7 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runBundleEmitted = true;
     this.lastRunBundle = bundle;
-    if (endReason === 'death' || endReason === 'victory') {
-      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
-      // here too would resend this run under an unrelated stored ID once the
-      // survey is submitted, creating a duplicate; instead defer the single
-      // upload for this run to whichever of skip/submit resolves the survey.
-      return;
-    }
-    this.options.onRunBundle?.(bundle);
+    this.lastRunBundleUpload = Promise.resolve(this.options.onRunBundle?.(bundle));
   }
 
   private createIssueRunBundle(): RunBundle | null {
@@ -4550,6 +4569,38 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.levelUpUI.autoResolve(allocations);
     this.levelUpAutoHoldFrames = 0;
+  }
+
+  /**
+   * AI reward-opening driver. `RewardOpeningUI.tick()` already auto-advances
+   * `anticipation` -> `revealing` -> `summary` on its own, but `summary` only
+   * ever exits via an explicit `acknowledge()`/`skip()`+`acknowledge()` input
+   * (a click, Enter, Space, or Escape) — there is no human to press one when
+   * the run is AI-driven (see {@link MainGameSceneOptions.isAutoDriven}), so
+   * the reveal would otherwise sit at `summary` forever, freezing the sim
+   * (mirrors `driveAutoBossIntro`'s freeze-the-simulation-while-open
+   * contract). Hold the summary for {@link REWARD_OPENING_AUTO_HOLD_FRAMES}
+   * render frames so a viewer/recording can still read the reveal, then
+   * acknowledge it and resume the run. No-op for human play (including the
+   * AI Runner Lab's manual-control mode), where the overlay waits for input.
+   */
+  private driveAutoRewardOpening(): void {
+    const autoDriven =
+      this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+    if (
+      !autoDriven ||
+      !this.rewardOpeningUI?.isOpen() ||
+      this.rewardOpeningUI.getPhase() !== 'summary'
+    ) {
+      this.rewardOpeningAutoHoldFrames = 0;
+      return;
+    }
+    this.rewardOpeningAutoHoldFrames += 1;
+    if (this.rewardOpeningAutoHoldFrames < REWARD_OPENING_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    this.rewardOpeningUI.acknowledge();
+    this.rewardOpeningAutoHoldFrames = 0;
   }
 
   /**

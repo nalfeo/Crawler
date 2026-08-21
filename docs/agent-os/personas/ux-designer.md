@@ -67,6 +67,11 @@
   `tests/e2e/helpers/pixels.ts` / `ui-probe.ts` (see `tests/e2e/hud-overlap-visual.test.ts`)
   or a headless assertion (see `tests/headless/floor1-completion.test.ts`).
   Deterministic only — never an LLM-as-judge in CI.
+- For equipment text, distinguish raster fuzziness from a subjective font
+  preference. Use the visual-review `text_raster` artifact: intended-font load,
+  integer-aligned final raster geometry, and per-glyph-crop sharpness are
+  deterministic evidence. Azure critique may guide hierarchy and spacing, but
+  cannot overrule a passing text-raster report with an ungrounded blur claim.
 
 ## Quality Criteria
 

@@ -75,23 +75,23 @@ describe('generateWiringPlan', () => {
   });
 
   it('skips mob-def patches until block-aware anchoring is implemented', () => {
-    const report = auditReport([conceptAudit('slime', 'mob-def', 'slime-mob', 'slime-v1')]);
+    const report = auditReport([conceptAudit('slime', 'mob-def', 'slime-mob', 'slime')]);
     const plan = generateWiringPlan(report);
     expect(plan.patches).toHaveLength(0);
     expect(plan.needsWiring).toHaveLength(1);
   });
 
   it('generates sprite-registry patches using manifest texture keys', () => {
-    const report = auditReport([conceptAudit('rat', 'sprite-registry', 'enemy.rat', 'rat-v1')]);
+    const report = auditReport([conceptAudit('rat', 'sprite-registry', 'enemy.rat', 'rat')]);
     const plan = generateWiringPlan(report);
     expect(plan.patches).toHaveLength(1);
-    expect(plan.patches[0]?.newText).toContain('rat-v1-var-0');
+    expect(plan.patches[0]?.newText).toContain('rat-var-0');
     expect(plan.needsWiring).toHaveLength(1);
   });
 
   it('includes summary text in the plan', () => {
     const report = auditReport([
-      conceptAudit('slime', 'mob-def', 'slime-mob', 'slime-v1'),
+      conceptAudit('slime', 'mob-def', 'slime-mob', 'slime'),
       conceptAudit('gem', 'manifest', 'gem-placeholder', 'gem-v1'),
     ]);
     const plan = generateWiringPlan(report);
@@ -103,8 +103,8 @@ describe('generateWiringPlan', () => {
 
   it('categorizes placeholders correctly', () => {
     const report = auditReport([
-      conceptAudit('slime', 'mob-def', 'slime-mob', 'slime-v1'),
-      conceptAudit('rat', 'sprite-registry', 'enemy.rat', 'rat-v1'),
+      conceptAudit('slime', 'mob-def', 'slime-mob', 'slime'),
+      conceptAudit('rat', 'sprite-registry', 'enemy.rat', 'rat'),
       conceptAudit('gem', 'manifest', 'gem-placeholder', 'gem-v1'),
     ]);
     const plan = generateWiringPlan(report);

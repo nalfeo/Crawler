@@ -89,6 +89,11 @@ export interface FileTriple {
   /** Blob at the PR head, used for the survival filter. */
   readonly head: string | null;
   /**
+   * True when HEAD preserves the incoming blob at a renamed path, including a
+   * generated-entry collision merged into an existing canonical target.
+   */
+  readonly sideContentPreservedAtHead?: boolean;
+  /**
    * True when a clean three-way merge of `base`, `other`, and `side` would
    * still produce `other` at this path. In that case `result === other` does
    * NOT mean the incoming side was discarded — the opposing side already
@@ -319,7 +324,75 @@ export function isDiscarded(f: FileTriple): boolean {
  * superseded and visible as an ordinary reviewable change in the PR diff.
  */
 export function survivesToHead(f: FileTriple): boolean {
+  if (f.sideContentPreservedAtHead === true) return false;
   return f.head === f.result;
+}
+
+const GENERATED_ENTRY_IDENTITY_FIELDS = new Set([
+  'briefId',
+  'spriteName',
+  'assetPath',
+  'variantIndex',
+]);
+
+/**
+ * Compares a generated entry across a canonical rename. Identity fields may
+ * change only to the values derived from the target `*-var-N.json` path; every
+ * other field must remain equal. Same-path comparisons are deliberately
+ * rejected so identity-only mainline fixes cannot be mistaken for renames.
+ */
+export function generatedEntryRenamePreservesContent(
+  sourcePath: string,
+  targetPath: string,
+  sourceContent: string,
+  targetContent: string,
+): boolean {
+  const entryPrefix = 'public/assets/generated/entries/';
+  if (
+    sourcePath === targetPath ||
+    !sourcePath.startsWith(entryPrefix) ||
+    !targetPath.startsWith(entryPrefix) ||
+    !sourcePath.endsWith('.json') ||
+    !targetPath.endsWith('.json')
+  ) {
+    return false;
+  }
+
+  try {
+    const source = JSON.parse(sourceContent) as Record<string, unknown>;
+    const target = JSON.parse(targetContent) as Record<string, unknown>;
+    const targetName = targetPath.slice(entryPrefix.length, -'.json'.length);
+    const targetMatch = /^(.*)-var-(\d+)$/.exec(targetName);
+    if (
+      !targetMatch ||
+      target.briefId !== targetMatch[1] ||
+      target.spriteName !== targetName ||
+      target.assetPath !== `generated/${targetName}.png` ||
+      target.variantIndex !== Number(targetMatch[2])
+    ) {
+      return false;
+    }
+    const canonicalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(canonicalize);
+      if (value !== null && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, nested]) => [key, canonicalize(nested)]),
+        );
+      }
+      return value;
+    };
+    const substantive = (entry: Record<string, unknown>): unknown =>
+      canonicalize(
+        Object.fromEntries(
+          Object.entries(entry).filter(([key]) => !GENERATED_ENTRY_IDENTITY_FIELDS.has(key)),
+        ),
+      );
+    return JSON.stringify(substantive(source)) === JSON.stringify(substantive(target));
+  } catch {
+    return false;
+  }
 }
 
 /**

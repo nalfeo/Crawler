@@ -20,8 +20,8 @@
     "the generated manifest, so a pointer at art that was never approved fails."
   ],
   "byNpcDefId": {
-    "tutorial-goon": "welcome-goon-v3-var-1",
-    "shopkeeper": "sweaty-merchant-v3-var-3",
+    "tutorial-goon": "welcome-goon-var-1",
+    "shopkeeper": "sweaty-merchant-var-3",
     "spell-quest-giver": "npc-spell-broker-var-1"
   }
 }

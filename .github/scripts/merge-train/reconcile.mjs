@@ -24,6 +24,7 @@ import {
   buildCandidate,
   buildDispatchBindings,
   buildGatedDispatchRecovery,
+  createMergeBottomOfStackPr,
   createMergePullRequest,
   deleteCandidateBundle,
   isDisabledTrainScheduleRun,
@@ -64,6 +65,8 @@ import {
   resolveAdmissionChecks,
   renderLandedComment,
   renderStatus,
+  squashCommitMessage,
+  squashCommitTitle,
   STATUS_MARKER,
   successfulChecks,
   trainCheckState,
@@ -364,6 +367,13 @@ async function eligible(pr) {
     state: pr.state,
     draft: pr.draft,
     hasMergeConflict: pr.mergeable === false || pr.mergeable_state === 'dirty',
+    // `pr.stack` is GitHub's stacked-PR object (present on both the list-pulls
+    // and single-PR responses whenever another open PR is based on this PR's
+    // head branch, or this PR is based on another open PR's head branch).
+    // evaluateAdmission rejects it with reason `stacked-pr`: the classic
+    // synchronous merge endpoint 403s on any stacked PR, so it must never be
+    // admitted into the sequential squash-merge promotion loop.
+    stack: pr.stack ?? null,
     checkRuns: runs,
     reviewThreads: review.threads,
     reviews: review.reviews || [],
@@ -490,6 +500,13 @@ async function mainAttributionSignal() {
 // completion semantics the old atomic force-push could never produce. The
 // bounded mergeability poll absorbs GitHub's async `mergeable` computation.
 const mergePullRequest = createMergePullRequest({ request, token, owner, repo });
+const mergeBottomOfStackPr = createMergeBottomOfStackPr({ request, token, owner, repo });
+const mergePullRequestWithStackHandling = async (entry, options) => {
+  if (options?.stack?.position === 1) {
+    return mergeBottomOfStackPr(entry, options);
+  }
+  return mergePullRequest(entry, options);
+};
 
 // Fetch a landed commit's REST object (tree + parents) for the post-merge
 // proof in promoteExactBatch.
@@ -859,7 +876,11 @@ for (const pr of queued) {
       if (!dequeuedFork) break;
     } else {
       // Fence the legacy auto-merge path before this PR can be sequentially
-      // squash-merged, so it cannot land out of order underneath the promotion.
+      // squash-merged, so it cannot land out of order underneath promotion.
+      // Bottom-of-stack stacked PRs are now promoted through the same
+      // candidate-validated promotion loop as every other admitted PR; the
+      // per-entry merge helper switches those entries to GitHub's async
+      // merge-stack endpoint at merge time.
       await disableAutoMerge(pr);
       admitted.push(pr);
     }
@@ -991,7 +1012,7 @@ async function promotePrefix(prefixLength, validationIndex) {
     fetchCommit,
     eligible,
     git,
-    mergePullRequest,
+    mergePullRequest: mergePullRequestWithStackHandling,
     setLabel,
     removeLabel,
     updateStatus,

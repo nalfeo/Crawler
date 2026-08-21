@@ -86,6 +86,16 @@ export async function request(token, path, options = {}) {
   throw new Error(`GitHub ${method} ${path}: exhausted all retry attempts`);
 }
 
+// Git refs are path-shaped (`copilot/foo`). encodeURIComponent() escapes the
+// slash to %2F, which GitHub's compare/ref endpoints reject with a 404, so
+// encode each segment and keep the separators literal.
+export function encodeRefPath(ref) {
+  return String(ref)
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
 export async function paginate(token, path) {
   const separator = path.includes('?') ? '&' : '?';
   const results = [];

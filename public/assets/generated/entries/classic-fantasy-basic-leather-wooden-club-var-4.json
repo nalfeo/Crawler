@@ -1,0 +1,109 @@
+{
+  "briefId": "classic-fantasy-basic-leather-wooden-club",
+  "spriteName": "classic-fantasy-basic-leather-wooden-club-var-4",
+  "assetPath": "generated/classic-fantasy-basic-leather-wooden-club-var-4.png",
+  "approvedAt": "2026-07-30T00:33:06.933Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-wooden-club-v1/2026-07-28T04-11-03-1e96914a",
+  "variantIndex": 4,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 32,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=20 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -66.43° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:41:51.293Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with Crawler's grounded dark-fantasy aesthetic. The club is simple and utilitarian, with a clear contradiction between its crude design and the practical iron band and leather grip. It avoids generic fantasy tropes and feels authored."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading depth, and palette. The wood texture is consistent with the style, though the iron band could use slightly more shading detail to match the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading depth, and palette. The wood texture is consistent with the style, though the iron band could use slightly more shading detail to match the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described short oiled oak club with a tapered cylindrical shape, iron band, and leather-wrapped handle. All elements from the brief are present and clearly identifiable."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale, with no visual integrity defects. The tapered shape and iron band are immediately recognizable, and the sprite stands out well against the dark floor tile."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme design language, including the oiled oak wood, plain iron band, and coarse leather grip with visible stitching. These elements are unambiguous and adhere closely to the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3148,
+      "completionTokens": 374,
+      "totalTokens": 3522
+    }
+  },
+  "type": null,
+  "contentHash": "bf2658b28a73c15111716ed1915f79e60fc9087aa64644d42e40f4b5448debde",
+  "opaqueBounds": {
+    "x": 16,
+    "y": 3,
+    "width": 32,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": null,
+  "facingDirection": "right"
+}

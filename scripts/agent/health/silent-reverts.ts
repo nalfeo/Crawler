@@ -26,6 +26,7 @@ import {
   dedupeByPath,
   findSilentReverts,
   findUnusedAcks,
+  generatedEntryRenamePreservesContent,
   parseAckTrailers,
   parseDiffLineChanges,
   sideAdditionsSubsumedByOther,
@@ -86,6 +87,111 @@ function mergeTree(base: string, other: string, side: string, cwd: string): stri
 
 function blob(rev: string, path: string, cwd: string): string | null {
   return treeOf(rev, cwd).get(path) ?? null;
+}
+
+const renameCache = new Map<string, Map<string, string>>();
+function renamesBetween(from: string, to: string, cwd: string): Map<string, string> {
+  const key = `${cwd}\u0000${from}\u0000${to}`;
+  const cached = renameCache.get(key);
+  if (cached) return cached;
+  const fields = git(
+    ['-c', 'diff.renameLimit=0', 'diff', '--name-status', '-z', '--find-renames=50%', from, to],
+    cwd,
+  ).split('\0');
+  const renames = new Map<string, string>();
+  for (let i = 0; i < fields.length; ) {
+    const status = fields[i++] ?? '';
+    const source = fields[i++] ?? '';
+    if (status.startsWith('R')) {
+      const target = fields[i++] ?? '';
+      if (source && target) renames.set(source, target);
+    }
+  }
+  renameCache.set(key, renames);
+  return renames;
+}
+
+const blobContentCache = new Map<string, string>();
+function blobContent(blobSha: string, cwd: string): string {
+  const key = `${cwd}\u0000${blobSha}`;
+  const cached = blobContentCache.get(key);
+  if (cached !== undefined) return cached;
+  const content = git(['cat-file', 'blob', blobSha], cwd);
+  blobContentCache.set(key, content);
+  return content;
+}
+
+const generatedEntryIndexCache = new Map<string, Map<string, string[]>>();
+function generatedEntriesByContentHash(headRef: string, cwd: string): Map<string, string[]> {
+  const key = `${cwd}\u0000${headRef}`;
+  const cached = generatedEntryIndexCache.get(key);
+  if (cached) return cached;
+  const index = new Map<string, string[]>();
+  const matches =
+    gitOrNull(
+      [
+        'grep',
+        '-n',
+        '-E',
+        '"contentHash": "[^"]+"',
+        headRef,
+        '--',
+        'public/assets/generated/entries',
+      ],
+      cwd,
+    ) ?? '';
+  const prefix = `${headRef}:`;
+  for (const line of matches.split('\n').filter(Boolean)) {
+    const match = line.startsWith(prefix) ? line.slice(prefix.length) : line;
+    const parsed = /^(.*?):\d+:.*"contentHash": "([^"]+)"/.exec(match);
+    if (!parsed) continue;
+    const [, path, contentHash] = parsed;
+    if (!path || !contentHash) continue;
+    const paths = index.get(contentHash) ?? [];
+    paths.push(path);
+    index.set(contentHash, paths);
+  }
+  generatedEntryIndexCache.set(key, index);
+  return index;
+}
+
+function generatedEntryPreservedAtHead(
+  path: string,
+  sideBlob: string | null,
+  headRef: string,
+  cwd: string,
+): boolean {
+  if (
+    sideBlob === null ||
+    !path.startsWith('public/assets/generated/entries/') ||
+    !path.endsWith('.json')
+  ) {
+    return false;
+  }
+  if (blob(headRef, path, cwd) !== null) return false;
+  const sourceContent = blobContent(sideBlob, cwd);
+  let contentHash: unknown;
+  try {
+    contentHash = (JSON.parse(sourceContent) as Record<string, unknown>).contentHash;
+  } catch {
+    return false;
+  }
+  if (typeof contentHash !== 'string' || contentHash.length === 0) return false;
+
+  return (generatedEntriesByContentHash(headRef, cwd).get(contentHash) ?? [])
+    .filter((targetPath) => targetPath !== path)
+    .some((targetPath) => {
+      const targetBlob = blob(headRef, targetPath, cwd);
+      return (
+        targetBlob !== null &&
+        generatedEntryRenamePreservesContent(
+          path,
+          targetPath,
+          sourceContent,
+          blobContent(targetBlob, cwd),
+        )
+      );
+    });
 }
 
 export interface CollectResult {
@@ -166,6 +272,7 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
             .split('\n')
             .filter(Boolean)[0]
         : undefined;
+      const sideToHeadRenames = renamesBetween(side, headRef, cwd);
 
       for (const base of bases) {
         // --no-renames keeps this a pure path-keyed comparison; a rename shows
@@ -182,6 +289,23 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
           const sideBlob = blob(side, path, cwd);
           const otherBlob = blob(other, path, cwd);
           const resultBlob = blob(sha, path, cwd);
+          const renamedTarget = sideToHeadRenames.get(path);
+          const renamedTargetBlob =
+            renamedTarget !== undefined ? blob(headRef, renamedTarget, cwd) : null;
+          const sideContentPreservedAtHead =
+            (sideBlob !== null &&
+              renamedTarget !== undefined &&
+              renamedTargetBlob !== null &&
+              (sideBlob === renamedTargetBlob ||
+                (path.startsWith('public/assets/generated/entries/') &&
+                  renamedTarget.startsWith('public/assets/generated/entries/') &&
+                  generatedEntryRenamePreservesContent(
+                    path,
+                    renamedTarget,
+                    blobContent(sideBlob, cwd),
+                    blobContent(renamedTargetBlob, cwd),
+                  )))) ||
+            generatedEntryPreservedAtHead(path, sideBlob, headRef, cwd);
           const mergeTreeSubsumed =
             mergedTreeRev !== null &&
             resultBlob === otherBlob &&
@@ -214,6 +338,7 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
             other: otherBlob,
             result: resultBlob,
             head: blob(headRef, path, cwd),
+            sideContentPreservedAtHead,
             sideAlreadyPresentInOther: mergeTreeSubsumed || lineLevelSubsumed,
             // Content-based mainline grading: does main STILL hold what this
             // discard threw away? Catches the older-main-tip shape that no

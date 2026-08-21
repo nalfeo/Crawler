@@ -63,6 +63,11 @@ describe('ability registry', () => {
     }
   });
 
+  it('labels the fireball spell ability as "Fireball"', () => {
+    expect(ABILITY_PRESENTATION_BY_ID.fireball.name).toBe('Fireball');
+    expect(getAbilityDefinition('fireball')?.name).toBe('Fireball');
+  });
+
   it('rejects duplicate ids', () => {
     expect(() =>
       parseAbilityCatalog([
@@ -154,7 +159,7 @@ describe('ability registry', () => {
     it('accepts a valid optional iconBriefId', () => {
       expect(() =>
         parseAbilityCatalog([
-          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball-v1' },
+          { ...basePassive, shortLabel: 'OK', iconBriefId: 'ability-icon-fireball' },
         ]),
       ).not.toThrow();
     });

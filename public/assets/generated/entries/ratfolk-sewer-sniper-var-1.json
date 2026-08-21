@@ -1,0 +1,190 @@
+{
+  "briefId": "ratfolk-sewer-sniper",
+  "spriteName": "ratfolk-sewer-sniper-var-1",
+  "assetPath": "generated/ratfolk-sewer-sniper-var-1.png",
+  "approvedAt": "2026-08-01T05:43:51.844Z",
+  "sourceRun": "generated/runs/ratfolk-sewer-sniper-v1/2026-08-01T05-42-10-3a961bcd",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 338,
+    "y": 133,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 338,
+      "y": 133,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 338,
+      "y": 133,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 280 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 171,
+          "y": 147
+        },
+        {
+          "x": 172,
+          "y": 147
+        },
+        {
+          "x": 171,
+          "y": 148
+        },
+        {
+          "x": 172,
+          "y": 148
+        },
+        {
+          "x": 173,
+          "y": 148
+        },
+        {
+          "x": 171,
+          "y": 149
+        },
+        {
+          "x": 172,
+          "y": 149
+        },
+        {
+          "x": 173,
+          "y": 149
+        },
+        {
+          "x": 171,
+          "y": 150
+        },
+        {
+          "x": 172,
+          "y": 150
+        },
+        {
+          "x": 173,
+          "y": 150
+        },
+        {
+          "x": 60,
+          "y": 170
+        },
+        {
+          "x": 61,
+          "y": 170
+        },
+        {
+          "x": 62,
+          "y": 170
+        },
+        {
+          "x": 271,
+          "y": 170
+        },
+        {
+          "x": 272,
+          "y": 170
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 338,
+        "y": 133
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:43:29.266Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a ratfolk sniper with a patched-together rifle, sewer-themed attire, and a crouched pose is well-executed. The combination of a grimy, scavenger aesthetic with a precise and deadly role is a strong contradiction that fits the Crawler design language."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline, shading, and palette depth. However, the shading on the rifle could be slightly more refined to match the level of detail in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline, shading, and palette depth. However, the shading on the rifle could be slightly more refined to match the level of detail in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a ratfolk sniper in a crouched pose with a patched-together sniper rifle, rubber waders, a tool belt, and a patched vest. The tail is coiled for balance, and the color palette is appropriately grimy green and rusted gray."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the sniper's pose is readable at game scale. However, the rifle's scope and barrel could be slightly more distinct to enhance clarity."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a one-third turn, with the face and body angled appropriately for a dynamic and engaging pose."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the character visible, including the head, torso, legs, and tail."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the floor and theme design language, including the patched-together rifle, sewer-themed attire, and grimy palette. The tool belt and patched vest with sewer maps further reinforce the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 5255,
+      "completionTokens": 484,
+      "totalTokens": 5739
+    }
+  },
+  "type": "enemy",
+  "contentHash": "3327f2174162393d03648d86e22a2bf4b66b78b6d73c5e0d405b686694141b21",
+  "opaqueBounds": {
+    "x": 38,
+    "y": 38,
+    "width": 625,
+    "height": 180,
+    "canvasWidth": 701,
+    "canvasHeight": 256
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

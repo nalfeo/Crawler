@@ -5,6 +5,10 @@ import {
   parseSkillCatalog,
 } from '../../src/game/skills/registry.js';
 import { SKILL_HARD_CAP } from '../../src/game/skills/types.js';
+import {
+  SPELL_SKILL_ID_BY_SPELL_ID,
+  SPELL_SKILL_THRESHOLDS,
+} from '../../src/shared/spell-skills.js';
 
 describe('skill registry', () => {
   it('returns undefined for unknown skill id', () => {
@@ -124,5 +128,20 @@ describe('skill registry', () => {
         },
       ]),
     ).toThrow(/milestones must contain levels/i);
+  });
+
+  it('every spell skill uses the shared SPELL_SKILL_THRESHOLDS curve (HudSkillTracker invariant)', () => {
+    // HudSkillTracker (engine layer) computes spell-skill progress against
+    // SPELL_SKILL_THRESHOLDS directly, since it cannot import this game-layer
+    // registry. If a future spell skill ever needs a divergent curve, this
+    // test must be updated alongside the HUD to avoid silently wrong progress
+    // bars.
+    for (const spellId of Object.keys(SPELL_SKILL_ID_BY_SPELL_ID)) {
+      const skillId =
+        SPELL_SKILL_ID_BY_SPELL_ID[spellId as keyof typeof SPELL_SKILL_ID_BY_SPELL_ID];
+      const def = getSkillDefinition(skillId);
+      expect(def).toBeDefined();
+      expect(def!.usageThresholds).toEqual(SPELL_SKILL_THRESHOLDS);
+    }
   });
 });

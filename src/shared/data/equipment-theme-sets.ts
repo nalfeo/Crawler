@@ -6,7 +6,7 @@
  *
  * The sprite pipeline keys a themed art wave by the theme, not by the item:
  * the Classic Fantasy [Basic Leather] wooden bow ships as
- * `classic-fantasy-basic-leather-wooden-bow-v1`, NOT as `wooden-bow-v1`. But
+ * `classic-fantasy-basic-leather-wooden-bow`, NOT as `wooden-bow-v1`. But
  * `resolveItemSprite` derives its candidate concepts from gameplay identity
  * (item id, `weaponId` alias, Floor 2 slug, Floor 2 `runtimeKey`) and so never
  * looks at a theme-prefixed key. Every piece in a themed wave therefore reads
@@ -49,7 +49,7 @@ export interface EquipmentThemeSet {
   /**
    * Art-pipeline theme id — the literal prefix its manifest brief IDs carry
    * (e.g. `classic-fantasy-basic-leather` for
-   * `classic-fantasy-basic-leather-wooden-bow-v1`).
+   * `classic-fantasy-basic-leather-wooden-bow`).
    */
   readonly themeId: string;
   /** Equipment stable IDs whose art shipped under this theme. */

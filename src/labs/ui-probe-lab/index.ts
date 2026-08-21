@@ -36,6 +36,11 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
+import type {
+  EmptySlotCue,
+  EquipmentTextRasterMetadata,
+  EquipmentTextRun,
+} from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -72,7 +77,7 @@ const GH = Math.ceil(GAME.HEIGHT / TILE);
 /** Texture key for the synthetic inventory icon (guarantees a sprite renders). */
 const PROBE_ICON_TEXTURE = 'ui_probe_item_icon';
 const PROBE_THEMED_ICON_TEXTURE = 'ui_probe_item_icon_themed';
-const PROBE_BAT_TEXTURE = 'baseball-bat-v1-var-0';
+const PROBE_BAT_TEXTURE = 'baseball-bat-var-0';
 
 /** Bounds of a stat row's −/+ controls, in world/scene coordinates. */
 export interface StatControlBounds {
@@ -116,12 +121,17 @@ export interface UiProbeApi {
   useRealGeneratedSprites(): Promise<void>;
   isEquipmentOpen(): boolean;
   getEquipmentPanelBounds(): ScreenBounds;
+  getEquipmentHeaderBounds(): ScreenBounds | null;
+  getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EmptySlotCue | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
-  selectEquipmentSlot(slotId: EquipmentSlotId): boolean;
+  /** Render the same inspector content as hovering a paper-doll slot. */
+  previewEquipmentSlot(slotId: EquipmentSlotId): boolean;
+  selectEquipmentSlot(slotId: EquipmentSlotId | null): boolean;
   getEquipmentSlotFilter(): EquipmentSlotId | null;
   getInventorySlotFilter(): EquipmentSlotId | null;
   // Integrated equippable-bag column (inside the equipment panel) -----------
@@ -143,6 +153,20 @@ export interface UiProbeApi {
   previewEquipmentBagItem(itemId: string | null): void;
   /** Equip a bag item straight from the integrated bag column. */
   equipFromEquipmentBag(itemId: string): boolean;
+  /** Unequip whatever is in `slotId`, returning it to the bag. */
+  unequipEquipmentSlot(slotId: EquipmentSlotId): void;
+  /** Screen bounds of the stats column background. */
+  getEquipmentStatsBounds(): ScreenBounds | null;
+  /** Screen bounds of the inspector strip background. */
+  getEquipmentInspectorBounds(): ScreenBounds | null;
+  /** Every visible text run in the equipment panel, tagged by owning region. */
+  getEquipmentTextRuns(): EquipmentTextRun[];
+  /** Resolved equipment-font and pixel-alignment state from the live Phaser UI. */
+  getEquipmentTextRasterMetadata(): EquipmentTextRasterMetadata | null;
+  /** Paper-doll slots the active preview would fill (empty when no preview). */
+  getEquipmentPreviewTargetSlots(): EquipmentSlotId[];
+  /** Screen bounds of the preview target marker drawn over `slotId`. */
+  getEquipmentTargetMarkerBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   /** Effective Charisma of the player (base + equipment bonuses). */
   getCharisma(): number;
   /** Equip the merchant's charm via the real equipment system (safe-room). */
@@ -218,9 +242,9 @@ function buildProbeSpriteRegistry(
     version: 1,
     entries: {
       [PROBE_BAT_TEXTURE]: {
-        briefId: 'baseball-bat-v1',
+        briefId: 'baseball-bat',
         spriteName: PROBE_BAT_TEXTURE,
-        assetPath: 'generated/baseball-bat-v1-var-0.png',
+        assetPath: 'generated/baseball-bat-var-0.png',
         approvedAt: '2026-06-30T04:49:00.000Z',
         sourceRun: 'ui-probe-lab',
         variantIndex: 0,
@@ -309,7 +333,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     preload(): void {
       if (!this.textures.exists(PROBE_BAT_TEXTURE)) {
-        this.load.image(PROBE_BAT_TEXTURE, 'assets/generated/baseball-bat-v1-var-0.png');
+        this.load.image(PROBE_BAT_TEXTURE, 'assets/generated/baseball-bat-var-0.png');
       }
     }
 
@@ -542,14 +566,25 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         isEquipmentOpen: () => this.equipmentUI?.isOpen() ?? false,
         getEquipmentPanelBounds: () =>
           this.equipmentUI?.getPanelScreenBounds() ?? { x: 0, y: 0, width: 0, height: 0 },
+        getEquipmentHeaderBounds: () => this.equipmentUI?.getHeaderScreenBounds() ?? null,
+        getEquipmentDollBounds: () => this.equipmentUI?.getDollScreenBounds() ?? null,
         getEquipmentSlotBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
         getEquipmentSlotIconBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotIconScreenBounds(slotId) ?? null,
+        getEquipmentEmptySlotCue: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getEmptySlotCue(slotId) ?? null,
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
-        selectEquipmentSlot: (slotId: EquipmentSlotId) => {
+        previewEquipmentSlot: (slotId: EquipmentSlotId) => {
+          if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
+            return false;
+          }
+          this.equipmentUI.previewSlot(slotId);
+          return true;
+        },
+        selectEquipmentSlot: (slotId: EquipmentSlotId | null) => {
           if (!this.equipmentUI || !this.equipmentUI.isOpen()) {
             return false;
           }
@@ -572,6 +607,16 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         previewEquipmentBagItem: (itemId: string | null) =>
           this.equipmentUI?.previewBagItem(itemId),
         equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,
+        unequipEquipmentSlot: (slotId: EquipmentSlotId) => {
+          this.equipmentUI?.unequipSlot(slotId);
+        },
+        getEquipmentStatsBounds: () => this.equipmentUI?.getStatsColumnScreenBounds() ?? null,
+        getEquipmentInspectorBounds: () => this.equipmentUI?.getInspectorScreenBounds() ?? null,
+        getEquipmentTextRuns: () => this.equipmentUI?.getTextRuns() ?? [],
+        getEquipmentTextRasterMetadata: () => this.equipmentUI?.getTextRasterMetadata() ?? null,
+        getEquipmentPreviewTargetSlots: () => this.equipmentUI?.getPreviewTargetSlots() ?? [],
+        getEquipmentTargetMarkerBounds: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getPreviewTargetMarkerScreenBounds(slotId) ?? null,
         getCharisma: () => getEffectiveStats(this.world, this.playerEid).charisma,
         equipCharm: () => {
           const result = equip(this.world, this.playerEid, MERCHANTS_CHARM_DEF);

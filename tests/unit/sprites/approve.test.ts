@@ -417,6 +417,171 @@ describe('approveVariant', () => {
     expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
   });
 
+  it('refuses to mint a new variant slot for content already approved under a different variant index', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    // A second, independent run (e.g. a stale re-harvest of the same brief)
+    // whose processed PNG happens to be byte-identical to the already-approved
+    // variant-0 image, requesting a DIFFERENT variant index (3). Without the
+    // cross-variant dedup this mints a brand-new "iron-sword-var-3" entry
+    // every time it's re-run — the churn this test guards against.
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const opts = {
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+    };
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('duplicate-content');
+      expect((err as ApproveError).message).toContain('iron-sword-var-0');
+    }
+
+    // The refused approval must not have created a second entry or PNG.
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-0']);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', 'iron-sword-var-3.png'))).toBe(false);
+  });
+
+  it('allows minting a new variant slot for content that is genuinely different', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    // Distinct bytes (writeFakeRun already writes "PNG-3" for index 3), so this
+    // must succeed and create a second entry.
+    const entry = approveVariant({
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+    });
+    expect(entry.spriteName).toBe('iron-sword-var-3');
+
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries).sort()).toEqual(['iron-sword-var-0', 'iron-sword-var-3']);
+  });
+
+  it('allowReapprove does NOT bypass the cross-variant dedup check', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const opts = {
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+      allowReapprove: true,
+    };
+    // `allowReapprove` only authorizes overwriting the EXACT requested slot
+    // (used by pipelines that idempotently re-approve the same variantIndex);
+    // it must never license minting a fresh duplicate slot elsewhere. Only
+    // `allowDuplicateContent` does that (see next test).
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('duplicate-content');
+    }
+
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-0']);
+  });
+
+  it('allowDuplicateContent bypasses the cross-variant dedup check', () => {
+    const first = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T10-00-00-aaaaaaaa',
+      variantIndices: [0],
+    });
+    approveVariant({
+      runDir: first.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T10:00:00.000Z'),
+    });
+
+    const second = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T14-00-00-bbbbbbbb',
+      variantIndices: [3],
+    });
+    writeFileSync(path.join(second.runDir, 'processed', '03.png'), Buffer.from('PNG-0'));
+
+    const entry = approveVariant({
+      runDir: second.runDir,
+      variantIndex: 3,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+      allowDuplicateContent: true,
+    });
+    expect(entry.spriteName).toBe('iron-sword-var-3');
+  });
+
   it('writes facingDirection from postprocess facing override and defaults to right otherwise', () => {
     const targeted = writeFakeRun(repoRoot, {
       runId: '2026-06-08T16-00-00-faceleft',
@@ -885,9 +1050,9 @@ describe('approveVariant', () => {
       expect(entry.assetPath).toBe('generated/classified-dossier-var-0.png');
     });
 
-    it('ships a weaponId-alias brief BARE (baseball-bat-v3 → baseball-bat)', () => {
+    it('ships a weaponId-alias brief BARE (baseball-bat → baseball-bat)', () => {
       const { runDir } = writeFakeRun(repoRoot, {
-        briefId: 'baseball-bat-v3',
+        briefId: 'baseball-bat',
         variantIndices: [0],
         chosenIndex: 0,
       });
@@ -905,7 +1070,7 @@ describe('approveVariant', () => {
       expect(entry.spriteName).toBe('baseball-bat-var-0');
     });
 
-    it('leaves a genuine non-item versioned brief VERSIONED (angry-roomba-v2)', () => {
+    it('canonicalizes a design-named brief instead of stripping it (angry-roomba-v2)', () => {
       const { runDir } = writeFakeRun(repoRoot, {
         briefId: 'angry-roomba-v2',
         variantIndices: [0],
@@ -921,10 +1086,36 @@ describe('approveVariant', () => {
         now: fixedNow,
       });
 
-      // Enemy art is not an item identity → the -v2 lineage is preserved.
-      expect(entry.briefId).toBe('angry-roomba-v2');
-      expect(entry.spriteName).toBe('angry-roomba-v2-var-0');
-      expect(entry.assetPath).toBe('generated/angry-roomba-v2-var-0.png');
+      // All art now ships bare, but `angry-roomba-v2` is a DESIGN name (the
+      // Roomba mark 2), not a generation lineage tag. Stripping it would merge
+      // the mark 2 into `angry-roomba`; instead it is remapped to an
+      // unambiguous spelling so the "no lineage tags" rule needs no allowlist.
+      expect(entry.briefId).toBe('angry-roomba-mk2');
+      expect(entry.spriteName).toBe('angry-roomba-mk2-var-0');
+      expect(entry.assetPath).toBe('generated/angry-roomba-mk2-var-0.png');
+      expect(entry.briefId).not.toBe('angry-roomba');
+    });
+
+    it('strips a real lineage tag from non-item art too (enemy)', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        briefId: 'toadkin-bouncer',
+        variantIndices: [0],
+        chosenIndex: 0,
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      // Enemies used to keep their `-vN`, which is what fragmented 24 concepts
+      // into unreachable variant buckets. They now ship bare like everything else.
+      expect(entry.briefId).toBe('toadkin-bouncer');
+      expect(entry.spriteName).toBe('toadkin-bouncer-var-0');
     });
   });
 
@@ -1517,6 +1708,17 @@ describe('approveIconBatch', () => {
       const pngPath = path.join(publicAssetsDir, 'generated', `${entry.spriteName}.png`);
       expect(existsSync(pngPath)).toBe(true);
     }
+  });
+
+  it('rejects a malformed nested lineage brief before writing icon assets', () => {
+    const { runDir, iconBatch } = writeIconBatchRun(repoRoot, {
+      briefId: 'achv-icons-batch-v1-v2',
+    });
+
+    expect(() => approveIconBatch(makeOpts(runDir, iconBatch))).toThrow(
+      /malformed nested lineage tag/,
+    );
+    expect(readManifest(manifestPath).entries).toEqual({});
   });
 
   it('throws icon-batch-count-mismatch when processed count is GREATER than iconBatch length', () => {

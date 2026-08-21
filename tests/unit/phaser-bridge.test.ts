@@ -18,7 +18,7 @@ import {
   XpGem,
 } from '../../src/core/components.js';
 import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
-import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { createPhaserBridge, _PROP_VISUAL_BASE_SIZE_FT } from '../../src/engine/PhaserBridge.js';
 import { RAT_BRUTE_TINT } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { carriedWeaponLengthFt } from '../../src/engine/phaser-bridge/carried-weapon.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -38,7 +38,7 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
-import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
+import { DECORATION_DEF_INDEX, getDecorationDef } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -46,6 +46,8 @@ import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTeleg
 import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
 import { ftToPx } from '../../src/shared/units.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { registerFloorManifest } from '../../src/shared/floor-registry.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -163,7 +165,7 @@ class PropRect {
 
 /**
  * Minimal scene whose generated-sprite registry knows about the approved
- * `baseball-bat-v1` art. `readyKeys` controls which texture keys report as
+ * `baseball-bat` art. `readyKeys` controls which texture keys report as
  * loaded via `textures.exists`, letting a test simulate the generated PNG
  * finishing its async load mid-swing.
  */
@@ -175,10 +177,10 @@ function makeBatSwingScene(readyKeys: Set<string>): {
   const registry = buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
-      'baseball-bat-v1-var-0': {
-        briefId: 'baseball-bat-v1',
-        spriteName: 'baseball-bat-v1-var-0',
-        assetPath: 'generated/baseball-bat-v1-var-0.png',
+      'baseball-bat-var-0': {
+        briefId: 'baseball-bat',
+        spriteName: 'baseball-bat-var-0',
+        assetPath: 'generated/baseball-bat-var-0.png',
         approvedAt: '2026-07-01T00:00:00.000Z',
         sourceRun: 'test-run',
         variantIndex: 0,
@@ -203,7 +205,7 @@ function makeBatSwingScene(readyKeys: Set<string>): {
       // exists, so report every procedural/Kenney key as present and let
       // `readyKeys` govern only the generated bat texture (the async load we
       // want to simulate).
-      exists: (key: string) => (key === 'baseball-bat-v1-var-0' ? readyKeys.has(key) : true),
+      exists: (key: string) => (key === 'baseball-bat-var-0' ? readyKeys.has(key) : true),
       get: () => ({ getSourceImage: () => ({ width: 64, height: 64 }) }),
     },
   } as unknown as Phaser.Scene;
@@ -379,7 +381,7 @@ describe('createPhaserBridge', () => {
       },
       textures: {
         exists: (key: string) =>
-          key === 'prop-wall-sconce-v1-var-1' || key === 'prop-rubble-pile-var-1',
+          key === 'prop-wall-sconce-var-1' || key === 'prop-rubble-pile-var-1',
       },
     } as unknown as Phaser.Scene;
 
@@ -405,13 +407,60 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-v1-var-1')).toBe(true);
+    expect(propImages.some((img) => img.textureKey === 'prop-wall-sconce-var-1')).toBe(true);
     expect(propImages.some((img) => img.textureKey === 'prop-rubble-pile-var-1')).toBe(true);
     expect(propRects.length).toBeGreaterThan(0);
 
     bridge.destroy();
     expect(propImages.every((img) => img.destroyed)).toBe(true);
     expect(propRects.every((rect) => rect.destroyed)).toBe(true);
+  });
+
+  it('renders a floor-decoration torch prop at a normal gameplay size, not scale-as-feet (regression: #3127)', () => {
+    // `DecorationDef.scale` is documented as a "size multiplier relative to
+    // base (1.0 = 100%)", not an absolute feet value. The Prop render pass
+    // used to feed it straight into `ftToPx()`, so the torch (`scale: 1.2`)
+    // rendered at 1.2 ft (~10 px) — comically small next to the 3 ft player.
+    const propImages: MockImage[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame);
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(w: number, h: number): MockImage {
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayWidth = w;
+            (img as unknown as { displayWidth: number; displayHeight: number }).displayHeight = h;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn(() => ({ setSize: vi.fn(), setFillStyle: vi.fn(), setDepth: vi.fn() })),
+      },
+      textures: {
+        exists: (key: string) => key === 'prop-torch-var-10',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    const torchProp = addEntity(world.ecs);
+    addComponent(world.ecs, torchProp, Prop);
+    addComponent(world.ecs, torchProp, set(Position, { x: 1, y: 2 }));
+    world.stores.prop.defIdIndex[torchProp] = DECORATION_DEF_INDEX['torch']!;
+
+    bridge.sync(world);
+
+    const torchImage = propImages.find((img) => img.textureKey === 'prop-torch-var-10');
+    expect(torchImage).toBeDefined();
+    const torchScale = getDecorationDef('torch')!.scale;
+    // torch.scale × the "normal prop" base ft is well above the pre-fix
+    // `ftToPx(torch.scale)` (~10 px) that made torches read as comically small.
+    const expectedPx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * torchScale);
+    expect(torchImage!.displayWidth).toBeCloseTo(expectedPx);
+    expect(torchImage!.displayHeight).toBeCloseTo(expectedPx);
   });
 
   it('renders set-piece prop layers with straddling depth, footprint and tint', () => {
@@ -1069,8 +1118,8 @@ describe('createPhaserBridge', () => {
     const bruteImg = images[1]!;
     const mobImg = images[2]!;
     const slimePoolImg = images[3]!;
-    expect(ratsNestImg.textureKey).toBe('rat-nest-v2-var-3');
-    expect(slimePoolImg.textureKey).toBe('slime-pool-v1-var-3');
+    expect(ratsNestImg.textureKey).toBe('rat-nest-var-3');
+    expect(slimePoolImg.textureKey).toBe('slime-pool-var-3');
     expect(ratsNestImg.tinted).toBe(false);
     expect(slimePoolImg.tinted).toBe(false);
     expect(ratsNestImg.tint).toBe(0xffffff);
@@ -1082,8 +1131,8 @@ describe('createPhaserBridge', () => {
 
     // Textures stay stable frame-to-frame while living.
     bridge.sync(world);
-    expect(ratsNestImg.textureKey).toBe('rat-nest-v2-var-3');
-    expect(slimePoolImg.textureKey).toBe('slime-pool-v1-var-3');
+    expect(ratsNestImg.textureKey).toBe('rat-nest-var-3');
+    expect(slimePoolImg.textureKey).toBe('slime-pool-var-3');
 
     // Corpse styling still wins once the spawner dies.
     addComponent(world.ecs, ratsNestSpawner, set(DeathTimer, { remainingMs: 3000 }));
@@ -1223,7 +1272,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('rat-v1-var-9');
+    expect(images[0]?.textureKey).toBe('rat-var-9');
   });
 
   it('falls back to faerie-blink generated art when dedicated faerie-spark-caster texture is not loaded yet', () => {
@@ -1291,7 +1340,7 @@ describe('createPhaserBridge', () => {
       },
       textures: {
         exists: (key: string) =>
-          key === 'kenney-tiny-dungeon' || (key === 'slime-v1-var-9' && slimeGeneratedLoaded),
+          key === 'kenney-tiny-dungeon' || (key === 'slime-var-9' && slimeGeneratedLoaded),
       },
     } as unknown as Phaser.Scene;
     const bridge = createPhaserBridge(scene);
@@ -1310,13 +1359,13 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('slime-v1-var-9');
+    expect(images[0]?.textureKey).toBe('slime-var-9');
     expect(images[0]?.scaleX).toBeCloseTo(0.4, 6);
   });
 
   it('resolves slime generated texture from brief family when a new variant is checked in', () => {
     const images: MockImage[] = [];
-    const available = new Set(['kenney-tiny-dungeon', 'slime-v1-var-42']);
+    const available = new Set(['kenney-tiny-dungeon', 'slime-var-42']);
     const scene = {
       add: {
         image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
@@ -1341,7 +1390,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('slime-v1-var-42');
+    expect(images[0]?.textureKey).toBe('slime-var-42');
     expect(images[0]?.scaleX).toBeCloseTo(0.4, 6);
   });
 
@@ -1353,10 +1402,10 @@ describe('createPhaserBridge', () => {
           buildGeneratedSpriteRegistry({
             version: 1,
             entries: {
-              'slime-v1-var-2': {
-                briefId: 'slime-v1',
-                spriteName: 'slime-v1-var-2',
-                assetPath: 'generated/slime-v1-var-2.png',
+              'slime-var-2': {
+                briefId: 'slime',
+                spriteName: 'slime-var-2',
+                assetPath: 'generated/slime-var-2.png',
                 approvedAt: '2026-06-30T00:00:00.000Z',
                 sourceRun: 'test',
                 variantIndex: 2,
@@ -1364,10 +1413,10 @@ describe('createPhaserBridge', () => {
                 sensorScore: '7/8',
                 judgeScore: '2',
               },
-              'slime-v1-var-9': {
-                briefId: 'slime-v1',
-                spriteName: 'slime-v1-var-9',
-                assetPath: 'generated/slime-v1-var-9.png',
+              'slime-var-9': {
+                briefId: 'slime',
+                spriteName: 'slime-var-9',
+                assetPath: 'generated/slime-var-9.png',
                 approvedAt: '2026-06-30T00:00:00.000Z',
                 sourceRun: 'test',
                 variantIndex: 9,
@@ -1394,7 +1443,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('slime-v1-var-9');
+    expect(images[0]?.textureKey).toBe('slime-var-9');
   });
 
   it('uses distinct generated boss art for the staircase and slime-rat mid-boss', () => {
@@ -1425,13 +1474,13 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(2);
     // Each boss resolves its own dedicated generated art via the bossBattles
-    // key: 'staircase' → rat-slime-v1, 'slime-rat' (mid-boss) → slime-rat-boss.
-    expect(images[0]?.textureKey).toBe('rat-slime-v1-var-1');
+    // key: 'staircase' → rat-slime, 'slime-rat' (mid-boss) → slime-rat-boss.
+    expect(images[0]?.textureKey).toBe('rat-slime-var-1');
     expect(images[1]?.textureKey).toBe('slime-rat-boss-var-1');
   });
 
-  it('renders the approved baseball-bat-v1 generated art on a bat swing once its texture is ready', () => {
-    const { scene, images } = makeBatSwingScene(new Set(['baseball-bat-v1-var-0']));
+  it('renders the approved baseball-bat generated art on a bat swing once its texture is ready', () => {
+    const { scene, images } = makeBatSwingScene(new Set(['baseball-bat-var-0']));
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     const owner = addEntity(world.ecs);
@@ -1440,7 +1489,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('baseball-bat-v1-var-0');
+    expect(images[0]?.textureKey).toBe('baseball-bat-var-0');
   });
 
   it('falls back to the Kenney weapon.bat sprite when the generated bat texture has not loaded', () => {
@@ -1480,9 +1529,9 @@ describe('createPhaserBridge', () => {
 
     // Frame 3: the generated PNG finishes loading -> upgrade with exactly one
     // setTexture (key changed: kenney sheet -> generated texture).
-    readyKeys.add('baseball-bat-v1-var-0');
+    readyKeys.add('baseball-bat-var-0');
     bridge.sync(world);
-    expect(img.textureKey).toBe('baseball-bat-v1-var-0');
+    expect(img.textureKey).toBe('baseball-bat-var-0');
     expect(img.setTextureCalls).toBe(1);
 
     // Frames 4-6: stable generated art. The pre-fix guard mis-fired here —
@@ -1496,7 +1545,7 @@ describe('createPhaserBridge', () => {
     expect(img.setTextureCalls).toBe(1);
   });
 
-  // --- Carried main-hand weapon (always visible, not just during a swing) ---
+  // --- Carried main-hand weapon (feature-flagged; default-off) ---
 
   function makePlayerWithWeapon(
     world: ReturnType<typeof createTestWorld>,
@@ -1512,7 +1561,20 @@ describe('createPhaserBridge', () => {
     return player;
   }
 
-  it('carries the equipped main-hand weapon on the player when no swing is active', () => {
+  function enableCarriedMainHandWeaponFlag(world: ReturnType<typeof createTestWorld>): void {
+    const floorId = 'test-carried-main-hand-weapon-enabled';
+    registerFloorManifest(floorId, {
+      ...floor1Manifest,
+      id: floorId,
+      behavior: {
+        ...floor1Manifest.behavior,
+        carriedMainHandWeapon: true,
+      },
+    });
+    world.floorId = floorId;
+  }
+
+  it('does not render the carried main-hand weapon while the feature flag is disabled', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -1520,13 +1582,8 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    // Player sprite + the carried weapon sprite.
-    expect(images).toHaveLength(2);
-    const weaponImage = images[1]!;
-    expect(weaponImage.textureKey).toBe('kenney-tiny-dungeon');
-    expect(weaponImage.frame).toBe(getSprite('weapon.sword')?.frame);
-    expect(weaponImage.visible).toBe(true);
-    expect(weaponImage.depth).toBeGreaterThan(ENTITY_DEPTH);
+    // Player sprite only: carried-weapon rendering is default-off.
+    expect(images).toHaveLength(1);
   });
 
   it('uses loaded generated baseball-bat art for the carried weapon instead of the Kenney fallback', () => {
@@ -1554,6 +1611,7 @@ describe('createPhaserBridge', () => {
     });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const batDef = WEAPON_DEFS.get('baseball-bat');
     expect(batDef).toBeDefined();
     makePlayerWithWeapon(world, 'baseball-bat');
@@ -1575,6 +1633,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1592,6 +1651,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
     addComponent(world.ecs, player, set(Velocity, { x: 5, y: 0 }));
 
@@ -1611,6 +1671,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true, withGraphics: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -1661,6 +1722,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     makePlayerWithWeapon(world, 'bow');
 
     bridge.sync(world);
@@ -1672,6 +1734,7 @@ describe('createPhaserBridge', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
+    enableCarriedMainHandWeaponFlag(world);
     const player = makePlayerWithWeapon(world, 'sword');
 
     bridge.sync(world);
@@ -2108,7 +2171,7 @@ describe('createPhaserBridge', () => {
   describe('harvestable node rendering', () => {
     // A harvestable node carries the Harvestable tag (→ 'harvestable' render kind),
     // a Position, and a Sprite whose stored `variantRoll` picks the art variant.
-    // defIndex 0 === crimson-mushroom, which maps to brief `crimson-mushroom-v1`.
+    // defIndex 0 === crimson-mushroom, which maps to brief `crimson-mushroom`.
     function spawnNode(
       world: ReturnType<typeof createTestWorld>,
       xFt: number,
@@ -2142,10 +2205,10 @@ describe('createPhaserBridge', () => {
       return buildGeneratedSpriteRegistry({
         version: 1,
         entries: {
-          'crimson-mushroom-v1-var-3': {
-            briefId: 'crimson-mushroom-v1',
-            spriteName: 'crimson-mushroom-v1-var-3',
-            assetPath: 'generated/crimson-mushroom-v1-var-3.png',
+          'crimson-mushroom-var-3': {
+            briefId: 'crimson-mushroom',
+            spriteName: 'crimson-mushroom-var-3',
+            assetPath: 'generated/crimson-mushroom-var-3.png',
             approvedAt: '2026-07-01T00:00:00.000Z',
             sourceRun: 'test',
             variantIndex: 3,
@@ -2172,7 +2235,7 @@ describe('createPhaserBridge', () => {
       // Sprite path: exactly one node Image using the resolved manifest key,
       // scaled + depth-sorted to sit on the floor just below the entity plane.
       expect(images).toHaveLength(1);
-      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-var-3');
       expect(images[0]?.x).toBe(80);
       expect(images[0]?.y).toBe(80);
       expect(images[0]?.scaleX).toBe(0.4);
@@ -2221,14 +2284,14 @@ describe('createPhaserBridge', () => {
       (scene.game as unknown) = { registry: { get: () => crimsonMushroomRegistry() } };
       const bridge = createPhaserBridge(scene);
       const world = createTestWorld();
-      spawnCrimsonNode(world, 10, 10); // wired → crimson-mushroom-v1 art exists.
+      spawnCrimsonNode(world, 10, 10); // wired → crimson-mushroom art exists.
       spawnNode(world, 20, 20, 1); // azure-mushroom → no art in registry → circle.
 
       bridge.sync(world);
 
       // Exactly one Image, for the wired crimson node only.
       expect(images).toHaveLength(1);
-      expect(images[0]?.textureKey).toBe('crimson-mushroom-v1-var-3');
+      expect(images[0]?.textureKey).toBe('crimson-mushroom-var-3');
 
       // The unwired azure node drew its tinted circle (azure tint 0x3377cc)...
       expect(

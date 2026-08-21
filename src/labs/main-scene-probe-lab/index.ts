@@ -32,7 +32,8 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Harvestable } from '../../core/components.js';
+import { Harvestable, Prop } from '../../core/components.js';
+import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
@@ -96,7 +97,7 @@ const PROBE_SEED = 4242;
 
 /**
  * Generated-sprite brief ids the render layer maps the Floor-1 harvestable node
- * types to (e.g. `crimson-mushroom-v1`). A harvestable node's on-floor Image is
+ * types to (e.g. `crimson-mushroom`). A harvestable node's on-floor Image is
  * created with one of these as the texture-key prefix, so the probe counts live
  * display-list Images by matching this set — the deterministic real-scene signal
  * that a node rendered its generated sprite instead of the procedural circle.
@@ -192,6 +193,7 @@ interface MainSceneInternals {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    getScrollIndex(): number;
   };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
@@ -275,6 +277,7 @@ interface MainSceneInternals {
     instanceId?: GeneratedEquipmentInstanceKey;
   };
   resumePendingRewardPresentations?(): void;
+  update?(time: number, delta: number): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
   isSimulationPaused(): boolean;
@@ -447,6 +450,8 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
+  /** Current first visible achievement row in the rendered Awards panel. */
+  readonly achievementsScrollIndex: number;
   /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
@@ -522,6 +527,20 @@ export interface HarvestableRenderSummary {
   readonly spriteImages: number;
   /** Per-def breakdown (only defs with live nodes and/or matching sprites). */
   readonly byDef: readonly HarvestableDefRenderSummary[];
+}
+
+/**
+ * On-screen size of a live floor-decoration `Prop` display-list Image, keyed
+ * by its texture (== `DecorationDef.spriteId`). Used by the prop-visual-size
+ * e2e to observe the real Prop render pass in `PhaserBridge.ts` (torches
+ * used to render at ~10px because `scale` was fed straight into `ftToPx()`
+ * instead of being treated as a multiplier over a reference footprint).
+ */
+export interface PropRenderSize {
+  /** Texture key backing the prop's Image, i.e. its `DecorationDef.spriteId`. */
+  readonly textureKey: string;
+  readonly displayWidthPx: number;
+  readonly displayHeightPx: number;
 }
 
 /**
@@ -809,6 +828,11 @@ export interface MainSceneProbeApi {
   /** Live harvestable node count + how many render a generated sprite. */
   getHarvestableRenderSummary(): HarvestableRenderSummary;
   /**
+   * On-screen sizes of every live floor-decoration `Prop` Image on the real
+   * display list, keyed by texture (`DecorationDef.spriteId`).
+   */
+  getPropRenderSizes(): PropRenderSize[];
+  /**
    * Equip a static weapon def into the player's main hand through the shipped
    * equip path, so the carried-weapon render can be observed for a chosen
    * weapon. Returns false when the weapon id is unknown.
@@ -853,6 +877,26 @@ export interface MainSceneProbeApi {
   resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
   getRewardOpeningState(): RewardOpeningProbeState;
+  /**
+   * Drive the real `MainGameScene.update()` reward-opening freeze branch for a
+   * fixed number of render frames, returning the overlay state before the
+   * browser's RAF loop can run another frame.
+   */
+  advanceRewardOpeningRenderFrames(frames: number, deltaMs?: number): RewardOpeningProbeState;
+  /**
+   * Drive two back-to-back auto-driven render-frame batches without letting the
+   * normal RAF loop reset the hold counter between samples.
+   */
+  sampleAutoDrivenRewardOpeningRenderFrames(
+    firstFrames: number,
+    nextFrames: number,
+    deltaMs?: number,
+  ): {
+    readonly first: RewardOpeningProbeState;
+    readonly next: RewardOpeningProbeState;
+  };
+  /** Current probe-controlled value returned by MainGameSceneOptions.isAutoDriven. */
+  isRewardOpeningAutoDrivenForProbe(): boolean;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
   tickRewardOpening(deltaMs: number): void;
   /** Jump the open reward-opening sequence straight to `summary`. */
@@ -960,9 +1004,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   // distinguishing value end-to-end (see readAmbientOverride). Absent → default.
   const baseOptions = createFloorMainSceneOptions(floorId);
   const ambientOverride = readAmbientOverride();
+  let autoDrivenForProbe = false;
   const sceneOptions = {
     ...baseOptions,
     worldSeed: PROBE_SEED,
+    isAutoDriven: () => autoDrivenForProbe,
     ...(ambientOverride !== null
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
       : {}),
@@ -1009,6 +1055,38 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return null;
     }
     return { x: floorMap.widthFt, y: floorMap.heightFt };
+  };
+
+  const getRewardOpeningState = (): RewardOpeningProbeState => {
+    const ui = getScene()?.rewardOpeningUI;
+    const open = ui?.isOpen() ?? false;
+    if (!ui || !open) {
+      return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
+    }
+    const progress = ui.getRevealProgress();
+    return {
+      open: true,
+      phase: ui.getPhase(),
+      bucket: ui.getBucket(),
+      revealed: progress?.revealed ?? 0,
+      total: progress?.total ?? 0,
+      nextLabel: ui.getNextRewardLabel?.() ?? null,
+    };
+  };
+
+  const advanceRewardOpeningRenderFrames = (
+    frames: number,
+    deltaMs = 16,
+    startTimeMs = 0,
+  ): RewardOpeningProbeState => {
+    const scene = getScene();
+    const frameCount = Math.max(0, Math.floor(frames));
+    let renderTimeMs = startTimeMs;
+    for (let i = 0; scene && i < frameCount; i += 1) {
+      renderTimeMs += deltaMs;
+      scene.update?.(renderTimeMs, deltaMs);
+    }
+    return getRewardOpeningState();
   };
 
   const probeWindow = window as unknown as { __mainSceneProbe?: MainSceneProbeApi };
@@ -1067,6 +1145,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
+        achievementsScrollIndex: scene?.achievementsUI?.getScrollIndex() ?? 0,
         bossChestOpen,
         quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
@@ -1728,6 +1807,40 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return { nodeEntities, spriteImages, byDef };
     },
 
+    getPropRenderSizes: (): PropRenderSize[] => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return [];
+      }
+      // Every live Prop's wired spriteId identifies which display-list Images
+      // are prop renders (the render pass keys `scene.add.image` by spriteId).
+      const propSpriteIds = new Set<string>();
+      for (const propEid of query(world.ecs, [Prop])) {
+        const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
+        const defId = DECORATION_INDEX_TO_ID[defIdIndex];
+        const spriteId = defId !== undefined ? getDecorationDef(defId)?.spriteId : undefined;
+        if (spriteId !== undefined) {
+          propSpriteIds.add(spriteId);
+        }
+      }
+      const sizes: PropRenderSize[] = [];
+      for (const obj of phaserScene.children.list) {
+        if (!(obj instanceof Phaser.GameObjects.Image)) {
+          continue;
+        }
+        const textureKey = obj.texture?.key;
+        if (typeof textureKey === 'string' && propSpriteIds.has(textureKey)) {
+          sizes.push({
+            textureKey,
+            displayWidthPx: obj.displayWidth,
+            displayHeightPx: obj.displayHeight,
+          });
+        }
+      }
+      return sizes;
+    },
+
     getTerrainRenderSummary: (): TerrainRenderSummary => {
       const summary = getScene()?.getTerrainRenderSummary();
       return {
@@ -1878,22 +1991,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.resumePendingRewardPresentations?.();
     },
 
-    getRewardOpeningState: (): RewardOpeningProbeState => {
-      const ui = getScene()?.rewardOpeningUI;
-      const open = ui?.isOpen() ?? false;
-      if (!ui || !open) {
-        return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
+    getRewardOpeningState,
+
+    advanceRewardOpeningRenderFrames,
+
+    sampleAutoDrivenRewardOpeningRenderFrames: (
+      firstFrames: number,
+      nextFrames: number,
+      deltaMs = 16,
+    ) => {
+      const previous = autoDrivenForProbe;
+      autoDrivenForProbe = true;
+      try {
+        const firstFrameCount = Math.max(0, Math.floor(firstFrames));
+        // The threshold sample intentionally starts from a fresh probe clock;
+        // only the second batch needs continuity with the first batch.
+        const first = advanceRewardOpeningRenderFrames(firstFrameCount, deltaMs);
+        // `advanceRewardOpeningRenderFrames` increments before each update, so
+        // starting the second sample at the first batch's end time makes its
+        // first frame land at `(firstFrameCount + 1) * deltaMs`.
+        const firstBatchEndTimeMs = firstFrameCount * deltaMs;
+        const next = advanceRewardOpeningRenderFrames(nextFrames, deltaMs, firstBatchEndTimeMs);
+        return { first, next };
+      } finally {
+        autoDrivenForProbe = previous;
       }
-      const progress = ui.getRevealProgress();
-      return {
-        open: true,
-        phase: ui.getPhase(),
-        bucket: ui.getBucket(),
-        revealed: progress?.revealed ?? 0,
-        total: progress?.total ?? 0,
-        nextLabel: ui.getNextRewardLabel?.() ?? null,
-      };
     },
+
+    isRewardOpeningAutoDrivenForProbe: () => autoDrivenForProbe,
 
     tickRewardOpening: (deltaMs: number) => {
       getScene()?.rewardOpeningUI?.tick(deltaMs);

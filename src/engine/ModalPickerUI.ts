@@ -246,9 +246,22 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
   };
 
+  // Scene shutdown can tear down `backdrop.scene` before this module's own
+  // `shutdown`/`destroy` handlers run `close()` → `rerender()`. Phaser's
+  // `disableInteractive()` unconditionally dereferences `this.scene.sys`, so
+  // it throws once the backdrop is scene-less mid-teardown; skip the input
+  // call in that case since there's no input plugin left to detach from.
+  const disableBackdropInteractive = (): void => {
+    backdrop.removeAllListeners('pointerdown');
+    if (backdrop.scene) {
+      backdrop.disableInteractive();
+    }
+  };
+
   const rerender = (): void => {
     if (!state) {
       overlay.setVisible(false);
+      disableBackdropInteractive();
       clearEntries();
       clearTextNodes();
       return;
@@ -256,6 +269,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
     clearEntries();
     clearTextNodes();
+    backdrop.removeAllListeners('pointerdown');
 
     // Refresh responsive scale before laying out (handles resize/rotation).
     uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
@@ -263,6 +277,35 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     overlay.setScale(uiScale);
 
     layoutPanel();
+    if (state.allowCancel) {
+      backdrop.setInteractive();
+      backdrop.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (!state) {
+          return;
+        }
+        const pointerInOverlay = overlay.getLocalPoint(
+          pointer.x,
+          pointer.y,
+          undefined,
+          pointer.camera,
+        );
+        const isInsidePanel =
+          pointerInOverlay.x >= panel.x &&
+          pointerInOverlay.x <= panel.x + panel.width &&
+          pointerInOverlay.y >= panel.y &&
+          pointerInOverlay.y <= panel.y + panel.height;
+        if (isInsidePanel) {
+          return;
+        }
+        const next = cancelModalPickerSelection(state);
+        if (next.status === 'cancelled') {
+          hooks?.onCancel?.({ source: 'pointer' });
+          close();
+        }
+      });
+    } else {
+      disableBackdropInteractive();
+    }
     const panelX = panel.x;
     const panelY = panel.y;
     let cursorY = panelY + PANEL_PADDING;
@@ -371,7 +414,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
-        ? 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
+        ? 'Tap to select  ·  Tap outside: Cancel  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
         : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
       FOOTER_STYLE,
     );

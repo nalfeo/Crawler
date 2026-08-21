@@ -241,12 +241,12 @@ export const ABILITY_PRESENTATION_BY_ID = {
   },
   fireball: {
     id: 'fireball',
-    name: 'Fire Wand',
+    name: 'Fireball',
     shortLabel: 'FIRE',
     description: 'Hurl a ball of fire that explodes in an area, burning enemies.',
     category: 'combat',
     kind: 'spell',
-    iconBriefId: 'ability-icon-fireball-v1',
+    iconBriefId: 'ability-icon-fireball',
     cooldownFrames: 300,
   },
   heal: {
@@ -256,7 +256,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Mend your wounds with restorative magic.',
     category: 'defense',
     kind: 'spell',
-    iconBriefId: 'ability-icon-heal-v1',
+    iconBriefId: 'ability-icon-heal',
     cooldownFrames: 1800,
   },
   'pulse-shield': {
@@ -266,7 +266,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Release a protective shockwave that knocks back nearby enemies.',
     category: 'defense',
     kind: 'spell',
-    iconBriefId: 'ability-icon-pulse-shield-v1',
+    iconBriefId: 'ability-icon-pulse-shield',
     cooldownFrames: 1200,
   },
   'magic-missile': {

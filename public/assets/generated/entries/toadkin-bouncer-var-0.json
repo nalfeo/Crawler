@@ -1,0 +1,119 @@
+{
+  "briefId": "toadkin-bouncer",
+  "spriteName": "toadkin-bouncer-var-0",
+  "assetPath": "generated/toadkin-bouncer-var-0.png",
+  "approvedAt": "2026-08-01T00:27:54.343Z",
+  "sourceRun": "generated/runs/toadkin-bouncer-v1/2026-08-01T00-22-31-7b9a5e6f",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 124,
+    "y": 144,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 124,
+      "y": 144,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 124,
+      "y": 144,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 124,
+        "y": 144
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:24:51.896Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept is well-executed, with a clear identity as a toadkin bouncer. The contradiction between the menacing stance and the gaudy, formal attire fits the dark humor and strange aesthetic of Crawler."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, palette depth, and production finish. The rendering is consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, palette depth, and production finish. The rendering is consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts the brief with crossed arms, a scowling expression, a purple velvet jacket with gold epaulets, brass knuckles, and an earpiece. The wide stance and overall demeanor convey the bouncer role effectively."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The character's stance and features are immediately recognizable."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a slight angle, facing the camera in a way that emphasizes its crossed arms and scowl, which is ideal for the intended role."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the velvet jacket, gold epaulets, brass knuckles, olive warty skin, and a scowling, authoritative pose. The design clearly aligns with the Croak Family theme and the Family Matters floor."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 3980,
+      "completionTokens": 429,
+      "totalTokens": 4409
+    }
+  },
+  "type": "enemy",
+  "contentHash": "83b479d14d9fbf29ed6eb482069416d8084936ee8a28536a391b81f6146891f3",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 226,
+    "height": 249,
+    "canvasWidth": 256,
+    "canvasHeight": 279
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

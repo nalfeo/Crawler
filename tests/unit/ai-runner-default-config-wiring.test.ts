@@ -23,23 +23,20 @@ describe('AI runner lab default config wiring', () => {
     expect(source).not.toContain('persisted?.decisionMode ?? AIDecisionMode.LEGACY');
   });
 
-  it('uses DEFAULT_CONFIG.retreatThreshold in every BehaviorTreeAI constructor call', () => {
+  it('builds every BehaviorTreeAI from the selected persona preset, never from literals', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
-    // Every occurrence of retreatThreshold must use the shared constant, never a literal
+    // Tuning knobs come from the persona preset (see personas.ts), never from
+    // literals or a partial hand-copied subset of DEFAULT_CONFIG.
+    expect(source).toContain('...getPersonaConfig(aiConfig.playerPersona)');
     expect(source).not.toContain('retreatThreshold: 0.15');
-    // Confirm the replacement is present (there are three call-sites: initial, rebuildAiBrain, reseed)
-    const occurrences =
-      source.split('retreatThreshold: DEFAULT_CONFIG.retreatThreshold').length - 1;
-    expect(occurrences).toBe(3);
-  });
-
-  it('uses DEFAULT_CONFIG.farmPullWeight in every BehaviorTreeAI constructor call', () => {
-    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
-    // Every occurrence must use shared config, never a literal.
     expect(source).not.toContain('farmPullWeight: 0.07');
     expect(source).not.toContain('farmPullWeight: 0.12');
-    const occurrences = source.split('farmPullWeight: DEFAULT_CONFIG.farmPullWeight').length - 1;
-    expect(occurrences).toBe(3);
+    expect(source).not.toContain('aggression: 1,');
+    // Single construction point, reused by the initial build, rebuildAiBrain and reseed.
+    const constructorCalls = source.split('new BehaviorTreeAI(').length - 1;
+    expect(constructorCalls).toBe(1);
+    const brainUses = source.split('createAiBrain()').length - 1;
+    expect(brainUses).toBe(3); // initial build + rebuildAiBrain + reseed
   });
 
   it('DEFAULT_CONFIG.pathingMode is riskRewardFused (production-promoted value)', () => {

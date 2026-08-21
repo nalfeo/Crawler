@@ -28,7 +28,13 @@
  *     already exists in the manifest throws `ApproveError('already-approved')`
  *     (mapped to HTTP 409 by the sidecar). The UI must confirm before approving
  *     a NEW variant and must refuse an exact duplicate. Pass
- *     `allowReapprove: true` only for deliberate programmatic overwrites.
+ *     `allowReapprove: true` only for deliberate programmatic overwrites of that
+ *     SAME slot.
+ *   - **Cross-variant duplicate content is ALSO blocked**, independent of
+ *     `allowReapprove`: minting a brand-new `briefId-var-N` slot whose pixels
+ *     are byte-identical to a DIFFERENT existing variant of the same brief
+ *     throws `ApproveError('duplicate-content')` (also mapped to HTTP 409).
+ *     Pass `allowDuplicateContent: true` only for a deliberate duplicate slot.
  *   - Different variant indices of the same brief coexist as separate
  *     manifest/catalog entries (`briefId-var-0`, `briefId-var-3`, ...).
  *
@@ -55,15 +61,16 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
-import { shardPathForKey } from './generated-shards.js';
+import { shardPathForKey, shardsDir } from './generated-shards.js';
+import { bareConcept, hasResidualLineageTag } from './sprite-name-taxonomy.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -72,6 +79,7 @@ export interface ApproveFs {
   readonly writeFileSync: typeof writeFileSync;
   readonly copyFileSync: typeof copyFileSync;
   readonly mkdirSync: typeof mkdirSync;
+  readonly readdirSync: typeof readdirSync;
 }
 
 /** Extended fs subset that also supports file deletion, used by unapproveVariant. */
@@ -85,6 +93,7 @@ const DEFAULT_FS: ApproveFs = {
   writeFileSync,
   copyFileSync,
   mkdirSync,
+  readdirSync,
 };
 
 const DEFAULT_UNAPPROVE_FS: UnapproveFs = {
@@ -229,6 +238,7 @@ export class ApproveError extends Error {
       | 'variant-not-found'
       | 'processed-missing'
       | 'already-approved'
+      | 'duplicate-content'
       | 'manifest-invalid'
       | 'hard-blocked'
       // Frame-sequence-only kinds (approveFrameSequence):
@@ -241,6 +251,19 @@ export class ApproveError extends Error {
     super(message);
     this.name = 'ApproveError';
   }
+}
+
+function canonicalBriefId(rawBriefId: string | undefined, summaryPath: string): string {
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  if (hasResidualLineageTag(rawBriefId)) {
+    throw new ApproveError(
+      'summary-invalid',
+      `summary.json has malformed nested lineage tag in "brief": ${rawBriefId}`,
+    );
+  }
+  return bareConcept(rawBriefId);
 }
 
 interface RunSummaryShape {
@@ -347,11 +370,21 @@ export interface ApproveVariantOptions {
   /** Injected fs for tests. Defaults to `node:fs`. */
   readonly fs?: ApproveFs;
   /**
-   * Allow overwriting an already-approved `briefId-var-N` entry. Default false:
-   * approving an exact-duplicate variant throws `ApproveError('already-approved')`.
-   * Set true only for deliberate programmatic re-approval.
+   * Allow overwriting an already-approved `briefId-var-N` entry (the EXACT
+   * requested slot). Default false: approving an exact-duplicate variant
+   * throws `ApproveError('already-approved')`. Set true only for deliberate
+   * programmatic re-approval of the SAME slot. Does NOT bypass cross-variant
+   * dedup — see `allowDuplicateContent`.
    */
   readonly allowReapprove?: boolean;
+  /**
+   * Allow minting a NEW `briefId-var-N` slot whose content is byte-identical
+   * to a DIFFERENT existing variant of the same brief. Default false:
+   * cross-variant duplicate content throws `ApproveError('duplicate-content')`
+   * regardless of `allowReapprove`. Set true only when a human consciously
+   * wants two variant slots to hold the same pixels.
+   */
+  readonly allowDuplicateContent?: boolean;
   /**
    * Allow approving a variant whose judge scorecard has `hardBlocked === true`.
    * Default false: hard-blocked variants throw `ApproveError('hard-blocked')`.
@@ -385,15 +418,15 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
   const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  // Recurrence guard (ADR 0051): art for a gameplay item ships BARE. If the brief
-  // is `<item>-vN` and `<item>` is a known item identity (an ItemDef.id or a
-  // weaponId alias), strip the `-vN` so the manifest key / spriteName / assetPath
-  // / briefId are all the bare item id and the icon resolves by item id. Genuine
-  // non-item briefs (enemies, tiles, props) keep their `-vN` lineage untouched.
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  // Recurrence guard: ALL generated art ships BARE. If the brief carries a
+  // generation-time `-vN` lineage tag, strip it so the manifest key /
+  // spriteName / assetPath / briefId are all the bare concept. This is what
+  // keeps `loadGeneratedManifest` grouping every variant of a concept into ONE
+  // bucket — a versioned brief creates a second bucket that
+  // `pickGeneratedVariant` can never draw from, stranding approved art.
+  // Design names that merely look versioned (`angry-roomba-v2`) are remapped,
+  // not stripped, by `DESIGN_NAME_REMAP`.
+  const briefId = canonicalBriefId(rawBriefId, summaryPath);
   const sourceRun = options.sourceRunOverride
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
@@ -490,6 +523,39 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
             `Re-post-process to change the image, or pass allowReapprove to overwrite it.`,
         );
       }
+    }
+  }
+
+  // Cross-variant dedup: refuse to mint a FRESH `briefId-var-N` slot for pixel
+  // content this brief already has approved under a DIFFERENT variant index.
+  // Without this, a run that keeps re-generating/re-harvesting the same brief
+  // (e.g. a stale batch job, or two naming lineages of the same brief both
+  // feeding the reconciler) mints a brand-new variant slot every cycle — a
+  // genuinely new PATH each time, so the exact-`variantId` check above never
+  // fires — and the sprite-queue reconciler then promotes it as "new" art
+  // forever. Scanning every existing variant of this brief (not just the
+  // target slot) catches that duplicate before it is ever written.
+  //
+  // Deliberately independent of `allowReapprove`: that flag only authorizes
+  // overwriting the EXACT requested slot (used by pipelines that idempotently
+  // re-approve the same variantIndex), it must never license minting a fresh
+  // duplicate slot elsewhere. `allowDuplicateContent` is the only bypass.
+  if (!options.allowDuplicateContent) {
+    const duplicateOf = findExistingVariantWithContentHash(
+      fs,
+      options.manifestPath,
+      briefId,
+      variantId,
+      contentHash,
+    );
+    if (duplicateOf !== null) {
+      throw new ApproveError(
+        'duplicate-content',
+        `Brief "${briefId}" already has this exact image approved as variant ` +
+          `"${duplicateOf}". Refusing to mint a new variant slot ("${variantId}") ` +
+          `for duplicate content — re-post-process to change the image, or pass ` +
+          `allowDuplicateContent to force it anyway.`,
+      );
     }
   }
 
@@ -638,11 +704,7 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   const sourceRun = options.sourceRunOverride
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
@@ -812,11 +874,7 @@ export function resolveVariantIdentity(
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
   if (!candidate) {
@@ -892,11 +950,7 @@ export function loadApprovedFrameSequenceEntry(options: {
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
@@ -951,6 +1005,51 @@ function readManifestEntry(
   } catch {
     return null;
   }
+}
+
+/**
+ * Scan every OTHER existing `briefId-var-*` shard for one whose stored
+ * `contentHash` matches `contentHash`, returning that variant's id (or `null`
+ * if none match). `excludeVariantId` is skipped — its own exact-match dedup is
+ * handled separately by the caller — so this only reports a collision against
+ * a genuinely DIFFERENT variant index of the same brief.
+ *
+ * Flat-layout assumption: every `briefId-var-N` key is a single path segment
+ * (no `/`), so its shard lives directly under `entries/`, not in a nested
+ * directory. Best-effort: a missing/corrupt shards directory or an unreadable
+ * shard is treated as "no match" so approval is never blocked by an I/O
+ * hiccup unrelated to the dedup check itself.
+ */
+function findExistingVariantWithContentHash(
+  fs: ApproveFs,
+  manifestPath: string,
+  briefId: string,
+  excludeVariantId: string,
+  contentHash: string,
+): string | null {
+  const dir = shardsDir(path.dirname(manifestPath));
+  if (!fs.existsSync(dir)) return null;
+  const prefix = `${briefId}-var-`;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const variantId = name.slice(0, -'.json'.length);
+    if (variantId === excludeVariantId) continue;
+    if (!variantId.startsWith(prefix)) continue;
+    // Guard against a longer briefId prefix-matching (e.g. "rat" matching
+    // "rat-fink-var-0") — the suffix after the prefix must be purely numeric.
+    if (!/^\d+$/.test(variantId.slice(prefix.length))) continue;
+    const entry = readManifestEntry(fs, manifestPath, variantId);
+    if (entry?.contentHash && entry.contentHash === contentHash) {
+      return variantId;
+    }
+  }
+  return null;
 }
 
 /** SHA-256 (hex) of a file's bytes, or null when the file is missing/unreadable. */
@@ -1231,11 +1330,7 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = rawBriefId;
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);

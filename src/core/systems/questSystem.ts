@@ -18,8 +18,10 @@ import { getItemCount, hasItem, listStaticInventorySlots } from '../../shared/in
 import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
 import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
 import {
+  FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
   objectiveTarget,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type QuestDef,
   type QuestObjectiveDef,
@@ -282,6 +284,7 @@ export function isQuestComplete(world: GameWorld, questId: string): boolean {
 
 function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): void {
   const bag = playerEid === undefined ? undefined : world.inventories.get(playerEid);
+  const equipmentState = playerEid === undefined ? undefined : getEquipmentState(world, playerEid);
   if (!bag) {
     return;
   }
@@ -289,10 +292,28 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   if (!world.featureUnlocks.inventory && hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)) {
     world.featureUnlocks.inventory = true;
   }
-  // Equipment unlocks once the player holds anything equippable (the purchase).
+  const hasMerchantCharmEquipped =
+    equipmentState !== undefined &&
+    Object.values(equipmentState.equipped).some((instanceId) => {
+      if (instanceId === null) {
+        return false;
+      }
+      const inst = resolveEquipmentInstance(world, equipmentState, instanceId);
+      return inst?.def.id === SHOPKEEPER_EQUIPMENT_ITEM_ID;
+    });
+  const hasMerchantCharm = hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID) || hasMerchantCharmEquipped;
+  // Floor 1 gate applies only once the merchant errand exists in the quest log,
+  // and remains until the merchant charm is actually acquired/equipped.
+  const floor1NeedsMerchantCharmGate =
+    world.floorId === 'floor1' && world.questLog.has(FLOOR1_SHOP_QUEST_ID);
+  // Equipment unlocks once the player holds anything equippable. Floor 1 is
+  // intentionally stricter: Gear unlocks only from the merchant charm so
+  // unrelated loot (e.g. boss chest drops) cannot unlock Gear early.
   if (
     !world.featureUnlocks.equipment &&
-    listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId))
+    (!floor1NeedsMerchantCharmGate || hasMerchantCharm) &&
+    (listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
+      Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null))
   ) {
     world.featureUnlocks.equipment = true;
   }

@@ -910,6 +910,7 @@ export async function promoteExactBatch({
       expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
+      stack: postSlotPr.stack ?? null,
     });
     if (!merge.ok) {
       if (merge.retryable) {
@@ -1314,6 +1315,28 @@ export function createMergePullRequest({
           reason: `merge API rejected the merge (${status}): ${error?.message ?? String(error)}`,
         };
       }
+      // Defense-in-depth: `eligible` (via evaluateAdmission's `stacked-pr`
+      // reason) rejects a PR with a `stack` object at admission, so this
+      // should never be reached in the normal path. But a PR can become
+      // stacked (another PR opened against its head branch) in the narrow
+      // window between admission and this PUT, and GitHub 403s the classic
+      // synchronous merge endpoint for ANY stacked PR: "Merging stacked PRs
+      // via this endpoint is not supported. Use the asynchronous merge
+      // endpoint instead." Nothing merged, so treat it exactly like the
+      // other definitively-nothing-landed statuses above: retryable, not a
+      // hard throw. The next reconcile's admission check now dequeues the PR
+      // via `stacked-pr` instead of looping on this same 403 forever. Prior
+      // to this fix this fell through to the ambiguous 5xx/network branch,
+      // which throws a MergeTrainPromotionError and aborts the ENTIRE batch --
+      // blocking every other queued PR behind it (incident: PR #3027 stacked
+      // under #3033 parked the train for 24h+).
+      if (status === 403 && /stacked pr/i.test(String(error?.message ?? ''))) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge API rejected the merge (403 stacked PR): ${error?.message ?? String(error)}`,
+        };
+      }
       // 5xx/network failures are AMBIGUOUS: GitHub may have merged the PR before
       // the response was lost. Disambiguate by re-reading the PR -- if it is now
       // merged with a real merge commit, return that SHA as success so the
@@ -1354,6 +1377,134 @@ export function createMergePullRequest({
       };
     }
     return { ok: true, sha: String(data.sha) };
+  };
+}
+
+/**
+ * Create a merge function for a BOTTOM-of-stack PR (`stack.position === 1`)
+ * using GitHub's async merge-stack endpoint instead of the classic PUT.
+ *
+ * Calling `PUT /pulls/{n}/merge-async` on PR X merges every PR in the stack
+ * from the base up through and including X, atomically. Calling it on the
+ * bottom-most PR therefore merges ONLY that PR: there is nothing below it in
+ * the stack to pull in. GitHub then automatically rebases the PR(s) above it
+ * directly onto `main`, dissolving the stack so they become ordinary,
+ * independently-mergeable PRs. Never call this on a non-bottom PR -- that
+ * would force-merge everything below it too, defeating the purpose of
+ * stacking (see evaluateAdmission's `stacked-pr` reason, which rejects any
+ * non-bottom stacked PR precisely so this function is never reached for one).
+ *
+ * The async endpoint is fire-and-poll: the initial PUT returns a pending
+ * status plus a uuid, and the actual merge result must be polled via
+ * `GET /pulls/{n}/merge-async/{uuid}`.
+ */
+export function createMergeBottomOfStackPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs = [1000, 2000, 3000, 5000, 8000, 12000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  return async function mergeBottomOfStackPr(
+    entry,
+    { expectedHeadSha, commitTitle, commitMessage },
+  ) {
+    let submitted;
+    let resumedUuid = null;
+    try {
+      submitted = (
+        await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge-async`, {
+          method: 'PUT',
+          body: {
+            sha: expectedHeadSha,
+            merge_method: 'squash',
+            merge_action: 'direct_merge',
+            commit_title: commitTitle,
+            commit_message: commitMessage,
+          },
+        })
+      ).data;
+    } catch (error) {
+      resumedUuid = String(error?.data?.details?.uuid || error?.details?.uuid || '').trim() || null;
+      if (error?.status === 409 && resumedUuid) {
+        // GitHub reports an already-running async merge with HTTP 409 and its
+        // operation UUID. Resume polling that operation instead of repeatedly
+        // re-submitting and receiving the same 409.
+        submitted = { status: 'pending', details: { uuid: resumedUuid } };
+      } else {
+        // Nothing merged if the submit itself failed -- retryable, never throw
+        // (this function shares createMergePullRequest's never-throws contract).
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async submit failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
+        };
+      }
+    }
+
+    if (submitted.status === 'merged') {
+      return { ok: true, sha: String(submitted.details?.expected_head_sha || expectedHeadSha) };
+    }
+
+    const uuid = submitted.details?.uuid || resumedUuid;
+    if (!uuid) {
+      return {
+        ok: false,
+        retryable: true,
+        reason: `merge-async submit returned no uuid to poll (status: ${submitted.status})`,
+      };
+    }
+
+    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+      let polled;
+      try {
+        polled = (
+          await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge-async/${uuid}`)
+        ).data;
+      } catch (error) {
+        // Transient poll-GET failure; keep polling within the bounded budget.
+        if (attempt < pollDelaysMs.length) {
+          await sleep(pollDelaysMs[attempt]);
+          continue;
+        }
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async poll failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
+        };
+      }
+      if (polled.status === 'merged') {
+        // Re-read the PR to obtain the real merge commit SHA for the caller's
+        // post-merge proof, mirroring createMergePullRequest's contract.
+        const after = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+        if (
+          after?.merged === true &&
+          /^[0-9a-f]{40}$/i.test(String(after.merge_commit_sha || ''))
+        ) {
+          return { ok: true, sha: String(after.merge_commit_sha) };
+        }
+        return { ok: true, sha: String(polled.details?.expected_head_sha || expectedHeadSha) };
+      }
+      if (polled.status === 'failed') {
+        return {
+          ok: false,
+          retryable: false,
+          reason: `merge-async failed: ${polled.details?.message ?? 'unknown reason'}`,
+        };
+      }
+      // 'pending' or 'enqueued': keep polling within the bounded budget.
+      if (attempt < pollDelaysMs.length) {
+        await sleep(pollDelaysMs[attempt]);
+      } else {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async still pending after polling (uuid: ${uuid})`,
+        };
+      }
+    }
+    return { ok: false, retryable: true, reason: 'merge-async polling exhausted' };
   };
 }
 

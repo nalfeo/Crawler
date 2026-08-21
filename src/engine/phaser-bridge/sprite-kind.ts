@@ -283,24 +283,24 @@ export { generatedBriefIdForEnemy };
  *
  * On-floor harvestable *world nodes* resolve their art through this explicit
  * map — mirroring {@link GENERATED_BRIEF_BY_TYPE} for enemies — rather than by
- * the bare item id. The `-v1` namespace deliberately keeps node art in its own
- * lane, separate from the inventory *item icon* surface (which resolves by bare
- * `itemId === briefId`): the two surfaces are authored and wired independently,
- * and a bare-id key here would additionally collide with the reusable
- * `azure-mushroom-v1` brief. Keys are `HarvestableDef.id` values from
+ * the bare item id, because a node id and its item id can differ (`iron-vein`
+ * yields `iron-ore`). Every value is a **bare concept id**, with no `-vN`
+ * lineage tag (ADR 0086). Keys are `HarvestableDef.id` values from
  * `src/shared/harvestableDefs.ts`.
  */
 const GENERATED_BRIEF_BY_HARVESTABLE: Readonly<Record<string, string>> = {
-  'crimson-mushroom': 'crimson-mushroom-v1',
-  'azure-mushroom': 'azure-mushroom-v1',
-  'sunpetal-flower': 'sunpetal-flower-v1',
-  'moonbloom-flower': 'moonbloom-flower-v1',
-  'frost-lichen': 'frost-lichen-v1',
-  'shadow-lichen': 'shadow-lichen-v1',
-  // Floor 2: industrial-cave ore / gem nodes (indices 6–8).
-  'iron-vein': 'iron-vein-v1',
-  'copper-seam': 'copper-seam-v1',
-  'gem-cluster': 'gem-cluster-v1',
+  'crimson-mushroom': 'crimson-mushroom',
+  'azure-mushroom': 'azure-mushroom',
+  'sunpetal-flower': 'sunpetal-flower',
+  'moonbloom-flower': 'moonbloom-flower',
+  'frost-lichen': 'frost-lichen',
+  'shadow-lichen': 'shadow-lichen',
+  // Floor 2: industrial-cave ore / gem nodes (indices 6–8). No approved art
+  // yet — these keys reserve the concept; the renderer falls back to the
+  // procedural circle until art lands.
+  'iron-vein': 'iron-vein',
+  'copper-seam': 'copper-seam',
+  'gem-cluster': 'gem-cluster',
 };
 
 /**

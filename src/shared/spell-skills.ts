@@ -24,6 +24,20 @@ export function getSpellSkillId(spellId: string): string | undefined {
   return (SPELL_SKILL_ID_BY_SPELL_ID as Record<string, string | undefined>)[spellId];
 }
 
+/**
+ * Shared usage-threshold curve for every spell skill. All Floor 1 spell
+ * skills level up on the same `spell_used` curve (see
+ * `src/game/skills/registry.ts`), so it's hoisted here — mirroring
+ * `CLASS_SKILL_THRESHOLDS`/`TYPE_SKILL_THRESHOLDS` in `weapon-skills.ts` —
+ * so engine-layer HUD code can compute spell-skill progress without
+ * importing from `src/game/**` (disallowed by the layer rules).
+ *
+ * 20 values required (SKILL_HARD_CAP = 20).
+ */
+export const SPELL_SKILL_THRESHOLDS: readonly number[] = [
+  2, 5, 10, 18, 30, 45, 65, 90, 120, 155, 195, 240, 290, 345, 405, 470, 540, 615, 695, 780,
+];
+
 export const FLOOR1_SPELL_BROKER_OFFER_COUNT = 3;
 
 /**

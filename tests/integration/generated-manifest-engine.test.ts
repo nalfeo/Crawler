@@ -264,7 +264,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     const expectedDefinitions = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((definition) =>
       FLOOR2_BASIC_LEATHER_STABLE_IDS.includes(definition.stableId),
     );
-    expect(expectedDefinitions).toHaveLength(18);
+    expect(expectedDefinitions).toHaveLength(FLOOR2_BASIC_LEATHER_STABLE_IDS.length);
 
     for (const definition of expectedDefinitions) {
       const alias = queued.find((entry) => entry.textureKey === definition.runtimeKey);
@@ -456,8 +456,8 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // rename on EITHER side — the wiring map or the shipped manifest — fails
     // loudly here.
     const expectedByDef: Record<string, string> = {
-      'tutorial-goon': 'welcome-goon-v3-var-1',
-      shopkeeper: 'sweaty-merchant-v3-var-3',
+      'tutorial-goon': 'welcome-goon-var-1',
+      shopkeeper: 'sweaty-merchant-var-3',
       'spell-quest-giver': 'npc-spell-broker-var-1',
     };
 

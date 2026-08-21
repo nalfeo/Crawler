@@ -1,0 +1,119 @@
+{
+  "briefId": "faerie-spark-caster",
+  "spriteName": "faerie-spark-caster-var-11",
+  "assetPath": "generated/faerie-spark-caster-var-11.png",
+  "approvedAt": "2026-08-01T00:15:15.596Z",
+  "sourceRun": "generated/runs/faerie-spark-caster-v1/2026-08-01T00-11-38-2fb329ab",
+  "variantIndex": 11,
+  "anchor": {
+    "x": 135,
+    "y": 103,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 135,
+      "y": 103,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 135,
+      "y": 103,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 135,
+        "y": 103
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 11,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:14:41.844Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The faerie concept is clear and incorporates a readable contradiction: delicate and humanoid yet projecting chaotic electrical energy. The glowing wings and sparks add a whimsical yet threatening element, aligning with Crawler's dark humor and strange aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The sprite uses a similar outline weight and shading style to the references, but the wings' gradient and glow effect feel slightly more modern and less consistent with the references' pixel art style."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The sprite uses a similar outline weight and shading style to the references, but the wings' gradient and glow effect feel slightly more modern and less consistent with the references' pixel art style."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the brief well, with translucent wings, a dark bodysuit, and visible electrical arcs. However, the arcs are minimal and could be more chaotic to fully match the description."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is mostly clear, with the wings and body distinguishable. However, the electrical arcs are small and less prominent, slightly reducing the immediate readability of the attack role."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The sprite faces the camera at an appropriate angle, with arms raised and fingers spread, effectively conveying the intended pose and action."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The faerie incorporates elements from both the floor and theme design language, such as magenta tones in the wings, glowing effects, and a dark bodysuit. However, the metallic accents and chaotic energy could be emphasized more to fully align with the brief."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.78,
+    "usage": {
+      "promptTokens": 4008,
+      "completionTokens": 421,
+      "totalTokens": 4429
+    }
+  },
+  "type": "enemy",
+  "contentHash": "852c7631741be9cc0f4b08992c17b1b9fa8bf3fc41330a0ea8276141f778eeb4",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 238,
+    "height": 228,
+    "canvasWidth": 266,
+    "canvasHeight": 256
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -504,7 +504,7 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
       err.kind === 'processed-missing' ||
       err.kind === 'run-not-found'
         ? 404
-        : err.kind === 'already-approved'
+        : err.kind === 'already-approved' || err.kind === 'duplicate-content'
           ? 409
           : err.kind === 'hard-blocked'
             ? 422
@@ -2236,10 +2236,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             repoRoot: deps.repoRoot,
           });
         } catch (err) {
-          // already-approved is a safe no-op here: approveVariant throws
-          // BEFORE writing anything when the identical content is already
-          // approved, so it's fine to fall through to check-in using the
-          // identity resolved above. Any other kind is a genuine failure.
+          // `already-approved` (exact requested slot already has this exact
+          // content) is a safe no-op here: approveVariant throws BEFORE
+          // writing anything, so it's fine to fall through to check-in using
+          // the identity resolved above — that identity/assetPath IS what's
+          // already approved. `duplicate-content` (cross-variant collision)
+          // is NOT safe to treat the same way: the requested variantId was
+          // refused and never created, so falling through would check in an
+          // asset that doesn't exist. Let it (and any other kind) fall to
+          // mapApproveError below, which reports it as a genuine 409 failure.
           if (!(err instanceof ApproveError) || err.kind !== 'already-approved') {
             return mapApproveError(reply, err);
           }

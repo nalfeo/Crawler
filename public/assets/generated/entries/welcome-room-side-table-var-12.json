@@ -6,20 +6,20 @@
   "sourceRun": "generated/runs/welcome-room-side-table/2026-07-25T06-03-29-87d2f53d",
   "variantIndex": 12,
   "anchor": {
-    "x": 34,
-    "y": 60,
-    "source": "derived"
+    "x": 31,
+    "y": 33,
+    "source": "manual"
   },
   "anchors": {
     "hold": {
-      "x": 34,
-      "y": 60,
-      "source": "derived"
+      "x": 31,
+      "y": 33,
+      "source": "manual"
     },
     "centerOfGravity": {
       "x": 31,
       "y": 31,
-      "source": "derived"
+      "source": "manual"
     }
   },
   "sensorScore": "7/7",
@@ -101,8 +101,8 @@
     }
   },
   "type": "prop",
-  "contentHash": "6bc62c16de8c3a5a40847f46c65b458a88ab27065bbc7a186c676cf5f871f7de",
-  "effectiveAnchorSource": "derived",
+  "contentHash": "a151c28e5878fc53f06a679e91f393602c3c85b3432325751137d54966746ffe",
+  "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {
     "x": 3,

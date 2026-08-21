@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-18",
+  "session_slug": "ci-recovery-comment-cleanup",
+  "task_title": "Streamline CI recovery task comments",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer found that merge-train-noop had no phase mapping, which would render an empty phase list. Added an explicit merge-train cleanup phase and regression coverage; no alternate architecture was needed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "38638cccfc8b236321d33d77b12fb384567d6341",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly and safely streamlines the CI recovery comment logic. It sorts blockers according to a well-defined phase array, gracefully handling the dual nature of review-thread blockers (which need both feedback and resolution phases). The exclusion of aggregate CI failures when concrete ones exist is accurately implemented and covered by new tests."
+    }
+  }
+}

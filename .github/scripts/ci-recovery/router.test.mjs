@@ -51,6 +51,7 @@ import {
   selectReaperBatch,
   settleRetargetedPull,
   classifyStaleBase,
+  isStackedRetargetRefusal,
   retargetStaleBasePulls,
   waitForDispatchedRunsVisible,
   waitForOutstandingCount,
@@ -153,7 +154,7 @@ function stackedPullRequest(overrides = {}) {
     draft: false,
     labels: [],
     base: { ref: 'nalfeo-spell-broker-progression' },
-    head: { repo: { full_name: 'nalfeo/Crawler' }, sha: 'stacked-head' },
+    head: { repo: { full_name: 'nalfeo/Crawler' }, ref: 'stacked-head-ref', sha: 'stacked-head' },
     ...overrides,
   };
 }
@@ -312,6 +313,174 @@ test('stale-base retarget logs branch lookup API failures and continues the batc
     logs[0],
     /action=skip reason=base-branch-lookup-failed error=base lookup unavailable/,
   );
+});
+
+test('stale-base retarget keeps slashes literal in slash-bearing base ref URLs', async () => {
+  const baseRef = 'copilot/perf-nightly-gameplay-neutral-optimization-pass';
+  const paths = [];
+  const requestFn = async (_token, path, options = {}) => {
+    paths.push(path);
+    if (options.method === 'PATCH') return { data: stackedPullRequest({ base: { ref: 'main' } }) };
+    if (options.method === 'POST') return { data: {} };
+    if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+    if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+    throw new Error(`Unexpected request ${path}`);
+  };
+  await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest({ base: { ref: baseRef } })],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    requestFn,
+    paginateFn: async () => [mergedBasePull()],
+    writeLog: () => {},
+  });
+  assert.ok(paths.some((path) => path.endsWith(`/git/ref/heads/${baseRef}`)));
+  assert.ok(paths.some((path) => path.endsWith(`/compare/${baseRef}...main`)));
+  assert.ok(!paths.some((path) => path.includes('%2F')));
+});
+
+test('stale-base retarget logs compare API failures and continues the batch', async () => {
+  const logs = [];
+  const failed = stackedPullRequest();
+  const healthy = stackedPullRequest({
+    number: 2864,
+    base: { ref: 'healthy-base' },
+    head: { repo: { full_name: 'nalfeo/Crawler' }, ref: 'healthy-head', sha: 'healthy-sha' },
+  });
+  const retargeted = await retargetStaleBasePulls({
+    scheduledPulls: [failed, healthy],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async (_token, path) => [
+      mergedBasePull({
+        head: { ref: path.includes('healthy-base') ? 'healthy-base' : failed.base.ref },
+      }),
+    ],
+    requestFn: async (_token, path, options = {}) => {
+      if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+      if (path.includes(`/compare/${failed.base.ref}...`)) throw makeError(404, 'Not Found');
+      if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+      if (options.method === 'PATCH') return { data: healthy };
+      if (options.method === 'POST') return { data: {} };
+      throw new Error(`Unexpected request ${path}`);
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  assert.deepEqual(retargeted, [healthy]);
+  assert.equal(logs.length, 3);
+  assert.match(logs[0], /action=skip reason=base-compare-failed/);
+  assert.match(logs.at(-1), /stale-base-retargeted pr=#2864 from=healthy-base to=main/);
+});
+
+test('stacked-refusal detector distinguishes the stack 422 from other 422s', () => {
+  const stacked = makeError(422, 'Validation Failed');
+  stacked.data = {
+    message: 'Validation Failed',
+    errors: [
+      { message: 'Cannot change the base branch because the pull request is part of a stack.' },
+    ],
+  };
+  assert.equal(isStackedRetargetRefusal(stacked), true);
+  const other = makeError(422, 'Validation Failed');
+  other.data = { message: 'Validation Failed', errors: [{ message: 'base is invalid' }] };
+  assert.equal(isStackedRetargetRefusal(other), false);
+  assert.equal(isStackedRetargetRefusal(makeError(403, 'Forbidden')), false);
+});
+
+function stackedRetargetError() {
+  const error = makeError(422, 'Validation Failed');
+  error.data = {
+    message: 'Validation Failed',
+    errors: [
+      { message: 'Cannot change the base branch because the pull request is part of a stack.' },
+    ],
+  };
+  return error;
+}
+
+test('stale-base retarget merges main forward when GitHub refuses a stacked retarget', async () => {
+  const calls = [];
+  const logs = [];
+  const retargeted = await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async () => [mergedBasePull()],
+    requestFn: async (_token, path, options = {}) => {
+      calls.push({ path, options });
+      if (options.method === 'PATCH') throw stackedRetargetError();
+      if (path.endsWith('/merges')) return { data: { sha: 'merge-sha' }, status: 201 };
+      if (options.method === 'POST') return { data: {} };
+      if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+      if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+      throw new Error(`Unexpected request ${path}`);
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  // The PR is not reported as retargeted, because its base did not change.
+  assert.deepEqual(retargeted, []);
+  const merge = calls.find((call) => call.path.endsWith('/merges'));
+  assert.ok(merge, 'expected a merge-forward call');
+  assert.deepEqual(
+    { base: merge.options.body.base, head: merge.options.body.head },
+    { base: 'stacked-head-ref', head: 'main' },
+  );
+  assert.ok(logs.some((line) => /action=merge-forward result=merged/.test(line)));
+  const comment = calls.find((call) => call.path.endsWith('/comments'));
+  assert.match(comment.options.body.body, /Merged `main` forward/);
+});
+
+test('stale-base merge-forward reports a conflict instead of throwing', async () => {
+  const logs = [];
+  const comments = [];
+  await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async () => [mergedBasePull()],
+    requestFn: async (_token, path, options = {}) => {
+      if (options.method === 'PATCH') throw stackedRetargetError();
+      if (path.endsWith('/merges')) throw makeError(409, 'Merge conflict');
+      if (path.endsWith('/comments')) {
+        comments.push(options.body.body);
+        return { data: {} };
+      }
+      if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+      if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+      throw new Error(`Unexpected request ${path}`);
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  assert.ok(logs.some((line) => /action=merge-forward result=conflict/.test(line)));
+  assert.match(comments[0], /manual unstack or conflict resolution/);
+});
+
+test('stale-base retarget skips the PR and continues on a non-stack 422', async () => {
+  const logs = [];
+  const retargeted = await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async () => [mergedBasePull()],
+    requestFn: async (_token, path, options = {}) => {
+      if (options.method === 'PATCH') {
+        const error = makeError(422, 'Validation Failed');
+        error.data = { message: 'Validation Failed', errors: [{ message: 'base is invalid' }] };
+        throw error;
+      }
+      if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+      if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+      throw new Error(`Unexpected request ${path}`);
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  assert.deepEqual(retargeted, []);
+  assert.ok(logs.some((line) => /action=skip reason=retarget-failed/.test(line)));
 });
 
 test('stale-base settlement defers until GitHub resolves the retargeted mergeability', async () => {
