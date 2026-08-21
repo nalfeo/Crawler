@@ -10,7 +10,9 @@ import {
   MAX_REQUEST_BYTES,
   decodePngBase64,
   validateRunBundle,
+  validateRunSurveyAppend,
   type ValidatedBundle,
+  type ValidatedSurveyAppend,
 } from './validation.js';
 
 const DEFAULT_ORIGINS = ['https://nalfeo.github.io', 'http://localhost:5173'];
@@ -26,7 +28,7 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
   );
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'content-type,x-run-upload-mode',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -208,10 +210,194 @@ async function recordIssueUrl(
     });
 }
 
+function issueApiUrlFromHtml(issueUrl: string, repository: string): string | undefined {
+  const escapedRepository = repository.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = issueUrl.match(
+    new RegExp(`^https://github\\.com/${escapedRepository}/issues/(\\d+)$`),
+  );
+  return match ? `https://api.github.com/repos/${repository}/issues/${match[1]}` : undefined;
+}
+
+function surveyMarker(contentHash: string): string {
+  return `Survey ID: \`${contentHash}\``;
+}
+
+function surveyBody(survey: ValidatedSurveyAppend['survey'], contentHash: string): string {
+  return [
+    surveyMarker(contentHash),
+    '',
+    'Survey:',
+    '```json',
+    JSON.stringify(survey, null, 2),
+    '```',
+  ].join('\n');
+}
+
+function isBlobPreconditionFailed(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { statusCode?: unknown }).statusCode === 412
+  );
+}
+
+async function readSurveyIssueUrl(
+  surveyBlob: ReturnType<ReturnType<typeof getContainer>['getBlockBlobClient']>,
+  contentHash: string,
+): Promise<string | undefined> {
+  const existing = JSON.parse((await surveyBlob.downloadToBuffer()).toString('utf8')) as {
+    contentHash?: unknown;
+    issueUrl?: unknown;
+  };
+  if (existing.contentHash !== contentHash) {
+    throw new Error('runId is already associated with different survey feedback');
+  }
+  return typeof existing.issueUrl === 'string' ? existing.issueUrl : undefined;
+}
+
+async function findSurveyFeedback(
+  issueApiUrl: string,
+  token: string,
+  contentHash: string,
+): Promise<boolean> {
+  const issue = await fetch(issueApiUrl, { headers: githubHeaders(token) });
+  if (issue.ok) {
+    const data = (await issue.json()) as { body?: unknown };
+    if (typeof data.body === 'string' && data.body.includes(surveyMarker(contentHash))) {
+      return true;
+    }
+  }
+  const result = await fetch(`${issueApiUrl}/comments?per_page=100`, {
+    headers: githubHeaders(token),
+  });
+  if (!result.ok) return false;
+  const comments = (await result.json()) as Array<{ body?: unknown }>;
+  return comments.some(
+    (comment) =>
+      typeof comment.body === 'string' && comment.body.includes(surveyMarker(contentHash)),
+  );
+}
+
+async function appendSurveyToRunIssue(
+  container: ReturnType<typeof getContainer>,
+  append: ValidatedSurveyAppend,
+): Promise<string> {
+  const key = bundleKey(append.runId);
+  const bundleBlob = container.getBlockBlobClient(`${key}/bundle.json`);
+  if (!(await bundleBlob.exists())) {
+    throw new Error('run completion bundle must be stored before survey append');
+  }
+  const surveyBlob = container.getBlockBlobClient(`${key}/survey.json`);
+  const contentHash = createHash('sha256').update(JSON.stringify(append.survey)).digest('hex');
+  if (await surveyBlob.exists()) {
+    const existingIssueUrl = await readSurveyIssueUrl(surveyBlob, contentHash);
+    if (existingIssueUrl) return existingIssueUrl;
+  }
+  const surveyPendingBlob = container.getBlockBlobClient(`${key}/survey.pending`);
+  let isRetryAfterStaleSurveyClaim = false;
+  if (await surveyPendingBlob.exists()) {
+    const properties = await surveyPendingBlob.getProperties();
+    const lastModified = properties.lastModified?.getTime() ?? new Date().getTime();
+    if (new Date().getTime() - lastModified > 10 * 60 * 1000) {
+      await surveyPendingBlob.deleteIfExists();
+      isRetryAfterStaleSurveyClaim = true;
+    }
+  }
+  try {
+    await surveyPendingBlob.uploadData(Buffer.from(new Date().toISOString()), {
+      conditions: { ifNoneMatch: '*' },
+    });
+  } catch (error) {
+    if (isBlobPreconditionFailed(error)) {
+      throw new Error('survey append in progress', { cause: error });
+    }
+    throw new Error('failed to claim survey append marker', { cause: error });
+  }
+
+  const persisted: { runId: string; blobUrl: string; screenshotUrl?: string } = {
+    runId: append.runId,
+    blobUrl: signedBlobUrl(container, `${key}/bundle.json`),
+  };
+  const screenshotBlob = container.getBlockBlobClient(`${key}/screenshot.png`);
+  if (await screenshotBlob.exists()) {
+    persisted.screenshotUrl = signedBlobUrl(container, `${key}/screenshot.png`);
+  }
+  const issueBlob = container.getBlockBlobClient(`${key}/issue.json`);
+  let issueUrl: string | undefined;
+  if (await issueBlob.exists()) {
+    const issue = JSON.parse((await issueBlob.downloadToBuffer()).toString('utf8')) as {
+      url?: unknown;
+    };
+    if (typeof issue.url === 'string') issueUrl = issue.url;
+  }
+  if (!issueUrl) {
+    const storedBundle = JSON.parse(
+      (await bundleBlob.downloadToBuffer()).toString('utf8'),
+    ) as ValidatedBundle['bundle'];
+    issueUrl = await fileGitHubIssue(
+      container,
+      {
+        bundle: {
+          ...storedBundle,
+          survey: append.survey,
+        },
+        requestedRunId: append.runId,
+        shouldFileIssue: true,
+      },
+      persisted,
+      contentHash,
+    );
+  } else {
+    const token = requiredEnv('CRAWLER_CI_PAT');
+    const repository = requiredEnv('GITHUB_REPOSITORY');
+    const issueApiUrl = issueApiUrlFromHtml(issueUrl, repository);
+    if (!issueApiUrl) throw new Error('stored issue URL is not a GitHub issue URL');
+    if (
+      !isRetryAfterStaleSurveyClaim ||
+      !(await findSurveyFeedback(issueApiUrl, token, contentHash))
+    ) {
+      const result = await fetch(`${issueApiUrl}/comments`, {
+        method: 'POST',
+        headers: { ...githubHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: surveyBody(append.survey, contentHash) }),
+      });
+      if (!result.ok) throw new Error(`GitHub issue comment failed with HTTP ${result.status}`);
+    }
+  }
+  try {
+    await surveyBlob.uploadData(
+      Buffer.from(
+        JSON.stringify({
+          survey: append.survey,
+          issueUrl,
+          contentHash,
+          receivedAt: new Date().toISOString(),
+        }),
+      ),
+      {
+        blobHTTPHeaders: { blobContentType: 'application/json; charset=utf-8' },
+        conditions: { ifNoneMatch: '*' },
+      },
+    );
+  } catch (error) {
+    if (isBlobPreconditionFailed(error)) {
+      const existingIssueUrl = await readSurveyIssueUrl(surveyBlob, contentHash);
+      if (existingIssueUrl) {
+        await surveyPendingBlob.deleteIfExists();
+        return existingIssueUrl;
+      }
+    }
+    throw error;
+  }
+  await surveyPendingBlob.deleteIfExists();
+  return issueUrl;
+}
+
 async function fileGitHubIssue(
   container: ReturnType<typeof getContainer>,
   validated: ValidatedBundle,
   persisted: { runId: string; blobUrl: string; screenshotUrl?: string },
+  surveyContentHash?: string,
 ): Promise<string> {
   const token = requiredEnv('CRAWLER_CI_PAT');
   const repository = requiredEnv('GITHUB_REPOSITORY');
@@ -263,7 +449,11 @@ async function fileGitHubIssue(
     ...(persisted.screenshotUrl
       ? [`Screenshot (expires in 7 days): ${persisted.screenshotUrl}`]
       : []),
-    ...(survey ? ['', 'Survey:', '```json', JSON.stringify(survey, null, 2), '```'] : []),
+    ...(survey
+      ? surveyContentHash
+        ? ['', surveyBody(survey as ValidatedSurveyAppend['survey'], surveyContentHash)]
+        : ['', 'Survey:', '```json', JSON.stringify(survey, null, 2), '```']
+      : []),
   ];
   const result = await fetch(`https://api.github.com/repos/${repository}/issues`, {
     method: 'POST',
@@ -295,7 +485,16 @@ export async function handleRuns(
     return response(413, { error: 'request too large' }, origin);
   try {
     const raw = await req.text();
-    const validated = validateRunBundle(JSON.parse(raw) as unknown, Buffer.byteLength(raw, 'utf8'));
+    const parsed = JSON.parse(raw) as unknown;
+    if (req.headers.get('x-run-upload-mode') === 'survey') {
+      const append = validateRunSurveyAppend(parsed, Buffer.byteLength(raw, 'utf8'));
+      const container = getContainer();
+      await checkRateLimit(container, callerKey(req));
+      const issueUrl = await appendSurveyToRunIssue(container, append);
+      context.info(`appended survey feedback for dev build run ${append.runId}`);
+      return response(201, { runId: append.runId, issueUrl }, origin);
+    }
+    const validated = validateRunBundle(parsed, Buffer.byteLength(raw, 'utf8'));
     const container = getContainer();
     await checkRateLimit(container, callerKey(req));
     const persisted = await persistBundle(container, validated);
@@ -310,13 +509,17 @@ export async function handleRuns(
       ? 429
       : message.includes('issue filing in progress') || message.includes('already associated with')
         ? 409
-        : error instanceof SyntaxError ||
-            message.includes('must be') ||
-            message.includes('exceeds') ||
-            message.includes('screenshot is') ||
-            message.includes('required when')
-          ? 400
-          : 500;
+        : message.includes('survey append in progress')
+          ? 409
+          : message.includes('completion bundle must be stored')
+            ? 425
+            : error instanceof SyntaxError ||
+                message.includes('must be') ||
+                message.includes('exceeds') ||
+                message.includes('screenshot is') ||
+                message.includes('required when')
+              ? 400
+              : 500;
     context.error(message);
     return response(status, { error: message }, origin);
   }

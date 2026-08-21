@@ -3,29 +3,61 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 
+interface CdpSession {
+  send(method: string, params: unknown): Promise<unknown>;
+  detach(): Promise<void>;
+}
+
+/** Dispatches a single touch tap (touchstart + touchend, no move) via CDP. */
+async function tapTouch(page: Page, point: { x: number; y: number }): Promise<void> {
+  const context = page.context() as BrowserContext & {
+    newCDPSession(page: Page): Promise<CdpSession>;
+  };
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: point.x, y: point.y, id: 1 }],
+    });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.detach();
+  }
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
   let page: Page;
+  // Dedicated touch-enabled context for the backdrop-tap coverage below —
+  // the shared `page` above stays mouse-only so unrelated tests in this file
+  // keep exercising `page.mouse.click`.
+  let touchContext: BrowserContext;
+  let touchPage: Page;
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     page = await context.newPage();
+    touchContext = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 1600, height: 900 },
+    });
+    touchPage = await touchContext.newPage();
   });
 
   afterAll(async () => {
     await closeQuietly(browser);
   });
 
-  async function bootPlayingSafeScene(): Promise<void> {
-    await loadMainSceneProbeLab(page);
-    await mainSceneProbe.resolveLoadout(page);
-    await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+  async function bootPlayingSafeScene(targetPage: Page = page): Promise<void> {
+    await loadMainSceneProbeLab(targetPage);
+    await mainSceneProbe.resolveLoadout(targetPage);
+    await waitForState(targetPage, (s) => s.worldState === 'playing' && s.simulationPaused, {
       label: 'loadout resolved + simulation paused',
     });
-    await mainSceneProbe.unlockSafeRoomSurfaces(page);
-    await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
+    await mainSceneProbe.unlockSafeRoomSurfaces(targetPage);
+    await waitForState(targetPage, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
   }
 
   it('pauses for the issue picker and restores the exact prior pause state', async () => {
@@ -52,6 +84,46 @@ describe('MainGameScene UI exclusivity', () => {
     await page.keyboard.press('Escape');
     await waitForState(page, (s) => !s.modalOpen && s.simulationPaused, {
       label: 'issue picker preserved pre-existing pause',
+    });
+  });
+
+  it('dismisses the issue picker by tapping its backdrop', async () => {
+    await bootPlayingSafeScene(touchPage);
+
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    await waitForState(touchPage, (s) => !s.simulationPaused, {
+      label: 'simulation running before touch report dismissal',
+    });
+    await touchPage.keyboard.press('F8');
+    await waitForState(touchPage, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker opened before touch dismissal',
+    });
+
+    // The panel itself must not be treated as its backdrop.
+    await tapTouch(touchPage, { x: 800, y: 350 });
+    await waitForState(touchPage, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker stayed open after an in-panel tap',
+    });
+
+    // This point is inside the game canvas but outside the centered picker.
+    await tapTouch(touchPage, { x: 200, y: 120 });
+    await waitForState(touchPage, (s) => !s.modalOpen && !s.simulationPaused, {
+      label: 'touch backdrop dismissal restored running simulation',
+    });
+  });
+
+  it('ignores a backdrop tap on a non-cancellable picker', async () => {
+    await bootPlayingSafeScene(touchPage);
+
+    await mainSceneProbe.openBossRewardPicker(touchPage);
+    await waitForState(touchPage, (s) => s.modalOpen, {
+      label: 'non-cancellable spell-reward picker opened',
+    });
+
+    // Same outside-the-panel point that dismisses a cancellable picker above.
+    await tapTouch(touchPage, { x: 200, y: 120 });
+    await waitForState(touchPage, (s) => s.modalOpen, {
+      label: 'non-cancellable picker stayed open after a backdrop tap',
     });
   });
 

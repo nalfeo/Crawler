@@ -14,7 +14,7 @@
 
 - **Synchronize before publishing:** Preflight runs `npm run sync:main -- --reason session-start`. Run `npm run sync:main -- --reason pre-publish` before final validation and PR publication; if it changes HEAD, rerun affected validation. Sync it manually at any point with `npm run sync:main -- --reason periodic` (it defers cleanly on a dirty worktree). Synchronization never pushes, and missing/stale sync evidence never blocks publication.
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
-- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+- **Plans go in the PR description:** When giving a plan, write the full plan in the session response, and for cloud/coding-agent sessions put the full plan in the PR description (not a posted comment — cloud sessions cannot reliably post plan comments). Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Sweep Results Viewer deep links are required:** Whenever you discuss, start, check, check the status of, or report results for any sweep (weapon-sweep **or** AI Sweep Eval), you **MUST** include an app-native Sweep Results Viewer reference in your response. Use the canvas `runId` input: `project:sweep-results-viewer runId=<run-id>`. A raw GitHub Actions URL may appear as a **secondary** fallback only — never as the sole navigation path. This applies to every mention of a sweep run id, workflow dispatch confirmation, status update, and results summary.
@@ -33,7 +33,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 2. **Converge on a bounded, single-metric ask.** Continue until the request has one hard, measurable success gate (a number or checkable condition) plus a ranked list of soft tiebreakers. Open-ended "make it good/better/faster" directives are not ready to start.
 3. **Reflect it back before coding.** Restate the ask in bounded form and get an explicit yes/no before writing code.
 4. **Push back on drift.** If an ask has no measurable done-state, say so and ask the narrowing question instead of guessing or silently scoping it yourself.
-5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session chat.
+5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session response (and in the PR description for cloud/coding-agent sessions).
 
 ## Commands
 

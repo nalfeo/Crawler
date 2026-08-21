@@ -1419,7 +1419,7 @@ export function createMergeBottomOfStackPr({
           body: {
             sha: expectedHeadSha,
             merge_method: 'squash',
-            merge_action: 'default',
+            merge_action: 'direct_merge',
             commit_title: commitTitle,
             commit_message: commitMessage,
           },

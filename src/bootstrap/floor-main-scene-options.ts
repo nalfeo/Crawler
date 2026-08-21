@@ -32,7 +32,7 @@ import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
-function defaultRunBundleSink(bundle: RunBundle): void {
+function defaultRunBundleSink(bundle: RunBundle): Promise<unknown> | void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -46,7 +46,7 @@ function defaultRunBundleSink(bundle: RunBundle): void {
     }
     return;
   }
-  void submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
+  return submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
     if (typeof console !== 'undefined') {
       console.warn('Silent run-bundle upload failed', error);
     }
@@ -60,7 +60,7 @@ function defaultRunBundleSink(bundle: RunBundle): void {
 export function createFloorMainSceneOptions(
   floorId: string = 'floor1',
   initializationOptions?: ScenarioInitializationOptions,
-  onRunBundle?: (bundle: RunBundle) => void,
+  onRunBundle?: (bundle: RunBundle) => Promise<unknown> | void,
 ): FloorMainSceneOptions {
   const scenario = getScenarioDefinition(floorId);
   const manifest = getFloorManifest(floorId);
