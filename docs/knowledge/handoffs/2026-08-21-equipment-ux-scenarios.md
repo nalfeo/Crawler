@@ -38,6 +38,18 @@ real-Phaser capture with ten declared slots and zero deterministic blockers. Its
 derived advisory score exceeds the prior 53.1/100 deterministic-equivalent baseline
 (67.1 axis mean minus 14 blocker penalty).
 
+Follow-up user feedback was addressed in
+`files/visual-review/after/v0.1.3/equipment.{png,review.json}`:
+
+- the responsive layout path now preserves the contained Equipment-header frame;
+- occupied slots use a brighter inset/overlay while empty slots are recessed;
+- stat rows have one consistent neutral treatment instead of arbitrary striping;
+- `green = gear bonus` explicitly explains green stat values.
+
+The v0.1.3 Azure pass has zero deterministic blockers and zero LLM blockers. The
+header frame is now asserted contained in the real-Phaser e2e probe at both supported
+viewports.
+
 No `before/live-dev` evidence was created: this workspace has no checked-in release baseline or detached baseline worktree. Capturing current-branch pixels as live evidence would fabricate provenance. Populate that side from the release capture workflow or an explicitly provisioned immutable release checkout.
 
 ## Validation
@@ -47,6 +59,7 @@ No `before/live-dev` evidence was created: this workspace has no checked-in rele
 - `npx vitest run tests/unit/visual-review-agent-cli.test.ts` — 19 passed.
 - `npm run verify:fast` — passed (131 files, 1,818 tests).
 - `npx vitest run tests/e2e/inventory-flow.test.ts -t "uses square labeled slots without an idle inspector"` — 2 passed across both e2e projects.
+- `npx vitest run tests/e2e/inventory-flow.test.ts` — 52 passed across both e2e projects.
 
 ## Systems touched
 

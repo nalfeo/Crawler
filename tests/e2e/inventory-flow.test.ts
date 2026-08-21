@@ -843,6 +843,7 @@ describe('equipment decision gate (e2e)', () => {
 
       const text = (await probe.getEquipmentTextRuns(layoutPage)).map((run) => run.text);
       expect(text).toContain('Cooldown Reduction');
+      expect(text).toContain('green = gear bonus');
       expect(text).not.toContain('Current totals');
       expect(text).not.toContain('Hover a slot for details');
       expect(text).not.toContain('— empty —');
@@ -925,10 +926,11 @@ describe('equipment decision gate (e2e)', () => {
     ]) {
       const { context, page: decisionPage } = await openDecisionState(viewport);
       try {
-        const [panel, header, doll, bag, stats, inspector, canvas, runs, raster] =
+        const [panel, header, headerFrame, doll, bag, stats, inspector, canvas, runs, raster] =
           await Promise.all([
             probe.getEquipmentPanelBounds(decisionPage),
             probe.getEquipmentHeaderBounds(decisionPage),
+            probe.getEquipmentHeaderFrameBounds(decisionPage),
             probe.getEquipmentDollBounds(decisionPage),
             probe.getEquipmentBagColumnBounds(decisionPage),
             probe.getEquipmentStatsBounds(decisionPage),
@@ -937,6 +939,13 @@ describe('equipment decision gate (e2e)', () => {
             probe.getEquipmentTextRuns(decisionPage),
             probe.getEquipmentTextRasterMetadata(decisionPage),
           ]);
+        expect(headerFrame, 'equipment header frame should exist').not.toBeNull();
+        if (headerFrame) {
+          expect(
+            containsWithin(panel, headerFrame, 1),
+            `equipment header frame must remain contained at ${viewport.width}×${viewport.height}`,
+          ).toBe(true);
+        }
         const regions = { header, doll, bag, stats, inspector };
         expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
         expect(raster, 'the live panel should expose raster metadata').not.toBeNull();

@@ -320,6 +320,8 @@ export function createEquipmentUI(
   selectSlot(slotId: EquipmentSlotId | null): void;
   getPanelScreenBounds(): ScreenBounds;
   getHeaderScreenBounds(): ScreenBounds;
+  /** Bounds of the Equipment column's visible header frame. */
+  getHeaderFrameScreenBounds(): ScreenBounds;
   getDollScreenBounds(): ScreenBounds;
   getSlotScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
@@ -1578,7 +1580,7 @@ export function createEquipmentUI(
       // screenshot judge reported missing ("no visual distinction between
       // filled and empty slots").
       const filled = instance !== null;
-      const baseFill = isSelected ? COLORS.slotSelected : filled ? COLORS.slotBg : COLORS.dollBg;
+      const baseFill = isSelected ? COLORS.slotSelected : filled ? COLORS.slotBg : 0x17243b;
       const box = scene.add.rectangle(snap(cx), snap(cy), boxW, boxH, baseFill, 0.95);
       box.setStrokeStyle(
         isSelected ? 3 : filled ? 2 : 2,
@@ -1655,10 +1657,10 @@ export function createEquipmentUI(
         snap(cy + 1),
         slotInnerW,
         slotInnerH,
-        0x2e4167,
+        filled ? 0x2e4167 : 0x1d2b45,
         0.98,
       );
-      inset.setStrokeStyle(1, 0x5b76aa, 0.8);
+      inset.setStrokeStyle(1, 0x5b76aa, filled ? 0.8 : 0.45);
       const bevelLeft = scene.add.rectangle(
         snap(cx - slotInnerW / 2 + 1),
         snap(cy + 1),
@@ -1713,8 +1715,8 @@ export function createEquipmentUI(
               snap(cy + 2),
               slotInnerW - 10,
               slotInnerH - 10,
-              0x5d7fb7,
-              0.24,
+              0x78a5e6,
+              0.42,
             )
           : null;
 
@@ -1838,6 +1840,16 @@ export function createEquipmentUI(
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
     container.addAt(headingFrame, 5);
     statObjects.push(headingFrame);
+    const bonusLegend = crispText(statsX + STATS_W - 10, columnHeadingTextY, 'green = gear bonus', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '11px',
+      color: hex(COLORS.statBuff),
+      padding: { top: 3, bottom: 3 },
+    });
+    rightCenterTextOnPixels(bonusLegend, statsX + STATS_W - 10, columnHeadingFrameY);
+    container.add(bonusLegend);
+    statObjects.push(bonusLegend);
+    columnHeadingObjects.add(bonusLegend);
 
     const colW = STATS_W - 14;
 
@@ -1887,7 +1899,7 @@ export function createEquipmentUI(
         rowY + Math.floor(rowStep / 2),
         colW - 8,
         Math.max(11, rowStep - 2),
-        highlight ? 0x3d5a52 : rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
+        highlight ? 0x3d5a52 : 0x30466f,
         0.92,
       );
       rowBg.setStrokeStyle(1, highlight ? valueColor : 0x5f7db0, highlight ? 1 : 0.7);
@@ -2256,7 +2268,7 @@ export function createEquipmentUI(
       [panelX + panelWidth - 6, panelY + panelHeight - 6],
     ] as const;
     nextCornerPoints.forEach(([x, y], index) => cornerPixels[index]?.setPosition(x, y));
-    titleFrame.setPosition(panelX + PANEL_PADDING + 146, panelY + PANEL_PADDING + 10);
+    titleFrame.setPosition(panelX + PANEL_PADDING + DOLL_W / 2, panelY + PANEL_PADDING + 10);
     divider.setTo(
       dollX + dollW + PANEL_PADDING / 2,
       statsY,
@@ -2264,11 +2276,10 @@ export function createEquipmentUI(
       statsY + statsH,
     );
     bagDivider.setTo(bagX - PANEL_PADDING / 2, bagY, bagX - PANEL_PADDING / 2, bagY + bagH);
-    title
-      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 2)
-      .setResolution(textResolution);
+    title.setResolution(textResolution);
+    leftCenterTextOnPixels(title, panelX + PANEL_PADDING + 10, panelY + PANEL_PADDING + 10);
     hint
-      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 34)
+      .setPosition(panelX + PANEL_PADDING + 10, panelY + PANEL_PADDING + 34)
       .setResolution(textResolution);
     // dollBg/statsX are derived from panelX/panelY captured at construction; for
     // simplicity we re-render against the originals, which stay valid because the
@@ -2420,6 +2431,10 @@ export function createEquipmentUI(
       width: panelWidth,
       height: dollY - panelY,
     }),
+    getHeaderFrameScreenBounds: (): ScreenBounds => {
+      const b = titleFrame.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
     getDollScreenBounds: (): ScreenBounds => {
       const b = dollBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };

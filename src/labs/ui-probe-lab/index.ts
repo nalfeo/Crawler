@@ -124,6 +124,7 @@ export interface UiProbeApi {
   isEquipmentOpen(): boolean;
   getEquipmentPanelBounds(): ScreenBounds;
   getEquipmentHeaderBounds(): ScreenBounds | null;
+  getEquipmentHeaderFrameBounds(): ScreenBounds | null;
   getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
@@ -602,6 +603,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentPanelBounds: () =>
           this.equipmentUI?.getPanelScreenBounds() ?? { x: 0, y: 0, width: 0, height: 0 },
         getEquipmentHeaderBounds: () => this.equipmentUI?.getHeaderScreenBounds() ?? null,
+        getEquipmentHeaderFrameBounds: () => this.equipmentUI?.getHeaderFrameScreenBounds() ?? null,
         getEquipmentDollBounds: () => this.equipmentUI?.getDollScreenBounds() ?? null,
         getEquipmentSlotBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
