@@ -64,6 +64,8 @@ export interface PublishRequestDeps {
   readonly readFileBytes: (absolutePath: string) => Promise<Uint8Array>;
   /** Write a UTF-8 file, creating parent directories. */
   readonly writeTextFile: (absolutePath: string, contents: string) => Promise<void>;
+  /** Write raw bytes to a file, creating parent directories. */
+  readonly writeFileBytes: (absolutePath: string, bytes: Uint8Array) => Promise<void>;
   /** Create + return an empty temp directory (throwaway index/staging). */
   readonly makeTempDir: () => Promise<string>;
   /** Remove a directory tree (best-effort cleanup). */
@@ -158,9 +160,14 @@ export async function publishAssetRequest(
   const baseEnv = deps.env ?? {};
 
   // Hash-verify every declared PNG BEFORE any object is written: a mismatched
-  // pair must never reach the object database, let alone a ref.
+  // pair must never reach the object database, let alone a ref. The verified
+  // bytes are stashed and staged from an immutable temp copy below — NEVER
+  // re-read from the live source path, which generation could rewrite between
+  // verification and staging.
+  const verifiedPngBytes = new Map<string, Uint8Array>();
   for (const asset of manifest.assets) {
-    const absolute = deps.joinPath(sourceRoot, ...pngRepoPath(asset.assetPath).split('/'));
+    const repoPath = pngRepoPath(asset.assetPath);
+    const absolute = deps.joinPath(sourceRoot, ...repoPath.split('/'));
     let bytes: Uint8Array;
     try {
       bytes = await deps.readFileBytes(absolute);
@@ -179,6 +186,7 @@ export async function publishAssetRequest(
           'the PNG and its manifest shard must travel atomically with matching bytes',
       );
     }
+    verifiedPngBytes.set(repoPath, bytes);
   }
 
   const temp = await deps.makeTempDir();
@@ -215,11 +223,27 @@ export async function publishAssetRequest(
       staged.push(repoPath);
     };
 
+    // Stage PAYLOAD bytes from an immutable temp copy of the bytes we already
+    // read (and, for PNGs, already hash-verified) rather than reopening the
+    // live source path a second time — the whole point of "fail closed" is
+    // that the bytes staged into the ref are the SAME bytes that were checked.
+    const stageBytes = async (repoPath: string, bytes: Uint8Array): Promise<void> => {
+      const stagingPath = deps.joinPath(temp, 'payload', ...repoPath.split('/'));
+      await deps.writeFileBytes(stagingPath, bytes);
+      await stage(repoPath, stagingPath);
+    };
+
     await stage(requestManifestPath(manifest.requestId), manifestFile);
     for (const repoPath of payloadFiles(manifest)) {
+      const verified = verifiedPngBytes.get(repoPath);
+      if (verified !== undefined) {
+        await stageBytes(repoPath, verified);
+        continue;
+      }
       const absolute = deps.joinPath(sourceRoot, ...repoPath.split('/'));
+      let bytes: Uint8Array;
       try {
-        await deps.readFileBytes(absolute);
+        bytes = await deps.readFileBytes(absolute);
       } catch (error) {
         throw new PublishRequestError(
           'payload-missing',
@@ -227,7 +251,7 @@ export async function publishAssetRequest(
           { cause: error },
         );
       }
-      await stage(repoPath, absolute);
+      await stageBytes(repoPath, bytes);
     }
 
     const tree = await git(deps.exec, repoRoot, ['write-tree'], env);

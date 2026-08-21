@@ -66,9 +66,15 @@ export type RefusalReason =
   | 'stale-destination'
   | 'missing-removal-target'
   | 'missing-duplicate-proof'
-  | 'request-conflict';
+  | 'request-conflict'
+  | 'supersession-cycle';
 
-export type RequestDisposition = 'applied' | 'already-on-main' | 'duplicate-request' | 'refused';
+export type RequestDisposition =
+  | 'applied'
+  | 'already-on-main'
+  | 'duplicate-request'
+  | 'superseded'
+  | 'refused';
 
 export interface RequestOutcome {
   readonly requestId: string;
@@ -604,7 +610,44 @@ export async function materializeAssetRequests(
       validated.push({ enumerated: request, manifest, payloadRoot });
     }
 
-    const { applicable, conflicted, duplicates } = partitionConflicts(validated);
+    const supersession = resolveSupersession(validated);
+    for (const entry of supersession.invalid) {
+      outcomes.push({
+        requestId: entry.request.enumerated.requestId,
+        branch: entry.request.enumerated.branch,
+        commit: entry.request.enumerated.commit,
+        disposition: 'refused',
+        reason: 'supersession-cycle',
+        detail: entry.detail,
+      });
+    }
+    for (const entry of supersession.superseded) {
+      outcomes.push({
+        requestId: entry.request.enumerated.requestId,
+        branch: entry.request.enumerated.branch,
+        commit: entry.request.enumerated.commit,
+        disposition: 'superseded',
+        detail: entry.detail,
+      });
+      if (shouldPush) {
+        // Retired immediately: nothing is promoted for a superseded request,
+        // so there is no promotion-merge proof to wait on the way a consumed
+        // request has.
+        await archiveRequestRef(
+          deps,
+          repoRoot,
+          remote,
+          entry.request.enumerated.requestId,
+          entry.request.enumerated.commit,
+        );
+      }
+    }
+
+    const {
+      applicable: partitioned,
+      conflicted,
+      duplicates,
+    } = partitionConflicts(supersession.active);
     for (const entry of conflicted) {
       outcomes.push({
         requestId: entry.request.enumerated.requestId,
@@ -621,6 +664,18 @@ export async function materializeAssetRequests(
         branch: entry.request.enumerated.branch,
         commit: entry.request.enumerated.commit,
         disposition: 'duplicate-request',
+        detail: entry.detail,
+      });
+    }
+
+    const { kept: applicable, refused: proofRefused } = validateRemovalsAgainstPlan(partitioned);
+    for (const entry of proofRefused) {
+      outcomes.push({
+        requestId: entry.request.enumerated.requestId,
+        branch: entry.request.enumerated.branch,
+        commit: entry.request.enumerated.commit,
+        disposition: 'refused',
+        reason: 'missing-duplicate-proof',
         detail: entry.detail,
       });
     }
@@ -660,9 +715,19 @@ export async function materializeAssetRequests(
     const promotionCommit = await mustGit(deps, mainWorktree, ['rev-parse', 'HEAD']);
 
     if (shouldPush) {
+      // Compare-and-swap on the sole-writer promote branch: an explicit
+      // expected OID (the tip we just fetched) turns the force-update into a
+      // safe lease rather than an unconditional overwrite, so a concurrent
+      // reconciler/manual invocation can never be silently clobbered.
+      const promoteListing = await mustGit(deps, repoRoot, [
+        'ls-remote',
+        remote,
+        `refs/heads/${promoteBranch}`,
+      ]);
+      const expectedTip = promoteListing.trim().split(/\s+/)[0] ?? '';
       await mustGit(deps, mainWorktree, [
         'push',
-        '--force',
+        `--force-with-lease=refs/heads/${promoteBranch}:${expectedTip}`,
         remote,
         `${promotionCommit}:refs/heads/${promoteBranch}`,
       ]);
@@ -834,6 +899,82 @@ interface ConflictEntry {
 }
 
 /**
+ * Resolve `supersedes` chains among the CURRENTLY LIVE validated requests
+ * before conflict partitioning runs, so a correction and the request it names
+ * never reach `partitionConflicts` as two claimants on the same unit.
+ *
+ * - A request named by another live request's `supersedes` is retired
+ *   (`superseded`), not applied and not treated as a conflicting claim — it is
+ *   never archived through the "consumed by a merged promotion" path, so the
+ *   caller must archive it directly once retirement is decided here.
+ * - A cycle (including direct self-reference) or a chain that would leave two
+ *   live requests each superseding the other is unresolvable: every request in
+ *   the cycle is refused rather than guessing a winner.
+ */
+export function resolveSupersession(validated: readonly ValidatedRequest[]): {
+  readonly active: readonly ValidatedRequest[];
+  readonly superseded: readonly ConflictEntry[];
+  readonly invalid: readonly ConflictEntry[];
+} {
+  const byId = new Map(validated.map((request) => [request.manifest.requestId, request]));
+  const cyclic = new Set<string>();
+
+  for (const request of validated) {
+    const startId = request.manifest.requestId;
+    if (cyclic.has(startId)) continue;
+    const seen: string[] = [];
+    let cursor: ValidatedRequest | undefined = request;
+    while (cursor !== undefined) {
+      const id = cursor.manifest.requestId;
+      if (seen.includes(id)) {
+        // Only the ids that actually form the cycle are unresolvable; a chain
+        // that merely LEADS INTO a cycle is not itself part of it.
+        const cycleStart = seen.indexOf(id);
+        for (const cycleId of seen.slice(cycleStart)) cyclic.add(cycleId);
+        break;
+      }
+      seen.push(id);
+      const next: string | null = cursor.manifest.supersedes;
+      cursor = next === null ? undefined : byId.get(next);
+    }
+  }
+
+  const supersededIds = new Set<string>();
+  for (const request of validated) {
+    const id = request.manifest.requestId;
+    const target = request.manifest.supersedes;
+    if (cyclic.has(id) || target === null || cyclic.has(target)) continue;
+    const targetRequest = byId.get(target);
+    if (targetRequest !== undefined) supersededIds.add(target);
+  }
+
+  const active: ValidatedRequest[] = [];
+  const superseded: ConflictEntry[] = [];
+  const invalid: ConflictEntry[] = [];
+  for (const request of validated) {
+    const id = request.manifest.requestId;
+    if (cyclic.has(id)) {
+      invalid.push({
+        request,
+        detail:
+          'this request is part of a supersession cycle with another currently live request; ' +
+          'a cycle cannot be resolved automatically — republish so only one side supersedes the other',
+      });
+      continue;
+    }
+    if (supersededIds.has(id)) {
+      superseded.push({
+        request,
+        detail: `superseded by a currently live request that names it in "supersedes"`,
+      });
+      continue;
+    }
+    active.push(request);
+  }
+  return { active, superseded, invalid };
+}
+
+/**
  * Split validated requests into applicable / conflicted / duplicate sets.
  * Two requests claiming the same destination unit with DIFFERENT content are
  * both refused (never a silent winner); identical content is reported as a
@@ -931,6 +1072,72 @@ function contentFor(manifest: AssetRequestManifest, unit: string): string {
   return 'unknown';
 }
 
+/**
+ * Revalidate every removal's duplicate proof against the FINAL planned tree —
+ * the combined effect of every OTHER applicable request in this same
+ * promotion — not just the base tree each request was checked against in
+ * isolation. A proof that held on `main` alone can still be consumed by
+ * another applicable request in the same batch:
+ *   - two removals can name each other as the surviving duplicate;
+ *   - an applicable upsert can replace the proof path with different bytes.
+ * Either way the promotion would delete the last byte-identical copy, so both
+ * cases must be refused here. Proof paths are read DEPENDENCIES of a removal,
+ * so this is a fixed-point elimination: excluding one request can change
+ * whether another's proof still survives the (smaller) remaining plan.
+ */
+function validateRemovalsAgainstPlan(applicable: readonly ValidatedRequest[]): {
+  readonly kept: readonly ValidatedRequest[];
+  readonly refused: readonly ConflictEntry[];
+} {
+  let current = applicable;
+  const refused: ConflictEntry[] = [];
+  for (;;) {
+    const removedUnits = new Set<string>();
+    const replacedContent = new Map<string, string>();
+    for (const request of current) {
+      for (const asset of request.manifest.assets) {
+        replacedContent.set(pngRepoPath(asset.assetPath), asset.contentHash);
+      }
+      for (const removal of request.manifest.removals) {
+        removedUnits.add(pngRepoPath(removal.assetPath));
+        removedUnits.add(shardRepoPath(removal.manifestKey));
+      }
+    }
+
+    const stillGood: ValidatedRequest[] = [];
+    let changed = false;
+    for (const request of current) {
+      let detail: string | null = null;
+      for (const removal of request.manifest.removals) {
+        const proofPngPath = pngRepoPath(removal.duplicateOfAssetPath);
+        const proofShardPath = shardRepoPath(removal.duplicateOfManifestKey);
+        if (removedUnits.has(proofPngPath) || removedUnits.has(proofShardPath)) {
+          detail =
+            `duplicate proof "${removal.duplicateOfAssetPath}" is itself removed by another ` +
+            'applicable request in this same promotion; a removal may not consume the last ' +
+            'surviving copy';
+          break;
+        }
+        const replacedHash = replacedContent.get(proofPngPath);
+        if (replacedHash !== undefined && replacedHash !== removal.contentHash) {
+          detail =
+            `duplicate proof "${removal.duplicateOfAssetPath}" is replaced with different ` +
+            `content (${replacedHash}) by another applicable request in this same promotion`;
+          break;
+        }
+      }
+      if (detail === null) {
+        stillGood.push(request);
+      } else {
+        refused.push({ request, detail });
+        changed = true;
+      }
+    }
+    current = stillGood;
+    if (!changed) return { kept: current, refused };
+  }
+}
+
 /** Apply one validated request into the main worktree. */
 async function applyRequest(
   deps: MaterializeDeps,
@@ -971,10 +1178,54 @@ export interface ArchiveResult {
 }
 
 /**
+ * Archive one request: preserve its commit under
+ * `assets/archive/request/<id>` before deleting the live ref, so a retired
+ * request stays fully auditable/replayable and can never be lost. Retry-safe —
+ * a crash between the archive push and the live-ref deletion leaves the
+ * archive ref already present; re-archiving the same immutable commit is a
+ * no-op, and a DIVERGED archive ref is a real corruption that must never be
+ * force-overwritten.
+ */
+async function archiveRequestRef(
+  deps: MaterializeDeps,
+  repoRoot: string,
+  remote: string,
+  requestId: string,
+  commit: string,
+): Promise<'archived' | 'skipped'> {
+  const liveRef = `refs/heads/assets/request/${requestId}`;
+  const archiveRef = `refs/heads/assets/archive/request/${requestId}`;
+  const listed = await mustGit(deps, repoRoot, ['ls-remote', remote, liveRef]);
+  if (listed.trim() === '') return 'skipped';
+
+  const archivedListing = await mustGit(deps, repoRoot, ['ls-remote', remote, archiveRef]);
+  const existingArchiveSha = archivedListing.trim().split(/\s+/)[0] ?? '';
+  if (existingArchiveSha === '') {
+    await mustGit(deps, repoRoot, ['push', remote, `${commit}:${archiveRef}`]);
+  } else if (existingArchiveSha !== commit) {
+    throw new Error(
+      `archive ref ${archiveRef} points at ${existingArchiveSha} but request ${requestId} was retired at ${commit}`,
+    );
+  }
+  await mustGit(deps, repoRoot, [
+    'push',
+    `--force-with-lease=${liveRef}:${commit}`,
+    remote,
+    `:${liveRef}`,
+  ]);
+  return 'archived';
+}
+
+/**
  * Archive the requests a promotion consumed — ONLY once that promotion is
- * proven merged into `main`. The request commit is preserved under
- * `assets/archive/request/<id>` before the live ref is deleted, so a consumed
- * request stays fully auditable/replayable and can never be lost.
+ * proven landed on `main`. Normal `assets/promote` PRs are SQUASH-merged, so
+ * the pre-merge promotion commit is never an ancestor of `main` after the real
+ * merge flow — ancestry can't be the proof. Instead we diff the promotion
+ * commit against its own parent (the exact base it was materialized from) to
+ * get the paths it changed, then verify `main` now carries byte-identical
+ * content at every one of those paths. That is squash-invariant: it is true
+ * exactly when the squashed merge landed this promotion's content, and stays
+ * false forever for a promotion that was superseded/dropped instead.
  */
 export async function archiveConsumedRequests(
   repoRoot: string,
@@ -987,15 +1238,11 @@ export async function archiveConsumedRequests(
 
   await mustGit(deps, repoRoot, ['fetch', '--no-tags', remote, baseBranch]);
   const baseSha = await mustGit(deps, repoRoot, ['rev-parse', 'FETCH_HEAD']);
-  const merged = await runGit(deps, repoRoot, [
-    'merge-base',
-    '--is-ancestor',
-    promotionCommit,
-    baseSha,
-  ]);
-  if (merged.code !== 0) {
-    // Not proven merged: keep every request ref live so nothing is consumed
-    // without having landed.
+
+  const merged = await isPromotionContentOnMain(deps, repoRoot, promotionCommit, baseSha);
+  if (!merged) {
+    // Not proven landed: keep every request ref live so nothing is consumed
+    // without having actually reached main's content.
     return { archived: [], skipped: [] };
   }
 
@@ -1004,33 +1251,50 @@ export async function archiveConsumedRequests(
   const archived: string[] = [];
   const skipped: string[] = [];
   for (const entry of consumed) {
-    const liveRef = `refs/heads/assets/request/${entry.requestId}`;
-    const archiveRef = `refs/heads/assets/archive/request/${entry.requestId}`;
-    const listed = await mustGit(deps, repoRoot, ['ls-remote', remote, liveRef]);
-    if (listed.trim() === '') {
-      skipped.push(entry.requestId);
-      continue;
-    }
-    // Retry-safe: a crash between the archive push and the live-ref deletion
-    // leaves the archive ref already present. Re-archiving the same immutable
-    // commit is a no-op; a diverged archive ref is a real corruption and must
-    // never be force-overwritten.
-    const archivedListing = await mustGit(deps, repoRoot, ['ls-remote', remote, archiveRef]);
-    const existingArchiveSha = archivedListing.trim().split(/\s+/)[0] ?? '';
-    if (existingArchiveSha === '') {
-      await mustGit(deps, repoRoot, ['push', remote, `${entry.commit}:${archiveRef}`]);
-    } else if (existingArchiveSha !== entry.commit) {
-      throw new Error(
-        `archive ref ${archiveRef} points at ${existingArchiveSha} but request ${entry.requestId} was consumed at ${entry.commit}`,
-      );
-    }
-    await mustGit(deps, repoRoot, [
-      'push',
-      `--force-with-lease=${liveRef}:${entry.commit}`,
-      remote,
-      `:${liveRef}`,
-    ]);
-    archived.push(entry.requestId);
+    const outcome = await archiveRequestRef(deps, repoRoot, remote, entry.requestId, entry.commit);
+    (outcome === 'archived' ? archived : skipped).push(entry.requestId);
   }
   return { archived, skipped };
+}
+
+/**
+ * True when every path the promotion commit changed (relative to its own
+ * parent) is present on `baseSha` with identical bytes. Content-based rather
+ * than ancestry-based, so it stays correct across a squash merge.
+ */
+async function isPromotionContentOnMain(
+  deps: MaterializeDeps,
+  repoRoot: string,
+  promotionCommit: string,
+  baseSha: string,
+): Promise<boolean> {
+  const parent = await runGit(deps, repoRoot, ['rev-parse', `${promotionCommit}^`]);
+  if (parent.code !== 0) return false;
+  const parentSha = parent.stdout.trim();
+
+  const diffOutput = await mustGit(deps, repoRoot, [
+    'diff',
+    '--name-only',
+    parentSha,
+    promotionCommit,
+  ]);
+  const paths = diffOutput
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if (paths.length === 0) return false;
+
+  for (const repoPath of paths) {
+    const wantBlob = await blobAt(deps, repoRoot, promotionCommit, repoPath);
+    const haveBlob = await blobAt(deps, repoRoot, baseSha, repoPath);
+    if (wantBlob === null) {
+      // The promotion DELETED this path — landed correctly only if it is
+      // also absent on `main` now. Do not conflate "deleted by the
+      // promotion" with "missing for some other reason".
+      if (haveBlob !== null) return false;
+      continue;
+    }
+    if (wantBlob !== haveBlob) return false;
+  }
+  return true;
 }

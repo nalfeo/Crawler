@@ -8,6 +8,8 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   requestBranchName,
   sealAssetRequest,
@@ -18,7 +20,16 @@ import {
   PublishRequestError,
 } from '../../../../scripts/sprites/asset-requests/publish.js';
 import { createDefaultPublishDeps } from '../../../../scripts/sprites/asset-requests/runtime.js';
-import { git, makeSandbox, originMain, pngHash, writeAsset, type Sandbox } from './harness.js';
+import {
+  fakePng,
+  git,
+  makeSandbox,
+  originMain,
+  pngHash,
+  writeAsset,
+  writeFileAt,
+  type Sandbox,
+} from './harness.js';
 
 let sandbox: Sandbox | undefined;
 
@@ -138,5 +149,48 @@ describe('publishAssetRequest', () => {
     await expect(
       publishAssetRequest(sandbox.clone, upsertBody(main), createDefaultPublishDeps()),
     ).rejects.toBeInstanceOf(PublishRequestError);
+  });
+
+  it('stages the bytes it verified, even if the source path is rewritten right after', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, {
+      manifestKey: 'brass-lantern-var-1',
+      seed: 'new-asset',
+      briefId: 'brass-lantern',
+      variantIndex: 1,
+    });
+
+    const baseDeps = createDefaultPublishDeps();
+    let pngReads = 0;
+    const deps = {
+      ...baseDeps,
+      readFileBytes: async (absolutePath: string) => {
+        const bytes = await baseDeps.readFileBytes(absolutePath);
+        if (absolutePath.endsWith('brass-lantern-var-1.png')) {
+          pngReads += 1;
+          if (pngReads === 1) {
+            // Simulate generation rewriting the asset right after it was
+            // hash-verified but before the ref is created.
+            writeFileAt(
+              sandbox!.clone,
+              'public/assets/generated/brass-lantern-var-1.png',
+              fakePng('REWRITTEN-AFTER-VERIFY'),
+            );
+          }
+        }
+        return bytes;
+      },
+    };
+
+    const result = await publishAssetRequest(sandbox.clone, upsertBody(main), deps);
+
+    const worktree = path.join(sandbox.root, 'inspect-published');
+    git(sandbox.clone, 'worktree', 'add', '--detach', worktree, result.commit);
+    const staged = readFileSync(
+      path.join(worktree, 'public/assets/generated/brass-lantern-var-1.png'),
+    );
+    expect(staged.equals(fakePng('new-asset'))).toBe(true);
+    expect(staged.equals(fakePng('REWRITTEN-AFTER-VERIFY'))).toBe(false);
   });
 });

@@ -15,13 +15,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { AssetRequestManifestBody } from '../../../../scripts/sprites/asset-requests/manifest.js';
+import type {
+  AssetRequestManifest,
+  AssetRequestManifestBody,
+} from '../../../../scripts/sprites/asset-requests/manifest.js';
 import { publishAssetRequest } from '../../../../scripts/sprites/asset-requests/publish.js';
 import {
   archiveConsumedRequests,
   materializeAssetRequests,
   parseConsumedRequests,
   parseRequestRefs,
+  resolveSupersession,
+  type ValidatedRequest,
 } from '../../../../scripts/sprites/asset-requests/reconcile.js';
 import {
   createDefaultMaterializeDeps,
@@ -89,6 +94,27 @@ function reconcile(clone: string) {
 
 function promotedTree(clone: string): string {
   return git(clone, 'rev-parse', 'origin/assets/promote^{tree}');
+}
+
+/** Minimal `ValidatedRequest` for exercising `resolveSupersession` in isolation. */
+function fakeValidated(requestId: string, supersedes: string | null): ValidatedRequest {
+  const manifest: AssetRequestManifest = {
+    requestId,
+    version: 1,
+    operation: 'upsert-asset',
+    assets: [],
+    annotations: [],
+    removals: [],
+    observedMainSha: '0'.repeat(40),
+    producer: 'test',
+    provenance: {},
+    supersedes,
+  };
+  return {
+    enumerated: { requestId, branch: `assets/request/${requestId}`, commit: requestId },
+    manifest,
+    payloadRoot: '',
+  };
 }
 
 describe('parseRequestRefs', () => {
@@ -224,6 +250,67 @@ describe('materializeAssetRequests', () => {
       reason: 'undeclared-payload',
     });
     expect(result.status).toBe('noop');
+  });
+
+  it('archives a request after its promotion SQUASH-merges (content proof, not ancestry)', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern' });
+    const published = await publish(sandbox.clone, upsert(main, 'lantern-var-0', 'lantern'));
+
+    await reconcile(sandbox.clone);
+    git(sandbox.clone, 'fetch', 'origin', 'assets/promote');
+    const promotion = git(sandbox.clone, 'rev-parse', 'FETCH_HEAD');
+
+    // Simulate the REAL merge flow: `assets/promote` PRs are squash-merged
+    // (`.github/workflows/sprite-queue-reconciler.yml`), so `main` gains a NEW
+    // commit with the promotion's tree but a different SHA/parent — the
+    // pre-merge promotion commit is never an ancestor of the squashed `main`.
+    git(sandbox.clone, 'checkout', '-B', 'main-work', main);
+    git(sandbox.clone, 'clean', '-fd', 'public');
+    git(
+      sandbox.clone,
+      '-c',
+      'user.email=test@crawler.invalid',
+      '-c',
+      'user.name=Crawler Test',
+      'merge',
+      '--squash',
+      'FETCH_HEAD',
+    );
+    git(sandbox.clone, 'commit', '-m', 'squash-merge assets/promote');
+    const squashed = git(sandbox.clone, 'rev-parse', 'HEAD');
+    expect(squashed).not.toBe(promotion);
+    git(sandbox.clone, 'push', 'origin', 'HEAD:refs/heads/main');
+    // The pre-merge promotion commit is genuinely not main's ancestor now.
+    expect(
+      (() => {
+        try {
+          git(sandbox.clone, 'merge-base', '--is-ancestor', promotion, squashed);
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
+    ).toBe(false);
+
+    const archive = await archiveConsumedRequests(
+      sandbox.clone,
+      promotion,
+      createDefaultMaterializeDeps(),
+    );
+    expect(archive.archived).toEqual([published.requestId]);
+    expect(
+      git(sandbox.clone, 'ls-remote', 'origin', `refs/heads/assets/request/${published.requestId}`),
+    ).toBe('');
+    expect(
+      git(
+        sandbox.clone,
+        'ls-remote',
+        'origin',
+        `refs/heads/assets/archive/request/${published.requestId}`,
+      ),
+    ).toContain(published.commit);
   });
 
   it('reports an already-landed request as a consumed no-op rather than re-applying it', async () => {
@@ -425,6 +512,90 @@ describe('removal requests', () => {
       disposition: 'refused',
       reason: 'missing-removal-target',
     });
+  });
+
+  it('refuses BOTH removals when they name each other as the surviving proof in one promotion', async () => {
+    sandbox = makeSandbox([
+      { manifestKey: 'dup-var-0', seed: 'same-bytes' },
+      { manifestKey: 'dup-var-1', seed: 'same-bytes' },
+    ]);
+    const main = originMain(sandbox.clone);
+    // Removes dup-var-1, proving dup-var-0 survives.
+    await publish(sandbox.clone, removal(main, 'same-bytes'));
+    // Removes dup-var-0, proving dup-var-1 survives — the mirror image. Each
+    // request's proof is valid against the BASE tree in isolation, but the
+    // promotion cannot apply both: whichever applies first consumes the last
+    // byte-identical copy the other one names as its proof.
+    await publish(sandbox.clone, {
+      version: 1,
+      operation: 'remove-asset',
+      assets: [],
+      annotations: [],
+      removals: [
+        {
+          assetPath: 'generated/dup-var-0.png',
+          manifestKey: 'dup-var-0',
+          contentHash: pngHash('same-bytes'),
+          duplicateOfAssetPath: 'generated/dup-var-1.png',
+          duplicateOfManifestKey: 'dup-var-1',
+        },
+      ],
+      observedMainSha: main,
+      producer: 'duplicate-prune',
+      provenance: {},
+      supersedes: null,
+    });
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('noop');
+    expect(result.outcomes).toHaveLength(2);
+    for (const outcome of result.outcomes) {
+      expect(outcome).toMatchObject({ disposition: 'refused', reason: 'missing-duplicate-proof' });
+    }
+  });
+
+  it('archives a removal after its DELETION squash-merges (deleted path proof, not ancestry)', async () => {
+    sandbox = makeSandbox([
+      { manifestKey: 'dup-var-0', seed: 'same-bytes' },
+      { manifestKey: 'dup-var-1', seed: 'same-bytes' },
+    ]);
+    const main = originMain(sandbox.clone);
+    const published = await publish(sandbox.clone, removal(main, 'same-bytes'));
+
+    await reconcile(sandbox.clone);
+    git(sandbox.clone, 'fetch', 'origin', 'assets/promote');
+    const promotion = git(sandbox.clone, 'rev-parse', 'FETCH_HEAD');
+
+    // Simulate the real squash-merge flow, same as the upsert case above —
+    // except this promotion's diff against its parent is a DELETION of
+    // dup-var-1's PNG+shard, so `blobAt(promotionCommit, path)` is null for
+    // those paths and the "landed" proof must check absence-on-main, not a
+    // blob match.
+    git(sandbox.clone, 'checkout', '-B', 'main-work', main);
+    git(sandbox.clone, 'clean', '-fd', 'public');
+    git(
+      sandbox.clone,
+      '-c',
+      'user.email=test@crawler.invalid',
+      '-c',
+      'user.name=Crawler Test',
+      'merge',
+      '--squash',
+      'FETCH_HEAD',
+    );
+    git(sandbox.clone, 'commit', '-m', 'squash-merge assets/promote');
+    git(sandbox.clone, 'push', 'origin', 'HEAD:refs/heads/main');
+
+    const archive = await archiveConsumedRequests(
+      sandbox.clone,
+      promotion,
+      createDefaultMaterializeDeps(),
+    );
+    expect(archive.archived).toEqual([published.requestId]);
+    expect(
+      git(sandbox.clone, 'ls-remote', 'origin', `refs/heads/assets/request/${published.requestId}`),
+    ).toBe('');
   });
 });
 
@@ -635,5 +806,95 @@ describe('conflict fingerprints', () => {
     expect(result.status).toBe('noop');
     expect(result.outcomes.map((outcome) => outcome.disposition)).toEqual(['refused', 'refused']);
     expect(result.outcomes.every((outcome) => outcome.reason === 'request-conflict')).toBe(true);
+  });
+});
+
+describe('supersession', () => {
+  it('retires the superseded request instead of refusing it as a conflict', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern-v1' });
+    const original = await publish(sandbox.clone, upsert(main, 'lantern-var-0', 'lantern-v1'));
+
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern-v2' });
+    const correction = await publish(
+      sandbox.clone,
+      upsert(main, 'lantern-var-0', 'lantern-v2', { supersedes: original.requestId }),
+    );
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('materialized');
+    expect(result.outcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: original.requestId, disposition: 'superseded' }),
+        expect.objectContaining({ requestId: correction.requestId, disposition: 'applied' }),
+      ]),
+    );
+    // The correction's bytes land, not the superseded original's.
+    git(sandbox.clone, 'fetch', 'origin', 'assets/promote');
+    const worktree = path.join(sandbox.root, 'inspect-supersession');
+    git(sandbox.clone, 'worktree', 'add', '--detach', worktree, 'FETCH_HEAD');
+    const landed = readFileSync(path.join(worktree, 'public/assets/generated/lantern-var-0.png'));
+    expect(landed.equals(fakePng('lantern-v2'))).toBe(true);
+
+    // The superseded request is retired immediately — never consumed by a
+    // promotion, so it has no promotion-merge proof to wait on.
+    expect(
+      git(sandbox.clone, 'ls-remote', 'origin', `refs/heads/assets/request/${original.requestId}`),
+    ).toBe('');
+    expect(
+      git(
+        sandbox.clone,
+        'ls-remote',
+        'origin',
+        `refs/heads/assets/archive/request/${original.requestId}`,
+      ),
+    ).toContain(original.commit);
+  });
+
+  it('refuses BOTH sides of an unresolvable supersession cycle', () => {
+    // A genuine two-request cycle cannot be produced by the normal publish
+    // path (each request's id is a hash of its own body, so `A.supersedes ===
+    // B.requestId && B.supersedes === A.requestId` would require each side to
+    // know the other's hash before it exists — a preimage problem). Exercise
+    // the pure resolver directly against a defensively-constructed cycle, the
+    // way a corrupted/forged ref pair would present it.
+    const requestA = fakeValidated('a'.repeat(64), 'b'.repeat(64));
+    const requestB = fakeValidated('b'.repeat(64), 'a'.repeat(64));
+
+    const { active, superseded, invalid } = resolveSupersession([requestA, requestB]);
+
+    expect(active).toEqual([]);
+    expect(superseded).toEqual([]);
+    expect(invalid.map((entry) => entry.request.manifest.requestId).sort()).toEqual(
+      ['a'.repeat(64), 'b'.repeat(64)].sort(),
+    );
+  });
+
+  it('refuses a request that names itself in `supersedes`', () => {
+    const selfReferencing = fakeValidated('c'.repeat(64), 'c'.repeat(64));
+
+    const { active, superseded, invalid } = resolveSupersession([selfReferencing]);
+
+    expect(active).toEqual([]);
+    expect(superseded).toEqual([]);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]?.request.manifest.requestId).toBe('c'.repeat(64));
+  });
+
+  it('resolves a chain of corrections to only the tip', () => {
+    // C supersedes B, B supersedes A: A and B are retired, only C is active.
+    const requestA = fakeValidated('a'.repeat(64), null);
+    const requestB = fakeValidated('b'.repeat(64), 'a'.repeat(64));
+    const requestC = fakeValidated('c'.repeat(64), 'b'.repeat(64));
+
+    const { active, superseded, invalid } = resolveSupersession([requestA, requestB, requestC]);
+
+    expect(invalid).toEqual([]);
+    expect(active.map((request) => request.manifest.requestId)).toEqual(['c'.repeat(64)]);
+    expect(superseded.map((entry) => entry.request.manifest.requestId).sort()).toEqual(
+      ['a'.repeat(64), 'b'.repeat(64)].sort(),
+    );
   });
 });

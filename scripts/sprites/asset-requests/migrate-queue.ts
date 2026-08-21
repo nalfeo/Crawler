@@ -3,10 +3,13 @@
  * path and annotation delta on the retired aggregate branch is accounted for
  * before the branch is archived.
  *
- * The report is the human-approval surface for migration: only groups a human
- * approves are converted into immutable requests (see `--emit-requests` in the
- * CLI), and the classification is a pure function of two commits, so it can be
- * re-run and diffed.
+ * The report is the human-approval surface for migration: it is a pure
+ * function of two commits (so it can be re-run and diffed), and it is the
+ * ONLY thing this module produces today. Converting a human-approved group
+ * into a published request ref is a deliberately separate, not-yet-built
+ * step — this module does not emit requests, and no `--emit-requests` CLI
+ * mode exists yet. Do not treat a clean report as having performed the
+ * cutover conversion.
  *
  * Classifications:
  *   - `already-on-main`      queue bytes are identical to `main`; nothing to do.
@@ -213,16 +216,31 @@ async function mainContentIndex(
   return index;
 }
 
+/**
+ * The annotation map at `text` (a raw `sprites.json` blob), or an empty map
+ * when `text` is `null` (the document does not exist at that revision).
+ *
+ * Fails CLOSED on a malformed document: invalid JSON or a non-object
+ * `sprites` map throws rather than silently degrading to `{}`. Swallowing a
+ * parse error here would make a corrupted annotation file look identical to
+ * "no annotations changed", so the migration report could succeed while
+ * silently dropping every real delta it carried.
+ */
 function annotationsOf(text: string | null): Record<string, AssetRequestAnnotation> {
   if (text === null) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
-  } catch {
-    return {};
+  } catch (error) {
+    throw new Error(
+      `${ANNOTATIONS_PATH} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
   const sprites = (parsed as { sprites?: unknown } | null)?.sprites;
-  if (typeof sprites !== 'object' || sprites === null || Array.isArray(sprites)) return {};
+  if (typeof sprites !== 'object' || sprites === null || Array.isArray(sprites)) {
+    throw new Error(`${ANNOTATIONS_PATH} must contain an object-valued "sprites" map`);
+  }
   const result: Record<string, AssetRequestAnnotation> = {};
   for (const [key, value] of Object.entries(sprites as Record<string, unknown>)) {
     const record = value as Record<string, unknown>;

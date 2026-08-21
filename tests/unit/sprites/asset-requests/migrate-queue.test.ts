@@ -210,6 +210,34 @@ describe('classifyQueueTip', () => {
     expect(byKey.get('gone-var-0')?.classification).toBe('requires-human');
     expect(renderMigrationReport(report)).toContain('"unclassifiedPaths": []');
   });
+
+  it('fails closed instead of treating a malformed annotation document as empty', async () => {
+    sandbox = makeSandbox(seed);
+    const current = sandbox;
+    buildQueueBranch(current, (worktree) => {
+      writeFileAt(
+        worktree,
+        'public/assets/generated/sprite-editor-annotations.json',
+        '{ this is not valid json',
+      );
+    });
+
+    await expect(classify(current)).rejects.toThrow(/not valid JSON/);
+  });
+
+  it('fails closed when the annotation document has a non-object "sprites" map', async () => {
+    sandbox = makeSandbox(seed);
+    const current = sandbox;
+    buildQueueBranch(current, (worktree) => {
+      writeFileAt(
+        worktree,
+        'public/assets/generated/sprite-editor-annotations.json',
+        `${JSON.stringify({ version: 1, sprites: 'not-a-map' }, null, 2)}\n`,
+      );
+    });
+
+    await expect(classify(current)).rejects.toThrow(/object-valued "sprites" map/);
+  });
 });
 
 describe('legacy surfaces beyond generated assets', () => {

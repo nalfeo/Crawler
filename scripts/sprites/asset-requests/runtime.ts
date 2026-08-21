@@ -72,6 +72,12 @@ function writeTextFile(absolutePath: string, contents: string): Promise<void> {
   return Promise.resolve();
 }
 
+function writeFileBytes(absolutePath: string, bytes: Uint8Array): Promise<void> {
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, bytes);
+  return Promise.resolve();
+}
+
 /** Production deps for `publishAssetRequest`. */
 export function createDefaultPublishDeps(env: NodeJS.ProcessEnv = process.env): PublishRequestDeps {
   const gitEnv = nonInteractiveGitEnv(env);
@@ -79,6 +85,7 @@ export function createDefaultPublishDeps(env: NodeJS.ProcessEnv = process.env): 
     exec: makeExec(gitEnv),
     readFileBytes: (absolutePath) => Promise.resolve(readFileSync(absolutePath)),
     writeTextFile,
+    writeFileBytes,
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-request-publish-'))),
     removeDir: removeDirWithRetry,
     joinPath: (...segments) => path.join(...segments),
