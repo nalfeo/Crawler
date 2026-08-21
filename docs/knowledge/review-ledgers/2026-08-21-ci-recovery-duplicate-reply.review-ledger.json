@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "ci-recovery-duplicate-reply",
+  "task_title": "Resolve CI recovery duplicate reply markers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "devops-engineer(default)",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Independent devops investigator launched before code reviewed PR #3206 evidence and candidate root causes. It converged on the implemented plan: effective latest-comment logic should treat the exact trusted duplicate-skip no-op as transparent while preserving reviewer-follow-up blocking; recommended state and reconcile regressions, both added."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
