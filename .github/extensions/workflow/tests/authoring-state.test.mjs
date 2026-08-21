@@ -5,7 +5,9 @@ import {
   WORKFLOW_STAGES,
   addRequest,
   mergeChangedItem,
+  metadataDonePatch,
   normalizeQueue,
+  resetDownstreamForBriefChange,
   rewindItem,
   updateItem,
 } from '../lib/authoring-state.mjs';
@@ -107,6 +109,41 @@ test('rewinds only pointers while durable generated artifacts remain addressable
   assert.equal(brief.run, null);
   assert.equal(brief.briefPath, null);
   assert.equal(original.run.runId, 'run-1');
+});
+
+test('editing a chosen promoted brief clears stale downstream artifacts', () => {
+  const original = item(1, {
+    stage: 'done',
+    chosenCandidatePath: 'briefs/draft/asset-1.yaml',
+    briefPath: 'briefs/asset-1.yaml',
+    run: { briefId: 'asset-1', runId: 'run-1', candidates: [] },
+    generationRequestedAt: '2026-08-21T12:00:00.000Z',
+    approvedAssetPath: 'public/assets/generated/asset-1.png',
+    metadataSummary: 'Tagged',
+  });
+  const reset = resetDownstreamForBriefChange(original, original.chosenCandidatePath);
+  assert.equal(reset.stage, 'candidates');
+  assert.equal(reset.briefPath, null);
+  assert.equal(reset.run, null);
+  assert.equal(reset.generationRequestedAt, null);
+  assert.equal(reset.approvedAssetPath, null);
+  assert.equal(reset.metadataSummary, null);
+});
+
+test('metadata completion preserves durable status honestly', () => {
+  const result = metadataDonePatch(
+    {
+      provider: 'auto',
+      processedCount: 1,
+      changedCount: 1,
+      rejectedCount: 0,
+      queueCommit: { status: 'failed', error: 'push denied' },
+    },
+    'ok',
+  );
+  assert.equal(result.stage, 'done');
+  assert.equal(result.queueDurability, 'failed');
+  assert.match(result.metadataSummary, /push denied/);
 });
 
 test('item-level merge retains remote DevTools items while applying the local item change', () => {

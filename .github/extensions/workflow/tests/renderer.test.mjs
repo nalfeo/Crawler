@@ -67,7 +67,10 @@ test('the Author tab exposes the complete Azure workflow controls and visible re
   assert.match(html, /\/api\/workflow\/postprocess/);
   assert.match(html, /\/api\/workflow\/judge/);
   assert.match(html, /\/api\/workflow\/approve/);
+  assert.match(html, /\/api\/workflow\/metadata/);
   assert.match(html, /\/api\/workflow\/rewind/);
+  assert.match(html, /Tag metadata & finish/);
+  assert.match(html, /Metadata tagged and queued durably/);
   assert.match(html, /X-Workflow-Mutation-Token/);
   assert.doesNotMatch(html, /worker\/start/);
 });

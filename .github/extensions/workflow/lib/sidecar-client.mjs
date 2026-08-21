@@ -155,6 +155,10 @@ export function workflowGenerateUrl(baseUrl) {
   return `${baseUrl}/api/workflow/generate`;
 }
 
+export function workflowMetadataUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/metadata`;
+}
+
 export function runJudgeUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/judge`;
 }
@@ -649,6 +653,16 @@ export function createSidecarClient(options) {
     return readResponse(response, 'Failed to generate sheet');
   }
 
+  async function generateWorkflowMetadata(ids) {
+    const response = await fetchImpl(workflowMetadataUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, provider: 'auto', minScore: 70 }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to tag sprite metadata');
+  }
+
   async function postprocessRun(briefId, runId) {
     const response = await fetchImpl(runPostprocessUrl(baseUrl, briefId, runId), {
       method: 'POST',
@@ -744,6 +758,7 @@ export function createSidecarClient(options) {
     saveWorkflowBrief,
     promoteWorkflowBrief,
     generateWorkflow,
+    generateWorkflowMetadata,
     postprocessRun,
     judgeRun,
     latestWorkflowRun,

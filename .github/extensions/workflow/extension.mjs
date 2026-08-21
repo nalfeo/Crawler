@@ -13,8 +13,8 @@
  * monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`) for the
  * backlog/plans/briefs/runs READ surface. The durable QUEUE + asset-REQUEST
  * manifest's full read/control surface (synthesize / generate / judge / worker
- * & issues start-stop, and the interactive queue state machine) beyond the
- * atomic accept-and-check-in below remains the documented follow-up slice.
+ * & issues start-stop are deliberately omitted; the interactive queue state
+ * machine delegates only to existing sidecar lifecycle endpoints.
  *
  * Mutating routes: `POST /api/accept` (approve + durable check-in, atomic and
  * idempotent — see `scripts/sprites/sidecar/server.ts`) and `POST /api/feedback`
@@ -98,7 +98,9 @@ import {
   addRequest,
   emptyQueue,
   mergeChangedItem,
+  metadataDonePatch,
   normalizeQueue,
+  resetDownstreamForBriefChange,
   rewindItem,
   selectedItem,
   selectItem,
@@ -1835,6 +1837,13 @@ const jsonRoutes = [
         }
         const saved = await entry.client.saveWorkflowBrief(body.yamlPath, body.yaml);
         await replaceWorkflowItem(entry, body.itemId, (item) => ({
+          ...(body.choose === true ||
+          (item.chosenCandidatePath === body.yamlPath && (item.briefPath || item.run))
+            ? resetDownstreamForBriefChange(
+                item,
+                body.choose === true ? body.yamlPath : item.chosenCandidatePath,
+              )
+            : item),
           candidates: item.candidates.map((candidate) =>
             candidate.yamlPath === body.yamlPath
               ? {
@@ -2014,6 +2023,41 @@ const jsonRoutes = [
         const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
         if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
         await replaceWorkflowItem(entry, item.id, rewindItem(item, body.target));
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/metadata',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
+        if (!['approved', 'checked-in'].includes(item.stage)) {
+          throw new CanvasError(
+            'invalid-stage',
+            'Approve and queue a variant before generating metadata.',
+          );
+        }
+        const priorStage = item.stage;
+        await replaceWorkflowItem(entry, item.id, { stage: 'tagging', lastError: null });
+        try {
+          const result = await entry.client.generateWorkflowMetadata([item.kebabName]);
+          await replaceWorkflowItem(
+            entry,
+            item.id,
+            metadataDonePatch(result, item.queueDurability),
+          );
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: priorStage,
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },

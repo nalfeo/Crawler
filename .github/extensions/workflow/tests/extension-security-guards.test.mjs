@@ -72,6 +72,7 @@ test('authoring mutations reuse token, origin, and JSON guards without a queue-c
     'postprocess',
     'judge',
     'approve',
+    'metadata',
     'rewind',
   ]) {
     assert.match(source, new RegExp(`path: '\\/api\\/workflow\\/${route}'`));
@@ -104,6 +105,8 @@ test('transient authoring phases recover to their prior retryable phase with an 
   assert.match(source, /stage: 'sheet',\s*lastError: error\?\.message/);
   assert.match(source, /path: '\/api\/workflow\/judge'/);
   assert.match(source, /stage: 'postprocessed',\s*lastError: error\?\.message/);
+  assert.match(source, /path: '\/api\/workflow\/metadata'/);
+  assert.match(source, /stage: priorStage,\s*lastError: error\?\.message/);
 });
 
 test('feedback and plan/brief content routes import the shared (not duplicated) helpers', () => {

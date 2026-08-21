@@ -1648,6 +1648,14 @@ const CLIENT_SCRIPT = String.raw`
       }
       if (selected.stage === 'checked-in' || selected.stage === 'approved') {
         detail.appendChild(h('div', { class: 'accept-state queued', text: selected.approvalSummary || 'Approved and queued durably on assets/queue.' }));
+        controls.appendChild(h('button', { class: 'accept-button', text: 'Tag metadata & finish',
+          onclick: function () { workflowPost('/api/workflow/metadata', { itemId: selected.id }, 'Tagging sprite metadata…'); } }));
+      }
+      if (selected.stage === 'tagging') {
+        controls.appendChild(h('span', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Writing metadata and durable queue state…']));
+      }
+      if (selected.stage === 'done') {
+        detail.appendChild(h('div', { class: 'accept-state queued', text: selected.metadataSummary || 'Metadata tagged and queued durably on assets/queue.' }));
       }
       ['brief', 'sheet', 'postprocess'].forEach(function (target) {
         controls.appendChild(h('button', { class: 'unapprove-button', text: 'Rewind to ' + target,

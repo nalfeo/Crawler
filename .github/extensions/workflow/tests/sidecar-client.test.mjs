@@ -27,6 +27,7 @@ import {
   workflowBriefUrl,
   workflowPromoteUrl,
   workflowGenerateUrl,
+  workflowMetadataUrl,
   workflowLatestRunUrl,
   candidateStatus,
   describeJudgeSkipReason,
@@ -132,6 +133,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(workflowBriefUrl(BASE), `${BASE}/api/workflow/brief`);
   assert.equal(workflowPromoteUrl(BASE), `${BASE}/api/workflow/promote-brief`);
   assert.equal(workflowGenerateUrl(BASE), `${BASE}/api/workflow/generate`);
+  assert.equal(workflowMetadataUrl(BASE), `${BASE}/api/workflow/metadata`);
   assert.equal(
     workflowLatestRunUrl(BASE, 'rusty anvil', '2026-08-21T00:00:00.000Z'),
     `${BASE}/api/workflow/latest-run?briefId=rusty%20anvil&requestedAt=2026-08-21T00%3A00%3A00.000Z`,
@@ -144,6 +146,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   await client.saveWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'name: rusty-anvil');
   await client.promoteWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'prop', 'rusty-anvil');
   await client.generateWorkflow('briefs/draft/rusty-anvil.yaml');
+  await client.generateWorkflowMetadata(['rusty-anvil']);
   assert.deepEqual(await client.latestWorkflowRun('rusty-anvil', '2026-08-21T00:00:00.000Z'), {
     briefId: 'rusty-anvil',
     runId: 'run-1',
@@ -156,6 +159,8 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(calls[3].options.method, 'PUT');
   assert.equal(calls[4].options.method, 'POST');
   assert.equal(calls[5].options.method, 'POST');
+  assert.equal(calls[6].options.method, 'POST');
+  assert.match(calls[6].options.body, /"minScore":70/);
 });
 
 test('listRuns returns the runs array from the sidecar payload with no-store caching', async () => {

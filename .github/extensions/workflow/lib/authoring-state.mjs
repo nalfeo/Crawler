@@ -322,6 +322,49 @@ export function rewindItem(item, target) {
 }
 
 /**
+ * A changed selected draft invalidates its promoted brief and everything derived
+ * from it. Keep the durable draft candidate, but never allow a stale generated
+ * run to look like it belongs to the edited brief.
+ */
+export function resetDownstreamForBriefChange(item, chosenCandidatePath) {
+  return {
+    ...item,
+    stage: 'candidates',
+    chosenCandidatePath,
+    briefPath: null,
+    run: null,
+    generationRequestedAt: null,
+    generationStartedAt: null,
+    ...clearApproval(),
+  };
+}
+
+/** Mirrors DevTools' durable Tag -> Done transition for sidecar metadata output. */
+export function metadataDonePatch(result, previousDurability) {
+  const queueStatus = result?.queueCommit?.status ?? null;
+  const queueError = result?.queueCommit?.error;
+  const queueDurability =
+    queueStatus === 'failed'
+      ? 'failed'
+      : queueStatus === 'committed' || queueStatus === 'noop'
+        ? 'ok'
+        : previousDurability;
+  const summary =
+    `Tagged via ${result.provider}: processed=${result.processedCount}, ` +
+    `changed=${result.changedCount}, rejected=${result.rejectedCount}`;
+  return {
+    stage: 'done',
+    metadataSummary:
+      queueStatus === 'failed'
+        ? `${summary} Durable queue push failed (${queueError ?? 'unknown error'}).`
+        : summary,
+    approvalSummary: null,
+    queueDurability,
+    lastError: null,
+  };
+}
+
+/**
  * Merge exactly one locally-mutated item into a newly-read remote queue.
  * `changedFields` is deliberately a patch rather than a full local item: two
  * clients may advance different fields of the same DevTools item concurrently.
