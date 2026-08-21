@@ -1,5 +1,39 @@
 [
   {
+    "commit": "0049a1b417ae84a9c7a2e51ab2ce5e98ac028cd0",
+    "commitDate": "2026-08-20T20:29:13-07:00",
+    "commitSubject": "Change plan-posting instructions from session chat to PR description (#3200)",
+    "capturedAt": "2026-08-21T04:36:41.777Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32443732762",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0049a1b417ae84a9c7a2e51ab2ce5e98ac028cd0.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/0049a1b417ae84a9c7a2e51ab2ce5e98ac028cd0.fun-report.json"
+    }
+  },
+  {
     "commit": "578ffc9d5f0fac64b986cac8fa7bef8a6ec8274e",
     "commitDate": "2026-08-20T07:29:59Z",
     "commitSubject": "Harden nightly balance issue prompt to require fully-qualified PR close reference (#3150)",
