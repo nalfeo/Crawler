@@ -1412,6 +1412,10 @@ async function handleQuarantineDispositionIfAny() {
     process.stdout.write(`quarantine-revive pr=#${prNumber} command=KEEP\n`);
     process.exit(0);
   }
+  if (command !== 'ABANDON') {
+    process.stdout.write(`quarantine-disposition-ignored pr=#${prNumber} command=${command}\n`);
+    return false;
+  }
 
   const localClosingIssues = closingIssues.filter(
     (issue) =>
