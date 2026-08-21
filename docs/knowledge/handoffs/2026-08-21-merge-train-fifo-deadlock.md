@@ -102,10 +102,20 @@ alarmed, because reconcile exits `0` on that path.
 
 `evaluateStalledQueue` now classifies "queue non-empty **and** zero admitted" as
 a stall, and after `STALLED_QUEUE_PASS_THRESHOLD` (3) consecutive reconcile
-passes raises a managed `ci-incident` issue naming the head-of-queue PR as the
-likely blocker. The consecutive-pass counter is carried in the incident body, so
-no new storage is needed, and the issue auto-closes as soon as the train admits
-a candidate again.
+passes escalates a managed `ci-incident` issue naming the head-of-queue PR as
+the likely blocker. The issue auto-closes as soon as the train admits a
+candidate again, or when the queue drains to empty.
+
+**The counter must be persisted from the first stalled pass, not at the alarm.**
+The first draft stored the consecutive-pass counter in the incident body but
+only created that issue once `alarm` was true — and `alarm` requires
+`passes >= 3`. The counter could therefore never read back above `0`, pinned at
+`1` forever, and the alarm was structurally unreachable: the entire safeguard
+was dead code. Both the plan review and the code review caught this
+independently. Below the threshold the issue is now a quiet **unlabeled**
+tracking record; the `ci-incident` label is applied only at the alarm, so
+persistence never depends on the condition it is trying to detect. A regression
+test asserts the write is gated on `stall.stalled`, never on `stall.alarm`.
 
 ### 3. Eject + quarantine — bounded blast radius
 
@@ -116,7 +126,7 @@ from the queue and quarantined with `merge-train-blocked`, with a status comment
 explaining the ejection and how to re-queue (rebase out-of-band, remove the
 label).
 
-Two details matter here:
+Four details matter here:
 
 - **Quarantine must be sticky**, or this reintroduces the #3027 label-churn
   livelock. `merge-train-blocked` is already in `router.mjs`'s
@@ -125,6 +135,27 @@ Two details matter here:
   this path is paired with that label.
 - **Strikes reset on a new head SHA**, so the intended recovery (an out-of-band
   rebase) clears the record rather than being penalized for earlier failures.
+- **A cumulative attempt ceiling backstops that reset.** Resetting on head
+  movement alone lets a bot pushing ineffective commits reset the counter every
+  pass and evade quarantine indefinitely while still failing every update.
+  `UNADVANCEABLE_ATTEMPT_CEILING` (10) never resets, so persistent
+  un-advanceability is always eventually quarantined. Legacy two-field markers
+  still parse, crediting existing strikes as attempts.
+- **Recovery dispatch must not run on the quarantine branch.** Dispatching
+  before the strike evaluation raced quarantine: the recovery run could
+  converge, strip `merge-train-blocked`, and re-admit the PR into the same 403
+  loop. `router.mjs` exclusion only blocks _new_ dispatch selection — it cannot
+  cancel an in-flight one. Dispatch now happens only on the still-queued branch.
+
+### FIFO release covers every non-advancing path
+
+The initial fix set `yieldFifoLine` only on the same-repo-403 path. Review
+pointed out that the `422` and unexpected-status branches also leave the PR
+queued without advancing it, so either could reproduce the original deadlock
+through a non-403 route (e.g. a stale `behind` result paired with repeated
+"already up-to-date" 422s). Both now release the line too. The invariant is:
+**FIFO holds the line only for a PR the train is actively advancing, never for
+one it did not advance on this pass.**
 
 ## Follow-up (not done here)
 

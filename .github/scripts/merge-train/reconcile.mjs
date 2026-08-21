@@ -303,6 +303,26 @@ function readUnadvanceableStrike(body) {
 const STALLED_TRAIN_INCIDENT_TITLE =
   'CI incident: Merge train queue is non-empty but admitting nothing';
 
+// The stalled-train record is created BELOW the alarm threshold, so it cannot be
+// discovered through the `ci-incident` label (that label is only applied at the
+// alarm). It carries its own always-applied tracking label instead; looking it
+// up through the incident label made the pass counter unreadable and leaked a
+// fresh unlabeled issue on every stalled pass.
+const STALLED_TRAIN_TRACKING_LABEL = 'merge-train-stall-watch';
+
+async function findStalledTrainIncident() {
+  const encodedLabel = encodeURIComponent(STALLED_TRAIN_TRACKING_LABEL);
+  const open = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`,
+  );
+  return open.find(
+    (issue) =>
+      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+}
+
 function renderStalledTrainIncidentBody({ now, queued, passes, headPull, alarm }) {
   const numbers = queued.map((pull) => `#${pull.number}`).join(', ');
   const head = headPull ? `#${headPull.number}` : 'unknown';
@@ -339,17 +359,14 @@ function renderStalledTrainIncidentBody({ now, queued, passes, headPull, alarm }
 // back a value above 0, so `passes` pinned at 1 and the alarm never fired.
 // Below the threshold the issue is a quiet tracking record (no incident label).
 async function upsertStalledTrainIncident({ now, queued, passes, headPull, alarm }) {
-  const openIncidents = await listOpenIncidentIssues();
-  const existing = openIncidents.find(
-    (issue) =>
-      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
-      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
-  );
+  const existing = await findStalledTrainIncident();
   const body = renderStalledTrainIncidentBody({ now, queued, passes, headPull, alarm });
   if (existing) {
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
-      body: alarm ? { body, labels: [EMPTY_TRAIN_INCIDENT_LABEL] } : { body },
+      body: alarm
+        ? { body, labels: [STALLED_TRAIN_TRACKING_LABEL, EMPTY_TRAIN_INCIDENT_LABEL] }
+        : { body },
     });
     process.stdout.write(
       `updated stalled-train incident issue=#${existing.number} passes=${passes} alarm=${alarm}\n`,
@@ -360,7 +377,9 @@ async function upsertStalledTrainIncident({ now, queued, passes, headPull, alarm
     method: 'POST',
     body: {
       title: STALLED_TRAIN_INCIDENT_TITLE,
-      labels: alarm ? [EMPTY_TRAIN_INCIDENT_LABEL] : [],
+      labels: alarm
+        ? [STALLED_TRAIN_TRACKING_LABEL, EMPTY_TRAIN_INCIDENT_LABEL]
+        : [STALLED_TRAIN_TRACKING_LABEL],
       body,
     },
   });
@@ -372,22 +391,12 @@ async function upsertStalledTrainIncident({ now, queued, passes, headPull, alarm
 // Reads the consecutive stalled-pass counter off the managed stalled-train
 // incident issue, and closes it when the train recovers.
 async function readStalledTrainPasses() {
-  const openIncidents = await listOpenIncidentIssues();
-  const existing = openIncidents.find(
-    (issue) =>
-      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
-      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
-  );
+  const existing = await findStalledTrainIncident();
   return existing ? parseStalledQueuePasses(existing.body) : 0;
 }
 
 async function closeStalledTrainIncidentIfAny(reason) {
-  const openIncidents = await listOpenIncidentIssues();
-  const existing = openIncidents.find(
-    (issue) =>
-      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
-      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
-  );
+  const existing = await findStalledTrainIncident();
   if (!existing) return;
   await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
     method: 'PATCH',

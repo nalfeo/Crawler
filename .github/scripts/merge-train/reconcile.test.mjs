@@ -1917,3 +1917,49 @@ test('the queue-empty exit path closes a lingering stalled-train incident', () =
     'a queue that drained to empty has recovered, so the stall record must not linger open',
   );
 });
+
+test('the stalled-train record is discoverable before the alarm labels it', () => {
+  // The record is created below the alarm threshold, when it deliberately does
+  // not carry the `ci-incident` label. Looking it up through that label made
+  // the pass counter unreadable (always 0) and leaked a new unlabeled issue on
+  // every stalled pass, so the alarm could never fire.
+  const finder = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function findStalledTrainIncident()'),
+  );
+  const body = finder.slice(0, finder.indexOf('\n}\n'));
+  assert.match(
+    body,
+    /STALLED_TRAIN_TRACKING_LABEL/,
+    'the stall record must be looked up by its always-applied tracking label',
+  );
+  assert.doesNotMatch(
+    body,
+    /EMPTY_TRAIN_INCIDENT_LABEL/,
+    'the alarm-only incident label cannot be the lookup key for a pre-alarm record',
+  );
+  for (const fn of [
+    'async function upsertStalledTrainIncident',
+    'async function readStalledTrainPasses',
+    'async function closeStalledTrainIncidentIfAny',
+  ]) {
+    const region = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf(fn));
+    assert.match(
+      region.slice(0, region.indexOf('\n}\n')),
+      /findStalledTrainIncident\(\)/,
+      `${fn} must share the tracking-label lookup so the counter round-trips`,
+    );
+  }
+});
+
+test('the stalled-train record always carries the tracking label', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function upsertStalledTrainIncident'),
+  );
+  const upsert = region.slice(0, region.indexOf('\n}\n'));
+  assert.doesNotMatch(
+    upsert,
+    /labels: alarm \? \[[^\]]*\] : \[\]/,
+    'an unlabeled record cannot be found again, so it must never be created without a label',
+  );
+  assert.match(upsert, /\[STALLED_TRAIN_TRACKING_LABEL\]/);
+});
