@@ -93,11 +93,16 @@ describe('summarizeEvents', () => {
       ...DEFAULT_SUMMARY_THRESHOLDS,
       stuckSustainedMs: 0,
     });
-    // s1..s4 are a contiguous non-excluded wiggle/idle run, all within 12ft
-    // of the anchor set at s1 (100,200) — the union is one stuck episode,
-    // not just the samples that individually look "idle".
-    expect(summary.stuckMs).toBe(1000);
-    expect(summary.stuckPct).toBe(80);
+    // Stuck candidacy is gated only on exclusion, not on the per-sample
+    // wiggle/idle flags (see the module doc comment), so s0's efficient
+    // move opens its own (too-short-to-report) window before escaping past
+    // the anchor at s1. s1..s4 are then a contiguous, non-excluded run, all
+    // within 12ft of the anchor set at s1 (100,200) — the union is one
+    // reported stuck episode, not just the samples that individually look
+    // "idle". Total stuckMs (1250) = s0's own window (250) + s1..s4's union
+    // (1000) + s5's zero-duration final window (0).
+    expect(summary.stuckMs).toBe(1250);
+    expect(summary.stuckPct).toBe(100);
     expect(summary.stuckEpisodes).toHaveLength(1);
     expect(summary.stuckEpisodes[0]!.durationMs).toBe(1000);
   });

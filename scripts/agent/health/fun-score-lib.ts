@@ -443,8 +443,20 @@ function pacingForRun(run: RunStats): number {
   const firstQuestSec = firstQuestMs === null ? 600 : firstQuestMs / 1000;
   const levelUpsPerMin = run.levelUps.length / runMinutes(run);
   const timeoutPenalty = run.outcome === 'timeout' || run.outcome === 'stalled' ? 20 : 0;
+  // Issue #3198: stuck/wiggle time ("wasted motion" — the player thrashing
+  // in place at a wall or territory boundary instead of playing) is a "not
+  // fun" signal and must move pacing. `movementQuality` is optional (older
+  // recordings / synthetic fixtures may not have it), so treat a missing
+  // value as neutral (no penalty, no bonus) rather than skewing the score.
+  // Target is 0% combined stuck+wiggle time (the issue's own <1% goal);
+  // scores fall to 0 once combined waste reaches 10%.
+  const movementScore = run.movementQuality
+    ? bandScore(run.movementQuality.stuckPct + run.movementQuality.wigglePct, 0, 10)
+    : 100;
   const base =
-    bandScore(firstQuestSec, 120, 120) * 0.55 + bandScore(levelUpsPerMin, 1.1, 1.0) * 0.45;
+    bandScore(firstQuestSec, 120, 120) * 0.45 +
+    bandScore(levelUpsPerMin, 1.1, 1.0) * 0.35 +
+    movementScore * 0.2;
   return round2(clamp100(base - timeoutPenalty));
 }
 

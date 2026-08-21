@@ -817,6 +817,13 @@ export async function runHeadless(
   const recordEvent = config.recordEvent;
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
   const denSampleInterval = Math.max(1, sampleInterval * 4);
+  // `RunStats.movementQuality` must read the same regardless of the caller's
+  // event-log cadence (`eventSampleInterval` defaults to 15, but e.g. the
+  // win-rate sweep runner passes 60 — see scripts/agent/perf/winrate-sweep.ts).
+  // Its thresholds (`SummaryThresholds`) are absolute ft/duration values, not
+  // cadence-scaled, so movement-quality sampling always uses this fixed
+  // canonical interval, independent of `sampleInterval`.
+  const MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES = 15;
   const denBossTracker = createDenBossTransitionTracker();
   const navProvider = aiProvider as AIInputProvider & {
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
@@ -833,6 +840,12 @@ export async function runHeadless(
   let pathTravelAccum = 0;
   let lastSampleX = lastFrameX;
   let lastSampleY = lastFrameY;
+  // Independent accumulator/anchor for the fixed-cadence movement-quality
+  // sampler — kept separate from `pathTravelAccum`/`lastSampleX`/`lastSampleY`
+  // above, which follow the caller-controlled `sampleInterval`.
+  let movementPathTravelAccum = 0;
+  let movementLastSampleX = lastFrameX;
+  let movementLastSampleY = lastFrameY;
   let lastLoggedState: string | null = null;
   const decisionStateCounts: Record<string, number> = {};
   const decisionStateMs: Record<string, number> = {};
@@ -918,6 +931,12 @@ export async function runHeadless(
     type: SimEvent['type'],
     enemyEids: ArrayLike<number> & Iterable<number>,
     note?: string,
+    // Overrides the pathTravel/netDisp basis used for this event. Defaults to
+    // the caller-controlled `pathTravelAccum`/`lastSampleX`/`lastSampleY`
+    // window; the always-on movement-quality sampler passes its own
+    // independent, fixed-cadence accumulator instead (see
+    // MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES above).
+    movementBasis?: { pathTravel: number; lastX: number; lastY: number },
   ): SimEvent => {
     const decision = aiProvider.getDecision();
     const baseState = AI_STATE_NAME[decision.state] ?? String(decision.state);
@@ -950,7 +969,9 @@ export async function runHeadless(
         ? null
         : (world.floorExtendedState?.ambientEnemyArchetypes?.get(decision.targetEid) ?? null);
     const nav = navProvider.getNavigationDebug?.();
-    const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+    const netDisp = movementBasis
+      ? Math.hypot(px - movementBasis.lastX, py - movementBasis.lastY)
+      : Math.hypot(px - lastSampleX, py - lastSampleY);
     // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
     // when the provider exposes them. Optional-chained + present-only, so a
     // provider WITHOUT these getters (e.g. a scripted/bare provider) emits
@@ -986,7 +1007,7 @@ export async function runHeadless(
       stuckFrames: nav?.stuckFrames ?? 0,
       pathLen: nav?.pathWaypoints.length ?? 0,
       netDisp: Math.round(netDisp),
-      pathTravel: Math.round(pathTravelAccum),
+      pathTravel: Math.round(movementBasis ? movementBasis.pathTravel : pathTravelAccum),
       remainingMs:
         world.floorScenario?.objective.deadlineMs != null
           ? Math.round(world.floorScenario.objective.deadlineMs - world.elapsedMs)
@@ -1232,7 +1253,9 @@ export async function runHeadless(
       // Movement accumulation for wiggle/stuck detection.
       const frameX = world.stores.position.x[playerEid] ?? lastFrameX;
       const frameY = world.stores.position.y[playerEid] ?? lastFrameY;
-      pathTravelAccum += Math.hypot(frameX - lastFrameX, frameY - lastFrameY);
+      const frameTravel = Math.hypot(frameX - lastFrameX, frameY - lastFrameY);
+      pathTravelAccum += frameTravel;
+      movementPathTravelAccum += frameTravel;
       lastFrameX = frameX;
       lastFrameY = frameY;
 
@@ -1418,12 +1441,24 @@ export async function runHeadless(
       }
       if (frameCount % sampleInterval === 0) {
         const sampleEvent = buildEvent('sample', enemyEids);
-        movementSamples.push(sampleEvent);
         recordEvent?.(sampleEvent);
-        // Reset per-sample movement window.
+        // Reset per-sample movement window (external event-log cadence).
         pathTravelAccum = 0;
         lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
         lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
+      }
+      if (frameCount % MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES === 0) {
+        movementSamples.push(
+          buildEvent('sample', enemyEids, undefined, {
+            pathTravel: movementPathTravelAccum,
+            lastX: movementLastSampleX,
+            lastY: movementLastSampleY,
+          }),
+        );
+        // Reset the independent movement-quality sample window.
+        movementPathTravelAccum = 0;
+        movementLastSampleX = world.stores.position.x[playerEid] ?? movementLastSampleX;
+        movementLastSampleY = world.stores.position.y[playerEid] ?? movementLastSampleY;
       }
 
       // Check for victory (Floor 10+ or Floor 1 completion)

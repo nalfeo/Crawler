@@ -33,8 +33,10 @@
  *    displacement is already below that counter's per-frame epsilon, so it
  *    reads "stuck" during completely normal forward travel — see the
  *    2026-08-21 floor2-wiggle-stuck-repair handoff). A window opens on the
- *    first non-excluded wiggle-or-idle sample and keeps accumulating while
- *    the player stays within the anchor radius, but none of that time lands
+ *    first non-excluded sample — regardless of that sample's own wiggle/idle
+ *    classification, so a slow-but-steady crawl that never escapes the
+ *    anchor radius still counts — and keeps accumulating while the player
+ *    stays within the anchor radius, but none of that time lands
  *    in `stuckMs` until the window's total duration reaches
  *    {@link SummaryThresholds.stuckSustainedMs} ("more than a couple
  *    seconds", per the issue) — a brief combat-positioning pause is normal
@@ -418,18 +420,19 @@ export function summarizeEvents(
     }
 
     // "Stuck" is a SUSTAINED failure to travel past the anchor radius,
-    // measured directly from sampled position — not from the wiggle/idle
-    // per-sample flags alone (a sample can be "wiggle" or "idle" in
-    // isolation yet still be part of genuine, if slow, forward progress; a
-    // half-second combat-positioning pause is normal play, not a defect). A
-    // window opens on the first non-excluded wiggle/idle sample, anchors to
-    // that position, and accumulates for as long as the player stays within
-    // the anchor radius — but that time only lands in `stuckMs` once the
+    // measured directly from sampled position — NOT gated by the wiggle/idle
+    // per-sample flags (a sample can fail both the wiggle and idle threshold
+    // — e.g. a slow but steady 0.2-1.5ft/sample crawl — and still be part of
+    // a sustained failure to leave a small area, which is exactly the "not
+    // moving very far for more than a couple seconds" case the issue asks
+    // for). A window opens on the first non-excluded sample, anchors to that
+    // position, and accumulates for as long as the player stays within the
+    // anchor radius — but that time only lands in `stuckMs` once the
     // window's total duration reaches `stuckSustainedMs` ("a couple
     // seconds", per the issue). Escaping the radius, or hitting an excluded
     // sample, closes the window; if it never reached the sustained
     // threshold, none of its time counted at all.
-    const candidateStuck = !isExcluded && (isWiggle || isIdle);
+    const candidateStuck = !isExcluded;
     if (candidateStuck) {
       const withinAnchor =
         stuckWindowAccumMs > 0 &&

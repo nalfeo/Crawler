@@ -167,6 +167,27 @@ describe('headless runner AI telemetry', () => {
     expect(mq.travelEfficiency).toBeLessThanOrEqual(1);
   });
 
+  it('computes movementQuality identically regardless of the caller-controlled eventSampleInterval', async () => {
+    // Regression test: `movementQuality` must sample at one canonical,
+    // fixed cadence rather than inheriting `eventSampleInterval`. Otherwise
+    // identical gameplay reports different wiggle/idle/stuck percentages
+    // depending on a logging option alone — e.g. the win-rate sweep runner
+    // passes eventSampleInterval: 60 while normal runs default to 15 (see
+    // scripts/agent/perf/winrate-sweep.ts).
+    const runWith = (eventSampleInterval: number) =>
+      runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+        seed: 42,
+        maxFrames: 200,
+        maxWallTimeMs: 30_000,
+        forceWeaponId: 'sword',
+        eventSampleInterval,
+      });
+
+    const [defaultCadence, sweepCadence] = await Promise.all([runWith(15), runWith(60)]);
+
+    expect(sweepCadence.movementQuality).toEqual(defaultCadence.movementQuality);
+  });
+
   it('supports jumping to an arbitrary player level at run start', async () => {
     const provider = new ScriptedDecisionProvider();
     const stats = await runHeadless(provider, {

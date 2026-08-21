@@ -2,7 +2,10 @@
 
 **Date**: 2026-08-21
 **Session slug**: floor2-wiggle-stuck-repair
-**Closes**: #3198
+**Progress on**: #3198 (partial repair — telemetry redefinition ships in full;
+the territory-boundary fix drives `stuckPct` under the issue's 1% target on the
+seed checked in depth, but combined stuck+wiggle time and other Floor 2 seeds
+remain above 1% — see "Scope" below. Issue stays open for the residual work.)
 **Apple estimate**: 🍎🍎🍎 (3 apples)
 
 ## Systems touched
