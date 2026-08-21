@@ -1,5 +1,39 @@
 [
   {
+    "commit": "2b459030c3edcb1d7a4aeb51ee66c34bc75df113",
+    "commitDate": "2026-08-21T08:41:52Z",
+    "commitSubject": "Bound CI recovery on scope-mismatched PRs (#3204)",
+    "capturedAt": "2026-08-21T09:43:44.743Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32465459658",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/2b459030c3edcb1d7a4aeb51ee66c34bc75df113.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/2b459030c3edcb1d7a4aeb51ee66c34bc75df113.fun-report.json"
+    }
+  },
+  {
     "commit": "8b56d574ffb4f352416e99c7c330600c66b315d9",
     "commitDate": "2026-08-21T06:55:07Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (2 art paths) (#3202)",
