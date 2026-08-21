@@ -88,6 +88,15 @@ base is non-negative; this prevents a displayed `0` from implying a gear bonus.
 captures the fixed equipped state with 24 declared regions and zero deterministic
 blockers.
 
+### Display-precision stat emphasis
+
+Move Speed could be a small positive raw value (for example `0.0025`) while
+rendering as `0.00`. The former implementation compared raw values and separately
+formatted strings (`"0.00"` versus `"0"`), which incorrectly marked that visible
+zero as a green bonus. The comparison now uses numeric values at the same precision
+shown to the player. The real-Phaser e2e test explicitly asserts a rendered zero
+Move Speed value remains neutral.
+
 ## Validation
 
 - `npx vitest run tests/ecs/equip-delta-preview.test.ts` — 16 passed.
@@ -103,6 +112,8 @@ blockers.
 - `npx vitest run --project e2e tests/e2e/inventory-flow.test.ts -t "uses square labeled slots"` — passed.
 - `npm run review:visual:deterministic` — 30 passed after the v0.1.6 changes.
 - `npm run verify:fast` — passed after the v0.1.6 changes.
+- `npx vitest run --project e2e tests/e2e/inventory-flow.test.ts -t "uses square labeled slots"` — passed after the display-precision fix.
+- `npm run verify:fast` — passed after the display-precision fix.
 
 ## Systems touched
 

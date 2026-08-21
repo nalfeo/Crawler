@@ -1929,10 +1929,12 @@ export function createEquipmentUI(
     const drawStat = (statId: StatId): void => {
       const value = effective[statId] ?? 0;
       const base = baseStore[statId]?.[playerEid] ?? 0;
-      // Match the highlight to the player-visible precision. Tiny floating-point
-      // differences that round to the same display value are not meaningful bonuses.
-      const buffed =
-        value > 0 && base >= 0 && value > base && formatStatValue(value) !== formatStatValue(base);
+      // Match the highlight to player-visible precision. A fractional bonus such
+      // as 0.0025 renders as "0.00", so comparing the raw values (or their
+      // differently formatted strings) would incorrectly paint a displayed zero green.
+      const displayedValue = Number(formatStatValue(value));
+      const displayedBase = Number(formatStatValue(base));
+      const buffed = displayedValue > 0 && displayedBase >= 0 && displayedValue > displayedBase;
       drawRow(
         formatStatLabel(statId),
         formatStatValue(value),

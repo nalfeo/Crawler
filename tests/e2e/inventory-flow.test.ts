@@ -878,6 +878,26 @@ describe('equipment decision gate (e2e)', () => {
           'zero-valued stats must not imply a positive gear bonus with green text',
         ).not.toBe('#49d06f');
       }
+      const moveSpeed = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) => run.region === 'stats' && run.text === 'Move Speed',
+      );
+      expect(moveSpeed, 'Move Speed should be present in the stats column').toBeDefined();
+      const moveSpeedValue = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) =>
+          moveSpeed !== undefined &&
+          run.region === 'stats' &&
+          run.text !== 'Move Speed' &&
+          Math.abs(run.bounds.y - moveSpeed.bounds.y) <= 1,
+      );
+      expect(moveSpeedValue, 'Move Speed should have a rendered value on its row').toBeDefined();
+      expect(
+        Number(moveSpeedValue?.text),
+        'a value rendered as zero must not imply a positive gear bonus',
+      ).toBe(0);
+      expect(
+        moveSpeedValue?.color.toLowerCase(),
+        'a Move Speed value rendered as zero must use the neutral stat color',
+      ).not.toBe('#49d06f');
     } finally {
       await closeQuietly(context);
     }
