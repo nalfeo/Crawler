@@ -26,8 +26,11 @@ Immediately invoke the **`pr-shepherd` skill** and follow it — it is the autho
 
 ## Crawler merge facts (authoritative)
 
-- **Merge command:** `gh pr merge <n> --auto --squash`. Enables GitHub auto-merge; it completes on its own once required checks pass. Do a bounded final-state verification (`state=MERGED`, non-null `mergeCommit`) — no open-ended polling loops.
-- **Required checks:** only `ci` (aggregate) and `commit-lint`. Everything else is non-required and never blocks merge.
+- **The merge train merges, not you. Do not arm auto-merge.** `merge-train` is itself a **required status check** (ruleset `Merge Train Required Checks`, alongside `ci`), and only the train's promotion loop ever reports that context. `gh pr merge --auto --squash` therefore cannot land a PR here — and `reconcile.mjs` calls `disableAutoMerge()` on admission anyway. Your job is to make a PR _admissible_ (green checks, resolved threads, not `BEHIND`/`DIRTY`), then let CI Recovery label it `merge-train` and let the train land it. Verify final state (`state=MERGED`, non-null `mergeCommit`) — no open-ended polling.
+- **Required checks:** `ci` (aggregate) and `merge-train`. `merge-train` is satisfied only by the train, so a PR with everything else green still shows `BLOCKED` until the train promotes it. That is normal, not a blocker.
+- **How the train lands a PR:** the `merge-train` label is the queue; the train reconciles ~every 30 min; queued PRs are admitted **FIFO** (oldest first); a `behind` head entry is fast-forwarded via update-branch and **holds the FIFO line**; admitted PRs are built into a validated candidate that must pass `Merge Train Validation`; only then does promotion merge them.
+- **`BLOCKED` on a green PR means "waiting for the train."** Do not read it as a human-review or approval gate.
+- **A green Merge Train run does not mean anything merged.** Reconcile exits `0` on every stall path. `No admitted PR is ready for candidate construction` with a non-empty queue means the head of the queue is stuck and everything behind it is starved — check the **oldest** queued PR, not the one you were asked about.
 - **`required_conversation_resolution: true`** — an unresolved review thread blocks auto-merge even when CI is green. Reply to and resolve every thread.
 - **No required human review.** `reviewDecision` is empty by design.
 - **Diagnose before giving up.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`; confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Fix the real failure, then re-arm.

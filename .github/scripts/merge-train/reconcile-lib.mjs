@@ -120,6 +120,80 @@ export function queuePositionAfterRecovery(index, recovery) {
 
 export const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
 
+// Safeguard (2), 2026-08-21 deadlock. The empty-queue liveness detector above
+// only fires when `queued.length === 0`, so it structurally cannot see the
+// inverse failure that actually deadlocked the train: a FULL queue that admits
+// nothing, pass after pass, while reconcile exits 0 and the workflow reports
+// success. Treat "queue non-empty AND zero admitted" as a stall as soon as it
+// persists past this many consecutive reconcile passes.
+export const STALLED_QUEUE_PASS_THRESHOLD = 3;
+
+// Safeguard (3), 2026-08-21 deadlock. A queued PR that the train provably
+// cannot advance (same-repo restricted-branch 403 on update-branch) is left
+// queued on purpose, to avoid the #3027 label-churn livelock. But leaving it
+// queued forever means the head of the queue is permanently un-advanceable.
+// After this many consecutive reconcile passes failing on the SAME head SHA,
+// eject it from the queue and quarantine it with BLOCKED_LABEL, which
+// `router.mjs` already treats as dispatch-blocked -- so quarantine is sticky
+// and CI Recovery will not immediately re-queue it into the same 403 loop.
+export const UNADVANCEABLE_STRIKE_THRESHOLD = 3;
+
+/**
+ * Decides whether a reconcile pass that ended with a non-empty queue and zero
+ * admitted entries has stalled long enough to raise an incident.
+ *
+ * Pure over the observed pass counters so the caller owns all IO. `passes` is
+ * the number of *consecutive* prior passes already observed in this condition,
+ * including the current one.
+ */
+export function evaluateStalledQueue({
+  queuedCount,
+  admittedCount,
+  passes,
+  threshold = STALLED_QUEUE_PASS_THRESHOLD,
+}) {
+  const queued = Number(queuedCount);
+  const admitted = Number(admittedCount);
+  const observed = Number(passes);
+  const limit = Number(threshold);
+  const stalled =
+    Number.isFinite(queued) && queued > 0 && Number.isFinite(admitted) && admitted === 0;
+  if (!stalled) return { stalled: false, alarm: false, passes: 0 };
+  const nextPasses = Number.isFinite(observed) && observed > 0 ? observed : 1;
+  return {
+    stalled: true,
+    alarm: Number.isFinite(limit) && limit > 0 && nextPasses >= limit,
+    passes: nextPasses,
+  };
+}
+
+/**
+ * Decides whether a queued PR the train cannot advance has accumulated enough
+ * consecutive strikes on the same head SHA to be ejected and quarantined.
+ *
+ * Strikes reset whenever the head SHA changes, so a PR that gets rebased
+ * out-of-band (the intended recovery for a restricted-branch 403) is never
+ * penalized for its earlier failures.
+ */
+export function evaluateUnadvanceableStrike({
+  headSha,
+  recordedSha,
+  recordedStrikes,
+  threshold = UNADVANCEABLE_STRIKE_THRESHOLD,
+}) {
+  const sha = String(headSha || '').trim();
+  const priorSha = String(recordedSha || '').trim();
+  const prior = Number(recordedStrikes);
+  const limit = Number(threshold);
+  const carried = sha && sha === priorSha && Number.isFinite(prior) && prior > 0 ? prior : 0;
+  const strikes = carried + 1;
+  return {
+    headSha: sha,
+    strikes,
+    quarantine: Boolean(sha) && Number.isFinite(limit) && limit > 0 && strikes >= limit,
+  };
+}
+
 function stallAnchorMs(pull) {
   const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
   if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;
@@ -147,6 +221,59 @@ export function stalledAdmissionEligiblePulls({
     .sort(
       (left, right) => stallAnchorMs(left) - stallAnchorMs(right) || left.number - right.number,
     );
+}
+
+/**
+ * Serializes an unadvanceable-strike record for embedding in a PR's merge-train
+ * status comment, so strike state survives across reconcile passes without new
+ * storage. Kept as a single greppable HTML comment line.
+ */
+export const UNADVANCEABLE_STRIKE_PREFIX = '<!-- crawler-merge-train-unadvanceable:';
+
+export function renderUnadvanceableStrike({ headSha, strikes }) {
+  const sha = String(headSha || '').trim();
+  const count = Number(strikes);
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  return `${UNADVANCEABLE_STRIKE_PREFIX}${sha}:${safeCount} -->`;
+}
+
+export function parseUnadvanceableStrike(body) {
+  const text = String(body || '');
+  const index = text.indexOf(UNADVANCEABLE_STRIKE_PREFIX);
+  if (index === -1) return { headSha: '', strikes: 0 };
+  const rest = text.slice(index + UNADVANCEABLE_STRIKE_PREFIX.length);
+  const end = rest.indexOf('-->');
+  if (end === -1) return { headSha: '', strikes: 0 };
+  const [sha, count] = rest.slice(0, end).trim().split(':');
+  const parsed = Number.parseInt(String(count || ''), 10);
+  return {
+    headSha: String(sha || '').trim(),
+    strikes: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+  };
+}
+
+/**
+ * Serializes/parses the consecutive stalled-pass counter carried in the managed
+ * merge-train incident issue body, so safeguard (2) can tell a one-off empty
+ * admission pass from a genuine multi-pass stall without new storage.
+ */
+export const STALLED_QUEUE_PASS_PREFIX = '<!-- crawler-merge-train-stalled-passes:';
+
+export function renderStalledQueuePasses(passes) {
+  const count = Number(passes);
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  return `${STALLED_QUEUE_PASS_PREFIX}${safeCount} -->`;
+}
+
+export function parseStalledQueuePasses(body) {
+  const text = String(body || '');
+  const index = text.indexOf(STALLED_QUEUE_PASS_PREFIX);
+  if (index === -1) return 0;
+  const rest = text.slice(index + STALLED_QUEUE_PASS_PREFIX.length);
+  const end = rest.indexOf('-->');
+  if (end === -1) return 0;
+  const parsed = Number.parseInt(rest.slice(0, end).trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 /**

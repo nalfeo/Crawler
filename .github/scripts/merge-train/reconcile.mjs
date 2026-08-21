@@ -40,7 +40,14 @@ import {
   runTrainBuildLoop,
   sameRepository,
   EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  evaluateStalledQueue,
+  evaluateUnadvanceableStrike,
+  parseStalledQueuePasses,
+  parseUnadvanceableStrike,
+  renderStalledQueuePasses,
+  renderUnadvanceableStrike,
   stalledAdmissionEligiblePulls,
+  UNADVANCEABLE_STRIKE_THRESHOLD,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -273,6 +280,103 @@ async function upsertEmptyTrainIncident(stalledPulls, now = new Date()) {
   process.stdout.write(
     `created empty-train incident issue=#${created.data.number} stalled=${stalledPulls.length}\n`,
   );
+}
+
+async function statusCommentBody(prNumber) {
+  const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
+  const stateComment = comments.find((comment) => hasLeadingMarker(comment.body, STATUS_MARKER));
+  return stateComment ? String(stateComment.body || '') : '';
+}
+
+// Reads the persisted unadvanceable-strike record out of the merge-train status
+// comment. Returns the shape `evaluateUnadvanceableStrike` expects.
+function readUnadvanceableStrike(body) {
+  const record = parseUnadvanceableStrike(body);
+  return { recordedSha: record.headSha, recordedStrikes: record.strikes };
+}
+
+const STALLED_TRAIN_INCIDENT_TITLE =
+  'CI incident: Merge train queue is non-empty but admitting nothing';
+
+function renderStalledTrainIncidentBody({ now, queued, passes, headPull }) {
+  const numbers = queued.map((pull) => `#${pull.number}`).join(', ');
+  const head = headPull ? `#${headPull.number}` : 'unknown';
+  return [
+    EMPTY_TRAIN_INCIDENT_MARKER,
+    '## Merge train stalled-queue alarm',
+    '',
+    `- Observed: ${now.toISOString()}`,
+    `- Condition: queue is non-empty but no PR was admitted for candidate construction`,
+    `- Consecutive stalled reconcile passes: ${passes}`,
+    `- Head of FIFO queue (the likely blocker): ${head}`,
+    `- Queued PRs starving behind it: ${queued.length}`,
+    `- PRs: ${numbers}`,
+    '',
+    'The merge train exits `0` on this path, so the workflow reports success while',
+    'nothing merges. Inspect the head-of-queue PR first: if the train cannot advance',
+    'it (for example a restricted-branch `update-branch` 403), it will be ejected and',
+    `quarantined with \`${BLOCKED_LABEL}\` after ${UNADVANCEABLE_STRIKE_THRESHOLD} consecutive strikes.`,
+    '',
+    'This issue is managed by `.github/scripts/merge-train/reconcile.mjs`.',
+    renderStalledQueuePasses(passes),
+  ].join('\n');
+}
+
+async function upsertStalledTrainIncident({ now, queued, passes, headPull }) {
+  const openIncidents = await listOpenIncidentIssues();
+  const existing = openIncidents.find(
+    (issue) =>
+      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+  const body = renderStalledTrainIncidentBody({ now, queued, passes, headPull });
+  if (existing) {
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    process.stdout.write(
+      `updated stalled-train incident issue=#${existing.number} passes=${passes}\n`,
+    );
+    return;
+  }
+  const created = await request(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: { title: STALLED_TRAIN_INCIDENT_TITLE, labels: [EMPTY_TRAIN_INCIDENT_LABEL], body },
+  });
+  process.stdout.write(
+    `created stalled-train incident issue=#${created.data.number} passes=${passes}\n`,
+  );
+}
+
+// Reads the consecutive stalled-pass counter off the managed stalled-train
+// incident issue, and closes it when the train recovers.
+async function readStalledTrainPasses() {
+  const openIncidents = await listOpenIncidentIssues();
+  const existing = openIncidents.find(
+    (issue) =>
+      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+  return existing ? parseStalledQueuePasses(existing.body) : 0;
+}
+
+async function closeStalledTrainIncidentIfAny(reason) {
+  const openIncidents = await listOpenIncidentIssues();
+  const existing = openIncidents.find(
+    (issue) =>
+      issue.title === STALLED_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+  if (!existing) return;
+  await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+    method: 'PATCH',
+    body: {
+      state: 'closed',
+      body: `${String(existing.body || '').trim()}\n\n- Auto-resolved: ${reason}`,
+    },
+  });
+  process.stdout.write(`closed stalled-train incident issue=#${existing.number}\n`);
 }
 
 async function updateStatus(prNumber, status) {
@@ -879,6 +983,45 @@ for (const pr of queued) {
           );
           await dispatchRecoveryGated(pr.number, 'merge-train-restricted-branch-update');
           yieldFifoLine = true;
+          // Safeguard (3): count consecutive failures on the SAME head SHA.
+          // Leaving the PR queued avoids the #3027 label-churn livelock, but
+          // an entry the train can NEVER advance must not stay at the head of
+          // the queue forever. After UNADVANCEABLE_STRIKE_THRESHOLD strikes,
+          // eject it from the queue and quarantine it with BLOCKED_LABEL --
+          // which router.mjs already treats as dispatch-blocked, so CI
+          // Recovery will not immediately re-queue it into the same 403 loop.
+          // Strikes reset on a new head SHA, so an out-of-band rebase (the
+          // intended fix) clears the record instead of being penalized.
+          const strike = evaluateUnadvanceableStrike({
+            headSha: livePr.head.sha,
+            ...readUnadvanceableStrike(await statusCommentBody(pr.number)),
+          });
+          if (strike.quarantine) {
+            process.stderr.write(
+              `quarantine pr=#${pr.number} reason=unadvanceable-restricted-branch strikes=${strike.strikes}\n`,
+            );
+            await removeLabel(pr.number, QUEUE_LABEL);
+            await setLabel(pr.number, BLOCKED_LABEL);
+            await updateStatus(
+              pr.number,
+              `${renderStatus({
+                position: 0,
+                candidateSha: '',
+                state: 'blocked',
+                detail: `Ejected from the merge train after ${strike.strikes} consecutive update-branch 403s on head \`${strike.headSha}\`. The train cannot push to this branch, so it was quarantined to stop it starving the queue. Rebase the branch onto \`main\` out-of-band, then remove the \`${BLOCKED_LABEL}\` label to re-queue.`,
+              })}\n${renderUnadvanceableStrike(strike)}`,
+            );
+          } else {
+            await updateStatus(
+              pr.number,
+              `${renderStatus({
+                position: queued.indexOf(pr) + 1,
+                candidateSha: '',
+                state: 'waiting',
+                detail: `update-branch blocked (403) on head \`${strike.headSha}\`; strike ${strike.strikes}/${UNADVANCEABLE_STRIKE_THRESHOLD} before quarantine.`,
+              })}\n${renderUnadvanceableStrike(strike)}`,
+            );
+          }
         } else if (err.status === 422) {
           // 422 covers "already up-to-date" and stale expected_head_sha —
           // expected, benign, logged so stale-head races stay visible.
@@ -936,9 +1079,31 @@ for (const pr of queued) {
 
 const train = admitted.slice(0, MAX_TRAIN_SIZE);
 if (train.length === 0) {
-  process.stdout.write('No admitted PR is ready for candidate construction\n');
+  // Safeguard (2): a non-empty queue that admits nothing is the exact
+  // signature of the 2026-08-21 FIFO deadlock, and the empty-queue liveness
+  // detector above structurally cannot see it (it requires queued.length===0).
+  // Reconcile exits 0 here, so without this alarm the workflow reports success
+  // on every 30-minute pass while the queue starves indefinitely.
+  const now = new Date();
+  const stall = evaluateStalledQueue({
+    queuedCount: queued.length,
+    admittedCount: admitted.length,
+    passes: (await readStalledTrainPasses()) + 1,
+  });
+  if (stall.alarm) {
+    await upsertStalledTrainIncident({
+      now,
+      queued,
+      passes: stall.passes,
+      headPull: queued[0],
+    });
+  }
+  process.stdout.write(
+    `No admitted PR is ready for candidate construction queued=${queued.length} stalled-passes=${stall.passes}\n`,
+  );
   process.exit(0);
 }
+await closeStalledTrainIncidentIfAny('merge train admitted a candidate again');
 
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;

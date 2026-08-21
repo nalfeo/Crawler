@@ -10,18 +10,25 @@ import {
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  evaluateStalledQueue,
+  evaluateUnadvanceableStrike,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainAttributionVerdict,
   mergeTrainGitEnvironment,
+  parseStalledQueuePasses,
+  parseUnadvanceableStrike,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   queuePositionAfterRecovery,
+  renderStalledQueuePasses,
+  renderUnadvanceableStrike,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   stalledAdmissionEligiblePulls,
   trainCheckTitle,
+  UNADVANCEABLE_STRIKE_THRESHOLD,
 } from './reconcile-lib.mjs';
 import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
 
@@ -1582,7 +1589,7 @@ test('a same-repo update-branch 403 is not treated as a fork dequeue', () => {
   );
 });
 
-test('the same-repo 403 branch does not remove the queue label', () => {
+test('the same-repo 403 branch dequeues only under sticky quarantine', () => {
   const forkBranchStart = RECONCILE_SOURCE.indexOf(
     'if (err.status === 403 && !sameRepository(livePr, repository))',
   );
@@ -1595,11 +1602,36 @@ test('the same-repo 403 branch does not remove the queue label', () => {
   assert.ok(sameRepoBranchStart > forkBranchStart, 'same-repo branch must follow the fork branch');
   assert.ok(branch422Start > sameRepoBranchStart, '422 branch must follow the same-repo branch');
   const sameRepoBranchSource = RECONCILE_SOURCE.slice(sameRepoBranchStart, branch422Start);
+
+  // #3027 livelock guard, narrowed by safeguard (3): the ordinary same-repo 403
+  // path must still leave the PR queued, or CI Recovery re-labels it straight
+  // back into the same 403 forever. Dequeuing is permitted in exactly one
+  // place -- the quarantine branch -- because that path also applies the sticky
+  // BLOCKED_LABEL, which router.mjs treats as dispatch-blocked, so the re-label
+  // loop cannot restart.
+  const quarantineStart = sameRepoBranchSource.indexOf('if (strike.quarantine)');
+  assert.ok(quarantineStart > -1, 'the same-repo 403 branch must evaluate quarantine');
+  const beforeQuarantine = sameRepoBranchSource.slice(0, quarantineStart);
   assert.doesNotMatch(
-    sameRepoBranchSource,
-    /removeLabel\(pr\.number, QUEUE_LABEL\)/,
-    'a same-repo 403 must leave the PR queued (no removeLabel) instead of dequeuing it ' +
-      'like a genuine fork, or CI Recovery will just re-label it into the same 403 forever',
+    beforeQuarantine,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'a same-repo 403 must leave the PR queued (no removeLabel) unless it is being quarantined, ' +
+      'or CI Recovery will just re-label it into the same 403 forever',
+  );
+  const quarantineBranch = sameRepoBranchSource.slice(quarantineStart);
+  const elseStart = quarantineBranch.indexOf('} else {');
+  const quarantineBody = quarantineBranch.slice(0, elseStart);
+  assert.match(
+    quarantineBody,
+    /setLabel\(pr\.number,\s*BLOCKED_LABEL\)/,
+    'any dequeue on this path MUST be paired with the sticky BLOCKED_LABEL, otherwise it ' +
+      'reintroduces the #3027 label-churn livelock',
+  );
+  const afterQuarantineBody = quarantineBranch.slice(elseStart);
+  assert.doesNotMatch(
+    afterQuarantineBody,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'the non-quarantine branch must never dequeue',
   );
   assert.match(
     sameRepoBranchSource,
@@ -1656,5 +1688,110 @@ test('the FIFO break is conditional on yieldFifoLine, not on fork-dequeue alone'
     /dequeuedFork/,
     'the old dequeuedFork-only gate must be gone: it released the line for forks only, ' +
       'leaving same-repo restricted branches to starve the queue indefinitely',
+  );
+});
+
+// --- Safeguard (2): stalled non-empty queue detection (2026-08-21 deadlock) ---
+
+test('evaluateStalledQueue ignores a healthy pass that admitted work', () => {
+  const result = evaluateStalledQueue({ queuedCount: 3, admittedCount: 1, passes: 9 });
+  assert.equal(result.stalled, false);
+  assert.equal(result.alarm, false);
+  assert.equal(result.passes, 0, 'a healthy pass must reset the consecutive stall counter');
+});
+
+test('evaluateStalledQueue ignores an empty queue (owned by the empty-train detector)', () => {
+  const result = evaluateStalledQueue({ queuedCount: 0, admittedCount: 0, passes: 5 });
+  assert.equal(result.stalled, false);
+  assert.equal(result.alarm, false);
+});
+
+test('evaluateStalledQueue detects the deadlock signature but waits out the threshold', () => {
+  const first = evaluateStalledQueue({ queuedCount: 3, admittedCount: 0, passes: 1 });
+  assert.equal(first.stalled, true);
+  assert.equal(first.alarm, false, 'a single stalled pass is not yet an incident');
+
+  const third = evaluateStalledQueue({ queuedCount: 3, admittedCount: 0, passes: 3 });
+  assert.equal(third.stalled, true);
+  assert.equal(third.alarm, true, 'a sustained non-empty/zero-admitted stall must alarm');
+  assert.equal(third.passes, 3);
+});
+
+test('stalled-queue pass counter round-trips through the incident body', () => {
+  assert.equal(parseStalledQueuePasses(renderStalledQueuePasses(4)), 4);
+  assert.equal(parseStalledQueuePasses('no marker here'), 0);
+  assert.equal(parseStalledQueuePasses(renderStalledQueuePasses(0)), 0);
+});
+
+// --- Safeguard (3): eject + quarantine an un-advanceable head entry ---
+
+test('evaluateUnadvanceableStrike accumulates strikes on an unchanged head sha', () => {
+  const sha = 'd'.repeat(40);
+  const first = evaluateUnadvanceableStrike({ headSha: sha, recordedSha: '', recordedStrikes: 0 });
+  assert.equal(first.strikes, 1);
+  assert.equal(first.quarantine, false);
+
+  const second = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: sha,
+    recordedStrikes: first.strikes,
+  });
+  assert.equal(second.strikes, 2);
+  assert.equal(second.quarantine, false, 'quarantine must not fire before the threshold');
+
+  const third = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: sha,
+    recordedStrikes: second.strikes,
+  });
+  assert.equal(third.strikes, UNADVANCEABLE_STRIKE_THRESHOLD);
+  assert.equal(third.quarantine, true, 'the train must eject an entry it can never advance');
+});
+
+test('evaluateUnadvanceableStrike resets strikes when the branch is rebased out-of-band', () => {
+  const oldSha = 'd'.repeat(40);
+  const newSha = 'e'.repeat(40);
+  const result = evaluateUnadvanceableStrike({
+    headSha: newSha,
+    recordedSha: oldSha,
+    recordedStrikes: 2,
+  });
+  assert.equal(result.strikes, 1, 'a new head sha is a fresh attempt, not a continuing strike');
+  assert.equal(result.quarantine, false);
+});
+
+test('unadvanceable strike record round-trips through the status comment', () => {
+  const sha = 'f'.repeat(40);
+  const encoded = renderUnadvanceableStrike({ headSha: sha, strikes: 2 });
+  assert.deepEqual(parseUnadvanceableStrike(encoded), { headSha: sha, strikes: 2 });
+  assert.deepEqual(parseUnadvanceableStrike('## Merge train\n\n- State: `waiting`'), {
+    headSha: '',
+    strikes: 0,
+  });
+});
+
+test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () => {
+  const branch = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (strike.quarantine)'));
+  const body = branch.slice(0, branch.indexOf('} else {'));
+  assert.match(
+    body,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'an un-advanceable PR must be ejected from the queue so it stops starving the FIFO line',
+  );
+  assert.match(
+    body,
+    /setLabel\(pr\.number,\s*BLOCKED_LABEL\)/,
+    'quarantine must use merge-train-blocked, which router.mjs treats as dispatch-blocked, ' +
+      'so CI Recovery cannot immediately re-queue it into the same 403 loop (the #3027 livelock)',
+  );
+});
+
+test('the zero-admitted exit path evaluates the stalled-queue safeguard before exiting', () => {
+  const tail = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (train.length === 0)'));
+  const block = tail.slice(0, tail.indexOf('process.exit(0)'));
+  assert.match(
+    block,
+    /evaluateStalledQueue\(/,
+    'reconcile exits 0 here, so the stall must be evaluated before exit or it stays invisible',
   );
 });
