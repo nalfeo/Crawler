@@ -127,19 +127,18 @@ export const manifestEntrySchema = z
     facingDirection: z.enum(['left', 'right']).optional(),
     /**
      * Optional multi-frame animation descriptor. Present only on entries whose
-     * PNG is a horizontal spritesheet strip rather than a single frame. Absent
+     * PNG is a spritesheet rather than a single frame. Absent
      * entries keep loading as a flat image (backward compatible) — see
      * `preloadGeneratedSprites` in `src/engine/generatedAssets/preload.ts`.
      *
      * CONTRACT (shared between the sprite-generation pipeline and the engine
      * consumer — see `registerGeneratedSpriteAnimations` in
      * `src/engine/generatedAssets/animations.ts`):
-     * - The PNG at `assetPath` is a **single row**, laid out left-to-right,
-     *   of `frameCount` frames each exactly `frameWidth` x `frameHeight` px,
-     *   with no padding/margin between frames (standard Phaser `spritesheet`
-     *   frame numbering: frame `0` is the leftmost cell, frame
-     *   `frameCount - 1` the rightmost).
-     * - **Frame `0` is the walk cycle's designated idle/resting pose.** When
+     * - Without `directions`, the PNG is a **single row**, laid out left-to-right.
+     * - With `directions`, `clips` gives each direction's inclusive frame range
+     *   in the same atlas. Frames are exactly `frameWidth` x `frameHeight` px
+     *   with no padding/margin between cells.
+     * - **Frame `0` of every clip is the walk cycle's designated idle/resting pose.** When
      *   the entity stops moving, the engine snaps back to frame 0 rather than
      *   freezing on whatever mid-stride frame the loop was on — there is no
      *   separate "idle" field; frame 0 of this same strip doubles as idle.
@@ -151,6 +150,35 @@ export const manifestEntrySchema = z
         frameCount: z.number().int().min(2),
         frameRate: z.number().positive(),
         loop: z.boolean().default(true),
+        directions: z
+          .object({
+            north: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            northEast: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            east: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            southEast: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            south: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            southWest: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            west: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+            northWest: z
+              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+              .strict(),
+          })
+          .strict()
+          .optional(),
       })
       .optional(),
     /**
