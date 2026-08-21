@@ -208,7 +208,7 @@ describe('resolveDirectionArrowStates', () => {
     expect(state!.screenX).toBeGreaterThan(region!.x + region!.width);
   });
 
-  it('prefers a label-clear fan placement over a label-overlap fallback', () => {
+  it('fans to a different placement when the baseline label region is reserved', () => {
     const [baseline] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1);
     expect(baseline).toBeDefined();
     const reserved = [
