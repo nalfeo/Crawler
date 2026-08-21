@@ -1,4 +1,4 @@
-import { addComponent, hasComponent, query, setComponent } from 'bitecs';
+import { addComponent, hasComponent, query, setComponent } from "bitecs";
 import {
   DeathTimer,
   DoorState,
@@ -8,37 +8,51 @@ import {
   Player,
   Position,
   Velocity,
-} from '../core/components.js';
-import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
-import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flow-field.js';
-import type { TileMap } from '../core/map/TileMap.js';
-import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
-import { isPointInSafeSpace } from '../core/safe-space.js';
-import { getWorldFloorBehavior } from '../core/floor-behavior.js';
-import type { GameWorld } from '../core/world.js';
-import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
+} from "../core/components.js";
+import {
+  findTilePath,
+  PATH_TRAVERSAL,
+  type TilePoint,
+} from "../core/map/pathfinding.js";
+import {
+  computeFlowField,
+  flowFieldStep,
+  type FlowField,
+} from "../core/map/flow-field.js";
+import type { TileMap } from "../core/map/TileMap.js";
+import { spawnAoeProjectile, spawnEnemyProjectile } from "../core/helpers.js";
+import { isPointInSafeSpace } from "../core/safe-space.js";
+import { getWorldFloorBehavior } from "../core/floor-behavior.js";
+import type { GameWorld } from "../core/world.js";
+import {
+  computeEffectiveSpeed,
+  getStatusEffects,
+} from "../core/status-effects.js";
 import {
   getMobAbilityMovementSpeedMultiplier,
   getMobAbilityRecoveryRemainingMs,
-} from '../core/mob-abilities/runtime.js';
+} from "../core/mob-abilities/runtime.js";
 import {
   cancelEnemyProjectileTelegraph,
   getEffectiveTelegraphMs,
   isEnemyProjectileTelegraphReady,
   startEnemyProjectileTelegraph,
-} from '../core/systems/enemyTelegraph.js';
-import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
-import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
-import { SeededRandom } from '../shared/random.js';
-import { normalize } from '../shared/vec.js';
+} from "../core/systems/enemyTelegraph.js";
+import { ENEMY_PROJECTILE, TeamId } from "../shared/constants.js";
+import { PATH_PERSONA, TRAVERSAL_MODE } from "../shared/enemy-behavior.js";
+import { getWeaponDef } from "../shared/weaponDefs.js";
+import { SeededRandom } from "../shared/random.js";
+import { normalize } from "../shared/vec.js";
 import {
   DEFAULT_GENERATED_VISUAL_WIDTH_FT,
   getEntityNormalizedWeaponAnchor,
-} from '../shared/generated-assets.js';
-import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
-import { getCompanionAIDecision } from './systems/companionAISystem.js';
-import { tagDamageMeta } from '../core/damage-meta.js';
+} from "../shared/generated-assets.js";
+import {
+  getFamilyAIDecision,
+  resolveHostileFallback,
+} from "./systems/familyFeudSystem.js";
+import { getCompanionAIDecision } from "./systems/companionAISystem.js";
+import { tagDamageMeta } from "../core/damage-meta.js";
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -61,7 +75,13 @@ const WAYPOINT_EPSILON = 0.5;
 const NAVIGATION_LOOKAHEAD_FT = 3;
 const WANDER_LOOKAHEAD_FT = 2.5;
 const DOOR_AVOID_RADIUS_TILES = 1;
-const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
+const NAVIGATION_ANGLE_OFFSETS = [
+  0,
+  Math.PI / 4,
+  -Math.PI / 4,
+  Math.PI / 2,
+  -Math.PI / 2,
+] as const;
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
@@ -117,7 +137,7 @@ const SLIME_LEAP_BONUS_SPEED = 0.075;
 const SLIME_LEAP_ARC = 0.15;
 const SLIME_WIGGLE_BLEND = 0.7;
 const SLIME_WIGGLE_FREQUENCY = 0.35;
-const FIREBALL_DEF = getWeaponDef('fireball');
+const FIREBALL_DEF = getWeaponDef("fireball");
 
 interface PathState {
   key: string;
@@ -139,7 +159,7 @@ interface WanderState {
 }
 
 interface SlimeLeapState {
-  phase: 'prep' | 'leap' | 'recover';
+  phase: "prep" | "leap" | "recover";
   untilFrame: number;
   leapDirX: number;
   leapDirY: number;
@@ -150,7 +170,10 @@ interface SlimeLeapState {
 const pathStatesByWorld = new WeakMap<GameWorld, Map<number, PathState>>();
 const doorRevisionByWorld = new WeakMap<GameWorld, DoorRevisionState>();
 const wanderStatesByWorld = new WeakMap<GameWorld, Map<number, WanderState>>();
-const slimeLeapStatesByWorld = new WeakMap<GameWorld, Map<number, SlimeLeapState>>();
+const slimeLeapStatesByWorld = new WeakMap<
+  GameWorld,
+  Map<number, SlimeLeapState>
+>();
 
 /**
  * Cross-enemy memo of computed tile paths, keyed on the same string as each
@@ -232,7 +255,12 @@ function deterministicLeapDuration(
   return min + ((h >>> 0) % range);
 }
 
-function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
+function setVelocity(
+  world: GameWorld,
+  eid: number,
+  x: number,
+  y: number,
+): void {
   if (Math.hypot(x, y) > EPSILON) {
     const enemyX = world.stores.position.x[eid] ?? 0;
     const enemyY = world.stores.position.y[eid] ?? 0;
@@ -255,7 +283,8 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // above base, so this is a pure raise-up-toward-player of the base speed.
   const decision = getFamilyAIDecision(world, eid);
   const rampSpeed = decision?.effectiveSpeed;
-  const rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  const rampedBase =
+    rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
   // Then compose active status effects on top — the single seam every enemy
   // speed read (wander, slime-leap prep/pounce, and the speed cap) derives
   // from. Because the slow multiplies the ramped base, status slows genuinely
@@ -269,14 +298,19 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
 
 function getEnemySpeedCap(world: GameWorld, eid: number): number {
   const baseSpeed = getEnemySpeed(world, eid);
-  if ((world.stores.enemyBehavior.type[eid] ?? AI_TYPE.CHASE) !== AI_TYPE.LEAPER) {
+  if (
+    (world.stores.enemyBehavior.type[eid] ?? AI_TYPE.CHASE) !== AI_TYPE.LEAPER
+  ) {
     return baseSpeed;
   }
   const leapState = getSlimeLeapStateMap(world).get(eid);
-  if (leapState?.phase !== 'leap') {
+  if (leapState?.phase !== "leap") {
     return baseSpeed;
   }
-  return Math.max(baseSpeed + SLIME_LEAP_BONUS_SPEED, baseSpeed * SLIME_LEAP_SPEED_MULT);
+  return Math.max(
+    baseSpeed + SLIME_LEAP_BONUS_SPEED,
+    baseSpeed * SLIME_LEAP_SPEED_MULT,
+  );
 }
 
 function isNearDoor(
@@ -334,7 +368,10 @@ function fleeFromDoorDirection(
     for (let dx = -radiusTiles; dx <= radiusTiles; dx += 1) {
       const tx = tile.x + dx;
       const ty = tile.y + dy;
-      if (!floorMap.tileMap.inBounds(tx, ty) || !floorMap.tileMap.isDoor(tx, ty)) {
+      if (
+        !floorMap.tileMap.inBounds(tx, ty) ||
+        !floorMap.tileMap.isDoor(tx, ty)
+      ) {
         continue;
       }
       const doorX = tx * tileSize + tileSize / 2;
@@ -399,7 +436,13 @@ function applyIdleWander(
         !isPointInSafeSpace(world, aheadX, aheadY);
       if (clear) {
         wanderMap.delete(eid);
-        setNavigatingVelocity(world, eid, flee.x, flee.y, Math.max(0.025, speed * 0.7));
+        setNavigatingVelocity(
+          world,
+          eid,
+          flee.x,
+          flee.y,
+          Math.max(0.025, speed * 0.7),
+        );
         return;
       }
     }
@@ -407,7 +450,9 @@ function applyIdleWander(
 
   let state = wanderMap.get(eid);
   const shouldPickNewDirection =
-    !state || world.frameCount >= state.untilFrame || isBlockedDirection(state.dirX, state.dirY);
+    !state ||
+    world.frameCount >= state.untilFrame ||
+    isBlockedDirection(state.dirX, state.dirY);
 
   if (shouldPickNewDirection) {
     const angle = world.rng.next() * Math.PI * 2;
@@ -442,12 +487,22 @@ function applyIdleWander(
     setVelocity(world, eid, 0, 0);
     return;
   }
-  setNavigatingVelocity(world, eid, state.dirX, state.dirY, Math.max(0.025, speed * 0.45));
+  setNavigatingVelocity(
+    world,
+    eid,
+    state.dirX,
+    state.dirY,
+    Math.max(0.025, speed * 0.45),
+  );
 }
 
-function createSlimePrepState(world: GameWorld, eid: number, previousSign = 1): SlimeLeapState {
+function createSlimePrepState(
+  world: GameWorld,
+  eid: number,
+  previousSign = 1,
+): SlimeLeapState {
   return {
-    phase: 'prep',
+    phase: "prep",
     untilFrame:
       world.frameCount +
       deterministicLeapDuration(
@@ -491,7 +546,8 @@ function applySlimeLeapBehavior(
   const slimeMap = getSlimeLeapStateMap(world);
   let state = slimeMap.get(eid);
   const outsideBand =
-    distanceToPlayer > SLIME_LEAP_RANGE || distanceToPlayer <= SLIME_LEAP_INNER_RANGE;
+    distanceToPlayer > SLIME_LEAP_RANGE ||
+    distanceToPlayer <= SLIME_LEAP_INNER_RANGE;
   if (!state) {
     // Only *begin* a pounce from within the pounce band. Too far → normal chase
     // closes the gap; already on top of the player → nothing to leap at, chase.
@@ -505,13 +561,13 @@ function applySlimeLeapBehavior(
   // Abandon an un-committed wind-up the moment the player leaves the band so the
   // slime never juke-wiggles at melee range (which deadlocked the Floor 1 clear).
   // A committed leap/recovery is allowed to finish below — it is not evasive.
-  if (state.phase === 'prep' && outsideBand) {
+  if (state.phase === "prep" && outsideBand) {
     slimeMap.delete(eid);
     return false;
   }
 
   if (world.frameCount >= state.untilFrame) {
-    if (state.phase === 'prep') {
+    if (state.phase === "prep") {
       // Commit the leap toward where the player is *right now*. A moving player
       // will have slipped aside by the time the slime lands, so it generally
       // whiffs — that is by design.
@@ -522,15 +578,15 @@ function applySlimeLeapBehavior(
         SLIME_LEAP_MIN_FRAMES,
         SLIME_LEAP_MAX_FRAMES,
       );
-      state.phase = 'leap';
+      state.phase = "leap";
       state.leapTotalFrames = leapFrames;
       state.untilFrame = world.frameCount + leapFrames;
       state.leapDirX = toPlayer.x;
       state.leapDirY = toPlayer.y;
       state.wiggleSign *= -1;
-    } else if (state.phase === 'leap') {
+    } else if (state.phase === "leap") {
       // Land and freeze: the slime is now exposed and stationary.
-      state.phase = 'recover';
+      state.phase = "recover";
       state.untilFrame =
         world.frameCount +
         deterministicLeapDuration(
@@ -546,7 +602,7 @@ function applySlimeLeapBehavior(
         slimeMap.delete(eid);
         return false;
       }
-      state.phase = 'prep';
+      state.phase = "prep";
       state.untilFrame =
         world.frameCount +
         deterministicLeapDuration(
@@ -558,36 +614,55 @@ function applySlimeLeapBehavior(
     }
   }
 
-  if (state.phase === 'recover') {
+  if (state.phase === "recover") {
     // Frozen recovery window: hold still so the player can land hits.
     setVelocity(world, eid, 0, 0);
     return true;
   }
 
-  if (state.phase === 'prep') {
+  if (state.phase === "prep") {
     const toPlayer = normalize(playerDx, playerDy);
     // Offset phase per enemy so nearby slimes do not wiggle in perfect sync.
-    const wigglePulse = 0.5 + Math.sin((world.frameCount + eid) * SLIME_WIGGLE_FREQUENCY) * 0.5;
-    const wiggleX = toPlayer.length > EPSILON ? -toPlayer.y * state.wiggleSign : state.wiggleSign;
-    const wiggleY = toPlayer.length > EPSILON ? toPlayer.x * state.wiggleSign : 0;
+    const wigglePulse =
+      0.5 + Math.sin((world.frameCount + eid) * SLIME_WIGGLE_FREQUENCY) * 0.5;
+    const wiggleX =
+      toPlayer.length > EPSILON
+        ? -toPlayer.y * state.wiggleSign
+        : state.wiggleSign;
+    const wiggleY =
+      toPlayer.length > EPSILON ? toPlayer.x * state.wiggleSign : 0;
     const desired = normalize(
       wiggleX * SLIME_WIGGLE_BLEND + toPlayer.x * (1 - SLIME_WIGGLE_BLEND),
       wiggleY * SLIME_WIGGLE_BLEND + toPlayer.y * (1 - SLIME_WIGGLE_BLEND),
     );
-    const prepSpeed = Math.max(0.025, speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3));
+    const prepSpeed = Math.max(
+      0.025,
+      speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3),
+    );
     setNavigatingVelocity(world, eid, desired.x, desired.y, prepSpeed);
     return true;
   }
 
   // Leap: travel along the committed direction with a parabolic lateral arc so
   // the pounce curves dramatically instead of homing in a straight line.
-  const framesIntoLeap = state.leapTotalFrames - Math.max(0, state.untilFrame - world.frameCount);
-  const leapProgress = Math.min(1, Math.max(0, framesIntoLeap / state.leapTotalFrames));
-  const arc = Math.sin(leapProgress * Math.PI) * SLIME_LEAP_ARC * state.wiggleSign;
+  const framesIntoLeap =
+    state.leapTotalFrames - Math.max(0, state.untilFrame - world.frameCount);
+  const leapProgress = Math.min(
+    1,
+    Math.max(0, framesIntoLeap / state.leapTotalFrames),
+  );
+  const arc =
+    Math.sin(leapProgress * Math.PI) * SLIME_LEAP_ARC * state.wiggleSign;
   const perpX = -state.leapDirY;
   const perpY = state.leapDirX;
-  const leapDir = normalize(state.leapDirX + perpX * arc, state.leapDirY + perpY * arc);
-  const leapSpeed = Math.max(speed + SLIME_LEAP_BONUS_SPEED, speed * SLIME_LEAP_SPEED_MULT);
+  const leapDir = normalize(
+    state.leapDirX + perpX * arc,
+    state.leapDirY + perpY * arc,
+  );
+  const leapSpeed = Math.max(
+    speed + SLIME_LEAP_BONUS_SPEED,
+    speed * SLIME_LEAP_SPEED_MULT,
+  );
   setNavigatingVelocity(world, eid, leapDir.x, leapDir.y, leapSpeed);
   return true;
 }
@@ -627,7 +702,10 @@ function setNavigatingVelocity(
     const candidate = rotate(desired.x, desired.y, offset);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isPointInSafeSpace(world, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -663,7 +741,10 @@ function tryUnstuckVelocity(
     const candidate = rotate(desired.x, desired.y, angle);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isPointInSafeSpace(world, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -696,7 +777,10 @@ function getPathStateMap(world: GameWorld): Map<number, PathState> {
  * revision. When the revision changes (a door opened or closed), the cache is
  * cleared so it can never hand back a path computed against stale passability.
  */
-function getSharedPathMemo(world: GameWorld, doorRevision: number): Map<string, TilePoint[]> {
+function getSharedPathMemo(
+  world: GameWorld,
+  doorRevision: number,
+): Map<string, TilePoint[]> {
   let entry = sharedPathMemoByWorld.get(world);
   if (!entry) {
     entry = { revision: doorRevision, map: new Map() };
@@ -749,7 +833,10 @@ export function getDoorRevision(world: GameWorld, tileMap: TileMap): number {
   return existing.revision;
 }
 
-function trimStalePaths(world: GameWorld, pathStates: Map<number, PathState>): void {
+function trimStalePaths(
+  world: GameWorld,
+  pathStates: Map<number, PathState>,
+): void {
   for (const [eid, state] of pathStates.entries()) {
     if (world.frameCount - state.lastTouchedFrame > STALE_PATH_FRAMES) {
       pathStates.delete(eid);
@@ -757,7 +844,11 @@ function trimStalePaths(world: GameWorld, pathStates: Map<number, PathState>): v
   }
 }
 
-function isTileTraversable(world: GameWorld, tile: TilePoint, traversalMode: number): boolean {
+function isTileTraversable(
+  world: GameWorld,
+  tile: TilePoint,
+  traversalMode: number,
+): boolean {
   const floorMap = world.floorMap;
   if (!floorMap || !floorMap.tileMap.inBounds(tile.x, tile.y)) {
     return false;
@@ -785,7 +876,10 @@ function findNearestTraversableTile(
   for (let radius = 1; radius <= TARGET_SEARCH_RADIUS; radius += 1) {
     for (let y = target.y - radius; y <= target.y + radius; y += 1) {
       for (let x = target.x - radius; x <= target.x + radius; x += 1) {
-        if (Math.abs(x - target.x) !== radius && Math.abs(y - target.y) !== radius) {
+        if (
+          Math.abs(x - target.x) !== radius &&
+          Math.abs(y - target.y) !== radius
+        ) {
           continue;
         }
         const candidate = { x, y };
@@ -830,7 +924,10 @@ export function makeFlankTargets(
     floorMap.config.tileSizeFt * 2,
     world.stores.enemyBehavior.flankDistance[eid] || DEFAULT_FLANK_DISTANCE,
   );
-  const sideDistance = Math.max(floorMap.config.tileSizeFt * 1.5, flankDistance * 0.5);
+  const sideDistance = Math.max(
+    floorMap.config.tileSizeFt * 1.5,
+    flankDistance * 0.5,
+  );
   const sideSign = eid % 2 === 0 ? 1 : -1;
   const leftX = -toPlayer.y;
   const leftY = toPlayer.x;
@@ -846,7 +943,11 @@ export function makeFlankTargets(
       playerX + toPlayer.x * flankDistance - leftX * sideDistance * sideSign,
       playerY + toPlayer.y * flankDistance - leftY * sideDistance * sideSign,
     ),
-    asTilePoint(world, playerX + toPlayer.x * flankDistance, playerY + toPlayer.y * flankDistance),
+    asTilePoint(
+      world,
+      playerX + toPlayer.x * flankDistance,
+      playerY + toPlayer.y * flankDistance,
+    ),
     asTilePoint(world, playerX, playerY),
   ];
 }
@@ -860,16 +961,28 @@ function choosePersonaTarget(
   playerY: number,
   traversalMode: number,
 ): TilePoint | null {
-  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+  const persona =
+    world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   const baseTarget = asTilePoint(world, playerX, playerY);
 
   if (persona !== PATH_PERSONA.FLANKER) {
     return findNearestTraversableTile(world, baseTarget, traversalMode);
   }
 
-  const flankTargets = makeFlankTargets(world, eid, enemyX, enemyY, playerX, playerY);
+  const flankTargets = makeFlankTargets(
+    world,
+    eid,
+    enemyX,
+    enemyY,
+    playerX,
+    playerY,
+  );
   for (const target of flankTargets) {
-    const traversable = findNearestTraversableTile(world, target, traversalMode);
+    const traversable = findNearestTraversableTile(
+      world,
+      target,
+      traversalMode,
+    );
     if (traversable) {
       return traversable;
     }
@@ -896,7 +1009,10 @@ function nextWaypointDirection(
   while (pathState.waypointIndex < pathState.waypoints.length) {
     const waypoint = pathState.waypoints[pathState.waypointIndex]!;
     const waypointCenter = floorMap.tileToWorld(waypoint.x, waypoint.y);
-    const delta = normalize(waypointCenter.x - enemyX, waypointCenter.y - enemyY);
+    const delta = normalize(
+      waypointCenter.x - enemyX,
+      waypointCenter.y - enemyY,
+    );
 
     if (delta.length <= maxReach) {
       pathState.waypointIndex += 1;
@@ -927,7 +1043,9 @@ function getGroundFlowField(
   }
 
   const playerTile = floorMap.worldToTile(playerX, playerY);
-  const goal = findNearestTraversableTile(world, playerTile, TRAVERSAL_MODE.GROUND) ?? playerTile;
+  const goal =
+    findNearestTraversableTile(world, playerTile, TRAVERSAL_MODE.GROUND) ??
+    playerTile;
 
   const cached = groundFlowByWorld.get(world);
   if (
@@ -941,8 +1059,15 @@ function getGroundFlowField(
     return cached;
   }
 
-  const field = computeFlowField(floorMap, goal, { traversalMode: PATH_TRAVERSAL.GROUND });
-  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, field };
+  const field = computeFlowField(floorMap, goal, {
+    traversalMode: PATH_TRAVERSAL.GROUND,
+  });
+  const next: GroundFlowCache = {
+    goalX: goal.x,
+    goalY: goal.y,
+    doorRevision,
+    field,
+  };
   groundFlowByWorld.set(world, next);
   return next;
 }
@@ -970,7 +1095,12 @@ export function peekGroundFlowField(world: GameWorld): FlowField | null {
  * clean diagonal. Cardinal centre-seeking is retained because it gently
  * re-centres mobs on the tile lane and matches the validated baseline.
  */
-function followFlowField(world: GameWorld, eid: number, speed: number, field: FlowField): boolean {
+function followFlowField(
+  world: GameWorld,
+  eid: number,
+  speed: number,
+  field: FlowField,
+): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) {
     return false;
@@ -1016,7 +1146,8 @@ function followPathWithCaching(
   const pathStates = getPathStateMap(world);
   const refreshFrames = Math.max(
     1,
-    world.stores.enemyBehavior.pathRefreshFrames[eid] || DEFAULT_PATH_REFRESH_FRAMES,
+    world.stores.enemyBehavior.pathRefreshFrames[eid] ||
+      DEFAULT_PATH_REFRESH_FRAMES,
   );
   const enemyTile = asTilePoint(
     world,
@@ -1043,7 +1174,9 @@ function followPathWithCaching(
     if (path === undefined) {
       path = findTilePath(floorMap, enemyTile, targetTile, {
         traversalMode:
-          traversalMode === TRAVERSAL_MODE.FLYING ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,
+          traversalMode === TRAVERSAL_MODE.FLYING
+            ? PATH_TRAVERSAL.FLYING
+            : PATH_TRAVERSAL.GROUND,
         maxPathLength: 8_192,
       });
       memo.set(pathKey, path);
@@ -1127,7 +1260,9 @@ function isPlayerInEnemyRoom(
   }
 
   const playerTile = floorMap.worldToTile(playerX, playerY);
-  return floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y) === enemyRoomId;
+  return (
+    floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y) === enemyRoomId
+  );
 }
 
 function applyLegacyChase(
@@ -1258,8 +1393,8 @@ function fireEnemyProjectileFrom(
     // Tag enemy origin so the delayed AoE explosion snapshots the correct
     // source when it propagates metadata (see aoeOnImpactSystem).
     tagDamageMeta(world, projectile, {
-      origin: 'enemy',
-      affinity: 'unscaled',
+      origin: "enemy",
+      affinity: "unscaled",
       scaleWithPrimary: false,
       canCrit: false,
     });
@@ -1314,7 +1449,8 @@ function tryFireEnemyProjectile(
   }
 
   const cooldown = enemyBehavior.fireCooldownMs[eid]!;
-  const effectiveCooldown = cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
+  const effectiveCooldown =
+    cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
   const lastFire = enemyBehavior.lastFireMs[eid]!;
 
   if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
@@ -1335,11 +1471,19 @@ function tryFireEnemyProjectile(
     let originY = position.y[eid]!;
     if (wa) {
       const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
-      const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
-      originX += (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
+      const needsMirror = wa.artFacing !== (facingRight ? "right" : "left");
+      originX +=
+        (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
       originY += wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
     }
-    fireEnemyProjectileFrom(world, eid, originX, originY, direction.x, direction.y);
+    fireEnemyProjectileFrom(
+      world,
+      eid,
+      originX,
+      originY,
+      direction.x,
+      direction.y,
+    );
     return;
   }
 
@@ -1457,7 +1601,8 @@ function applyPathDrivenBehavior(
 ): void {
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
-  const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
+  const traversalMode =
+    world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
   const personaTarget = choosePersonaTarget(
     world,
     eid,
@@ -1469,7 +1614,16 @@ function applyPathDrivenBehavior(
   );
   if (!personaTarget) {
     if (
-      tryFallbackChaseNavigation(world, eid, behaviorType, playerX, playerY, enemyX, enemyY, speed)
+      tryFallbackChaseNavigation(
+        world,
+        eid,
+        behaviorType,
+        playerX,
+        playerY,
+        enemyX,
+        enemyY,
+        speed,
+      )
     ) {
       return;
     }
@@ -1489,7 +1643,11 @@ function applyPathDrivenBehavior(
       attackRange,
     );
     const preferred = asTilePoint(world, rangedTargetFt.x, rangedTargetFt.y);
-    const fallback = findNearestTraversableTile(world, preferred, traversalMode);
+    const fallback = findNearestTraversableTile(
+      world,
+      preferred,
+      traversalMode,
+    );
     if (fallback) {
       targetTile = fallback;
     }
@@ -1509,7 +1667,14 @@ function applyPathDrivenBehavior(
     usedPath = followFlowField(world, eid, speed, groundFlow.field);
   }
   if (!usedPath) {
-    usedPath = followPathWithCaching(world, eid, speed, targetTile, traversalMode, doorRevision);
+    usedPath = followPathWithCaching(
+      world,
+      eid,
+      speed,
+      targetTile,
+      traversalMode,
+      doorRevision,
+    );
   }
 
   if (!usedPath) {
@@ -1556,7 +1721,8 @@ function applyPathDrivenBehavior(
 
   // Keep chase/swarm mobs converging on the player instead of mirroring lateral
   // player strafes tile-for-tile when pathing updates are frequent.
-  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+  const persona =
+    world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   if (
     (behaviorType === AI_TYPE.CHASE || behaviorType === AI_TYPE.SWARM) &&
     persona === PATH_PERSONA.NAVIGATOR &&
@@ -1574,13 +1740,19 @@ function applyPathDrivenBehavior(
       if (blended.length > EPSILON) {
         setNavigatingVelocity(world, eid, blended.x, blended.y, speed);
       }
-    } else if (pathDirection.length <= EPSILON && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
+    } else if (
+      pathDirection.length <= EPSILON &&
+      distanceToPlayer > MIN_MOB_PLAYER_DISTANCE
+    ) {
       // Path waypoints exhausted (enemy on or very near the player's tile) but
       // the player has drifted within the tile. Drive toward the player's exact
       // world position so the enemy commits to contact range instead of stopping.
       setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     }
-  } else if (behaviorType !== AI_TYPE.RANGED && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
+  } else if (
+    behaviorType !== AI_TYPE.RANGED &&
+    distanceToPlayer > MIN_MOB_PLAYER_DISTANCE
+  ) {
     // Non-NAVIGATOR, non-RANGED enemies (e.g. FLANKER persona) should never stall
     // mid-pursuit when their path exhausts but the player is still out of contact
     // range. Drive directly toward the player as a gap-closing fallback.
@@ -1598,8 +1770,8 @@ function applyPathDrivenBehavior(
 function applySeparation(
   world: GameWorld,
   activeEnemies: number[],
-  position: GameWorld['stores']['position'],
-  velocity: GameWorld['stores']['velocity'],
+  position: GameWorld["stores"]["position"],
+  velocity: GameWorld["stores"]["velocity"],
   playerX: number,
   playerY: number,
 ): void {
@@ -1783,7 +1955,9 @@ export function enemyAISystem(world: GameWorld): void {
   }
   const playerX = position.x[playerEid]!;
   const playerY = position.y[playerEid]!;
-  const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
+  const swarmEntities = enemyList.filter(
+    (eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM,
+  );
   const activeEnemies: number[] = [];
   const doorRevision = floorMap ? getDoorRevision(world, floorMap.tileMap) : 0;
   const groundFlow = getGroundFlowField(world, playerX, playerY, doorRevision);
@@ -1823,7 +1997,7 @@ export function enemyAISystem(world: GameWorld): void {
     // false in that case. The hate/hostile rival-fallback is resolved lower
     // down, once canDetectPlayer has been computed.
     const companionDecision = getCompanionAIDecision(world, eid);
-    if (companionDecision?.kind === 'disabled') {
+    if (companionDecision?.kind === "disabled") {
       setVelocity(world, eid, 0, 0);
       enemyBehavior.stuckFrames[eid] = 0;
       pathStates.delete(eid);
@@ -1833,7 +2007,9 @@ export function enemyAISystem(world: GameWorld): void {
     }
     const familyDecision = getFamilyAIDecision(world, eid);
     const targetOverride =
-      companionDecision?.bypassPlayerDetection === true ? companionDecision : familyDecision;
+      companionDecision?.bypassPlayerDetection === true
+        ? companionDecision
+        : familyDecision;
     let virtualPlayerX = playerX;
     let virtualPlayerY = playerY;
     if (targetOverride !== undefined && targetOverride.bypassPlayerDetection) {
@@ -1856,9 +2032,12 @@ export function enemyAISystem(world: GameWorld): void {
     // we measure aggro against the virtual target (distanceToPlayer already
     // reflects that), and set `familyBypass` so player-side FOV/room checks
     // don't cancel engagement.
-    const familyBypass = targetOverride !== undefined && targetOverride.bypassPlayerDetection;
+    const familyBypass =
+      targetOverride !== undefined && targetOverride.bypassPlayerDetection;
     const inAggroRange =
-      familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
+      familyBypass ||
+      permanentAggro ||
+      isAggroActive(aggroRange, distanceToPlayer);
     // Cave interiors can share open geometry without sharing a semantic room ID.
     // Evaluate the costly Bresenham LOS only after cheap gates fail and the
     // enemy is in range — avoid O(ray-length) work for already-qualified mobs.
@@ -1877,7 +2056,10 @@ export function enemyAISystem(world: GameWorld): void {
     let canDetectPlayer =
       familyBypass ||
       (!playerHiddenInSafeRoom &&
-        (hasOpenRoomDoor || playerSharesRoom || hasDirectPlayerSight || permanentAggro) &&
+        (hasOpenRoomDoor ||
+          playerSharesRoom ||
+          hasDirectPlayerSight ||
+          permanentAggro) &&
         inAggroRange);
 
     if (world.elapsedMs < aggroEnableAtMs) {
@@ -1917,7 +2099,8 @@ export function enemyAISystem(world: GameWorld): void {
     if (isMoving) {
       enemyBehavior.stuckFrames[eid] = 0;
     } else {
-      enemyBehavior.stuckFrames[eid] = (enemyBehavior.stuckFrames[eid] ?? 0) + 1;
+      enemyBehavior.stuckFrames[eid] =
+        (enemyBehavior.stuckFrames[eid] ?? 0) + 1;
     }
     // A telegraphing enemy is frozen (see below); it must never accumulate a
     // stuck count while stationary-by-design, or it would immediately jiggle
@@ -1970,7 +2153,14 @@ export function enemyAISystem(world: GameWorld): void {
       setVelocity(world, eid, 0, 0);
     } else if (
       behaviorType === AI_TYPE.LEAPER &&
-      applySlimeLeapBehavior(world, eid, playerDx, playerDy, distanceToPlayer, speed)
+      applySlimeLeapBehavior(
+        world,
+        eid,
+        playerDx,
+        playerDy,
+        distanceToPlayer,
+        speed,
+      )
     ) {
       // The slime is mid-pounce (telegraph, leap, or frozen recovery) and owns
       // its own movement; nothing else to do this frame.
@@ -1993,7 +2183,15 @@ export function enemyAISystem(world: GameWorld): void {
           groundFlow,
         );
       } else {
-        applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+        applyLegacyChase(
+          world,
+          eid,
+          playerDx,
+          playerDy,
+          distanceToPlayer,
+          aggroRange,
+          speed,
+        );
       }
     } else if (!usePathing) {
       switch (behaviorType) {
@@ -2023,7 +2221,15 @@ export function enemyAISystem(world: GameWorld): void {
           break;
         case AI_TYPE.CHASE:
         default:
-          applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+          applyLegacyChase(
+            world,
+            eid,
+            playerDx,
+            playerDy,
+            distanceToPlayer,
+            aggroRange,
+            speed,
+          );
           break;
       }
     } else {
@@ -2071,7 +2277,11 @@ export function enemyAISystem(world: GameWorld): void {
     // off while telegraphing (stuckFrames is already forced to 0 above, but
     // the explicit guard removes any doubt this can never fire mid-telegraph).
     const stuckFrames = enemyBehavior.stuckFrames[eid] ?? 0;
-    if (stuckFrames > STUCK_FRAMES_THRESHOLD && canDetectPlayer && !isTelegraphing) {
+    if (
+      stuckFrames > STUCK_FRAMES_THRESHOLD &&
+      canDetectPlayer &&
+      !isTelegraphing
+    ) {
       tryUnstuckVelocity(world, eid, playerDx, playerDy, speed, world.rng);
     }
   }
