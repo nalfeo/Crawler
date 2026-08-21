@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "repair-asset-queue",
+  "task_title": "Repair queue provenance and ingestion recovery",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted: recovery is a leased rewrite and audit binds main/queue SHAs; narrowed automatic healing to provable queue deletions rather than reusing promotion filtering, preserving ambiguous replacements and pending re-edits; explicit empty-input repair mode; assets remain atomic PNG/shard groups; destination validation covers incoming assets."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
