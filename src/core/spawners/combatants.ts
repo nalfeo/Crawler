@@ -1,5 +1,5 @@
-import { addComponent, set } from "bitecs";
-import { createInventoryBag } from "../../shared/inventory.js";
+import { addComponent, set } from 'bitecs';
+import { createInventoryBag } from '../../shared/inventory.js';
 import {
   Damage,
   Enemy,
@@ -14,17 +14,17 @@ import {
   Spawner,
   Velocity,
   Weight,
-} from "../components.js";
-import { PHYSICS_BODIES, SHAPE_CIRCLE } from "../physics-defs.js";
-import type { GameWorld } from "../world.js";
-import { DEFAULT_BLOOD_COLOR, TeamId } from "../../shared/constants.js";
-import { PATH_PERSONA, TRAVERSAL_MODE } from "../../shared/enemy-behavior.js";
-import { hashStringToSeed, SeededRandom } from "../../shared/random.js";
-import { createEntity, setBloodColor } from "./entity-core.js";
+} from '../components.js';
+import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
+import type { GameWorld } from '../world.js';
+import { DEFAULT_BLOOD_COLOR, TeamId } from '../../shared/constants.js';
+import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
+import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
+import { createEntity, setBloodColor } from './entity-core.js';
 import {
   TELEGRAPH_MS_UNSET,
   isFloat32SafeNonNegativeTelegraphMs,
-} from "../systems/enemyTelegraph.js";
+} from '../systems/enemyTelegraph.js';
 
 const ENEMY_SIZE_SCALE_MIN = 0.9;
 const ENEMY_SIZE_SCALE_MAX = 1.1;
@@ -36,8 +36,7 @@ function initializeEnemyAppearance(world: GameWorld, eid: number): void {
   );
   const appearanceRng = new SeededRandom(seed);
   const sizeScale =
-    ENEMY_SIZE_SCALE_MIN +
-    appearanceRng.next() * (ENEMY_SIZE_SCALE_MAX - ENEMY_SIZE_SCALE_MIN);
+    ENEMY_SIZE_SCALE_MIN + appearanceRng.next() * (ENEMY_SIZE_SCALE_MAX - ENEMY_SIZE_SCALE_MIN);
   world.stores.sprite.variantRoll[eid] = appearanceRng.next();
   world.stores.sprite.sizeScale[eid] = sizeScale;
   // NOTE(size-weight-slice2): Weight intentionally does NOT scale with the
@@ -48,11 +47,7 @@ function initializeEnemyAppearance(world: GameWorld, eid: number): void {
   // tests/unit/core/knockback.weight.test.ts.
 }
 
-export function setEnemyAppearanceKey(
-  world: GameWorld,
-  eid: number,
-  key: string,
-): void {
+export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string): void {
   if (key.length === 0) {
     world.enemyAppearanceKeys.delete(eid);
     return;
@@ -60,22 +55,13 @@ export function setEnemyAppearanceKey(
   world.enemyAppearanceKeys.set(eid, key);
 }
 
-export function spawnPlayer(
-  world: GameWorld,
-  x: number,
-  y: number,
-  weight = 180,
-): number {
+export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180): number {
   const eid = createEntity(world);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
-  addComponent(
-    world.ecs,
-    eid,
-    set(Sprite, { textureId: 0, width: 3, height: 3 }),
-  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
   addComponent(
     world.ecs,
     eid,
@@ -107,16 +93,12 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
-  addComponent(
-    world.ecs,
-    eid,
-    set(Sprite, { textureId: 0, width: 2, height: 2 }),
-  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
   addComponent(
     world.ecs,
     eid,
     set(Size, {
-      radius: PHYSICS_BODIES["mob-baseline"].radius,
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
       halfWidth: 0,
       halfHeight: 0,
       shape: SHAPE_CIRCLE,
@@ -158,22 +140,17 @@ export function spawnBehaviorEnemy(
 ): number {
   const eid = createEntity(world);
   const traversalMode = options?.traversalMode ?? TRAVERSAL_MODE.GROUND;
-  const isFlying =
-    options?.isFlying === true || traversalMode === TRAVERSAL_MODE.FLYING;
+  const isFlying = options?.isFlying === true || traversalMode === TRAVERSAL_MODE.FLYING;
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
-  addComponent(
-    world.ecs,
-    eid,
-    set(Sprite, { textureId: 0, width: 2, height: 2 }),
-  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
   addComponent(
     world.ecs,
     eid,
     set(Size, {
-      radius: PHYSICS_BODIES["mob-baseline"].radius,
+      radius: PHYSICS_BODIES['mob-baseline'].radius,
       halfWidth: 0,
       halfHeight: 0,
       shape: SHAPE_CIRCLE,
@@ -303,8 +280,7 @@ export function spawnSpawner(
       // Structural spawners aren't scaled through initializeEnemyAppearance,
       // so we mirror the sprite's half-extents here rather than the registry's
       // default 1.5 — a caller may pass a non-default spriteWidth/Height.
-      radius:
-        Math.max(options.spriteWidth ?? 3, options.spriteHeight ?? 3) * 0.5,
+      radius: Math.max(options.spriteWidth ?? 3, options.spriteHeight ?? 3) * 0.5,
       halfWidth: 0,
       halfHeight: 0,
       shape: SHAPE_CIRCLE,
