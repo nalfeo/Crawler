@@ -827,7 +827,10 @@ for (const pr of queued) {
     // got dequeued (403) fall through naturally so later entries can still be
     // admitted this cycle.
     if (livePr.mergeable_state === 'behind') {
-      let dequeuedFork = false;
+      // Set when this BEHIND PR provably cannot be advanced by the train on
+      // this pass, so holding the FIFO line behind it would stall the whole
+      // queue rather than preserve ordering.
+      let yieldFifoLine = false;
       try {
         await request(
           updateBranchToken,
@@ -847,7 +850,7 @@ for (const pr of queued) {
             `update-branch pr=#${pr.number} fork/no-permission (403): dequeuing to unblock queue\n`,
           );
           await removeLabel(pr.number, QUEUE_LABEL);
-          dequeuedFork = true;
+          yieldFifoLine = true;
         } else if (err.status === 403) {
           // Same-repo PR: a 403 here is NOT proof of a fork (isCrossRepository
           // is false), so this must not be treated the same as the fork case.
@@ -860,10 +863,22 @@ for (const pr of queued) {
           // added/removed every 1-2 min for 3+ days). Leave the PR queued and
           // let the branch owner/agent session update it out-of-band; dispatch
           // recovery so the stall is visible instead of silently repeating.
+          //
+          // Yield the FIFO line as well. Keeping the line held here is what
+          // turned a single un-updatable entry into a total train deadlock:
+          // the train cannot advance this PR on any pass, so every later
+          // queued PR was starved behind it indefinitely while reconcile
+          // reported success and logged only "No admitted PR is ready for
+          // candidate construction" (observed 2026-08-21: #3208 head-of-line,
+          // #3216/#3218 both mergeable and starved for hours). FIFO exists to
+          // stop newer PRs leapfrogging a PR the train is actively advancing;
+          // it must not pin the queue behind one the train provably cannot
+          // advance at all.
           process.stderr.write(
-            `update-branch pr=#${pr.number} same-repo-restricted-branch (403): leaving queued, dispatching recovery\n`,
+            `update-branch pr=#${pr.number} same-repo-restricted-branch (403): leaving queued, yielding FIFO line, dispatching recovery\n`,
           );
           await dispatchRecoveryGated(pr.number, 'merge-train-restricted-branch-update');
+          yieldFifoLine = true;
         } else if (err.status === 422) {
           // 422 covers "already up-to-date" and stale expected_head_sha —
           // expected, benign, logged so stale-head races stay visible.
@@ -888,9 +903,12 @@ for (const pr of queued) {
       }
       // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
       // The BEHIND PR will re-enter on the next reconcile once its branch is
-      // current and required CI passes. Skip the break for dequeued forks: the
-      // blocking PR is gone from the queue so later entries can still be admitted.
-      if (!dequeuedFork) break;
+      // current and required CI passes. Skip the break when this entry could
+      // not be advanced at all (dequeued fork, or a same-repo restricted
+      // branch the train cannot push to): the line is no longer being held
+      // for a PR that is making progress, so later entries can still be
+      // admitted instead of starving behind a permanently stuck head.
+      if (!yieldFifoLine) break;
     } else {
       // Fence the legacy auto-merge path before this PR can be sequentially
       // squash-merged, so it cannot land out of order underneath promotion.

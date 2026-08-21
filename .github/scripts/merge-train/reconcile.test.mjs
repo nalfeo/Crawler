@@ -1607,3 +1607,54 @@ test('the same-repo 403 branch does not remove the queue label', () => {
     'a same-repo 403 must dispatch recovery so the stall is visible instead of silently repeating',
   );
 });
+
+// ---------------------------------------------------------------------------
+// A same-repo restricted-branch 403 must also YIELD THE FIFO LINE.
+//
+// Regression: 2026-08-21. #3208 (`nalfeo-repair-asset-queue`) sat at the head
+// of the queue in `behind` state and 403'd on update-branch every pass. The
+// same-repo branch correctly left it queued, but still fell through to the
+// unconditional `break`, so reconcile admitted nothing and exited with
+// "No admitted PR is ready for candidate construction" on every 30-minute
+// cycle -- while #3216 and #3218 sat behind it fully green, mergeable, and
+// starved. The workflow reported `success` throughout, so the deadlock was
+// invisible in run status.
+//
+// FIFO ordering exists to stop newer PRs leapfrogging a PR the train is
+// actively advancing. A PR the train provably cannot advance on any pass is
+// not being advanced, so it must not pin the line.
+// ---------------------------------------------------------------------------
+test('a same-repo restricted-branch 403 yields the FIFO line so later PRs are not starved', () => {
+  const forkBranchStart = RECONCILE_SOURCE.indexOf(
+    'if (err.status === 403 && !sameRepository(livePr, repository))',
+  );
+  const sameRepoBranchStart = RECONCILE_SOURCE.indexOf(
+    'same-repo-restricted-branch (403)',
+    forkBranchStart,
+  );
+  const branch422Start = RECONCILE_SOURCE.indexOf('err.status === 422', sameRepoBranchStart);
+  assert.ok(sameRepoBranchStart > -1, 'same-repo 403 branch must exist');
+  const sameRepoBranchSource = RECONCILE_SOURCE.slice(sameRepoBranchStart, branch422Start);
+  assert.match(
+    sameRepoBranchSource,
+    /yieldFifoLine = true/,
+    'a same-repo restricted-branch 403 must set yieldFifoLine so the loop keeps admitting ' +
+      'later queued PRs instead of deadlocking the entire train behind an entry the ' +
+      'train can never advance',
+  );
+});
+
+test('the FIFO break is conditional on yieldFifoLine, not on fork-dequeue alone', () => {
+  assert.match(
+    RECONCILE_SOURCE,
+    /if \(!yieldFifoLine\) break;/,
+    'the FIFO break must be gated on yieldFifoLine so every un-advanceable BEHIND entry ' +
+      '(fork dequeue AND same-repo restricted branch) releases the line',
+  );
+  assert.doesNotMatch(
+    RECONCILE_SOURCE,
+    /dequeuedFork/,
+    'the old dequeuedFork-only gate must be gone: it released the line for forks only, ' +
+      'leaving same-repo restricted branches to starve the queue indefinitely',
+  );
+});
