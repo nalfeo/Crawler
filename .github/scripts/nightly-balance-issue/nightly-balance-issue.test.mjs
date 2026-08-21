@@ -4,9 +4,8 @@ import test from 'node:test';
 
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import {
-  buildFinalAggregateArtifactClause,
   buildIssueBody,
-  FINAL_AGGREGATE_ARTIFACTS,
+  buildReleaseBaselineClause,
   ISSUE_BODY,
   ISSUE_LABELS,
   ISSUE_TITLE,
@@ -117,7 +116,7 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /exact head SHA/,
     /Shipped\/default runtime configuration only/,
     /telemetry-backed causal attribution/,
-    /real Floor-1 production reachability/,
+    /real production reachability on a floor the baseline actually covers/,
     /Propose UP TO 3, including zero; never fill quota/,
     /Never use individual\/selected shards/,
     /dormant definitions, unreachable code are ineligible/,
@@ -133,12 +132,14 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
-  assert.equal(ISSUE_BODY.includes(buildFinalAggregateArtifactClause()), true);
-  assert.match(ISSUE_BODY, /all six FINAL aggregate artifacts/);
-  assert.match(ISSUE_BODY, /100 seeds\/weapon only/);
-  for (const artifact of FINAL_AGGREGATE_ARTIFACTS) {
-    assert.equal(ISSUE_BODY.includes(artifact), true);
-  }
+  assert.equal(ISSUE_BODY.includes(buildReleaseBaselineClause()), true);
+  assert.match(ISSUE_BODY, /Never assume a fixed sweep formulation/);
+  // The sweep formulation is not part of the contract: a fixed weapon list,
+  // seed count, or floor scope would go stale the next time the release sweep
+  // is rebalanced.
+  assert.doesNotMatch(ISSUE_BODY, /100 seeds\/weapon/);
+  assert.doesNotMatch(ISSUE_BODY, /all six FINAL aggregate artifacts/);
+  assert.doesNotMatch(ISSUE_BODY, /weapon-sweep-(?:sword|fireball)/);
   for (const invariant of required) assert.match(ISSUE_BODY, invariant);
 
   assert.doesNotMatch(ISSUE_BODY, /(?:exactly|at least) 3 (?:ideas|candidates)/i);
@@ -489,4 +490,23 @@ test('workflow is scheduled, serialized, least-privilege, and scopes secrets to 
   assert.equal(workflow.match(/\$\{\{ secrets\.CRAWLER_CI_PAT \}\}/g)?.length, 1);
   assert.equal(workflow.match(/^\s+GITHUB_TOKEN:/gm)?.length, 1);
   assert.equal(workflow.match(/\$\{\{ secrets\.GITHUB_TOKEN \}\}/g)?.length, 1);
+});
+
+test('issue body stamps the resolved release baseline when one is available', () => {
+  const baseline = {
+    commit: 'c'.repeat(40),
+    commitDate: '2026-08-20T07:29:59Z',
+    capturedAt: '2026-08-20T08:45:32.263Z',
+    totalRuns: 300,
+    legs: { floor1: { totalWins: 300, totalRuns: 300 }, floor2: { totalWins: 41, totalRuns: 150 } },
+    runUrl: 'https://github.com/nalfeo/Crawler/actions/runs/32345869317',
+    payloadUrl: `https://github.com/nalfeo/Crawler/blob/baselines/by-sha/${'c'.repeat(40)}.json`,
+    funReportUrl: null,
+  };
+  const body = buildIssueBody(77, baseline);
+  assert.match(body, new RegExp(`commit \`${'c'.repeat(40)}\``));
+  assert.match(body, /legs: floor1 300\/300, floor2 41\/150/);
+  assert.match(body, /Re-resolve it before analysis/);
+  // Without a resolved baseline the body still explains how to find it.
+  assert.match(buildIssueBody(77), /Resolve it yourself from the `baselines` branch/);
 });
