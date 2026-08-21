@@ -1755,8 +1755,6 @@ const jsonRoutes = [
     handler: (context) =>
       workflowMutationRoute(context, async (entry) => {
         await refreshQueuedWorkflowItems(entry);
-        const state = await forceLiveState(entry.instanceId);
-        await entry.pushState(state);
         return { workflow: entry.workflow.state, refreshedAt: entry.workflow.lastRefreshAt };
       }),
   },

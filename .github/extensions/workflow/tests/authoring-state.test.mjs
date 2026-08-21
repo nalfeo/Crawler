@@ -37,21 +37,22 @@ test('normalization preserves every canonical DevTools phase and forward-compati
     nextSeq: 14,
   });
 
-  test('normalization retains canonical requests with a name but no optional brief text', () => {
-    const state = normalizeQueue({
-      items: [item(1, { name: 'directional-walk', brief: '' })],
-      selectedId: 'item-1',
-      nextSeq: 2,
-    });
-    assert.equal(state.items.length, 1);
-    assert.equal(state.items[0].name, 'directional-walk');
-    assert.equal(state.items[0].brief, '');
-  });
   assert.deepEqual(
     state.items.map((entry) => entry.stage),
     WORKFLOW_STAGES,
   );
   assert.equal(state.items[12].devToolsOnly, 'done');
+});
+
+test('normalization retains canonical requests with a name but no optional brief text', () => {
+  const state = normalizeQueue({
+    items: [item(1, { name: 'directional-walk', brief: '' })],
+    selectedId: 'item-1',
+    nextSeq: 2,
+  });
+  assert.equal(state.items.length, 1);
+  assert.equal(state.items[0].name, 'directional-walk');
+  assert.equal(state.items[0].brief, '');
 });
 
 test('rewinds only pointers while durable generated artifacts remain addressable', () => {
