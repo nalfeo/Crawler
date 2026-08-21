@@ -1,0 +1,68 @@
+type: character
+name: player-male-south-neutral
+description: |
+  FOUR ALTERNATIVE PLAYER CHARACTER SPRITES in the same neutral standing rest pose.
+  Each cell is a separate high-detail review candidate for the same south-facing
+  3/4 rig;
+  do not depict animation frames, different directions, costume changes, or
+  multiple characters within a cell. This is
+  the same exact televised-dungeon contestant defined by the supplied
+  player-male-neutral-front reference: identical bobblehead scale, cropped
+  simple hair, slight square jaw, muted green/brown belted tunic, leather
+  satchel strap, dark trousers, sturdy boots, warm tan skin, empty hands,
+  palette, outline, and proportions. Do not redesign him.
+
+  Face SOUTH in true classic RPG 3/4 orthographic perspective, with a subtle
+  screen-right turn so the front and appropriate top planes of the head,
+  shoulders, tunic, belt, boots, and satchel strap are simultaneously legible.
+  This is not a symmetric direct-front view and not a 90-degree profile. Use
+  parallel vertical/front edges and perpendicular horizontal construction:
+  no vanishing point, foreshortening, apparent-size change, or receding
+  perspective. Keep a neutral planted stance with no stride, lean, action,
+  weapon, or gesture. Both soles share one stable floor line, with transparent
+  margins around the complete figure. Every candidate must show the complete
+  lower body: two distinct sturdy boots and both visible soles, fully inside its
+  own cell with no crop at the ankles, hem, feet, or shoes.
+
+  Author a 192x256 final portrait rig with enough intentional pixel detail to
+  clearly read two eyes, a distinct mouth pixel cluster below the nose, hairline,
+  square jaw, belt buckle, satchel strap, tunic seams, trouser folds, boot cuffs,
+  and separate front/top planes at actual game scale. The mouth must remain
+  visibly distinct from skin shading at 1x game scale. Pixel art only: flat cel
+  shading, clean dark outline, 2–3 tones per material, purposeful clusters and
+  selective highlights. No
+  gradients, painterly texture, dithering, cast shadow, text, border, floor,
+  background, second character, or second pose.
+
+  Lay out exactly four alternatives in a clean 2x2 reading-order grid. Separate
+  every neighboring candidate with a continuous, empty background gutter at
+  least 3 source pixels wide horizontally and vertically. Do not let any body,
+  outline, boot, or stray pixel cross a gutter.
+size:
+  width: 192
+  height: 256
+anchor:
+  x: 96
+  y: 252
+palette:
+  id: kenney-roguelike
+seedFrames:
+  - path: briefs/characters/seeds/player-male-neutral-front.png
+    note: Exact character identity, proportions, palette, outline, and clothing reference.
+generation:
+  sheet:
+    rows: 2
+    cols: 2
+    emptyCells: []
+    nativeCanvas: 1024
+postprocessing:
+  trimAndFit: false
+  paletteMode: none
+sensors:
+  anchor:
+    mode: center-of-mass
+judge:
+  enabled: true
+  maxVariants: 1
+minVariations: 4
+tags: [player, contestant, male, neutral, south, orthographic, rig-reference]

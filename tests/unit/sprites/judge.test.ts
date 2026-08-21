@@ -325,6 +325,9 @@ describe('judgeVariant — happy path', () => {
     expect(call.request.systemInstructions).toContain('below 3');
     expect(call.request.systemInstructions).toContain('transparency holes');
     expect(call.request.systemInstructions).toContain('disconnected/floating pixel islands');
+    expect(call.request.systemInstructions).toContain(
+      'A missing or indistinguishable required eye, nose, or mouth',
+    );
     // System prompt must embed the (truncated) style guide.
     expect(call.request.systemInstructions).toContain('pixel art style guide content');
   });
