@@ -28,9 +28,9 @@ instance through guided source setup. Validate the source before materializing:
 Q:\src\Goobers\bin\goobers.exe validate --source-tree .goobers
 ```
 
-The first migration deliberately keeps the existing internal gaggle key
-`example`, avoiding a runtime-state rename. It is a compatibility key only;
-the displayed gaggle and all workflow names are Crawler-specific.
+The source gaggle key is `crawler`. Before materializing it, archive or remove
+the external instance's legacy `example` gaggle runtime state so the new source
+has no stale claims or journals to inherit.
 
 Before applying `goobers:approved`, ensure the issue is not already assigned to
 Cloud Copilot. The default-branch intake guard prevents new Cloud Copilot

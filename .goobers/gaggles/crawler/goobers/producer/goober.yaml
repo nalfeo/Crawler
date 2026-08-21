@@ -3,7 +3,7 @@ kind: Goober
 metadata:
   name: producer
 spec:
-  gaggle: example
+  gaggle: crawler
   role: producer
   displayName: Crawler Producer
   instructions: instructions.md

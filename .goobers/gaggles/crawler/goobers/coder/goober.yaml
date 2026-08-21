@@ -3,7 +3,7 @@ kind: Goober
 metadata:
   name: coder
 spec:
-  gaggle: example
+  gaggle: crawler
   role: implementer
   displayName: Crawler Implementer
   instructions: instructions.md

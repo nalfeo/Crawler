@@ -1,7 +1,7 @@
 apiVersion: goobers.dev/v1alpha1
 kind: Gaggle
 metadata:
-  name: example
+  name: crawler
 spec:
   displayName: Crawler
   project:

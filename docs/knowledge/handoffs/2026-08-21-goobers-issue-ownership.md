@@ -13,9 +13,10 @@ workflow and made the GitHub issue intake boundary explicit.
   manual-only `crawler-feature-pr` workflow: approved issue, producer,
   implementer, reviewer, deterministic `npm run verify:fast`, ready-for-review
   PR, and issue close-out. It never merges a PR.
-- The first source migration retains `gaggles/example` as the internal key to
-  avoid stale runtime-state collisions; Crawler names are used for all
-  user-facing names and the branch namespace.
+- The source uses `gaggles/crawler` as both its internal and user-facing name.
+  Cutover requires explicitly archiving or removing the legacy `example`
+  runtime state before materialization, preventing stale claims or journals
+  from leaking across the rename.
 - The trusted Cloud Copilot issue intake rejects `goobers:approved` issues in
   both normal intake and dependency-unblock retries, before any dependency
   query or assignment action.
@@ -38,5 +39,4 @@ workflow and made the GitHub issue intake boundary explicit.
 
 ## Follow-up
 
-After the first source-backed materialization is stable, retire or migrate the
-legacy internal `example` gaggle state before considering a key rename.
+No follow-up is currently needed.
