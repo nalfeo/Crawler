@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "floor2-wiggle-stuck-repair",
+  "task_title": "Floor 2 wiggle/stuck telemetry redefinition + territory-boundary fix",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "Plan sound: reuse/refine existing event-summary machinery, narrow always-on RunStats.movementQuality contract. One residual concern: manual seed spot-checks are weak evidence for a distribution-wide claim (acknowledged honestly in handoff, not a blocking design flaw)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
