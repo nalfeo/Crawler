@@ -208,6 +208,24 @@ describe('resolveDirectionArrowStates', () => {
     expect(state!.screenX).toBeGreaterThan(region!.x + region!.width);
   });
 
+  it('prefers a label-clear fan placement over a label-overlap fallback', () => {
+    const [baseline] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1);
+    expect(baseline).toBeDefined();
+    const reserved = [
+      {
+        x: baseline!.labelScreenX - baseline!.labelWidth / 2 - 4,
+        y: baseline!.labelScreenY - baseline!.labelHeight / 2 - 4,
+        width: baseline!.labelWidth + 8,
+        height: baseline!.labelHeight + 8,
+      },
+    ];
+    const [state] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1, reserved);
+
+    expect(state).toBeDefined();
+    expect(state!.screenX).toBe(baseline!.screenX);
+    expect(state!.screenY).not.toBe(baseline!.screenY);
+  });
+
   it('keeps a down-left arrow on the left half of the screen', () => {
     const states = resolveDirectionArrowStates(
       Array.from({ length: 6 }, (_, index) => waypoint(`sw-${index}`, -60 - index, 100)),
