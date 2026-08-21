@@ -16,7 +16,9 @@
  *   1. `AGENTS.md` still contains every required session policy bullet:
  *      - give an upfront recommendation verdict (recommended / risky /
  *        not recommended) with a short reason
- *      - write plans in session chat unless the human explicitly asks for a file
+ *      - write plans in the session response, and put them in the PR
+ *        description for cloud/coding-agent sessions, unless the human
+ *        explicitly asks for a file
  *      - detach from published PRs unless the human pre-declared local ownership
  *      - default broad sweeps (>10 runs) to GitHub workflow infrastructure
  *      - treat investigation-only sessions as lightweight and split landing fixes
@@ -34,7 +36,7 @@ const POINTER_DOC = '.github/copilot-instructions.md';
 
 const REQUIRED_LINES = [
   '- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.',
-  '- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.',
+  '- **Plans go in the PR description:** When giving a plan, write the full plan in the session response, and for cloud/coding-agent sessions put the full plan in the PR description (not a posted comment — cloud sessions cannot reliably post plan comments). Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.',
   '- **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.',
   '- **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.',
   '- **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.',

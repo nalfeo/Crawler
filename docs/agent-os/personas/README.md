@@ -41,9 +41,13 @@ link back to this section instead of restating it.
 - **Plan-first.** Before writing any code, output your **full plan** in the
   session — the complete, ordered implementation plan, not a one-line summary.
   Plans go in the session response and, for cloud/coding-agent sessions, the
-  PR description — never a posted comment, since cloud sessions cannot
-  reliably post plan comments. Do not hide plans in repo files unless the
-  human explicitly asks for a file artifact.
+  PR description — not a posted PR/session comment, since cloud sessions
+  cannot reliably post those. Do not hide plans in repo files unless the
+  human explicitly asks for a file artifact. This does not exempt the
+  separate, automated issue-intake plan comment required by
+  `.github/scripts/ci-recovery/issue-intake-lib.mjs` — that comment is a
+  distinct trust artifact posted on the source **issue** before any PR
+  exists, not the session's own plan.
 - **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
   actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).
 - **Run the apple-scaled review harness** and record a **review ledger**: a

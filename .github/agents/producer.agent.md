@@ -60,7 +60,7 @@ to that persona's agent:
 
 - [ ] A kickoff verdict (RECOMMENDED / RISKY / NOT RECOMMENDED) was stated before any code.
 - [ ] The ask has one hard measurable gate plus ranked tiebreakers, reflected back and confirmed.
-- [ ] The slice → persona → agent → path plan is in the session response and PR description, with an acyclic dependency graph.
+- [ ] The slice → persona → agent → path plan is in the session response, and in the PR description for cloud/coding-agent sessions, with an acyclic dependency graph.
 - [ ] Every slice is owned by the correct specialist agent, and the seams between slices hold (layer boundaries, wiring, lab-gating).
 - [ ] Genuine game-design decisions were escalated to the human, not decided here.
 - [ ] Apple estimate declared up front and scored at handoff; one coordinating handoff links all child slices.
