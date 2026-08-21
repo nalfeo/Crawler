@@ -174,6 +174,7 @@ import {
   FLOOR2_HUNT_PATROL_RADIUS_FRACTION,
   FLOOR2_HUNT_CHASE_RADIUS_FT,
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
+  FLOOR2_TERRITORY_HYSTERESIS_TILES,
   FLOOR2_HUNT_ENGAGE_FRAMES,
   FLOOR2_HUNT_RECOVERY_FRAMES,
   FLOOR2_HUNT_URGENCY_REMAINING_MS,
@@ -1115,6 +1116,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   private floor2HuntCadenceStartFrame: number = 0;
   private floor2HuntHandledSuppressionUntilFrame: number = 0;
   private readonly floor2HuntPatrolTiles = new Map<string, TilePoint[]>();
+  /**
+   * Schmitt-trigger membership state for {@link resolveFloor2HuntTerritoryMembership}
+   * — one entry per family, `true` while the player is latched "inside" that
+   * family's territory zone. See {@link FLOOR2_TERRITORY_HYSTERESIS_TILES}.
+   */
+  private readonly floor2HuntTerritoryInsideByFamily = new Map<string, boolean>();
   /**
    * Latched XP gem entity for the pre-exit sweep. Holds the target between
    * polls so the AI commits to the nearest gem without rescanning every frame
@@ -3869,6 +3876,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
     this.floor2HuntPatrolTiles.clear();
+    this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;
     this.globalDwellFrames = 0;
     this.questProgressActive = false;
@@ -5932,6 +5940,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
     this.floor2HuntPatrolTiles.clear();
+    this.floor2HuntTerritoryInsideByFamily.clear();
   }
 
   private getFloor2TerritoryZone(world: GameWorld, familyId: FamilyId): TerritoryZone | null {
@@ -5957,6 +5966,44 @@ export class BehaviorTreeAI implements AIInputProvider {
     const dx = tile.x - zone.centerX;
     const dy = tile.y - zone.centerY;
     return dx * dx + dy * dy <= zone.radius * zone.radius;
+  }
+
+  /**
+   * Schmitt-trigger version of {@link isWorldPositionInFloor2TerritoryZone} for
+   * the PLAYER's membership in a hunted family's territory. A player parked
+   * exactly on the plain circle boundary flips membership every single frame
+   * (see {@link FLOOR2_TERRITORY_HYSTERESIS_TILES}), which in turn flips the
+   * ENGAGE-vs-patrol decision every frame — an unrecoverable one-tile
+   * ping-pong that shows up as a sustained wiggle episode in telemetry.
+   *
+   * Uses a wider "stay inside" radius once latched inside, and a narrower
+   * "become inside" radius while latched outside, so genuine, sustained
+   * movement is required to flip membership. State is per-family so hunting
+   * two families in the same run (sequential, never concurrent) does not
+   * cross-contaminate the latch.
+   */
+  private resolveFloor2HuntTerritoryMembership(
+    world: GameWorld,
+    familyId: FamilyId,
+    zone: TerritoryZone,
+    playerX: number,
+    playerY: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const wasInside = this.floor2HuntTerritoryInsideByFamily.get(familyId) ?? false;
+    const tile = floorMap.worldToTile(playerX, playerY);
+    const dx = tile.x - zone.centerX;
+    const dy = tile.y - zone.centerY;
+    const distSq = dx * dx + dy * dy;
+    const effectiveRadius = wasInside
+      ? zone.radius + FLOOR2_TERRITORY_HYSTERESIS_TILES
+      : Math.max(0, zone.radius - FLOOR2_TERRITORY_HYSTERESIS_TILES);
+    const inside = distSq <= effectiveRadius * effectiveRadius;
+    this.floor2HuntTerritoryInsideByFamily.set(familyId, inside);
+    return inside;
   }
 
   private getFloor2HuntPatrolTiles(
@@ -6574,7 +6621,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryZone = this.getFloor2TerritoryZone(world, familyId);
     const playerInTerritory =
       territoryZone !== null &&
-      this.isWorldPositionInFloor2TerritoryZone(world, territoryZone, playerX, playerY);
+      this.resolveFloor2HuntTerritoryMembership(world, familyId, territoryZone, playerX, playerY);
     const familyEnemy =
       playerInTerritory && territoryZone
         ? this.findNearestFloor2HuntEnemy(
@@ -9388,6 +9435,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntCadenceStartFrame = 0;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
     this.floor2HuntPatrolTiles.clear();
+    this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;
     this.globalDwellAnchorY = 0;

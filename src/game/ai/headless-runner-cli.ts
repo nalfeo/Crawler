@@ -300,6 +300,25 @@ async function main(): Promise<void> {
     console.log(`Error:        ${stats.error}`);
   }
 
+  // Compact wasted-motion summary, always available on `stats.movementQuality`
+  // (issue #3198) regardless of whether `--event-log`/`--event-summary` was
+  // passed. When one of those flags IS passed, the fuller "Wasted-Time
+  // Analysis" block below (with episode detail) supersedes this — don't
+  // print both.
+  if (!recording && stats.movementQuality) {
+    const mq = stats.movementQuality;
+    console.log('');
+    console.log('🔍 Movement Quality');
+    console.log(
+      `  Wiggle: ${(mq.wiggleMs / 1000).toFixed(1)}s (${mq.wigglePct.toFixed(1)}%) · ` +
+        `Idle: ${(mq.idleMs / 1000).toFixed(1)}s (${mq.idlePct.toFixed(1)}%) · ` +
+        `Stuck: ${(mq.stuckMs / 1000).toFixed(1)}s (${mq.stuckPct.toFixed(1)}%) · ` +
+        `Excluded: ${(mq.excludedMs / 1000).toFixed(1)}s (${mq.excludedPct.toFixed(1)}%) · ` +
+        `Travel Eff.: ${(mq.travelEfficiency * 100).toFixed(1)}%`,
+    );
+    console.log('  (pass --event-summary <file> for episode-level detail)');
+  }
+
   // Telemetry / event-log output
   if (recording) {
     const summary = summarizeEvents(events);

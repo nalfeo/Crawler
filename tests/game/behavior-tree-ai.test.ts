@@ -1931,6 +1931,84 @@ describe('BehaviorTreeAI', () => {
     expect(target?.eid).toBe(familyEnemy);
   });
 
+  it('does not flip the Floor 2 hunt objective target when parked on the zone boundary (2026-08-21 wiggle fix)', () => {
+    // Regression: seed 42 Floor 2 — `isWorldPositionInFloor2TerritoryZone` is a
+    // plain tile-radius circle check with no hysteresis. A player parked
+    // essentially on the boundary flipped `playerInTerritory` true/false every
+    // single poll, which flipped the ENGAGE-vs-patrol decision every frame —
+    // an unrecoverable ping-pong that manifested as a 36s wiggle episode.
+    // `resolveFloor2HuntTerritoryMembership` fixes this with a Schmitt
+    // trigger: once latched inside/outside, membership only flips after
+    // crossing `FLOOR2_TERRITORY_HYSTERESIS_TILES` tiles past the plain
+    // radius, not right at it. Exercised here through the real objective
+    // callsite (`findFloor2QuestProgressTarget`), alternating the player
+    // between positions just inside/outside the OLD plain-radius boundary —
+    // a plain radius check (or a call that bypassed the hysteresis entirely)
+    // would flip the selected target on every one of these polls.
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(60, 40);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 20, centerY: 20, radius: 10 }];
+    // The family enemy sits at the territory center, so it stays trivially
+    // reachable (well within FLOOR2_HUNT_CHASE_RADIUS_FT) from every player
+    // position exercised below.
+    const centerPos = world.floorMap.tileToWorld(20, 20);
+    const familyEnemy = spawnEnemy(world, centerPos.x, centerPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const ai = new BehaviorTreeAI({ seed: 42 }) as unknown as {
+      findFloor2QuestProgressTarget(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        activeQuest: NonNullable<typeof quest>,
+        progressSuppressed: boolean,
+      ): { eid: number } | null;
+    };
+    const floorMap = world.floorMap;
+    const pollAt = (tx: number, ty: number): { eid: number } | null => {
+      const pos = floorMap.tileToWorld(tx, ty);
+      return ai.findFloor2QuestProgressTarget(world, player, pos.x, pos.y, quest!, true);
+    };
+
+    // Latch inside first (well within the plain radius).
+    expect(pollAt(20, 20)?.eid).toBe(familyEnemy);
+
+    // Alternate between tile distance 9 (just inside the OLD plain radius of
+    // 10) and tile distance 11 (just outside it, but still within the
+    // hysteresis band of radius + 3 = 13) for several consecutive polls.
+    // Under the OLD plain-circle check this alternation would flip
+    // `playerInTerritory` — and therefore the selected target — every poll.
+    for (let i = 0; i < 5; i += 1) {
+      expect(pollAt(29, 20)?.eid).toBe(familyEnemy); // tile dist 9
+      expect(pollAt(31, 20)?.eid).toBe(familyEnemy); // tile dist 11
+    }
+
+    // Now push well past the hysteresis band (tile dist 20, past radius +
+    // HYSTERESIS = 13) — the selected target must actually change once the
+    // player is genuinely outside.
+    expect(pollAt(40, 20)?.eid).not.toBe(familyEnemy);
+  });
+
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
     const farFamily = asFamilyId('imps');
     const nearFamily = asFamilyId('myconids');

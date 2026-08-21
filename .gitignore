@@ -74,3 +74,4 @@ actionlint
 # Stryker mutation testing artifacts (sandbox + HTML/JSON reports)
 .stryker-tmp/
 reports/
+.grade-scratch/
