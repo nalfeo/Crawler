@@ -6,11 +6,11 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "major",
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
       "notes": "",
       "concerns_open": 0,
       "implementer_model": "claude-opus-5",
@@ -18,21 +18,36 @@
       "summary": "Plan review by a separate model found 3 blocking design defects. (1) The stalled-pass counter was stored in an incident issue that was only created once the alarm threshold was reached, so the counter could never read back above 0 and the alarm was structurally unreachable - the entire stall safeguard was dead code. (2) Recovery dispatch fired before the quarantine decision, so an in-flight recovery run could converge, strip the sticky merge-train-blocked label, and re-admit the PR into the same 403 loop. (3) yieldFifoLine was set only on the 403 path, leaving the 422 and unexpected-status paths able to reproduce the original FIFO deadlock. Also flagged strike-reset-on-head-SHA-change as a quarantine evasion vector for a bot that keeps pushing ineffective commits. All 4 corrected in this branch with regression tests."
     },
     "code_review": {
-      "clean": false,
-      "rounds": 1,
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ],
       "implementer_model": "claude-opus-5",
       "summary": "Line-level code review by a separate model independently confirmed the same Critical defect as the plan review: the stalled-queue pass counter was gated behind the very alarm threshold it needed to reach, so evaluateStalledQueue would pin at passes=1 forever and never alarm. Reviewer noted the existing tests only passed because passes was mocked to 3 directly, never exercised across simulated reconcile invocations. Cleared as clean: marker render/parse round-trip (indexOf/slice avoids regex greediness, parseInt NaN fallbacks correct, updateStatus overwrites so markers do not accumulate), threshold off-by-one (fires exactly on the 3rd), FIFO ordering (yielding the line omits the stuck PR from admitted rather than letting later PRs leapfrog an actively-advancing one), idempotency/races, error handling, dead code/reachability, docs accuracy, and the rewritten 3027 label-churn livelock guard. Fix applied: persistence now gated on stall.stalled with a quiet unlabeled tracking issue below threshold and the incident label applied only at alarm; regression test asserts persistence is not gated on alarm.",
       "model": "gemini-3.1-pro-preview",
       "concerns_open": 0
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "grok-4.6",
+      "implementer_model": "claude-opus-5",
+      "head_sha": "915df095a942879a19e54f5518694a2e5becb501",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Verified the stall-record fix in reconcile.mjs: findStalledTrainIncident() lists open issues by merge-train-stall-watch, upsert creates that label from pass 1 and adds ci-incident only at alarm, and read/close share the same finder. The previous unreachable-counter / unlabeled-issue-leak path is gone. FIFO yield and sticky merge-train-blocked quarantine were already sound. Given the explicit user instruction to land the recovery-artifact docs in this same PR, that bundling is in-scope and should not be split. Remaining tests are partly source assertions rather than a mocked GitHub round-trip, but they would fail if the lookup key or unlabeled-create path returned. No blocker-severity findings."
     }
   }
 }
