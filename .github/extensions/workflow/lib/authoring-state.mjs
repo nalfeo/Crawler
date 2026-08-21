@@ -189,7 +189,7 @@ export function normalizeQueue(value) {
 
 export function createRequestItem(state, input) {
   const name = String(input.name ?? '').trim();
-  if (!name) throw new Error('A short asset name is required.');
+  if (!slugify(name)) throw new Error('A short asset name must contain letters or numbers.');
   const seq = state.nextSeq;
   const requestedType = SPRITE_TYPES.has(input.type) ? input.type : 'auto';
   return {
@@ -359,6 +359,35 @@ export function metadataDonePatch(result, previousDurability) {
         ? `${summary} Durable queue push failed (${queueError ?? 'unknown error'}).`
         : summary,
     approvalSummary: null,
+    queueDurability,
+    lastError: null,
+  };
+}
+
+/** Maps the canonical /approve response to the durable Author queue state. */
+export function approvalPatch(result, variantIndex) {
+  const queueStatus = result?.queueCommit?.status ?? null;
+  const queueError = result?.queueCommit?.error;
+  const queueDurability =
+    queueStatus === 'failed'
+      ? 'failed'
+      : queueStatus === 'committed' || queueStatus === 'noop'
+        ? 'ok'
+        : null;
+  const assetPath = typeof result?.assetPath === 'string' ? result.assetPath : null;
+  return {
+    stage: 'approved',
+    approvedAssetPath: assetPath,
+    approvalSummary:
+      queueStatus === 'failed'
+        ? `Approved variant ${variantIndex}, but the assets/queue push failed (${queueError ?? 'unknown error'}).`
+        : `Approved variant ${variantIndex}; ${queueDurability === 'ok' ? 'queued durably on assets/queue.' : 'durability is not confirmed.'}`,
+    checkinBranch: null,
+    checkinIssueUrl: null,
+    checkinIssueTitle: null,
+    checkinIssueBody: null,
+    checkinSummary: null,
+    generationRequestedAt: null,
     queueDurability,
     lastError: null,
   };

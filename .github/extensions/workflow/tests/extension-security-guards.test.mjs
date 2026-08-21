@@ -109,6 +109,16 @@ test('transient authoring phases recover to their prior retryable phase with an 
   assert.match(source, /stage: priorStage,\s*lastError: error\?\.message/);
 });
 
+test('authoring approval delegates to the canonical assets/queue contract', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf("path: '/api/workflow/approve'");
+  const end = source.indexOf("path: '/api/workflow/rewind'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /approveWorkflowVariant\(/);
+  assert.match(route, /approvalPatch\(result, body\.variantIndex\)/);
+  assert.doesNotMatch(route, /acceptAndQueue\(/);
+});
 test('feedback and plan/brief content routes import the shared (not duplicated) helpers', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /from '\.\.\/shared\/sprite-feedback-store\.mjs'/);

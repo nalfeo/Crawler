@@ -131,6 +131,10 @@ export function acceptUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/accept`;
 }
 
+export function runApproveUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/approve`;
+}
+
 export function deleteManifestUrl(baseUrl, variantId) {
   return `${baseUrl}/api/manifest/${enc(variantId)}`;
 }
@@ -559,6 +563,16 @@ export function createSidecarClient(options) {
     return payload;
   }
 
+  async function approveWorkflowVariant(briefId, runId, variantIndex) {
+    const response = await fetchImpl(runApproveUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variantIndex }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to approve sprite variant');
+  }
+
   /**
    * Evict a previously approved variant via `DELETE /api/manifest/:variantId`.
    * Removes the manifest entry, catalog entry, and on-disk PNG. Returns the
@@ -751,6 +765,7 @@ export function createSidecarClient(options) {
     fetchSheets,
     fetchSliceMap,
     acceptVariant,
+    approveWorkflowVariant,
     unapproveVariant,
     getWorkflowState,
     putWorkflowState,

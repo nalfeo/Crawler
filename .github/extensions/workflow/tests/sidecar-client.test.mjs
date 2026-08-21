@@ -20,6 +20,7 @@ import {
   sheetUrl,
   sliceMapUrl,
   acceptUrl,
+  runApproveUrl,
   deleteManifestUrl,
   runPostprocessUrl,
   workflowStateUrl,
@@ -93,6 +94,7 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
   // No sheet → bare slice-map endpoint (no query).
   assert.equal(sliceMapUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/slice-map`);
   assert.equal(acceptUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/accept`);
+  assert.equal(runApproveUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/approve`);
   assert.equal(
     deleteManifestUrl(BASE, 'goblin-archer-var-0'),
     `${BASE}/api/manifest/goblin-archer-var-0`,
@@ -147,6 +149,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   await client.promoteWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'prop', 'rusty-anvil');
   await client.generateWorkflow('briefs/draft/rusty-anvil.yaml');
   await client.generateWorkflowMetadata(['rusty-anvil']);
+  await client.approveWorkflowVariant('rusty-anvil', 'run-1', 0);
   assert.deepEqual(await client.latestWorkflowRun('rusty-anvil', '2026-08-21T00:00:00.000Z'), {
     briefId: 'rusty-anvil',
     runId: 'run-1',
@@ -161,6 +164,8 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(calls[5].options.method, 'POST');
   assert.equal(calls[6].options.method, 'POST');
   assert.match(calls[6].options.body, /"minScore":70/);
+  assert.match(calls[7].url, /\/api\/runs\/rusty-anvil\/run-1\/approve$/);
+  assert.equal(calls[7].options.method, 'POST');
 });
 
 test('listRuns returns the runs array from the sidecar payload with no-store caching', async () => {

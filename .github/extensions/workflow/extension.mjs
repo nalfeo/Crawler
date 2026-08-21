@@ -96,6 +96,7 @@ import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
 import {
   addRequest,
+  approvalPatch,
   emptyQueue,
   mergeChangedItem,
   metadataDonePatch,
@@ -1989,18 +1990,12 @@ const jsonRoutes = [
         const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
         if (!item?.run)
           throw new CanvasError('missing-run', 'A judged run is required before approval.');
-        const result = await acceptAndQueue(
-          entry.instanceId,
+        const result = await entry.client.approveWorkflowVariant(
           item.run.briefId,
           item.run.runId,
           body.variantIndex,
         );
-        await replaceWorkflowItem(entry, item.id, {
-          stage: 'checked-in',
-          approvalSummary: `Approved variant ${body.variantIndex}; queued durably on assets/queue.`,
-          queueDurability: 'ok',
-          lastError: null,
-        });
+        await replaceWorkflowItem(entry, item.id, approvalPatch(result, body.variantIndex));
         return {
           workflow: entry.workflow.state,
           item: selectedItem(entry.workflow.state),

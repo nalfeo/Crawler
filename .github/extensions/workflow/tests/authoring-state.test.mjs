@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   WORKFLOW_STAGES,
   addRequest,
+  approvalPatch,
   mergeChangedItem,
   metadataDonePatch,
   normalizeQueue,
@@ -91,6 +92,13 @@ test('normalization retains canonical requests with a name but no optional brief
   assert.equal(state.items[0].brief, '');
 });
 
+test('request creation rejects a name that cannot become a consumer id', () => {
+  assert.throws(
+    () => addRequest(normalizeQueue({ items: [], selectedId: null, nextSeq: 1 }), { name: '!!!' }),
+    /letters or numbers/,
+  );
+});
+
 test('rewinds only pointers while durable generated artifacts remain addressable', () => {
   const original = item(1, {
     stage: 'checked-in',
@@ -144,6 +152,20 @@ test('metadata completion preserves durable status honestly', () => {
   assert.equal(result.stage, 'done');
   assert.equal(result.queueDurability, 'failed');
   assert.match(result.metadataSummary, /push denied/);
+});
+
+test('approval records the canonical assets/queue commit outcome', () => {
+  const result = approvalPatch(
+    {
+      assetPath: 'public/assets/generated/asset-1-var-0.png',
+      queueCommit: { status: 'failed', error: 'push denied' },
+    },
+    0,
+  );
+  assert.equal(result.stage, 'approved');
+  assert.equal(result.approvedAssetPath, 'public/assets/generated/asset-1-var-0.png');
+  assert.equal(result.queueDurability, 'failed');
+  assert.match(result.approvalSummary, /push denied/);
 });
 
 test('item-level merge retains remote DevTools items while applying the local item change', () => {

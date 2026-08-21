@@ -1647,7 +1647,7 @@ const CLIENT_SCRIPT = String.raw`
         });
       }
       if (selected.stage === 'checked-in' || selected.stage === 'approved') {
-        detail.appendChild(h('div', { class: 'accept-state queued', text: selected.approvalSummary || 'Approved and queued durably on assets/queue.' }));
+        detail.appendChild(h('div', { class: 'accept-state queued', text: selected.approvalSummary || 'Approved; verify durable queue state before tagging.' }));
         controls.appendChild(h('button', { class: 'accept-button', text: 'Tag metadata & finish',
           onclick: function () { workflowPost('/api/workflow/metadata', { itemId: selected.id }, 'Tagging sprite metadata…'); } }));
       }
