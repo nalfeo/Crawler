@@ -30,18 +30,52 @@ function item(seq, patch = {}) {
   };
 }
 
-test('normalization preserves every canonical DevTools phase and forward-compatible fields', () => {
+test('normalization recovers interrupted transient stages while preserving durable queue state', () => {
   const state = normalizeQueue({
-    items: WORKFLOW_STAGES.map((stage, index) => item(index + 1, { stage, devToolsOnly: stage })),
+    items: WORKFLOW_STAGES.map((stage, index) =>
+      item(index + 1, {
+        stage,
+        devToolsOnly: stage,
+        ...(stage === 'generating' ? { generationRequestedAt: '2026-08-21T12:00:00.000Z' } : {}),
+      }),
+    ),
     selectedId: 'item-13',
     nextSeq: 14,
   });
 
   assert.deepEqual(
     state.items.map((entry) => entry.stage),
-    WORKFLOW_STAGES,
+    [
+      'draft',
+      'draft',
+      'candidates',
+      'generating',
+      'sheet',
+      'sheet',
+      'postprocessed',
+      'sheet',
+      'variants',
+      'approved',
+      'checked-in',
+      'approved',
+      'done',
+    ],
   );
   assert.equal(state.items[12].devToolsOnly, 'done');
+});
+
+test('normalization keeps queued Azure generation pollable but recovers an interrupted local request', () => {
+  const state = normalizeQueue({
+    items: [
+      item(1, { stage: 'generating', generationRequestedAt: '2026-08-21T12:00:00.000Z' }),
+      item(2, { stage: 'generating', generationStartedAt: '2026-08-21T12:00:00.000Z' }),
+    ],
+    selectedId: 'item-1',
+    nextSeq: 3,
+  });
+  assert.equal(state.items[0].stage, 'generating');
+  assert.equal(state.items[1].stage, 'candidates');
+  assert.equal(state.items[1].generationStartedAt, null);
 });
 
 test('normalization retains canonical requests with a name but no optional brief text', () => {

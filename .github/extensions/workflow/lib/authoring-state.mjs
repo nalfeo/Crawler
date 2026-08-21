@@ -140,9 +140,41 @@ export function normalizeItem(value) {
   };
 }
 
+/**
+ * Busy stages describe in-memory sidecar calls, so they cannot survive a canvas
+ * restart. Match DevTools recovery by returning interrupted work to its last
+ * retryable stage; queued Azure generation remains generating because polling
+ * can reconnect it through generationRequestedAt.
+ */
+export function recoverInterruptedItem(item) {
+  switch (item.stage) {
+    case 'synthesizing':
+      return { ...item, stage: item.candidates.length > 0 ? 'candidates' : 'draft' };
+    case 'generating':
+      return item.generationRequestedAt !== null
+        ? item
+        : { ...item, stage: 'candidates', generationStartedAt: null };
+    case 'postprocessing':
+    case 'judging':
+      return {
+        ...item,
+        stage: item.run?.candidates?.length ? 'postprocessed' : 'sheet',
+      };
+    case 'tagging':
+      return {
+        ...item,
+        stage: item.metadataSummary ? 'done' : item.checkinIssueUrl ? 'checked-in' : 'approved',
+      };
+    default:
+      return item;
+  }
+}
+
 export function normalizeQueue(value) {
   if (!value || typeof value !== 'object') return emptyQueue();
-  const items = Array.isArray(value.items) ? value.items.map(normalizeItem).filter(Boolean) : [];
+  const items = Array.isArray(value.items)
+    ? value.items.map(normalizeItem).filter(Boolean).map(recoverInterruptedItem)
+    : [];
   const maxSeq = items.reduce((max, item) => Math.max(max, item.seq), 0);
   return {
     ...value,
