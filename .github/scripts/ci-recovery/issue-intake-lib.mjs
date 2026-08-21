@@ -720,7 +720,16 @@ export class IssueNoLongerOpenError extends Error {
   }
 }
 
-export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
+export async function runIssueIntake({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  issue,
+  restart = false,
+}) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
     graphql,
     token,
@@ -770,10 +779,21 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
+    if (
+      restart &&
+      assignmentContext.assignees.some((actor) => actor.id === assignmentContext.copilot.id)
+    ) {
+      await removeIssueAssignees({
+        graphql,
+        token,
+        assignableId: issue.node_id || issue.id,
+        actorIds: [assignmentContext.copilot.id],
+      });
+    }
     assignment = await replaceIssueAssignees({
       graphql,
       token,
-      assignableId: issue.node_id,
+      assignableId: issue.node_id || issue.id,
       actorIds,
     });
   } catch (err) {
