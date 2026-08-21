@@ -5,6 +5,7 @@ import {
   createFloorMainSceneOptions,
 } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
+  companionAISystem,
   enemyAISystem,
   emergentEventSystem,
   familyFeudSystem,
@@ -31,14 +32,14 @@ describe('createFloor1MainSceneOptions', () => {
     {
       floorId: 'floor1',
       beforeWeaponSystems: [floor1PlayerStatSystem],
-      beforeEnemyAISystems: [],
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor1EnemyDirectorSystem],
       foreignSystems: [floor2VictorySystem, emergentEventSystem, familyFeudSystem],
     },
     {
       floorId: 'floor2',
       beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
-      beforeEnemyAISystems: [familyFeudSystem],
+      beforeEnemyAISystems: [companionAISystem, familyFeudSystem],
       afterSpawnerSystems: [],
       foreignSystems: [floor1PlayerStatSystem, floor1EnemyDirectorSystem],
     },
