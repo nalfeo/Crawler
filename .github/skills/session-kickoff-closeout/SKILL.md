@@ -23,7 +23,7 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 5. Declare the apple estimate before editing code. Tooling-only work is capped at 3🍎.
 6. Load durable memory through the memory MCP (`read_graph` or `search_nodes`) when available, and skim `docs/knowledge/memory/` for relevant facts.
 7. Reflect a bounded ask before implementation when the success gate is missing or ambiguous.
-8. Keep plans in session chat unless the human explicitly asks for a file artifact.
+8. Keep plans in the session response, and for cloud/coding-agent sessions also in the PR description — never a posted comment. Do not hide plans in repo files unless the human explicitly asks for a file artifact.
 
 ## Closeout for merge-intent implementation sessions
 
