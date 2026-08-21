@@ -1,20 +1,9 @@
-import { hasComponent, query } from "bitecs";
-import {
-  Companion,
-  DeathTimer,
-  Enemy,
-  Player,
-  Position,
-  Team,
-} from "../../core/components.js";
-import type { GameWorld } from "../../core/world.js";
-import tuning from "../../shared/data/tuning.json";
+import { hasComponent, query } from 'bitecs';
+import { Companion, DeathTimer, Enemy, Player, Position, Team } from '../../core/components.js';
+import type { GameWorld } from '../../core/world.js';
+import tuning from '../../shared/data/tuning.json';
 
-export type CompanionTargetKind =
-  | "rival-primary"
-  | "follow"
-  | "idle"
-  | "disabled";
+export type CompanionTargetKind = 'rival-primary' | 'follow' | 'idle' | 'disabled';
 
 export interface CompanionAIDecision {
   x: number;
@@ -24,10 +13,7 @@ export interface CompanionAIDecision {
   bypassPlayerDetection: true;
 }
 
-const decisionsByWorld = new WeakMap<
-  GameWorld,
-  Map<number, CompanionAIDecision>
->();
+const decisionsByWorld = new WeakMap<GameWorld, Map<number, CompanionAIDecision>>();
 
 /** Public read: the last companion AI decision computed for `eid`. */
 export function getCompanionAIDecision(
@@ -45,8 +31,7 @@ export function resetCompanionAIState(world: GameWorld): void {
 export function companionAISystem(world: GameWorld): void {
   const players = query(world.ecs, [Player, Position]);
   const playerEid = players[0];
-  const decisions =
-    decisionsByWorld.get(world) ?? new Map<number, CompanionAIDecision>();
+  const decisions = decisionsByWorld.get(world) ?? new Map<number, CompanionAIDecision>();
   decisions.clear();
   decisionsByWorld.set(world, decisions);
   if (playerEid === undefined) return;
@@ -63,7 +48,7 @@ export function companionAISystem(world: GameWorld): void {
       decisions.set(eid, {
         x: world.stores.position.x[eid] ?? 0,
         y: world.stores.position.y[eid] ?? 0,
-        kind: "disabled",
+        kind: 'disabled',
         targetEid: undefined,
         bypassPlayerDetection: true,
       });
@@ -75,8 +60,7 @@ export function companionAISystem(world: GameWorld): void {
     const x = world.stores.position.x[eid] ?? 0;
     const y = world.stores.position.y[eid] ?? 0;
 
-    let nearestRival: { eid: number; x: number; y: number; d2: number } | null =
-      null;
+    let nearestRival: { eid: number; x: number; y: number; d2: number } | null = null;
     for (const other of candidates) {
       if (other === eid) continue;
       if (hasComponent(world.ecs, other, DeathTimer)) continue;
@@ -105,7 +89,7 @@ export function companionAISystem(world: GameWorld): void {
       decisions.set(eid, {
         x: nearestRival.x,
         y: nearestRival.y,
-        kind: "rival-primary",
+        kind: 'rival-primary',
         targetEid: nearestRival.eid,
         bypassPlayerDetection: true,
       });
@@ -119,7 +103,7 @@ export function companionAISystem(world: GameWorld): void {
       decisions.set(eid, {
         x,
         y,
-        kind: "idle",
+        kind: 'idle',
         targetEid: undefined,
         bypassPlayerDetection: true,
       });
@@ -128,7 +112,7 @@ export function companionAISystem(world: GameWorld): void {
     decisions.set(eid, {
       x: playerX,
       y: playerY,
-      kind: "follow",
+      kind: 'follow',
       targetEid: playerEid,
       bypassPlayerDetection: true,
     });
