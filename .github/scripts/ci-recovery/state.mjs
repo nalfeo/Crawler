@@ -756,7 +756,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
   'copilot',
 ]);
 
-const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const addressedInPrefixPattern = /^\s*(?:✅\s*)?addressed\s+in\s+<?([^\s>]+)>?/i;
 const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 

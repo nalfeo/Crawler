@@ -1247,6 +1247,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   const commitUrl = `https://github.com/nalfeo/Crawler/commit/${commitSha}`;
   const accepted = new Map([
     ['✅ Addressed in abc1234def: note', 'abc1234def'],
+    ['Addressed in abc1234def: note', 'abc1234def'],
     ['✅ Addressed in abc1234def).', 'abc1234def'],
     [`✅ Addressed in <${commitUrl}>`, commitSha],
     [`✅ Addressed in ${commitUrl},`, commitSha],
@@ -1259,6 +1260,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   }
 
   const rejected = [
+    'Partially addressed in abc1234def: note',
     '✅ Addressed in not-a-commit-link',
     '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1234',
     '✅ Addressed in `abc1234def: note',
