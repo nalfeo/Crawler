@@ -120,13 +120,25 @@ describe('entity-sprite-mappings generated art wiring', () => {
         // Each gender's walk art is a 4-frame, 256x256 strip: it must carry an
         // animation descriptor, else `preloadGeneratedSprites` loads the sheet
         // as a single flat image and the player renders as squashed copies.
-        expect(entry?.animation).toEqual({
+        expect(entry?.animation).toMatchObject({
           frameWidth: 256,
           frameHeight: 256,
           frameCount: 4,
           frameRate: 8,
           loop: true,
         });
+        if (gender === 'male') {
+          expect(entry?.animation?.directions).toEqual({
+            north: { start: 0, end: 3 },
+            northEast: { start: 0, end: 3 },
+            east: { start: 0, end: 3 },
+            southEast: { start: 0, end: 3 },
+            south: { start: 0, end: 3 },
+            southWest: { start: 0, end: 3 },
+            west: { start: 0, end: 3 },
+            northWest: { start: 0, end: 3 },
+          });
+        }
 
         if (variant?.pinnedTextureKey !== undefined) {
           resolvedKeys.add(variant.pinnedTextureKey);

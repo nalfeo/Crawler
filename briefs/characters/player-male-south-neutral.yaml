@@ -57,7 +57,9 @@ generation:
     nativeCanvas: 1024
 postprocessing:
   trimAndFit: false
-  paletteMode: none
+  # Strict runs upstream dynamic mesh recovery before resizing. It preserves
+  # material colours while restoring crisp source-pixel cells on the same canvas.
+  paletteMode: strict
 sensors:
   anchor:
     mode: center-of-mass

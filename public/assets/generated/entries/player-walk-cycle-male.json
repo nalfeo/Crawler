@@ -58,6 +58,16 @@
     "frameHeight": 256,
     "frameCount": 4,
     "frameRate": 8,
-    "loop": true
+    "loop": true,
+    "directions": {
+      "north": { "start": 0, "end": 3 },
+      "northEast": { "start": 0, "end": 3 },
+      "east": { "start": 0, "end": 3 },
+      "southEast": { "start": 0, "end": 3 },
+      "south": { "start": 0, "end": 3 },
+      "southWest": { "start": 0, "end": 3 },
+      "west": { "start": 0, "end": 3 },
+      "northWest": { "start": 0, "end": 3 }
+    }
   }
 }

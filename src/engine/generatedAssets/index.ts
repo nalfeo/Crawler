@@ -11,8 +11,11 @@ export {
 export {
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
+  walkDirectionFromVelocity,
+  WALK_DIRECTIONS,
   type AnimatableSceneLike,
   type AnimationManagerLike,
+  type WalkDirection,
 } from './animations.js';
 
 /**

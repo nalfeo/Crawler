@@ -1,0 +1,63 @@
+type: character
+name: player-walk-cycle-male-south-baseline
+description: |
+  THE MALE PLAYER CHARACTER, SOUTH-FACING BASELINE. Draw the same scrappy
+  underdog contestant used by player-walk-cycle-male, viewed straight on from
+  the south-facing camera direction. This is the canonical identity sheet for
+  the later seven directions.
+
+  Use charming chunky pixel art with flat cel shading, a clean dark outline,
+  bobblehead proportions, cropped simple hair, a slightly square jawline, a
+  worn muted-green or brown tunic, dark trousers and boots, a leather belt and
+  satchel, and empty hands. Keep the figure readable at about 40 pixels tall.
+
+  Produce four ordered in-place walking frames of the same character. Frame 0
+  is the neutral resting pose. Keep the feet on one exact floor line, keep the
+  torso and head centered on one exact vertical pivot, and change only the leg
+  stride and arm swing between frames. The character must face straight toward
+  the camera in every cell; do not turn, mirror, redesign, or change clothing
+  between frames.
+
+  This south-facing sheet is the visual source of truth for all future
+  north, east, west, and diagonal sheets. Preserve its palette, outline weight,
+  body proportions, head size, foot spacing, and silhouette when generating
+  those views.
+
+  Hard negatives: no weapon, shield, armor, cape, helmet, facial hair, text,
+  border, panel, cast shadow, background bleed, clipped limb, or transparent
+  hole caused by a slicing error.
+size:
+  width: 256
+  height: 256
+anchor:
+  x: 128
+  y: 252
+palette:
+  id: kenney-roguelike
+tags:
+  - player
+  - contestant
+  - walk-cycle
+  - animation
+  - gender-male
+  - baseline
+generation:
+  sheet:
+    rows: 2
+    cols: 2
+    emptyCells: []
+    nativeCanvas: 1024
+frameSequence:
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+sensors:
+  anchor:
+    mode: center-of-mass
+  interiorHoles:
+    maxPixels: 64
+judge:
+  enabled: true
+  maxVariants: 4
+minVariations: 0

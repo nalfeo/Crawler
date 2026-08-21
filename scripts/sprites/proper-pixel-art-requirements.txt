@@ -1,0 +1,3 @@
+# Mesh-recovery postprocess adapter. Install with:
+# py -3.12 -m pip install -r scripts/sprites/proper-pixel-art-requirements.txt
+proper-pixel-art==1.7.2

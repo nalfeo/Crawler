@@ -142,7 +142,7 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   return [
     styleGuide,
     '',
-    ...(brief.seedFrames.length > 0 ? [seedFrameBlock(brief.seedFrames.length), ''] : []),
+    ...(brief.seedFrames.length > 0 ? [seedFrameBlock(brief.seedFrames), ''] : []),
     floorContextBlock(brief.floor),
     ...addenda,
     '',
@@ -327,18 +327,33 @@ function cartoonFigureRules(seedFrameCount: number): readonly string[] {
  * matched exactly, not merely referenced for technique.  Placed at the very top
  * of the sheet prompt so it is the first thing the model reads.
  */
-function seedFrameBlock(count: number): string {
-  const s = count === 1 ? '' : 's';
-  const areIs = count === 1 ? 'is a SEED FRAME' : 'are SEED FRAMES';
-  const themIt = count === 1 ? 'it' : 'them';
-  return [
-    '## Seed frames (HIGHEST PRIORITY — read before all other instructions)',
-    `The first ${count} attached reference image${s} ${areIs} — already-approved frame${s} from this exact walk cycle, not general style references.`,
-    '',
-    `CRITICAL: Your output must be INDISTINGUISHABLE from the seed frame${s} in every visual property: character face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, cel-shading style, and overall rendering quality. Do NOT introduce any new design detail, colour, or proportion that is absent from the seed frame${s}.`,
-    '',
-    `Match ${themIt} as your PRIMARY VISUAL REFERENCE for character identity. Treat all other attached images as technique-only style references.`,
-  ].join('\n');
+function seedFrameBlock(seedFrames: Brief['seedFrames']): string {
+  const identityCount = seedFrames.filter((seed) => seed.role === 'identity').length;
+  const poseGuideCount = seedFrames.length - identityCount;
+  const identityS = identityCount === 1 ? '' : 's';
+  const poseGuideS = poseGuideCount === 1 ? '' : 's';
+  const lines = ['## Seed frames (HIGHEST PRIORITY — read before all other instructions)'];
+
+  if (identityCount > 0) {
+    lines.push(
+      `The first ${identityCount} attached reference image${identityS} ${identityCount === 1 ? 'is' : 'are'} already-approved identity seed frame${identityS} from this exact character, not general style references.`,
+      '',
+      `CRITICAL: Your output must be INDISTINGUISHABLE from the identity seed frame${identityS} in every visual property: character face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, cel-shading style, and overall rendering quality. Do NOT introduce any new design detail, colour, or proportion that is absent from the identity seed frame${identityS}.`,
+      '',
+      'Match the identity seed frame(s) as your PRIMARY VISUAL REFERENCE for character identity.',
+    );
+  }
+
+  if (poseGuideCount > 0) {
+    lines.push(
+      '',
+      `The remaining ${poseGuideCount} attached reference image${poseGuideS} ${poseGuideCount === 1 ? 'is' : 'are'} pose guide${poseGuideS}, not character-design reference${poseGuideS}. Follow their ordered pose geometry, gait timing, body pivot, and limb placement only.`,
+      'Do NOT copy a pose guide’s stick-figure proportions, colours, stroke weight, background, or visual style. The identity seed remains authoritative for the finished character.',
+    );
+  }
+
+  lines.push('', 'Treat all other attached images as technique-only style references.');
+  return lines.join('\n');
 }
 
 function typeRulesBlock(brief: Brief): string | null {
@@ -530,8 +545,8 @@ function walkCycleSequenceLine(brief: Brief): string {
       ? ` Cell order follows the grid's reading order: ${rowRanges.join(', then ')} — top-left is frame 1 and bottom-right is frame ${frameCount}.`
       : ' Cells read left-to-right as frames 1 through ' + frameCount + '.';
   return [
-    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, forming one continuous walking stride.${orderNote}`,
-    'Keep identity strictly IDENTICAL across every frame: the same character, same face/head, same outfit and accessories, same color palette, same body proportions, same overall scale, and the same side-view (profile) orientation and camera angle.',
+    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single consistent-view walk-cycle animation for the exact same character, forming one continuous walking stride.${orderNote}`,
+    'Keep identity strictly IDENTICAL across every frame: the same character, same face/head, same outfit and accessories, same color palette, same body proportions, same overall scale, and the same camera direction and angle.',
     'The ONLY thing that may change between frames is the walking pose: leg stride and arm swing progressing smoothly through one gait cycle (for example: left leg forward / neutral mid-stride / right leg forward), so that played back in sequence the character appears to walk in place.',
     "Do not change the character's design, clothing, colors, or size between frames. Do not add or remove props between frames. Do not have the character face a different direction in different frames.",
   ].join('\n');

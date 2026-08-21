@@ -468,14 +468,8 @@ async function readResponse(response, fallback) {
   throw error;
 }
 
-function isSidecarStrictReady(payload) {
-  if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
-    return false;
-  }
-  if (payload.queueBackend === 'azure-queue') {
-    return payload.worker?.running === true && payload.issueIngester?.running === true;
-  }
-  return true;
+function isSidecarReadable(payload) {
+  return payload && payload.status === 'ok' && payload.version === EXPECTED_SIDECAR_VERSION;
 }
 
 /**
@@ -757,7 +751,7 @@ export function createSidecarClient(options) {
         return { ...health, state: 'wrong-repo' };
       }
     }
-    if (!isSidecarStrictReady(payload)) {
+    if (!isSidecarReadable(payload)) {
       return { ...health, state: 'down' };
     }
     return health;

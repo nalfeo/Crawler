@@ -24,10 +24,41 @@ const logger = createLogger('engine:generated-assets');
 
 /** Suffix applied to a texture key to derive its walk-cycle animation key. */
 const WALK_ANIM_SUFFIX = ':walk';
+export const WALK_DIRECTIONS = [
+  'north',
+  'northEast',
+  'east',
+  'southEast',
+  'south',
+  'southWest',
+  'west',
+  'northWest',
+] as const;
+export type WalkDirection = (typeof WALK_DIRECTIONS)[number];
+const VELOCITY_DIRECTIONS: readonly WalkDirection[] = [
+  'east',
+  'southEast',
+  'south',
+  'southWest',
+  'west',
+  'northWest',
+  'north',
+  'northEast',
+];
 
 /** Deterministically derive the Phaser animation key for a texture's walk cycle. */
-export function walkAnimationKey(textureKey: string): string {
-  return `${textureKey}${WALK_ANIM_SUFFIX}`;
+export function walkAnimationKey(textureKey: string, direction?: WalkDirection): string {
+  return direction === undefined
+    ? `${textureKey}${WALK_ANIM_SUFFIX}`
+    : `${textureKey}${WALK_ANIM_SUFFIX}:${direction}`;
+}
+
+/** Quantize a velocity vector to the nearest of the eight compass directions. */
+export function walkDirectionFromVelocity(vx: number, vy: number): WalkDirection {
+  if (vx === 0 && vy === 0) return 'south';
+  const angle = Math.atan2(vy, vx);
+  const index = Math.round((angle / (Math.PI / 4) + 8) % 8);
+  return VELOCITY_DIRECTIONS[index]!;
 }
 
 /** Minimum subset of `Phaser.Animations.AnimationManager` this module needs. */
@@ -72,21 +103,35 @@ export function registerGeneratedSpriteAnimations(
     if (!entry.animation) {
       continue;
     }
-    const key = walkAnimationKey(entry.textureKey);
-    keys.push(key);
-    if (anims.exists(key)) {
-      // Already registered (e.g. scene restart) — do not re-create.
-      continue;
+    const clips = entry.animation.directions;
+    const registrations = clips
+      ? WALK_DIRECTIONS.map((direction) => ({
+          key: walkAnimationKey(entry.textureKey, direction),
+          start: clips[direction].start,
+          end: clips[direction].end,
+        }))
+      : [
+          {
+            key: walkAnimationKey(entry.textureKey),
+            start: 0,
+            end: entry.animation.frameCount - 1,
+          },
+        ];
+    for (const registration of registrations) {
+      keys.push(registration.key);
+      if (anims.exists(registration.key)) {
+        continue;
+      }
+      anims.create({
+        key: registration.key,
+        frames: anims.generateFrameNumbers(entry.textureKey, {
+          start: registration.start,
+          end: registration.end,
+        }),
+        frameRate: entry.animation.frameRate,
+        repeat: entry.animation.loop ? -1 : 0,
+      });
     }
-    anims.create({
-      key,
-      frames: anims.generateFrameNumbers(entry.textureKey, {
-        start: 0,
-        end: entry.animation.frameCount - 1,
-      }),
-      frameRate: entry.animation.frameRate,
-      repeat: entry.animation.loop ? -1 : 0,
-    });
   }
   if (keys.length > 0) {
     logger.info('Registered generated sprite animations', { count: keys.length });

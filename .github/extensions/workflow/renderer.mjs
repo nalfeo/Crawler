@@ -1738,7 +1738,8 @@ const CLIENT_SCRIPT = String.raw`
       ? { key: focused.getAttribute('data-yaml-draft-key'), start: focused.selectionStart, end: focused.selectionEnd }
       : null;
     lastState = state;
-    // The debugger's iframe survives tab changes, but is only exposed from Runs.
+    // The debugger is a Run-specific inspection tool. Its iframe stays mounted
+    // across Runs-tab refreshes, but must not leak into backlog or brief views.
     if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));

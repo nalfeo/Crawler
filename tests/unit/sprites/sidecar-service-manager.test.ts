@@ -69,7 +69,7 @@ describe('sprite sidecar service manager', () => {
     expect(second.pid).toBe(4321);
   });
 
-  it('waits for existing service to be ready rather than spawning a duplicate when health present but controllers not ready', async () => {
+  it('reuses an existing readable service when optional controllers are idle', async () => {
     const repoRoot = makeRoot('crawler-sidecar-ready-');
     const registryRoot = makeRoot('crawler-sidecar-ready-registry-');
     const existingInstanceId = 'existing-managed-ready-instance';
@@ -90,8 +90,6 @@ describe('sprite sidecar service manager', () => {
         pid: 7654,
       }),
     );
-    let controllersRunning = false;
-    let sleepCount = 0;
     const spawnService = vi.fn(() => ({ pid: 99 }));
 
     const result = await ensureSidecarService(repoRoot, {
@@ -102,21 +100,15 @@ describe('sprite sidecar service manager', () => {
         repoRoot,
         version: SPRITE_SIDECAR_SERVICE_VERSION,
         queueBackend: 'azure-queue',
-        worker: { running: controllersRunning },
-        issueIngester: { running: controllersRunning },
-        ...(controllersRunning
-          ? { service: { managed: true, instanceId: existingInstanceId, pid: 7654, startedAt: '' } }
-          : {}),
+        worker: { running: false },
+        issueIngester: { running: false },
+        service: { managed: true, instanceId: existingInstanceId, pid: 7654, startedAt: '' },
       }),
       spawnService,
       isProcessAlive: () => true,
-      sleep: async () => {
-        sleepCount++;
-        if (sleepCount >= 2) controllersRunning = true;
-      },
     });
 
-    // No spawn: the existing service (same repo/version) must be awaited, not duplicated.
+    // No spawn: read-only run inspection does not require queue consumers.
     expect(spawnService).not.toHaveBeenCalled();
     expect(result.state).toBe('reused');
   });

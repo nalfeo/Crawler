@@ -706,7 +706,7 @@ describe('buildSheetPrompt — frameSequence (walk-cycle) mode', () => {
 
   it('emits ordered-frame instructions instead of the independent-variant exploration line', () => {
     const out = buildSheetPrompt(makeWalkCycleBrief(), FAKE_STYLE_GUIDE);
-    expect(out).toContain('ORDERED FRAMES of a single side-view walk-cycle animation');
+    expect(out).toContain('ORDERED FRAMES of a single consistent-view walk-cycle animation');
     expect(out).not.toContain('Treat each cell as a separate exploration');
   });
 
@@ -770,7 +770,9 @@ describe('buildSheetPrompt — seedFrames (reference-frame identity pinning)', (
   it('uses singular wording for one seed frame', () => {
     const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png' }]);
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toContain('first 1 attached reference image is a SEED FRAME');
+    expect(out).toContain(
+      'The first 1 attached reference image is already-approved identity seed frame',
+    );
   });
 
   it('uses plural wording for multiple seed frames', () => {
@@ -779,7 +781,9 @@ describe('buildSheetPrompt — seedFrames (reference-frame identity pinning)', (
       { path: 'seeds/frame1.png' },
     ]);
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toContain('first 2 attached reference images are SEED FRAMES');
+    expect(out).toContain(
+      'The first 2 attached reference images are already-approved identity seed frames',
+    );
   });
 
   it('overrides the technique-only reference note with identity-match instruction when seed frames are set', () => {

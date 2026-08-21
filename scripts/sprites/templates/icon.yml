@@ -5,7 +5,7 @@
 # No baked-in frames — frames are composited deterministically in the engine.
 #
 # Inherits the base pipeline unchanged; background removal and resize are
-# correct for transparent-bg symbol art. Palette quantize is intentionally
+# correct for transparent-bg symbol art. Pixel-grid conversion is intentionally
 # kept OFF (icons may use a wider palette for readability).
 
 extends: base.yml
@@ -13,7 +13,7 @@ name: icon-postprocess-pipeline
 description: Pipeline for UI icon sprites (achievement / ability icons)
 
 modules:
-  # Icons should not be palette-quantized — they need clean gradients
+  # Icons should not be grid-converted — they need clean gradients
   # and anti-aliasing for readability at 128px.
-  palette-quantize:
+  pixel-grid:
     enabled: false

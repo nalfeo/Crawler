@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#20242d"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Frame 0: contact, near/right foot forward. -->
+    <g transform="translate(0 0)">
+      <circle cx="274" cy="118" r="62" stroke="#f5f1df" stroke-width="14"/>
+      <path d="M274 180L274 316M210 222L274 240L338 204M274 316L210 430M274 316L338 440" stroke="#f5f1df" stroke-width="18"/>
+      <path d="M196 450H356" stroke="#ee7b54" stroke-width="8"/>
+      <g fill="#ee7b54"><circle cx="274" cy="240" r="8"/><circle cx="274" cy="316" r="8"/></g>
+    </g>
+    <!-- Frame 1: passing, rear/right leg bears weight while near leg rises. -->
+    <g transform="translate(512 0)">
+      <circle cx="274" cy="118" r="62" stroke="#f5f1df" stroke-width="14"/>
+      <path d="M274 180L274 316M210 204L274 240L338 222M274 316L306 440M274 316L350 360L326 398" stroke="#f5f1df" stroke-width="18"/>
+      <path d="M196 450H356" stroke="#ee7b54" stroke-width="8"/>
+      <g fill="#ee7b54"><circle cx="274" cy="240" r="8"/><circle cx="274" cy="316" r="8"/></g>
+    </g>
+    <!-- Frame 2: contact, far/left foot forward; arm swing reverses. -->
+    <g transform="translate(0 512)">
+      <circle cx="274" cy="118" r="62" stroke="#f5f1df" stroke-width="14"/>
+      <path d="M274 180L274 316M210 204L274 240L338 222M274 316L210 440M274 316L338 430" stroke="#f5f1df" stroke-width="18"/>
+      <path d="M196 450H356" stroke="#ee7b54" stroke-width="8"/>
+      <g fill="#ee7b54"><circle cx="274" cy="240" r="8"/><circle cx="274" cy="316" r="8"/></g>
+    </g>
+    <!-- Frame 3: passing, far/left leg bears weight while near leg rises. -->
+    <g transform="translate(512 512)">
+      <circle cx="274" cy="118" r="62" stroke="#f5f1df" stroke-width="14"/>
+      <path d="M274 180L274 316M210 222L274 240L338 204M274 316L242 440M274 316L198 360L222 398" stroke="#f5f1df" stroke-width="18"/>
+      <path d="M196 450H356" stroke="#ee7b54" stroke-width="8"/>
+      <g fill="#ee7b54"><circle cx="274" cy="240" r="8"/><circle cx="274" cy="316" r="8"/></g>
+    </g>
+  </g>
+</svg>

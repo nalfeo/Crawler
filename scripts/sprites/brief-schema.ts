@@ -265,6 +265,12 @@ export const briefSchema = z
               .string()
               .optional()
               .describe("Optional description of this frame's role in the cycle"),
+            role: z
+              .enum(['identity', 'pose-guide'])
+              .default('identity')
+              .describe(
+                'identity locks the character design; pose-guide supplies only ordered pose geometry.',
+              ),
           })
           .strict(),
       )
@@ -340,7 +346,7 @@ export const briefSchema = z
      * Optional post-processing overrides beyond the standard pipeline.
      *
      * `trimAndFit`: when enabled, after the normal postprocess steps
-     * (bg removal → resample to brief size → quantize → alpha threshold), the
+     * (bg removal → pixel-art mesh recovery → resample to brief size → alpha threshold), the
      * pipeline trims fully-transparent edge rows/columns and then
      * scales the result up (nearest-neighbor) so the smallest
      * dimension reaches `minDimension` pixels. This maximises pixel
@@ -353,7 +359,12 @@ export const briefSchema = z
       .object({
         trimAndFit: z.boolean().default(false),
         minDimension: z.number().int().min(8).max(256).default(256),
+        // `strict` is retained as a durable brief contract, but now means
+        // upstream pixel-art mesh recovery rather than palette quantization.
         paletteMode: z.enum(['none', 'strict']).default('none'),
+        // Omit for upstream mesh auto-detection. This is only a human override
+        // when source art has a known pixel width and detection is unreliable.
+        pixelWidth: z.number().int().min(1).max(64).optional(),
       })
       .strict()
       .default({ trimAndFit: false, minDimension: 256, paletteMode: 'none' }),

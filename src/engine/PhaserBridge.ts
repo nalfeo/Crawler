@@ -31,6 +31,7 @@ import {
   GENERATED_SPRITE_REGISTRY_KEY,
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
+  walkDirectionFromVelocity,
 } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
@@ -874,8 +875,11 @@ export function createPhaserBridge(
           // (`loop=false`) walk strips, replay only when movement transitions from
           // rest -> moving; otherwise Phaser marks the anim complete and repeated
           // `play()` would incorrectly loop the one-shot on every sync.
-          if (walkAnimation.loop || !wasMoving) {
-            anims.play(walkAnimationKey(obj.texture.key), true);
+          const direction = walkAnimation.directions
+            ? walkDirectionFromVelocity(vx, vy)
+            : undefined;
+          if (walkAnimation.loop || !wasMoving || direction !== undefined) {
+            anims.play(walkAnimationKey(obj.texture.key, direction), true);
           }
         } else if (wasMoving && typeof anims.stop === 'function') {
           anims.stop();

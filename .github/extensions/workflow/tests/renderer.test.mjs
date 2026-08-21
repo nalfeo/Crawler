@@ -103,6 +103,11 @@ test('unsaved brief YAML survives a polled re-render until the save succeeds', (
   assert.match(html, /setSelectionRange\(activeYaml\.start, activeYaml\.end\)/);
 });
 
+test('the embedded Postprocess Debugger is visible only on the Runs tab', () => {
+  const html = renderHtml('x');
+  assert.match(html, /postprocessHost\.hidden = activeTab !== 'runs'/);
+});
+
 test('the client script wires SSE + run selection', () => {
   const html = renderHtml('x');
   assert.match(html, /new EventSource\('\/events'\)/);

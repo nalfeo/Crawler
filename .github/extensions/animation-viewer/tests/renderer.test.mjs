@@ -38,6 +38,12 @@ test('uses the per-frame dimensions for both thumbnails and zoomed playback', ()
   assert.match(html, /animCanvas\.height = OUT_H \* zoom;/);
 });
 
+test('defaults animation playback to 1x zoom', () => {
+  const html = renderHtml(BASE_STATE, []);
+  assert.match(html, /id="zoom-slider" min="1" max="8" step="1" value="1"/);
+  assert.match(html, /let zoom = 1, fps = FRAME_RATE/);
+});
+
 test('escapes the caller-supplied name in the title and heading', () => {
   const html = renderHtml({ ...BASE_STATE, name: '<img src=x onerror=alert(1)>' }, []);
   assert.ok(!html.includes('<img src=x'), 'raw HTML must not appear in output');
