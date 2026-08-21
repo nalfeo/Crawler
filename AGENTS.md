@@ -114,6 +114,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | AI gen configs            | `npm run ai:gen-configs`                                                                                                                    |
 | AI sweep eval             | `npm run ai:sweep-eval`                                                                                                                     |
 | AI aggregate shards       | `npm run ai:aggregate-shards`                                                                                                               |
+| Asset request refs        | `npm run sprites:asset-request`                                                                                                             |
 | Sprite check-in           | `npm run sprites:checkin`                                                                                                                   |
 | Sprite asset PR           | `npm run sprites:asset-pr`                                                                                                                  |
 | Sprite normalize names    | `npm run sprites:normalize-names`                                                                                                           |

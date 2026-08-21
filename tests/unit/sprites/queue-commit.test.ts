@@ -21,6 +21,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CheckinAsset, Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import {
+  ASSET_QUEUE_FREEZE_ENV,
+  isAssetQueueFrozen,
   runQueueCommit,
   isNonFastForwardRejection,
   assertSafeBriefPaths,
@@ -1486,4 +1488,55 @@ describe('runQueueCommit (real git)', () => {
     },
     GIT_TIMEOUT_MS,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Cutover: the mutable aggregate queue can be frozen while the immutable
+// request-ref writer takes over (issue #3205).
+// ---------------------------------------------------------------------------
+
+describe('assets/queue freeze', () => {
+  it('recognizes only affirmative freeze values', () => {
+    expect(isAssetQueueFrozen({})).toBe(false);
+    expect(isAssetQueueFrozen({ [ASSET_QUEUE_FREEZE_ENV]: '0' })).toBe(false);
+    expect(isAssetQueueFrozen({ [ASSET_QUEUE_FREEZE_ENV]: 'false' })).toBe(false);
+    expect(isAssetQueueFrozen({ [ASSET_QUEUE_FREEZE_ENV]: '  ' })).toBe(false);
+    expect(isAssetQueueFrozen({ [ASSET_QUEUE_FREEZE_ENV]: '1' })).toBe(true);
+    expect(isAssetQueueFrozen({ [ASSET_QUEUE_FREEZE_ENV]: 'true' })).toBe(true);
+  });
+
+  it('refuses a queue write with an actionable message and makes no git calls', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, { env: { [ASSET_QUEUE_FREEZE_ENV]: '1' } as NodeJS.ProcessEnv }),
+        { message: 'm' },
+      ),
+    ).rejects.toMatchObject({ kind: 'queue-frozen' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('freezes the trusted CI publisher too — no writer may extend a frozen queue', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, {
+          env: {
+            CI: 'true',
+            GITHUB_ACTIONS: 'true',
+            GITHUB_WORKFLOW_REF:
+              'nalfeo/Crawler/.github/workflows/asset-request.yml@refs/heads/main',
+            SPRITES_ALLOW_CI_ASSET_PUBLISH: 'true',
+            [ASSET_QUEUE_FREEZE_ENV]: 'true',
+          } as NodeJS.ProcessEnv,
+        }),
+        { message: 'm', ciAuthorization: { caller: 'asset-request-publisher' } },
+      ),
+    ).rejects.toMatchObject({ kind: 'queue-frozen' });
+    expect(calls).toHaveLength(0);
+  });
 });
