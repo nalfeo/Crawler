@@ -7828,10 +7828,11 @@ test('reconcile skips outdated-marker for isOutdated thread that already has a t
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
-test('live reconcile resolves a thread whose valid marker is followed by a duplicate-reply no-op', async (t) => {
+test('live reconcile resolves a thread whose valid ancestor marker is followed by a duplicate-reply no-op', async (t) => {
   const reviewCommentId = '3828391116';
   const threadId = 'PRRT_kwDOSvo2Ms6bFDVg';
   const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const ancestorMarkerSha = STALE_REVIEWED_SHA;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -7874,7 +7875,7 @@ test('live reconcile resolves a thread whose valid marker is followed by a dupli
                 },
                 {
                   id: 'comment-addressed',
-                  body: `✅ Addressed in ${HEAD_SHA}: added plan-level proof validation.`,
+                  body: `✅ Addressed in ${ancestorMarkerSha}: added plan-level proof validation.`,
                   author: { login: 'copilot-swe-agent' },
                   authorAssociation: 'NONE',
                   url: '',
@@ -7892,6 +7893,9 @@ test('live reconcile resolves a thread whose valid marker is followed by a dupli
         ]),
       };
     },
+    [`GET /repos/${OWNER}/${REPO}/compare/${ancestorMarkerSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'ahead' },
+    }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: { check_runs: [] },
     }),
@@ -10249,6 +10253,12 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
                 {
                   id: 'PRIC_stale_reply',
                   body: `✅ Addressed in \`${staleMarkerSha}\`: Added themeAdherence to the score vector.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+                {
+                  id: 'PRIC_duplicate_noop',
+                  body: 'Duplicate reply skipped — already posted above.',
                   authorAssociation: 'NONE',
                   author: { login: 'copilot-swe-agent[bot]' },
                 },

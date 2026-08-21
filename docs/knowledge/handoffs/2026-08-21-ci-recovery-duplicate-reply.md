@@ -10,10 +10,13 @@ ci-policy
 - Root cause: `shouldResolveThread()` only inspected the final review-thread comment, so a trusted bot no-op reply (`Duplicate reply skipped — already posted above.`) masked an earlier valid `✅ Addressed in <head>` marker and prevented `resolveReviewThread` from running.
 - Fixed the resolver to treat only that exact trusted duplicate-skip note as transparent when selecting the effective latest comment.
 - Added state-level and live reconcile regressions proving trusted duplicate notes resolve while untrusted/no substantive follow-up does not.
+- Follow-up review recovery: `reconcile.mjs` now reuses the same effective-latest-comment selector for lineage checks, outdated-marker suppression, and stale-marker hints so a trailing duplicate no-op cannot mask a valid ancestor marker.
+- Tightened the live reconcile regression to use an ancestor SHA, and extended stale-marker coverage with the same trusted duplicate no-op shape.
 
 ## Files touched
 
 - `.github/scripts/ci-recovery/state.mjs`
+- `.github/scripts/ci-recovery/reconcile.mjs`
 - `.github/scripts/ci-recovery/state.test.mjs`
 - `.github/scripts/ci-recovery/reconcile.test.mjs`
 - `docs/knowledge/review-ledgers/2026-08-21-ci-recovery-duplicate-reply.review-ledger.json`
@@ -24,6 +27,9 @@ ci-policy
 ```bash
 node --test .github/scripts/ci-recovery/state.test.mjs
 node --test .github/scripts/ci-recovery/state.test.mjs .github/scripts/ci-recovery/reconcile.test.mjs --test-name-pattern 'shouldResolveThread|duplicate-reply'
+node --test .github/scripts/ci-recovery/state.test.mjs .github/scripts/ci-recovery/reconcile.test.mjs
+git diff --check
+npm run format:check -- .github/scripts/ci-recovery/state.mjs .github/scripts/ci-recovery/reconcile.mjs .github/scripts/ci-recovery/reconcile.test.mjs
 bash scripts/agent/preflight.sh
 npm run verify:fast
 npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-08-21-ci-recovery-duplicate-reply.review-ledger.json

@@ -13,6 +13,7 @@ import {
   isRecoveryStateSemanticallyEqual,
   isSelfRecoveryCheckRun,
   selfRecoveryWorkflowRunIds,
+  effectiveLatestThreadComment,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -2092,9 +2093,8 @@ const unresolvedThreads = review.threads.filter((candidate) => !candidate.isReso
 const headSha = String(pr.head.sha || '').toLowerCase();
 const markerShasNeedingLineageCheck = new Set();
 for (const thread of unresolvedThreads) {
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) continue;
-  const markerSha = extractAddressedMarkerSha(comments[comments.length - 1]?.body);
+  const last = effectiveLatestThreadComment(thread);
+  const markerSha = extractAddressedMarkerSha(last?.body);
   if (markerSha && !headSha.startsWith(markerSha)) {
     markerShasNeedingLineageCheck.add(markerSha);
   }
@@ -2199,8 +2199,7 @@ function shouldAutoPostOutdatedMarker(candidate) {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
 
-  const comments = candidate.comments?.nodes ?? [];
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(candidate);
   const hasTrustedMarker =
     last &&
     extractAddressedMarkerSha(last.body) !== null &&
@@ -2450,9 +2449,7 @@ for (const thread of unresolvedThreads) {
   // Skip threads the reconciler will auto-resolve in the loop above.
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   reviewThreadBlockerIdsByThread.set(thread.id, reviewThreadBlockerId(thread));
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) continue;
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(thread);
   const markerSha = extractAddressedMarkerSha(last?.body);
   if (!markerSha) continue;
   // Only flag as stale when we have a definitive non-reachable result.
