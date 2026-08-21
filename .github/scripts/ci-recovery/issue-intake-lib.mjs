@@ -7,6 +7,7 @@ import {
 
 export { FOLLOWUP_BACKLOG_MARKER, ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+export const GOOBERS_APPROVED_LABEL = 'goobers:approved';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
 const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
@@ -153,8 +154,16 @@ export const ISSUE_INTAKE_BODY = [
 ].join('\n');
 
 export function isTelemetryIssue(issue) {
+  return hasIssueLabel(issue, 'telemetry');
+}
+
+export function isGoobersApprovedIssue(issue) {
+  return hasIssueLabel(issue, GOOBERS_APPROVED_LABEL);
+}
+
+function hasIssueLabel(issue, expectedLabel) {
   return (issue?.labels || []).some(
-    (label) => String(label?.name || '').toLowerCase() === 'telemetry',
+    (label) => String(label?.name || '').toLowerCase() === expectedLabel,
   );
 }
 
@@ -165,6 +174,13 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
 
   if (isTelemetryIssue(issue)) {
     return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
+  }
+
+  if (isGoobersApprovedIssue(issue)) {
+    return {
+      eligible: false,
+      reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+    };
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
@@ -587,13 +603,19 @@ export async function intakeOpenedIssue({
   let eligibilityReason;
   if (fromUnblockSweep) {
     // Automation-label restriction is intentionally skipped here — see JSDoc.
-    // We still reject non-issues (PR payloads), telemetry issues, and
-    // untrusted openers.
+    // We still reject non-issues (PR payloads), telemetry issues,
+    // Goobers-owned issues, and untrusted openers.
     if (!issue || issue.pull_request) {
       return { assigned: false, reason: 'event has no eligible issue payload' };
     }
     if (isTelemetryIssue(issue)) {
       return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
+    }
+    if (isGoobersApprovedIssue(issue)) {
+      return {
+        assigned: false,
+        reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+      };
     }
     const opener = String(issue.user?.login || '').toLowerCase();
     const maintainer = String(maintainerLogin || '').toLowerCase();

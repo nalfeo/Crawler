@@ -1,0 +1,23 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Goober
+metadata:
+  name: coder
+spec:
+  gaggle: example
+  role: implementer
+  displayName: Crawler Implementer
+  instructions: instructions.md
+  harness: copilot
+  model: auto
+  harnessOptions: {}
+  capabilities:
+    - repo:push
+    - agent:model
+  skills:
+    - implement
+    - run-tests
+  tools:
+    - shell
+  scaleFactor: 1
+  workflows:
+    - crawler-feature-pr

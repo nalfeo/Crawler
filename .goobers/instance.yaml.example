@@ -1,0 +1,10 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Instance
+repos:
+  - provider: github
+    owner: nalfeo
+    name: Crawler
+    token:
+      env: GOOBERS_GITHUB_TOKEN
+runConditions:
+  maxParallelRuns: 1

@@ -64,6 +64,12 @@ test('issue intake accepts only trusted opener and label combinations', () => {
       labels: ['automation'],
       eligible: false,
     },
+    {
+      name: 'Goobers-owned maintainer issue',
+      login: 'nalfeo',
+      labels: ['goobers:approved'],
+      eligible: false,
+    },
   ];
 
   for (const entry of cases) {
@@ -1035,6 +1041,38 @@ test('intakeOpenedIssue rejects a telemetry-labeled dependent even from the unbl
     paginateCalled,
     false,
     'telemetry guard must short-circuit before the dependency query',
+  );
+});
+
+test('intakeOpenedIssue rejects a Goobers-owned dependent even from the unblock sweep', async () => {
+  let paginateCalled = false;
+  const result = await intakeOpenedIssue({
+    graphql: async () => ({}),
+    paginate: async () => {
+      paginateCalled = true;
+      return [];
+    },
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: {
+      number: 1906,
+      node_id: 'ISSUE_1906',
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'GOOBERS:APPROVED' }],
+    },
+    fromUnblockSweep: true,
+  });
+
+  assert.deepEqual(result, {
+    assigned: false,
+    reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+  });
+  assert.equal(
+    paginateCalled,
+    false,
+    'Goobers ownership must short-circuit before the dependency query',
   );
 });
 

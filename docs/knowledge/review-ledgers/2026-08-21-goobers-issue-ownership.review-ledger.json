@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "goobers-issue-ownership",
+  "task_title": "Version Crawler Goobers workflow and isolate Cloud Copilot intake",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted all cutover findings: .goobers is declarative source only, not runtime; preserve the current internal example gaggle key until a deliberate runtime migration; merge the Cloud Copilot guard before labeling issues; document that already-assigned issues must be cleared before Goobers intake; include every referenced Goober instruction and skill file plus locator-only instance example; retain manual-only/no-auto-merge invariants."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
