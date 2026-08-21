@@ -267,8 +267,18 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     layoutPanel();
     if (state.allowCancel) {
       backdrop.setInteractive();
-      backdrop.on('pointerdown', () => {
+      backdrop.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         if (!state) {
+          return;
+        }
+        const pointerX = pointer.worldX / uiScale;
+        const pointerY = pointer.worldY / uiScale;
+        const isInsidePanel =
+          pointerX >= panel.x &&
+          pointerX <= panel.x + panel.width &&
+          pointerY >= panel.y &&
+          pointerY <= panel.y + panel.height;
+        if (isInsidePanel) {
           return;
         }
         const next = cancelModalPickerSelection(state);

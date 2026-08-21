@@ -67,6 +67,12 @@ describe('MainGameScene UI exclusivity', () => {
       label: 'issue picker opened before touch dismissal',
     });
 
+    // The panel itself must not be treated as its backdrop.
+    await page.mouse.click(800, 350);
+    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker stayed open after an in-panel tap',
+    });
+
     // This point is inside the game canvas but outside the centered picker.
     await page.mouse.click(200, 120);
     await waitForState(page, (s) => !s.modalOpen && !s.simulationPaused, {
