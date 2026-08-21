@@ -40,7 +40,14 @@ import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeu
 import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
 
-export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
+export const AI_TYPE = {
+  CHASE: 0,
+  SWARM: 1,
+  RANGED: 2,
+  LEAPER: 3,
+  GUARDIAN: 4,
+  SUPPORT: 5,
+} as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
 
 const DEFAULT_ENEMY_SPEED = 0.1875;
@@ -60,6 +67,9 @@ const TARGET_SEARCH_RADIUS = 8;
 const WAYPOINT_EPSILON = 0.5;
 const NAVIGATION_LOOKAHEAD_FT = 3;
 const WANDER_LOOKAHEAD_FT = 2.5;
+const GUARDIAN_HOLD_DISTANCE = 3;
+const SUPPORT_STANDOFF_DISTANCE = 12;
+const SUPPORT_RETREAT_FRACTION = 0.65;
 const DOOR_AVOID_RADIUS_TILES = 1;
 const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
 const STUCK_FRAMES_THRESHOLD = 15;
@@ -1392,6 +1402,60 @@ function applyLegacyRanged(
   setNavigatingVelocity(world, eid, tangent.x, tangent.y, speed);
 }
 
+function shouldGuardianHold(distanceToTarget: number): boolean {
+  return distanceToTarget <= GUARDIAN_HOLD_DISTANCE;
+}
+
+function supportStandoffDistance(attackRange: number): number {
+  return attackRange > EPSILON ? attackRange : SUPPORT_STANDOFF_DISTANCE;
+}
+
+function applyLegacyGuardian(
+  world: GameWorld,
+  eid: number,
+  playerDx: number,
+  playerDy: number,
+  distanceToPlayer: number,
+  aggroRange: number,
+  speed: number,
+): void {
+  if (!isAggroActive(aggroRange, distanceToPlayer) || shouldGuardianHold(distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
+}
+
+function applyLegacySupport(
+  world: GameWorld,
+  eid: number,
+  playerDx: number,
+  playerDy: number,
+  distanceToPlayer: number,
+  aggroRange: number,
+  attackRange: number,
+  speed: number,
+): void {
+  if (!isAggroActive(aggroRange, distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  const standoffDistance = supportStandoffDistance(attackRange);
+  const retreatDistance = standoffDistance * SUPPORT_RETREAT_FRACTION;
+  const toPlayer = normalize(playerDx, playerDy);
+  if (distanceToPlayer > standoffDistance) {
+    setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
+    return;
+  }
+  if (distanceToPlayer < retreatDistance && distanceToPlayer > EPSILON) {
+    setNavigatingVelocity(world, eid, -toPlayer.x, -toPlayer.y, speed);
+    return;
+  }
+  setVelocity(world, eid, 0, 0);
+}
+
 function buildRangedPathTarget(
   eid: number,
   enemyX: number,
@@ -1425,6 +1489,33 @@ function buildRangedPathTarget(
   };
 }
 
+function buildSupportPathTarget(
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+  distanceToPlayer: number,
+  attackRange: number,
+): { x: number; y: number } | null {
+  const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+  if (toPlayer.length <= EPSILON) {
+    return null;
+  }
+
+  const standoffDistance = supportStandoffDistance(attackRange);
+  const retreatDistance = standoffDistance * SUPPORT_RETREAT_FRACTION;
+  if (distanceToPlayer > standoffDistance) {
+    return { x: playerX, y: playerY };
+  }
+  if (distanceToPlayer < retreatDistance) {
+    return {
+      x: enemyX - toPlayer.x * standoffDistance,
+      y: enemyY - toPlayer.y * standoffDistance,
+    };
+  }
+  return null;
+}
+
 /**
  * Fallback when pathing cannot produce a usable target/path.
  *
@@ -1439,10 +1530,25 @@ function tryFallbackChaseNavigation(
   playerY: number,
   enemyX: number,
   enemyY: number,
+  distanceToPlayer: number,
   speed: number,
+  attackRange: number,
 ): boolean {
-  // Ranged enemies maintain spacing; all other personas (including flankers whose
-  // path target could not be found) fall back to direct chase so they never freeze.
+  // Ranged/support enemies maintain spacing; all other personas (including flankers
+  // whose path target could not be found) fall back to direct chase so they never freeze.
+  if (behaviorType === AI_TYPE.SUPPORT) {
+    applyLegacySupport(
+      world,
+      eid,
+      playerX - enemyX,
+      playerY - enemyY,
+      distanceToPlayer,
+      Number.POSITIVE_INFINITY,
+      attackRange,
+      speed,
+    );
+    return true;
+  }
   if (behaviorType === AI_TYPE.RANGED) {
     return false;
   }
@@ -1464,6 +1570,10 @@ function applyPathDrivenBehavior(
 ): void {
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
+  if (behaviorType === AI_TYPE.GUARDIAN && shouldGuardianHold(distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
   const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
   const personaTarget = choosePersonaTarget(
     world,
@@ -1476,7 +1586,18 @@ function applyPathDrivenBehavior(
   );
   if (!personaTarget) {
     if (
-      tryFallbackChaseNavigation(world, eid, behaviorType, playerX, playerY, enemyX, enemyY, speed)
+      tryFallbackChaseNavigation(
+        world,
+        eid,
+        behaviorType,
+        playerX,
+        playerY,
+        enemyX,
+        enemyY,
+        distanceToPlayer,
+        speed,
+        attackRange,
+      )
     ) {
       return;
     }
@@ -1499,6 +1620,36 @@ function applyPathDrivenBehavior(
     const fallback = findNearestTraversableTile(world, preferred, traversalMode);
     if (fallback) {
       targetTile = fallback;
+    }
+  } else if (behaviorType === AI_TYPE.SUPPORT) {
+    const supportTargetFt = buildSupportPathTarget(
+      enemyX,
+      enemyY,
+      playerX,
+      playerY,
+      distanceToPlayer,
+      attackRange,
+    );
+    if (supportTargetFt === null) {
+      setVelocity(world, eid, 0, 0);
+      return;
+    }
+    const preferred = asTilePoint(world, supportTargetFt.x, supportTargetFt.y);
+    const fallback = findNearestTraversableTile(world, preferred, traversalMode);
+    if (fallback) {
+      targetTile = fallback;
+    } else {
+      applyLegacySupport(
+        world,
+        eid,
+        playerX - enemyX,
+        playerY - enemyY,
+        distanceToPlayer,
+        Number.POSITIVE_INFINITY,
+        attackRange,
+        speed,
+      );
+      return;
     }
   }
 
@@ -1531,7 +1682,9 @@ function applyPathDrivenBehavior(
           playerY,
           enemyX,
           enemyY,
+          distanceToPlayer,
           speed,
+          attackRange,
         )
       ) {
         return;
@@ -1551,7 +1704,8 @@ function applyPathDrivenBehavior(
       distanceToPlayer > MIN_MOB_PLAYER_DISTANCE &&
       (behaviorType === AI_TYPE.CHASE ||
         behaviorType === AI_TYPE.SWARM ||
-        behaviorType === AI_TYPE.LEAPER)
+        behaviorType === AI_TYPE.LEAPER ||
+        behaviorType === AI_TYPE.GUARDIAN)
     ) {
       const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
       setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
@@ -1587,8 +1741,12 @@ function applyPathDrivenBehavior(
       // world position so the enemy commits to contact range instead of stopping.
       setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     }
-  } else if (behaviorType !== AI_TYPE.RANGED && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
-    // Non-NAVIGATOR, non-RANGED enemies (e.g. FLANKER persona) should never stall
+  } else if (
+    behaviorType !== AI_TYPE.RANGED &&
+    behaviorType !== AI_TYPE.SUPPORT &&
+    distanceToPlayer > MIN_MOB_PLAYER_DISTANCE
+  ) {
+    // Non-NAVIGATOR, non-RANGED/non-SUPPORT enemies (e.g. FLANKER persona) should never stall
     // mid-pursuit when their path exhausts but the player is still out of contact
     // range. Drive directly toward the player as a gap-closing fallback.
     const currentVx = world.stores.velocity.x[eid] ?? 0;
@@ -2028,6 +2186,21 @@ export function enemyAISystem(world: GameWorld): void {
             speed,
           );
           break;
+        case AI_TYPE.GUARDIAN:
+          applyLegacyGuardian(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+          break;
+        case AI_TYPE.SUPPORT:
+          applyLegacySupport(
+            world,
+            eid,
+            playerDx,
+            playerDy,
+            distanceToPlayer,
+            aggroRange,
+            attackRange,
+            speed,
+          );
+          break;
         case AI_TYPE.CHASE:
         default:
           applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
@@ -2048,7 +2221,11 @@ export function enemyAISystem(world: GameWorld): void {
       );
     }
 
-    if (attackRange > EPSILON && distanceToPlayer <= attackRange) {
+    if (
+      behaviorType !== AI_TYPE.SUPPORT &&
+      attackRange > EPSILON &&
+      distanceToPlayer <= attackRange
+    ) {
       tryFireEnemyProjectile(world, eid, playerDx, playerDy);
       // A telegraph can start on THIS frame (tryFireEnemyProjectile just
       // locked origin/direction to the enemy's current position). `isTelegraphing`
