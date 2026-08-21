@@ -72,6 +72,22 @@ The Azure judge remains advisory: it continues to offer subjective tooltip-densi
 and theme critiques, but the newly calibrated reports no longer treat the accepted
 geometry false positives as blockers when their declared evidence disproves them.
 
+### v0.1.6 icon containment and stat emphasis
+
+The equipped-icon safe area is now a hard deterministic geometry contract:
+every icon must clear all four edges of its 64px paper-doll slot by at least 6px.
+The real populated probe confirms Head, Neck, Main Hand, and Off Hand icons render
+at 48px with 8px clearance. The visual-review setup declares the safe area and
+icon bounds, so an icon escaping it produces a deterministic blocker.
+
+Zero-valued stat text is always neutral. Green applies only when the effective
+value and base value differ visibly, the effective value is positive, and the
+base is non-negative; this prevents a displayed `0` from implying a gear bonus.
+
+`files/visual-review/after/v0.1.6/equipment-hover-equipped.{png,review.json}`
+captures the fixed equipped state with 24 declared regions and zero deterministic
+blockers.
+
 ## Validation
 
 - `npx vitest run tests/ecs/equip-delta-preview.test.ts` — 16 passed.
@@ -84,6 +100,9 @@ geometry false positives as blockers when their declared evidence disproves them
 - `npx vitest run tests/unit/visual-review-agent-cli.test.ts` — 19 passed.
 - `npm run review:visual:deterministic` — 30 passed.
 - `npm run typecheck` — passed.
+- `npx vitest run --project e2e tests/e2e/inventory-flow.test.ts -t "uses square labeled slots"` — passed.
+- `npm run review:visual:deterministic` — 30 passed after the v0.1.6 changes.
+- `npm run verify:fast` — passed after the v0.1.6 changes.
 
 ## Systems touched
 

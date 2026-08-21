@@ -284,6 +284,8 @@ export type EquipmentTextRegion = 'header' | 'doll' | 'stats' | 'bag' | 'inspect
 export interface EquipmentTextRun {
   readonly text: string;
   readonly region: EquipmentTextRegion;
+  /** Resolved fill color, exposed for deterministic stat-emphasis assertions. */
+  readonly color: string;
   readonly fontSize: number;
   readonly renderedFontSize: number;
   readonly bounds: ScreenBounds;
@@ -1700,10 +1702,10 @@ export function createEquipmentUI(
             generatedInstance.frozen.displayName,
             cx,
             cy,
-            boxH - 4,
+            boxH - 16,
           )
         : instance
-          ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
+          ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 16)
           : createSlotPlaceholder(slot.id, cx, cy + 2);
       const emptyCue = null;
       if (!instance) emptySlotCues.set(slot.id, slot.id);
@@ -1929,7 +1931,8 @@ export function createEquipmentUI(
       const base = baseStore[statId]?.[playerEid] ?? 0;
       // Match the highlight to the player-visible precision. Tiny floating-point
       // differences that round to the same display value are not meaningful bonuses.
-      const buffed = value > base && formatStatValue(value) !== formatStatValue(base);
+      const buffed =
+        value > 0 && base >= 0 && value > base && formatStatValue(value) !== formatStatValue(base);
       drawRow(
         formatStatLabel(statId),
         formatStatValue(value),
@@ -2307,6 +2310,7 @@ export function createEquipmentUI(
       runs.push({
         text: value,
         region,
+        color: String(obj.style.color ?? ''),
         fontSize: safeSize,
         renderedFontSize: safeSize * uiScale,
         bounds: { x: b.x, y: b.y, width: b.width, height: b.height },

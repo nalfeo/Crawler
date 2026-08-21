@@ -65,6 +65,29 @@
       return box ? { id: `slot:${slotId}`, box, kind: 'slot', parentId: 'equipment-panel' } : null;
     })
     .filter(Boolean);
+  for (const slotId of slotIds) {
+    const box = probe?.getEquipmentSlotBounds?.(slotId);
+    const icon = probe?.getEquipmentSlotIconBounds?.(slotId);
+    if (!box || !icon) continue;
+    const safeInset = 6;
+    regions.push({
+      id: `slot:${slotId}.safe`,
+      box: {
+        x: box.x + safeInset,
+        y: box.y + safeInset,
+        width: box.width - safeInset * 2,
+        height: box.height - safeInset * 2,
+      },
+      kind: 'other',
+      parentId: `slot:${slotId}`,
+    });
+    regions.push({
+      id: `slot:${slotId}.icon`,
+      box: icon,
+      kind: 'icon',
+      parentId: `slot:${slotId}.safe`,
+    });
+  }
   if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
   const tooltip = probe?.getEquipmentTooltipBounds?.();
   if (tooltip) regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip' });

@@ -834,6 +834,25 @@ describe('equipment decision gate (e2e)', () => {
           Math.abs(bounds.width - bounds.height),
           `slot "${slot.id}" must remain square rather than reverting to a legacy rectangle`,
         ).toBeLessThanOrEqual(1);
+        const icon = await probe.getEquipmentSlotIconBounds(layoutPage, slot.id);
+        if (!icon) continue;
+        const safeInset = 6;
+        expect(
+          icon.x,
+          `slot "${slot.id}" icon must clear the left slot outline by ${safeInset}px`,
+        ).toBeGreaterThanOrEqual(bounds.x + safeInset);
+        expect(
+          icon.y,
+          `slot "${slot.id}" icon must clear the top slot outline by ${safeInset}px`,
+        ).toBeGreaterThanOrEqual(bounds.y + safeInset);
+        expect(
+          icon.x + icon.width,
+          `slot "${slot.id}" icon must clear the right slot outline by ${safeInset}px`,
+        ).toBeLessThanOrEqual(bounds.x + bounds.width - safeInset);
+        expect(
+          icon.y + icon.height,
+          `slot "${slot.id}" icon must clear the bottom slot outline by ${safeInset}px`,
+        ).toBeLessThanOrEqual(bounds.y + bounds.height - safeInset);
       }
 
       expect(
@@ -847,6 +866,18 @@ describe('equipment decision gate (e2e)', () => {
       expect(text).not.toContain('Current totals');
       expect(text).not.toContain('Hover a slot for details');
       expect(text).not.toContain('— empty —');
+      const zeroStats = (await probe.getEquipmentTextRuns(layoutPage)).filter(
+        (run) => run.region === 'stats' && run.text === '0',
+      );
+      expect(zeroStats.length, 'the probe state should expose zero-valued stats').toBeGreaterThan(
+        0,
+      );
+      for (const run of zeroStats) {
+        expect(
+          run.color.toLowerCase(),
+          'zero-valued stats must not imply a positive gear bonus with green text',
+        ).not.toBe('#49d06f');
+      }
     } finally {
       await closeQuietly(context);
     }
