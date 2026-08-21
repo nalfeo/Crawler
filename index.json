@@ -1,5 +1,39 @@
 [
   {
+    "commit": "8b56d574ffb4f352416e99c7c330600c66b315d9",
+    "commitDate": "2026-08-21T06:55:07Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (2 art paths) (#3202)",
+    "capturedAt": "2026-08-21T07:58:42.299Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32456957746",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/8b56d574ffb4f352416e99c7c330600c66b315d9.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/8b56d574ffb4f352416e99c7c330600c66b315d9.fun-report.json"
+    }
+  },
+  {
     "commit": "40379399461d683eb7c5011232b9dfbc6944581e",
     "commitDate": "2026-08-21T06:22:19Z",
     "commitSubject": "Fix touch dismissal for submit-issue modal (#3197)",
