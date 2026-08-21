@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "floor3-ai-personas",
+  "task_title": "Implement Floor 3 Guardian and Support AI personas",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved_with_changes. Adopted: lab must run companionAISystem->enemyAISystem->movementSystem and show movement, SUPPORT is explicitly movement-only/no projectile for this slice, append AI_TYPE ordinals as GUARDIAN=4/SUPPORT=5 preserving LEAPER=3, add behavior-specific enemyAISystem tests, audit AI_TYPE labels/comments, and only extend companion prepass if needed rather than adding a parallel Floor-3 AI stack."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
