@@ -11,7 +11,11 @@ export interface RunBundleUploadRequest {
   readonly recorderJsonl: string;
   readonly logs: readonly string[];
   readonly meta: RunBundleMeta;
-  readonly survey?: PlaytestSurvey;
+}
+
+export interface RunSurveyAppendRequest {
+  readonly meta: Pick<RunBundleMeta, 'runId'>;
+  readonly survey: PlaytestSurvey;
 }
 
 export function buildRunBundleUploadRequest(bundle: RunBundle): RunBundleUploadRequest {
@@ -23,12 +27,15 @@ export function buildRunBundleUploadRequest(bundle: RunBundle): RunBundleUploadR
   };
 }
 
-export function buildRunSurveyRequest(
-  bundle: RunBundle,
+export function buildRunSurveyAppendRequest(
+  runId: string | undefined,
   survey: PlaytestSurvey,
-): RunBundleUploadRequest {
+): RunSurveyAppendRequest {
+  if (!runId) {
+    throw new Error('runId is required to append a run survey');
+  }
   return {
-    ...buildRunBundleUploadRequest(bundle),
+    meta: { runId },
     survey: serializePlaytestSurvey(survey),
   };
 }
