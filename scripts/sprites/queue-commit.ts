@@ -496,6 +496,7 @@ export async function runQueueCommit(
           ]);
           const deleted = await runGit(deps.exec, repoRoot, [
             'diff',
+            '--no-renames',
             '--name-only',
             '--diff-filter=D',
             mainRef,

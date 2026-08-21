@@ -762,7 +762,7 @@ describe('runQueueCommit (control flow)', () => {
 
   it('fails closed when a 1c-style generated queue deletion is detected before ingestion', async () => {
     let validations = 0;
-    const { exec } = makeFakeExec((_command, args) => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'queue-sha\trefs/heads/assets/queue\n' };
       if (args[0] === 'diff' && args.includes('--diff-filter=D')) {
         return {
@@ -786,6 +786,11 @@ describe('runQueueCommit (control flow)', () => {
       runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
     ).rejects.toThrow('sprites:repair-queue -- --audit --policy acc25eda-selective-v1');
     expect(validations).toBe(0);
+    const deletionDiff = calls.find(
+      (call) =>
+        call.command === 'git' && call.args[0] === 'diff' && call.args.includes('--diff-filter=D'),
+    );
+    expect(deletionDiff?.args).toContain('--no-renames');
   });
 });
 

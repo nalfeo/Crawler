@@ -177,6 +177,23 @@ describe('runQueueRepair (real git)', () => {
   });
 
   describe('prune-stale-queue-duplicates CLI', () => {
+    function writeDuplicatePair(
+      generated: string,
+      key: string,
+      briefId: string,
+      bytes: Buffer,
+      contentHash: string,
+    ): void {
+      mkdirSync(path.join(generated, 'entries'), { recursive: true });
+      writeFileSync(path.join(generated, `${key}.png`), bytes);
+      writeJson(path.join(generated, 'entries', `${key}.json`), {
+        assetPath: `generated/${key}.png`,
+        briefId,
+        contentHash,
+        variantIndex: 0,
+      });
+    }
+
     it('fails closed before deleting a same-content pair without a source-bound removal manifest', async () => {
       const root = mkdtempSync(path.join(tmpdir(), 'queue-prune-'));
       const queue = path.join(root, 'queue', 'public/assets/generated');
@@ -209,6 +226,121 @@ describe('runQueueRepair (real git)', () => {
         expect(stderr).toHaveBeenCalledWith(expect.stringContaining('--removal-manifest'));
         expect(existsSync(path.join(queue, 'golem-v1-var-0.png'))).toBe(true);
         expect(existsSync(path.join(queue, 'entries', 'golem-v1-var-0.json'))).toBe(true);
+      } finally {
+        stderr.mockRestore();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses apply when queue/main PNG bytes do not match manifest contentHash', async () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'queue-prune-hash-'));
+      const queueRepo = path.join(root, 'queue');
+      const mainRepo = path.join(root, 'main');
+      const queue = path.join(queueRepo, 'public/assets/generated');
+      const main = path.join(mainRepo, 'public/assets/generated');
+      mkdirSync(queueRepo, { recursive: true });
+      mkdirSync(mainRepo, { recursive: true });
+      git(queueRepo, 'init', '-b', 'main');
+      git(queueRepo, 'config', 'user.email', 'test@example.com');
+      git(queueRepo, 'config', 'user.name', 'Queue Recovery Test');
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xaa]);
+      const queueBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xbb]);
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      writeDuplicatePair(main, 'golem-var-0', 'golem', bytes, hash);
+      writeDuplicatePair(queue, 'golem-v1-var-0', 'golem-v1', queueBytes, hash);
+      writeJson(path.join(queue, 'sprite-editor-annotations.json'), { version: 1, sprites: {} });
+      git(queueRepo, 'add', '-A');
+      git(queueRepo, 'commit', '-m', 'queue setup');
+      const sourceSha = git(queueRepo, 'rev-parse', 'HEAD').trim();
+      const manifestPath = path.join(root, 'manifest.json');
+      writeJson(manifestPath, {
+        version: 1,
+        sourceSha,
+        normalization: 'bare-concept-v1',
+        removals: [
+          {
+            key: 'golem-v1-var-0',
+            duplicateOf: 'golem-var-0',
+            contentHash: hash,
+          },
+        ],
+      });
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const code = await pruneStaleQueueDuplicates([
+          '--apply',
+          '--queue-generated-dir',
+          queue,
+          '--main-generated-dir',
+          main,
+          '--source-sha',
+          sourceSha,
+          '--removal-manifest',
+          manifestPath,
+        ]);
+        expect(code).toBe(1);
+        expect(stderr).toHaveBeenCalledWith(
+          expect.stringContaining('same-content duplicate under bare-concept-v1'),
+        );
+        expect(existsSync(path.join(queue, 'golem-v1-var-0.png'))).toBe(true);
+        expect(existsSync(path.join(queue, 'entries', 'golem-v1-var-0.json'))).toBe(true);
+      } finally {
+        stderr.mockRestore();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses apply when queue checkout HEAD does not match --source-sha', async () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'queue-prune-head-'));
+      const queueRepo = path.join(root, 'queue');
+      const mainRepo = path.join(root, 'main');
+      const queue = path.join(queueRepo, 'public/assets/generated');
+      const main = path.join(mainRepo, 'public/assets/generated');
+      mkdirSync(queueRepo, { recursive: true });
+      mkdirSync(mainRepo, { recursive: true });
+      git(queueRepo, 'init', '-b', 'main');
+      git(queueRepo, 'config', 'user.email', 'test@example.com');
+      git(queueRepo, 'config', 'user.name', 'Queue Recovery Test');
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xcc]);
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      writeDuplicatePair(main, 'golem-var-0', 'golem', bytes, hash);
+      writeDuplicatePair(queue, 'golem-v1-var-0', 'golem-v1', bytes, hash);
+      writeJson(path.join(queue, 'sprite-editor-annotations.json'), { version: 1, sprites: {} });
+      git(queueRepo, 'add', '-A');
+      git(queueRepo, 'commit', '-m', 'queue setup');
+      const sourceSha = git(queueRepo, 'rev-parse', 'HEAD').trim();
+      const manifestPath = path.join(root, 'manifest.json');
+      writeJson(manifestPath, {
+        version: 1,
+        sourceSha,
+        normalization: 'bare-concept-v1',
+        removals: [
+          {
+            key: 'golem-v1-var-0',
+            duplicateOf: 'golem-var-0',
+            contentHash: hash,
+          },
+        ],
+      });
+      writeFileSync(path.join(queueRepo, 'touch.txt'), 'drift');
+      git(queueRepo, 'add', '-A');
+      git(queueRepo, 'commit', '-m', 'drift');
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const code = await pruneStaleQueueDuplicates([
+          '--apply',
+          '--queue-generated-dir',
+          queue,
+          '--main-generated-dir',
+          main,
+          '--source-sha',
+          sourceSha,
+          '--removal-manifest',
+          manifestPath,
+        ]);
+        expect(code).toBe(1);
+        expect(stderr).toHaveBeenCalledWith(expect.stringContaining('does not match --source-sha'));
+        expect(existsSync(path.join(queue, 'golem-v1-var-0.png'))).toBe(true);
       } finally {
         stderr.mockRestore();
         rmSync(root, { recursive: true, force: true });
