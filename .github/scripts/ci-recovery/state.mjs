@@ -758,6 +758,8 @@ export const TRUSTED_BOT_LOGINS = new Set([
 
 const addressedInPrefixPattern = /^\s*(?:✅\s*)?addressed\s+in\s+<?([^\s>]+)>?/i;
 const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
+const duplicateReplySkippedPattern =
+  /^\s*duplicate reply skipped\s+[-—]\s+already posted above\.\s*$/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -834,6 +836,20 @@ function isTrustedComment(comment) {
   );
 }
 
+function isIgnorableTrailingRecoveryNote(comment) {
+  return isTrustedComment(comment) && duplicateReplySkippedPattern.test(String(comment.body ?? ''));
+}
+
+export function effectiveLatestThreadComment(thread) {
+  const comments = thread.comments?.nodes ?? [];
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const candidate = comments[index];
+    if (isIgnorableTrailingRecoveryNote(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
 /**
  * Returns true only when the last comment in the thread is a trusted marker
  * that either explicitly names the current head SHA (full or ≥7-char prefix),
@@ -843,9 +859,8 @@ function isTrustedComment(comment) {
  * an earlier comment had a valid marker.
  */
 export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) return false;
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(thread);
+  if (!last) return false;
   if (!isTrustedComment(last)) return false;
   return (
     markerNamesHead(last.body, headSha, reachableCommitShas) || hasNotApplicableMarker(last.body)
