@@ -158,6 +158,7 @@ import {
   STUCK_PROGRESS_EPSILON_FT,
   NAVIGATION_MAX_PATH_LENGTH,
   RESOLVE_GOAL_MEMO_MAX,
+  REACHABILITY_FLOOD_CACHE_MAX,
   ENEMY_IGNORE_FRAMES,
   ENGAGE_PROGRESS_EPSILON_FT,
   ENGAGE_GIVEUP_FRAMES,
@@ -980,6 +981,36 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private readonly resolveGoalMemo = new Map<string, TilePoint>();
   private resolveGoalMemoEpoch = -1;
+  /**
+   * Cross-call cache of {@link computeReachableGoalTile}'s BFS depth field,
+   * keyed on everything the flood reads: start tile, depth bound, grid
+   * dimensions, and which passability predicate is in force. Entries are only
+   * valid while {@link navEpoch} is unchanged — the same completeness argument
+   * that governs {@link resolveGoalMemo} (floor + blocked-door signature is a
+   * complete signature of the passable graph, and the static tile topology is
+   * fixed for a floor's lifetime).
+   *
+   * The point of caching the *field* rather than only the resolved tile is that
+   * one start tile is flooded repeatedly with different goals and radii: on a
+   * real Floor-1 run the AI performs 2,915 floods from only 808 distinct keys.
+   *
+   * Insertion order is the LRU order (a hit is re-inserted). The `Map` owns each
+   * `Int32Array`; the buffers are read-only after their flood completes and
+   * never escape {@link computeReachableGoalTile}, which returns a `TilePoint`.
+   * On eviction the victim's buffer is re-used for the incoming flood rather
+   * than reallocated, which is what removes the per-call allocation churn.
+   */
+  private readonly reachabilityFloodCache = new Map<string, Int32Array>();
+  private reachabilityFloodCacheEpoch = -1;
+  private reachabilityFloodCacheTopology = -1;
+  /**
+   * Persistent BFS frontier scratch for {@link computeReachableGoalTile}, sized
+   * to the tile count. Write-only scratch that is fully consumed inside
+   * {@link floodReachabilityDepth} and never read afterwards or handed out, so
+   * sharing it across calls is unobservable. Mirrors the existing
+   * {@link exploreReachabilityQueue} precedent.
+   */
+  private reachabilityFloodQueue: Int32Array | null = null;
   /**
    * Monotonic navigation epoch. Bumped by {@link refreshDoorNavigation} only when
    * the passable graph could have changed (floor swap or a door flipping between
@@ -5624,6 +5655,96 @@ export class BehaviorTreeAI implements AIInputProvider {
     return resolved;
   }
 
+  /**
+   * Returns the BFS reachability depth field for `startIndex`, served from
+   * {@link reachabilityFloodCache} when an entry for the current
+   * {@link navEpoch} exists and computed by {@link floodReachabilityDepth}
+   * otherwise.
+   *
+   * Gameplay-neutral by construction: the flood is a pure function of (tile
+   * topology, passability predicate, `startIndex`, `maxDepth`, grid dims), and
+   * every one of those is either in the key or pinned by `navEpoch`. A hit
+   * returns a field byte-identical to what a fresh flood would have produced, so
+   * no downstream ranking — and therefore no RNG consumption — can shift.
+   *
+   * The returned array is owned by the cache. Callers must treat it as
+   * read-only; it is never mutated after its flood completes.
+   */
+  private reachabilityFlood(
+    tileCount: number,
+    width: number,
+    height: number,
+    startIndex: number,
+    maxDepth: number,
+    passable: (tx: number, ty: number) => boolean,
+    doorAware: boolean,
+    navTopologyRevision: number,
+  ): Int32Array {
+    // Drop everything whenever the passable graph could have changed. navEpoch
+    // covers the door-lock layer (floor + navigation-blocked door tiles);
+    // navTopologyRevision covers runtime PASSABLE/DOOR tile-flag mutations,
+    // which navEpoch alone does NOT see — a measured stale-hit source before
+    // this was added.
+    if (
+      this.reachabilityFloodCacheEpoch !== this.navEpoch ||
+      this.reachabilityFloodCacheTopology !== navTopologyRevision
+    ) {
+      this.reachabilityFloodCache.clear();
+      this.reachabilityFloodCacheEpoch = this.navEpoch;
+      this.reachabilityFloodCacheTopology = navTopologyRevision;
+    }
+
+    // Grid dims are in the key so a floor whose tile count differs can never
+    // alias a retained buffer, and `doorAware` so the door-aware and raw
+    // tile-map predicates cannot share an entry.
+    const key = `${startIndex}:${maxDepth}:${width}x${height}:${doorAware ? 'd' : 't'}`;
+    const cached = this.reachabilityFloodCache.get(key);
+    if (cached) {
+      // Re-insert to make Map insertion order the LRU order. Cache bookkeeping
+      // only — it touches no simulation state.
+      this.reachabilityFloodCache.delete(key);
+      this.reachabilityFloodCache.set(key, cached);
+      return cached;
+    }
+
+    // Recycle the eviction victim's buffer instead of allocating a fresh
+    // ~134KB Int32Array per flood.
+    let depth: Int32Array | undefined;
+    while (this.reachabilityFloodCache.size >= REACHABILITY_FLOOD_CACHE_MAX) {
+      // Safe: the loop condition guarantees a non-empty map, and
+      // REACHABILITY_FLOOD_CACHE_MAX is >= 1.
+      const oldestKey = this.reachabilityFloodCache.keys().next().value!;
+      const victim = this.reachabilityFloodCache.get(oldestKey);
+      this.reachabilityFloodCache.delete(oldestKey);
+      // A different floor can have a different tile count, so a retained buffer
+      // is only reusable when it is exactly the right length — flooding into a
+      // short buffer would silently drop writes.
+      if (victim && victim.length === tileCount) {
+        depth = victim;
+      }
+    }
+    if (!depth) {
+      depth = new Int32Array(tileCount);
+    }
+    depth.fill(-1);
+
+    if (!this.reachabilityFloodQueue || this.reachabilityFloodQueue.length !== tileCount) {
+      this.reachabilityFloodQueue = new Int32Array(tileCount);
+    }
+    floodReachabilityDepth(
+      depth,
+      this.reachabilityFloodQueue,
+      width,
+      height,
+      startIndex,
+      maxDepth,
+      passable,
+    );
+
+    this.reachabilityFloodCache.set(key, depth);
+    return depth;
+  }
+
   private computeReachableGoalTile(
     floorMap: FloorMap,
     startTile: TilePoint,
@@ -5653,11 +5774,19 @@ export class BehaviorTreeAI implements AIInputProvider {
       return goalTile;
     }
 
-    const dist = new Int32Array(width * height).fill(-1);
-    const queue = new Int32Array(width * height);
+    const tileCount = width * height;
     const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
     const startIndex = startTile.y * width + startTile.x;
-    floodReachabilityDepth(dist, queue, width, height, startIndex, maxDepth, passable);
+    const dist = this.reachabilityFlood(
+      tileCount,
+      width,
+      height,
+      startIndex,
+      maxDepth,
+      passable,
+      passable === this.doorAwarePassable,
+      tileMap.navTopologyRevision,
+    );
 
     // path length to a tile == findTilePath(start, tile).length, or 0 if the tile
     // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
@@ -9410,6 +9539,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     // serve stale reachability from a different floor topology.
     this.resolveGoalMemo.clear();
     this.resolveGoalMemoEpoch = -1;
+    // Same reasoning for the reachability flood field cache: a reused provider
+    // must not serve a previous world's depth field when the new world's
+    // (floor + blocked-door) signature happens to collide.
+    this.reachabilityFloodCache.clear();
+    this.reachabilityFloodCacheEpoch = -1;
+    this.reachabilityFloodCacheTopology = -1;
+    this.reachabilityFloodQueue = null;
     this.navEpoch = 0;
     this.navSignature = null;
     this.floor1MiddleChainCache = null;

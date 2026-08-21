@@ -85,6 +85,7 @@ import {
   PROJECTILE_DODGE_VECTOR_SCALE,
   SAFE_LOOT_ENEMY_CLEARANCE_FT,
   LOOT_DETOUR_MAX_FT,
+  REACHABILITY_FLOOD_CACHE_MAX,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -4121,6 +4122,225 @@ describe('BehaviorTreeAI', () => {
       expect(state.resolveGoalMemoEpoch).toBe(-1);
       expect(state.navEpoch).toBe(0);
       expect(state.navSignature).toBeNull();
+    });
+  });
+
+  // Regression guards for the reachability-flood cache (nightly perf pass,
+  // issue #3212). `computeReachableGoalTile` caches its BFS depth field across
+  // calls so that many goals resolved from one start tile share a single flood.
+  // Every test here asserts the SAME contract: a cached resolve must equal what
+  // a freshly-constructed provider computes. Anything else is a gameplay change
+  // wearing an optimization costume.
+  describe('reachability flood cache stays equivalent to an uncached resolve', () => {
+    type GoalResolver = {
+      computeReachableGoalTile(
+        floorMap: FloorMap,
+        startTile: TilePoint,
+        goalTile: TilePoint,
+        maxRadius?: number,
+      ): TilePoint;
+    };
+    type FloodCacheState = {
+      reachabilityFloodCache: Map<string, Int32Array>;
+      reachabilityFloodCacheEpoch: number;
+      reachabilityFloodCacheTopology: number;
+      reachabilityFloodQueue: Int32Array | null;
+    };
+
+    const asResolver = (ai: BehaviorTreeAI): GoalResolver => ai as unknown as GoalResolver;
+    const freshResolve = (floorMap: FloorMap, start: TilePoint, goal: TilePoint): TilePoint =>
+      asResolver(new BehaviorTreeAI({ seed: 1 })).computeReachableGoalTile(floorMap, start, goal);
+
+    it('serves many goals from one start identically to uncached resolves', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+      const start: TilePoint = { x: 3, y: 3 };
+
+      for (let gx = 1; gx < 15; gx += 1) {
+        for (let gy = 1; gy < 15; gy += 1) {
+          const goal: TilePoint = { x: gx, y: gy };
+          expect(shared.computeReachableGoalTile(floorMap, start, goal)).toEqual(
+            freshResolve(floorMap, start, goal),
+          );
+        }
+      }
+    });
+
+    // The bug this test exists for: keying the flood cache on navEpoch alone is
+    // NOT sufficient. navEpoch is (floor + navigation-blocked door tiles), and a
+    // runtime PASSABLE/DOOR tile-flag mutation moves neither. Caching across such
+    // a mutation served a stale depth field and produced a measurable RunStats
+    // divergence on the seed-4/bow gate run. The cache key therefore also carries
+    // `tileMap.navTopologyRevision`.
+    it('invalidates when tile passability mutates without a navEpoch change', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const { tileMap } = floorMap;
+      const start: TilePoint = { x: 2, y: 2 };
+      // Seal column 8 so the right half is unreachable from the left half.
+      for (let y = 1; y < 15; y += 1) {
+        tileMap.setFlags(8, y, TilePresets.WALL);
+      }
+
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+      const farGoal: TilePoint = { x: 12, y: 12 };
+
+      // Populate the cache while the wall is intact.
+      const sealed = shared.computeReachableGoalTile(floorMap, start, farGoal);
+      expect(sealed).toEqual(freshResolve(floorMap, start, farGoal));
+      // Precondition: the far goal really is unreachable through the wall, so the
+      // stale-vs-fresh answers below are genuinely different values.
+      expect(sealed).not.toEqual(farGoal);
+
+      // Punch a gap. No door entity and no floor change, so navEpoch is untouched.
+      tileMap.setFlags(8, 8, TilePresets.FLOOR);
+
+      const opened = shared.computeReachableGoalTile(floorMap, start, farGoal);
+      expect(opened).toEqual(freshResolve(floorMap, start, farGoal));
+      // And it must actually have noticed: the far goal is reachable now.
+      expect(opened).toEqual(farGoal);
+    });
+
+    it('stays correct for start tiles evicted by the LRU bound', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const goal: TilePoint = { x: 14, y: 14 };
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+      const state = shared as unknown as FloodCacheState;
+
+      const firstStart: TilePoint = { x: 1, y: 1 };
+      const firstAnswer = shared.computeReachableGoalTile(floorMap, firstStart, goal);
+
+      // Walk well past REACHABILITY_FLOOD_CACHE_MAX distinct start tiles so the
+      // first entry is certainly evicted and its buffer recycled.
+      for (let i = 0; i < REACHABILITY_FLOOD_CACHE_MAX * 2; i += 1) {
+        const start: TilePoint = { x: 1 + (i % 13), y: 2 + (i % 12) };
+        expect(shared.computeReachableGoalTile(floorMap, start, goal)).toEqual(
+          freshResolve(floorMap, start, goal),
+        );
+      }
+
+      expect(state.reachabilityFloodCache.size).toBeLessThanOrEqual(REACHABILITY_FLOOD_CACHE_MAX);
+      // Exact, not just bounded: an off-by-one in the eviction condition would
+      // quietly let the cache run one entry over its documented memory budget.
+      expect(state.reachabilityFloodCache.size).toBe(REACHABILITY_FLOOD_CACHE_MAX);
+      // Re-querying the evicted start must recompute the same answer, not read a
+      // recycled buffer someone else refilled.
+      expect(shared.computeReachableGoalTile(floorMap, firstStart, goal)).toEqual(firstAnswer);
+      expect(firstAnswer).toEqual(freshResolve(floorMap, firstStart, goal));
+    });
+
+    it('does not hand the cached depth buffer out to callers', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+      const state = shared as unknown as FloodCacheState;
+      const start: TilePoint = { x: 3, y: 3 };
+
+      shared.computeReachableGoalTile(floorMap, start, { x: 10, y: 10 });
+      const entry = [...state.reachabilityFloodCache.values()][0]!;
+      const snapshot = Int32Array.from(entry);
+
+      // Further resolves from the same start must not mutate the retained field.
+      shared.computeReachableGoalTile(floorMap, start, { x: 11, y: 4 });
+      shared.computeReachableGoalTile(floorMap, start, { x: 4, y: 11 });
+
+      expect([...entry]).toEqual([...snapshot]);
+    });
+
+    // navEpoch is the OTHER half of the invalidation contract: it covers the
+    // door-lock layer, where a door flips between navigation-blocked and
+    // passable without any tile flag changing (so navTopologyRevision does not
+    // move). Driven here by swapping the door-aware predicate the way
+    // refreshDoorNavigation does, which is the real mechanism.
+    it('invalidates when navEpoch changes without a tile-flag change', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const { tileMap } = floorMap;
+      const start: TilePoint = { x: 2, y: 2 };
+      const farGoal: TilePoint = { x: 12, y: 12 };
+      // Wall off column 8 except tile (8,8), which stands in for a door: the
+      // predicate — not the tile flags — decides whether it is crossable.
+      for (let y = 1; y < 15; y += 1) {
+        if (y !== 8) {
+          tileMap.setFlags(8, y, TilePresets.WALL);
+        }
+      }
+
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+      const state = shared as unknown as FloodCacheState & {
+        doorAwarePassable: ((x: number, y: number) => boolean) | null;
+        navEpoch: number;
+      };
+
+      // Epoch A: the stand-in door is navigation-blocked.
+      state.doorAwarePassable = (x, y) => (x === 8 && y === 8 ? false : tileMap.isPassable(x, y));
+      state.navEpoch += 1;
+      const blocked = shared.computeReachableGoalTile(floorMap, start, farGoal);
+      expect(blocked).not.toEqual(farGoal);
+
+      // Epoch B: the door is now passable. Not one tile flag moved.
+      const topologyBefore = tileMap.navTopologyRevision;
+      state.doorAwarePassable = (x, y) => (x === 8 && y === 8 ? true : tileMap.isPassable(x, y));
+      state.navEpoch += 1;
+      expect(tileMap.navTopologyRevision).toBe(topologyBefore);
+
+      expect(shared.computeReachableGoalTile(floorMap, start, farGoal)).toEqual(farGoal);
+    });
+
+    it('never floods into a buffer sized for a different floor', () => {
+      const small = makeOpenRoom(16, 16);
+      const large = makeOpenRoom(24, 24);
+      const shared = asResolver(new BehaviorTreeAI({ seed: 1 }));
+
+      // Fill the cache to capacity with small-floor buffers so the next miss
+      // hits the eviction/recycle path with a length-mismatched victim. Every
+      // start must be interior (a border/OOB start short-circuits before the
+      // cache is touched and would leave it under capacity).
+      const smallState = shared as unknown as FloodCacheState;
+      for (let i = 0; i < REACHABILITY_FLOOD_CACHE_MAX; i += 1) {
+        shared.computeReachableGoalTile(
+          small,
+          { x: 1 + (i % 7), y: 1 + Math.floor(i / 7) },
+          { x: 14, y: 14 },
+        );
+      }
+      expect(smallState.reachabilityFloodCache.size).toBe(REACHABILITY_FLOOD_CACHE_MAX);
+
+      // Same provider, bigger floor: the recycled buffer and the shared BFS
+      // queue must both be resized, or the flood silently drops writes past the
+      // old length and reports far tiles as unreachable.
+      const start: TilePoint = { x: 2, y: 2 };
+      const farGoal: TilePoint = { x: 21, y: 21 };
+      expect(shared.computeReachableGoalTile(large, start, farGoal)).toEqual(
+        freshResolve(large, start, farGoal),
+      );
+      expect(shared.computeReachableGoalTile(large, start, farGoal)).toEqual(farGoal);
+
+      // Assert the field itself, not just the resolved tile. A short buffer
+      // silently drops every write past its length, and the resolver's ring
+      // fallback happens to hand back the raw goal in that case — so the
+      // outcome assertions above cannot tell a truncated flood from a correct
+      // one. These can.
+      const largeEntry = [...smallState.reachabilityFloodCache.values()].at(-1)!;
+      expect(largeEntry.length).toBe(24 * 24);
+      expect(smallState.reachabilityFloodQueue?.length).toBe(24 * 24);
+      // The far corner is genuinely reachable in an open room, so a correct
+      // flood assigns it a positive BFS depth.
+      expect(largeEntry[farGoal.y * 24 + farGoal.x]).toBeGreaterThan(0);
+    });
+
+    it('reset() clears the flood cache and its scratch buffer', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const ai = new BehaviorTreeAI({ seed: 1 });
+      asResolver(ai).computeReachableGoalTile(floorMap, { x: 3, y: 3 }, { x: 10, y: 10 });
+
+      const state = ai as unknown as FloodCacheState;
+      expect(state.reachabilityFloodCache.size).toBeGreaterThan(0);
+      expect(state.reachabilityFloodQueue).not.toBeNull();
+
+      ai.reset();
+
+      expect(state.reachabilityFloodCache.size).toBe(0);
+      expect(state.reachabilityFloodCacheEpoch).toBe(-1);
+      expect(state.reachabilityFloodCacheTopology).toBe(-1);
+      expect(state.reachabilityFloodQueue).toBeNull();
     });
   });
 

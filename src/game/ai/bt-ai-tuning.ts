@@ -225,6 +225,17 @@ export const NAVIGATION_MAX_PATH_LENGTH = 1_024;
 // whenever the navigation epoch changes (door/floor change), so this only
 // guards against unbounded growth from a long single-epoch wander.
 export const RESOLVE_GOAL_MEMO_MAX = 512;
+// Upper bound on distinct BFS reachability floods retained by
+// `computeReachableGoalTile` within a single navigation epoch. Each entry is one
+// `Int32Array` of `width * height` tiles (~134KB on the 33,600-tile Floor 1
+// grid), so this is a memory/hit-rate trade, not a gameplay knob — the cached
+// value is byte-identical to a freshly computed flood either way.
+//
+// Measured LRU hit rate on the real seed-1/sword call sequence (2,915 floods,
+// 808 distinct keys): n=1 47.8%, n=8 55.0%, n=16 58.2%, n=32 62.7%,
+// unbounded 72.6%. 16 captures most of the win at ~2.1MB steady-state; doubling
+// to 32 buys 4.5 points for double the memory.
+export const REACHABILITY_FLOOD_CACHE_MAX = 16;
 // How long (frames) to ignore an enemy after abandoning it as unreachable.
 export const ENEMY_IGNORE_FRAMES = 240;
 // Minimum ft the gap to a target enemy must close to count as engagement progress.

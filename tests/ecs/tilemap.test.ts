@@ -135,6 +135,57 @@ describe('TileMap', () => {
       map.closeDoor(2, 2);
       expect(map.transparencyRevision).toBe(2);
     });
+
+    it('increments nav topology revision only when PASSABLE or DOOR changes', () => {
+      const map = new TileMap(5, 5);
+      expect(map.navTopologyRevision).toBe(0);
+
+      // WALL -> DOOR_CLOSED flips the DOOR bit.
+      map.setFlags(2, 2, TilePresets.DOOR_CLOSED);
+      expect(map.navTopologyRevision).toBe(1);
+
+      // Idempotent rewrite must not bump.
+      map.setFlags(2, 2, TilePresets.DOOR_CLOSED);
+      expect(map.navTopologyRevision).toBe(1);
+
+      // Opening a door flips PASSABLE (and TRANSPARENT).
+      map.openDoor(2, 2);
+      expect(map.navTopologyRevision).toBe(2);
+      map.openDoor(2, 2);
+      expect(map.navTopologyRevision).toBe(2);
+      map.closeDoor(2, 2);
+      expect(map.navTopologyRevision).toBe(3);
+    });
+
+    it('does not bump nav topology revision for transparency-only changes', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(1, 1, TileFlags.PASSABLE);
+      const navBefore = map.navTopologyRevision;
+      const transparencyBefore = map.transparencyRevision;
+
+      // Same PASSABLE/DOOR bits, transparency added.
+      map.setFlags(1, 1, TileFlags.PASSABLE | TileFlags.TRANSPARENT);
+
+      expect(map.navTopologyRevision).toBe(navBefore);
+      expect(map.transparencyRevision).toBe(transparencyBefore + 1);
+    });
+
+    it('bumps nav topology revision from fill and fillRect when nav bits change', () => {
+      const filled = new TileMap(5, 5);
+      expect(filled.navTopologyRevision).toBe(0);
+      filled.fill(TilePresets.FLOOR);
+      expect(filled.navTopologyRevision).toBe(1);
+      // Re-filling with the identical value changes no nav bit.
+      filled.fill(TilePresets.FLOOR);
+      expect(filled.navTopologyRevision).toBe(1);
+
+      const rect = new TileMap(5, 5);
+      expect(rect.navTopologyRevision).toBe(0);
+      rect.fillRect(1, 1, 2, 2, TilePresets.FLOOR);
+      expect(rect.navTopologyRevision).toBe(1);
+      rect.fillRect(1, 1, 2, 2, TilePresets.FLOOR);
+      expect(rect.navTopologyRevision).toBe(1);
+    });
   });
 
   describe('fill operations', () => {

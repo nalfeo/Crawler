@@ -9,11 +9,19 @@
 
 import { TileFlags, TilePresets } from '../../shared/map-types';
 
+/**
+ * The bits every passability predicate reads. `isPassable` tests PASSABLE and
+ * `isDoor` tests DOOR, and `buildDoorAwarePassable` is built from exactly those
+ * two, so a mutation that leaves both bits alone cannot change reachability.
+ */
+const NAV_TOPOLOGY_FLAGS = TileFlags.PASSABLE | TileFlags.DOOR;
+
 export class TileMap {
   readonly width: number;
   readonly height: number;
   readonly flags: Uint8Array;
   private _transparencyRevision = 0;
+  private _navTopologyRevision = 0;
 
   constructor(width: number, height: number, initialFlags?: Uint8Array) {
     this.width = width;
@@ -43,10 +51,30 @@ export class TileMap {
     return this._transparencyRevision;
   }
 
+  /**
+   * Monotonic revision for navigation topology.
+   *
+   * Bumped only when a runtime tile mutation flips the PASSABLE or DOOR bit —
+   * exactly the two bits every passability predicate in the codebase reads
+   * (`isPassable`, `isDoor`, and therefore `buildDoorAwarePassable`). Callers
+   * can cache reachability work against this without being invalidated by
+   * idempotent door-system writes or transparency-only changes.
+   *
+   * This is deliberately separate from {@link transparencyRevision}: doors flip
+   * both bits, but lighting/fog changes flip only transparency, and a shared
+   * counter would spuriously invalidate navigation caches.
+   */
+  get navTopologyRevision(): number {
+    return this._navTopologyRevision;
+  }
+
   private setFlagsAtIndex(idx: number, value: number): void {
     const previous = this.flags[idx]!;
     if (((previous ^ value) & TileFlags.TRANSPARENT) !== 0) {
       this._transparencyRevision += 1;
+    }
+    if (((previous ^ value) & NAV_TOPOLOGY_FLAGS) !== 0) {
+      this._navTopologyRevision += 1;
     }
     this.flags[idx] = value;
   }
@@ -115,9 +143,15 @@ export class TileMap {
   fill(value: number): void {
     const transparent = (value & TileFlags.TRANSPARENT) !== 0;
     let transparencyChanged = false;
+    let navTopologyChanged = false;
     for (const current of this.flags) {
       if (((current & TileFlags.TRANSPARENT) !== 0) !== transparent) {
         transparencyChanged = true;
+      }
+      if (((current ^ value) & NAV_TOPOLOGY_FLAGS) !== 0) {
+        navTopologyChanged = true;
+      }
+      if (transparencyChanged && navTopologyChanged) {
         break;
       }
     }
@@ -125,11 +159,15 @@ export class TileMap {
     if (transparencyChanged) {
       this._transparencyRevision += 1;
     }
+    if (navTopologyChanged) {
+      this._navTopologyRevision += 1;
+    }
   }
 
   /** Fill a rectangular region with a flag value. */
   fillRect(x: number, y: number, w: number, h: number, value: number): void {
     let transparencyChanged = false;
+    let navTopologyChanged = false;
     for (let ty = y; ty < y + h; ty++) {
       for (let tx = x; tx < x + w; tx++) {
         const idx = this.index(tx, ty);
@@ -138,12 +176,18 @@ export class TileMap {
           if (((previous ^ value) & TileFlags.TRANSPARENT) !== 0) {
             transparencyChanged = true;
           }
+          if (((previous ^ value) & NAV_TOPOLOGY_FLAGS) !== 0) {
+            navTopologyChanged = true;
+          }
           this.flags[idx] = value;
         }
       }
     }
     if (transparencyChanged) {
       this._transparencyRevision += 1;
+    }
+    if (navTopologyChanged) {
+      this._navTopologyRevision += 1;
     }
   }
 
