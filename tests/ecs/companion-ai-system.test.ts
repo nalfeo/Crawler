@@ -1,20 +1,20 @@
-import { addComponent, set } from "bitecs";
-import { describe, expect, it } from "vitest";
+import { addComponent, set } from 'bitecs';
+import { describe, expect, it } from 'vitest';
 import {
   Companion,
   Team,
   movementSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
-} from "../../src/core/index.js";
-import { TeamId } from "../../src/shared/constants.js";
+} from '../../src/core/index.js';
+import { TeamId } from '../../src/shared/constants.js';
 import {
   AI_TYPE,
   companionAISystem,
   enemyAISystem,
   getCompanionAIDecision,
-} from "../../src/game/index.js";
-import { createTestWorld } from "../helpers/world-factory.js";
+} from '../../src/game/index.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 
 function spawnCompanion(
   world: ReturnType<typeof createTestWorld>,
@@ -50,8 +50,8 @@ function spawnRival(
   return eid;
 }
 
-describe("companionAISystem", () => {
-  it("targets the nearest rival with a different team id", () => {
+describe('companionAISystem', () => {
+  it('targets the nearest rival with a different team id', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const companion = spawnCompanion(world, 0, 0);
@@ -60,34 +60,34 @@ describe("companionAISystem", () => {
 
     companionAISystem(world);
     const decision = getCompanionAIDecision(world, companion);
-    expect(decision?.kind).toBe("rival-primary");
+    expect(decision?.kind).toBe('rival-primary');
     expect(decision?.targetEid).toBe(nearRival);
   });
 
-  it("follows player when no rival exists and companion is outside leash", () => {
+  it('follows player when no rival exists and companion is outside leash', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const companion = spawnCompanion(world, 20, 0);
 
     companionAISystem(world);
     const decision = getCompanionAIDecision(world, companion);
-    expect(decision?.kind).toBe("follow");
+    expect(decision?.kind).toBe('follow');
     expect(decision?.targetEid).toBeDefined();
     expect(decision?.x).toBe(0);
     expect(decision?.y).toBe(0);
   });
 
-  it("idles when inside leash and no rival exists", () => {
+  it('idles when inside leash and no rival exists', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const companion = spawnCompanion(world, 1, 0);
 
     companionAISystem(world);
     const decision = getCompanionAIDecision(world, companion);
-    expect(decision?.kind).toBe("idle");
+    expect(decision?.kind).toBe('idle');
   });
 
-  it("disables knocked-out companions in the real prepass to movement pipeline", () => {
+  it('disables knocked-out companions in the real prepass to movement pipeline', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, -20);
     const companion = spawnCompanion(world, 0, 0);
@@ -98,12 +98,12 @@ describe("companionAISystem", () => {
     enemyAISystem(world);
     movementSystem(world);
 
-    expect(getCompanionAIDecision(world, companion)?.kind).toBe("disabled");
+    expect(getCompanionAIDecision(world, companion)?.kind).toBe('disabled');
     expect(world.stores.velocity.y[companion]).toBe(0);
     expect(world.stores.position.y[companion]).toBe(0);
   });
 
-  it("is consumed by enemyAISystem in real prepass → ai → movement pipeline", () => {
+  it('is consumed by enemyAISystem in real prepass → ai → movement pipeline', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, -20);
     const companion = spawnCompanion(world, 0, 0);
@@ -114,7 +114,7 @@ describe("companionAISystem", () => {
     movementSystem(world);
 
     const decision = getCompanionAIDecision(world, companion);
-    expect(decision?.kind).toBe("rival-primary");
+    expect(decision?.kind).toBe('rival-primary');
     expect(decision?.targetEid).toBe(rival);
     expect(world.stores.position.y[companion]).toBeGreaterThan(0);
   });
