@@ -3,7 +3,7 @@ import { Companion, DeathTimer, Enemy, Player, Position, Team } from '../../core
 import type { GameWorld } from '../../core/world.js';
 import tuning from '../../shared/data/tuning.json';
 
-export type CompanionTargetKind = 'rival-primary' | 'follow' | 'idle';
+export type CompanionTargetKind = 'rival-primary' | 'follow' | 'idle' | 'disabled';
 
 export interface CompanionAIDecision {
   x: number;
@@ -44,7 +44,16 @@ export function companionAISystem(world: GameWorld): void {
 
   for (const eid of companions) {
     if (hasComponent(world.ecs, eid, DeathTimer)) continue;
-    if ((world.stores.companion.knockedOut[eid] ?? 0) === 1) continue;
+    if ((world.stores.companion.knockedOut[eid] ?? 0) === 1) {
+      decisions.set(eid, {
+        x: world.stores.position.x[eid] ?? 0,
+        y: world.stores.position.y[eid] ?? 0,
+        kind: 'disabled',
+        targetEid: undefined,
+        bypassPlayerDetection: true,
+      });
+      continue;
+    }
     if (!hasComponent(world.ecs, eid, Team)) continue;
 
     const teamId = world.stores.team.id[eid] ?? 0;
