@@ -16,6 +16,14 @@ Completed the explicit, manifest-driven Equipment A|B scenario contract. The UI-
 
 Generated equipment previews now calculate the same read-only swap delta as catalog equipment. The scenario fixture uses a valid common generated item with an immutable probe run key.
 
+The neutral Equipment layout was subsequently polished without changing the ten-slot contract:
+
+- square 64px paper-doll controls with compact 12px column gaps;
+- the overlapping 8px `— empty —` cue removed while retaining all slot labels;
+- a full-width, padded Equipment header aligned with Stats and Bag;
+- the idle inspector hidden so the doll is vertically centered when no item is hovered;
+- `Current totals` and section underlines removed; stat rows are vertically centered and `Cooldown Reduction` is not truncated.
+
 ## Visual evidence
 
 Current captures and Azure LLM reviews are stored session-locally at:
@@ -23,6 +31,12 @@ Current captures and Azure LLM reviews are stored session-locally at:
 `files/visual-review/after/v0.1.0/{equipment,equipment-hover-equipped,equipment-hover-duplicate,equipment-hover-empty-slot,equipment-hover-mixed-delta}.{png,review.json}`
 
 All five capture contracts report ten declared slot regions and zero deterministic geometry blockers. The Azure reviews remain `needs-work`; their subjective tooltip/stat-panel critiques require the maintainer's requested finding-by-finding disposition before further design changes.
+
+The polished neutral capture and Azure review are stored at
+`files/visual-review/after/v0.1.1/equipment.{png,review.json}`. It is a changed
+real-Phaser capture with ten declared slots and zero deterministic blockers. Its 65/100
+derived advisory score exceeds the prior 53.1/100 deterministic-equivalent baseline
+(67.1 axis mean minus 14 blocker penalty).
 
 No `before/live-dev` evidence was created: this workspace has no checked-in release baseline or detached baseline worktree. Capturing current-branch pixels as live evidence would fabricate provenance. Populate that side from the release capture workflow or an explicitly provisioned immutable release checkout.
 
@@ -32,6 +46,7 @@ No `before/live-dev` evidence was created: this workspace has no checked-in rele
 - `npm run test:e2e -- tests/e2e/inventory-flow.test.ts` — 25 passed.
 - `npx vitest run tests/unit/visual-review-agent-cli.test.ts` — 19 passed.
 - `npm run verify:fast` — passed (131 files, 1,818 tests).
+- `npx vitest run tests/e2e/inventory-flow.test.ts -t "uses square labeled slots without an idle inspector"` — 2 passed across both e2e projects.
 
 ## Systems touched
 

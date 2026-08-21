@@ -820,6 +820,37 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
+  it('uses square labeled slots without an idle inspector', async () => {
+    const { context, page: layoutPage } = await openDecisionState({ width: 1280, height: 800 });
+    try {
+      await probe.previewEquipmentBagItem(layoutPage, null);
+      await layoutPage.waitForTimeout(100);
+
+      for (const slot of EQUIPMENT_UI_SLOTS) {
+        const bounds = await probe.getEquipmentSlotBounds(layoutPage, slot.id);
+        expect(bounds, `slot "${slot.id}" should be rendered`).not.toBeNull();
+        if (!bounds) continue;
+        expect(
+          Math.abs(bounds.width - bounds.height),
+          `slot "${slot.id}" must remain square rather than reverting to a legacy rectangle`,
+        ).toBeLessThanOrEqual(1);
+      }
+
+      expect(
+        await probe.getEquipmentInspectorBounds(layoutPage),
+        'the resting panel should not spend space on a hover instruction',
+      ).toBeNull();
+
+      const text = (await probe.getEquipmentTextRuns(layoutPage)).map((run) => run.text);
+      expect(text).toContain('Cooldown Reduction');
+      expect(text).not.toContain('Current totals');
+      expect(text).not.toContain('Hover a slot for details');
+      expect(text).not.toContain('— empty —');
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
   /**
    * Stat labels are not shouted.
    *

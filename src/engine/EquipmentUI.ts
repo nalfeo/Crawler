@@ -67,15 +67,15 @@ import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme
 const PANEL_PADDING = 22;
 const EQUIPMENT_FONT_IDENTITY = 'Arial';
 const FONT_FAMILY = UI_FONT_FAMILY;
-const SLOT_W = 84;
-const SLOT_H = 56;
+const SLOT_W = 64;
+const SLOT_H = 64;
 const SLOT_SPREAD_X = 1;
 const SLOT_SPREAD_Y = 1;
 // Vertical strip reserved under every slot box for its identity label. Without a
 // label an empty slot is an anonymous grey square: the player cannot tell a
 // wrist from a ring from a belt, which is the single biggest task-readiness
 // defect the screenshot judge reports against this panel.
-const SLOT_LABEL_BAND = 40;
+const SLOT_LABEL_BAND = 28;
 const SLOT_LABEL_PX = 12;
 // Header/footer bands around the doll. These were 58/82 and held ~40px of real
 // content between them, leaving wide dead bands at the top and bottom of the
@@ -336,8 +336,8 @@ export function createEquipmentUI(
   getBagColumnScreenBounds(): ScreenBounds;
   /** Live bounds of the stats column frame (world space). */
   getStatsColumnScreenBounds(): ScreenBounds;
-  /** Live bounds of the fixed inspector strip (world space). */
-  getInspectorScreenBounds(): ScreenBounds;
+  /** Live bounds of the visible inspector strip, or null while idle. */
+  getInspectorScreenBounds(): ScreenBounds | null;
   /** Every visible text run in the panel, tagged by owning region. */
   getTextRuns(): EquipmentTextRun[];
   /** Resolved font/raster evidence for deterministic visual validation. */
@@ -456,11 +456,12 @@ export function createEquipmentUI(
     color: hex(COLORS.textPrimary),
     padding: { top: 4, bottom: 2 },
   });
+  leftCenterTextOnPixels(title, panelX + PANEL_PADDING + 10, panelY + PANEL_PADDING + 10);
   container.add(title);
   const titleFrame = scene.add.rectangle(
-    panelX + PANEL_PADDING + 146,
+    panelX + PANEL_PADDING + DOLL_W / 2,
     panelY + PANEL_PADDING + 10,
-    296,
+    DOLL_W,
     28,
     0x355180,
     0.95,
@@ -469,7 +470,7 @@ export function createEquipmentUI(
   container.addAt(titleFrame, 1);
 
   const hint = crispText(
-    panelX + PANEL_PADDING,
+    panelX + PANEL_PADDING + 10,
     panelY + PANEL_PADDING + 34,
     'Click a slot to filter or unequip',
     {
@@ -525,9 +526,6 @@ export function createEquipmentUI(
   // slot — this replaces the old floating tooltip, which had no collision-free
   // placement once the 3-column grid was full.
   const INSPECTOR_H = 150;
-  // Minimum clearance between the bottom row's label band and the inspector.
-  // Matches the grid's top inset so the centring maths is symmetric.
-  const INSPECTOR_GRID_CLEARANCE = 26;
   const inspectorX = dollX + 2;
   const inspectorW = dollW - 4;
   const inspectorY = dollY + dollH - INSPECTOR_H - 42;
@@ -555,6 +553,8 @@ export function createEquipmentUI(
     },
   );
   leftCenterTextOnPixels(inspectorPlaceholder, inspectorX + 14, inspectorY + INSPECTOR_H / 2);
+  inspectorBg.setVisible(false);
+  inspectorPlaceholder.setVisible(false);
   container.add(inspectorPlaceholder);
 
   // Phaser snapshots a Text object's glyph texture at construction. Re-raster
@@ -733,14 +733,12 @@ export function createEquipmentUI(
   function clearTooltip(): void {
     clearInspectorText();
     setCompare(null);
-    refreshInspectorIdleText();
-    inspectorPlaceholder.setVisible(true);
+    inspectorBg.setVisible(false);
+    inspectorPlaceholder.setVisible(false);
   }
 
-  // Idle inspector text (shown when nothing is hovered). Lives in the persistent
-  // placeholder, NOT the tooltip pool, so isTooltipVisible stays false when idle
-  // (deterministic e2e contract). When a slot filter is active it surfaces the
-  // filter state so the context isn't lost the moment the pointer leaves a slot.
+  // Keep filter state available through the selected slot and bag header without
+  // spending a permanent inspector panel when the pointer is idle.
   function refreshInspectorIdleText(): void {
     if (selectedSlotFilter) {
       const slot = EQUIPMENT_UI_SLOTS.find((entry) => entry.id === selectedSlotFilter);
@@ -1096,14 +1094,16 @@ export function createEquipmentUI(
    * fitted text leaves a small safety margin. The e2e gate measures real glyph
    * boxes, so this remains intentionally conservative.
    */
-  const STATS_FONT_PX = 12;
   function measureStatsText(text: string): number {
-    return text.length * STATS_FONT_PX;
+    // Arial's average glyph advance is materially narrower than its font size.
+    // Budgeting every character at 12px was needlessly truncating ordinary labels
+    // such as "Cooldown Reduction" despite visibly available row space.
+    return Math.ceil(text.length * 7.5);
   }
 
   /** Truncate `text` (with an ellipsis) so it fits `maxWidth` design px. */
   function fitStatsText(text: string, maxWidth: number): string {
-    const budget = Math.max(3, Math.floor(maxWidth / STATS_FONT_PX));
+    const budget = Math.max(3, Math.floor(maxWidth / 7.5));
     if (text.length <= budget) return text;
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
@@ -1114,6 +1114,7 @@ export function createEquipmentUI(
   // the deterministic probes keep their existing contract.
   function renderInspector(lines: InspectorLine[]): void {
     clearInspectorText();
+    inspectorBg.setVisible(true);
     inspectorPlaceholder.setVisible(false);
     // Keep the optional fourth generated-equipment line inside the fixed strip
     // without asking it to overlap 12px glyph boxes.
@@ -1179,6 +1180,7 @@ export function createEquipmentUI(
     sectionLabel: string,
     diffLines: readonly string[] = [],
   ): void {
+    inspectorBg.setVisible(true);
     inspectorPlaceholder.setVisible(false);
     tooltipObjects.push(
       ...renderItemTooltip({
@@ -1510,7 +1512,7 @@ export function createEquipmentUI(
     // columns edge-to-edge reads as scattered floating boxes rather than a
     // figure, so cap the column pitch and centre the grid in the leftover
     // width instead of stretching into it.
-    const MAX_COL_PITCH = 125;
+    const MAX_COL_PITCH = SLOT_W + BAG_GAP;
     const rawUsableW = dollW - SLOT_W - innerPadX * 2;
     const usableW = Math.min(rawUsableW, MAX_COL_PITCH * 2);
     const gridOffsetX = (rawUsableW - usableW) / 2;
@@ -1524,10 +1526,10 @@ export function createEquipmentUI(
     // is split evenly above and below so the doll reads as centred in its pane.
     const slotFootprintH = SLOT_H + SLOT_LABEL_BAND;
     const gridRegionTop = dollY + innerPadY;
-    const gridRegionBottom = inspectorY - INSPECTOR_GRID_CLEARANCE;
+    const gridRegionBottom = dollY + dollH - innerPadY;
     const gridRegionH = gridRegionBottom - gridRegionTop;
     // Row `py` values run 0 → 1 across four rows, i.e. three row pitches.
-    const MAX_ROW_PITCH = 100;
+    const MAX_ROW_PITCH = SLOT_H + SLOT_LABEL_BAND + BAG_GAP;
     const usableH = Math.max(0, Math.min(gridRegionH - slotFootprintH, MAX_ROW_PITCH * 3));
     const gridOffsetY = Math.max(0, Math.round((gridRegionH - (usableH + slotFootprintH)) / 2));
     const spreadNorm = (value: number, spread: number): number =>
@@ -1701,17 +1703,9 @@ export function createEquipmentUI(
         : instance
           ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
           : createSlotPlaceholder(slot.id, cx, cy + 2);
-      const emptyCue = instance
-        ? null
-        : crispText(snap(cx), snap(cy + 18), '— empty —', {
-            fontFamily: FONT_FAMILY,
-            fontSize: '8px',
-            color: hex(COLORS.slotEmptyBorder),
-            padding: { top: 1, bottom: 2 },
-          });
-      if (emptyCue) emptySlotCues.set(slot.id, slot.id);
+      const emptyCue = null;
+      if (!instance) emptySlotCues.set(slot.id, slot.id);
       else emptySlotCues.delete(slot.id);
-      if (emptyCue) centerTextOnPixels(emptyCue, cx, cy + 18);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -1847,42 +1841,19 @@ export function createEquipmentUI(
 
     const colW = STATS_W - 14;
 
-    // Fixed-height status banner. Candidate consequences live in the candidate
-    // tooltip; this column remains a stable readout of the current build.
-    const compareBarY = statsY + 20;
-    const compareBg = scene.add.rectangle(
-      statsX + colW / 2 + 6,
-      compareBarY,
-      colW - 8,
-      18,
-      0x2f4369,
-      0.95,
-    );
-    compareBg.setStrokeStyle(1, 0x5f7db0, 0.7);
-    const compareText = crispText(statsX + 10, compareBarY, 'Current totals', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: hex(COLORS.textSecondary),
-      padding: { top: 2, bottom: 3 },
-    });
-    leftCenterTextOnPixels(compareText, statsX + 10, compareBarY);
-    container.add(compareBg);
-    container.add(compareText);
-    statObjects.push(compareBg, compareText);
-
-    let rowY = statsY + 36;
+    let rowY = statsY + 12;
     const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
     const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
     // Leave a full pixel between a final row and the next section title rather
     // than letting their glyph textures share a scanline.
-    const SECTION_STEP = 23;
+    const SECTION_STEP = 20;
     const reservedSectionSpace = SECTION_STEP * 3; // PRIMARY + SECONDARY + MASS headers
     const rowsEndY = statsY + statsH - 12;
     // Fit the rows into the space that exists. MIN_STAT_ROW_STEP keeps 12px text
     // legible (glyph box ~15px) even at the tightest fit; MAX keeps the column
     // from looking gappy when the stat list is short.
-    const MIN_STAT_ROW_STEP = 19;
-    const MAX_STAT_ROW_STEP = 23;
+    const MIN_STAT_ROW_STEP = 20;
+    const MAX_STAT_ROW_STEP = 24;
     const rowStep = Math.max(
       MIN_STAT_ROW_STEP,
       Math.min(
@@ -1890,29 +1861,16 @@ export function createEquipmentUI(
         Math.floor((rowsEndY - rowY - reservedSectionSpace) / totalStatRows),
       ),
     );
-    const rowTextDy = Math.max(1, Math.round((rowStep - 14) / 2));
     const drawSection = (titleText: string): void => {
-      const sectionTitle = crispText(statsX + 10, rowY + 3, titleText, {
+      const sectionTitle = crispText(statsX + 10, rowY, titleText, {
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
         color: hex(COLORS.headerAccent),
         padding: { top: 2, bottom: 3 },
       });
-      sectionTitle.setOrigin(0, 0);
-      const sectionRule = scene.add.line(
-        0,
-        0,
-        statsX + 112,
-        rowY + 17,
-        statsX + colW,
-        rowY + 17,
-        COLORS.panelBorder,
-        0.9,
-      );
-      sectionRule.setLineWidth(1, 1);
+      leftCenterTextOnPixels(sectionTitle, statsX + 10, rowY + SECTION_STEP / 2);
       container.add(sectionTitle);
-      container.add(sectionRule);
-      statObjects.push(sectionTitle, sectionRule);
+      statObjects.push(sectionTitle);
       rowY += SECTION_STEP;
     };
 
@@ -1937,7 +1895,7 @@ export function createEquipmentUI(
       // and a long "12 (+3)" readout can never collide.
       const name = crispText(
         statsX + 10,
-        rowY + rowTextDy,
+        rowY,
         fitStatsText(label, colW - 24 - measureStatsText(valueText)),
         {
           fontFamily: FONT_FAMILY,
@@ -1948,15 +1906,15 @@ export function createEquipmentUI(
           padding: { top: 2, bottom: 3 },
         },
       );
-      name.setOrigin(0, 0);
-      const val = crispText(statsX + colW, rowY + rowTextDy, valueText, {
+      leftCenterTextOnPixels(name, statsX + 10, rowY + rowStep / 2);
+      const val = crispText(statsX + colW, rowY, valueText, {
         fontFamily: FONT_FAMILY,
         fontSize: '12px',
         color: hex(valueColor),
         fontStyle: emphasis ? 'bold' : 'normal',
         padding: { top: 2, bottom: 3 },
       });
-      val.setOrigin(1, 0);
+      rightCenterTextOnPixels(val, statsX + colW, rowY + rowStep / 2);
       container.add(rowBg);
       container.add(name);
       container.add(val);
@@ -2499,7 +2457,8 @@ export function createEquipmentUI(
       const b = statsBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
-    getInspectorScreenBounds: (): ScreenBounds => {
+    getInspectorScreenBounds: (): ScreenBounds | null => {
+      if (!inspectorBg.visible) return null;
       const b = inspectorBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
