@@ -51,6 +51,7 @@ export class QueueCommitError extends Error {
   constructor(
     readonly kind:
       | 'ci-refused'
+      | 'queue-frozen'
       | 'destination-conflict'
       | 'invalid-asset-path'
       | 'invalid-annotation'
@@ -201,6 +202,23 @@ export interface QueueCommitOptions {
 }
 
 const DEFAULT_MAX_ATTEMPTS = 5;
+
+/**
+ * Env flag that FREEZES writes to the mutable `assets/queue` aggregate branch
+ * during the cutover to immutable asset request refs (issue #3205). Set it once
+ * the request writer is deployed: every remaining queue writer then fails with
+ * an actionable message instead of silently extending an aggregate branch that
+ * is about to be archived. Absent/`0`/`false` keeps today's behavior.
+ */
+export const ASSET_QUEUE_FREEZE_ENV = 'SPRITES_ASSET_QUEUE_FROZEN';
+
+/** True when the queue freeze flag is set to an affirmative value. */
+export function isAssetQueueFrozen(env: NodeJS.ProcessEnv): boolean {
+  const raw = env[ASSET_QUEUE_FREEZE_ENV];
+  if (raw === undefined) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== '' && normalized !== '0' && normalized !== 'false';
+}
 
 /**
  * Validate that each asset path is a safe repo-relative POSIX path under the art
@@ -420,6 +438,16 @@ export async function runQueueCommit(
       'ci-refused',
       'Per Constitutional §3, queue-commit is local-only: it pushes locally-approved ' +
         'assets to the remote assets/queue branch. Run it on a dev box.',
+    );
+  }
+
+  if (isAssetQueueFrozen(env)) {
+    throw new QueueCommitError(
+      'queue-frozen',
+      `Writes to the mutable assets/queue branch are frozen (${ASSET_QUEUE_FREEZE_ENV} is set). ` +
+        'Publish an immutable asset request instead: `npm run sprites:asset-request -- publish ...` ' +
+        '(scripts/sprites/asset-requests/). The queue branch is read-only during the cutover in ' +
+        'issue #3205 and is archived once its final tip is fully classified.',
     );
   }
 
