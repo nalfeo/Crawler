@@ -218,7 +218,7 @@ function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
 
-function sameRepository(pr, repository) {
+export function sameRepository(pr, repository) {
   return pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase();
 }
 

@@ -103,8 +103,9 @@ export const LIFECYCLE_PHASES = {
 };
 
 // QUARANTINED is intentionally NOT terminal: a human can revive a quarantined
-// PR to QUEUED by commenting "KEEP" (see parseDispositionCommand). Only DONE
-// and ABANDONED are true dead ends with no further lifecycle transitions.
+// PR to REPAIRING by commenting "KEEP" (see parseDispositionCommand), after
+// which the normal lifecycle evaluation takes over again. Only DONE and
+// ABANDONED are true dead ends with no further lifecycle transitions.
 export const TERMINAL_PHASES = new Set([LIFECYCLE_PHASES.DONE, LIFECYCLE_PHASES.ABANDONED]);
 
 // Structurally non-blocking phases (D11): a PR in one of these can never be a
@@ -333,6 +334,7 @@ export function normalizeBlockers(blockers) {
           }
         : {}),
       ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
+      ...(blocker.scopeMismatchTrusted === true ? { scopeMismatchTrusted: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -375,9 +377,31 @@ export function blockerFingerprint(blockers) {
   // display/evidence; it is only invisible to the fingerprint hash.
   // Observed in production on PR #1939 / incident #2268 (model
   // "claude-sonnet-4.5" deprecated 2026-05-06; incident filed 2026-07-29).
+  const normalizeReviewRecoveryChurn = (blocker) => {
+    if (blocker.kind !== 'review-thread') return blocker;
+    const summary = compact(blocker.summary);
+    const stableThreadId = compact(blocker.id).match(/^review-thread:([^:]+):/)?.[1];
+    const stableId = stableThreadId ? `review-thread:${stableThreadId}` : blocker.id;
+    const staleMarker = summary.match(/^\[Stale marker:.*?\]\s*(.*)$/i);
+    if (staleMarker) {
+      return { ...blocker, id: stableId, summary: `[Stale marker] ${compact(staleMarker[1])}` };
+    }
+    const priorReply = summary.match(/^\[Prior recovery reply .*?\]\s*(.*)$/i);
+    if (priorReply) {
+      return {
+        ...blocker,
+        id: stableId,
+        summary: `[Prior recovery reply] ${compact(priorReply[1])}`,
+      };
+    }
+    return { ...blocker, id: stableId };
+  };
   const fingerprintBlockers = normalized
     .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
-    .map(({ line: _line, url: _url, ...rest }) => rest);
+    .map(normalizeReviewRecoveryChurn)
+    .map(
+      ({ line: _line, url: _url, scopeMismatchTrusted: _scopeMismatchTrusted, ...rest }) => rest,
+    );
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
@@ -460,8 +484,12 @@ export function makeState({
   attempt = 0,
   progressKey = null,
   progressAt = null,
+  pendingIssueRestarts = [],
   updatedAt,
 }) {
+  const pendingRestarts = (Array.isArray(pendingIssueRestarts) ? pendingIssueRestarts : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
   const state = {
     version: 1,
     prNumber,
@@ -474,6 +502,7 @@ export function makeState({
     blockers: normalizeBlockers(blockers),
     attempt,
     ...(progressKey ? { progressKey: compact(progressKey), progressAt: compact(progressAt) } : {}),
+    ...(pendingRestarts.length > 0 ? { pendingIssueRestarts: pendingRestarts } : {}),
     updatedAt: compact(updatedAt),
   };
   validateState(state);
@@ -507,6 +536,15 @@ export function validateState(state) {
   }
   if (state.progressAt && Number.isNaN(Date.parse(state.progressAt))) {
     throw new Error('CI recovery progress timestamp is invalid');
+  }
+  if (state.pendingIssueRestarts !== undefined) {
+    if (
+      !Array.isArray(state.pendingIssueRestarts) ||
+      state.pendingIssueRestarts.length === 0 ||
+      state.pendingIssueRestarts.some((value) => !Number.isInteger(value) || value <= 0)
+    ) {
+      throw new Error('CI recovery state has invalid pending issue restarts');
+    }
   }
   if (Number.isNaN(Date.parse(state.updatedAt))) {
     throw new Error('CI recovery state timestamp is invalid');
@@ -558,6 +596,13 @@ export function renderStateComment(state) {
     `- Blockers: ${blockerSummary}`,
     ...(state.progressAt
       ? [`- Automation attempt: ${state.attempt}`, `- Progress observed: ${state.progressAt}`]
+      : []),
+    ...(state.trigger === 'stale-automation-exhausted'
+      ? [
+          '- Recovery disposition: `stale-automation-exhausted`',
+          `- Retry count: ${state.attempt}`,
+          '- Next action: human/operator must inspect the linked CI recovery loop incident or explicitly take ownership; automated cloud-agent dispatch is suppressed for this unchanged blocker fingerprint.',
+        ]
       : []),
     `- Updated: ${state.updatedAt}`,
     '',
@@ -711,8 +756,10 @@ export const TRUSTED_BOT_LOGINS = new Set([
   'copilot',
 ]);
 
-const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const addressedInPrefixPattern = /^\s*(?:✅\s*)?addressed\s+in\s+<?([^\s>]+)>?/i;
 const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
+const duplicateReplySkippedPattern =
+  /^\s*duplicate reply skipped\s+[-—]\s+already posted above\.\s*$/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -789,6 +836,20 @@ function isTrustedComment(comment) {
   );
 }
 
+function isIgnorableTrailingRecoveryNote(comment) {
+  return isTrustedComment(comment) && duplicateReplySkippedPattern.test(String(comment.body ?? ''));
+}
+
+export function effectiveLatestThreadComment(thread) {
+  const comments = thread.comments?.nodes ?? [];
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const candidate = comments[index];
+    if (isIgnorableTrailingRecoveryNote(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
 /**
  * Returns true only when the last comment in the thread is a trusted marker
  * that either explicitly names the current head SHA (full or ≥7-char prefix),
@@ -798,13 +859,40 @@ function isTrustedComment(comment) {
  * an earlier comment had a valid marker.
  */
 export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) return false;
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(thread);
+  if (!last) return false;
   if (!isTrustedComment(last)) return false;
   return (
     markerNamesHead(last.body, headSha, reachableCommitShas) || hasNotApplicableMarker(last.body)
   );
+}
+
+const scopeMismatchClosingReferencePattern =
+  /\b(?:fix(?:e[sd])?|clos(?:e[sd])?|resolv(?:e[sd])?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i;
+// Reviewers phrase the same finding in passive ("is not implemented") and
+// active ("does not implement the feature") voice, so both must match or an
+// otherwise-identical scope-mismatch finding falls through to ordinary inline
+// repair dispatch.
+const scopeMismatchUnsupportedPattern =
+  /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
+const scopeMismatchPromisePattern =
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+
+/**
+ * Detect a trusted-review finding that says the PR's declared scope (closing
+ * keyword, title, or body promise) is unsupported by the diff. This is an
+ * ambiguous product decision, not an inline repair task: recovery must
+ * quarantine and ask the maintainer whether to abandon/restart or keep with an
+ * explicit implementation plan.
+ */
+export function isScopeMismatchReviewBlocker(blocker) {
+  if (blocker?.kind !== 'review-thread') return false;
+  if (blocker.scopeMismatchTrusted !== true) return false;
+  const text = compact(blocker.summary);
+  if (!text) return false;
+  const namesClosingReference = scopeMismatchClosingReferencePattern.test(text);
+  const namesScopePromise = scopeMismatchPromisePattern.test(text);
+  return scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise);
 }
 
 /**

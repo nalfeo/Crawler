@@ -14,6 +14,7 @@ import {
   ISSUE_INTAKE_BODY,
   ISSUE_INTAKE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
+  IssueClaimedByGoobersError,
   isTelemetryIssue,
   issueIntakeEligibility,
   openBlockingIssues,
@@ -62,6 +63,12 @@ test('issue intake accepts only trusted opener and label combinations', () => {
       name: 'Copilot automation issue',
       login: 'copilot-swe-agent[bot]',
       labels: ['automation'],
+      eligible: false,
+    },
+    {
+      name: 'Goobers-owned maintainer issue',
+      login: 'nalfeo',
+      labels: ['goobers:approved'],
       eligible: false,
     },
   ];
@@ -503,6 +510,80 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
     calls[2][2].body.body,
     /Then, when you open the PR, include the same high-level summary in the PR description\./,
   );
+});
+
+test('restart issue intake removes existing Copilot assignee before reassigning', async () => {
+  const calls = [];
+  const graphql = async (_token, query, variables) => {
+    if (query.includes('suggestedActors')) {
+      calls.push(['discover', variables]);
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            assignees: {
+              nodes: [
+                { id: 'USER_NALFEO', login: 'nalfeo' },
+                { id: 'BOT_COPILOT', login: 'copilot-swe-agent' },
+              ],
+            },
+          },
+        },
+      };
+    }
+    if (query.includes('removeAssigneesFromAssignable')) {
+      calls.push(['remove', variables]);
+      return {
+        removeAssigneesFromAssignable: {
+          assignable: { assignees: { nodes: [{ login: 'nalfeo' }] } },
+        },
+      };
+    }
+    calls.push(['assign', variables]);
+    return {
+      replaceActorsForAssignable: {
+        assignable: {
+          assignees: { nodes: [{ login: 'nalfeo' }, { login: 'Copilot' }] },
+        },
+      },
+    };
+  };
+  const paginate = async () => {
+    calls.push(['comments']);
+    return [
+      {
+        id: 1,
+        body: ISSUE_INTAKE_BODY,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ];
+  };
+
+  const result = await runIssueIntake({
+    graphql,
+    paginate,
+    request: async () => assert.fail('existing kickoff comment should be reused'),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue,
+    restart: true,
+  });
+
+  assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'existing' });
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ['discover', 'comments', 'remove', 'assign'],
+  );
+  assert.deepEqual(calls[2][1], {
+    assignableId: 'ISSUE_1067',
+    assigneeIds: ['BOT_COPILOT'],
+  });
 });
 
 test('deletes the kickoff comment when assignment does not persist', async () => {
@@ -1038,6 +1119,38 @@ test('intakeOpenedIssue rejects a telemetry-labeled dependent even from the unbl
   );
 });
 
+test('intakeOpenedIssue rejects a Goobers-owned dependent even from the unblock sweep', async () => {
+  let paginateCalled = false;
+  const result = await intakeOpenedIssue({
+    graphql: async () => ({}),
+    paginate: async () => {
+      paginateCalled = true;
+      return [];
+    },
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: {
+      number: 1906,
+      node_id: 'ISSUE_1906',
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'GOOBERS:APPROVED' }],
+    },
+    fromUnblockSweep: true,
+  });
+
+  assert.deepEqual(result, {
+    assigned: false,
+    reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+  });
+  assert.equal(
+    paginateCalled,
+    false,
+    'Goobers ownership must short-circuit before the dependency query',
+  );
+});
+
 test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
   const fakes = makeSuccessfulIntakeFakes();
   const closedIssue = { number: 1851 };
@@ -1256,4 +1369,49 @@ test('runIssueIntake refuses to assign an issue that is no longer open', async (
     }),
     /no longer open/,
   );
+});
+
+test('runIssueIntake refuses to assign when issue gains goobers:approved during intake', async () => {
+  let assignmentMutationCalled = false;
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            labels: { nodes: [{ name: 'goobers:approved' }] },
+            assignees: { nodes: [] },
+          },
+        },
+      };
+    }
+    if (query.includes('replaceActorsForAssignable')) {
+      assignmentMutationCalled = true;
+      throw new Error('assignment mutation must not run when Goobers already claimed the issue');
+    }
+    throw new Error('unexpected GraphQL query');
+  };
+
+  let requestCalled = false;
+  await assert.rejects(
+    runIssueIntake({
+      graphql,
+      paginate: async () => [],
+      request: async () => {
+        requestCalled = true;
+        return { data: { id: 1 } };
+      },
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue,
+    }),
+    IssueClaimedByGoobersError,
+  );
+  assert.equal(requestCalled, false);
+  assert.equal(assignmentMutationCalled, false);
 });

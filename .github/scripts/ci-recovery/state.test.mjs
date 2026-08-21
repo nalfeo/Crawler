@@ -14,6 +14,7 @@ import {
   isApprovedArtOnlyDiff,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
+  isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
@@ -462,7 +463,7 @@ test('ci-failure copilot is excluded from the blocker fingerprint so its first a
   );
 });
 
-test('review-thread blocker identity changes when comments change', () => {
+test('review-thread retry fingerprint ignores recovery/comment digest churn', () => {
   const baseThread = {
     id: 'thread-1',
     comments: {
@@ -634,11 +635,11 @@ test('review-thread blocker identity changes when comments change', () => {
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(laterThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
   );
@@ -646,7 +647,7 @@ test('review-thread blocker identity changes when comments change', () => {
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryNoMarkerReplyThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryMarkerReplyThread) }]),
   );
@@ -676,6 +677,33 @@ test('round trips sticky state comments', () => {
   });
 
   assert.deepEqual(parseStateComment(renderStateComment(state)), state);
+});
+
+test('renderStateComment explains exhausted automation next action', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'review-thread', id: 'review-thread:PRRT_scope:abc123', summary: 'scope mismatch' },
+  ]);
+  const body = renderStateComment(
+    makeState({
+      prNumber: 42,
+      headSha: 'abc1234',
+      fingerprint,
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation-exhausted',
+      blockers: [
+        { kind: 'review-thread', id: 'review-thread:PRRT_scope:abc123', summary: 'scope mismatch' },
+      ],
+      attempt: 2,
+      progressKey: automationProgressKey('abc1234', fingerprint),
+      progressAt: '2026-08-21T00:00:00.000Z',
+      updatedAt: '2026-08-21T00:31:00.000Z',
+    }),
+  );
+
+  assert.match(body, /Recovery disposition: `stale-automation-exhausted`/);
+  assert.match(body, /Retry count: 2/);
+  assert.match(body, /automated cloud-agent dispatch is suppressed/);
 });
 
 test('waiting state is non-owning and semantic equality ignores timestamp and trigger churn', () => {
@@ -1145,6 +1173,84 @@ test('shouldResolveThread accepts latest trusted marker naming current head', ()
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
 });
 
+test('shouldResolveThread lets a current-head marker supersede an older stale marker', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'reviewer' },
+        },
+        {
+          body: '✅ Addressed in deadbee: stale marker from a force-pushed-away commit',
+          authorAssociation: 'OWNER',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'OWNER',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread ignores trailing trusted duplicate-reply notes after a valid marker', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'Duplicate reply skipped — already posted above.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects a valid marker followed by an untrusted duplicate-reply note', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'Duplicate reply skipped — already posted above.',
+          authorAssociation: 'NONE',
+          author: { login: 'random-user' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
 test('shouldResolveThread accepts trusted copilot-swe-agent markers without bot suffix', () => {
   const thread = {
     comments: {
@@ -1193,6 +1299,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   const commitUrl = `https://github.com/nalfeo/Crawler/commit/${commitSha}`;
   const accepted = new Map([
     ['✅ Addressed in abc1234def: note', 'abc1234def'],
+    ['Addressed in abc1234def: note', 'abc1234def'],
     ['✅ Addressed in abc1234def).', 'abc1234def'],
     [`✅ Addressed in <${commitUrl}>`, commitSha],
     [`✅ Addressed in ${commitUrl},`, commitSha],
@@ -1205,6 +1312,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   }
 
   const rejected = [
+    'Partially addressed in abc1234def: note',
     '✅ Addressed in not-a-commit-link',
     '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1234',
     '✅ Addressed in `abc1234def: note',
@@ -1701,6 +1809,56 @@ test('parseDispositionCommand: green CI or other-author text does NOT unlock', (
   // author; the caller (workflow) must gate on author identity separately.
   assert.equal(parseDispositionCommand('All checks passed'), null);
   assert.equal(parseDispositionCommand('✅ CI green'), null);
+});
+
+test('isScopeMismatchReviewBlocker detects unsupported closing-reference findings', () => {
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary:
+        'reviewer: PR body says Fixes #3198, but the diff only changes planning-policy docs and does not implement the promised Floor 2 repair.',
+    }),
+    true,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary: 'reviewer: Please add a missing unit test for this implementation.',
+    }),
+    false,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      summary:
+        'drive-by: PR body says Fixes #3198, but the diff only changes docs and does not implement the feature.',
+    }),
+    false,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'ci-failure',
+      summary: 'Fixes #3198 check failed',
+    }),
+    false,
+  );
+});
+
+test('isScopeMismatchReviewBlocker matches active-voice "does not implement" findings', () => {
+  for (const summary of [
+    'reviewer: PR body says Fixes #3198, but this does not implement the feature.',
+    "reviewer: the PR description promises the panel, but the diff doesn't implement it.",
+    'reviewer: these changed files do not implement the behavior declared scope claims.',
+    'reviewer: PR title says Fixes #12, but the change does not add the described system.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      true,
+      summary,
+    );
+  }
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {

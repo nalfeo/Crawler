@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "ci-recovery-duplicate-reply",
+  "task_title": "Resolve CI recovery duplicate reply markers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "devops-engineer(default)",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Independent devops investigator launched before code reviewed PR #3206 evidence and candidate root causes. It converged on the implemented plan: effective latest-comment logic should treat the exact trusted duplicate-skip no-op as transparent while preserving reviewer-follow-up blocking; recommended state and reconcile regressions, both added."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "ef2b7b02d48c106f8d3ef0a3b4d85ae7a703018b",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff is a surgical fix for the duplicate-reply-marker case: `shouldResolveThread()` now ignores only the exact trusted duplicate-reply no-op when selecting the effective last comment, so a valid prior addressed/not-applicable marker still resolves the thread while later substantive follow-up remains blocking. The change is narrowly scoped to CI-recovery state logic plus targeted unit and live reconcile regressions, with no unrelated refactors or policy concerns visible in the touched paths."
+    }
+  }
+}

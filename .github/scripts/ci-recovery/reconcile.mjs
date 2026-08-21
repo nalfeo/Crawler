@@ -8,10 +8,12 @@ import {
   checkRunWorkflowRunId,
   collapseCheckRunsByName,
   isDuplicateDispatch,
+  isScopeMismatchReviewBlocker,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
   isSelfRecoveryCheckRun,
   selfRecoveryWorkflowRunIds,
+  effectiveLatestThreadComment,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -20,6 +22,7 @@ import {
   shouldMutateRecoveryState,
   shouldDispatchMergeTrainFill,
   ownerLabel,
+  parseDispositionCommand,
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
@@ -57,6 +60,8 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  IssueNoLongerOpenError,
+  runIssueIntake,
   removeIssueAssignees,
   reviewThreadFollowupBacklogIssueNumbers,
   reviewThreadPlanIssueNumbers,
@@ -71,9 +76,12 @@ import {
 } from './review-request.mjs';
 import {
   evaluatePhase,
+  applyLifecycleDecision,
   formatLifecycleOutcome,
   LIFECYCLE_MARKER,
+  makeQuarantineComment,
   parseLifecycleComment,
+  PHASE,
 } from './pr-lifecycle.mjs';
 import {
   FOLLOWUP_BACKLOG_MARKER,
@@ -739,6 +747,71 @@ function hasPrLabel(name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
 
+function isTrustedLifecycleAuthor(comment) {
+  if (!comment) return false;
+  if (comment.performed_via_github_app != null) return true;
+  return isTrustedComment(comment);
+}
+
+function trustedLifecycleComments() {
+  return comments.filter(
+    (comment) =>
+      hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+  );
+}
+
+function currentLifecycleRecord() {
+  const lifecycleComments = trustedLifecycleComments();
+  if (lifecycleComments.length !== 1) return null;
+  try {
+    return parseLifecycleComment(lifecycleComments[0].body);
+  } catch {
+    return null;
+  }
+}
+
+async function writeLifecycleComment(_prNumber, body) {
+  const lifecycleComments = trustedLifecycleComments();
+  if (lifecycleComments.length === 1) {
+    if (!shouldMutate) return;
+    await request(pat, `/repos/${owner}/${repo}/issues/comments/${lifecycleComments[0].id}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    lifecycleComments[0].body = body;
+    return;
+  }
+  if (!shouldMutate) return;
+  const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST',
+    body: { body },
+  });
+  comments.push({ ...created.data, body });
+}
+
+async function applyPrLifecycle(targetPhase, blockReason) {
+  const current = currentLifecycleRecord();
+  const outcome = await applyLifecycleDecision({
+    prNumber,
+    currentPhase: current?.phase ?? null,
+    currentHeadSha: current?.headSha ?? null,
+    targetPhase,
+    blockReason,
+    headSha: pr.head.sha,
+    mode: shouldMutate ? 'live' : 'dry-run',
+    writeComment: writeLifecycleComment,
+    addLabel: async (_number, label) => {
+      await ensurePrLabel(label, 'bf8700', `Crawler PR lifecycle: ${targetPhase}`);
+    },
+    removeLabel: async (_number, label) => {
+      await removePrLabel(label, { skipIfMissing: true });
+    },
+    now,
+  });
+  process.stdout.write(`${formatLifecycleOutcome(prNumber, outcome)}\n`);
+  return outcome;
+}
+
 async function prepareWaitingExit() {
   const waiting = hasPrLabel(WAITING_LABEL);
   const transition = hasPrLabel(WAITING_TRANSITION_LABEL);
@@ -1230,7 +1303,89 @@ if (orphanedOwnershipArtifact) {
   }
 }
 
+/**
+ * Resume any persisted linked-issue restart intent.
+ *
+ * Abandonment closes the PR *before* restarting its linked issues, so a failure
+ * mid-restart would otherwise be unrecoverable: every later reconciliation
+ * leaves through the closed-PR path long before the disposition handler runs.
+ * The intent is therefore persisted in recovery state and drained here (and on
+ * the closed-PR path) until it is empty, with each successful restart removed
+ * from the pending list so a retry never repeats completed work.
+ */
+async function drainPendingIssueRestarts() {
+  const pending = Array.isArray(state?.pendingIssueRestarts)
+    ? state.pendingIssueRestarts.slice()
+    : [];
+  if (pending.length === 0) return;
+  if (!shouldMutate) {
+    process.stdout.write(
+      `dry-run would-restart pending linked issues ${pending.map((n) => `#${n}`).join(', ')} pr=#${prNumber}\n`,
+    );
+    return;
+  }
+  const remaining = [];
+  const failures = [];
+  for (const issueNumber of pending) {
+    try {
+      // runIssueIntake assigns via the GraphQL node id, so resolve it from the
+      // persisted number (state carries numbers only, by design).
+      const issue = (await request(readToken, `/repos/${owner}/${repo}/issues/${issueNumber}`))
+        .data;
+      if (!issue?.node_id) {
+        throw new Error(`Issue #${issueNumber} returned no node id for assignment`);
+      }
+      await runIssueIntake({
+        graphql,
+        paginate,
+        request,
+        token: pat,
+        owner,
+        repo,
+        issue: { number: issueNumber, node_id: issue.node_id },
+        restart: true,
+      });
+      process.stdout.write(
+        `restarted linked issue #${issueNumber} after abandoning pr=#${prNumber}\n`,
+      );
+    } catch (error) {
+      // A linked issue that is no longer open can never be restarted; drop it
+      // instead of pinning the pending list forever. Any other failure keeps the
+      // issue pending so a later reconciliation retries it, and never aborts the
+      // remaining restarts in this batch.
+      if (error instanceof IssueNoLongerOpenError) {
+        process.stdout.write(
+          `skipped restart for closed linked issue #${issueNumber} pr=#${prNumber}\n`,
+        );
+        continue;
+      }
+      remaining.push(issueNumber);
+      const safeMsg = String(error.message || error)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 200);
+      failures.push(`#${issueNumber}: ${safeMsg}`);
+      process.stderr.write(
+        `issue-restart-failed pr=#${prNumber} issue=#${issueNumber} err=${safeMsg}\n`,
+      );
+    }
+  }
+  if (remaining.length !== pending.length) {
+    await updateState(
+      makeState({ ...state, pendingIssueRestarts: remaining, updatedAt: now.toISOString() }),
+      { forceTimestamp: true },
+    );
+  }
+  if (failures.length > 0) {
+    // Surface the failure only after the reduced intent is persisted, so the
+    // retry on the next reconciliation resumes exactly where this run stopped.
+    throw new Error(`PR #${prNumber} could not restart linked issues: ${failures.join('; ')}`);
+  }
+}
+
 if (pr.state !== 'open') {
+  // Drain before any release: release rewrites state, and an unfinished restart
+  // must survive until it actually completes.
+  await drainPendingIssueRestarts();
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     stopIfReleaseConvergedElsewhere(await release(`pr-${pr.state}`));
   }
@@ -1315,6 +1470,93 @@ if (
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
+
+function latestOwnerDispositionCommand() {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const comment = comments[index];
+    if (
+      String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase() !==
+      'OWNER'
+    ) {
+      continue;
+    }
+    const command = parseDispositionCommand(comment?.body);
+    if (command) return command;
+  }
+  return null;
+}
+
+async function handleQuarantineDispositionIfAny() {
+  if (currentLifecycleRecord()?.phase !== PHASE.QUARANTINED) return false;
+  const command = latestOwnerDispositionCommand();
+  if (!command) return false;
+
+  if (command === 'KEEP') {
+    await applyPrLifecycle(PHASE.REPAIRING, 'owner-command-keep');
+    process.stdout.write(`quarantine-revive pr=#${prNumber} command=KEEP\n`);
+    process.exit(0);
+  }
+  if (command !== 'ABANDON') {
+    process.stdout.write(`quarantine-disposition-ignored pr=#${prNumber} command=${command}\n`);
+    return false;
+  }
+
+  const localClosingIssues = closingIssues.filter(
+    (issue) =>
+      String(issue?.repository?.nameWithOwner || '').toLowerCase() === repository.toLowerCase(),
+  );
+  const localClosingIssueNumbers = localClosingIssues.map((issue) => issue.number);
+  const strippedBody = stripClosingKeywordsForIssues(pr.body || '', localClosingIssueNumbers);
+  if (strippedBody !== (pr.body || '')) {
+    if (shouldMutate) {
+      await assertExpectedMetadataUnchanged('abandon-strip-closing-keywords');
+      await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+        method: 'PATCH',
+        body: { body: strippedBody },
+      });
+    } else {
+      process.stdout.write(`dry-run would-strip-closing-keywords pr=#${prNumber}\n`);
+    }
+    pr.body = strippedBody;
+  }
+  await applyPrLifecycle(PHASE.ABANDONED, 'owner-command-abandon');
+  // Record the restart intent BEFORE closing the PR: once closed, later runs
+  // exit through the closed-PR path, which drains this list rather than
+  // re-deriving it from a PR whose closing references were just stripped.
+  const pendingIssueRestarts = localClosingIssues
+    .filter((candidate) => String(candidate?.state || '').toUpperCase() === 'OPEN')
+    .map((candidate) => candidate.number);
+  const abandonedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint: state?.fingerprint || blockerFingerprint([]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'scope-mismatch-abandoned',
+    blockers: state?.blockers || [],
+    attempt: state?.attempt || 0,
+    pendingIssueRestarts,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-abandoned', abandonedState));
+  } else {
+    await updateState(abandonedState);
+  }
+  if (shouldMutate) {
+    await assertExpectedMetadataUnchanged('abandon-close-pr');
+    await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+  } else {
+    process.stdout.write(`dry-run would-close-pr pr=#${prNumber} reason=owner-command-abandon\n`);
+  }
+  await drainPendingIssueRestarts();
+  process.exit(0);
+}
+
+await handleQuarantineDispositionIfAny();
 
 // ── Auto-fix: strip closing-keyword lines that propagate human-approval-required ──
 //
@@ -1851,9 +2093,8 @@ const unresolvedThreads = review.threads.filter((candidate) => !candidate.isReso
 const headSha = String(pr.head.sha || '').toLowerCase();
 const markerShasNeedingLineageCheck = new Set();
 for (const thread of unresolvedThreads) {
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) continue;
-  const markerSha = extractAddressedMarkerSha(comments[comments.length - 1]?.body);
+  const last = effectiveLatestThreadComment(thread);
+  const markerSha = extractAddressedMarkerSha(last?.body);
   if (markerSha && !headSha.startsWith(markerSha)) {
     markerShasNeedingLineageCheck.add(markerSha);
   }
@@ -1958,8 +2199,7 @@ function shouldAutoPostOutdatedMarker(candidate) {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
 
-  const comments = candidate.comments?.nodes ?? [];
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(candidate);
   const hasTrustedMarker =
     last &&
     extractAddressedMarkerSha(last.body) !== null &&
@@ -2209,9 +2449,7 @@ for (const thread of unresolvedThreads) {
   // Skip threads the reconciler will auto-resolve in the loop above.
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   reviewThreadBlockerIdsByThread.set(thread.id, reviewThreadBlockerId(thread));
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) continue;
-  const last = comments[comments.length - 1];
+  const last = effectiveLatestThreadComment(thread);
   const markerSha = extractAddressedMarkerSha(last?.body);
   if (!markerSha) continue;
   // Only flag as stale when we have a definitive non-reachable result.
@@ -2749,6 +2987,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     isOutdated: thread.isOutdated === true,
+    scopeMismatchTrusted: isTrustedComment(root),
     url: root?.url,
   });
 }
@@ -2876,6 +3115,58 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
       `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
     );
   }
+}
+
+const scopeMismatchBlocker =
+  latestOwnerDispositionCommand() === 'KEEP' ? null : normalized.find(isScopeMismatchReviewBlocker);
+if (scopeMismatchBlocker) {
+  const reason = 'scope-mismatch-review-finding';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted review finding says the PR title/body or closing reference promises work that is not supported by the changed files. CI Recovery cannot deterministically choose between changing PR metadata and implementing the linked feature.',
+    nextActions: [
+      'Abandon/close this PR and restart the linked issue by posting the exact standalone owner comment `ABANDON`.',
+      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself.',
+    ],
+    keepOutcome:
+      'resume this PR: it re-enters the lifecycle as `repairing` and automated repair resumes (no implementation plan is checked)',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('scope-mismatch-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post scope-mismatch quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'scope-mismatch-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-quarantined', quarantinedState));
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(
+    `quarantined scope-mismatch pr=#${prNumber} blocker=${scopeMismatchBlocker.id}\n`,
+  );
+  process.exit(0);
 }
 
 // Lifecycle evaluation (Issue #1851): compute the authoritative lifecycle phase
