@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d4011b7291d81820932be0c013abe8af268dfbcc",
+    "commitDate": "2026-08-21T04:11:24Z",
+    "commitSubject": "Guarantee a canonical current-main baseline sweep for the nightly balance issue (#3186)",
+    "capturedAt": "2026-08-21T05:28:16.675Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32447247784",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/d4011b7291d81820932be0c013abe8af268dfbcc.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/d4011b7291d81820932be0c013abe8af268dfbcc.fun-report.json"
+    }
+  },
+  {
     "commit": "0049a1b417ae84a9c7a2e51ab2ce5e98ac028cd0",
     "commitDate": "2026-08-20T20:29:13-07:00",
     "commitSubject": "Change plan-posting instructions from session chat to PR description (#3200)",
