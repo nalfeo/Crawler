@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ec653aae68002c889c2a016ed7aad1c67636ed66",
+    "commitDate": "2026-08-21T22:35:17Z",
+    "commitSubject": "feat(workflow): add Azure authoring canvas (#3223)",
+    "capturedAt": "2026-08-21T23:41:08.241Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32534944633",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/ec653aae68002c889c2a016ed7aad1c67636ed66.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/ec653aae68002c889c2a016ed7aad1c67636ed66.fun-report.json"
+    }
+  },
+  {
     "commit": "d151596b44d445347333c933908a3f47ecee69ac",
     "commitDate": "2026-08-21T21:55:44Z",
     "commitSubject": "fix(merge-train): unblock FIFO deadlock, detect stalls, and quarantine un-advanceable PRs (#3221)",
