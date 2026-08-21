@@ -379,15 +379,21 @@ export function blockerFingerprint(blockers) {
   const normalizeReviewRecoveryChurn = (blocker) => {
     if (blocker.kind !== 'review-thread') return blocker;
     const summary = compact(blocker.summary);
+    const stableThreadId = compact(blocker.id).match(/^review-thread:([^:]+):/)?.[1];
+    const stableId = stableThreadId ? `review-thread:${stableThreadId}` : blocker.id;
     const staleMarker = summary.match(/^\[Stale marker:.*?\]\s*(.*)$/i);
     if (staleMarker) {
-      return { ...blocker, summary: `[Stale marker] ${compact(staleMarker[1])}` };
+      return { ...blocker, id: stableId, summary: `[Stale marker] ${compact(staleMarker[1])}` };
     }
     const priorReply = summary.match(/^\[Prior recovery reply .*?\]\s*(.*)$/i);
     if (priorReply) {
-      return { ...blocker, summary: `[Prior recovery reply] ${compact(priorReply[1])}` };
+      return {
+        ...blocker,
+        id: stableId,
+        summary: `[Prior recovery reply] ${compact(priorReply[1])}`,
+      };
     }
-    return blocker;
+    return { ...blocker, id: stableId };
   };
   const fingerprintBlockers = normalized
     .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
@@ -432,7 +438,7 @@ function normalizeThreadComments(thread) {
     .filter((comment) => {
       const authorLogin = String(comment?.author?.login ?? '').toLowerCase();
       if (!knownRecoveryReplyLogins.has(authorLogin)) return true;
-      return false;
+      return hasResolutionMarker(comment?.body);
     })
     .map((comment) => [
       compact(comment.id),

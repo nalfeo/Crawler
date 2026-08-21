@@ -1435,10 +1435,23 @@ async function handleQuarantineDispositionIfAny() {
     }
     pr.body = strippedBody;
   }
-  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
-    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-abandoned'));
-  }
   await applyPrLifecycle(PHASE.ABANDONED, 'owner-command-abandon');
+  const abandonedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint: state?.fingerprint || blockerFingerprint([]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'scope-mismatch-abandoned',
+    blockers: state?.blockers || [],
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-abandoned', abandonedState));
+  } else {
+    await updateState(abandonedState);
+  }
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('abandon-close-pr');
     await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {

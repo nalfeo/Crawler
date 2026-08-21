@@ -463,7 +463,7 @@ test('ci-failure copilot is excluded from the blocker fingerprint so its first a
   );
 });
 
-test('review-thread blocker identity changes when comments change', () => {
+test('review-thread retry fingerprint ignores recovery/comment digest churn', () => {
   const baseThread = {
     id: 'thread-1',
     comments: {
@@ -617,7 +617,7 @@ test('review-thread blocker identity changes when comments change', () => {
     reviewThreadCommentDigest(baseThread),
     reviewThreadCommentDigest(recoveryNoMarkerReplyThread),
   );
-  assert.equal(
+  assert.notEqual(
     reviewThreadCommentDigest(baseThread),
     reviewThreadCommentDigest(recoveryMarkerReplyThread),
   );
@@ -635,11 +635,11 @@ test('review-thread blocker identity changes when comments change', () => {
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(laterThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
   );
