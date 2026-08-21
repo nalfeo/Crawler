@@ -172,6 +172,10 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'MAX_TRIGGER_LEN', // max chars retained for a logged trigger value; a log-format bound, not an operational knob
   // merge-train/reconcile-lib.mjs — empty-train liveness threshold
   'EMPTY_TRAIN_LIVENESS_THRESHOLD_MS', // incident-open threshold for stalled empty-train; changing requires incident-metric evidence
+  // merge-train/reconcile-lib.mjs — stalled-queue + quarantine safeguards (2026-08-21 deadlock)
+  'STALLED_QUEUE_PASS_THRESHOLD', // consecutive non-empty-queue-zero-admitted passes before raising a stall incident
+  'UNADVANCEABLE_STRIKE_THRESHOLD', // consecutive same-SHA strikes before quarantining an un-advanceable PR
+  'UNADVANCEABLE_ATTEMPT_CEILING', // cumulative attempt ceiling that quarantines regardless of SHA churn
   // merge-train/reconcile.mjs — structural lookback window
   'MAIN_HEALTH_PUSH_RUN_LOOKBACK',
   // merge-train/state.mjs

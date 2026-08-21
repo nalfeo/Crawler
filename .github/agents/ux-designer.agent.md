@@ -60,20 +60,21 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 ## Screenshot evidence contract
 
 Use the real Phaser lab renderer for Crawler captures; code inspection or a
-different rendering pipeline is not visual evidence. Store artifacts at:
+different rendering pipeline is not visual evidence. Store artifacts under the
+session-local `files/visual-review/` tree:
 
 - `files/visual-review/before/<task>.png`
 - `files/visual-review/after/<task>.png`
-- `files/visual-review/<task>.review.json`
-- `files/visual-review/feedback/*.jsonl`
-- `files/visual-review/reviews/*.review.json`
+- `<task>.review.json`
+- feedback JSONL files
+- review JSON files under the reviews subdirectory
 
 Open the `screenshot-viewer` canvas after capture. It pairs matching filenames
 under `before/` and `after/`, shows the pair beside the individual gallery,
 shows the evaluator results, and records feedback as either task-specific or
 reusable guidance. Reusable feedback must name the agent, skill, deterministic
-eval, or workflow it should change; it writes a durable proposal under
-`docs/knowledge/ux-feedback/`, which must be turned into a real change before
+eval, or workflow it should change; it writes a durable proposal under the
+UX feedback knowledge directory, which must be turned into a real change before
 being considered promoted. Task-specific feedback stays attached to the
 current task. Upload the final before/after images for PR review; `files/` is
 session-local and not durable.

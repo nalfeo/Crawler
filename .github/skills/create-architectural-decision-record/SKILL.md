@@ -16,7 +16,7 @@ Create an ADR document for `${input:DecisionTitle}` using structured formatting 
 
 ## Input Validation
 
-If any of the required inputs are not provided or cannot be determined from the conversation history, ask the user to provide the missing information before proceeding with ADR generation.
+If any of the required inputs are not provided or cannot be determined from the conversation history, ask the user to provide the missing information before proceeding with ADR generation. When invoked from PR shepherding or CI Recovery to address a missing-ADR review thread, first infer the context, decision, alternatives, and stakeholders from the PR diff, review thread, and linked policy/docs; ask only when the underlying decision itself is unclear or requires human product judgment.
 
 ## Requirements
 

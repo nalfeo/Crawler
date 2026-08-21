@@ -10,18 +10,27 @@ import {
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  evaluateStalledQueue,
+  evaluateUnadvanceableStrike,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainAttributionVerdict,
   mergeTrainGitEnvironment,
+  parseStalledQueuePasses,
+  parseUnadvanceableStrike,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   queuePositionAfterRecovery,
+  renderStalledQueuePasses,
+  renderUnadvanceableStrike,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   stalledAdmissionEligiblePulls,
+  STALLED_QUEUE_PASS_THRESHOLD,
   trainCheckTitle,
+  UNADVANCEABLE_ATTEMPT_CEILING,
+  UNADVANCEABLE_STRIKE_THRESHOLD,
 } from './reconcile-lib.mjs';
 import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
 
@@ -1582,7 +1591,7 @@ test('a same-repo update-branch 403 is not treated as a fork dequeue', () => {
   );
 });
 
-test('the same-repo 403 branch does not remove the queue label', () => {
+test('the same-repo 403 branch dequeues only under sticky quarantine', () => {
   const forkBranchStart = RECONCILE_SOURCE.indexOf(
     'if (err.status === 403 && !sameRepository(livePr, repository))',
   );
@@ -1595,15 +1604,385 @@ test('the same-repo 403 branch does not remove the queue label', () => {
   assert.ok(sameRepoBranchStart > forkBranchStart, 'same-repo branch must follow the fork branch');
   assert.ok(branch422Start > sameRepoBranchStart, '422 branch must follow the same-repo branch');
   const sameRepoBranchSource = RECONCILE_SOURCE.slice(sameRepoBranchStart, branch422Start);
+
+  // #3027 livelock guard, narrowed by safeguard (3): the ordinary same-repo 403
+  // path must still leave the PR queued, or CI Recovery re-labels it straight
+  // back into the same 403 forever. Dequeuing is permitted in exactly one
+  // place -- the quarantine branch -- because that path also applies the sticky
+  // BLOCKED_LABEL, which router.mjs treats as dispatch-blocked, so the re-label
+  // loop cannot restart.
+  const quarantineStart = sameRepoBranchSource.indexOf('if (strike.quarantine)');
+  assert.ok(quarantineStart > -1, 'the same-repo 403 branch must evaluate quarantine');
+  const beforeQuarantine = sameRepoBranchSource.slice(0, quarantineStart);
   assert.doesNotMatch(
-    sameRepoBranchSource,
-    /removeLabel\(pr\.number, QUEUE_LABEL\)/,
-    'a same-repo 403 must leave the PR queued (no removeLabel) instead of dequeuing it ' +
-      'like a genuine fork, or CI Recovery will just re-label it into the same 403 forever',
+    beforeQuarantine,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'a same-repo 403 must leave the PR queued (no removeLabel) unless it is being quarantined, ' +
+      'or CI Recovery will just re-label it into the same 403 forever',
+  );
+  const quarantineBranch = sameRepoBranchSource.slice(quarantineStart);
+  const elseStart = quarantineBranch.indexOf('} else {');
+  const quarantineBody = quarantineBranch.slice(0, elseStart);
+  assert.match(
+    quarantineBody,
+    /setLabel\(pr\.number,\s*BLOCKED_LABEL\)/,
+    'any dequeue on this path MUST be paired with the sticky BLOCKED_LABEL, otherwise it ' +
+      'reintroduces the #3027 label-churn livelock',
+  );
+  const afterQuarantineBody = quarantineBranch.slice(elseStart);
+  assert.doesNotMatch(
+    afterQuarantineBody,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'the non-quarantine branch must never dequeue',
   );
   assert.match(
     sameRepoBranchSource,
     /dispatchRecoveryGated\(pr\.number, 'merge-train-restricted-branch-update'\)/,
     'a same-repo 403 must dispatch recovery so the stall is visible instead of silently repeating',
   );
+});
+
+// ---------------------------------------------------------------------------
+// A same-repo restricted-branch 403 must also YIELD THE FIFO LINE.
+//
+// Regression: 2026-08-21. #3208 (`nalfeo-repair-asset-queue`) sat at the head
+// of the queue in `behind` state and 403'd on update-branch every pass. The
+// same-repo branch correctly left it queued, but still fell through to the
+// unconditional `break`, so reconcile admitted nothing and exited with
+// "No admitted PR is ready for candidate construction" on every 30-minute
+// cycle -- while #3216 and #3218 sat behind it fully green, mergeable, and
+// starved. The workflow reported `success` throughout, so the deadlock was
+// invisible in run status.
+//
+// FIFO ordering exists to stop newer PRs leapfrogging a PR the train is
+// actively advancing. A PR the train provably cannot advance on any pass is
+// not being advanced, so it must not pin the line.
+// ---------------------------------------------------------------------------
+test('a same-repo restricted-branch 403 yields the FIFO line so later PRs are not starved', () => {
+  const forkBranchStart = RECONCILE_SOURCE.indexOf(
+    'if (err.status === 403 && !sameRepository(livePr, repository))',
+  );
+  const sameRepoBranchStart = RECONCILE_SOURCE.indexOf(
+    'same-repo-restricted-branch (403)',
+    forkBranchStart,
+  );
+  const branch422Start = RECONCILE_SOURCE.indexOf('err.status === 422', sameRepoBranchStart);
+  assert.ok(sameRepoBranchStart > -1, 'same-repo 403 branch must exist');
+  const sameRepoBranchSource = RECONCILE_SOURCE.slice(sameRepoBranchStart, branch422Start);
+  assert.match(
+    sameRepoBranchSource,
+    /yieldFifoLine = true/,
+    'a same-repo restricted-branch 403 must set yieldFifoLine so the loop keeps admitting ' +
+      'later queued PRs instead of deadlocking the entire train behind an entry the ' +
+      'train can never advance',
+  );
+});
+
+test('the FIFO break is conditional on yieldFifoLine, not on fork-dequeue alone', () => {
+  assert.match(
+    RECONCILE_SOURCE,
+    /if \(!yieldFifoLine\) break;/,
+    'the FIFO break must be gated on yieldFifoLine so every un-advanceable BEHIND entry ' +
+      '(fork dequeue AND same-repo restricted branch) releases the line',
+  );
+  assert.doesNotMatch(
+    RECONCILE_SOURCE,
+    /dequeuedFork/,
+    'the old dequeuedFork-only gate must be gone: it released the line for forks only, ' +
+      'leaving same-repo restricted branches to starve the queue indefinitely',
+  );
+});
+
+// --- Safeguard (2): stalled non-empty queue detection (2026-08-21 deadlock) ---
+
+test('evaluateStalledQueue ignores a healthy pass that admitted work', () => {
+  const result = evaluateStalledQueue({ queuedCount: 3, admittedCount: 1, passes: 9 });
+  assert.equal(result.stalled, false);
+  assert.equal(result.alarm, false);
+  assert.equal(result.passes, 0, 'a healthy pass must reset the consecutive stall counter');
+});
+
+test('evaluateStalledQueue ignores an empty queue (owned by the empty-train detector)', () => {
+  const result = evaluateStalledQueue({ queuedCount: 0, admittedCount: 0, passes: 5 });
+  assert.equal(result.stalled, false);
+  assert.equal(result.alarm, false);
+});
+
+test('evaluateStalledQueue detects the deadlock signature but waits out the threshold', () => {
+  const first = evaluateStalledQueue({ queuedCount: 3, admittedCount: 0, passes: 1 });
+  assert.equal(first.stalled, true);
+  assert.equal(first.alarm, false, 'a single stalled pass is not yet an incident');
+
+  const third = evaluateStalledQueue({ queuedCount: 3, admittedCount: 0, passes: 3 });
+  assert.equal(third.stalled, true);
+  assert.equal(third.alarm, true, 'a sustained non-empty/zero-admitted stall must alarm');
+  assert.equal(third.passes, 3);
+});
+
+test('stalled-queue pass counter round-trips through the incident body', () => {
+  assert.equal(parseStalledQueuePasses(renderStalledQueuePasses(4)), 4);
+  assert.equal(parseStalledQueuePasses('no marker here'), 0);
+  assert.equal(parseStalledQueuePasses(renderStalledQueuePasses(0)), 0);
+});
+
+// --- Safeguard (3): eject + quarantine an un-advanceable head entry ---
+
+test('evaluateUnadvanceableStrike accumulates strikes on an unchanged head sha', () => {
+  const sha = 'd'.repeat(40);
+  const first = evaluateUnadvanceableStrike({ headSha: sha, recordedSha: '', recordedStrikes: 0 });
+  assert.equal(first.strikes, 1);
+  assert.equal(first.quarantine, false);
+
+  const second = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: sha,
+    recordedStrikes: first.strikes,
+  });
+  assert.equal(second.strikes, 2);
+  assert.equal(second.quarantine, false, 'quarantine must not fire before the threshold');
+
+  const third = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: sha,
+    recordedStrikes: second.strikes,
+  });
+  assert.equal(third.strikes, UNADVANCEABLE_STRIKE_THRESHOLD);
+  assert.equal(third.quarantine, true, 'the train must eject an entry it can never advance');
+});
+
+test('evaluateUnadvanceableStrike resets strikes when the branch is rebased out-of-band', () => {
+  const oldSha = 'd'.repeat(40);
+  const newSha = 'e'.repeat(40);
+  const result = evaluateUnadvanceableStrike({
+    headSha: newSha,
+    recordedSha: oldSha,
+    recordedStrikes: 2,
+  });
+  assert.equal(result.strikes, 1, 'a new head sha is a fresh attempt, not a continuing strike');
+  assert.equal(result.quarantine, false);
+});
+
+test('unadvanceable strike record round-trips through the status comment', () => {
+  const sha = 'f'.repeat(40);
+  const encoded = renderUnadvanceableStrike({ headSha: sha, strikes: 2, attempts: 5 });
+  assert.deepEqual(parseUnadvanceableStrike(encoded), { headSha: sha, strikes: 2, attempts: 5 });
+  assert.deepEqual(parseUnadvanceableStrike('## Merge train\n\n- State: `waiting`'), {
+    headSha: '',
+    strikes: 0,
+    attempts: 0,
+  });
+});
+
+test('a legacy two-field strike marker still parses, crediting strikes as attempts', () => {
+  // Markers written before the cumulative-attempt field existed must not read
+  // back as zero attempts, or an in-flight PR would silently lose its history.
+  const sha = 'a'.repeat(40);
+  assert.deepEqual(
+    parseUnadvanceableStrike(`<!-- crawler-merge-train-unadvanceable:${sha}:2 -->`),
+    {
+      headSha: sha,
+      strikes: 2,
+      attempts: 2,
+    },
+  );
+});
+
+test('cumulative attempts quarantine a PR that resets its head sha every pass', () => {
+  // A bot pushing ineffective commits changes the head SHA each pass, which
+  // resets per-SHA strikes forever. Without a cumulative ceiling that PR could
+  // fail update-branch indefinitely and never be quarantined.
+  let attempts = 0;
+  let result;
+  for (let pass = 0; pass < UNADVANCEABLE_ATTEMPT_CEILING; pass += 1) {
+    result = evaluateUnadvanceableStrike({
+      headSha: String(pass).padStart(40, '0'),
+      recordedSha: String(pass - 1).padStart(40, '0'),
+      recordedStrikes: 1,
+      recordedAttempts: attempts,
+    });
+    assert.equal(result.strikes, 1, 'each new head sha is a fresh per-sha strike');
+    attempts = result.attempts;
+  }
+  assert.equal(attempts, UNADVANCEABLE_ATTEMPT_CEILING);
+  assert.equal(
+    result.quarantine,
+    true,
+    'the cumulative ceiling must eventually fire even though per-sha strikes always reset',
+  );
+});
+
+test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () => {
+  const branch = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (strike.quarantine)'));
+  const body = branch.slice(0, branch.indexOf('} else {'));
+  assert.match(
+    body,
+    /removeLabel\(pr\.number,\s*QUEUE_LABEL\)/,
+    'an un-advanceable PR must be ejected from the queue so it stops starving the FIFO line',
+  );
+  assert.match(
+    body,
+    /setLabel\(pr\.number,\s*BLOCKED_LABEL\)/,
+    'quarantine must use merge-train-blocked, which router.mjs treats as dispatch-blocked, ' +
+      'so CI Recovery cannot immediately re-queue it into the same 403 loop (the #3027 livelock)',
+  );
+  const setBlockedIdx = body.indexOf('setLabel(pr.number, BLOCKED_LABEL)');
+  const removeQueueIdx = body.indexOf('removeLabel(pr.number, QUEUE_LABEL)');
+  assert.ok(
+    setBlockedIdx > -1 && removeQueueIdx > -1 && setBlockedIdx < removeQueueIdx,
+    'BLOCKED_LABEL must be applied BEFORE QUEUE_LABEL is removed: a transient setLabel ' +
+      'failure must never leave the PR dequeued but unblocked, which would let CI Recovery ' +
+      're-queue it and recreate the label-churn livelock (matches the fail-safe order already ' +
+      'used by blockEntry/deAdmitNoop)',
+  );
+});
+
+test('STALLED_TRAIN_TRACKING_LABEL is provisioned by the startup ensureLabel sequence', () => {
+  const ensureLabelCalls = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('await ensureLabel(QUEUE_LABEL'),
+    RECONCILE_SOURCE.indexOf('// Crash-after-merge recovery runs first'),
+  );
+  assert.match(
+    ensureLabelCalls,
+    /ensureLabel\(\s*STALLED_TRAIN_TRACKING_LABEL/,
+    'the stall-watch tracking label must exist before the first watch issue is created, or ' +
+      'GitHub silently drops the nonexistent label, leaving the record unlabeled and ' +
+      'undiscoverable by findStalledTrainIncident() on the next pass',
+  );
+});
+
+test('the zero-admitted exit path evaluates the stalled-queue safeguard before exiting', () => {
+  const tail = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (train.length === 0)'));
+  const block = tail.slice(0, tail.indexOf('process.exit(0)'));
+  assert.match(
+    block,
+    /evaluateStalledQueue\(/,
+    'reconcile exits 0 here, so the stall must be evaluated before exit or it stays invisible',
+  );
+});
+
+test('the stalled-pass counter is persisted from the first pass, not only at the alarm', () => {
+  // Regression: the counter lives in the incident issue body, but the issue was
+  // only created when `stall.alarm` was true -- and alarm requires passes>=3.
+  // So passes could never read back above 0, pinned at 1 forever, and the alarm
+  // was structurally unreachable. Persistence must be gated on `stalled`, not
+  // on `alarm`, or the whole safeguard is dead code.
+  const tail = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (train.length === 0)'));
+  const block = tail.slice(0, tail.indexOf('process.exit(0)'));
+  assert.match(
+    block,
+    /if \(stall\.stalled\)\s*\{\s*await upsertStalledTrainIncident\(/,
+    'the counter must be written on every stalled pass, otherwise it can never reach its threshold',
+  );
+  assert.doesNotMatch(
+    block,
+    /if \(stall\.alarm\)\s*\{\s*await upsertStalledTrainIncident\(/,
+    'gating persistence on the alarm makes the alarm unreachable',
+  );
+});
+
+test('a stalled pass below the threshold escalates only after the threshold', () => {
+  const first = evaluateStalledQueue({ queuedCount: 2, admittedCount: 0, passes: 1 });
+  assert.deepEqual(
+    { stalled: first.stalled, alarm: first.alarm },
+    { stalled: true, alarm: false },
+    'pass 1 is tracked but must not raise an incident label yet',
+  );
+  const third = evaluateStalledQueue({
+    queuedCount: 2,
+    admittedCount: 0,
+    passes: STALLED_QUEUE_PASS_THRESHOLD,
+  });
+  assert.equal(third.alarm, true, 'the alarm must fire exactly at the threshold');
+});
+
+test('every non-advancing update-branch outcome yields the FIFO line', () => {
+  // The 2026-08-21 deadlock was one un-advanceable head-of-line PR holding FIFO
+  // forever. Any branch that leaves the PR queued WITHOUT advancing it must
+  // release the line, or it can reproduce the same starvation.
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('same-repo-restricted-branch'),
+    RECONCILE_SOURCE.indexOf('if (!yieldFifoLine) break;'),
+  );
+  const branch422 = region.slice(region.indexOf('err.status === 422'));
+  assert.match(
+    branch422.slice(0, branch422.indexOf('} else {')),
+    /yieldFifoLine = true/,
+    'a 422 means no update landed, so the line must not stay held',
+  );
+  assert.match(
+    region.slice(region.indexOf('unexpected-status')),
+    /yieldFifoLine = true/,
+    'an unknown update-branch failure advanced nothing and must not pin the queue',
+  );
+});
+
+test('recovery dispatch is skipped once a PR is quarantined', () => {
+  // Dispatching recovery before quarantine raced it: the recovery run could
+  // converge, strip BLOCKED_LABEL, and re-admit the PR into the same 403 loop.
+  // router.mjs exclusion blocks new dispatch selection but cannot cancel an
+  // in-flight one, so the dispatch must live on the non-quarantine branch only.
+  const branch = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (strike.quarantine)'));
+  const quarantined = branch.slice(0, branch.indexOf('} else {'));
+  assert.doesNotMatch(
+    quarantined,
+    /dispatchRecoveryGated\(/,
+    'a quarantined PR must not also get a recovery dispatch that could un-quarantine it',
+  );
+});
+
+test('the queue-empty exit path closes a lingering stalled-train incident', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf("process.stdout.write('Merge train is empty\\n')"),
+  );
+  assert.match(
+    region.slice(0, region.indexOf('process.exit(0)')),
+    /closeStalledTrainIncidentIfAny\(/,
+    'a queue that drained to empty has recovered, so the stall record must not linger open',
+  );
+});
+
+test('the stalled-train record is discoverable before the alarm labels it', () => {
+  // The record is created below the alarm threshold, when it deliberately does
+  // not carry the `ci-incident` label. Looking it up through that label made
+  // the pass counter unreadable (always 0) and leaked a new unlabeled issue on
+  // every stalled pass, so the alarm could never fire.
+  const finder = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function findStalledTrainIncident()'),
+  );
+  const body = finder.slice(0, finder.indexOf('\n}\n'));
+  assert.match(
+    body,
+    /STALLED_TRAIN_TRACKING_LABEL/,
+    'the stall record must be looked up by its always-applied tracking label',
+  );
+  assert.doesNotMatch(
+    body,
+    /EMPTY_TRAIN_INCIDENT_LABEL/,
+    'the alarm-only incident label cannot be the lookup key for a pre-alarm record',
+  );
+  for (const fn of [
+    'async function upsertStalledTrainIncident',
+    'async function readStalledTrainPasses',
+    'async function closeStalledTrainIncidentIfAny',
+  ]) {
+    const region = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf(fn));
+    assert.match(
+      region.slice(0, region.indexOf('\n}\n')),
+      /findStalledTrainIncident\(\)/,
+      `${fn} must share the tracking-label lookup so the counter round-trips`,
+    );
+  }
+});
+
+test('the stalled-train record always carries the tracking label', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function upsertStalledTrainIncident'),
+  );
+  const upsert = region.slice(0, region.indexOf('\n}\n'));
+  assert.doesNotMatch(
+    upsert,
+    /labels: alarm \? \[[^\]]*\] : \[\]/,
+    'an unlabeled record cannot be found again, so it must never be created without a label',
+  );
+  assert.match(upsert, /\[STALLED_TRAIN_TRACKING_LABEL\]/);
 });
