@@ -87,13 +87,22 @@ request and a re-run cannot double-consume one.
 
 ### Cutover (`scripts/sprites/asset-requests/migrate-queue.ts`)
 
-`SPRITES_ASSET_QUEUE_FROZEN=1` makes `runQueueCommit` fail closed with an
+`npm run sprites:asset-request snapshot` first preserves every legacy aggregate
+ref — the final `assets/queue` tip and each `assets/checkin-*` ref — under an
+immutable, commit-addressed backup (`refs/heads/assets/backup/<leaf>/<sha>`), so
+re-running is a no-op and a backup can never be silently overwritten.
+
+`SPRITES_ASSET_QUEUE_FROZEN=1` then makes `runQueueCommit` fail closed with an
 actionable message before it touches git — including for the trusted CI
 publisher, because no writer may extend a frozen queue. `classifyQueueTip()`
 then produces a deterministic report classifying **every** path and annotation
 delta on the final queue tip as `already-on-main`, `safe-request`,
 `naming-migration-conflict`, `invalid-pair`, or `requires-human`; the report is
-only complete when `unclassifiedPaths` is empty. Only human-approved
+only complete when `unclassifiedPaths` is empty. The diff covers **every**
+surface the legacy writer could stage (generated assets _and_ `briefs/`) — a
+generated-only diff would let a brief delta survive an apparently complete
+report. Briefs always classify as `requires-human`, because the request contract
+deliberately has no brief operation. Only human-approved
 `safe-request` groups are converted into request refs, each carrying the
 originating queue SHA as its `sourceCommit`.
 
@@ -111,6 +120,11 @@ originating queue SHA as its `sourceCommit`.
   change instead of one aggregate commit; the archive ledger keeps them around
   for audit. This is the intended trade — refs are cheap, silent corruption is
   not.
+- **Neutral.** The final acceptance criterion — "no normal asset workflow writes
+  a mutable aggregate queue branch" — completes at cutover step 1, when the
+  maintainer sets the freeze and repoints the workflows. Flipping production
+  ingestion before the migration report exists would strand in-flight art, so
+  that switch is deliberately left as a human action.
 - **Negative.** The cutover is staged and cannot be fully automated. Converting
   the final queue tip requires a human disposition pass over the classifier
   report, which is deliberate: semantic art conflicts stay human decisions.

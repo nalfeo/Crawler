@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "immutable-asset-request-refs",
+  "task_title": "Replace mutable assets/queue with immutable per-change asset request refs",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor_adjustment",
+      "notes": "Adversarial plan review enumerated three alternatives (append-only request-log branch, Azure/GitHub-issue queue as source of truth, mutable per-request branches) and rejected each; the immutable-ref architecture held. It found four real acceptance-criterion gaps in the implementation: (1) annotation requests had no per-key staleness check, so a stale annotation could overwrite a newer value — fixed with annotationsAt()/per-key comparison; (2) the removal duplicate proof only checked that the surviving shard existed, not that it owned the proven bytes — fixed by verifying the surviving shard's assetPath and contentHash; (3) the conflict fingerprint ignored sourceRun, so materially different requests could collapse as duplicates — fixed by fingerprinting the full canonical entry; (4) the cutover diff covered only public/assets/generated, so a briefs/ delta could survive an apparently complete report — fixed by diffing every legacy queue surface and classifying briefs as requires-human. The sixth concern (add regression tests for each) was implemented: 5 new tests. The fifth concern — production workflows still target assets/queue — is answered by design: repointing ingestion is cutover step 1 and a human action, documented in ADR 0088 and the handoff rather than silently flipped."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review-tool"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Archive retry hazard: a crash between the archive push and the live-ref delete made the retry fail on an already-existing archive ref. Fixed by checking the archive ref first — identical commit is a no-op, diverged commit throws rather than being force-overwritten. Two regression tests added."
+        },
+        {
+          "round": 2,
+          "models": ["code_review-tool"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review after the plan-review fixes (annotation staleness, source-bound removal proof, full-entry conflict fingerprint, briefs classification, queue/check-in snapshot) reported no remaining concerns."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "",
+      "findings": [],
+      "criteria": {},
+      "verdict": "pending",
+      "findings_count": 0,
+      "notes": "Recorded by npm run review:grade after the final commit."
+    }
+  }
+}

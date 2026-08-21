@@ -6,6 +6,7 @@
  *   reconcile   materialize a promotion from unresolved request refs at main
  *   archive     archive the requests a proven-merged promotion consumed
  *   migrate     classify the final `assets/queue` tip for cutover approval
+ *   snapshot    back up the legacy queue/check-in refs immutably before retirement
  *
  * Every subcommand prints a JSON result to stdout. Exit codes:
  *   0  success (including a clean no-op)
@@ -27,13 +28,13 @@ import {
 } from './manifest.js';
 import { publishAssetRequest } from './publish.js';
 import { archiveConsumedRequests, materializeAssetRequests } from './reconcile.js';
-import { classifyQueueTip, renderMigrationReport } from './migrate-queue.js';
+import { classifyQueueTip, renderMigrationReport, snapshotLegacyQueue } from './migrate-queue.js';
 import { createDefaultMaterializeDeps, createDefaultPublishDeps } from './runtime.js';
 
 export class UsageError extends Error {}
 
 export interface ParsedArgs {
-  readonly command: 'publish' | 'reconcile' | 'archive' | 'migrate';
+  readonly command: 'publish' | 'reconcile' | 'archive' | 'migrate' | 'snapshot';
   readonly repoRoot: string;
   readonly flags: Readonly<Record<string, string[]>>;
 }
@@ -45,10 +46,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     command !== 'publish' &&
     command !== 'reconcile' &&
     command !== 'archive' &&
-    command !== 'migrate'
+    command !== 'migrate' &&
+    command !== 'snapshot'
   ) {
     throw new UsageError(
-      `unknown subcommand "${String(command)}"; expected publish|reconcile|archive|migrate`,
+      `unknown subcommand "${String(command)}"; expected publish|reconcile|archive|migrate|snapshot`,
     );
   }
   const flags: Record<string, string[]> = {};
@@ -201,6 +203,14 @@ async function main(argv: readonly string[]): Promise<number> {
       createDefaultMaterializeDeps(),
       { remote: single(flags, 'remote'), baseBranch: single(flags, 'base-branch') },
     );
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  if (parsed.command === 'snapshot') {
+    const result = await snapshotLegacyQueue(repoRoot, createDefaultMaterializeDeps(), {
+      remote: single(flags, 'remote'),
+    });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   }

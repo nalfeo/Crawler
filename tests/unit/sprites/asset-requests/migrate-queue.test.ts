@@ -15,6 +15,7 @@ import {
   classifyQueueTip,
   groupChangedPaths,
   renderMigrationReport,
+  snapshotLegacyQueue,
 } from '../../../../scripts/sprites/asset-requests/migrate-queue.js';
 import { createDefaultMaterializeDeps } from '../../../../scripts/sprites/asset-requests/runtime.js';
 import {
@@ -208,5 +209,48 @@ describe('classifyQueueTip', () => {
     expect(byKey.get('same-var-0')?.classification).toBe('already-on-main');
     expect(byKey.get('gone-var-0')?.classification).toBe('requires-human');
     expect(renderMigrationReport(report)).toContain('"unclassifiedPaths": []');
+  });
+});
+
+describe('legacy surfaces beyond generated assets', () => {
+  it('classifies a briefs-only queue delta instead of silently ignoring it', async () => {
+    sandbox = makeSandbox([{ manifestKey: 'lantern-var-0', seed: 'lantern' }]);
+    buildQueueBranch(sandbox, (worktree) => {
+      writeFileAt(worktree, 'briefs/enemies/panda.yaml', 'id: panda\n');
+    });
+
+    const report = await classify(sandbox);
+
+    expect(report.unclassifiedPaths).toEqual([]);
+    expect(report.briefs).toEqual([
+      expect.objectContaining({
+        path: 'briefs/enemies/panda.yaml',
+        classification: 'requires-human',
+      }),
+    ]);
+    expect(report.summary['requires-human']).toBe(1);
+  });
+
+  it('backs up the queue and check-in refs immutably and is a safe no-op on re-run', async () => {
+    sandbox = makeSandbox([{ manifestKey: 'lantern-var-0', seed: 'lantern' }]);
+    buildQueueBranch(sandbox, (worktree) => {
+      writeFileAt(worktree, 'briefs/enemies/panda.yaml', 'id: panda\n');
+    });
+    const queueTip = git(sandbox.clone, 'rev-parse', 'origin/assets/queue');
+    git(sandbox.clone, 'push', 'origin', `${queueTip}:refs/heads/assets/checkin-2026-08-01`);
+
+    const first = await snapshotLegacyQueue(sandbox.clone, createDefaultMaterializeDeps());
+    expect(first.entries.map((entry) => entry.ref)).toEqual([
+      'refs/heads/assets/checkin-2026-08-01',
+      'refs/heads/assets/queue',
+    ]);
+    expect(first.entries.every((entry) => entry.status === 'created')).toBe(true);
+    for (const entry of first.entries) {
+      expect(git(sandbox.clone, 'ls-remote', 'origin', entry.backupRef)).toContain(entry.commit);
+      expect(entry.backupRef.endsWith(`/${entry.commit}`)).toBe(true);
+    }
+
+    const second = await snapshotLegacyQueue(sandbox.clone, createDefaultMaterializeDeps());
+    expect(second.entries.every((entry) => entry.status === 'already-backed-up')).toBe(true);
   });
 });

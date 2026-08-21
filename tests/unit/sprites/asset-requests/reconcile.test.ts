@@ -276,6 +276,58 @@ describe('materializeAssetRequests', () => {
     expect(again).toEqual({ archived: [], skipped: [published.requestId] });
   });
 
+  it('resumes an archive interrupted between the archive push and the live-ref delete', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern' });
+    const published = await publish(sandbox.clone, upsert(main, 'lantern-var-0', 'lantern'));
+
+    await reconcile(sandbox.clone);
+    git(sandbox.clone, 'fetch', 'origin', 'assets/promote');
+    const promotion = git(sandbox.clone, 'rev-parse', 'FETCH_HEAD');
+    git(sandbox.clone, 'push', 'origin', `${promotion}:refs/heads/main`);
+
+    // Simulate a crash after the archive push landed but before the live ref
+    // was deleted: the archive ref already exists at the request commit.
+    const archiveRef = `refs/heads/assets/archive/request/${published.requestId}`;
+    git(sandbox.clone, 'push', 'origin', `${published.commit}:${archiveRef}`);
+
+    const archive = await archiveConsumedRequests(
+      sandbox.clone,
+      promotion,
+      createDefaultMaterializeDeps(),
+    );
+
+    expect(archive.archived).toEqual([published.requestId]);
+    expect(
+      git(sandbox.clone, 'ls-remote', 'origin', `refs/heads/assets/request/${published.requestId}`),
+    ).toBe('');
+    expect(git(sandbox.clone, 'ls-remote', 'origin', archiveRef)).toContain(published.commit);
+  });
+
+  it('refuses to overwrite an archive ref that diverged from the consumed request', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern' });
+    const published = await publish(sandbox.clone, upsert(main, 'lantern-var-0', 'lantern'));
+
+    await reconcile(sandbox.clone);
+    git(sandbox.clone, 'fetch', 'origin', 'assets/promote');
+    const promotion = git(sandbox.clone, 'rev-parse', 'FETCH_HEAD');
+    git(sandbox.clone, 'push', 'origin', `${promotion}:refs/heads/main`);
+
+    const archiveRef = `refs/heads/assets/archive/request/${published.requestId}`;
+    git(sandbox.clone, 'push', 'origin', `${main}:${archiveRef}`);
+
+    await expect(
+      archiveConsumedRequests(sandbox.clone, promotion, createDefaultMaterializeDeps()),
+    ).rejects.toThrow(/archive ref .* points at /);
+    // The live request ref survives, so nothing is lost by the refusal.
+    expect(
+      git(sandbox.clone, 'ls-remote', 'origin', `refs/heads/assets/request/${published.requestId}`),
+    ).toContain(published.commit);
+  });
+
   it('never archives requests for a promotion that is not proven merged', async () => {
     sandbox = makeSandbox();
     const main = originMain(sandbox.clone);
@@ -440,5 +492,148 @@ describe('annotation requests', () => {
     ]);
     expect(document.sprites['keep-var-0']?.comment).toBe('keep me');
     expect(document.sprites['lantern-var-0']?.comment).toBe('nice glow');
+  });
+  it('refuses a STALE annotation instead of overwriting a newer value for that key', async () => {
+    sandbox = makeSandbox([{ manifestKey: 'lantern-var-0', seed: 'a' }]);
+    const main = originMain(sandbox.clone);
+    await publish(sandbox.clone, annotate(main, 'lantern-var-0', 'nice glow'));
+
+    // Someone else annotates the SAME key on main after the request was sealed.
+    writeFileAt(
+      sandbox.clone,
+      'public/assets/generated/sprite-editor-annotations.json',
+      `${JSON.stringify(
+        {
+          version: 1,
+          sprites: { 'lantern-var-0': { favorite: false, disliked: true, comment: 'newer' } },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    git(sandbox.clone, 'add', '--all');
+    git(sandbox.clone, 'commit', '-m', 'newer annotation');
+    git(sandbox.clone, 'push', 'origin', 'HEAD:refs/heads/main');
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('noop');
+    expect(result.outcomes[0]).toMatchObject({
+      disposition: 'refused',
+      reason: 'stale-destination',
+    });
+  });
+
+  it('applies an annotation when a DIFFERENT key changed on main (per-key staleness)', async () => {
+    sandbox = makeSandbox([{ manifestKey: 'lantern-var-0', seed: 'a' }]);
+    const main = originMain(sandbox.clone);
+    await publish(sandbox.clone, annotate(main, 'lantern-var-0', 'nice glow'));
+
+    writeFileAt(
+      sandbox.clone,
+      'public/assets/generated/sprite-editor-annotations.json',
+      `${JSON.stringify(
+        {
+          version: 1,
+          sprites: { 'other-var-0': { favorite: false, disliked: true, comment: 'unrelated' } },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    git(sandbox.clone, 'add', '--all');
+    git(sandbox.clone, 'commit', '-m', 'unrelated annotation');
+    git(sandbox.clone, 'push', 'origin', 'HEAD:refs/heads/main');
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('materialized');
+    expect(result.outcomes[0]).toMatchObject({ disposition: 'applied' });
+  });
+});
+
+describe('source-bound removal proofs', () => {
+  it('refuses a removal whose surviving key does not own the proven duplicate bytes', async () => {
+    sandbox = makeSandbox([
+      { manifestKey: 'dup-var-0', seed: 'same-bytes' },
+      { manifestKey: 'dup-var-1', seed: 'same-bytes' },
+      { manifestKey: 'unrelated-var-0', seed: 'unrelated' },
+    ]);
+    const main = originMain(sandbox.clone);
+
+    await publish(sandbox.clone, {
+      version: 1,
+      operation: 'remove-asset',
+      assets: [],
+      annotations: [],
+      removals: [
+        {
+          assetPath: 'generated/dup-var-1.png',
+          manifestKey: 'dup-var-1',
+          contentHash: pngHash('same-bytes'),
+          // Real duplicate bytes, but attributed to a key that owns other art.
+          duplicateOfAssetPath: 'generated/dup-var-0.png',
+          duplicateOfManifestKey: 'unrelated-var-0',
+        },
+      ],
+      observedMainSha: main,
+      producer: 'duplicate-prune',
+      provenance: {},
+      supersedes: null,
+    });
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('noop');
+    expect(result.outcomes[0]).toMatchObject({
+      disposition: 'refused',
+      reason: 'missing-duplicate-proof',
+    });
+  });
+});
+
+describe('conflict fingerprints', () => {
+  it('refuses same-bytes requests that disagree on sourceRun instead of deduping them', async () => {
+    sandbox = makeSandbox();
+    const main = originMain(sandbox.clone);
+    writeAsset(sandbox.clone, { manifestKey: 'lantern-var-0', seed: 'lantern' });
+
+    const first = await publish(
+      sandbox.clone,
+      upsert(main, 'lantern-var-0', 'lantern', {
+        assets: [
+          {
+            assetPath: 'generated/lantern-var-0.png',
+            manifestKey: 'lantern-var-0',
+            contentHash: pngHash('lantern'),
+            briefId: 'lantern',
+            variantIndex: 0,
+            sourceRun: 'run-a',
+          },
+        ],
+      }),
+    );
+    const second = await publish(
+      sandbox.clone,
+      upsert(main, 'lantern-var-0', 'lantern', {
+        assets: [
+          {
+            assetPath: 'generated/lantern-var-0.png',
+            manifestKey: 'lantern-var-0',
+            contentHash: pngHash('lantern'),
+            briefId: 'lantern',
+            variantIndex: 0,
+            sourceRun: 'run-b',
+          },
+        ],
+      }),
+    );
+    expect(first.requestId).not.toBe(second.requestId);
+
+    const result = await reconcile(sandbox.clone);
+
+    expect(result.status).toBe('noop');
+    expect(result.outcomes.map((outcome) => outcome.disposition)).toEqual(['refused', 'refused']);
+    expect(result.outcomes.every((outcome) => outcome.reason === 'request-conflict')).toBe(true);
   });
 });

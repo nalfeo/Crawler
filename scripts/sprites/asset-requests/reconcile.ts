@@ -28,6 +28,7 @@ import type { Exec } from '../checkin.js';
 import {
   ANNOTATIONS_PATH,
   GENERATED_ROOT,
+  canonicalJson,
   destinationPaths,
   destinationUnits,
   declaredRequestPaths,
@@ -235,6 +236,28 @@ async function blobAt(
   return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
 }
 
+/**
+ * The annotation map at `<rev>`, or an empty map when the document does not
+ * exist / is not a usable object there. Used for per-KEY staleness detection.
+ */
+async function annotationsAt(
+  deps: MaterializeDeps,
+  repoRoot: string,
+  rev: string,
+): Promise<Record<string, unknown>> {
+  const result = await runGit(deps, repoRoot, ['show', `${rev}:${ANNOTATIONS_PATH}`]);
+  if (result.code !== 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return {};
+  }
+  const sprites = (parsed as { sprites?: unknown } | null)?.sprites;
+  if (typeof sprites !== 'object' || sprites === null || Array.isArray(sprites)) return {};
+  return sprites as Record<string, unknown>;
+}
+
 interface Refusal {
   readonly reason: RefusalReason;
   readonly detail: string;
@@ -338,6 +361,27 @@ async function validateRequest(
             `(${then ?? 'absent'} -> ${now ?? 'absent'}); republish against current main`,
         ),
       };
+    }
+  }
+
+  // Annotations never own a whole file, so their staleness is per KEY: an
+  // annotation request may not overwrite a value some later commit changed.
+  if (manifest.annotations.length > 0) {
+    const then = await annotationsAt(deps, repoRoot, manifest.observedMainSha);
+    const now = await annotationsAt(deps, repoRoot, baseSha);
+    for (const annotation of manifest.annotations) {
+      const before = canonicalJson(then[annotation.key] ?? null);
+      const after = canonicalJson(now[annotation.key] ?? null);
+      if (before !== after) {
+        return {
+          refusal: refuse(
+            'stale-destination',
+            `annotation "${annotation.key}" changed on main since ` +
+              `${manifest.observedMainSha.slice(0, 12)} (${before} -> ${after}); ` +
+              'republish against current main',
+          ),
+        };
+      }
     }
   }
 
@@ -705,13 +749,44 @@ async function validateRemovals(
           `"${removal.assetPath}" (${targetHash}); removal requires a same-content duplicate`,
       );
     }
-    if (
-      (await blobAt(deps, repoRoot, baseSha, shardRepoPath(removal.duplicateOfManifestKey))) ===
-      null
-    ) {
+    const survivingShard = await runGit(deps, repoRoot, [
+      'show',
+      `${baseSha}:${shardRepoPath(removal.duplicateOfManifestKey)}`,
+    ]);
+    if (survivingShard.code !== 0) {
       return refuse(
         'missing-duplicate-proof',
         `surviving key "${removal.duplicateOfManifestKey}" has no manifest shard on main`,
+      );
+    }
+    // The proof must be SOURCE-BOUND: the surviving shard has to actually own
+    // the duplicate bytes, otherwise a removal could name an unrelated key.
+    let survivor: { assetPath?: unknown; contentHash?: unknown };
+    try {
+      survivor = JSON.parse(survivingShard.stdout) as {
+        assetPath?: unknown;
+        contentHash?: unknown;
+      };
+    } catch (error) {
+      return refuse(
+        'missing-duplicate-proof',
+        `shard for surviving key "${removal.duplicateOfManifestKey}" is not readable JSON: ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
+    if (survivor.assetPath !== removal.duplicateOfAssetPath) {
+      return refuse(
+        'missing-duplicate-proof',
+        `surviving key "${removal.duplicateOfManifestKey}" points at ` +
+          `"${String(survivor.assetPath)}", not the proven duplicate ` +
+          `"${removal.duplicateOfAssetPath}"`,
+      );
+    }
+    if (survivor.contentHash !== undefined && survivor.contentHash !== removal.contentHash) {
+      return refuse(
+        'missing-duplicate-proof',
+        `surviving key "${removal.duplicateOfManifestKey}" declares contentHash ` +
+          `${String(survivor.contentHash)} but the removal proves ${removal.contentHash}`,
       );
     }
   }
@@ -831,21 +906,26 @@ export function partitionConflicts(validated: readonly ValidatedRequest[]): {
   };
 }
 
-/** Stable content fingerprint a request claims for one destination unit. */
+/**
+ * Stable content fingerprint a request claims for one destination unit. It
+ * covers the FULL declared entry (not a partial tuple), so two requests that
+ * differ in any sealed field — including `sourceRun` — are treated as a real
+ * conflict rather than silently collapsed into a duplicate.
+ */
 function contentFor(manifest: AssetRequestManifest, unit: string): string {
   for (const asset of manifest.assets) {
     if (unit === pngRepoPath(asset.assetPath) || unit === shardRepoPath(asset.manifestKey)) {
-      return `upsert:${asset.contentHash}:${asset.briefId}:${asset.variantIndex}`;
+      return `upsert:${canonicalJson(asset)}`;
     }
   }
   for (const removal of manifest.removals) {
     if (unit === pngRepoPath(removal.assetPath) || unit === shardRepoPath(removal.manifestKey)) {
-      return `remove:${removal.contentHash}`;
+      return `remove:${canonicalJson(removal)}`;
     }
   }
   for (const annotation of manifest.annotations) {
     if (unit === `${ANNOTATIONS_PATH}#${annotation.key}`) {
-      return `annotate:${JSON.stringify(annotationValue(annotation))}`;
+      return `annotate:${canonicalJson(annotationValue(annotation))}`;
     }
   }
   return 'unknown';
@@ -931,7 +1011,19 @@ export async function archiveConsumedRequests(
       skipped.push(entry.requestId);
       continue;
     }
-    await mustGit(deps, repoRoot, ['push', remote, `${entry.commit}:${archiveRef}`]);
+    // Retry-safe: a crash between the archive push and the live-ref deletion
+    // leaves the archive ref already present. Re-archiving the same immutable
+    // commit is a no-op; a diverged archive ref is a real corruption and must
+    // never be force-overwritten.
+    const archivedListing = await mustGit(deps, repoRoot, ['ls-remote', remote, archiveRef]);
+    const existingArchiveSha = archivedListing.trim().split(/\s+/)[0] ?? '';
+    if (existingArchiveSha === '') {
+      await mustGit(deps, repoRoot, ['push', remote, `${entry.commit}:${archiveRef}`]);
+    } else if (existingArchiveSha !== entry.commit) {
+      throw new Error(
+        `archive ref ${archiveRef} points at ${existingArchiveSha} but request ${entry.requestId} was consumed at ${entry.commit}`,
+      );
+    }
     await mustGit(deps, repoRoot, [
       'push',
       `--force-with-lease=${liveRef}:${entry.commit}`,

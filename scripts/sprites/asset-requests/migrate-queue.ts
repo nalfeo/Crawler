@@ -53,6 +53,13 @@ export interface QueueAssetGroup {
   readonly sourceRun: string | null;
 }
 
+export interface QueueBriefDelta {
+  /** Repo-relative POSIX path under `briefs/`. */
+  readonly path: string;
+  readonly classification: QueueEntryClassification;
+  readonly detail: string;
+}
+
 export interface QueueAnnotationDelta {
   readonly key: string;
   readonly classification: QueueEntryClassification;
@@ -67,6 +74,8 @@ export interface QueueMigrationReport {
   readonly queueTipSha: string;
   readonly groups: readonly QueueAssetGroup[];
   readonly annotations: readonly QueueAnnotationDelta[];
+  /** Legacy `briefs/` deltas the queue still carries; requests never cover them. */
+  readonly briefs: readonly QueueBriefDelta[];
   /** Changed paths not covered by any group/annotation delta. Must stay empty. */
   readonly unclassifiedPaths: readonly string[];
   readonly summary: Readonly<Record<QueueEntryClassification, number>>;
@@ -78,6 +87,15 @@ export interface ClassifyQueueOptions {
 }
 
 const SHARD_PREFIX = `${GENERATED_ROOT}/entries/`;
+
+/**
+ * Every surface the legacy queue writer is allowed to stage. The migration
+ * report diffs ALL of them — restricting the diff to generated assets would let
+ * a `briefs/` delta survive an apparently "complete" cutover report.
+ */
+export const LEGACY_QUEUE_SURFACES: readonly string[] = [GENERATED_ROOT, 'briefs'];
+
+const BRIEF_PREFIX = 'briefs/';
 const PNG_PREFIX = 'public/assets/generated/';
 
 /** Parse `git diff --name-only` output into a sorted, de-duplicated path list. */
@@ -97,10 +115,12 @@ export function parseChangedPaths(stdout: string): readonly string[] {
 export function groupChangedPaths(paths: readonly string[]): {
   readonly groups: ReadonlyMap<string, string[]>;
   readonly annotationsChanged: boolean;
+  readonly briefPaths: readonly string[];
   readonly unclassified: readonly string[];
 } {
   const groups = new Map<string, string[]>();
   const unclassified: string[] = [];
+  const briefPaths: string[] = [];
   let annotationsChanged = false;
   const push = (key: string, repoPath: string): void => {
     const list = groups.get(key);
@@ -120,10 +140,19 @@ export function groupChangedPaths(paths: readonly string[]): {
       push(repoPath.slice(PNG_PREFIX.length, -'.png'.length), repoPath);
       continue;
     }
+    if (repoPath.startsWith(BRIEF_PREFIX)) {
+      briefPaths.push(repoPath);
+      continue;
+    }
     unclassified.push(repoPath);
   }
   for (const list of groups.values()) list.sort();
-  return { groups, annotationsChanged, unclassified: unclassified.sort() };
+  return {
+    groups,
+    annotationsChanged,
+    briefPaths: briefPaths.sort(),
+    unclassified: unclassified.sort(),
+  };
 }
 
 async function blobAt(
@@ -234,10 +263,10 @@ export async function classifyQueueTip(
       baseSha,
       queueTipSha,
       '--',
-      GENERATED_ROOT,
+      ...LEGACY_QUEUE_SURFACES,
     ]),
   );
-  const { groups, annotationsChanged, unclassified } = groupChangedPaths(changed);
+  const { groups, annotationsChanged, briefPaths, unclassified } = groupChangedPaths(changed);
 
   const temp = await deps.makeTempDir();
   const worktrees: string[] = [];
@@ -304,6 +333,31 @@ export async function classifyQueueTip(
       }
     }
 
+    // Briefs are a legacy queue surface with no request operation: the request
+    // contract covers art bytes and annotations only. Anything the queue still
+    // carries here is a human disposition, never an automatic migration.
+    const briefs: QueueBriefDelta[] = [];
+    for (const briefPath of briefPaths) {
+      const onQueue = await blobAt(deps, repoRoot, queueTipSha, briefPath);
+      const onMain = await blobAt(deps, repoRoot, baseSha, briefPath);
+      briefs.push(
+        onQueue !== null && onQueue === onMain
+          ? {
+              path: briefPath,
+              classification: 'already-on-main',
+              detail: 'identical brief already on main',
+            }
+          : {
+              path: briefPath,
+              classification: 'requires-human',
+              detail:
+                onQueue === null
+                  ? 'brief exists on main but not on the queue tip; deletion needs approval'
+                  : 'brief differs from main; requests carry no brief operation',
+            },
+      );
+    }
+
     const summary: Record<QueueEntryClassification, number> = {
       'already-on-main': 0,
       'safe-request': 0,
@@ -313,6 +367,7 @@ export async function classifyQueueTip(
     };
     for (const group of classified) summary[group.classification] += 1;
     for (const delta of annotations) summary[delta.classification] += 1;
+    for (const delta of briefs) summary[delta.classification] += 1;
 
     return {
       version: 1,
@@ -320,6 +375,7 @@ export async function classifyQueueTip(
       queueTipSha,
       groups: classified,
       annotations,
+      briefs,
       unclassifiedPaths: unclassified,
       summary,
     };
@@ -473,4 +529,66 @@ async function classifyGroup(
 /** Stable JSON rendering of the report (sorted keys, trailing newline). */
 export function renderMigrationReport(report: QueueMigrationReport): string {
   return `${JSON.stringify(report, null, 2)}\n`;
+}
+
+export interface QueueBackupEntry {
+  /** Live ref that was backed up, e.g. `refs/heads/assets/queue`. */
+  readonly ref: string;
+  readonly commit: string;
+  /** Immutable backup ref holding that exact commit. */
+  readonly backupRef: string;
+  readonly status: 'created' | 'already-backed-up';
+}
+
+export interface QueueBackupResult {
+  readonly entries: readonly QueueBackupEntry[];
+}
+
+/** Namespace holding the immutable pre-retirement snapshots. */
+export const QUEUE_BACKUP_PREFIX = 'refs/heads/assets/backup/';
+
+/**
+ * Snapshot the legacy aggregate refs — the final `assets/queue` tip and every
+ * `assets/checkin-*` ref — under immutable, commit-addressed backup refs.
+ *
+ * Cutover step 2: nothing may be retired before its bytes are preserved. The
+ * backup ref embeds the snapshotted commit, so re-running is a no-op and a
+ * backup can never be silently overwritten with different content.
+ */
+export async function snapshotLegacyQueue(
+  repoRoot: string,
+  deps: MaterializeDeps,
+  options: { readonly remote?: string } = {},
+): Promise<QueueBackupResult> {
+  const remote = options.remote ?? 'origin';
+  const listing = await mustGit(deps, repoRoot, [
+    'ls-remote',
+    remote,
+    'refs/heads/assets/queue',
+    'refs/heads/assets/checkin-*',
+  ]);
+
+  const live: { ref: string; commit: string }[] = [];
+  for (const line of listing.split('\n')) {
+    const [commit, ref] = line.trim().split(/\s+/);
+    if (commit === undefined || ref === undefined) continue;
+    if (!/^[0-9a-f]{40}$/.test(commit)) continue;
+    live.push({ ref, commit });
+  }
+  live.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+
+  const entries: QueueBackupEntry[] = [];
+  for (const { ref, commit } of live) {
+    const leaf = ref.replace(/^refs\/heads\/assets\//, '');
+    const backupRef = `${QUEUE_BACKUP_PREFIX}${leaf}/${commit}`;
+    const existing = await mustGit(deps, repoRoot, ['ls-remote', remote, backupRef]);
+    if (existing.trim() !== '') {
+      entries.push({ ref, commit, backupRef, status: 'already-backed-up' });
+      continue;
+    }
+    await mustGit(deps, repoRoot, ['fetch', '--no-tags', remote, `${ref}:${backupRef}`]);
+    await mustGit(deps, repoRoot, ['push', remote, `${backupRef}:${backupRef}`]);
+    entries.push({ ref, commit, backupRef, status: 'created' });
+  }
+  return { entries };
 }
