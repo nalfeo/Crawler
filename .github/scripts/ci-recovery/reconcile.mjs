@@ -1424,7 +1424,7 @@ async function handleQuarantineDispositionIfAny() {
   const localClosingIssueNumbers = localClosingIssues.map((issue) => issue.number);
   const strippedBody = stripClosingKeywordsForIssues(pr.body || '', localClosingIssueNumbers);
   if (strippedBody !== (pr.body || '')) {
-    if (live) {
+    if (shouldMutate) {
       await assertExpectedMetadataUnchanged('abandon-strip-closing-keywords');
       await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
         method: 'PATCH',
@@ -1439,7 +1439,7 @@ async function handleQuarantineDispositionIfAny() {
     stopIfReleaseConvergedElsewhere(await release('scope-mismatch-abandoned'));
   }
   await applyPrLifecycle(PHASE.ABANDONED, 'owner-command-abandon');
-  if (live) {
+  if (shouldMutate) {
     await assertExpectedMetadataUnchanged('abandon-close-pr');
     await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
       method: 'PATCH',
@@ -1451,7 +1451,7 @@ async function handleQuarantineDispositionIfAny() {
   for (const issue of localClosingIssues.filter(
     (candidate) => String(candidate?.state || '').toUpperCase() === 'OPEN',
   )) {
-    if (live) {
+    if (shouldMutate) {
       await runIssueIntake({
         graphql,
         paginate,
