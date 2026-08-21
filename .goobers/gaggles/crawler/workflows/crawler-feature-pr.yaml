@@ -19,6 +19,8 @@ spec:
         command: ['goobers', 'backlog-query', '--claim']
       inputs:
         trustLabel: 'goobers:approved'
+        requireUnassigned: 'true'
+        excludeLabel: 'goobers/status:in-review'
         maxItems: '1'
         resultFile: 'claimed-item.json'
       capabilities:
@@ -89,7 +91,7 @@ spec:
         - pull-request-url
         - prNumber
         - opened
-      next: close-out
+      next: pr-opened-gate
     - name: close-out
       type: deterministic
       goal: Mark the source issue as awaiting review and link the PR.
@@ -115,6 +117,19 @@ spec:
       policyActions:
         - update-issue
       next: '@abort'
+    - name: needs-remediation
+      type: deterministic
+      goal: Mark an issue that requires remediation and human escalation.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'needs-remediation'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+      next: '@escalate'
   gates:
     - name: review
       evaluator: agentic
@@ -124,7 +139,7 @@ spec:
         pass: push-branch
         needs-changes: implement
         fail: park-needs-human
-        escalate: park-needs-human
+        escalate: needs-remediation
     - name: local-gate
       evaluator: automated
       automated:
@@ -133,4 +148,14 @@ spec:
         pass: open-pr
         fail: implement
         infra: local-ci
-        escalate: park-needs-human
+        escalate: needs-remediation
+    - name: pr-opened-gate
+      evaluator: automated
+      automated:
+        check: output-equals
+        output: opened
+        equals: 'true'
+      branches:
+        pass: close-out
+        fail: '@abort'
+        infra: needs-remediation

@@ -316,6 +316,11 @@ export async function getCopilotIssueAssignmentContext({
           issue(number: $issueNumber) {
             id
             state
+            labels(first: 50) {
+              nodes {
+                name
+              }
+            }
             assignees(first: 50) {
               nodes {
                 id
@@ -346,6 +351,7 @@ export async function getCopilotIssueAssignmentContext({
     copilot,
     issueId: issueData.id,
     issueState: issueData.state,
+    labels: issueData.labels?.nodes || [],
     assignees: issueData.assignees?.nodes || [],
   };
 }
@@ -653,6 +659,34 @@ export async function intakeOpenedIssue({
 }
 
 /**
+ * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
+ * OPEN. Exported (and used as a marker via `instanceof`) so callers like
+ * `intakeUnblockedDependents` can distinguish this benign race — the issue
+ * closed between eligibility/blocked_by checks and the assignment mutation —
+ * from a genuine API/infra failure, and report it as a skip rather than an
+ * error.
+ */
+export class IssueNoLongerOpenError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is no longer open; skipping intake`);
+    this.name = 'IssueNoLongerOpenError';
+  }
+}
+
+/**
+ * Thrown by `runIssueIntake` when a live GraphQL re-fetch sees the
+ * `goobers:approved` label even though the triggering payload was eligible for
+ * Cloud Copilot intake. Exported so callers like `intakeUnblockedDependents`
+ * can treat this ownership race as a benign skip instead of an infra failure.
+ */
+export class IssueClaimedByGoobersError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is now labeled goobers:approved; skipping intake`);
+    this.name = 'IssueClaimedByGoobersError';
+  }
+}
+
+/**
  * Re-runs intake for every dependent of a just-closed issue, so that a
  * dependent whose last blocker just closed gets picked up automatically
  * instead of waiting for a human to notice. Dependent issue payloads returned
@@ -707,13 +741,17 @@ export async function intakeUnblockedDependents({
       results.push({ number: dependent.number, ...outcome });
     } catch (err) {
       // A dependent closing between our `open` check above and the live
-      // assignment mutation is a benign race, not an infra failure — report it
-      // as a skip so the sweep doesn't flag the workflow run red for it.
-      if (err instanceof IssueNoLongerOpenError) {
+      // assignment mutation, or being claimed by Goobers in that same window,
+      // are both benign races. Report them as skips so the sweep doesn't flag
+      // the workflow run red for them.
+      if (err instanceof IssueNoLongerOpenError || err instanceof IssueClaimedByGoobersError) {
         results.push({
           number: dependent.number,
           assigned: false,
-          reason: 'dependent closed during processing',
+          reason:
+            err instanceof IssueNoLongerOpenError
+              ? 'dependent closed during processing'
+              : 'dependent claimed by Goobers during processing',
         });
         continue;
       }
@@ -725,21 +763,6 @@ export async function intakeUnblockedDependents({
     }
   }
   return results;
-}
-
-/**
- * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
- * OPEN. Exported (and used as a marker via `instanceof`) so callers like
- * `intakeUnblockedDependents` can distinguish this benign race — the issue
- * closed between eligibility/blocked_by checks and the assignment mutation —
- * from a genuine API/infra failure, and report it as a skip rather than an
- * error.
- */
-export class IssueNoLongerOpenError extends Error {
-  constructor(issueNumber) {
-    super(`Issue #${issueNumber} is no longer open; skipping intake`);
-    this.name = 'IssueNoLongerOpenError';
-  }
 }
 
 export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
@@ -757,6 +780,9 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
   // longer open.
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
+  }
+  if (isGoobersApprovedIssue({ labels: assignmentContext.labels })) {
+    throw new IssueClaimedByGoobersError(issue.number);
   }
 
   const actorIds = buildIssueActorIds({
