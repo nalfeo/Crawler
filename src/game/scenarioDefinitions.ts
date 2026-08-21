@@ -32,6 +32,7 @@ import {
   meetBroker,
 } from './floor2Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
+import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
@@ -167,6 +168,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       nextFloorId: 'floor2',
       npcs: FLOOR_1_NPCS,
       beforeWeaponSystems: [floor1PlayerStatSystem],
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor1EnemyDirectorSystem],
       director: FLOOR_1_DIRECTOR,
     },
@@ -179,7 +181,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       onStairDescend: confirmFloor2StairDescend,
       npcs: FLOOR_2_NPCS,
       beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
-      beforeEnemyAISystems: [familyFeudSystem],
+      beforeEnemyAISystems: [companionAISystem, familyFeudSystem],
       director: FLOOR_2_DIRECTOR,
     },
   ],
