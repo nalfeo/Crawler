@@ -1,0 +1,67 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "azure-sprite-workflow",
+  "task_title": "Complete Azure Sprite Generation Workflow canvas",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": [
+        "Port the full devtools DOM wholesale",
+        "Create parallel sidecar endpoints and state schema",
+        "Keep state local to the canvas"
+      ],
+      "plan_divergence": "minor",
+      "notes": "",
+      "model": "claude-sonnet-5",
+      "summary": "Adopted the full canonical 13-stage QueueState and item-preserving ETag merge writes; canvas proxies only authoring routes and never worker or issue consumer routes; rewind remains pointer-only; generating polling is bounded."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.7-flash"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "grok-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gemini-3.7-flash"],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

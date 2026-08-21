@@ -22,6 +22,12 @@ import {
   acceptUrl,
   deleteManifestUrl,
   runPostprocessUrl,
+  workflowStateUrl,
+  workflowSynthesizeUrl,
+  workflowBriefUrl,
+  workflowPromoteUrl,
+  workflowGenerateUrl,
+  workflowLatestRunUrl,
   candidateStatus,
   describeJudgeSkipReason,
   toJudgeSummary,
@@ -101,6 +107,55 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
 test('client.urls.runPostprocess is wired to the same builder', () => {
   const client = createSidecarClient({ baseUrl: BASE, fetchImpl: async () => jsonResponse({}) });
   assert.equal(client.urls.runPostprocess('b', 'r'), runPostprocessUrl(BASE, 'b', 'r'));
+});
+
+test('workflow authoring client uses the sidecar workflow contracts and ETags', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith('/state') && options.method === 'PUT')
+        return jsonResponse({ ok: true, etag: 'next' });
+      if (url.includes('/latest-run'))
+        return jsonResponse({ run: { briefId: 'rusty-anvil', runId: 'run-1' } });
+      if (url.endsWith('/state')) return jsonResponse({ state: { items: [] }, etag: 'before' });
+      return jsonResponse({
+        written: [],
+        briefPath: 'briefs/draft/rusty-anvil.yaml',
+        status: 'queued',
+      });
+    },
+  });
+  assert.equal(workflowStateUrl(BASE), `${BASE}/api/workflow/state`);
+  assert.equal(workflowSynthesizeUrl(BASE), `${BASE}/api/workflow/synthesize`);
+  assert.equal(workflowBriefUrl(BASE), `${BASE}/api/workflow/brief`);
+  assert.equal(workflowPromoteUrl(BASE), `${BASE}/api/workflow/promote-brief`);
+  assert.equal(workflowGenerateUrl(BASE), `${BASE}/api/workflow/generate`);
+  assert.equal(
+    workflowLatestRunUrl(BASE, 'rusty anvil', '2026-08-21T00:00:00.000Z'),
+    `${BASE}/api/workflow/latest-run?briefId=rusty%20anvil&requestedAt=2026-08-21T00%3A00%3A00.000Z`,
+  );
+  assert.deepEqual(await client.getWorkflowState(), { state: { items: [] }, etag: 'before' });
+  await client.putWorkflowState({ items: [] }, 'before');
+  const detailedRequest =
+    'Eight-direction walk cycle: face every cardinal and diagonal direction; 32px readable silhouette, detailed rust texture.';
+  await client.synthesizeWorkflow({ name: 'rusty-anvil', brief: detailedRequest });
+  await client.saveWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'name: rusty-anvil');
+  await client.promoteWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'prop', 'rusty-anvil');
+  await client.generateWorkflow('briefs/draft/rusty-anvil.yaml');
+  assert.deepEqual(await client.latestWorkflowRun('rusty-anvil', '2026-08-21T00:00:00.000Z'), {
+    briefId: 'rusty-anvil',
+    runId: 'run-1',
+  });
+  assert.equal(calls[1].options.headers['If-Match'], 'before');
+  assert.equal(calls[2].options.method, 'POST');
+  assert.match(calls[2].options.body, /rusty-anvil/);
+  assert.match(calls[2].options.body, /Eight-direction walk cycle/);
+  assert.match(calls[2].options.body, /32px readable silhouette/);
+  assert.equal(calls[3].options.method, 'PUT');
+  assert.equal(calls[4].options.method, 'POST');
+  assert.equal(calls[5].options.method, 'POST');
 });
 
 test('listRuns returns the runs array from the sidecar payload with no-store caching', async () => {

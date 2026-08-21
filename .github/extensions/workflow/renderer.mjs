@@ -75,11 +75,12 @@ const STYLES = `
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   header { margin-bottom: 12px; }
-  select, button {
+  select, button, input, textarea {
     background: #0f172a; color: #e2e8f0;
     border: 1px solid rgba(148,163,184,0.35); border-radius: 6px;
     padding: 6px 10px; font-size: 13px; font-family: inherit;
   }
+  textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--font-mono, monospace); font-size: 12px; }
   button { cursor: pointer; }
   .badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; }
@@ -267,13 +268,14 @@ const CLIENT_SCRIPT = String.raw`
     { key: 'themeAdherence', label: 'Theme adherence' }
   ];
   var TABS = [
+    { id: 'author', label: 'Author' },
     { id: 'backlog', label: 'Backlog' },
     { id: 'files', label: 'Plans & Briefs' },
     { id: 'runs', label: 'Runs' }
   ];
   var app = document.getElementById('app');
   var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
-  var activeTab = 'backlog';
+  var activeTab = 'author';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
@@ -1494,11 +1496,175 @@ const CLIENT_SCRIPT = String.raw`
     return wrap;
   }
 
+  // ---- Author tab: durable Azure workflow state machine -------------------
+  function workflowPost(path, body, label) {
+    setBusy(true, label || 'Updating Azure workflow…');
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Workflow-Mutation-Token': mutationToken },
+      body: JSON.stringify(body || {})
+    }).then(function (response) {
+      return response.json().then(function (payload) {
+        if (!response.ok || (payload && payload.error)) throw new Error((payload && payload.message) || (payload && payload.error) || 'Workflow update failed');
+        setBusy(false);
+        return loadState();
+      });
+    }).catch(function (error) {
+      setBusy(false);
+      if (lastState) {
+        lastState.error = 'Workflow action failed: ' + error.message;
+        render(lastState);
+      }
+    });
+  }
+
+  function renderAuthor(state) {
+    var workflow = state.workflow || { items: [], selectedId: null };
+    var selected = null;
+    for (var i = 0; i < workflow.items.length; i++) {
+      if (workflow.items[i].id === workflow.selectedId) selected = workflow.items[i];
+    }
+    var wrap = h('div', null, []);
+    var refresh = h('button', {
+      class: 'accept-button',
+      text: 'Refresh Azure workflow',
+      title: 'Fetch externally completed Azure work now'
+    });
+    refresh.addEventListener('click', function () {
+      workflowPost('/api/workflow/refresh', {}, 'Refreshing Azure workflow…');
+    });
+    wrap.appendChild(h('div', { class: 'panel info', style: { marginBottom: '12px' } }, [
+      h('div', { class: 'between' }, [
+        h('div', null, [
+          h('strong', { text: 'Azure-backed authoring workflow' }),
+          h('div', { class: 'muted', text: 'Generation is queued to Azure; this canvas never starts queue consumers.' })
+        ]),
+        refresh
+      ]),
+      h('div', { class: 'muted', style: { marginTop: '6px' },
+        text: 'Last Azure refresh: ' + (state.workflowLastRefreshAt || 'not yet loaded') })
+    ]));
+    if (state.workflowError) {
+      wrap.appendChild(h('div', { class: 'panel warn', style: { marginBottom: '12px' },
+        text: 'Azure workflow state is unavailable: ' + state.workflowError }));
+    }
+
+    var composer = h('div', { class: 'panel', style: { marginBottom: '12px' } }, [
+      h('div', { class: 'section-title', text: 'New art request' })
+    ]);
+    var name = h('input', { type: 'text', placeholder: 'Bare consumer id, e.g. rusty-anvil', 'aria-label': 'Asset name' });
+    var brief = h('input', { type: 'text', placeholder: 'One-line art request', 'aria-label': 'One-line art request' });
+    var type = h('select', { 'aria-label': 'Sprite type' });
+    ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character'].forEach(function (value) {
+      type.appendChild(h('option', { value: value, text: value }));
+    });
+    var size = h('select', { 'aria-label': 'Sprite footprint' });
+    ['default', 'wide', 'tall', 'large'].forEach(function (value) {
+      size.appendChild(h('option', { value: value, text: value }));
+    });
+    var create = h('button', { class: 'accept-button', text: 'Create request' });
+    create.addEventListener('click', function () {
+      workflowPost('/api/workflow/request', {
+        name: name.value, brief: brief.value, type: type.value, sizeVariant: size.value
+      }, 'Creating request…');
+    });
+    composer.appendChild(h('div', { class: 'row' }, [name, brief, type, size, create]));
+    wrap.appendChild(composer);
+
+    if (workflow.items.length === 0) {
+      wrap.appendChild(h('div', { class: 'muted', text: 'Create a request to begin synthesis.' }));
+      return wrap;
+    }
+    var list = h('div', { class: 'filelist' }, []);
+    workflow.items.forEach(function (item) {
+      list.appendChild(h('button', {
+        class: item.id === workflow.selectedId ? 'active' : '',
+        text: item.name + ' · ' + item.stage,
+        onclick: function () { workflowPost('/api/workflow/select', { itemId: item.id }, 'Selecting request…'); }
+      }));
+    });
+    var detail = h('div', { class: 'panel' }, []);
+    if (!selected) {
+      detail.appendChild(h('div', { class: 'muted', text: 'Select an authoring request.' }));
+    } else {
+      detail.appendChild(h('div', { class: 'between' }, [
+        h('div', null, [
+          h('strong', { text: selected.name }),
+          h('div', { class: 'muted', text: selected.requestedType + ' · ' + selected.sizeVariant + ' · phase: ' + selected.stage })
+        ]),
+        h('code', { text: selected.kebabName })
+      ]));
+      if (selected.brief) detail.appendChild(h('p', { class: 'muted', text: selected.brief }));
+      var controls = h('div', { class: 'row' }, []);
+      if (selected.stage === 'draft') {
+        controls.appendChild(h('button', { class: 'accept-button', text: 'Synthesize draft briefs',
+          onclick: function () { workflowPost('/api/workflow/synthesize', { itemId: selected.id, candidates: 3 }, 'Synthesizing briefs…'); } }));
+      }
+      if (selected.candidates && selected.candidates.length) {
+        selected.candidates.forEach(function (candidate) {
+          var candidatePanel = h('div', { class: 'card', style: { marginTop: '10px' } }, [
+            h('div', { class: 'between' }, [h('strong', { text: candidate.id }), h('code', { text: candidate.yamlPath })]),
+            h('div', { class: 'muted', text: candidate.description || '' })
+          ]);
+          var yaml = h('textarea', { 'aria-label': 'Editable synthesized YAML' });
+          yaml.value = candidate.yaml || '';
+          candidatePanel.appendChild(yaml);
+          candidatePanel.appendChild(h('div', { class: 'row' }, [
+            h('button', { text: 'Save YAML', onclick: function () {
+              workflowPost('/api/workflow/brief', { itemId: selected.id, yamlPath: candidate.yamlPath, yaml: yaml.value }, 'Saving brief…');
+            } }),
+            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () {
+              workflowPost('/api/workflow/brief', { itemId: selected.id, yamlPath: candidate.yamlPath, yaml: yaml.value, choose: true }, 'Choosing brief…');
+            } })
+          ]));
+          detail.appendChild(candidatePanel);
+        });
+      }
+      if ((selected.stage === 'candidates' || selected.stage === 'draft') && (selected.chosenCandidatePath || selected.candidates.length)) {
+        controls.appendChild(h('button', { class: 'accept-button', text: 'Promote & queue Azure generation',
+          onclick: function () { workflowPost('/api/workflow/generate', { itemId: selected.id }, 'Queueing Azure generation…'); } }));
+      }
+      if (selected.stage === 'generating') {
+        controls.appendChild(h('span', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Waiting for Azure queue output…']));
+      }
+      if (selected.run) {
+        controls.appendChild(h('button', { text: 'View generated sheet', onclick: function () {
+          activeTab = 'runs'; select(selected.run.briefId, selected.run.runId, null);
+        } }));
+      }
+      if (selected.stage === 'sheet') {
+        controls.appendChild(h('button', { class: 'accept-button', text: 'Post-process sheet',
+          onclick: function () { workflowPost('/api/workflow/postprocess', { itemId: selected.id }, 'Post-processing sheet…'); } }));
+      }
+      if (selected.stage === 'postprocessed') {
+        controls.appendChild(h('button', { class: 'accept-button', text: 'Judge variants',
+          onclick: function () { workflowPost('/api/workflow/judge', { itemId: selected.id }, 'Judging variants…'); } }));
+      }
+      if (selected.stage === 'variants' && selected.run) {
+        selected.run.candidates.forEach(function (candidate) {
+          controls.appendChild(h('button', { class: 'accept-button', text: 'Approve variant ' + candidate.index,
+            onclick: function () { workflowPost('/api/workflow/approve', { itemId: selected.id, variantIndex: candidate.index }, 'Approving variant…'); } }));
+        });
+      }
+      if (selected.stage === 'checked-in' || selected.stage === 'approved') {
+        detail.appendChild(h('div', { class: 'accept-state queued', text: selected.approvalSummary || 'Approved and queued durably on assets/queue.' }));
+      }
+      ['brief', 'sheet', 'postprocess'].forEach(function (target) {
+        controls.appendChild(h('button', { class: 'unapprove-button', text: 'Rewind to ' + target,
+          onclick: function () { workflowPost('/api/workflow/rewind', { itemId: selected.id, target: target }, 'Rewinding workflow…'); } }));
+      });
+      detail.appendChild(controls);
+    }
+    wrap.appendChild(h('div', { class: 'split' }, [list, detail]));
+    return wrap;
+  }
+
 
   // ---- Tab bar + top-level render ----------------------------------------
   function renderTabs(state) {
     var bar = h('div', { class: 'tabs' }, []);
     var counts = {
+      author: (state.workflow && state.workflow.items) ? state.workflow.items.length : 0,
       backlog: (state.backlog && state.backlog.reports) ? state.backlog.reports.length : 0,
       files: (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
       runs: (state.runs || []).length
@@ -1517,6 +1683,7 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function renderActiveTab(state) {
+    if (activeTab === 'author') return renderAuthor(state);
     if (activeTab === 'files') return renderFiles(state);
     if (activeTab === 'runs') return renderRuns(state);
     return renderBacklog(state);

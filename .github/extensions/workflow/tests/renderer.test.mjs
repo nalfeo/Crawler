@@ -55,6 +55,23 @@ test('the client script wires the tab bar and all three read surfaces', () => {
   assert.doesNotMatch(html, /function renderRequests\(/);
 });
 
+test('the Author tab exposes the complete Azure workflow controls and visible refresh', () => {
+  const html = renderHtml('x');
+  assert.match(html, /id: 'author', label: 'Author'/);
+  assert.match(html, /function renderAuthor\(/);
+  assert.match(html, /Refresh Azure workflow/);
+  assert.match(html, /\/api\/workflow\/request/);
+  assert.match(html, /\/api\/workflow\/synthesize/);
+  assert.match(html, /\/api\/workflow\/brief/);
+  assert.match(html, /\/api\/workflow\/generate/);
+  assert.match(html, /\/api\/workflow\/postprocess/);
+  assert.match(html, /\/api\/workflow\/judge/);
+  assert.match(html, /\/api\/workflow\/approve/);
+  assert.match(html, /\/api\/workflow\/rewind/);
+  assert.match(html, /X-Workflow-Mutation-Token/);
+  assert.doesNotMatch(html, /worker\/start/);
+});
+
 test('the client script wires SSE + run selection', () => {
   const html = renderHtml('x');
   assert.match(html, /new EventSource\('\/events'\)/);

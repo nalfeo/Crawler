@@ -62,6 +62,40 @@ test('the /api/accept mutation route enforces the mutation-token guard', () => {
   );
 });
 
+test('authoring mutations reuse token, origin, and JSON guards without a queue-consumer route', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  for (const route of [
+    'request',
+    'synthesize',
+    'brief',
+    'generate',
+    'postprocess',
+    'judge',
+    'approve',
+    'rewind',
+  ]) {
+    assert.match(source, new RegExp(`path: '\\/api\\/workflow\\/${route}'`));
+  }
+  assert.match(source, /function workflowMutationRoute\(/);
+  assert.match(source, /isTrustedMutationOrigin\(req, entry\)/);
+  assert.match(source, /isJsonContentType\(req\)/);
+  assert.match(
+    source,
+    /tokensMatch\(req\.headers\['x-workflow-mutation-token'\], entry\.mutationToken\)/,
+  );
+  assert.match(source, /path: '\/api\/workflow\/refresh'/);
+  assert.match(source, /method: 'POST',\s*\n\s*path: '\/api\/workflow\/refresh'/);
+  assert.doesNotMatch(source, /workflow\/worker\/start/);
+});
+
+test('Azure polling pushes an iframe update only when a queued generation completes', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /let changed = false/);
+  assert.match(source, /changed = true/);
+  assert.match(source, /\.then\(\(\{ changed \}\) => \(changed \? forceLiveState/);
+  assert.match(source, /\.then\(\(state\) => \(state \? entry\.pushState\(state\) : null\)\)/);
+});
+
 test('feedback and plan/brief content routes import the shared (not duplicated) helpers', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /from '\.\.\/shared\/sprite-feedback-store\.mjs'/);
