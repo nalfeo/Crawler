@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b8528c6a55333fa0d9577ae9a4c82e0f7cb845fa",
+    "commitDate": "2026-08-21T19:47:01Z",
+    "commitSubject": "Replace mutable assets/queue with immutable per-change asset request refs (#3206)",
+    "capturedAt": "2026-08-21T20:56:03.720Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32521861576",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b8528c6a55333fa0d9577ae9a4c82e0f7cb845fa.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/b8528c6a55333fa0d9577ae9a4c82e0f7cb845fa.fun-report.json"
+    }
+  },
+  {
     "commit": "f4e81fff982fc0e508eef8265322430ead8a8a9f",
     "commitDate": "2026-08-21T19:21:03Z",
     "commitSubject": "Fix CI recovery resolution after duplicate reply notes (#3218)",
