@@ -1825,6 +1825,29 @@ test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () 
     'quarantine must use merge-train-blocked, which router.mjs treats as dispatch-blocked, ' +
       'so CI Recovery cannot immediately re-queue it into the same 403 loop (the #3027 livelock)',
   );
+  const setBlockedIdx = body.indexOf('setLabel(pr.number, BLOCKED_LABEL)');
+  const removeQueueIdx = body.indexOf('removeLabel(pr.number, QUEUE_LABEL)');
+  assert.ok(
+    setBlockedIdx > -1 && removeQueueIdx > -1 && setBlockedIdx < removeQueueIdx,
+    'BLOCKED_LABEL must be applied BEFORE QUEUE_LABEL is removed: a transient setLabel ' +
+      'failure must never leave the PR dequeued but unblocked, which would let CI Recovery ' +
+      're-queue it and recreate the label-churn livelock (matches the fail-safe order already ' +
+      'used by blockEntry/deAdmitNoop)',
+  );
+});
+
+test('STALLED_TRAIN_TRACKING_LABEL is provisioned by the startup ensureLabel sequence', () => {
+  const ensureLabelCalls = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('await ensureLabel(QUEUE_LABEL'),
+    RECONCILE_SOURCE.indexOf('// Crash-after-merge recovery runs first'),
+  );
+  assert.match(
+    ensureLabelCalls,
+    /ensureLabel\(\s*STALLED_TRAIN_TRACKING_LABEL/,
+    'the stall-watch tracking label must exist before the first watch issue is created, or ' +
+      'GitHub silently drops the nonexistent label, leaving the record unlabeled and ' +
+      'undiscoverable by findStalledTrainIncident() on the next pass',
+  );
 });
 
 test('the zero-admitted exit path evaluates the stalled-queue safeguard before exiting', () => {

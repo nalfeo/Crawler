@@ -895,6 +895,11 @@ await ensureLabel(
   'b60205',
   'Automated merge-train liveness or CI incident',
 );
+await ensureLabel(
+  STALLED_TRAIN_TRACKING_LABEL,
+  'fef2c0',
+  'Tracking record for a stalled (non-empty, zero-admitted) merge-train queue',
+);
 
 // Crash-after-merge recovery runs first, every reconcile: it backfills the
 // durable landed signal for any PR that was really merged but whose
@@ -1029,8 +1034,8 @@ for (const pr of queued) {
             process.stderr.write(
               `quarantine pr=#${pr.number} reason=unadvanceable-restricted-branch strikes=${strike.strikes}\n`,
             );
-            await removeLabel(pr.number, QUEUE_LABEL);
             await setLabel(pr.number, BLOCKED_LABEL);
+            await removeLabel(pr.number, QUEUE_LABEL);
             await updateStatus(
               pr.number,
               `${renderStatus({

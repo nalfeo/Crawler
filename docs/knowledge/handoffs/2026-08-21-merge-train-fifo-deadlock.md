@@ -112,10 +112,12 @@ only created that issue once `alarm` was true — and `alarm` requires
 `passes >= 3`. The counter could therefore never read back above `0`, pinned at
 `1` forever, and the alarm was structurally unreachable: the entire safeguard
 was dead code. Both the plan review and the code review caught this
-independently. Below the threshold the issue is now a quiet **unlabeled**
-tracking record; the `ci-incident` label is applied only at the alarm, so
-persistence never depends on the condition it is trying to detect. A regression
-test asserts the write is gated on `stall.stalled`, never on `stall.alarm`.
+independently. Below the threshold the issue now carries its own always-applied
+`merge-train-stall-watch` tracking label (provisioned via `ensureLabel` at
+startup) so `findStalledTrainIncident()` can discover it on the next pass; the
+`ci-incident` label is applied only at the alarm, so persistence never depends
+on the condition it is trying to detect. A regression test asserts the write is
+gated on `stall.stalled`, never on `stall.alarm`.
 
 ### 3. Eject + quarantine — bounded blast radius
 

@@ -74,7 +74,8 @@ gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
   -f trigger=pr-shepherd -f lease_id=$leaseId
 ```
 
-After all blockers are clear, release before arming auto-merge:
+After all blockers are clear, release the lease, then hand the PR to the train
+(never arm auto-merge — see [`../SKILL.md`](../SKILL.md)):
 
 ```powershell
 gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
@@ -97,10 +98,10 @@ Use `open_pr_session` with a rich kickoff prompt. Recommended settings:
 
 The kickoff prompt **must** include: the PR number + branch, the exact review
 comments to address (paste them — the session can't see your context), the
-specific failing CI check + run ID, the merge policy line
-(`gh pr merge <n> --auto --squash`, no review required), and the instruction to
-heartbeat/release the supplied lease, write a handoff + apple metric, and report
-the final merge commit back.
+specific failing CI check + run ID, the merge policy line (the `merge-train`
+label is the only merge path — **never** `gh pr merge --auto`, no review
+required), and the instruction to heartbeat/release the supplied lease, write
+a handoff + apple metric, and report the final merge commit back.
 
 > A single `open_pr_session` call sometimes returns a transient
 > "Policy hook failed" / "Tool result blocked" message even though the session
@@ -155,9 +156,10 @@ gh run list --branch <branch> --limit 15      # find the real run + its status
 gh run view <run-id> --log-failed             # read the actual error output
 ```
 
-Real failure ⇒ fix the underlying cause, push a surgical commit, re-arm
-auto-merge. Concurrency/timing artifact ⇒ no action; auto-merge proceeds once the
-required checks report green on the latest head.
+Real failure ⇒ fix the underlying cause, push a surgical commit, let the train
+pick the PR back up on its next reconcile. Concurrency/timing artifact ⇒ no
+action; the train admits the PR once required checks report green on the
+latest head.
 
 ### Known non-failures (do not chase)
 
@@ -169,33 +171,32 @@ required checks report green on the latest head.
   `pr-ready-reviewer-guard-${{ github.event.pull_request.number || github.ref }}`),
   but the advisory check can still show transient cancels under heavy churn.
   It is non-required and never blocks merge.
-- **`mergeStateStatus: BLOCKED` right after arming auto-merge** — usually the
-  required `ci` workflow hasn't reported on the **latest** head yet (it triggers
-  on `pull_request: [main]`; a fresh `synchronize` push kicks it), or a review
-  thread is unresolved. **CRITICAL: Check for unresolved conversation threads FIRST
-  — Copilot review threads are the #1 auto-merge blocker.** Unresolved threads
-  (especially from `copilot-pull-request-reviewer`) will silently block auto-merge
-  even when all CI checks pass. Resolve the thread → re-arm auto-merge → merge
-  completes immediately.
+- **`mergeStateStatus: BLOCKED` right after the `merge-train` label is applied** —
+  usually the required `ci` workflow hasn't reported on the **latest** head yet
+  (it triggers on `pull_request: [main]`; a fresh `synchronize` push kicks it),
+  or a review thread is unresolved. **CRITICAL: Check for unresolved conversation
+  threads FIRST — Copilot review threads are the #1 train-admission blocker.**
+  Unresolved threads (especially from `copilot-pull-request-reviewer`) will
+  silently block train admission even when all CI checks pass. Resolve the
+  thread → the train picks the PR up on its next reconcile → merge completes.
 - **`mergeStateStatus: BLOCKED` even after `ci` is green** — the Merge Train is the
   promotion path; the ruleset requires `merge-train` for ordinary actors but the trusted
   App has `bypass_mode: always`. **`merge-train` is written by reconciliation on the PR
   head immediately before the App-bypass squash-merge** — it is not a check that appears
-  early enough for an ordinary `gh pr merge --auto` to wait on. What batch validation
+  early enough for `gh pr checks` to show before promotion. What batch validation
   publishes is `merge-train-candidate` on the current `main` SHA (not on the PR head).
   **Remedy:** ensure the PR has the `merge-train` admission label (CI recovery adds it
   once CI, review threads, and code-review admission checks all pass) and CI stays green;
-  the train will pick it up on its next cycle and promote via App bypass. Ordinary
-  auto-merge (`gh pr merge --auto --squash`) can remain armed as a safety net, but the
-  actual merge is performed by the train's App — do not treat a missing `merge-train`
-  check in `gh pr checks <n>` as an actionable blocker to diagnose.
-- **Auto-merge disarmed by the Merge Train** — the Merge Train's `reconcile` job
-  (`merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`**
-  each time it processes a PR in its queue (log line: `disabled armed auto-merge
-  pr=#NNNN`). This is normal, not a failure. Re-arming is fine but the actual
-  promotion is always performed by the train's App; ordinary auto-merge is a
-  safety-net, not the primary mechanism. Do not interpret a disarmed auto-merge
-  as a blocker unless CI itself is failing.
+  the train will pick it up on its next cycle and promote via App bypass. Do **not**
+  arm `gh pr merge --auto` as a substitute or safety net — it cannot satisfy the
+  required `merge-train` context and only produces false confidence. Do not treat a
+  missing `merge-train` check in `gh pr checks <n>` as an actionable blocker to diagnose.
+- **Any manually-armed auto-merge is disarmed by the Merge Train** — the Merge Train's
+  `reconcile` job (`merge-train.yml`) **actively disarms any manually-armed
+  `gh pr merge --auto`** each time it processes a PR in its queue (log line:
+  `disabled armed auto-merge pr=#NNNN`). This is normal, not a failure — do not
+  re-arm it; the actual promotion is always performed by the train's App. Do not
+  interpret a disarmed auto-merge as a blocker unless CI itself is failing.
 - **Security-audit asymmetry (train-wide block risk)** — `ci.yml` runs `npm audit`
   with `continue-on-error: true`, so a pre-existing advisory finding shows as
   advisory-only and never blocks an individual PR's CI. `merge-train-validate.yml`'s
@@ -226,11 +227,12 @@ gh api graphql -F query="@$env:TEMP\resolve.graphql" -F threadId=<node-id>
 
 `resolveReviewThread(input:{threadId:$threadId}){ thread { isResolved } }`.
 
-### Auto-merge verification: verify merge completes, don't assume
+### Train-admission verification: verify merge completes, don't assume
 
-**CRITICAL:** Do not go idle immediately after arming `--auto --squash`. Shepherds
-must **verify the merge actually completes** with `state === "MERGED"` and
-`mergeCommit !== null`. If auto-merge appears stuck, use this diagnosis recipe:
+**CRITICAL:** Do not go idle immediately after applying the `merge-train` label.
+Shepherds must **verify the merge actually completes** with `state === "MERGED"`
+and `mergeCommit !== null`. If the PR appears stuck in the queue, use this
+diagnosis recipe:
 
 ```powershell
 # 1. Check for unresolved conversation threads FIRST (Copilot review threads are #1 blocker)
@@ -239,7 +241,8 @@ gh pr view <n> --json reviews | jq '.reviews[] | select(.state == "COMMENTED")'
 # If any Copilot review is COMMENTED and has unresolved threads:
 #   - Get thread node IDs: gh api graphql -f query='query { repository(...) { pullRequest(...) { reviewThreads(first:50) { nodes { id, isResolved } } } } }'
 #   - Resolve each: gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"PRRT_..."}) { thread { isResolved } } }'
-#   - Re-arm auto-merge: gh pr merge <n> --auto --squash
+#   - Confirm the PR still carries the `merge-train` label; the train re-admits it
+#     on its next reconcile once threads are resolved
 #   - Wait and verify merge completes
 
 # 2. Verify merge completed
@@ -247,17 +250,18 @@ gh pr view <n> --json state,mergeCommit,mergeStateStatus
 # Expected: state="MERGED" + mergeCommit.oid=<sha> (not null)
 ```
 
-**Why:** GitHub's auto-merge automation can stall silently when unresolved review
-threads exist. The merge will not proceed until threads are resolved **even if**
-all CI checks pass. This is the #1 reason shepherds have mistakenly gone idle,
-thinking "CI will handle it" — they didn't check for blocking threads first.
+**Why:** Train admission can stall silently when unresolved review threads
+exist. The train will not merge a queued PR until threads are resolved **even
+if** all CI checks pass. This is the #1 reason shepherds have mistakenly gone
+idle, thinking "the train will handle it" — they didn't check for blocking
+threads first.
 
 **Shepherd responsibility:**
 
-1. Arm auto-merge with `gh pr merge <n> --auto --squash`
-2. Poll up to 2 min: check `gh pr view <n> --json state,mergeStateStatus,mergeCommit`
-3. If `mergeStateStatus` is still `BLOCKED` after 60s, check for unresolved review threads (GraphQL query above)
-4. If threads found: resolve them, re-arm auto-merge
+1. Ensure the PR carries the `merge-train` label (never `gh pr merge --auto --squash`)
+2. Poll up to the train's reconcile cadence: check `gh pr view <n> --json state,mergeStateStatus,mergeCommit`
+3. If `mergeStateStatus` is still `BLOCKED`, check for unresolved review threads (GraphQL query above)
+4. If threads found: resolve them; the train re-admits the PR on its next reconcile
 5. Verify merge completes: `state === "MERGED"` + `mergeCommit !== null`
 6. Only then go idle (report merge commit SHA to creator)
 
