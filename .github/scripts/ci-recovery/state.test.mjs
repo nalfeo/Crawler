@@ -1792,6 +1792,21 @@ test('isScopeMismatchReviewBlocker detects unsupported closing-reference finding
   );
 });
 
+test('isScopeMismatchReviewBlocker matches active-voice "does not implement" findings', () => {
+  for (const summary of [
+    'reviewer: PR body says Fixes #3198, but this does not implement the feature.',
+    "reviewer: the PR description promises the panel, but the diff doesn't implement it.",
+    'reviewer: these changed files do not implement the behavior declared scope claims.',
+    'reviewer: PR title says Fixes #12, but the change does not add the described system.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      true,
+      summary,
+    );
+  }
+});
+
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
   assert.equal(
     requiresAdminIntervention({

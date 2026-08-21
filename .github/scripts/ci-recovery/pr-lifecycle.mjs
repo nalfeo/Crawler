@@ -391,6 +391,12 @@ export function makeQuarantineComment(prNumber, evidence) {
   const nextActions = Array.isArray(evidence?.nextActions)
     ? evidence.nextActions.map(compact).filter(Boolean)
     : [];
+  // Must describe exactly what the KEEP handler does. The single disposition
+  // handler transitions a quarantined PR to `repairing`; callers may override
+  // this text only to describe that same transition more precisely.
+  const keepOutcome =
+    compact(evidence?.keepOutcome) ||
+    'revive this PR: it re-enters the normal lifecycle as `repairing` and automated repair resumes';
 
   return [
     QUARANTINE_COMMENT_MARKER,
@@ -409,7 +415,7 @@ export function makeQuarantineComment(prNumber, evidence) {
     '- **Will not** be auto-closed — this waits for you',
     '',
     '**To resolve, the PR owner must post an exact standalone comment:**',
-    '- `KEEP` — revive this PR: it re-enters the normal lifecycle as `queued`',
+    `- \`KEEP\` — ${keepOutcome}`,
     '- `ABANDON` — close this PR permanently',
     '',
     '_No other text, no quoted text, no other authors, no green CI — only the exact `KEEP` or `ABANDON` command from the PR owner counts._',

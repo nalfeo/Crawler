@@ -103,8 +103,9 @@ export const LIFECYCLE_PHASES = {
 };
 
 // QUARANTINED is intentionally NOT terminal: a human can revive a quarantined
-// PR to QUEUED by commenting "KEEP" (see parseDispositionCommand). Only DONE
-// and ABANDONED are true dead ends with no further lifecycle transitions.
+// PR to REPAIRING by commenting "KEEP" (see parseDispositionCommand), after
+// which the normal lifecycle evaluation takes over again. Only DONE and
+// ABANDONED are true dead ends with no further lifecycle transitions.
 export const TERMINAL_PHASES = new Set([LIFECYCLE_PHASES.DONE, LIFECYCLE_PHASES.ABANDONED]);
 
 // Structurally non-blocking phases (D11): a PR in one of these can never be a
@@ -483,8 +484,12 @@ export function makeState({
   attempt = 0,
   progressKey = null,
   progressAt = null,
+  pendingIssueRestarts = [],
   updatedAt,
 }) {
+  const pendingRestarts = (Array.isArray(pendingIssueRestarts) ? pendingIssueRestarts : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
   const state = {
     version: 1,
     prNumber,
@@ -497,6 +502,7 @@ export function makeState({
     blockers: normalizeBlockers(blockers),
     attempt,
     ...(progressKey ? { progressKey: compact(progressKey), progressAt: compact(progressAt) } : {}),
+    ...(pendingRestarts.length > 0 ? { pendingIssueRestarts: pendingRestarts } : {}),
     updatedAt: compact(updatedAt),
   };
   validateState(state);
@@ -530,6 +536,15 @@ export function validateState(state) {
   }
   if (state.progressAt && Number.isNaN(Date.parse(state.progressAt))) {
     throw new Error('CI recovery progress timestamp is invalid');
+  }
+  if (state.pendingIssueRestarts !== undefined) {
+    if (
+      !Array.isArray(state.pendingIssueRestarts) ||
+      state.pendingIssueRestarts.length === 0 ||
+      state.pendingIssueRestarts.some((value) => !Number.isInteger(value) || value <= 0)
+    ) {
+      throw new Error('CI recovery state has invalid pending issue restarts');
+    }
   }
   if (Number.isNaN(Date.parse(state.updatedAt))) {
     throw new Error('CI recovery state timestamp is invalid');
@@ -839,8 +854,12 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
 
 const scopeMismatchClosingReferencePattern =
   /\b(?:fix(?:e[sd])?|clos(?:e[sd])?|resolv(?:e[sd])?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i;
+// Reviewers phrase the same finding in passive ("is not implemented") and
+// active ("does not implement the feature") voice, so both must match or an
+// otherwise-identical scope-mismatch finding falls through to ordinary inline
+// repair dispatch.
 const scopeMismatchUnsupportedPattern =
-  /\b(?:unsupported|not\s+supported|does\s+not\s+support|doesn't\s+support|scope\s+mismatch|materially\s+inconsistent|not\s+implemented|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
+  /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
   /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
 

@@ -11824,6 +11824,165 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   );
 });
 
+test('closed PR resumes a persisted linked-issue restart that failed after abandonment', async (t) => {
+  // Regression: abandonment closes the PR *before* restarting its linked
+  // issues. A restart that fails mid-flight must not be lost, because every
+  // later reconciliation leaves through the closed-PR path long before the
+  // disposition handler runs. The pending intent is persisted in recovery
+  // state and drained here.
+  const stateComment = {
+    id: 771,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3198],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  let removedCopilot = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198`]: () => ({
+      body: { number: 3198, node_id: 'ISSUE_3198', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198/comments`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3198/comments`]: () => ({ body: { id: 8100 } }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                issue: {
+                  id: 'ISSUE_3198',
+                  state: 'OPEN',
+                  assignees: { nodes: [{ id: 'BOT_copilot', login: 'Copilot' }] },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('removeAssigneesFromAssignable')) {
+        removedCopilot = true;
+        return {
+          body: {
+            data: {
+              removeAssigneesFromAssignable: {
+                assignable: { assignees: { nodes: [] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: {
+          data: {
+            replaceActorsForAssignable: {
+              assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+            },
+          },
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /restarted linked issue #3198 after abandoning pr=#42/);
+  assert.equal(removedCopilot, true, 'restart must remove Copilot before reassigning');
+  assert.equal(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    undefined,
+    'completed restart intent must be cleared from recovery state',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/3198/comments`,
+    ),
+    'expected the intake kickoff comment on the restarted issue',
+  );
+});
+
+test('a failed linked-issue restart keeps the pending intent for the next run', async (t) => {
+  const stateComment = {
+    id: 772,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3198],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198`]: () => ({
+      body: { number: 3198, node_id: 'ISSUE_3198', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ status: 500, body: { message: 'graphql unavailable' } }),
+  });
+  t.after(() => server.close());
+
+  const { code } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  assert.notEqual(code, 0, 'a failed restart must fail the run so it is retried');
+  assert.deepEqual(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    [3198],
+    'unfinished restart intent must survive for the next reconciliation',
+  );
+});
+
 test('trusted scope-mismatch review finding quarantines instead of dispatching Copilot', async (t) => {
   const thread = {
     id: 'PRRT_scope_mismatch',

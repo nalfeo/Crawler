@@ -579,6 +579,18 @@ test('makeQuarantineComment contains the quarantine marker', () => {
   assert.ok(body.includes('14 days'), 'must mention threshold');
 });
 
+test('makeQuarantineComment describes the KEEP transition the handler actually performs', () => {
+  const body = makeQuarantineComment(1900, { reason: 'scope-mismatch-review-finding' });
+  assert.ok(body.includes('`repairing`'), 'default KEEP text must name the repairing phase');
+  assert.equal(body.includes('as `queued`'), false, 'must not advertise an unperformed transition');
+
+  const overridden = makeQuarantineComment(1900, {
+    reason: 'scope-mismatch-review-finding',
+    keepOutcome: 'resume this PR: it re-enters the lifecycle as `repairing`',
+  });
+  assert.ok(overridden.includes('resume this PR: it re-enters the lifecycle as `repairing`'));
+});
+
 test('makeQuarantineComment is non-blocking: states PR blocks nothing while quarantined', () => {
   const body = makeQuarantineComment(1900, { reason: 'abandon-candidate-label' });
   assert.ok(

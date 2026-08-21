@@ -59,6 +59,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  IssueNoLongerOpenError,
   runIssueIntake,
   removeIssueAssignees,
   reviewThreadFollowupBacklogIssueNumbers,
@@ -1301,7 +1302,86 @@ if (orphanedOwnershipArtifact) {
   }
 }
 
+/**
+ * Resume any persisted linked-issue restart intent.
+ *
+ * Abandonment closes the PR *before* restarting its linked issues, so a failure
+ * mid-restart would otherwise be unrecoverable: every later reconciliation
+ * leaves through the closed-PR path long before the disposition handler runs.
+ * The intent is therefore persisted in recovery state and drained here (and on
+ * the closed-PR path) until it is empty, with each successful restart removed
+ * from the pending list so a retry never repeats completed work.
+ */
+async function drainPendingIssueRestarts() {
+  const pending = Array.isArray(state?.pendingIssueRestarts)
+    ? state.pendingIssueRestarts.slice()
+    : [];
+  if (pending.length === 0) return;
+  if (!shouldMutate) {
+    process.stdout.write(
+      `dry-run would-restart pending linked issues ${pending.map((n) => `#${n}`).join(', ')} pr=#${prNumber}\n`,
+    );
+    return;
+  }
+  const remaining = [];
+  const failures = [];
+  for (const issueNumber of pending) {
+    try {
+      // runIssueIntake assigns via the GraphQL node id, so resolve it from the
+      // persisted number (state carries numbers only, by design).
+      const issue = (await request(readToken, `/repos/${owner}/${repo}/issues/${issueNumber}`))
+        .data;
+      await runIssueIntake({
+        graphql,
+        paginate,
+        request,
+        token: pat,
+        owner,
+        repo,
+        issue: { number: issueNumber, node_id: issue?.node_id },
+        restart: true,
+      });
+      process.stdout.write(
+        `restarted linked issue #${issueNumber} after abandoning pr=#${prNumber}\n`,
+      );
+    } catch (error) {
+      // A linked issue that is no longer open can never be restarted; drop it
+      // instead of pinning the pending list forever. Any other failure keeps the
+      // issue pending so a later reconciliation retries it, and never aborts the
+      // remaining restarts in this batch.
+      if (error instanceof IssueNoLongerOpenError) {
+        process.stdout.write(
+          `skipped restart for closed linked issue #${issueNumber} pr=#${prNumber}\n`,
+        );
+        continue;
+      }
+      remaining.push(issueNumber);
+      const safeMsg = String(error.message || error)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 200);
+      failures.push(`#${issueNumber}: ${safeMsg}`);
+      process.stderr.write(
+        `issue-restart-failed pr=#${prNumber} issue=#${issueNumber} err=${safeMsg}\n`,
+      );
+    }
+  }
+  if (remaining.length !== pending.length) {
+    await updateState(
+      makeState({ ...state, pendingIssueRestarts: remaining, updatedAt: now.toISOString() }),
+      { forceTimestamp: true },
+    );
+  }
+  if (failures.length > 0) {
+    // Surface the failure only after the reduced intent is persisted, so the
+    // retry on the next reconciliation resumes exactly where this run stopped.
+    throw new Error(`PR #${prNumber} could not restart linked issues: ${failures.join('; ')}`);
+  }
+}
+
 if (pr.state !== 'open') {
+  // Drain before any release: release rewrites state, and an unfinished restart
+  // must survive until it actually completes.
+  await drainPendingIssueRestarts();
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     stopIfReleaseConvergedElsewhere(await release(`pr-${pr.state}`));
   }
@@ -1436,6 +1516,12 @@ async function handleQuarantineDispositionIfAny() {
     pr.body = strippedBody;
   }
   await applyPrLifecycle(PHASE.ABANDONED, 'owner-command-abandon');
+  // Record the restart intent BEFORE closing the PR: once closed, later runs
+  // exit through the closed-PR path, which drains this list rather than
+  // re-deriving it from a PR whose closing references were just stripped.
+  const pendingIssueRestarts = localClosingIssues
+    .filter((candidate) => String(candidate?.state || '').toUpperCase() === 'OPEN')
+    .map((candidate) => candidate.number);
   const abandonedState = makeState({
     prNumber,
     headSha: pr.head.sha,
@@ -1445,6 +1531,7 @@ async function handleQuarantineDispositionIfAny() {
     trigger: 'scope-mismatch-abandoned',
     blockers: state?.blockers || [],
     attempt: state?.attempt || 0,
+    pendingIssueRestarts,
     updatedAt: now.toISOString(),
   });
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
@@ -1461,27 +1548,7 @@ async function handleQuarantineDispositionIfAny() {
   } else {
     process.stdout.write(`dry-run would-close-pr pr=#${prNumber} reason=owner-command-abandon\n`);
   }
-  for (const issue of localClosingIssues.filter(
-    (candidate) => String(candidate?.state || '').toUpperCase() === 'OPEN',
-  )) {
-    if (shouldMutate) {
-      await runIssueIntake({
-        graphql,
-        paginate,
-        request,
-        token: pat,
-        owner,
-        repo,
-        issue,
-        restart: true,
-      });
-      process.stdout.write(
-        `restarted linked issue #${issue.number} after abandoning pr=#${prNumber}\n`,
-      );
-    } else {
-      process.stdout.write(`dry-run would-restart linked issue #${issue.number}\n`);
-    }
-  }
+  await drainPendingIssueRestarts();
   process.exit(0);
 }
 
@@ -3061,8 +3128,10 @@ if (scopeMismatchBlocker) {
       'This PR has been quarantined because a trusted review finding says the PR title/body or closing reference promises work that is not supported by the changed files. CI Recovery cannot deterministically choose between changing PR metadata and implementing the linked feature.',
     nextActions: [
       'Abandon/close this PR and restart the linked issue by posting the exact standalone owner comment `ABANDON`.',
-      'Keep this PR only by posting the exact standalone owner comment `KEEP`, then provide a specified implementation plan.',
+      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself.',
     ],
+    keepOutcome:
+      'resume this PR: it re-enters the lifecycle as `repairing` and automated repair resumes (no implementation plan is checked)',
   });
   if (
     !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
