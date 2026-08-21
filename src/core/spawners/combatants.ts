@@ -12,6 +12,7 @@ import {
   Size,
   Sprite,
   Spawner,
+  Team,
   Velocity,
   Weight,
 } from '../components.js';
@@ -74,6 +75,7 @@ export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
+  addComponent(world.ecs, eid, set(Team, { id: TeamId.PLAYER }));
   addComponent(world.ecs, eid, Inventory);
   world.inventories.set(eid, createInventoryBag());
 
