@@ -1823,6 +1823,14 @@ export function enemyAISystem(world: GameWorld): void {
     // false in that case. The hate/hostile rival-fallback is resolved lower
     // down, once canDetectPlayer has been computed.
     const companionDecision = getCompanionAIDecision(world, eid);
+    if (companionDecision?.kind === 'disabled') {
+      setVelocity(world, eid, 0, 0);
+      enemyBehavior.stuckFrames[eid] = 0;
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
+      continue;
+    }
     const familyDecision = getFamilyAIDecision(world, eid);
     const targetOverride =
       companionDecision?.bypassPlayerDetection === true ? companionDecision : familyDecision;
