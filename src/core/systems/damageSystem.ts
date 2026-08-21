@@ -11,6 +11,7 @@ import {
   Player,
   Projectile,
   Returning,
+  Team,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
@@ -90,6 +91,14 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
   }
   const armor = world.stores.effectiveStats.armor[player] ?? 0;
   return computeArmorReducedDamage(rawDamage, armor);
+}
+
+function sameTeam(world: GameWorld, source: number, target: number): boolean {
+  return hasComponent(world.ecs, source, Team) && hasComponent(world.ecs, target, Team) && (world.stores.team.id[source] ?? 0) === (world.stores.team.id[target] ?? 0);
+}
+
+function projectileSource(world: GameWorld, projectile: number): number {
+  return hasComponent(world.ecs, projectile, Owner) ? (world.stores.owner.eid[projectile] ?? projectile) : projectile;
 }
 
 /** Emit a throttled 'blocked' event (max one per invincibility window). */
@@ -293,6 +302,7 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, a, EnemyProjectile) &&
       hasComponent(world.ecs, b, Enemy)
     ) {
+      if (sameTeam(world, projectileSource(world, a), b)) continue;
       if (playerInSafeSpace) {
         destroyEntity(world, a);
         continue;
@@ -306,6 +316,7 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, b, EnemyProjectile) &&
       hasComponent(world.ecs, a, Enemy)
     ) {
+      if (sameTeam(world, projectileSource(world, b), a)) continue;
       if (playerInSafeSpace) {
         destroyEntity(world, b);
         continue;
@@ -326,11 +337,13 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
     }
 
     if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, Enemy)) {
+      if (sameTeam(world, a, b)) continue;
       applyPlayerEnemyHit(world, a, b, hitTimestamps);
       continue;
     }
 
     if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
+      if (sameTeam(world, b, a)) continue;
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
     }
   }
