@@ -24,16 +24,9 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-5"],
-          "concerns_count": 5,
-          "resolved_count": 5,
-          "clean": true
-        },
-        {
-          "round": 2,
-          "models": ["gemini-3.7-flash"],
-          "concerns_count": 2,
-          "resolved_count": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
           "clean": true
         }
       ]
