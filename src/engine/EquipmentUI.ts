@@ -888,17 +888,17 @@ export function createEquipmentUI(
     // (the icon-containment probe enforces this). Each glyph is a recognizable
     // "ghost" equipment silhouette — light body + dark detail cuts — so an
     // empty slot reads as "put a <part> here", Diablo/Brotato style.
-    const light = COLORS.slotEmptyBorder;
-    const dark = 0x223350;
+    const light = 0xb7c8e5;
+    const dark = 0x314969;
     const sx = snap(x);
     const sy = snap(y);
     const useLight = (): void => {
-      icon.fillStyle(light, 0.9);
+      icon.fillStyle(light, 0.82);
     };
     const useDark = (): void => {
       icon.fillStyle(dark, 1);
     };
-    icon.lineStyle(2, light, 0.9);
+    icon.lineStyle(2, light, 0.82);
     useLight();
     switch (slotId) {
       case 'head': // helm
@@ -1826,6 +1826,7 @@ export function createEquipmentUI(
       color: hex(COLORS.textPrimary),
       padding: { top: 4, bottom: 2 },
     });
+    leftCenterTextOnPixels(heading, statsX + 10, columnHeadingFrameY);
     container.add(heading);
     statObjects.push(heading);
     columnHeadingObjects.add(heading);
@@ -1840,17 +1841,6 @@ export function createEquipmentUI(
     headingFrame.setStrokeStyle(1, COLORS.panelBorder);
     container.addAt(headingFrame, 5);
     statObjects.push(headingFrame);
-    const bonusLegend = crispText(statsX + STATS_W - 10, columnHeadingTextY, 'green = gear bonus', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '11px',
-      color: hex(COLORS.statBuff),
-      padding: { top: 3, bottom: 3 },
-    });
-    rightCenterTextOnPixels(bonusLegend, statsX + STATS_W - 10, columnHeadingFrameY);
-    container.add(bonusLegend);
-    statObjects.push(bonusLegend);
-    columnHeadingObjects.add(bonusLegend);
-
     const colW = STATS_W - 14;
 
     let rowY = statsY + 12;
@@ -1937,7 +1927,9 @@ export function createEquipmentUI(
     const drawStat = (statId: StatId): void => {
       const value = effective[statId] ?? 0;
       const base = baseStore[statId]?.[playerEid] ?? 0;
-      const buffed = value > base;
+      // Match the highlight to the player-visible precision. Tiny floating-point
+      // differences that round to the same display value are not meaningful bonuses.
+      const buffed = value > base && formatStatValue(value) !== formatStatValue(base);
       drawRow(
         formatStatLabel(statId),
         formatStatValue(value),

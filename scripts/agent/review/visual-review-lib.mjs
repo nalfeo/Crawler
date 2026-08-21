@@ -275,9 +275,10 @@ function round1(n) {
  *
  * @param {Record<string, unknown>} result
  * @param {string[]} deterministicBlockers
+ * @param {readonly VisualReviewRegion[]} [regions]
  * @returns {number} how many findings were suppressed
  */
-export function suppressUnsupportedAlignment(result, deterministicBlockers) {
+export function suppressUnsupportedAlignment(result, deterministicBlockers, regions = []) {
   const hasRealAlignmentDefect = deterministicBlockers.some((b) => /off its (row|column)/i.test(b));
   if (hasRealAlignmentDefect) return 0;
   const hasRealTouchDefect = deterministicBlockers.some((b) =>
@@ -286,6 +287,23 @@ export function suppressUnsupportedAlignment(result, deterministicBlockers) {
   const hasRealContainmentDefect = deterministicBlockers.some((b) =>
     /escapes|outside|crosses|overflow/i.test(b),
   );
+  const headerRegions = (Array.isArray(regions) ? regions : []).filter(
+    (region) =>
+      region &&
+      typeof region.id === 'string' &&
+      /^header:(equipment|stats|bag)$/.test(region.id) &&
+      isValidBox(region.box),
+  );
+  const headerCenters = headerRegions.map((region) => region.box.y + region.box.height / 2);
+  const headersShareBaseline =
+    headerCenters.length === 3 && Math.max(...headerCenters) - Math.min(...headerCenters) <= 1;
+  const hasBagIconGeometry = (Array.isArray(regions) ? regions : []).some(
+    (region) =>
+      region &&
+      region.kind === 'icon' &&
+      typeof region.id === 'string' &&
+      /^bag(?:[-:.]|$)/i.test(region.id),
+  );
   const claimsMisalignment = (/** @type {string} */ text) =>
     /\b(mis-?aligned?|not aligned|out of alignment|same (vertical )?baseline)/i.test(text) ||
     (!hasRealTouchDefect &&
@@ -293,12 +311,26 @@ export function suppressUnsupportedAlignment(result, deterministicBlockers) {
       !/tooltip text|label/i.test(text)) ||
     (!hasRealContainmentDefect &&
       /\b(overflow|escapes|extends? (past|beyond|outside))\b/i.test(text));
+  const claimsHeaderMisalignment = (/** @type {string} */ text) =>
+    headersShareBaseline &&
+    /\b(headers?|headings?).*\b(mis-?aligned?|not (?:vertically )?aligned|inconsistent(?:ly)?|above|below|baseline|padding|close to (?:the )?(?:top |panel )?edge)\b/i.test(
+      text,
+    );
+  const claimsUnsupportedBagIconCentering = (/** @type {string} */ text) =>
+    !hasBagIconGeometry &&
+    /(?:\bbag\b.*\bicons?\b|\bicons?\b.*\bbag\b).*\b(off[- ]?center|not centered|mis-?aligned?)/i.test(
+      text,
+    );
+  const shouldSuppress = (/** @type {string} */ text) =>
+    claimsMisalignment(text) ||
+    claimsHeaderMisalignment(text) ||
+    claimsUnsupportedBagIconCentering(text);
   let removed = 0;
   for (const key of ['blocking_findings', 'recommended_fixes']) {
     const list = /** @type {unknown} */ (result[key]);
     if (!Array.isArray(list)) continue;
     result[key] = list.filter((entry) => {
-      if (typeof entry !== 'string' || !claimsMisalignment(entry)) return true;
+      if (typeof entry !== 'string' || !shouldSuppress(entry)) return true;
       removed += 1;
       return false;
     });
@@ -308,7 +340,7 @@ export function suppressUnsupportedAlignment(result, deterministicBlockers) {
     result.precise_fixes = fixes.filter((fix) => {
       const reason =
         fix && typeof fix === 'object' ? /** @type {Record<string, unknown>} */ (fix).reason : null;
-      if (typeof reason !== 'string' || !claimsMisalignment(reason)) return true;
+      if (typeof reason !== 'string' || !shouldSuppress(reason)) return true;
       removed += 1;
       return false;
     });

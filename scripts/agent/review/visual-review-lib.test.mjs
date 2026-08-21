@@ -547,3 +547,22 @@ test('suppressUnsupportedAlignment: keeps overlap claims when geometry found a r
   const removed = suppressUnsupportedAlignment(result, ['Slot boxes overlap: a intersects b.']);
   assert.equal(removed, 0);
 });
+
+test('suppressUnsupportedAlignment: drops header and bag-icon claims disproved by declared evidence', () => {
+  const result = {
+    blocking_findings: [
+      'Headers are inconsistently aligned within their panels.',
+      'Headers (Equipment, Stats, Bag) are not vertically aligned.',
+      'Headers lack sufficient top padding, appearing too close to their panel edges.',
+      'Some icons in the Bag section appear slightly off-center within their slots.',
+    ],
+  };
+  const headers = [
+    region('header:equipment', box(10, 10, 80, 20), { kind: 'header' }),
+    region('header:stats', box(110, 10, 40, 20), { kind: 'header' }),
+    region('header:bag', box(210, 10, 30, 20), { kind: 'header' }),
+  ];
+  const removed = suppressUnsupportedAlignment(result, [], headers);
+  assert.equal(removed, 4);
+  assert.deepEqual(result.blocking_findings, []);
+});

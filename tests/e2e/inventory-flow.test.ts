@@ -843,7 +843,7 @@ describe('equipment decision gate (e2e)', () => {
 
       const text = (await probe.getEquipmentTextRuns(layoutPage)).map((run) => run.text);
       expect(text).toContain('Cooldown Reduction');
-      expect(text).toContain('green = gear bonus');
+      expect(text).not.toContain('green = gear bonus');
       expect(text).not.toContain('Current totals');
       expect(text).not.toContain('Hover a slot for details');
       expect(text).not.toContain('— empty —');

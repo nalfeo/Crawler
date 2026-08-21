@@ -693,6 +693,9 @@ Calibration — these exact claim patterns have been screenshot-vs-geometry fals
 - "tooltip overlaps the panel" — only valid if the tooltip box's edge coordinates actually exceed the panel box's edge coordinates. A tooltip fully inside the panel bounds is not an overlap, however close it looks.
 - "icon is off-center in its slot" — only valid if the icon's centroid offset from its parent slot's centroid exceeds a few px both axes; a dx/dy of 0-1px is intentional centering, not a defect.
 - "ring1/ring2 (or any named pair) are misaligned" — two elements are only "misaligned" if they share the same row or column in the geometry table; elements that are intentionally on different rows are not misaligned with each other.
+- "a panel or paper doll is not optically centered" — only valid when the named content group's measured midpoint differs from its named container midpoint by more than 2px on the relevant axis. Never infer this from surrounding whitespace alone.
+- "bag icons are off-center" — only valid when both the bag slot and its icon are declared in the geometry table and their measured centroids exceed the centering threshold above. Do not make this claim from a screenshot without icon geometry.
+- "gear bonuses lack emphasis" — only valid when the supplied semantic evidence identifies a non-zero, player-visible equipment bonus that has no visual emphasis. Do not infer the absence of a bonus from a neutral value, and do not criticize a value highlight without evidence that its displayed effective value differs from its displayed base value.
 If you cannot point to the specific geometry numbers that satisfy one of these thresholds, do not report the finding.`,
     user: `Review the attached screenshot of Crawler's "${opts.uxName}" UX surface.
 Design intent for this surface: ${opts.uxGoal}.
@@ -732,8 +735,9 @@ check each one explicitly and report it in "precise_fixes" with a pixel delta):
 - HEADING PLACEMENT CONSISTENCY: sibling section headings must share one convention. If one
   heading sits ABOVE its bounding box, every peer heading must too. A heading rendered inside
   its box while a sibling sits above it is a defect, even if each panel looks fine alone.
-- PAIRED-SLOT ALIGNMENT: slots that form a left/right or numbered pair (e.g. ring 1 / ring 2)
-  must share a row baseline and an identical vertical rhythm with the surrounding column.
+- PAIRED-SLOT ALIGNMENT: assess only pairs that are intended to share a measured row or
+  column. The ten-slot paper doll deliberately places Ring 1 and Ring 2 on different
+  anatomical rows; their different y-coordinates are correct and must not be reported.
   A pair whose two halves sit at different y is a defect.
 - CONTAINER OVERRUN: no child element may touch or cross its container's top/bottom/side edge.
   Report the exact overlap in pixels.
@@ -2022,6 +2026,7 @@ async function main(): Promise<number> {
   result.suppressed_alignment_findings = suppressUnsupportedAlignment(
     result,
     capture.deterministicBlockers,
+    capture.regions,
   );
   const mergedBlockers = new Set<string>([
     ...(result.blocking_findings ?? []),

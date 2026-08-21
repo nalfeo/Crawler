@@ -68,6 +68,21 @@
   if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
   const tooltip = probe?.getEquipmentTooltipBounds?.();
   if (tooltip) regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip' });
+  const doll = probe?.getEquipmentDollBounds?.();
+  if (doll) regions.push({ id: 'paper-doll', box: doll, kind: 'panel' });
+  const stats = probe?.getEquipmentStatsBounds?.();
+  if (stats) regions.push({ id: 'stats-panel', box: stats, kind: 'panel' });
+  const bag = probe?.getEquipmentBagColumnBounds?.();
+  if (bag) regions.push({ id: 'bag-panel', box: bag, kind: 'panel' });
+  const headerIds = new Map([
+    ['Equipment', 'header:equipment'],
+    ['Stats', 'header:stats'],
+    ['Bag', 'header:bag'],
+  ]);
+  for (const run of probe?.getEquipmentTextRuns?.() ?? []) {
+    const id = headerIds.get(run.text);
+    if (id) regions.push({ id, box: run.bounds, kind: 'header' });
+  }
   window.__visualReview = {
     surface: 'equipment panel',
     regions,

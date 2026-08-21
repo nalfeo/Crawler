@@ -39,6 +39,7 @@ export function computeAlignmentBlockers(regions: readonly VisualReviewRegion[])
 export function suppressUnsupportedAlignment(
   result: object,
   deterministicBlockers: readonly string[],
+  regions?: readonly VisualReviewRegion[],
 ): number;
 
 export interface AnchoredScore {

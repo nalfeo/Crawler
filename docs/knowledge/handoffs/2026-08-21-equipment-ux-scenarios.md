@@ -52,6 +52,26 @@ viewports.
 
 No `before/live-dev` evidence was created: this workspace has no checked-in release baseline or detached baseline worktree. Capturing current-branch pixels as live evidence would fabricate provenance. Populate that side from the release capture workflow or an explicitly provisioned immutable release checkout.
 
+### v0.1.5 calibration and UX refinement
+
+`files/visual-review/after/v0.1.5/{equipment,equipment-hover-equipped,equipment-hover-duplicate,equipment-hover-empty-slot,equipment-hover-mixed-delta}.{png,review.json}`
+contains the regenerated Azure review set. Every scenario declares the three header
+regions plus panel/slot geometry and reports zero deterministic blockers.
+
+- Empty placeholder silhouettes are lighter, while occupied slots remain visibly
+  distinct.
+- The `green = gear bonus` legend is removed. A stat is green only when its
+  formatted effective value visibly differs from its formatted base value.
+- Stats header text now uses the same pixel-centering helper as Equipment and Bag.
+- The review prompt and deterministic post-review filter reject claims about
+  Ring 1/Ring 2 sharing a row, optical centering without measured container
+  evidence, header alignment when declared header centers share a baseline, and
+  bag-icon centering without declared icon geometry.
+
+The Azure judge remains advisory: it continues to offer subjective tooltip-density
+and theme critiques, but the newly calibrated reports no longer treat the accepted
+geometry false positives as blockers when their declared evidence disproves them.
+
 ## Validation
 
 - `npx vitest run tests/ecs/equip-delta-preview.test.ts` — 16 passed.
@@ -60,6 +80,10 @@ No `before/live-dev` evidence was created: this workspace has no checked-in rele
 - `npm run verify:fast` — passed (131 files, 1,818 tests).
 - `npx vitest run tests/e2e/inventory-flow.test.ts -t "uses square labeled slots without an idle inspector"` — 2 passed across both e2e projects.
 - `npx vitest run tests/e2e/inventory-flow.test.ts` — 52 passed across both e2e projects.
+- `node --test scripts/agent/review/visual-review-lib.test.mjs` — 53 passed.
+- `npx vitest run tests/unit/visual-review-agent-cli.test.ts` — 19 passed.
+- `npm run review:visual:deterministic` — 30 passed.
+- `npm run typecheck` — passed.
 
 ## Systems touched
 
