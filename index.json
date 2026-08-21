@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d151596b44d445347333c933908a3f47ecee69ac",
+    "commitDate": "2026-08-21T21:55:44Z",
+    "commitSubject": "fix(merge-train): unblock FIFO deadlock, detect stalls, and quarantine un-advanceable PRs (#3221)",
+    "capturedAt": "2026-08-21T23:13:03.490Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32532175003",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/d151596b44d445347333c933908a3f47ecee69ac.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.91,
+      "gatePass": false,
+      "path": "by-sha/d151596b44d445347333c933908a3f47ecee69ac.fun-report.json"
+    }
+  },
+  {
     "commit": "b8528c6a55333fa0d9577ae9a4c82e0f7cb845fa",
     "commitDate": "2026-08-21T19:47:01Z",
     "commitSubject": "Replace mutable assets/queue with immutable per-change asset request refs (#3206)",
