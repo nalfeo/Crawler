@@ -14,6 +14,7 @@ import {
   isApprovedArtOnlyDiff,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
+  isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
@@ -616,7 +617,7 @@ test('review-thread blocker identity changes when comments change', () => {
     reviewThreadCommentDigest(baseThread),
     reviewThreadCommentDigest(recoveryNoMarkerReplyThread),
   );
-  assert.notEqual(
+  assert.equal(
     reviewThreadCommentDigest(baseThread),
     reviewThreadCommentDigest(recoveryMarkerReplyThread),
   );
@@ -646,7 +647,7 @@ test('review-thread blocker identity changes when comments change', () => {
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryNoMarkerReplyThread) }]),
   );
-  assert.notEqual(
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryMarkerReplyThread) }]),
   );
@@ -676,6 +677,33 @@ test('round trips sticky state comments', () => {
   });
 
   assert.deepEqual(parseStateComment(renderStateComment(state)), state);
+});
+
+test('renderStateComment explains exhausted automation next action', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'review-thread', id: 'review-thread:PRRT_scope:abc123', summary: 'scope mismatch' },
+  ]);
+  const body = renderStateComment(
+    makeState({
+      prNumber: 42,
+      headSha: 'abc1234',
+      fingerprint,
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation-exhausted',
+      blockers: [
+        { kind: 'review-thread', id: 'review-thread:PRRT_scope:abc123', summary: 'scope mismatch' },
+      ],
+      attempt: 2,
+      progressKey: automationProgressKey('abc1234', fingerprint),
+      progressAt: '2026-08-21T00:00:00.000Z',
+      updatedAt: '2026-08-21T00:31:00.000Z',
+    }),
+  );
+
+  assert.match(body, /Recovery disposition: `stale-automation-exhausted`/);
+  assert.match(body, /Retry count: 2/);
+  assert.match(body, /automated cloud-agent dispatch is suppressed/);
 });
 
 test('waiting state is non-owning and semantic equality ignores timestamp and trigger churn', () => {
@@ -1142,6 +1170,32 @@ test('shouldResolveThread accepts latest trusted marker naming current head', ()
       ],
     },
   };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread lets a current-head marker supersede an older stale marker', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'reviewer' },
+        },
+        {
+          body: '✅ Addressed in deadbee: stale marker from a force-pushed-away commit',
+          authorAssociation: 'OWNER',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'OWNER',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
 });
 
@@ -1701,6 +1755,31 @@ test('parseDispositionCommand: green CI or other-author text does NOT unlock', (
   // author; the caller (workflow) must gate on author identity separately.
   assert.equal(parseDispositionCommand('All checks passed'), null);
   assert.equal(parseDispositionCommand('✅ CI green'), null);
+});
+
+test('isScopeMismatchReviewBlocker detects unsupported closing-reference findings', () => {
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      summary:
+        'reviewer: PR body says Fixes #3198, but the diff only changes planning-policy docs and does not implement the promised Floor 2 repair.',
+    }),
+    true,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      summary: 'reviewer: Please add a missing unit test for this implementation.',
+    }),
+    false,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'ci-failure',
+      summary: 'Fixes #3198 check failed',
+    }),
+    false,
+  );
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {

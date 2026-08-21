@@ -375,8 +375,22 @@ export function blockerFingerprint(blockers) {
   // display/evidence; it is only invisible to the fingerprint hash.
   // Observed in production on PR #1939 / incident #2268 (model
   // "claude-sonnet-4.5" deprecated 2026-05-06; incident filed 2026-07-29).
+  const normalizeReviewRecoveryChurn = (blocker) => {
+    if (blocker.kind !== 'review-thread') return blocker;
+    const summary = compact(blocker.summary);
+    const staleMarker = summary.match(/^\[Stale marker:.*?\]\s*(.*)$/i);
+    if (staleMarker) {
+      return { ...blocker, summary: `[Stale marker] ${compact(staleMarker[1])}` };
+    }
+    const priorReply = summary.match(/^\[Prior recovery reply .*?\]\s*(.*)$/i);
+    if (priorReply) {
+      return { ...blocker, summary: `[Prior recovery reply] ${compact(priorReply[1])}` };
+    }
+    return blocker;
+  };
   const fingerprintBlockers = normalized
     .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
+    .map(normalizeReviewRecoveryChurn)
     .map(({ line: _line, url: _url, ...rest }) => rest);
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
@@ -415,7 +429,7 @@ function normalizeThreadComments(thread) {
     .filter((comment) => {
       const authorLogin = String(comment?.author?.login ?? '').toLowerCase();
       if (!knownRecoveryReplyLogins.has(authorLogin)) return true;
-      return hasResolutionMarker(comment?.body);
+      return false;
     })
     .map((comment) => [
       compact(comment.id),
@@ -558,6 +572,13 @@ export function renderStateComment(state) {
     `- Blockers: ${blockerSummary}`,
     ...(state.progressAt
       ? [`- Automation attempt: ${state.attempt}`, `- Progress observed: ${state.progressAt}`]
+      : []),
+    ...(state.trigger === 'stale-automation-exhausted'
+      ? [
+          '- Recovery disposition: `stale-automation-exhausted`',
+          `- Retry count: ${state.attempt}`,
+          '- Next action: human/operator must inspect the linked CI recovery loop incident or explicitly take ownership; automated cloud-agent dispatch is suppressed for this unchanged blocker fingerprint.',
+        ]
       : []),
     `- Updated: ${state.updatedAt}`,
     '',
@@ -805,6 +826,29 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   return (
     markerNamesHead(last.body, headSha, reachableCommitShas) || hasNotApplicableMarker(last.body)
   );
+}
+
+const scopeMismatchClosingReferencePattern =
+  /\b(?:fix(?:e[sd])?|clos(?:e[sd])?|resolv(?:e[sd])?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i;
+const scopeMismatchUnsupportedPattern =
+  /\b(?:unsupported|not\s+supported|does\s+not\s+support|doesn't\s+support|mismatch|scope\s+mismatch|materially\s+inconsistent|not\s+implemented|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
+const scopeMismatchPromisePattern =
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|claim(?:s|ed)?|fixes?\s+#\d+)\b/i;
+
+/**
+ * Detect a trusted-review finding that says the PR's declared scope (closing
+ * keyword, title, or body promise) is unsupported by the diff. This is an
+ * ambiguous product decision, not an inline repair task: recovery must
+ * quarantine and ask the maintainer whether to abandon/restart or keep with an
+ * explicit implementation plan.
+ */
+export function isScopeMismatchReviewBlocker(blocker) {
+  if (blocker?.kind !== 'review-thread') return false;
+  const text = compact(blocker.summary);
+  if (!text) return false;
+  const namesClosingReference = scopeMismatchClosingReferencePattern.test(text);
+  const namesScopePromise = scopeMismatchPromisePattern.test(text);
+  return scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise);
 }
 
 /**

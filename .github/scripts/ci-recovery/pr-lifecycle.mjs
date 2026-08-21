@@ -385,14 +385,23 @@ export function makeQuarantineComment(prNumber, evidence) {
     : '';
   const thresholdDays = Number(evidence?.thresholdDays) > 0 ? evidence.thresholdDays : null;
   const thresholdNote = thresholdDays ? ` for more than ${thresholdDays} days` : '';
+  const explanation =
+    compact(evidence?.explanation) ||
+    `This PR has been quarantined${thresholdNote}${lastActivity} because it appears likely-superfluous but the redundancy is not deterministically provable.`;
+  const nextActions = Array.isArray(evidence?.nextActions)
+    ? evidence.nextActions.map(compact).filter(Boolean)
+    : [];
 
   return [
     QUARANTINE_COMMENT_MARKER,
     `## ⚠ PR #${prNumber} — quarantined pending human decision`,
     '',
-    `This PR has been quarantined${thresholdNote}${lastActivity} because it appears likely-superfluous but the redundancy is not deterministically provable.`,
+    explanation,
     '',
     `**Evidence:** \`${reason}\``,
+    ...(nextActions.length > 0
+      ? ['', '**Next actions:**', ...nextActions.map((action) => `- ${action}`)]
+      : []),
     '',
     '**While quarantined, this PR:**',
     '- Is **excluded from all train-blocking positions** (cluster leader, order predecessor, train head)',

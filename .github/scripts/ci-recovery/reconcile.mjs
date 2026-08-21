@@ -8,6 +8,7 @@ import {
   checkRunWorkflowRunId,
   collapseCheckRunsByName,
   isDuplicateDispatch,
+  isScopeMismatchReviewBlocker,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
   isSelfRecoveryCheckRun,
@@ -20,6 +21,7 @@ import {
   shouldMutateRecoveryState,
   shouldDispatchMergeTrainFill,
   ownerLabel,
+  parseDispositionCommand,
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
@@ -57,6 +59,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  runIssueIntake,
   removeIssueAssignees,
   reviewThreadFollowupBacklogIssueNumbers,
   reviewThreadPlanIssueNumbers,
@@ -71,9 +74,12 @@ import {
 } from './review-request.mjs';
 import {
   evaluatePhase,
+  applyLifecycleDecision,
   formatLifecycleOutcome,
   LIFECYCLE_MARKER,
+  makeQuarantineComment,
   parseLifecycleComment,
+  PHASE,
 } from './pr-lifecycle.mjs';
 import {
   FOLLOWUP_BACKLOG_MARKER,
@@ -739,6 +745,71 @@ function hasPrLabel(name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
 
+function isTrustedLifecycleAuthor(comment) {
+  if (!comment) return false;
+  if (comment.performed_via_github_app != null) return true;
+  return isTrustedComment(comment);
+}
+
+function trustedLifecycleComments() {
+  return comments.filter(
+    (comment) =>
+      hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+  );
+}
+
+function currentLifecycleRecord() {
+  const lifecycleComments = trustedLifecycleComments();
+  if (lifecycleComments.length !== 1) return null;
+  try {
+    return parseLifecycleComment(lifecycleComments[0].body);
+  } catch {
+    return null;
+  }
+}
+
+async function writeLifecycleComment(_prNumber, body) {
+  const lifecycleComments = trustedLifecycleComments();
+  if (lifecycleComments.length === 1) {
+    if (!shouldMutate) return;
+    await request(pat, `/repos/${owner}/${repo}/issues/comments/${lifecycleComments[0].id}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    lifecycleComments[0].body = body;
+    return;
+  }
+  if (!shouldMutate) return;
+  const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST',
+    body: { body },
+  });
+  comments.push({ ...created.data, body });
+}
+
+async function applyPrLifecycle(targetPhase, blockReason) {
+  const current = currentLifecycleRecord();
+  const outcome = await applyLifecycleDecision({
+    prNumber,
+    currentPhase: current?.phase ?? null,
+    currentHeadSha: current?.headSha ?? null,
+    targetPhase,
+    blockReason,
+    headSha: pr.head.sha,
+    mode: shouldMutate ? 'live' : 'dry-run',
+    writeComment: writeLifecycleComment,
+    addLabel: async (_number, label) => {
+      await ensurePrLabel(label, 'bf8700', `Crawler PR lifecycle: ${targetPhase}`);
+    },
+    removeLabel: async (_number, label) => {
+      await removePrLabel(label, { skipIfMissing: true });
+    },
+    now,
+  });
+  process.stdout.write(`${formatLifecycleOutcome(prNumber, outcome)}\n`);
+  return outcome;
+}
+
 async function prepareWaitingExit() {
   const waiting = hasPrLabel(WAITING_LABEL);
   const transition = hasPrLabel(WAITING_TRANSITION_LABEL);
@@ -1315,6 +1386,89 @@ if (
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
+
+function latestOwnerDispositionCommand() {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const comment = comments[index];
+    if (
+      String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase() !==
+      'OWNER'
+    ) {
+      continue;
+    }
+    const command = parseDispositionCommand(comment?.body);
+    if (command) return command;
+  }
+  return null;
+}
+
+async function handleQuarantineDispositionIfAny() {
+  if (currentLifecycleRecord()?.phase !== PHASE.QUARANTINED) return false;
+  const command = latestOwnerDispositionCommand();
+  if (!command) return false;
+
+  if (command === 'KEEP') {
+    await applyPrLifecycle(PHASE.REPAIRING, 'owner-command-keep');
+    process.stdout.write(`quarantine-revive pr=#${prNumber} command=KEEP\n`);
+    process.exit(0);
+  }
+
+  const localClosingIssues = closingIssues.filter(
+    (issue) =>
+      String(issue?.repository?.nameWithOwner || '').toLowerCase() === repository.toLowerCase(),
+  );
+  const localClosingIssueNumbers = localClosingIssues.map((issue) => issue.number);
+  const strippedBody = stripClosingKeywordsForIssues(pr.body || '', localClosingIssueNumbers);
+  if (strippedBody !== (pr.body || '')) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('abandon-strip-closing-keywords');
+      await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+        method: 'PATCH',
+        body: { body: strippedBody },
+      });
+    } else {
+      process.stdout.write(`dry-run would-strip-closing-keywords pr=#${prNumber}\n`);
+    }
+    pr.body = strippedBody;
+  }
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-abandoned'));
+  }
+  await applyPrLifecycle(PHASE.ABANDONED, 'owner-command-abandon');
+  if (live) {
+    await assertExpectedMetadataUnchanged('abandon-close-pr');
+    await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+  } else {
+    process.stdout.write(`dry-run would-close-pr pr=#${prNumber} reason=owner-command-abandon\n`);
+  }
+  for (const issue of localClosingIssues.filter(
+    (candidate) => String(candidate?.state || '').toUpperCase() === 'OPEN',
+  )) {
+    if (live) {
+      await runIssueIntake({
+        graphql,
+        paginate,
+        request,
+        token: pat,
+        owner,
+        repo,
+        issue,
+        restart: true,
+      });
+      process.stdout.write(
+        `restarted linked issue #${issue.number} after abandoning pr=#${prNumber}\n`,
+      );
+    } else {
+      process.stdout.write(`dry-run would-restart linked issue #${issue.number}\n`);
+    }
+  }
+  process.exit(0);
+}
+
+await handleQuarantineDispositionIfAny();
 
 // ── Auto-fix: strip closing-keyword lines that propagate human-approval-required ──
 //
@@ -2876,6 +3030,55 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
       `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
     );
   }
+}
+
+const scopeMismatchBlocker = normalized.find(isScopeMismatchReviewBlocker);
+if (scopeMismatchBlocker) {
+  const reason = 'scope-mismatch-review-finding';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted review finding says the PR title/body or closing reference promises work that is not supported by the changed files. CI Recovery cannot deterministically choose between changing PR metadata and implementing the linked feature.',
+    nextActions: [
+      'Abandon/close this PR and restart the linked issue by posting the exact standalone owner comment `ABANDON`.',
+      'Keep this PR only by posting the exact standalone owner comment `KEEP`, then provide a specified implementation plan.',
+    ],
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('scope-mismatch-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post scope-mismatch quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'scope-mismatch-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('scope-mismatch-quarantined', quarantinedState));
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(
+    `quarantined scope-mismatch pr=#${prNumber} blocker=${scopeMismatchBlocker.id}\n`,
+  );
+  process.exit(0);
 }
 
 // Lifecycle evaluation (Issue #1851): compute the authoritative lifecycle phase

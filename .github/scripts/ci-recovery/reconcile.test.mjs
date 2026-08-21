@@ -11824,6 +11824,132 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   );
 });
 
+test('trusted scope-mismatch review finding quarantines instead of dispatching Copilot', async (t) => {
+  const thread = {
+    id: 'PRRT_scope_mismatch',
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/agent-os/policies/ci-policy.md',
+    line: 12,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_scope_mismatch',
+          body: 'PR body says Fixes #3198 and promises Floor 2 AI repair, but the diff only changes planning-policy documentation and does not implement the linked feature. This scope mismatch needs maintainer disposition.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3199`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Floor 2 AI wiggle stuck telemetry and repair',
+        body: 'Fixes #3198',
+        additions: 10,
+        deletions: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: (_url, body) => {
+      for (const label of body.labels || []) {
+        if (!comments.labels) comments.labels = [];
+        comments.labels.push(label);
+      }
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 5000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3198',
+                        number: 3198,
+                        title: 'Floor 2 AI wiggle stuck telemetry and repair',
+                        state: 'OPEN',
+                        labels: { nodes: [] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('scope mismatch must not discover/assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('scope mismatch must not run review-thread or assignment mutations');
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined scope-mismatch pr=#42/);
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-pr-lifecycle:v1 -->')),
+    'expected lifecycle state comment',
+  );
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-ci-quarantine:v1 -->')),
+    'expected operator quarantine comment',
+  );
+  const stateComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
+  );
+  assert.equal(
+    parseStateComment(stateComment?.body)?.trigger,
+    'scope-mismatch-quarantined',
+    'expected CI recovery state comment to record the quarantine trigger',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'scope mismatch must not post a Copilot repair task',
+  );
+});
+
 test('a later top-level marker reply for the same fingerprint clears an earlier non-marker hint', async (t) => {
   // Regression: a non-marker top-level reply (e.g. "Blocked outside this
   // branch") stores a stale hint keyed by blocker ID / stable thread ID. If a
