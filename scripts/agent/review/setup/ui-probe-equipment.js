@@ -9,13 +9,6 @@
   // boot preload path), not the synthetic themed probe icon.
   await probe?.useRealGeneratedSprites?.();
   probe?.openEquipmentOnly?.();
-  probe?.equipCharm?.();
-  // Equip a handful straight from the integrated bag so the paper-doll looks
-  // lived-in while leaving plenty of gear in the bag column to review.
-  const seededBag = probe?.getEquipmentBagItemIds?.() ?? [];
-  for (const id of seededBag.slice(0, 5)) {
-    probe?.equipFromEquipmentBag?.(id);
-  }
 
   const header = document.getElementById('app-header');
   if (header) header.style.display = 'none';
@@ -41,23 +34,15 @@
 
   const slotIds = [
     'head',
-    'face',
     'neck',
-    'shoulders',
-    'chest',
-    'back',
-    'leftArm',
-    'rightArm',
-    'leftWrist',
-    'rightWrist',
     'mainHand',
+    'chest',
     'offHand',
     'gloves',
-    'ringLeft',
-    'ringRight',
-    'belt',
     'legs',
+    'ring1',
     'feet',
+    'ring2',
   ];
   const gameSize = probe?.getGameSize?.();
   const canvas = document.querySelector('#lab-canvas canvas');
@@ -97,22 +82,23 @@
         height: Math.ceil((maxY - minY) * scaleY + padY * 2),
       };
     }
-    // The equip-delta inspector preview is set deterministically at the very
-    // end (below), after layout has settled — see the comment there.
   }
-  // Deterministically show the equip-delta inspector — the headline new
-  // feature. Set this LAST so nothing re-renders the panel afterward: refresh()
-  // only re-renders on a signature change and none happen now, so the preview
-  // persists through the capture wait. A direct probe call is reliable where the
-  // synthesized pointer hover was flaky. Prefer the SECOND remaining bag item:
-  // the first is a duplicate of the equipped neck charm (→ "NO STAT CHANGE"),
-  // whereas a different item shows real green/red stat deltas.
-  const remaining = probe?.getEquipmentBagItemIds?.() ?? [];
-  const previewId = remaining[1] ?? remaining[0];
-  if (previewId) {
-    probe?.previewEquipmentBagItem?.(previewId);
+  const regions = slotIds
+    .map((slotId) => {
+      const box = probe.getEquipmentSlotBounds?.(slotId);
+      return box ? { id: `slot:${slotId}`, box, kind: 'slot', parentId: 'equipment-panel' } : null;
+    })
+    .filter(Boolean);
+  const equipmentPanel = probe.getEquipmentPanelBounds?.();
+  if (equipmentPanel) {
+    regions.unshift({ id: 'equipment-panel', box: equipmentPanel, kind: 'panel' });
   }
-  // Keep the focused panel clip (do NOT null it) and prevent the runner from
-  // moving the mouse — a stray pointerout would clear the preview we just set.
+  window.__visualReview = {
+    surface: 'equipment panel',
+    regions,
+    expect: {},
+  };
+  // The neutral Equipment scenario must show the panel exactly as opened, with
+  // no forced slot or bag hover.
   window.__visualReviewHoverPoint = null;
 })();

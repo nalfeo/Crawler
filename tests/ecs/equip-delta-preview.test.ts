@@ -12,6 +12,7 @@ import {
   initializeBaseStats,
   equip,
   previewEquipDelta,
+  previewEquipDeltaForDef,
 } from '../../src/core/systems/equipmentSystem.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
@@ -174,6 +175,26 @@ describe('previewEquipDelta', () => {
     expect(preview.deltas.constitution).toBe(0);
     expect(preview.swappedOut).toHaveLength(1);
     expect(preview.swappedOut[0]!.id).toBe('iron-helm');
+    expect(preview.canEquip).toBe(true);
+  });
+
+  it('calculates a non-zero replacement delta from a concrete generated candidate definition', () => {
+    const current = getEquipmentDefForItem('iron-breastplate')!;
+    expect(equip(world, entity, current, { force: true }).ok).toBe(true);
+
+    const preview = previewEquipDeltaForDef(world, entity, {
+      id: 'generated-test-chain-hauberk',
+      name: 'Generated Chain Hauberk',
+      slots: ['chest'],
+      statBonuses: { armor: 6, constitution: 2 },
+      rarity: 'rare',
+      tags: ['armor'],
+      weightLb: 14,
+    });
+
+    expect(preview.swappedOut.map((item) => item.id)).toEqual(['iron-breastplate']);
+    expect(preview.deltas.armor).toBe(2);
+    expect(preview.deltas.constitution).toBe(1);
     expect(preview.canEquip).toBe(true);
   });
 

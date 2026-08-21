@@ -286,24 +286,25 @@ iteration was captured under a different filename than the rest of the lineage,
 which silently orphaned it into its own ungrouped pair with no evaluator match.
 
 ```bash
-# Baseline capture (main), scenario "equipment", lineage side "before":
+# Release/live baseline capture, scenario "equipment", lineage side "before":
 npm run review:visual:llm -- \
   --url "http://127.0.0.1:4176/lab.html?lab=ui-probe-lab" \
   --setup-file "scripts/agent/review/setup/ui-probe-equipment.js" \
   --ux-name "equipment panel" --ux-goal "..." \
   --screenshot-name equipment-panel \
-  --lineage-scenario equipment --lineage-state main --lineage-side before
+  --lineage-scenario equipment --lineage-state live-dev --lineage-side before
 
-# Each subsequent iteration, lineage side defaults to "after":
+# Each subsequent iteration uses semantic versioning; lineage side defaults to "after":
 npm run review:visual:llm -- \
   --url "..." --setup-file "..." --ux-name "equipment panel" --ux-goal "..." \
   --screenshot-name equipment-panel \
-  --lineage-scenario equipment --lineage-state v1
-# ... --lineage-state v2, v3, ... for every iteration you want in the A|B history
+  --lineage-scenario equipment --lineage-state v0.1.0
+# ... --lineage-state v0.1.1, v0.2.0, ... for every iteration you want in the A|B history
 ```
 
-- Use the SAME `--lineage-scenario` value across the whole loop (it becomes the
-  viewer's grouping key) and a NEW `--lineage-state` per iteration (`v1`, `v2`, ...).
+- Use the SAME registered `--lineage-scenario` value across the whole loop (it becomes the
+  viewer's grouping key) and a NEW semantic `--lineage-state` per iteration
+  (`vMAJOR.MINOR.PATCH`). The release baseline is always `live-dev`.
 - Omit `--lineage-scenario`/`--lineage-state` entirely for a speculative or
   exploratory capture (checking a hunch, a one-off zoom, an unrelated surface) —
   those should NOT pollute the tracked A|B history.

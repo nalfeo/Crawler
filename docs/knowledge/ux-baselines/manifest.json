@@ -1,16 +1,16 @@
 [
   {
     "id": "equipment",
-    "label": "Equipment Panel",
+    "label": "Equipment",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment.js",
     "enabled": true,
-    "description": "Ten-slot equipment panel at 1280x800 viewport using Phaser ui-probe-lab capture. First tracked UX baseline for release reference."
+    "description": "Equipment panel immediately after opening: no forced hover, tooltip, candidate preview, or slot filter."
   },
   {
     "id": "equipment-hover-equipped",
-    "label": "Hover: Equipped Item",
+    "label": "Equipment Hover (Equiped)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
@@ -19,29 +19,29 @@
   },
   {
     "id": "equipment-hover-duplicate",
-    "label": "Hover: Duplicate Inventory Item",
+    "label": "Equipment Hover (Duplicate)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
     "enabled": true,
-    "description": "Hover an inventory item duplicating an equipped item to verify candidate comparison and no-change deltas."
+    "description": "Hover an iron-helm bag item while an identical iron helm is equipped in Head. The paired tooltip must report no stat delta."
   },
   {
     "id": "equipment-hover-empty-slot",
-    "label": "Hover: Inventory Item for Empty Slot",
+    "label": "Equipment Hover (Empty Slot)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
     "enabled": true,
-    "description": "Hover an inventory item targeting a slot with no equipped item."
+    "description": "Hover leather boots in the bag while Feet is empty. The candidate tooltip must show the empty-slot comparison and stat delta."
   },
   {
     "id": "equipment-hover-mixed-delta",
-    "label": "Hover: Mixed Better and Worse Stats",
+    "label": "Equipment Hover (Stats delta)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
     "enabled": true,
-    "description": "Hover an inventory item with both better and worse stats than the equipped comparison item."
+    "description": "Hover a non-duplicate candidate for an already occupied visible slot. The paired current/candidate tooltips must show a non-zero stat delta."
   }
 ]

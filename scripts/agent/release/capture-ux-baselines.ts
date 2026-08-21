@@ -130,9 +130,9 @@ async function captureSurface(opts: {
     '--lineage-scenario',
     surface.id,
     '--lineage-state',
-    ref,
+    'live-dev',
     '--lineage-side',
-    'after',
+    'before',
   ];
 
   // We need a running dev server. Check if one is already running, or start one.

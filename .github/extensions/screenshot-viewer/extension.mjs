@@ -34,6 +34,9 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 /** Sub-directories inside the workspace to scan for screenshots. */
 const SCAN_SUBDIRS = ['files/visual-review', 'files'];
+const SCENARIO_MANIFEST = 'docs/knowledge/ux-baselines/manifest.json';
+const LIVE_DEV_VERSION = 'live-dev';
+const SEMVER_VERSION = /^v\d+\.\d+\.\d+$/;
 const FEEDBACK_DIR = 'files/visual-review/feedback';
 const FEEDBACK_FILE = 'before-after-feedback.jsonl';
 const PROMOTION_DIR = 'docs/knowledge/ux-feedback';
@@ -252,40 +255,80 @@ function reviewResults() {
   return results;
 }
 
-function pairs(reviews = reviewResults()) {
+/**
+ * A|B scenarios are deliberately declared, never inferred from capture paths.
+ * Files whose basename is not an enabled manifest id stay in All Screenshots.
+ */
+function scenarioRegistry() {
+  const workspacePath = getWorkspacePath();
+  if (!workspacePath) return new Map();
+  try {
+    const entries = JSON.parse(readFileSync(join(workspacePath, SCENARIO_MANIFEST), 'utf8'));
+    if (!Array.isArray(entries)) return new Map();
+    return new Map(
+      entries
+        .filter(
+          (entry) =>
+            entry?.enabled === true &&
+            typeof entry.id === 'string' &&
+            typeof entry.label === 'string',
+        )
+        .map((entry) => [entry.id, { id: entry.id, label: entry.label }]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function isLineageVersion(value) {
+  return value === LIVE_DEV_VERSION || SEMVER_VERSION.test(value);
+}
+
+function compareLineageVersions(left, right) {
+  if (left === LIVE_DEV_VERSION) return right === LIVE_DEV_VERSION ? 0 : -1;
+  if (right === LIVE_DEV_VERSION) return 1;
+  const leftParts = left.slice(1).split('.').map(Number);
+  const rightParts = right.slice(1).split('.').map(Number);
+  return (
+    leftParts[0] - rightParts[0] || leftParts[1] - rightParts[1] || leftParts[2] - rightParts[2]
+  );
+}
+
+function pairs(reviews = reviewResults(), scenarios = scenarioRegistry()) {
   const byKey = new Map();
   for (const screenshot of sortedScreenshots()) {
     const normalized = screenshot.path.replaceAll('\\', '/');
     if (/(^|\/)archive(\/|$)/i.test(normalized)) continue;
-    const match = normalized.match(
-      /\/(before|after)\/(?:(main|iteration-[^/]+|[^/]+)\/)?([^/]+)$/i,
-    );
+    const match = normalized.match(/\/(before|after)\/(?:([^/]+)\/)?([^/]+)$/i);
     if (!match) continue;
     const side = match[1].toLowerCase();
-    const state = match[2] ?? (side === 'before' ? 'main' : 'current');
-    const key = match[3].replace(/\.[^.]+$/, '');
-    const group = byKey.get(key) ?? { before: new Map(), after: new Map() };
+    const state = match[2] ?? (side === 'before' ? LIVE_DEV_VERSION : null);
+    if (!state || !isLineageVersion(state)) continue;
+    const scenarioId = match[3].replace(/\.[^.]+$/, '');
+    const scenario = scenarios.get(scenarioId);
+    if (!scenario) continue;
+    const group = byKey.get(scenarioId) ?? { scenario, before: new Map(), after: new Map() };
     const review = reviews.get(normalize(resolve(screenshot.path))) ?? null;
     group[side].set(state.toLowerCase(), { screenshot, review, state });
-    byKey.set(key, group);
+    byKey.set(scenarioId, group);
   }
 
   const result = [];
-  for (const [key, group] of byKey) {
-    const afterStates = [...group.after.keys()].sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    );
+  for (const [scenarioId, group] of byKey) {
+    const afterStates = [...group.after.keys()].sort(compareLineageVersions);
     const beforeOnlyStates = [...group.before.keys()].filter(
-      (state) => !group.after.has(state) && !(state === 'main' && afterStates.length > 0),
+      (state) => !group.after.has(state) && !(state === LIVE_DEV_VERSION && afterStates.length > 0),
     );
     for (const [index, state] of afterStates.entries()) {
       const before =
         index > 0
           ? (group.after.get(afterStates[index - 1]) ?? null)
-          : (group.before.get(state) ?? group.before.get('main') ?? null);
+          : (group.before.get(state) ?? group.before.get(LIVE_DEV_VERSION) ?? null);
       const after = group.after.get(state) ?? null;
       result.push({
-        key: `${key} (${state})`,
+        key: `${group.scenario.label} · ${state}`,
+        scenarioId,
+        scenarioLabel: group.scenario.label,
         before: before?.screenshot ?? null,
         after: after?.screenshot ?? null,
         states: { before: before?.state ?? null, after: after?.state ?? null },
@@ -298,7 +341,9 @@ function pairs(reviews = reviewResults()) {
     for (const state of beforeOnlyStates) {
       const before = group.before.get(state) ?? null;
       result.push({
-        key: `${key} (${state})`,
+        key: `${group.scenario.label} · ${state}`,
+        scenarioId,
+        scenarioLabel: group.scenario.label,
         before: before?.screenshot ?? null,
         after: null,
         states: { before: before?.state ?? null, after: null },
@@ -306,7 +351,7 @@ function pairs(reviews = reviewResults()) {
       });
     }
   }
-  // Emit newest-first, with a Main-to-latest overview leading each scenario, so
+  // Emit newest-first, with a live-dev-to-latest overview leading each scenario, so
   // display order is authoritative here rather than a client-side concern.
   const ordered = [];
   const comparable = result.filter((pair) => pair.before && pair.after);
@@ -314,17 +359,17 @@ function pairs(reviews = reviewResults()) {
     const parsed = shot?.takenAt ? new Date(shot.takenAt).getTime() : NaN;
     return Number.isFinite(parsed) ? parsed : 0;
   };
-  const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
+  const scenarioOf = (pair) => pair.scenarioId;
   for (const scenario of [...new Set(comparable.map(scenarioOf))]) {
     const lineage = comparable
       .filter((pair) => scenarioOf(pair) === scenario)
       .sort((a, b) => takenTime(a.after) - takenTime(b.after));
     const first = lineage[0];
     const last = lineage[lineage.length - 1];
-    if (lineage.length > 1 && first.states.before === 'main') {
+    if (lineage.length > 1 && first.states.before === LIVE_DEV_VERSION) {
       ordered.push({
         ...last,
-        key: `${scenario} (overall)`,
+        key: `${last.scenarioLabel} · ${last.states.after}`,
         before: first.before,
         states: { before: first.states.before, after: last.states.after },
         reviews: { before: first.reviews.before, after: last.reviews.after },
@@ -458,6 +503,7 @@ function buildState(instanceId) {
     instanceId,
     workspacePath: workspacePath ?? null,
     screenshots: sortedScreenshots(),
+    scenarios: [...scenarioRegistry().values()],
     pairs: pairs(),
     feedback: readFeedback(),
     liveTracking: true,
@@ -761,10 +807,10 @@ await joinSession({
   },
   canvases: [
     createCanvas({
-      id: 'screenshot-viewer',
-      displayName: 'Screenshot Viewer',
+      id: 'ab-ux-testing',
+      displayName: 'A|B UX Testing',
       description:
-        'Gallery of screenshots taken by agents in this session. Tracks Playwright screenshots live and scans common directories (files/visual-review/, workspace root) on demand.',
+        'Compare tracked UX screenshot lineages, evaluator results, and review feedback alongside the complete screenshot gallery.',
       actions: [
         {
           name: 'list_screenshots',
@@ -814,7 +860,7 @@ await joinSession({
 
         const count = screenshotRegistry.size;
         return {
-          title: 'Screenshot Viewer',
+          title: 'A|B UX Testing',
           status:
             count === 0 ? 'no screenshots yet' : `${count} screenshot${count === 1 ? '' : 's'}`,
           url: entry.url + `?token=${entry.token}`,

@@ -30,10 +30,12 @@ import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-
 import {
   equip,
   equipFromBag,
+  addGeneratedEquipmentToBag,
   getEffectiveStats,
   getEquipmentState,
   initializeBaseStats,
 } from '../../core/systems/equipmentSystem.js';
+import { createGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import type { EquipmentTextRasterMetadata, EquipmentTextRun } from '../../engine/EquipmentUI.js';
@@ -54,6 +56,10 @@ import {
   createInventoryBag,
   type GeneratedEquipmentInventoryEntry,
 } from '../../shared/inventory.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  type GeneratedEquipmentInstanceKey,
+} from '../../shared/generated-equipment-types.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../../shared/equipment-slots.js';
@@ -147,6 +153,10 @@ export interface UiProbeApi {
   seedOverflowBag(count: number): void;
   /** Deterministically show/clear the equip-delta preview for a bag item. */
   previewEquipmentBagItem(itemId: string | null): void;
+  /** Show the comparison preview for a generated bag item. */
+  previewGeneratedEquipmentBagItem(instanceKey: GeneratedEquipmentInstanceKey | null): void;
+  /** Add a deterministic, stronger chest candidate for comparison captures. */
+  addGeneratedChestReplacement(): GeneratedEquipmentInstanceKey | null;
   /** Equip a bag item straight from the integrated bag column. */
   equipFromEquipmentBag(itemId: string): boolean;
   /** Unequip whatever is in `slotId`, returning it to the bag. */
@@ -366,7 +376,10 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, buildProbeSpriteRegistry());
 
       // Synthetic safe-room world: equipment changes require a safe context.
-      this.world = createGameWorld({ seed: LAB_SEED });
+      this.world = createGameWorld({
+        seed: LAB_SEED,
+        generatedEquipmentRunKey: 'ui-probe-lab-visual-review',
+      });
       this.world.floor = 1;
       this.world.state = 'safe_room';
       this.world.floorMap = buildProbeFloorMap();
@@ -472,6 +485,32 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         addItem(bag, gearId, 1);
       }
       this.inventoryUI?.refresh(this.world);
+    }
+
+    private addGeneratedChestReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'armor.ui-probe-chain-hauberk',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Runed Chain Hauberk',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['chest'],
+          tags: ['armor'],
+          weightLb: 14,
+          statBonuses: { armor: 6, constitution: 2 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
     }
 
     /**
@@ -602,6 +641,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         seedOverflowBag: (count: number) => this.seedOverflowBag(count),
         previewEquipmentBagItem: (itemId: string | null) =>
           this.equipmentUI?.previewBagItem(itemId),
+        previewGeneratedEquipmentBagItem: (instanceKey: GeneratedEquipmentInstanceKey | null) =>
+          this.equipmentUI?.previewGeneratedBagItem(instanceKey),
         equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,
         unequipEquipmentSlot: (slotId: EquipmentSlotId) => {
           this.equipmentUI?.unequipSlot(slotId);
@@ -623,6 +664,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         },
         equipInventoryItem: (itemId: string) => this.equipInventoryItem(itemId),
         seedAllGear: () => this.seedAllGear(),
+        addGeneratedChestReplacement: () => this.addGeneratedChestReplacement(),
         getEquippedSlotIds: () => {
           const state = getEquipmentState(this.world, this.playerEid);
           if (!state) return [];

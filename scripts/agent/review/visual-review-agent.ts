@@ -420,7 +420,12 @@ export function parseArgs(argv: string[]): CliOptions {
       continue;
     }
     if (arg === '--lineage-state' && next) {
-      opts.lineageState = next.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
+      // Keep dots so semantic versions (v0.1.0) retain their canonical form.
+      opts.lineageState = next
+        .trim()
+        .replace(/[^a-zA-Z0-9_.-]+/g, '-')
+        .replace(/(?:^|-)\.\.(?=-|$)/g, '-')
+        .replace(/-{2,}/g, '-');
       i += 1;
       continue;
     }
@@ -478,7 +483,7 @@ export function parseArgs(argv: string[]): CliOptions {
     }
   }
   if (opts.lineageScenario && !opts.lineageState) {
-    throw new Error('--lineage-scenario requires --lineage-state (e.g. "main", "v1", "v2")');
+    throw new Error('--lineage-scenario requires --lineage-state (e.g. "live-dev", "v0.1.0")');
   }
   return opts;
 }

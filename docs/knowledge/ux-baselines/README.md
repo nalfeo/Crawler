@@ -38,7 +38,7 @@ Each entry in `manifest.json` registers one tracked UX surface:
 ```json
 {
   "id": "equipment",
-  "label": "Equipment Panel",
+  "label": "Equipment",
   "viewport": { "width": 1280, "height": 800 },
   "captureSource": "ui-probe-lab",
   "setupFile": "src/labs/ui-probe-lab.ts",
@@ -56,6 +56,24 @@ Fields:
 - **setupFile:** path to the lab or setup script that renders the surface
 - **enabled:** whether this surface is actively tracked in releases
 - **description:** what the surface shows and any special capture requirements
+
+`A|B UX Testing` reads this manifest as its sole scenario registry. It never
+creates a scenario from a capture filename or directory. Add a manifest entry
+before capturing a new A|B scenario; unregistered captures remain visible only
+in the simple `Screenshot Viewer` gallery.
+
+## A|B lineage naming
+
+Each tracked A|B capture has exactly two names: its registered scenario ID and
+its version. The baseline version is always `live-dev`, displayed as
+**live (dev)**. It is populated by the release baseline workflow and replaces
+ad-hoc hidden `main` worktree captures. Every revision uses semantic versioning:
+`vMAJOR.MINOR.PATCH` (for example, `v0.1.0` or `v1.2.3`).
+
+The viewer displays these as `Scenario · version`; pair headings are
+`Scenario · live (dev) → v0.1.0`. Names such as `current`, `main`,
+`overall`, or scenario text repeated inside a version are invalid and excluded
+from A|B testing.
 
 ## Baseline Metadata
 
@@ -78,7 +96,7 @@ Each release/{ref}/<surface>/metadata.json records:
 ## Required equipment tooltip scenarios
 
 Every release baseline captures the equipment panel plus these four important
-interaction states, each compared against the release's `main` baseline:
+interaction states, each compared against the release's `live-dev` baseline:
 
 | Surface                       | Required state                                           |
 | ----------------------------- | -------------------------------------------------------- |
@@ -146,12 +164,12 @@ npm run review:visual:deterministic -- \
   --compare-baseline docs/knowledge/ux-baselines/releases/main/equipment
 ```
 
-### For screenshot viewer / visual-review canvas:
+### For A|B UX Testing:
 
 Load lineage pairs from releases:
 
 ```
-Screenshot Viewer → Browse Lineage → select "equipment" scenario
+A|B UX Testing → select "Equipment"
 → pairs: before=releases/main/equipment, after=releases/<current-branch>/equipment
 ```
 

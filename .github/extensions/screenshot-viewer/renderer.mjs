@@ -17,7 +17,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Screenshot Viewer — ${escapeHtml(instanceId)}</title>
+    <title>A|B UX Testing — ${escapeHtml(instanceId)}</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -355,7 +355,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
   <body>
     <main>
       <header>
-        <h1>UX Screenshot Review</h1>
+        <h1>A|B UX Testing</h1>
         <div class="toolbar">
           <label for="scenario-filter">Scenario</label>
           <select id="scenario-filter"><option value="">All scenarios</option></select>
@@ -602,13 +602,12 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         liveBadge.hidden = !state.liveTracking;
 
         const allPairs = Array.isArray(state.pairs) ? state.pairs : [];
-        const scenarioOf = (pair) => String(pair.key).replace(/\s+\([^)]*\)$/, '');
-        const scenarios = [...new Set(allPairs.filter((p) => p.before && p.after).map(scenarioOf))].sort();
-        const selected = scenarios.includes(scenarioFilter.value) ? scenarioFilter.value : '';
+        const scenarios = Array.isArray(state.scenarios) ? state.scenarios : [];
+        const selected = scenarios.some((scenario) => scenario.id === scenarioFilter.value) ? scenarioFilter.value : '';
         scenarioFilter.innerHTML = '<option value="">All scenarios</option>' +
-          scenarios.map((s) => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+          scenarios.map((scenario) => '<option value="' + escapeHtml(scenario.id) + '">' + escapeHtml(scenario.label) + '</option>').join('');
         scenarioFilter.value = selected;
-        const pairs = selected ? allPairs.filter((p) => scenarioOf(p) === selected) : allPairs;
+        const pairs = selected ? allPairs.filter((pair) => pair.scenarioId === selected) : allPairs;
         if (count === 0) {
           galleryEl.innerHTML = \`
             <div class="empty-state">
@@ -633,13 +632,15 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           const reviewMeta = (review, reviewKey) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review, reviewKey) + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
-          const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
           const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
-          const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
+            '<figure><div class="pair-image-label">' + escapeHtml(stateLabel(pair.states?.[side])) + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
+          const stateLabel = (state) => {
+            if (state === 'live-dev') return 'live (dev)';
+            return state ?? 'missing';
+          };
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
-          return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml(pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
+          return '<article class="pair-card"><strong>' + escapeHtml((pair.scenarioLabel ?? pair.key) + ' · ' + beforeState + ' → ' + afterState) + '</strong><div class="pair-images">' + image('before') + image('after') + '</div></article>';
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
         for (const details of pairsEl.querySelectorAll('details[data-details-key]')) {
@@ -750,7 +751,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           // with no signal, so stale ordering/timestamps looked like live data.
           renderError(
             'Backend unreachable — this panel is showing STALE content from a previous session. ' +
-            'Close and reopen the Screenshot Viewer canvas to reconnect. (' +
+            'Close and reopen the A|B UX Testing canvas to reconnect. (' +
             (error instanceof Error ? error.message : String(error)) + ')'
           );
           liveBadge.hidden = true;
@@ -759,8 +760,12 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
       }
 
+      async function refresh() {
+        await loadState(refreshUrl, { method: 'POST' });
+      }
+
       refreshButton.addEventListener('click', () => {
-        void loadState(refreshUrl, { method: 'POST' });
+        void refresh();
       });
 
       // SSE live updates

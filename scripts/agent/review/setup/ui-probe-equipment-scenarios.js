@@ -12,18 +12,19 @@
     probe?.equipInventoryItem?.('iron-helm');
     window.__forceEquipmentTooltipSlot = 'head';
   } else if (scenario === 'equipment-hover-duplicate') {
-    probe?.equipCharm?.();
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const duplicateId = probe?.getEquipmentBagItemIds?.()?.[0];
-    if (duplicateId) probe?.previewEquipmentBagItem?.(duplicateId);
-  } else if (scenario === 'equipment-hover-empty-slot') {
     probe?.equipInventoryItem?.('iron-helm');
+    probe?.seedAllGear?.();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    probe?.previewEquipmentBagItem?.('iron-helm');
+  } else if (scenario === 'equipment-hover-empty-slot') {
     await new Promise((resolve) => setTimeout(resolve, 350));
     probe?.previewEquipmentBagItem?.('leather-boots');
   } else if (scenario === 'equipment-hover-mixed-delta') {
-    probe?.equipInventoryItem?.('iron-helm');
+    probe?.equipInventoryItem?.('iron-breastplate');
     await new Promise((resolve) => setTimeout(resolve, 350));
-    probe?.previewEquipmentBagItem?.('steel-pauldrons');
+    const candidateKey = probe?.addGeneratedChestReplacement?.();
+    if (!candidateKey) throw new Error('Unable to seed the generated chest replacement.');
+    probe?.previewGeneratedEquipmentBagItem?.(candidateKey);
   } else {
     throw new Error(`Unknown equipment UX scenario: ${scenario ?? '<missing>'}`);
   }
@@ -45,5 +46,32 @@
 
   window.dispatchEvent(new Event('resize'));
   await new Promise((resolve) => setTimeout(resolve, 500));
+  const slotIds = [
+    'head',
+    'neck',
+    'mainHand',
+    'chest',
+    'offHand',
+    'gloves',
+    'legs',
+    'ring1',
+    'feet',
+    'ring2',
+  ];
+  const panel = probe?.getEquipmentPanelBounds?.();
+  const regions = slotIds
+    .map((slotId) => {
+      const box = probe?.getEquipmentSlotBounds?.(slotId);
+      return box ? { id: `slot:${slotId}`, box, kind: 'slot', parentId: 'equipment-panel' } : null;
+    })
+    .filter(Boolean);
+  if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
+  const tooltip = probe?.getEquipmentTooltipBounds?.();
+  if (tooltip) regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip' });
+  window.__visualReview = {
+    surface: 'equipment panel',
+    regions,
+    expect: { tooltipAfterHover: true },
+  };
   window.__visualReviewHoverPoint = null;
 })();

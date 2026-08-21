@@ -22,6 +22,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
   previewEquipDelta,
+  previewEquipDeltaForDef,
   resolveEquipmentInstance,
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
@@ -353,6 +354,8 @@ export function createEquipmentUI(
   getBagScrollRow(): number;
   getBagMaxScrollRow(): number;
   previewBagItem(itemId: string | null): void;
+  /** Show the inspector preview for an exact generated bag instance. */
+  previewGeneratedBagItem(instanceKey: GeneratedEquipmentInstanceKey | null): void;
   equipBagItem(itemId: string): boolean;
   destroy(): void;
 } {
@@ -1378,31 +1381,34 @@ export function createEquipmentUI(
       clearTooltip();
       return;
     }
-    // Generated instances have no requirements in their frozen schema; only the
-    // net stat delta is unavailable because there is no static def to diff against.
+    const candidate: EquipmentItemDef = {
+      id: instance.instanceId,
+      name: instance.frozen.displayName,
+      slots: instance.frozen.slots,
+      statBonuses: instance.frozen.statBonuses,
+      rarity: instance.rarity,
+      tags: instance.frozen.tags,
+      weightLb: instance.frozen.weightLb,
+    };
+    const preview = previewEquipDeltaForDef(lastWorld, playerEid, candidate);
+    const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
+    const targets = targetSlotsForRegistrySlots(candidate.slots);
     setCompare({
-      label: instance.frozen.displayName,
-      deltas: {},
-      targetSlots: targetSlotsForRegistrySlots(instance.frozen.slots),
-      canEquip: true,
-      statsKnown: false,
+      label: candidate.name,
+      deltas: preview.deltas,
+      targetSlots: targets,
+      canEquip: preview.canEquip,
+      statsKnown: true,
     });
-    const targets = targetSlotsForRegistrySlots(instance.frozen.slots);
     const current =
-      currentEquippedForSlots(instance.frozen.slots) ?? emptyComparisonDef(targets[0] ?? 'slot');
-    renderTooltipPair(
-      current,
-      {
-        id: instance.instanceId,
-        name: instance.frozen.displayName,
-        slots: instance.frozen.slots,
-        statBonuses: instance.frozen.statBonuses,
-        rarity: instance.rarity,
-        tags: instance.frozen.tags,
-        weightLb: instance.frozen.weightLb,
-      },
-      ['Comparison unavailable'],
-    );
+      preview.swappedOut[0] ??
+      currentEquippedForSlots(candidate.slots) ??
+      emptyComparisonDef(targets[0] ?? 'slot');
+    const diffLines =
+      changed.length === 0
+        ? ['No stat change']
+        : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
+    renderTooltipPair(current, candidate, diffLines);
   }
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {
@@ -2507,6 +2513,8 @@ export function createEquipmentUI(
     getBagScrollRow: () => bagScrollRow,
     getBagMaxScrollRow: () => bagMaxScroll,
     previewBagItem: (itemId: string | null) => previewBagItem(itemId),
+    previewGeneratedBagItem: (instanceKey: GeneratedEquipmentInstanceKey | null) =>
+      previewBagEntry(instanceKey === null ? null : { kind: 'generated-instance', instanceKey }),
     equipBagItem: (itemId: string) => equipBagItem(itemId),
     destroy() {
       destroyed = true;
