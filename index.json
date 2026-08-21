@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f2ae3551e7db8d6c012ce718e06b13edb07eb3c6",
+    "commitDate": "2026-08-21T09:30:05Z",
+    "commitSubject": "feat(agent): version Crawler Goobers workflow (#3207)",
+    "capturedAt": "2026-08-21T10:48:13.063Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32469780919",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/f2ae3551e7db8d6c012ce718e06b13edb07eb3c6.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/f2ae3551e7db8d6c012ce718e06b13edb07eb3c6.fun-report.json"
+    }
+  },
+  {
     "commit": "2b459030c3edcb1d7a4aeb51ee66c34bc75df113",
     "commitDate": "2026-08-21T08:41:52Z",
     "commitSubject": "Bound CI recovery on scope-mismatched PRs (#3204)",
