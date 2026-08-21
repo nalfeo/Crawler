@@ -182,7 +182,7 @@ test('exposes a manifest-driven scenario filter for comparing treatments in one 
 
 test('shows capture time for each A/B screenshot', () => {
   const html = renderHtml(OPTS);
-  assert.match(html, /formatTime\(pair\[side\]\.takenAt\)/);
+  assert.match(html, /formatTime\(screenshot\.takenAt\)/);
   assert.match(html, /time unknown/);
 });
 
@@ -201,9 +201,9 @@ test('warns that the panel is stale when the backend is unreachable', () => {
   assert.match(html, /showing STALE content/);
 });
 
-test('renders pairs in backend order without client-side re-sorting', () => {
+test('renders complete and current-only pairs in backend order without client-side re-sorting', () => {
   const html = renderHtml(OPTS);
-  assert.match(html, /const orderedPairs = comparablePairs;/);
+  assert.match(html, /const orderedPairs = pairs;/);
   assert.doesNotMatch(html, /orderedPairs\.push/);
-  assert.match(html, /pair\.before && pair\.after/);
+  assert.match(html, /No ' \+ escapeHtml\(label\) \+ ' capture is available/);
 });

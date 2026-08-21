@@ -175,6 +175,16 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       .pair-images figure { margin: 0; }
       .pair-image-label { color: var(--text-color-default, #c9d1d9); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
       .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; cursor: zoom-in; }
+      .pair-missing {
+        display: grid;
+        place-items: center;
+        min-height: 140px;
+        padding: 12px;
+        border: 1px dashed var(--border-color-default, #30363d);
+        color: var(--text-color-muted, #8b949e);
+        font-size: 12px;
+        text-align: center;
+      }
       .pair-images img:focus-visible { outline: 2px solid var(--color-focus-outline, #58a6ff); outline-offset: 2px; }
       figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
       .review-details {
@@ -619,10 +629,10 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           return;
         }
 
-        const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
-        // Order is decided by the backend (newest-first, overview pair leading
-        // each scenario), so the client never re-sorts and cannot drift from it.
-        const orderedPairs = comparablePairs;
+        // The backend emits complete lineages first, then valid current-only
+        // captures. Keep both: hiding an after-only card conceals real evidence
+        // while the release baseline is pending.
+        const orderedPairs = pairs;
         const openDetails = new Set(
           [...pairsEl.querySelectorAll('details[data-details-key][open]')]
             .map((details) => details.getAttribute('data-details-key'))
@@ -632,11 +642,17 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           const reviewMeta = (review, reviewKey) => review
             ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review, reviewKey) + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
-          const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(stateLabel(pair.states?.[side])) + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · ' + escapeHtml(pair[side].takenAt ? formatTime(pair[side].takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
           const stateLabel = (state) => {
             if (state === 'live-dev') return 'live (dev)';
             return state ?? 'missing';
+          };
+          const image = (side) => {
+            const screenshot = pair[side];
+            const label = stateLabel(pair.states?.[side]);
+            if (!screenshot) {
+              return '<figure><div class="pair-image-label">' + escapeHtml(label) + '</div><div class="pair-missing">No ' + escapeHtml(label) + ' capture is available for this scenario.</div><figcaption>Capture a release baseline to complete this comparison.</figcaption></figure>';
+            }
+            return '<figure><div class="pair-image-label">' + escapeHtml(label) + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(screenshot.path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(screenshot.path)) + '" data-caption="' + escapeHtml(screenshot.path) + '"><figcaption>' + side + ' · ' + escapeHtml(screenshot.takenAt ? formatTime(screenshot.takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
           };
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
