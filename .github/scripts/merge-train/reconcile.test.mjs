@@ -27,7 +27,9 @@ import {
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   stalledAdmissionEligiblePulls,
+  STALLED_QUEUE_PASS_THRESHOLD,
   trainCheckTitle,
+  UNADVANCEABLE_ATTEMPT_CEILING,
   UNADVANCEABLE_STRIKE_THRESHOLD,
 } from './reconcile-lib.mjs';
 import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
@@ -1762,12 +1764,51 @@ test('evaluateUnadvanceableStrike resets strikes when the branch is rebased out-
 
 test('unadvanceable strike record round-trips through the status comment', () => {
   const sha = 'f'.repeat(40);
-  const encoded = renderUnadvanceableStrike({ headSha: sha, strikes: 2 });
-  assert.deepEqual(parseUnadvanceableStrike(encoded), { headSha: sha, strikes: 2 });
+  const encoded = renderUnadvanceableStrike({ headSha: sha, strikes: 2, attempts: 5 });
+  assert.deepEqual(parseUnadvanceableStrike(encoded), { headSha: sha, strikes: 2, attempts: 5 });
   assert.deepEqual(parseUnadvanceableStrike('## Merge train\n\n- State: `waiting`'), {
     headSha: '',
     strikes: 0,
+    attempts: 0,
   });
+});
+
+test('a legacy two-field strike marker still parses, crediting strikes as attempts', () => {
+  // Markers written before the cumulative-attempt field existed must not read
+  // back as zero attempts, or an in-flight PR would silently lose its history.
+  const sha = 'a'.repeat(40);
+  assert.deepEqual(
+    parseUnadvanceableStrike(`<!-- crawler-merge-train-unadvanceable:${sha}:2 -->`),
+    {
+      headSha: sha,
+      strikes: 2,
+      attempts: 2,
+    },
+  );
+});
+
+test('cumulative attempts quarantine a PR that resets its head sha every pass', () => {
+  // A bot pushing ineffective commits changes the head SHA each pass, which
+  // resets per-SHA strikes forever. Without a cumulative ceiling that PR could
+  // fail update-branch indefinitely and never be quarantined.
+  let attempts = 0;
+  let result;
+  for (let pass = 0; pass < UNADVANCEABLE_ATTEMPT_CEILING; pass += 1) {
+    result = evaluateUnadvanceableStrike({
+      headSha: String(pass).padStart(40, '0'),
+      recordedSha: String(pass - 1).padStart(40, '0'),
+      recordedStrikes: 1,
+      recordedAttempts: attempts,
+    });
+    assert.equal(result.strikes, 1, 'each new head sha is a fresh per-sha strike');
+    attempts = result.attempts;
+  }
+  assert.equal(attempts, UNADVANCEABLE_ATTEMPT_CEILING);
+  assert.equal(
+    result.quarantine,
+    true,
+    'the cumulative ceiling must eventually fire even though per-sha strikes always reset',
+  );
 });
 
 test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () => {
@@ -1793,5 +1834,86 @@ test('the zero-admitted exit path evaluates the stalled-queue safeguard before e
     block,
     /evaluateStalledQueue\(/,
     'reconcile exits 0 here, so the stall must be evaluated before exit or it stays invisible',
+  );
+});
+
+test('the stalled-pass counter is persisted from the first pass, not only at the alarm', () => {
+  // Regression: the counter lives in the incident issue body, but the issue was
+  // only created when `stall.alarm` was true -- and alarm requires passes>=3.
+  // So passes could never read back above 0, pinned at 1 forever, and the alarm
+  // was structurally unreachable. Persistence must be gated on `stalled`, not
+  // on `alarm`, or the whole safeguard is dead code.
+  const tail = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (train.length === 0)'));
+  const block = tail.slice(0, tail.indexOf('process.exit(0)'));
+  assert.match(
+    block,
+    /if \(stall\.stalled\)\s*\{\s*await upsertStalledTrainIncident\(/,
+    'the counter must be written on every stalled pass, otherwise it can never reach its threshold',
+  );
+  assert.doesNotMatch(
+    block,
+    /if \(stall\.alarm\)\s*\{\s*await upsertStalledTrainIncident\(/,
+    'gating persistence on the alarm makes the alarm unreachable',
+  );
+});
+
+test('a stalled pass below the threshold escalates only after the threshold', () => {
+  const first = evaluateStalledQueue({ queuedCount: 2, admittedCount: 0, passes: 1 });
+  assert.deepEqual(
+    { stalled: first.stalled, alarm: first.alarm },
+    { stalled: true, alarm: false },
+    'pass 1 is tracked but must not raise an incident label yet',
+  );
+  const third = evaluateStalledQueue({
+    queuedCount: 2,
+    admittedCount: 0,
+    passes: STALLED_QUEUE_PASS_THRESHOLD,
+  });
+  assert.equal(third.alarm, true, 'the alarm must fire exactly at the threshold');
+});
+
+test('every non-advancing update-branch outcome yields the FIFO line', () => {
+  // The 2026-08-21 deadlock was one un-advanceable head-of-line PR holding FIFO
+  // forever. Any branch that leaves the PR queued WITHOUT advancing it must
+  // release the line, or it can reproduce the same starvation.
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('same-repo-restricted-branch'),
+    RECONCILE_SOURCE.indexOf('if (!yieldFifoLine) break;'),
+  );
+  const branch422 = region.slice(region.indexOf('err.status === 422'));
+  assert.match(
+    branch422.slice(0, branch422.indexOf('} else {')),
+    /yieldFifoLine = true/,
+    'a 422 means no update landed, so the line must not stay held',
+  );
+  assert.match(
+    region.slice(region.indexOf('unexpected-status')),
+    /yieldFifoLine = true/,
+    'an unknown update-branch failure advanced nothing and must not pin the queue',
+  );
+});
+
+test('recovery dispatch is skipped once a PR is quarantined', () => {
+  // Dispatching recovery before quarantine raced it: the recovery run could
+  // converge, strip BLOCKED_LABEL, and re-admit the PR into the same 403 loop.
+  // router.mjs exclusion blocks new dispatch selection but cannot cancel an
+  // in-flight one, so the dispatch must live on the non-quarantine branch only.
+  const branch = RECONCILE_SOURCE.slice(RECONCILE_SOURCE.indexOf('if (strike.quarantine)'));
+  const quarantined = branch.slice(0, branch.indexOf('} else {'));
+  assert.doesNotMatch(
+    quarantined,
+    /dispatchRecoveryGated\(/,
+    'a quarantined PR must not also get a recovery dispatch that could un-quarantine it',
+  );
+});
+
+test('the queue-empty exit path closes a lingering stalled-train incident', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf("process.stdout.write('Merge train is empty\\n')"),
+  );
+  assert.match(
+    region.slice(0, region.indexOf('process.exit(0)')),
+    /closeStalledTrainIncidentIfAny\(/,
+    'a queue that drained to empty has recovered, so the stall record must not linger open',
   );
 });

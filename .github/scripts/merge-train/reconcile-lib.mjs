@@ -138,6 +138,13 @@ export const STALLED_QUEUE_PASS_THRESHOLD = 3;
 // and CI Recovery will not immediately re-queue it into the same 403 loop.
 export const UNADVANCEABLE_STRIKE_THRESHOLD = 3;
 
+// Safeguard (3), churn guard. Strikes reset on a new head SHA so an out-of-band
+// rebase (the intended recovery) is never penalized -- but that alone lets a bot
+// pushing ineffective commits reset the counter forever and evade quarantine
+// while still failing every update. This cumulative ceiling never resets on head
+// movement, so persistent un-advanceability is always eventually quarantined.
+export const UNADVANCEABLE_ATTEMPT_CEILING = 10;
+
 /**
  * Decides whether a reconcile pass that ended with a non-empty queue and zero
  * admitted entries has stalled long enough to raise an incident.
@@ -179,7 +186,9 @@ export function evaluateUnadvanceableStrike({
   headSha,
   recordedSha,
   recordedStrikes,
+  recordedAttempts,
   threshold = UNADVANCEABLE_STRIKE_THRESHOLD,
+  ceiling = UNADVANCEABLE_ATTEMPT_CEILING,
 }) {
   const sha = String(headSha || '').trim();
   const priorSha = String(recordedSha || '').trim();
@@ -187,10 +196,17 @@ export function evaluateUnadvanceableStrike({
   const limit = Number(threshold);
   const carried = sha && sha === priorSha && Number.isFinite(prior) && prior > 0 ? prior : 0;
   const strikes = carried + 1;
+  const priorAttempts = Number(recordedAttempts);
+  const attempts =
+    (Number.isFinite(priorAttempts) && priorAttempts > 0 ? priorAttempts : carried) + 1;
+  const cap = Number(ceiling);
+  const hitStrikes = Number.isFinite(limit) && limit > 0 && strikes >= limit;
+  const hitCeiling = Number.isFinite(cap) && cap > 0 && attempts >= cap;
   return {
     headSha: sha,
     strikes,
-    quarantine: Boolean(sha) && Number.isFinite(limit) && limit > 0 && strikes >= limit,
+    attempts,
+    quarantine: Boolean(sha) && (hitStrikes || hitCeiling),
   };
 }
 
@@ -230,25 +246,33 @@ export function stalledAdmissionEligiblePulls({
  */
 export const UNADVANCEABLE_STRIKE_PREFIX = '<!-- crawler-merge-train-unadvanceable:';
 
-export function renderUnadvanceableStrike({ headSha, strikes }) {
+export function renderUnadvanceableStrike({ headSha, strikes, attempts }) {
   const sha = String(headSha || '').trim();
   const count = Number(strikes);
   const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
-  return `${UNADVANCEABLE_STRIKE_PREFIX}${sha}:${safeCount} -->`;
+  const total = Number(attempts);
+  const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : safeCount;
+  return `${UNADVANCEABLE_STRIKE_PREFIX}${sha}:${safeCount}:${safeTotal} -->`;
 }
 
 export function parseUnadvanceableStrike(body) {
   const text = String(body || '');
   const index = text.indexOf(UNADVANCEABLE_STRIKE_PREFIX);
-  if (index === -1) return { headSha: '', strikes: 0 };
+  if (index === -1) return { headSha: '', strikes: 0, attempts: 0 };
   const rest = text.slice(index + UNADVANCEABLE_STRIKE_PREFIX.length);
   const end = rest.indexOf('-->');
-  if (end === -1) return { headSha: '', strikes: 0 };
-  const [sha, count] = rest.slice(0, end).trim().split(':');
+  if (end === -1) return { headSha: '', strikes: 0, attempts: 0 };
+  const [sha, count, total] = rest.slice(0, end).trim().split(':');
   const parsed = Number.parseInt(String(count || ''), 10);
+  const parsedTotal = Number.parseInt(String(total || ''), 10);
+  const strikes = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   return {
     headSha: String(sha || '').trim(),
-    strikes: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+    strikes,
+    // Older markers predate the cumulative field; fall back to the per-SHA
+    // count so an in-flight PR is never credited with fewer attempts than
+    // strikes already observed.
+    attempts: Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : strikes,
   };
 }
 
