@@ -1,5 +1,5 @@
-import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
-import type { CollisionResult } from './collisionSystem.js';
+import { entityExists, hasComponent, query, removeEntity } from "bitecs";
+import type { CollisionResult } from "./collisionSystem.js";
 import {
   Damage,
   DeathTimer,
@@ -12,16 +12,19 @@ import {
   Projectile,
   Returning,
   Team,
-} from '../components.js';
-import { applyDamage } from '../apply-damage.js';
-import { readDamageMeta } from '../damage-meta.js';
-import { clearEntityStores } from '../helpers.js';
-import { isEntityInSafeSpace } from '../safe-space.js';
-import type { GameWorld } from '../world.js';
-import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
-import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
-import { computeArmorReducedDamage } from '../combat-math.js';
-import { getMobAbilityMeleeDamageMultiplier } from '../mob-abilities/runtime.js';
+} from "../components.js";
+import { applyDamage } from "../apply-damage.js";
+import { readDamageMeta } from "../damage-meta.js";
+import { clearEntityStores } from "../helpers.js";
+import { isEntityInSafeSpace } from "../safe-space.js";
+import type { GameWorld } from "../world.js";
+import { emitWeaponHitSkillEventsForSource } from "../weapon-skill-bridge.js";
+import {
+  recordWeaponEnemyHit,
+  pruneAttackEntity,
+} from "../weapon-telemetry.js";
+import { computeArmorReducedDamage } from "../combat-math.js";
+import { getMobAbilityMeleeDamageMultiplier } from "../mob-abilities/runtime.js";
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -75,7 +78,11 @@ function destroyEntity(world: GameWorld, eid: number): void {
   removeEntity(world.ecs, eid);
 }
 
-function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number): number {
+function getDamageAmount(
+  world: GameWorld,
+  eid: number,
+  fallbackAmount: number,
+): number {
   if (!hasComponent(world.ecs, eid, Damage)) {
     return fallbackAmount;
   }
@@ -85,7 +92,11 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
   return world.stores.damage.amount[eid] ?? 0;
 }
 
-function applyArmorReduction(world: GameWorld, player: number, rawDamage: number): number {
+function applyArmorReduction(
+  world: GameWorld,
+  player: number,
+  rawDamage: number,
+): number {
   if (!hasComponent(world.ecs, player, EffectiveStats)) {
     return rawDamage;
   }
@@ -94,11 +105,17 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
 }
 
 function sameTeam(world: GameWorld, source: number, target: number): boolean {
-  return hasComponent(world.ecs, source, Team) && hasComponent(world.ecs, target, Team) && (world.stores.team.id[source] ?? 0) === (world.stores.team.id[target] ?? 0);
+  return (
+    hasComponent(world.ecs, source, Team) &&
+    hasComponent(world.ecs, target, Team) &&
+    (world.stores.team.id[source] ?? 0) === (world.stores.team.id[target] ?? 0)
+  );
 }
 
 function projectileSource(world: GameWorld, projectile: number): number {
-  return hasComponent(world.ecs, projectile, Owner) ? (world.stores.owner.eid[projectile] ?? projectile) : projectile;
+  return hasComponent(world.ecs, projectile, Owner)
+    ? (world.stores.owner.eid[projectile] ?? projectile)
+    : projectile;
 }
 
 /** Emit a throttled 'blocked' event (max one per invincibility window). */
@@ -107,17 +124,21 @@ function emitBlockedEvent(world: GameWorld, player: number): void {
   if (world.elapsedMs - last < PLAYER_INVINCIBILITY_MS) return;
   lastBlockedEventMs.set(world, world.elapsedMs);
   world.combatEvents.push({
-    type: 'blocked',
+    type: "blocked",
     x: world.stores.position.x[player] ?? 0,
     y: world.stores.position.y[player] ?? 0,
     amount: 0,
-    targetType: 'player',
+    targetType: "player",
     timestamp: world.elapsedMs,
     targetEid: player,
   });
 }
 
-function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
+function applyProjectileHit(
+  world: GameWorld,
+  projectile: number,
+  enemy: number,
+): void {
   // If this is the first hit for this projectile, clear stale hit tracking
   // from any previous entity that used the same recycled ECS ID.
   if ((world.stores.projectile.hitCount[projectile] ?? 0) === 0) {
@@ -129,7 +150,11 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
   if (hitSet.has(enemy)) return;
 
   if (hasComponent(world.ecs, enemy, Health)) {
-    const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+    const amount = getDamageAmount(
+      world,
+      projectile,
+      DEFAULT_PROJECTILE_DAMAGE,
+    );
     const ownerEid = hasComponent(world.ecs, projectile, Owner)
       ? (world.stores.owner.eid[projectile] ?? -1)
       : -1;
@@ -215,11 +240,11 @@ function applyPlayerEnemyHit(
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
     {
-      origin: 'enemy',
-      affinity: 'unscaled',
+      origin: "enemy",
+      affinity: "unscaled",
       scaleWithPrimary: false,
       canCrit: false,
-      delivery: 'contact',
+      delivery: "contact",
       sourceX: world.stores.position.x[enemy] ?? 0,
       sourceY: world.stores.position.y[enemy] ?? 0,
       sourceEid: enemy,
@@ -264,11 +289,11 @@ function applyEnemyProjectileHit(
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
     {
-      origin: 'enemy',
-      affinity: 'unscaled',
+      origin: "enemy",
+      affinity: "unscaled",
       scaleWithPrimary: false,
       canCrit: false,
-      delivery: 'projectile',
+      delivery: "projectile",
       sourceX: world.stores.position.x[projectile] ?? 0,
       sourceY: world.stores.position.y[projectile] ?? 0,
       sourceEid: projectileOwner !== -1 ? projectileOwner : projectile,
@@ -283,11 +308,15 @@ function applyEnemyProjectileHit(
   destroyEntity(world, projectile);
 }
 
-export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {
+export function damageSystem(
+  world: GameWorld,
+  collisionResult: CollisionResult,
+): void {
   const hitTimestamps = getPlayerHitTimestamps(world);
   const players = query(world.ecs, [Player, Health]);
   const player = players[0];
-  const playerInSafeSpace = player !== undefined && isEntityInSafeSpace(world, player);
+  const playerInSafeSpace =
+    player !== undefined && isEntityInSafeSpace(world, player);
 
   for (const pair of collisionResult.pairs) {
     const { a, b } = pair;
@@ -326,23 +355,35 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
     }
 
     // Enemy projectile hits player
-    if (hasComponent(world.ecs, a, EnemyProjectile) && hasComponent(world.ecs, b, Player)) {
+    if (
+      hasComponent(world.ecs, a, EnemyProjectile) &&
+      hasComponent(world.ecs, b, Player)
+    ) {
       applyEnemyProjectileHit(world, a, b, hitTimestamps);
       continue;
     }
 
-    if (hasComponent(world.ecs, b, EnemyProjectile) && hasComponent(world.ecs, a, Player)) {
+    if (
+      hasComponent(world.ecs, b, EnemyProjectile) &&
+      hasComponent(world.ecs, a, Player)
+    ) {
       applyEnemyProjectileHit(world, b, a, hitTimestamps);
       continue;
     }
 
-    if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, Enemy)) {
+    if (
+      hasComponent(world.ecs, a, Player) &&
+      hasComponent(world.ecs, b, Enemy)
+    ) {
       if (sameTeam(world, a, b)) continue;
       applyPlayerEnemyHit(world, a, b, hitTimestamps);
       continue;
     }
 
-    if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
+    if (
+      hasComponent(world.ecs, b, Player) &&
+      hasComponent(world.ecs, a, Enemy)
+    ) {
       if (sameTeam(world, b, a)) continue;
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
     }
