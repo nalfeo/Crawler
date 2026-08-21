@@ -87,14 +87,20 @@ describe('companionAISystem', () => {
     expect(decision?.kind).toBe('idle');
   });
 
-  it('skips knocked-out companions', () => {
+  it('disables knocked-out companions in the real prepass to movement pipeline', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 0, 0);
-    const companion = spawnCompanion(world, 20, 0);
+    spawnPlayer(world, 0, -20);
+    const companion = spawnCompanion(world, 0, 0);
     world.stores.companion.knockedOut[companion] = 1;
+    world.stores.velocity.y[companion] = 1;
 
     companionAISystem(world);
-    expect(getCompanionAIDecision(world, companion)).toBeUndefined();
+    enemyAISystem(world);
+    movementSystem(world);
+
+    expect(getCompanionAIDecision(world, companion)?.kind).toBe('disabled');
+    expect(world.stores.velocity.y[companion]).toBe(0);
+    expect(world.stores.position.y[companion]).toBe(0);
   });
 
   it('is consumed by enemyAISystem in real prepass → ai → movement pipeline', () => {
