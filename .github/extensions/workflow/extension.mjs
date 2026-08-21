@@ -607,8 +607,17 @@ async function refreshQueuedWorkflowItems(entry) {
   let changed = false;
   for (const item of state.items) {
     if (item.stage !== 'generating' || !item.generationRequestedAt) continue;
+    const chosenCandidate = item.candidates.find(
+      (candidate) => candidate.yamlPath === item.chosenCandidatePath,
+    );
+    // The promoted YAML retains its chosen candidate's name, so polling every
+    // synthesized candidate can attach an unrelated completed run.
     const briefIds = [
-      ...new Set([item.kebabName, ...item.candidates.map((candidate) => candidate.id)]),
+      ...new Set(
+        chosenCandidate
+          ? [chosenCandidate.id, item.kebabName]
+          : [item.kebabName, ...item.candidates.map((candidate) => candidate.id)],
+      ),
     ];
     let matched = null;
     for (const briefId of briefIds) {

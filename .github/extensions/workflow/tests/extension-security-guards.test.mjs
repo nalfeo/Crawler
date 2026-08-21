@@ -118,6 +118,22 @@ test('Azure polling drops a completed run when the remote item was rewound or re
   );
 });
 
+test('Azure polling prioritizes the chosen candidate brief over unchosen candidates', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf('async function refreshQueuedWorkflowItems(');
+  const end = source.indexOf('function workflowMutationAllowed(', start);
+  assert.ok(start >= 0 && end > start);
+  const refresh = source.slice(start, end);
+  assert.match(
+    refresh,
+    /const chosenCandidate = item\.candidates\.find\(\s*\(candidate\) => candidate\.yamlPath === item\.chosenCandidatePath/,
+  );
+  assert.match(
+    refresh,
+    /chosenCandidate\s*\? \[chosenCandidate\.id, item\.kebabName\]\s*: \[item\.kebabName, \.\.\.item\.candidates\.map/,
+  );
+});
+
 test('transient authoring phases recover to their prior retryable phase with an error', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /path: '\/api\/workflow\/synthesize'/);
