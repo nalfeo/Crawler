@@ -545,6 +545,19 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const remote = await entry.client.getWorkflowState();
     const remoteState = normalizeQueue(remote.state);
+    const remoteItem = remoteState.items.find((item) => item.id === targetId);
+    if (
+      (options.requireRemoteStage && remoteItem?.stage !== options.requireRemoteStage) ||
+      (options.requireRemoteGenerationRequestedAt &&
+        remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt)
+    ) {
+      entry.workflow.state = remoteState;
+      entry.workflow.etag = remote.etag;
+      entry.workflow.loaded = true;
+      entry.workflow.lastRefreshAt = new Date().toISOString();
+      entry.workflow.error = null;
+      return remoteState;
+    }
     if (options.create && remoteState.items.some((item) => item.id === targetId)) {
       const created = state.items.find((item) => item.id === targetId);
       if (!created) throw new Error(`Workflow item ${targetId} is missing from local state.`);
@@ -618,8 +631,13 @@ async function refreshQueuedWorkflowItems(entry) {
       updateItem(state, item.id, generatedPatch),
       item.id,
       generatedPatch,
+      {
+        requireRemoteStage: 'generating',
+        requireRemoteGenerationRequestedAt: item.generationRequestedAt,
+      },
     );
-    changed = true;
+    const saved = state.items.find((candidate) => candidate.id === item.id);
+    changed ||= saved?.stage === 'sheet' && saved.run?.runId === matched.runId;
   }
   return { state, changed };
 }
@@ -646,6 +664,8 @@ async function workflowMutationRoute({ req, instanceId }, mutate) {
   try {
     body = await readJsonBody(req);
   } catch (error) {
+    const state = await forceLiveState(instanceId);
+    await entry.pushState?.(state);
     return {
       status: error?.code === 'body-too-large' ? 413 : 400,
       json: {

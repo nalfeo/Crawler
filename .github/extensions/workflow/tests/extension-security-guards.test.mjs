@@ -92,9 +92,30 @@ test('authoring mutations reuse token, origin, and JSON guards without a queue-c
 test('Azure polling pushes an iframe update only when a queued generation completes', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /let changed = false/);
-  assert.match(source, /changed = true/);
+  assert.match(
+    source,
+    /changed \|\|= saved\?\.stage === 'sheet' && saved\.run\?\.runId === matched\.runId/,
+  );
   assert.match(source, /\.then\(\(\{ changed \}\) => \(changed \? forceLiveState/);
   assert.match(source, /\.then\(\(state\) => \(state \? entry\.pushState\(state\) : null\)\)/);
+});
+
+test('Azure polling drops a completed run when the remote item was rewound or regenerated', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const saveStart = source.indexOf('async function saveWorkflowItem(');
+  const refreshStart = source.indexOf('async function refreshQueuedWorkflowItems(');
+  const mutationStart = source.indexOf('function workflowMutationAllowed(', refreshStart);
+  assert.ok(saveStart >= 0 && refreshStart > saveStart && mutationStart > refreshStart);
+  const save = source.slice(saveStart, refreshStart);
+  const refresh = source.slice(refreshStart, mutationStart);
+
+  assert.match(save, /options\.requireRemoteStage/);
+  assert.match(save, /remoteItem\?\.stage !== options\.requireRemoteStage/);
+  assert.match(save, /options\.requireRemoteGenerationRequestedAt/);
+  assert.match(
+    refresh,
+    /requireRemoteStage: 'generating',\s*requireRemoteGenerationRequestedAt: item\.generationRequestedAt/,
+  );
 });
 
 test('transient authoring phases recover to their prior retryable phase with an error', () => {
@@ -107,6 +128,18 @@ test('transient authoring phases recover to their prior retryable phase with an 
   assert.match(source, /stage: 'postprocessed',\s*lastError: error\?\.message/);
   assert.match(source, /path: '\/api\/workflow\/metadata'/);
   assert.match(source, /stage: priorStage,\s*lastError: error\?\.message/);
+});
+
+test('workflow mutation failures push the recovered item state to the iframe', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf('async function workflowMutationRoute(');
+  const end = source.indexOf('async function buildState(', start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(
+    route,
+    /catch \(error\) \{\s*const state = await forceLiveState\(instanceId\);\s*await entry\.pushState\?\.\(state\);/,
+  );
 });
 
 test('authoring approval delegates to the canonical assets/queue contract', () => {
