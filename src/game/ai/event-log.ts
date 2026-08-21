@@ -7,6 +7,44 @@
  * kill cadence) so a human — or a different model acting as a judge — can spot
  * dumb AI behavior without scrolling thousands of raw lines.
  *
+ * ## The "stuck" / "wiggle" / "idle" / "excluded" definitions (issue #3198)
+ *
+ * Four mutually-exclusive-per-sample buckets, in priority order:
+ *
+ * 1. **excluded** — the player is deliberately, legitimately stationary:
+ *    inside a safe room (`sample.inSafe`), actively shopping/interacting with
+ *    an NPC (`sample.state === 'INTERACT'`), or riding out a dwell-watchdog's
+ *    own deliberate suppression window (`sample.state ===
+ *    'suppressedProgressNav'` — the watchdog is *already* recovering from a
+ *    stuck episode; counting its recovery window as more "stuck" time would
+ *    double-count the same defect). Excluded time never counts against the
+ *    "stuck or wiggle" budget.
+ * 2. **wiggle** — moving a *lot* (`pathTravel >= movingTravelFt` this sample
+ *    window) but making little net progress (`netDisp / pathTravel <
+ *    wiggleEfficiency`): thrashing/oscillating in place.
+ * 3. **idle** — barely moving at all this sample window
+ *    (`pathTravel < idleTravelFt`), and not excluded.
+ * 4. **stuck** — the headline metric the issue asks to be driven under 1%:
+ *    a *sustained* failure to travel farther than a small anchor radius
+ *    (see {@link SummaryThresholds.stuckAnchorRadiusFt}) from where the
+ *    window began, measured directly from sampled net position (NOT from the
+ *    runtime BT's per-frame `stuckFrames` counter, which is a much weaker
+ *    signal: at ordinary Floor 2 movement speeds a single frame's
+ *    displacement is already below that counter's per-frame epsilon, so it
+ *    reads "stuck" during completely normal forward travel — see the
+ *    2026-08-21 floor2-wiggle-stuck-repair handoff). A window opens on the
+ *    first non-excluded wiggle-or-idle sample and keeps accumulating while
+ *    the player stays within the anchor radius, but none of that time lands
+ *    in `stuckMs` until the window's total duration reaches
+ *    {@link SummaryThresholds.stuckSustainedMs} ("more than a couple
+ *    seconds", per the issue) — a brief combat-positioning pause is normal
+ *    play, not a defect. Once a window crosses the threshold it commits in
+ *    full (including its grace period) and keeps counting until the player
+ *    escapes the radius or hits an excluded sample. `stuckMs` is the single
+ *    number to compare against the issue's <1% target; `wiggleMs` / `idleMs`
+ *    remain as sub-breakdowns for diagnosis (which flavor of "stuck"
+ *    dominates).
+ *
  * Pure module: no `fs`, no Phaser. Safe to import from labs and tests.
  */
 import { AIState, type AIDecision, type AIDecisionDebug, type AIStateValue } from './types.js';
@@ -104,7 +142,14 @@ export interface SimEvent {
   kills: number;
   /** Player health. */
   health: number;
-  /** Frames the AI has been considered "stuck" (movement below threshold). */
+  /**
+   * Raw per-frame BT `stuckFrames` counter (frames since the player last
+   * moved more than a small epsilon). Retained for low-level diagnostics
+   * only — `summarizeEvents`'s `stuckMs`/`stuckEpisodes` do NOT use this
+   * field (see the module doc comment): at ordinary movement speeds a single
+   * frame's displacement already falls below the runtime epsilon, so this
+   * counter reads "stuck" during completely normal forward travel.
+   */
   stuckFrames: number;
   /** Remaining waypoints in the current A* path. */
   pathLen: number;
@@ -183,12 +228,24 @@ export interface EventSummary {
   /** Total game-time flagged as wiggling (moving a lot, going nowhere) (ms). */
   wiggleMs: number;
   wigglePct: number;
-  /** Total game-time flagged as idle (not moving) (ms). */
+  /** Total game-time flagged as idle (barely moving at all) (ms). */
   idleMs: number;
   idlePct: number;
-  /** Total game-time flagged as stuck (stuckFrames above threshold) (ms). */
+  /**
+   * Total game-time flagged as "stuck" — a sustained failure to travel past
+   * the anchor radius, computed directly from sampled position (see the
+   * module doc comment). This is the single headline metric to compare
+   * against the issue's <1% target; `wiggleMs`/`idleMs` are its sub-breakdown.
+   */
   stuckMs: number;
   stuckPct: number;
+  /**
+   * Game-time excluded from wiggle/idle/stuck accounting because the player
+   * was legitimately, deliberately stationary: inside a safe room, shopping
+   * with an NPC, or riding out a dwell watchdog's own suppression window.
+   */
+  excludedMs: number;
+  excludedPct: number;
   /** Notable wiggle episodes, longest first. */
   wiggleEpisodes: WastedEpisode[];
   /** Notable stuck episodes, longest first. */
@@ -209,8 +266,24 @@ export interface SummaryThresholds {
   wiggleEfficiency: number;
   /** Path travel (ft) below this ⇒ idle (not moving). */
   idleTravelFt: number;
-  /** stuckFrames at/above this ⇒ stuck. */
-  stuckFrames: number;
+  /**
+   * Radius (ft) from a "stuck episode" anchor position the player must
+   * exceed to be considered no longer stuck. Sustained wiggle/idle samples
+   * that never escape this radius accumulate as `stuckMs`. See the module
+   * doc comment for why this replaces a per-frame `stuckFrames` threshold.
+   */
+  stuckAnchorRadiusFt: number;
+  /**
+   * Minimum contiguous duration (ms) a wiggle/idle run must reach — while
+   * staying within `stuckAnchorRadiusFt` — before ANY of it counts toward
+   * `stuckMs`. Per the issue's own definition ("not moving very far for more
+   * than a couple seconds"), a half-second combat-positioning pause is
+   * normal play, not a defect; only a *sustained* failure to progress should
+   * count. A run that reaches this threshold counts in full, including its
+   * initial grace period (it does not "start counting" only from the
+   * threshold onward — the whole sustained window was stuck).
+   */
+  stuckSustainedMs: number;
   /** Minimum episode duration (ms) to report. */
   minEpisodeMs: number;
   /** Max number of episodes to report per category. */
@@ -221,7 +294,8 @@ export const DEFAULT_SUMMARY_THRESHOLDS: SummaryThresholds = {
   movingTravelFt: 1.5,
   wiggleEfficiency: 0.35,
   idleTravelFt: 0.1875,
-  stuckFrames: 45,
+  stuckAnchorRadiusFt: 12,
+  stuckSustainedMs: 2000,
   minEpisodeMs: 800,
   maxEpisodes: 12,
 };
@@ -254,12 +328,27 @@ export function summarizeEvents(
   let wiggleMs = 0;
   let idleMs = 0;
   let stuckMs = 0;
+  let excludedMs = 0;
   let totalPathTravel = 0;
   let totalNetDisp = 0;
 
   const wiggleEpisodes: WastedEpisode[] = [];
   const stuckEpisodes: WastedEpisode[] = [];
   let wiggleOpen: WastedEpisode | null = null;
+  // Pending/committed stuck window state. A window opens on the first
+  // non-excluded wiggle/idle sample and stays open while the player stays
+  // within `stuckAnchorRadiusFt` of the anchor. It only becomes "committed"
+  // (added to `stuckMs`, tracked in `stuckOpen`) once its accumulated
+  // duration reaches `stuckSustainedMs` — see the doc comment on that field.
+  let stuckWindowStartMs = 0;
+  let stuckWindowAccumMs = 0;
+  let stuckWindowCommitted = false;
+  let stuckAnchorX = 0;
+  let stuckAnchorY = 0;
+  let stuckWindowState = '';
+  let stuckWindowReason = '';
+  let stuckWindowPx = 0;
+  let stuckWindowPy = 0;
   let stuckOpen: WastedEpisode | null = null;
 
   const closeEpisode = (open: WastedEpisode | null, sink: WastedEpisode[]): null => {
@@ -267,6 +356,15 @@ export function summarizeEvents(
       sink.push(open);
     }
     return null;
+  };
+
+  /** Close (and possibly commit) the current stuck window, if any. */
+  const closeStuckWindow = (): void => {
+    if (stuckWindowCommitted) {
+      stuckOpen = closeEpisode(stuckOpen, stuckEpisodes);
+    }
+    stuckWindowAccumMs = 0;
+    stuckWindowCommitted = false;
   };
 
   for (let i = 0; i < samples.length; i += 1) {
@@ -281,15 +379,23 @@ export function summarizeEvents(
     stateMs[sample.state] = (stateMs[sample.state] ?? 0) + dt;
     reasonMs[sample.reason] = (reasonMs[sample.reason] ?? 0) + dt;
 
+    // Deliberately, legitimately stationary — never counts as wasted time.
+    // See the module doc comment for why each of these is excluded.
+    const isExcluded =
+      sample.inSafe === true ||
+      sample.state === 'INTERACT' ||
+      sample.state === 'suppressedProgressNav';
+
     const moving = sample.pathTravel >= thresholds.movingTravelFt;
     const efficiency = sample.pathTravel > 0 ? sample.netDisp / sample.pathTravel : 1;
-    const isWiggle = moving && efficiency < thresholds.wiggleEfficiency;
-    const isIdle = sample.pathTravel < thresholds.idleTravelFt;
-    const isStuck = sample.stuckFrames >= thresholds.stuckFrames;
+    const isWiggle = !isExcluded && moving && efficiency < thresholds.wiggleEfficiency;
+    const isIdle = !isExcluded && sample.pathTravel < thresholds.idleTravelFt;
 
+    if (isExcluded) {
+      excludedMs += dt;
+    }
     if (isWiggle) wiggleMs += dt;
     if (isIdle) idleMs += dt;
-    if (isStuck) stuckMs += dt;
 
     // Episode tracking (wiggle)
     if (isWiggle) {
@@ -311,28 +417,64 @@ export function summarizeEvents(
       wiggleOpen = closeEpisode(wiggleOpen, wiggleEpisodes);
     }
 
-    // Episode tracking (stuck)
-    if (isStuck) {
-      if (!stuckOpen) {
+    // "Stuck" is a SUSTAINED failure to travel past the anchor radius,
+    // measured directly from sampled position — not from the wiggle/idle
+    // per-sample flags alone (a sample can be "wiggle" or "idle" in
+    // isolation yet still be part of genuine, if slow, forward progress; a
+    // half-second combat-positioning pause is normal play, not a defect). A
+    // window opens on the first non-excluded wiggle/idle sample, anchors to
+    // that position, and accumulates for as long as the player stays within
+    // the anchor radius — but that time only lands in `stuckMs` once the
+    // window's total duration reaches `stuckSustainedMs` ("a couple
+    // seconds", per the issue). Escaping the radius, or hitting an excluded
+    // sample, closes the window; if it never reached the sustained
+    // threshold, none of its time counted at all.
+    const candidateStuck = !isExcluded && (isWiggle || isIdle);
+    if (candidateStuck) {
+      const withinAnchor =
+        stuckWindowAccumMs > 0 &&
+        Math.hypot(sample.px - stuckAnchorX, sample.py - stuckAnchorY) <=
+          thresholds.stuckAnchorRadiusFt;
+      if (stuckWindowAccumMs === 0 || !withinAnchor) {
+        // Fresh window: either nothing was open, or the player escaped the
+        // previous anchor radius (genuine progress) and may now be starting
+        // a new stuck window right where they landed.
+        closeStuckWindow();
+        stuckWindowStartMs = sample.gameMs;
+        stuckAnchorX = sample.px;
+        stuckAnchorY = sample.py;
+        stuckWindowState = sample.state;
+        stuckWindowReason = sample.reason;
+        stuckWindowPx = Math.round(sample.px);
+        stuckWindowPy = Math.round(sample.py);
+      }
+      stuckWindowAccumMs += dt;
+      if (!stuckWindowCommitted && stuckWindowAccumMs >= thresholds.stuckSustainedMs) {
+        // Just crossed the sustained threshold: commit the ENTIRE
+        // accumulated window (including its initial grace period), not
+        // just time from this point onward.
+        stuckWindowCommitted = true;
+        stuckMs += stuckWindowAccumMs;
         stuckOpen = {
-          startMs: sample.gameMs,
+          startMs: stuckWindowStartMs,
           endMs: sample.gameMs + dt,
-          durationMs: dt,
-          state: sample.state,
-          reason: sample.reason,
-          px: Math.round(sample.px),
-          py: Math.round(sample.py),
+          durationMs: stuckWindowAccumMs,
+          state: stuckWindowState,
+          reason: stuckWindowReason,
+          px: stuckWindowPx,
+          py: stuckWindowPy,
         };
-      } else {
-        stuckOpen.endMs = sample.gameMs + dt;
-        stuckOpen.durationMs = stuckOpen.endMs - stuckOpen.startMs;
+      } else if (stuckWindowCommitted) {
+        stuckMs += dt;
+        stuckOpen!.endMs = sample.gameMs + dt;
+        stuckOpen!.durationMs = stuckOpen!.endMs - stuckOpen!.startMs;
       }
     } else {
-      stuckOpen = closeEpisode(stuckOpen, stuckEpisodes);
+      closeStuckWindow();
     }
   }
   closeEpisode(wiggleOpen, wiggleEpisodes);
-  closeEpisode(stuckOpen, stuckEpisodes);
+  closeStuckWindow();
 
   const firstMs = samples[0]?.gameMs ?? 0;
   const lastMs = samples[samples.length - 1]?.gameMs ?? firstMs;
@@ -381,6 +523,8 @@ export function summarizeEvents(
     idlePct: pct(idleMs),
     stuckMs: Math.round(stuckMs),
     stuckPct: pct(stuckMs),
+    excludedMs: Math.round(excludedMs),
+    excludedPct: pct(excludedMs),
     wiggleEpisodes: wiggleEpisodes.slice(0, thresholds.maxEpisodes),
     stuckEpisodes: stuckEpisodes.slice(0, thresholds.maxEpisodes),
     totalPathTravel: Math.round(totalPathTravel),

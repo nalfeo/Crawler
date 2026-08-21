@@ -86,7 +86,12 @@ import {
   SAFE_LOOT_ENEMY_CLEARANCE_FT,
   LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
-import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import {
+  BiomeType,
+  TilePresets,
+  type MapConfig,
+  type TerritoryZone,
+} from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 import {
   FamilyMembership,
@@ -1929,6 +1934,76 @@ describe('BehaviorTreeAI', () => {
     ).findFloor2QuestProgressTarget(world, player, playerPos.x, playerPos.y, quest!, true);
 
     expect(target?.eid).toBe(familyEnemy);
+  });
+
+  it('does not flip Floor 2 hunt territory membership every frame when parked on the zone boundary (2026-08-21 wiggle fix)', () => {
+    // Regression: seed 42 Floor 2 — `isWorldPositionInFloor2TerritoryZone` is a
+    // plain tile-radius circle check with no hysteresis. A player parked
+    // essentially on the boundary flipped `playerInTerritory` true/false every
+    // single poll, which flipped the ENGAGE-vs-patrol decision every frame —
+    // an unrecoverable ping-pong that manifested as a 36s wiggle episode.
+    // `resolveFloor2HuntTerritoryMembership` fixes this with a Schmitt
+    // trigger: once latched inside/outside, membership only flips after
+    // crossing `FLOOR2_TERRITORY_HYSTERESIS_TILES` tiles past the plain
+    // radius, not right at it.
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    spawnPlayer(world, 0, 0);
+    world.floorMap = makeOpenRoom(60, 40);
+    const zone: TerritoryZone = { familyIndex: 0, centerX: 20, centerY: 20, radius: 10 };
+    const familyId = asFamilyId('imps');
+
+    const ai = new BehaviorTreeAI({ seed: 42 }) as unknown as {
+      resolveFloor2HuntTerritoryMembership(
+        world: GameWorld,
+        familyId: string,
+        zone: TerritoryZone,
+        playerX: number,
+        playerY: number,
+      ): boolean;
+    };
+
+    // Latch inside first (well within the plain radius).
+    const centerPos = world.floorMap.tileToWorld(20, 20);
+    const insideFirst = ai.resolveFloor2HuntTerritoryMembership(
+      world,
+      familyId,
+      zone,
+      centerPos.x,
+      centerPos.y,
+    );
+    expect(insideFirst).toBe(true);
+
+    // Sit exactly on the plain-radius boundary (tile distance == radius) for
+    // several consecutive polls — under the OLD plain-circle check this tile
+    // is right on the dx²+dy² === radius² edge and float/positioning noise
+    // would flip it every frame. With hysteresis, once latched inside the
+    // player must cross radius + HYSTERESIS tiles outward before flipping.
+    const boundaryPos = world.floorMap.tileToWorld(30, 20); // tile dist = 10 = radius
+    const results: boolean[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      results.push(
+        ai.resolveFloor2HuntTerritoryMembership(
+          world,
+          familyId,
+          zone,
+          boundaryPos.x,
+          boundaryPos.y,
+        ),
+      );
+    }
+    expect(results.every((inside) => inside === true)).toBe(true);
+
+    // Now push well past the hysteresis band (radius + HYSTERESIS + several
+    // tiles) — membership must actually flip once genuinely outside.
+    const farOutsidePos = world.floorMap.tileToWorld(40, 20);
+    const outside = ai.resolveFloor2HuntTerritoryMembership(
+      world,
+      familyId,
+      zone,
+      farOutsidePos.x,
+      farOutsidePos.y,
+    );
+    expect(outside).toBe(false);
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {

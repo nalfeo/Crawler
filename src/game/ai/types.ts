@@ -8,6 +8,7 @@ import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
+import type { EventSummary } from './event-log.js';
 
 /**
  * AI behavioral state machine states.
@@ -321,6 +322,28 @@ export interface AIDecisionTelemetryMetrics {
   /** Simulated time classified as suppressed progress navigation. */
   suppressedProgressNavMs: number;
 }
+
+/**
+ * Wasted-motion rollup attached to `RunStats` (see `movementQuality` there).
+ * A pass-through of the fields from `EventSummary` that the win-rate/quality
+ * gates and CLI actually consume — keeps `RunStats` decoupled from the full
+ * episode-list shape (`wiggleEpisodes`/`stuckEpisodes`), which remains
+ * available via the richer `--event-summary` CLI output when needed.
+ */
+export type MovementQualityMetrics = Pick<
+  EventSummary,
+  | 'wiggleMs'
+  | 'wigglePct'
+  | 'idleMs'
+  | 'idlePct'
+  | 'stuckMs'
+  | 'stuckPct'
+  | 'excludedMs'
+  | 'excludedPct'
+  | 'travelEfficiency'
+  | 'totalPathTravel'
+  | 'totalNetDisp'
+>;
 
 /**
  * Spawner Battle-Arena rollup — captured once at the end of a headless run so
@@ -767,6 +790,20 @@ export interface RunStats {
   playerPersona?: PlayerPersona;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
+  /**
+   * Wasted-motion rollup for this run — how much time the AI spent wiggling
+   * (moving a lot, going nowhere), idle (barely moving), or genuinely stuck
+   * (sustained failure to escape a small anchor radius), with safe-room and
+   * vendor-interaction time excluded per the "except when buying stuff or
+   * working in a safe room" carve-out (issue #3198). This is the SAME
+   * `summarizeEvents()` rollup the `--event-log`/`--event-summary` CLI flags
+   * print, but always computed by `runHeadless` — no extra flags required —
+   * so any headless run or gate can read `stuckPct`/`wigglePct` directly.
+   * Optional only because pre-existing test fixtures construct RunStats
+   * manually; `runHeadless` always sets it. See `src/game/ai/event-log.ts`
+   * for the exact stuck/wiggle/idle/excluded definitions.
+   */
+  movementQuality?: MovementQualityMetrics;
   /**
    * Spawner battle-arena rollup captured once at run end. Optional because
    * pre-existing test fixtures for other metrics (e.g. fun-score, ai-scoring)

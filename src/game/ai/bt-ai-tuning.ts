@@ -281,6 +281,21 @@ export const FLOOR2_HUNT_PATROL_ARRIVE_FT = 8;
 export const FLOOR2_HUNT_PATROL_RADIUS_FRACTION = 0.92;
 export const FLOOR2_HUNT_CHASE_RADIUS_FT = 120;
 export const FLOOR2_HUNT_NO_PROGRESS_FRAMES = 600;
+/**
+ * Hysteresis band (tiles) for the "player is inside the family's territory
+ * zone" gate. Without a band, a player parked exactly on the zone's tile
+ * radius boundary flips `playerInTerritory` every single frame: true pulls
+ * the AI toward an in-territory `familyEnemy` (which may sit just outside
+ * the circle, pulling the player back out), false drops back to the
+ * territory patrol target (which pulls the player back in) — an infinite
+ * one-tile ping-pong that reads as a sustained wiggle episode in telemetry
+ * (see the 2026-08-21 floor2-wiggle-stuck-repair handoff). A Schmitt-trigger
+ * band — shrink the "become inside" radius, grow the "stay inside" radius —
+ * requires genuine, sustained movement across the boundary before the
+ * membership flips, so a single boundary-straddling frame can no longer
+ * flip the decision.
+ */
+export const FLOOR2_TERRITORY_HYSTERESIS_TILES = 3;
 // Keep family hunts combat-forward without pinning the AI in ENGAGE for the
 // entire objective: 45 seconds of focused fighting, then 15 seconds of patrol.
 export const FLOOR2_HUNT_ENGAGE_FRAMES = 2700;

@@ -123,6 +123,50 @@ describe('headless runner AI telemetry', () => {
     });
   });
 
+  it('always populates movementQuality on RunStats, without requiring --event-log/--event-summary (issue #3198)', async () => {
+    // `movementQuality` must be computed by every `runHeadless` call — no
+    // opt-in flag required — so any headless run or gate can read
+    // `stuckPct`/`wigglePct` directly. This uses the real `BehaviorTreeAI`
+    // (not the scripted stub above) so the movement is real gameplay, not a
+    // fixed "EXPLORE"/no-op decision the runner can't turn into position
+    // samples.
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      maxFrames: 200,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+      // Deliberately NOT passing recordEvent/eventSampleInterval — this is
+      // exactly the "no extra flags" default headless config path.
+    });
+
+    expect(stats.movementQuality).toBeDefined();
+    const mq = stats.movementQuality!;
+    // Shape: every field from the summarizeEvents() rollup that RunStats
+    // exposes, all finite numbers.
+    for (const key of [
+      'wiggleMs',
+      'wigglePct',
+      'idleMs',
+      'idlePct',
+      'stuckMs',
+      'stuckPct',
+      'excludedMs',
+      'excludedPct',
+      'travelEfficiency',
+      'totalPathTravel',
+      'totalNetDisp',
+    ] as const) {
+      expect(Number.isFinite(mq[key])).toBe(true);
+    }
+    // Percentages must be within [0, 100] and travel efficiency within [0, 1].
+    expect(mq.wigglePct).toBeGreaterThanOrEqual(0);
+    expect(mq.wigglePct).toBeLessThanOrEqual(100);
+    expect(mq.stuckPct).toBeGreaterThanOrEqual(0);
+    expect(mq.stuckPct).toBeLessThanOrEqual(100);
+    expect(mq.travelEfficiency).toBeGreaterThanOrEqual(0);
+    expect(mq.travelEfficiency).toBeLessThanOrEqual(1);
+  });
+
   it('supports jumping to an arbitrary player level at run start', async () => {
     const provider = new ScriptedDecisionProvider();
     const stats = await runHeadless(provider, {

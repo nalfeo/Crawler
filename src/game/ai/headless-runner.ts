@@ -48,7 +48,12 @@ import {
   finalizeHeadlessRunData,
   recordRewardEvent,
 } from './headless-run-data.js';
-import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
+import {
+  AI_STATE_NAME,
+  getDecisionEventState,
+  summarizeEvents,
+  type SimEvent,
+} from './event-log.js';
 import {
   createDenBossTransitionTracker,
   denBossSnapshotPayload,
@@ -860,6 +865,30 @@ export async function runHeadless(
     };
   };
 
+  // Wasted-motion telemetry (issue #3198): periodic `sample` SimEvents are
+  // always buffered here — regardless of whether an external `recordEvent`
+  // callback is wired via `--event-log` — so `movementQuality` on `RunStats`
+  // is populated for every headless run, not just CLI invocations that pass
+  // the extra flag. Mirrors the `buildAiTelemetry`/`decisionStateCounts`
+  // pattern above.
+  const movementSamples: SimEvent[] = [];
+  const buildMovementQuality = (): NonNullable<RunStats['movementQuality']> => {
+    const summary = summarizeEvents(movementSamples);
+    return {
+      wiggleMs: summary.wiggleMs,
+      wigglePct: summary.wigglePct,
+      idleMs: summary.idleMs,
+      idlePct: summary.idlePct,
+      stuckMs: summary.stuckMs,
+      stuckPct: summary.stuckPct,
+      excludedMs: summary.excludedMs,
+      excludedPct: summary.excludedPct,
+      travelEfficiency: summary.travelEfficiency,
+      totalPathTravel: summary.totalPathTravel,
+      totalNetDisp: summary.totalNetDisp,
+    };
+  };
+
   const collectSkillMetrics = (): SkillRunMetrics => {
     const grants = world.milestoneGrantLog.map((g) => ({ ...g }));
     const uniqueAbilityCount = new Set(grants.map((g) => g.abilityId)).size;
@@ -1378,20 +1407,23 @@ export async function runHeadless(
         break;
       }
 
-      // Telemetry: state-change annotations + periodic samples.
+      // Telemetry: state-change annotations (only when an external event
+      // stream is wired) + periodic samples (always, for movementQuality).
       if (recordEvent) {
         const decisionState = getDecisionEventState(aiProvider.getDecision());
         if (decisionState !== lastLoggedState) {
           recordEvent(buildEvent('state', enemyEids, `state -> ${decisionState}`));
           lastLoggedState = decisionState;
         }
-        if (frameCount % sampleInterval === 0) {
-          recordEvent(buildEvent('sample', enemyEids));
-          // Reset per-sample movement window.
-          pathTravelAccum = 0;
-          lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
-          lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
-        }
+      }
+      if (frameCount % sampleInterval === 0) {
+        const sampleEvent = buildEvent('sample', enemyEids);
+        movementSamples.push(sampleEvent);
+        recordEvent?.(sampleEvent);
+        // Reset per-sample movement window.
+        pathTravelAccum = 0;
+        lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
+        lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
       }
 
       // Check for victory (Floor 10+ or Floor 1 completion)
@@ -1575,6 +1607,7 @@ export async function runHeadless(
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
+      movementQuality: buildMovementQuality(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
       equipmentPlayability: collectEquipmentPlayabilityMetrics(
         world,
@@ -1681,6 +1714,7 @@ export async function runHeadless(
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
+    movementQuality: buildMovementQuality(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
     equipmentPlayability: collectEquipmentPlayabilityMetrics(
       world,
