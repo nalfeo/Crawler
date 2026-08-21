@@ -249,6 +249,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   const rerender = (): void => {
     if (!state) {
       overlay.setVisible(false);
+      backdrop.removeAllListeners('pointerdown').disableInteractive();
       clearEntries();
       clearTextNodes();
       return;
@@ -256,6 +257,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
     clearEntries();
     clearTextNodes();
+    backdrop.removeAllListeners('pointerdown');
 
     // Refresh responsive scale before laying out (handles resize/rotation).
     uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
@@ -263,6 +265,21 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     overlay.setScale(uiScale);
 
     layoutPanel();
+    if (state.allowCancel) {
+      backdrop.setInteractive();
+      backdrop.on('pointerdown', () => {
+        if (!state) {
+          return;
+        }
+        const next = cancelModalPickerSelection(state);
+        if (next.status === 'cancelled') {
+          hooks?.onCancel?.({ source: 'pointer' });
+          close();
+        }
+      });
+    } else {
+      backdrop.disableInteractive();
+    }
     const panelX = panel.x;
     const panelY = panel.y;
     let cursorY = panelY + PANEL_PADDING;
@@ -371,7 +388,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
-        ? 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
+        ? 'Tap to select  ·  Tap outside: Cancel  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
         : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
       FOOTER_STYLE,
     );

@@ -55,6 +55,25 @@ describe('MainGameScene UI exclusivity', () => {
     });
   });
 
+  it('dismisses the issue picker by tapping its backdrop', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation running before touch report dismissal',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+      label: 'issue picker opened before touch dismissal',
+    });
+
+    // This point is inside the game canvas but outside the centered picker.
+    await page.mouse.click(200, 120);
+    await waitForState(page, (s) => !s.modalOpen && !s.simulationPaused, {
+      label: 'touch backdrop dismissal restored running simulation',
+    });
+  });
+
   it('keeps achievements closed when abilities and achievements are queued in the same frame', async () => {
     await bootPlayingSafeScene();
 
