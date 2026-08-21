@@ -765,21 +765,6 @@ export async function intakeUnblockedDependents({
   return results;
 }
 
-/**
- * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
- * OPEN. Exported (and used as a marker via `instanceof`) so callers like
- * `intakeUnblockedDependents` can distinguish this benign race — the issue
- * closed between eligibility/blocked_by checks and the assignment mutation —
- * from a genuine API/infra failure, and report it as a skip rather than an
- * error.
- */
-export class IssueNoLongerOpenError extends Error {
-  constructor(issueNumber) {
-    super(`Issue #${issueNumber} is no longer open; skipping intake`);
-    this.name = 'IssueNoLongerOpenError';
-  }
-}
-
 export async function runIssueIntake({
   graphql,
   paginate,
