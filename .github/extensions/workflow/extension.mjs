@@ -1804,7 +1804,12 @@ const jsonRoutes = [
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
         await hydrateWorkflow(entry, { force: true });
-        const added = addRequest(entry.workflow.state, body);
+        let added;
+        try {
+          added = addRequest(entry.workflow.state, body);
+        } catch (error) {
+          throw new CanvasError('bad-request', error?.message ?? String(error));
+        }
         await saveWorkflowItem(entry, added.state, added.item.id, null, {
           select: true,
           create: true,

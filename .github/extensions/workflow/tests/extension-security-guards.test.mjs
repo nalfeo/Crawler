@@ -89,6 +89,19 @@ test('authoring mutations reuse token, origin, and JSON guards without a queue-c
   assert.doesNotMatch(source, /workflow\/worker\/start/);
 });
 
+test('invalid Author request input returns the established bad-request error type', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf("path: '/api/workflow/request'");
+  const end = source.indexOf("path: '/api/workflow/select'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /added = addRequest\(entry\.workflow\.state, body\)/);
+  assert.match(
+    route,
+    /catch \(error\) \{\s*throw new CanvasError\('bad-request', error\?\.message \?\? String\(error\)\);/,
+  );
+});
+
 test('Azure polling pushes an iframe update only when a queued generation completes', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /let changed = false/);
