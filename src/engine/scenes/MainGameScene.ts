@@ -369,7 +369,7 @@ export interface MainGameSceneOptions {
     recorderStats?: ReturnType<SessionRecorder['getStats']>,
   ) => unknown;
   /** Receives the completed run artifact before reload or scene restart. */
-  onRunBundle?: (bundle: RunBundle) => void;
+  onRunBundle?: (bundle: RunBundle) => Promise<unknown> | void;
   /**
    * Per-floor lighting overrides, merged over {@link DEFAULT_LIGHTING_CONFIG}
    * when the scene is created. The shipped game passes the floor manifest's
@@ -540,6 +540,7 @@ export class MainGameScene extends Phaser.Scene {
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
   private lastRunBundle?: RunBundle;
+  private lastRunBundleUpload?: Promise<unknown>;
   private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
   private runSurveyShown = false;
   private runSurveySubmitted = false;
@@ -921,6 +922,7 @@ export class MainGameScene extends Phaser.Scene {
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
     this.lastRunBundle = undefined;
+    this.lastRunBundleUpload = undefined;
     this.runSurveyShown = false;
     this.runSurveySubmitted = false;
 
@@ -4185,14 +4187,18 @@ export class MainGameScene extends Phaser.Scene {
         if (!validSurvey || !this.lastRunBundle) {
           return false;
         }
-        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
-          (error: unknown) => {
-            if (typeof console !== 'undefined') {
-              console.warn('Run survey submission failed', error);
-            }
-            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
-          },
-        );
+        const bundle = this.lastRunBundle;
+        await this.lastRunBundleUpload?.catch((error: unknown) => {
+          if (typeof console !== 'undefined') {
+            console.warn('Run completion upload failed before survey append', error);
+          }
+        });
+        const result = await submitRunSurvey(bundle, validSurvey).catch((error: unknown) => {
+          if (typeof console !== 'undefined') {
+            console.warn('Run survey submission failed', error);
+          }
+          return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+        });
         if (result.ok) {
           this.runSurveySubmitted = true;
         }
@@ -4200,12 +4206,6 @@ export class MainGameScene extends Phaser.Scene {
       },
       onSkip: () => {
         this.runSurveySubmitted = true;
-        // No survey was submitted: emitRunBundle deliberately deferred the
-        // single upload for this run until skip/submit resolved (see
-        // emitRunBundle), so perform that one silent upload now.
-        if (this.lastRunBundle) {
-          this.options.onRunBundle?.(this.lastRunBundle);
-        }
       },
     });
     this.runSurveyUI.show();
@@ -4250,14 +4250,7 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runBundleEmitted = true;
     this.lastRunBundle = bundle;
-    if (endReason === 'death' || endReason === 'victory') {
-      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
-      // here too would resend this run under an unrelated stored ID once the
-      // survey is submitted, creating a duplicate; instead defer the single
-      // upload for this run to whichever of skip/submit resolves the survey.
-      return;
-    }
-    this.options.onRunBundle?.(bundle);
+    this.lastRunBundleUpload = Promise.resolve(this.options.onRunBundle?.(bundle));
   }
 
   private createIssueRunBundle(): RunBundle | null {

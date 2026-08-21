@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createRunBundle } from '../../src/shared/run-bundle.js';
 import { createLogCursor, readLogsSince } from '../../src/shared/logger.js';
+import { validatePlaytestSurvey } from '../../src/shared/playtest-survey.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { RunEndReason } from '../../src/shared/run-bundle.js';
 
@@ -37,6 +38,25 @@ const emitRunBundle = new Function(
   )}};`,
 )(createRunBundle, readLogsSince) as (this: unknown, endReason: RunEndReason) => void;
 
+const showRunSurveyIfNeeded = new Function(
+  'createRunSurveyUI',
+  'validatePlaytestSurvey',
+  'submitRunSurvey',
+  `return function showRunSurveyIfNeeded(endReason) {${extractMethodBody(
+    source,
+    "private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void",
+  )
+    .replace(/\(error: unknown\)/g, '(error)')
+    .replace(/'fetch' as const/g, "'fetch'")}};`,
+) as (
+  createRunSurveyUI: (options: unknown) => { show: () => void },
+  validatePlaytestSurvey: typeof import('../../src/shared/playtest-survey.js').validatePlaytestSurvey,
+  submitRunSurvey: (
+    bundle: unknown,
+    survey: unknown,
+  ) => Promise<{ ok: boolean; used: 'fetch'; status?: number }>,
+) => (this: unknown, endReason: 'death' | 'victory') => void;
+
 function makeSceneFixture() {
   const world = createTestWorld({ seed: 7 });
   const runStatsFactory = vi.fn().mockReturnValue({ outcome: 'quit' });
@@ -69,6 +89,8 @@ function makeSceneFixture() {
 
 describe('MainGameScene terminal run bundle emission', () => {
   it.each([
+    ['death', 'death'],
+    ['victory', 'victory'],
     ['timeout', 'timeout'],
     ['quit', 'quit'],
   ] as const)(
@@ -85,42 +107,69 @@ describe('MainGameScene terminal run bundle emission', () => {
         controller: 'MANUAL',
       });
       expect(onRunBundle.mock.calls[0]?.[0]?.meta?.endReason).toBe(endReason);
+      expect(
+        (scene as unknown as { lastRunBundleUpload?: Promise<unknown> }).lastRunBundleUpload,
+      ).toBeInstanceOf(Promise);
 
       emitRunBundle.call(scene, 'quit');
       expect(onRunBundle).toHaveBeenCalledTimes(1);
     },
   );
 
-  it.each([
-    ['death', 'death'],
-    ['victory', 'victory'],
-  ] as const)(
-    'maps %s to runStats outcome %s but defers onRunBundle to the survey skip/submit path',
-    (endReason, expectedOutcome) => {
-      const { scene, runStatsFactory, onRunBundle, world } = makeSceneFixture();
-      emitRunBundle.call(scene, endReason);
-      // A survey opportunity may follow death/victory: emitRunBundle must not
-      // upload immediately, otherwise a later survey submission would resend
-      // the run under an unrelated stored ID (see PR #2952 review).
-      expect(onRunBundle).not.toHaveBeenCalled();
-      expect(runStatsFactory).toHaveBeenCalledWith(world, 0, expectedOutcome, 0, {
-        totalEvents: 0,
-        totalSamples: 0,
-        totalKills: 0,
-        durationMs: 0,
-        controller: 'MANUAL',
-      });
-      expect(
-        (scene as unknown as { lastRunBundle?: { meta?: { endReason?: string } } }).lastRunBundle
-          ?.meta?.endReason,
-      ).toBe(endReason);
+  it('waits for the completion upload before appending survey feedback', async () => {
+    let submitSurvey: ((survey: unknown) => Promise<boolean>) | undefined;
+    let skipSurvey: (() => void) | undefined;
+    const createRunSurveyUI = vi.fn((options: unknown) => {
+      const surveyOptions = options as { onSubmit: typeof submitSurvey; onSkip: () => void };
+      submitSurvey = surveyOptions.onSubmit;
+      skipSurvey = surveyOptions.onSkip;
+      return { show: vi.fn() };
+    });
+    const submitRunSurvey = vi.fn(async () => ({ ok: true, used: 'fetch' as const, status: 201 }));
+    let resolveUpload: (() => void) | undefined;
+    const scene = {
+      runSurveyShown: false,
+      runSurveySubmitted: false,
+      lastRunBundle: createRunBundle({
+        runStats: { outcome: 'victory' },
+        meta: { endReason: 'victory', runId: 'survey-run-id' },
+      }),
+      lastRunBundleUpload: new Promise<void>((resolve) => {
+        resolveUpload = resolve;
+      }),
+      options: { onRunBundle: vi.fn() },
+    };
 
-      // Mirrors what showRunSurveyIfNeeded's onSkip does: the deferred bundle
-      // is still uploadable exactly once via the same onRunBundle sink.
-      onRunBundle((scene as unknown as { lastRunBundle: unknown }).lastRunBundle);
-      expect(onRunBundle).toHaveBeenCalledTimes(1);
-    },
-  );
+    showRunSurveyIfNeeded(createRunSurveyUI, validatePlaytestSurvey, submitRunSurvey).call(
+      scene,
+      'victory',
+    );
+
+    expect(submitSurvey).toBeDefined();
+    expect(skipSurvey).toBeDefined();
+    const submitPromise = submitSurvey?.({
+      enjoyment: 5,
+      immersion: 4,
+      mastery: 3,
+      control: 5,
+      tension: 2,
+    });
+    await Promise.resolve();
+    expect(submitRunSurvey).not.toHaveBeenCalled();
+
+    resolveUpload?.();
+    await expect(submitPromise).resolves.toBe(true);
+    expect(submitRunSurvey).toHaveBeenCalledWith(scene.lastRunBundle, {
+      enjoyment: 5,
+      immersion: 4,
+      mastery: 3,
+      control: 5,
+      tension: 2,
+    });
+
+    skipSurvey?.();
+    expect(scene.options.onRunBundle).not.toHaveBeenCalled();
+  });
 
   it('emits terminal bundle before scene restart on floor transition', () => {
     expect(source).toMatch(

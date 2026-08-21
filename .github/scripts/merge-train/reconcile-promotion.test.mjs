@@ -1050,6 +1050,7 @@ test('createMergeBottomOfStackPr submits an async merge and returns the merge SH
   const put = calls.find((c) => c.path.endsWith('/merge-async') && c.options.method === 'PUT');
   assert.equal(put.options.body.sha, HEAD1);
   assert.equal(put.options.body.merge_method, 'squash');
+  assert.equal(put.options.body.merge_action, 'direct_merge');
 });
 
 test('createMergeBottomOfStackPr polls the async result when the submit returns pending', async () => {
