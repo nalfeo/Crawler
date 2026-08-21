@@ -1,21 +1,20 @@
 apiVersion: goobers.dev/v1alpha1
 kind: Goober
 metadata:
-  name: coder
+  name: producer
 spec:
-  gaggle: crawler
-  role: implementer
-  displayName: Crawler Implementer
+  gaggle: princess-posse
+  role: producer
+  displayName: Crawler Producer
   instructions: instructions.md
   harness: copilot
   model: auto
   harnessOptions: {}
   capabilities:
-    - repo:push
     - agent:model
+    - repo:read
   skills:
-    - implement
-    - run-tests
+    - producer
   tools:
     - shell
   scaleFactor: 1

@@ -28,7 +28,7 @@ instance through guided source setup. Validate the source before materializing:
 Q:\src\Goobers\bin\goobers.exe validate --source-tree .goobers
 ```
 
-The source gaggle key is `crawler`. Before materializing it, archive or remove
+The source gaggle key is `princess-posse`. Before materializing it, archive or remove
 the external instance's legacy `example` gaggle runtime state so the new source
 has no stale claims or journals to inherit.
 

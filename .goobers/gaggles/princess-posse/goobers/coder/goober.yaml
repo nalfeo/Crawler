@@ -1,19 +1,21 @@
 apiVersion: goobers.dev/v1alpha1
 kind: Goober
 metadata:
-  name: reviewer
+  name: coder
 spec:
-  gaggle: crawler
-  role: reviewer
-  displayName: Crawler Reviewer
+  gaggle: princess-posse
+  role: implementer
+  displayName: Crawler Implementer
   instructions: instructions.md
   harness: copilot
   model: auto
   harnessOptions: {}
   capabilities:
+    - repo:push
     - agent:model
   skills:
-    - reviewer
+    - implement
+    - run-tests
   tools:
     - shell
   scaleFactor: 1

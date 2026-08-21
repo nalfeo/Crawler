@@ -13,7 +13,8 @@ workflow and made the GitHub issue intake boundary explicit.
   manual-only `crawler-feature-pr` workflow: approved issue, producer,
   implementer, reviewer, deterministic `npm run verify:fast`, ready-for-review
   PR, and issue close-out. It never merges a PR.
-- The source uses `gaggles/crawler` as both its internal and user-facing name.
+- The source uses `gaggles/princess-posse` as its internal key and displays
+  **Princess Posse** to operators.
   Cutover requires explicitly archiving or removing the legacy `example`
   runtime state before materialization, preventing stale claims or journals
   from leaking across the rename.

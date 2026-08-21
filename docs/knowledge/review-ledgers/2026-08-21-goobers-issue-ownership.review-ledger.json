@@ -11,7 +11,7 @@
       "concerns_count": 6,
       "resolved_count": 6,
       "plan_divergence": "minor",
-      "notes": "Adopted all cutover findings: .goobers is declarative source only, not runtime; source uses the Crawler gaggle key and requires explicit archival of legacy example runtime state before materialization; merge the Cloud Copilot guard before labeling issues; document that already-assigned issues must be cleared before Goobers intake; include every referenced Goober instruction and skill file plus locator-only instance example; retain manual-only/no-auto-merge invariants."
+      "notes": "Adopted all cutover findings: .goobers is declarative source only, not runtime; source uses the Princess Posse gaggle key and requires explicit archival of legacy example runtime state before materialization; merge the Cloud Copilot guard before labeling issues; document that already-assigned issues must be cleared before Goobers intake; include every referenced Goober instruction and skill file plus locator-only instance example; retain manual-only/no-auto-merge invariants."
     },
     "code_review": {
       "clean": true,

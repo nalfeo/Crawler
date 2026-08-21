@@ -1,9 +1,9 @@
 apiVersion: goobers.dev/v1alpha1
 kind: Gaggle
 metadata:
-  name: crawler
+  name: princess-posse
 spec:
-  displayName: Crawler
+  displayName: Princess Posse
   project:
     provider: github
     owner: nalfeo
@@ -17,6 +17,6 @@ spec:
       - goobers:approved
     connectionRef: repo-token
   isolation:
-    namespace: gaggle-crawler
-  branchNamespace: 'goobers/crawler/'
+    namespace: gaggle-princess-posse
+  branchNamespace: 'goobers/princess-posse/'
   ciCommand: ['npm', 'run', 'verify:fast']

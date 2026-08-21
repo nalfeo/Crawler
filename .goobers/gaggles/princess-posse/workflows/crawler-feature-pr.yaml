@@ -4,7 +4,7 @@ dslVersion: '2.0'
 metadata:
   name: crawler-feature-pr
 spec:
-  gaggle: crawler
+  gaggle: princess-posse
   displayName: Crawler feature (approved issue to reviewed PR)
   triggers:
     - type: manual
