@@ -17,7 +17,7 @@ import {
 } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
-import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
+import { DEFAULT_BLOOD_COLOR, TeamId } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
