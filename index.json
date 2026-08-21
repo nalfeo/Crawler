@@ -1,5 +1,39 @@
 [
   {
+    "commit": "40379399461d683eb7c5011232b9dfbc6944581e",
+    "commitDate": "2026-08-21T06:22:19Z",
+    "commitSubject": "Fix touch dismissal for submit-issue modal (#3197)",
+    "capturedAt": "2026-08-21T07:39:55.540Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32455465777",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/40379399461d683eb7c5011232b9dfbc6944581e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.91,
+      "gatePass": false,
+      "path": "by-sha/40379399461d683eb7c5011232b9dfbc6944581e.fun-report.json"
+    }
+  },
+  {
     "commit": "4db28a6eac24c390eef3ea2e72fd3f66650bc0ab",
     "commitDate": "2026-08-21T04:48:18Z",
     "commitSubject": "Reduce per-frame HUD arrow layout cost by removing redundant placement rescans (#3196)",
