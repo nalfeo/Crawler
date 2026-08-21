@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "commit": "f4e81fff982fc0e508eef8265322430ead8a8a9f",
+    "commitDate": "2026-08-21T19:21:03Z",
+    "commitSubject": "Fix CI recovery resolution after duplicate reply notes (#3218)",
+    "capturedAt": "2026-08-21T20:27:42.127Z",
+    "runId": "32519008827",
+    "runNumber": 1614,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32519008827",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 393,
+      "death": 16,
+      "timeout": 186,
+      "stalled": 5,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 35.91,
+    "dimensions": {
+      "engagement": 50.03,
+      "challenge_balance": 2.48,
+      "excitement": 27.66,
+      "pacing": 33.01,
+      "competence_growth": 37.28,
+      "choice_depth": 88.08,
+      "run_distinctness": 44.1
+    },
+    "sameness_grade": 55.9,
+    "objective_score": 35.91,
+    "subjective_score": null,
+    "confidence": 0.81,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 35.29,
+      "pass": false,
+      "failing_dimensions": [
+        "engagement",
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 2.48,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 27.66,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 33.01,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.31,
+        "target": 0.14,
+        "status": "healthy",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 44.1,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": 1077.25,
+        "target": 90,
+        "status": "needs_attention",
+        "reason": "Worst active-play gap is 1077.25s; 55.65% of active time is in gaps at or below 90s."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "0/300 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.46,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "171/369 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      },
+      "early_death_rate": {
+        "observed": 0.03,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "Fraction of runs that ended in death on Floor 2 or earlier. Tutorial-phase deaths are un-fun; healthy is <= 10%."
+      }
+    },
+    "persona_scores": {}
+  }
+}

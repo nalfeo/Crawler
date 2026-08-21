@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f4e81fff982fc0e508eef8265322430ead8a8a9f",
+    "commitDate": "2026-08-21T19:21:03Z",
+    "commitSubject": "Fix CI recovery resolution after duplicate reply notes (#3218)",
+    "capturedAt": "2026-08-21T20:27:42.127Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32519008827",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/f4e81fff982fc0e508eef8265322430ead8a8a9f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.91,
+      "gatePass": false,
+      "path": "by-sha/f4e81fff982fc0e508eef8265322430ead8a8a9f.fun-report.json"
+    }
+  },
+  {
     "commit": "f2ae3551e7db8d6c012ce718e06b13edb07eb3c6",
     "commitDate": "2026-08-21T09:30:05Z",
     "commitSubject": "feat(agent): version Crawler Goobers workflow (#3207)",
