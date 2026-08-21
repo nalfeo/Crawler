@@ -415,7 +415,7 @@ test('opening the embedded Post-process Debugger reveals the persistent host, la
   assert.match(html, /window\.__postprocessReadyMetric/);
 });
 
-test('the persistent #postprocess-host sits OUTSIDE #app (a sibling, like the toolbar) so render() never recreates it', () => {
+test('the persistent #postprocess-host sits outside #app and only displays on Runs', () => {
   const html = renderHtml('x');
   const appAt = html.indexOf('id="app"');
   const hostAt = html.indexOf('id="postprocess-host"');
@@ -427,14 +427,12 @@ test('the persistent #postprocess-host sits OUTSIDE #app (a sibling, like the to
   // Starts collapsed/hidden — no eager iframe/network activity on initial paint.
   assert.match(html, /<div id="postprocess-host" hidden>/);
   assert.doesNotMatch(html, /<iframe/); // no iframe in the initial server-rendered shell
-  // render()'s app.replaceChildren body must never reference postprocess-host —
-  // a static guard that a future edit doesn't accidentally fold the host into
-  // the re-rendered #app subtree (which would reset the iframe on every SSE
-  // push/tab switch/refresh).
+  // render() only toggles the sibling's visibility; it must not recreate the
+  // iframe while a Runs operator is editing postprocess settings.
   const renderBody = html.slice(
     html.indexOf('function render(state) {'),
     html.indexOf('var selecting = false;'),
   );
-  assert.doesNotMatch(renderBody, /postprocess-host/);
+  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'runs'/);
   assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

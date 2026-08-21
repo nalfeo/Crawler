@@ -81,6 +81,22 @@ test('normalization keeps queued Azure generation pollable but recovers an inter
   assert.equal(state.items[1].generationStartedAt, null);
 });
 
+test('normalization retries interrupted postprocessing before judging generated candidates', () => {
+  const run = {
+    briefId: 'asset-1',
+    runId: 'run-1',
+    candidates: [{ index: 0, score: 0, outOf: 0, passed: false, combinedPassed: false }],
+  };
+  const state = normalizeQueue({
+    items: [item(1, { stage: 'postprocessing', run }), item(2, { stage: 'judging', run })],
+    selectedId: 'item-1',
+    nextSeq: 3,
+  });
+
+  assert.equal(state.items[0].stage, 'sheet');
+  assert.equal(state.items[1].stage, 'postprocessed');
+});
+
 test('normalization retains canonical requests with a name but no optional brief text', () => {
   const state = normalizeQueue({
     items: [item(1, { name: 'directional-walk', brief: '' })],

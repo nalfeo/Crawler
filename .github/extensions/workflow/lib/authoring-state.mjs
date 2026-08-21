@@ -155,6 +155,7 @@ export function recoverInterruptedItem(item) {
         ? item
         : { ...item, stage: 'candidates', generationStartedAt: null };
     case 'postprocessing':
+      return { ...item, stage: 'sheet' };
     case 'judging':
       return {
         ...item,

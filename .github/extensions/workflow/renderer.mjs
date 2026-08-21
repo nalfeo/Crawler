@@ -1706,6 +1706,8 @@ const CLIENT_SCRIPT = String.raw`
       document.activeElement.closest('[role="dialog"]')
     );
     lastState = state;
+    // The debugger's iframe survives tab changes, but is only exposed from Runs.
+    if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
     if (state.error) {
