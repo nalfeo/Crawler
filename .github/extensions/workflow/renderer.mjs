@@ -1498,6 +1498,14 @@ const CLIENT_SCRIPT = String.raw`
 
   // ---- Author tab: durable Azure workflow state machine -------------------
   var workflowMutationInFlight = false;
+  // Unsaved brief YAML, keyed by itemId::yamlPath. A polled state push replaces
+  // #app wholesale, so without this cache an in-progress edit would be silently
+  // reverted to the durable candidate text. Cleared only by a successful save.
+  var yamlDrafts = Object.create(null);
+  function yamlDraftKey(itemId, yamlPath) { return itemId + '::' + yamlPath; }
+  function yamlDraftValue(key, durable) {
+    return Object.prototype.hasOwnProperty.call(yamlDrafts, key) ? yamlDrafts[key] : durable;
+  }
   function workflowPost(path, body, label) {
     // A mutation can enqueue paid Azure work, so ignore duplicate clicks until
     // its response and refreshed workflow state have both settled.
@@ -1512,7 +1520,7 @@ const CLIENT_SCRIPT = String.raw`
       return response.json().then(function (payload) {
         if (!response.ok || (payload && payload.error)) throw new Error((payload && payload.message) || (payload && payload.error) || 'Workflow update failed');
         setBusy(false);
-        return loadState();
+        return Promise.resolve(loadState()).then(function () { return true; }, function () { return true; });
       });
     }).catch(function (error) {
       setBusy(false);
@@ -1520,6 +1528,7 @@ const CLIENT_SCRIPT = String.raw`
         lastState.error = 'Workflow action failed: ' + error.message;
         render(lastState);
       }
+      return false;
     }).finally(function () {
       workflowMutationInFlight = false;
     });
@@ -1613,16 +1622,26 @@ const CLIENT_SCRIPT = String.raw`
             h('div', { class: 'between' }, [h('strong', { text: candidate.id }), h('code', { text: candidate.yamlPath })]),
             h('div', { class: 'muted', text: candidate.description || '' })
           ]);
+          var draftKey = yamlDraftKey(selected.id, candidate.yamlPath);
+          var durableYaml = candidate.yaml || '';
           var yaml = h('textarea', { 'aria-label': 'Editable synthesized YAML' });
-          yaml.value = candidate.yaml || '';
+          yaml.setAttribute('data-yaml-draft-key', draftKey);
+          yaml.value = yamlDraftValue(draftKey, durableYaml);
+          yaml.addEventListener('input', function () {
+            if (yaml.value === durableYaml) delete yamlDrafts[draftKey];
+            else yamlDrafts[draftKey] = yaml.value;
+          });
+          var saveBrief = function (choose, label) {
+            var body = { itemId: selected.id, yamlPath: candidate.yamlPath, yaml: yaml.value };
+            if (choose) body.choose = true;
+            workflowPost('/api/workflow/brief', body, label).then(function (ok) {
+              if (ok) delete yamlDrafts[draftKey];
+            });
+          };
           candidatePanel.appendChild(yaml);
           candidatePanel.appendChild(h('div', { class: 'row' }, [
-            h('button', { text: 'Save YAML', onclick: function () {
-              workflowPost('/api/workflow/brief', { itemId: selected.id, yamlPath: candidate.yamlPath, yaml: yaml.value }, 'Saving brief…');
-            } }),
-            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () {
-              workflowPost('/api/workflow/brief', { itemId: selected.id, yamlPath: candidate.yamlPath, yaml: yaml.value, choose: true }, 'Choosing brief…');
-            } })
+            h('button', { text: 'Save YAML', onclick: function () { saveBrief(false, 'Saving brief…'); } }),
+            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () { saveBrief(true, 'Choosing brief…'); } })
           ]));
           detail.appendChild(candidatePanel);
         });
@@ -1712,6 +1731,12 @@ const CLIENT_SCRIPT = String.raw`
       typeof document.activeElement.closest === 'function' &&
       document.activeElement.closest('[role="dialog"]')
     );
+    // A re-render replaces #app, so remember which brief editor (and caret) was
+    // focused; its unsaved text is already preserved in yamlDrafts.
+    var focused = document.activeElement;
+    var activeYaml = focused && focused.getAttribute && focused.getAttribute('data-yaml-draft-key')
+      ? { key: focused.getAttribute('data-yaml-draft-key'), start: focused.selectionStart, end: focused.selectionEnd }
+      : null;
     lastState = state;
     // The debugger's iframe survives tab changes, but is only exposed from Runs.
     if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
@@ -1723,6 +1748,15 @@ const CLIENT_SCRIPT = String.raw`
     frag.appendChild(renderTabs(state));
     frag.appendChild(h('div', { style: { marginTop: '4px' } }, [renderActiveTab(state)]));
     app.replaceChildren(frag);
+    if (activeYaml) {
+      var editors = app.querySelectorAll('textarea[data-yaml-draft-key]');
+      for (var yi = 0; yi < editors.length; yi++) {
+        if (editors[yi].getAttribute('data-yaml-draft-key') !== activeYaml.key) continue;
+        editors[yi].focus();
+        try { editors[yi].setSelectionRange(activeYaml.start, activeYaml.end); } catch (e) {}
+        break;
+      }
+    }
     var modalEl = renderBriefModal(state);
     if (modalEl) {
       app.appendChild(modalEl);

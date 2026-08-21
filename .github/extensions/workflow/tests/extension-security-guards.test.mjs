@@ -159,6 +159,31 @@ test('transient authoring phases recover to their prior retryable phase with an 
   assert.match(source, /stage: priorStage,\s*lastError: error\?\.message/);
 });
 
+test('a local validation failure returns a caller-fault status instead of a 502 gateway error', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf('async function workflowMutationRoute(');
+  const end = source.indexOf('async function buildState(', start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /status: workflowErrorStatus\(error\)/);
+  assert.doesNotMatch(route, /Number\.isInteger\(error\?\.status\) \? error\.status : 502/);
+  assert.match(source, /import \{ workflowErrorStatus \} from '\.\/lib\/workflow-errors\.mjs'/);
+});
+
+test('interrupted-stage recovery is a load-time view transform that never reaches a write', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const saveStart = source.indexOf('async function saveWorkflowItem(');
+  const refreshStart = source.indexOf('async function refreshQueuedWorkflowItems(');
+  assert.ok(saveStart >= 0 && refreshStart > saveStart);
+  const save = source.slice(saveStart, refreshStart);
+  // The queue that gets merged and PUT back must be the raw remote read: a
+  // recovered copy would rewind items DevTools is actively advancing.
+  assert.match(save, /const remoteState = normalizeQueue\(remote\.state\);/);
+  assert.doesNotMatch(save, /mergeChangedItem\(recoverQueue\(/);
+  assert.doesNotMatch(save, /putWorkflowState\(recoverQueue\(/);
+  assert.match(source, /recoverQueue\(normalizeQueue\(remote\.state\)\)/);
+});
+
 test('workflow mutations preserve their HTTP outcome when the live refresh fails', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf('async function workflowMutationRoute(');

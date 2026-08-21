@@ -25,6 +25,6 @@ Before: the canvas exposed browsing/review and approval only; operators could no
 
 After: the real Workflow canvas serves the Author tab with the complete sidecar-backed lifecycle and a visible `Refresh Azure workflow` control.
 
-## Follow-up
+## Review
 
-The independent-grade command must be run against this bounded handoff commit using `--base HEAD~`: this worktree's local `main` merge-base spans 3,147 unrelated historical files and exceeds the grader packet limit.
+The independent grade was run against this bounded handoff commit with `--base HEAD~` (this worktree's local `main` merge-base spans 3,147 unrelated historical files and exceeds the grader packet limit). Result: **pass**, 0 findings, 5/5 on every criterion (grader `gemini-3.1-pro-preview`). See `docs/knowledge/review-ledgers/2026-08-21-azure-sprite-workflow.review-ledger.json`.

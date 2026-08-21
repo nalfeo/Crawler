@@ -83,6 +83,26 @@ test('Author workflow mutations serialize duplicate clicks until the state refre
   assert.match(html, /\.finally\(function \(\) \{\s*workflowMutationInFlight = false;\s*\}\)/);
 });
 
+test('unsaved brief YAML survives a polled re-render until the save succeeds', () => {
+  const html = renderHtml('x');
+  // A polled state push calls render(), which replaces #app wholesale; without
+  // a draft cache the operator's in-progress YAML edit is silently reverted to
+  // the durable candidate text.
+  assert.match(html, /var yamlDrafts = Object\.create\(null\)/);
+  assert.match(html, /function yamlDraftKey\(itemId, yamlPath\)/);
+  assert.match(html, /yaml\.value = yamlDraftValue\(draftKey, durableYaml\)/);
+  assert.match(html, /yaml\.addEventListener\('input'/);
+  assert.match(html, /if \(yaml\.value === durableYaml\) delete yamlDrafts\[draftKey\];/);
+  // Only a successful save clears the draft; a failed mutation resolves false.
+  assert.match(
+    html,
+    /workflowPost\('\/api\/workflow\/brief', body, label\)\.then\(function \(ok\) \{\s*if \(ok\) delete yamlDrafts\[draftKey\];/,
+  );
+  // The focused editor and caret are restored after the re-render.
+  assert.match(html, /data-yaml-draft-key/);
+  assert.match(html, /setSelectionRange\(activeYaml\.start, activeYaml\.end\)/);
+});
+
 test('the client script wires SSE + run selection', () => {
   const html = renderHtml('x');
   assert.match(html, /new EventSource\('\/events'\)/);

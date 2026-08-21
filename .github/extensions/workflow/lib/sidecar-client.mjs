@@ -616,7 +616,12 @@ export function createSidecarClient(options) {
 
   async function putWorkflowState(state, etag = null) {
     const headers = { 'Content-Type': 'application/json' };
+    // With no ETag the state has never been read as existing, so this write is
+    // a create. `If-None-Match: *` makes that explicit — without it the sidecar
+    // treats a preconditionless PUT as an unconditional overwrite and two
+    // clients creating the first queue would silently clobber each other.
     if (etag) headers['If-Match'] = etag;
+    else headers['If-None-Match'] = '*';
     const response = await fetchImpl(workflowStateUrl(baseUrl), {
       method: 'PUT',
       headers,

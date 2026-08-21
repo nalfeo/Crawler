@@ -8,6 +8,7 @@ import {
   mergeChangedItem,
   metadataDonePatch,
   normalizeQueue,
+  recoverQueue,
   resetDownstreamForBriefChange,
   rewindItem,
   updateItem,
@@ -33,18 +34,20 @@ function item(seq, patch = {}) {
   };
 }
 
-test('normalization recovers interrupted transient stages while preserving durable queue state', () => {
-  const state = normalizeQueue({
-    items: WORKFLOW_STAGES.map((stage, index) =>
-      item(index + 1, {
-        stage,
-        devToolsOnly: stage,
-        ...(stage === 'generating' ? { generationRequestedAt: '2026-08-21T12:00:00.000Z' } : {}),
-      }),
-    ),
-    selectedId: 'item-13',
-    nextSeq: 14,
-  });
+test('load-time recovery returns interrupted transient stages while preserving durable queue state', () => {
+  const state = recoverQueue(
+    normalizeQueue({
+      items: WORKFLOW_STAGES.map((stage, index) =>
+        item(index + 1, {
+          stage,
+          devToolsOnly: stage,
+          ...(stage === 'generating' ? { generationRequestedAt: '2026-08-21T12:00:00.000Z' } : {}),
+        }),
+      ),
+      selectedId: 'item-13',
+      nextSeq: 14,
+    }),
+  );
 
   assert.deepEqual(
     state.items.map((entry) => entry.stage),
@@ -67,34 +70,71 @@ test('normalization recovers interrupted transient stages while preserving durab
   assert.equal(state.items[12].devToolsOnly, 'done');
 });
 
-test('normalization keeps queued Azure generation pollable but recovers an interrupted local request', () => {
-  const state = normalizeQueue({
-    items: [
-      item(1, { stage: 'generating', generationRequestedAt: '2026-08-21T12:00:00.000Z' }),
-      item(2, { stage: 'generating', generationStartedAt: '2026-08-21T12:00:00.000Z' }),
-    ],
-    selectedId: 'item-1',
-    nextSeq: 3,
-  });
+test('recovery keeps queued Azure generation pollable but recovers an interrupted local request', () => {
+  const state = recoverQueue(
+    normalizeQueue({
+      items: [
+        item(1, { stage: 'generating', generationRequestedAt: '2026-08-21T12:00:00.000Z' }),
+        item(2, { stage: 'generating', generationStartedAt: '2026-08-21T12:00:00.000Z' }),
+      ],
+      selectedId: 'item-1',
+      nextSeq: 3,
+    }),
+  );
   assert.equal(state.items[0].stage, 'generating');
   assert.equal(state.items[1].stage, 'candidates');
   assert.equal(state.items[1].generationStartedAt, null);
 });
 
-test('normalization retries interrupted postprocessing before judging generated candidates', () => {
+test('recovery keeps post-processed variants from a re-run instead of forcing another sheet pass', () => {
   const run = {
     briefId: 'asset-1',
     runId: 'run-1',
     candidates: [{ index: 0, score: 0, outOf: 0, passed: false, combinedPassed: false }],
   };
-  const state = normalizeQueue({
-    items: [item(1, { stage: 'postprocessing', run }), item(2, { stage: 'judging', run })],
-    selectedId: 'item-1',
-    nextSeq: 3,
-  });
+  const state = recoverQueue(
+    normalizeQueue({
+      items: [
+        item(1, { stage: 'postprocessing', run }),
+        item(2, { stage: 'judging', run }),
+        item(3, { stage: 'postprocessing', run: { ...run, candidates: [] } }),
+      ],
+      selectedId: 'item-1',
+      nextSeq: 4,
+    }),
+  );
 
-  assert.equal(state.items[0].stage, 'sheet');
+  // Matches src/devtools/sprite-workflow-queue.ts: a re-postprocess retains its
+  // sliced variants; only a first run has nothing but the raw sheet.
+  assert.equal(state.items[0].stage, 'postprocessed');
   assert.equal(state.items[1].stage, 'postprocessed');
+  assert.equal(state.items[2].stage, 'sheet');
+});
+
+test('normalization never rewinds a transient stage, so a merge write cannot persist a recovery', () => {
+  const remote = {
+    items: [
+      item(1, { stage: 'postprocessing', run: { briefId: 'a', runId: 'r', candidates: [] } }),
+      item(2, { stage: 'synthesizing' }),
+      item(3, { stage: 'draft' }),
+    ],
+    selectedId: 'item-3',
+    nextSeq: 4,
+  };
+  const normalized = normalizeQueue(remote);
+  assert.deepEqual(
+    normalized.items.map((entry) => entry.stage),
+    ['postprocessing', 'synthesizing', 'draft'],
+  );
+
+  // A canvas that advances item-3 while DevTools synthesizes item-2 and
+  // post-processes item-1 must write both remote items back untouched.
+  const local = updateItem(recoverQueue(normalized), 'item-3', { stage: 'synthesizing' });
+  const merged = mergeChangedItem(normalized, local, 'item-3', { stage: 'synthesizing' });
+  assert.deepEqual(
+    merged.items.map((entry) => entry.stage),
+    ['postprocessing', 'synthesizing', 'synthesizing'],
+  );
 });
 
 test('normalization retains canonical requests with a name but no optional brief text', () => {

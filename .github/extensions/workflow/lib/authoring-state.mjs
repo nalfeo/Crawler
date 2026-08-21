@@ -155,7 +155,12 @@ export function recoverInterruptedItem(item) {
         ? item
         : { ...item, stage: 'candidates', generationStartedAt: null };
     case 'postprocessing':
-      return { ...item, stage: 'sheet' };
+      // A re-run keeps the already-sliced variants; a first run only has the
+      // raw sheet to fall back to (mirrors DevTools recoverInterruptedItem).
+      return {
+        ...item,
+        stage: item.run?.candidates?.length ? 'postprocessed' : 'sheet',
+      };
     case 'judging':
       return {
         ...item,
@@ -173,9 +178,7 @@ export function recoverInterruptedItem(item) {
 
 export function normalizeQueue(value) {
   if (!value || typeof value !== 'object') return emptyQueue();
-  const items = Array.isArray(value.items)
-    ? value.items.map(normalizeItem).filter(Boolean).map(recoverInterruptedItem)
-    : [];
+  const items = Array.isArray(value.items) ? value.items.map(normalizeItem).filter(Boolean) : [];
   const maxSeq = items.reduce((max, item) => Math.max(max, item.seq), 0);
   return {
     ...value,
@@ -186,6 +189,18 @@ export function normalizeQueue(value) {
         : (items[items.length - 1]?.id ?? null),
     nextSeq: Number.isInteger(value.nextSeq) && value.nextSeq > maxSeq ? value.nextSeq : maxSeq + 1,
   };
+}
+
+/**
+ * Apply interrupted-stage recovery to a normalized queue. This is a LOAD-time
+ * view transform only: recovery guesses that a busy stage belongs to a dead
+ * in-memory request, which is false for an item another writer (DevTools, a
+ * second canvas) is actively advancing right now. Merge writes therefore keep
+ * remote items exactly as read (see `mergeChangedItem`) and only the item this
+ * canvas is mutating can carry a recovered stage.
+ */
+export function recoverQueue(state) {
+  return { ...state, items: state.items.map(recoverInterruptedItem) };
 }
 
 export function createRequestItem(state, input) {

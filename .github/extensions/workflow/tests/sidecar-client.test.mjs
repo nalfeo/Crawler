@@ -155,6 +155,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
     runId: 'run-1',
   });
   assert.equal(calls[1].options.headers['If-Match'], 'before');
+  assert.equal(calls[1].options.headers['If-None-Match'], undefined);
   assert.equal(calls[2].options.method, 'POST');
   assert.match(calls[2].options.body, /rusty-anvil/);
   assert.match(calls[2].options.body, /Eight-direction walk cycle/);
@@ -596,4 +597,21 @@ test('client.fetchSliceMap degrades (ok:false) on a non-2xx error body instead o
   const map = await client.fetchSliceMap('b', 'r', 's.png');
   assert.equal(map.ok, false);
   assert.equal(map.error, 'sheet-not-found');
+});
+
+test('the first workflow-state write is create-only so two clients cannot both create the queue', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return jsonResponse({ ok: true, etag: 'first' });
+    },
+  });
+  // A null ETag means "no state has ever been read as existing". Without a
+  // precondition the sidecar treats that PUT as an unconditional overwrite, so
+  // the loser of a create race would silently clobber the winner's queue.
+  await client.putWorkflowState({ items: [] }, null);
+  assert.equal(calls[0].options.headers['If-None-Match'], '*');
+  assert.equal(calls[0].options.headers['If-Match'], undefined);
 });

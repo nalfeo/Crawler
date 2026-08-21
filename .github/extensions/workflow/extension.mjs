@@ -94,6 +94,7 @@ import { loadRegistryIds } from './lib/registry-ids.mjs';
 import { loadBacklog } from './lib/workflow-model.mjs';
 import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
+import { workflowErrorStatus } from './lib/workflow-errors.mjs';
 import {
   addRequest,
   approvalPatch,
@@ -101,6 +102,7 @@ import {
   mergeChangedItem,
   metadataDonePatch,
   normalizeQueue,
+  recoverQueue,
   resetDownstreamForBriefChange,
   rewindItem,
   selectedItem,
@@ -526,12 +528,20 @@ function composeState(entry, stat, view) {
 async function hydrateWorkflow(entry, { force = false } = {}) {
   if (entry.workflow.loaded && !force) return entry.workflow.state;
   const remote = await entry.client.getWorkflowState();
-  entry.workflow.state = normalizeQueue(remote.state);
-  entry.workflow.etag = remote.etag;
+  // Recovery is a load-time view transform only; it must never reach a write
+  // (see `recoverQueue`), so the merge path below re-reads the raw remote queue.
+  adoptWorkflowState(entry, recoverQueue(normalizeQueue(remote.state)), remote.etag);
+  return entry.workflow.state;
+}
+
+/** Adopt a freshly-read/written queue as this instance's local view. */
+function adoptWorkflowState(entry, state, etag) {
+  entry.workflow.state = state;
+  entry.workflow.etag = etag;
   entry.workflow.loaded = true;
   entry.workflow.lastRefreshAt = new Date().toISOString();
   entry.workflow.error = null;
-  return entry.workflow.state;
+  return state;
 }
 
 /**
@@ -551,12 +561,7 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
       (options.requireRemoteGenerationRequestedAt &&
         remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt)
     ) {
-      entry.workflow.state = remoteState;
-      entry.workflow.etag = remote.etag;
-      entry.workflow.loaded = true;
-      entry.workflow.lastRefreshAt = new Date().toISOString();
-      entry.workflow.error = null;
-      return remoteState;
+      return adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag);
     }
     if (options.create && remoteState.items.some((item) => item.id === targetId)) {
       const created = state.items.find((item) => item.id === targetId);
@@ -574,12 +579,7 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
     const merged = mergeChangedItem(remoteState, state, targetId, changedFields, options);
     try {
       const saved = await entry.client.putWorkflowState(merged, remote.etag);
-      entry.workflow.state = normalizeQueue(merged);
-      entry.workflow.etag = saved.etag;
-      entry.workflow.loaded = true;
-      entry.workflow.lastRefreshAt = new Date().toISOString();
-      entry.workflow.error = null;
-      return entry.workflow.state;
+      return adoptWorkflowState(entry, recoverQueue(normalizeQueue(merged)), saved.etag);
     } catch (error) {
       if (error?.code !== 'etag-conflict' || attempt === 2) throw error;
       // The next iteration fetches again and re-applies only this item's patch.
@@ -696,7 +696,7 @@ async function workflowMutationRoute({ req, instanceId }, mutate) {
   } catch (error) {
     await pushWorkflowMutationState(entry, instanceId, 'recovery');
     return {
-      status: Number.isInteger(error?.status) ? error.status : 502,
+      status: workflowErrorStatus(error),
       json: { error: error?.code ?? 'workflow-failed', message: error?.message ?? String(error) },
     };
   }
