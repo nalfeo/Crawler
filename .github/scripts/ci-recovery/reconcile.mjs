@@ -1331,6 +1331,9 @@ async function drainPendingIssueRestarts() {
       // persisted number (state carries numbers only, by design).
       const issue = (await request(readToken, `/repos/${owner}/${repo}/issues/${issueNumber}`))
         .data;
+      if (!issue?.node_id) {
+        throw new Error(`Issue #${issueNumber} returned no node id for assignment`);
+      }
       await runIssueIntake({
         graphql,
         paginate,
@@ -1338,7 +1341,7 @@ async function drainPendingIssueRestarts() {
         token: pat,
         owner,
         repo,
-        issue: { number: issueNumber, node_id: issue?.node_id },
+        issue: { number: issueNumber, node_id: issue.node_id },
         restart: true,
       });
       process.stdout.write(
