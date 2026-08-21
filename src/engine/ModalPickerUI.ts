@@ -271,13 +271,17 @@ export function createModalPickerUI(scene: Phaser.Scene): {
         if (!state) {
           return;
         }
-        const pointerX = pointer.worldX / uiScale;
-        const pointerY = pointer.worldY / uiScale;
+        const pointerInOverlay = overlay.getLocalPoint(
+          pointer.x,
+          pointer.y,
+          undefined,
+          pointer.camera,
+        );
         const isInsidePanel =
-          pointerX >= panel.x &&
-          pointerX <= panel.x + panel.width &&
-          pointerY >= panel.y &&
-          pointerY <= panel.y + panel.height;
+          pointerInOverlay.x >= panel.x &&
+          pointerInOverlay.x <= panel.x + panel.width &&
+          pointerInOverlay.y >= panel.y &&
+          pointerInOverlay.y <= panel.y + panel.height;
         if (isInsidePanel) {
           return;
         }
