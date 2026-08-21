@@ -13,8 +13,8 @@
  * monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`) for the
  * backlog/plans/briefs/runs READ surface. The durable QUEUE + asset-REQUEST
  * manifest's full read/control surface (synthesize / generate / judge / worker
- * & issues start-stop, and the interactive queue state machine) beyond the
- * atomic accept-and-check-in below remains the documented follow-up slice.
+ * & issues start-stop are deliberately omitted; the interactive queue state
+ * machine delegates only to existing sidecar lifecycle endpoints.
  *
  * Mutating routes: `POST /api/accept` (approve + durable check-in, atomic and
  * idempotent — see `scripts/sprites/sidecar/server.ts`) and `POST /api/feedback`
@@ -94,6 +94,22 @@ import { loadRegistryIds } from './lib/registry-ids.mjs';
 import { loadBacklog } from './lib/workflow-model.mjs';
 import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
+import { workflowErrorStatus } from './lib/workflow-errors.mjs';
+import {
+  addRequest,
+  approvalPatch,
+  emptyQueue,
+  mergeChangedItem,
+  metadataDonePatch,
+  normalizeQueue,
+  recoverQueue,
+  resetDownstreamForBriefChange,
+  rewindItem,
+  selectedItem,
+  selectItem,
+  toQueueRun,
+  updateItem,
+} from './lib/authoring-state.mjs';
 import {
   createRunViewCache,
   resolveCacheFirstState,
@@ -223,7 +239,9 @@ function acceptanceKey(briefId, runId, variantIndex) {
 
 function log(message, level = 'info') {
   try {
-    sessionRef?.log?.(`[workflow] ${message}`, { level });
+    const normalizedLevel = level === 'warn' ? 'warning' : level;
+    const result = sessionRef?.log?.(`[workflow] ${message}`, { level: normalizedLevel });
+    if (result && typeof result.catch === 'function') void result.catch(() => {});
   } catch {
     // logging must never take down a handler
   }
@@ -498,10 +516,192 @@ function composeState(entry, stat, view) {
     briefFeedback: briefFeedbackValue,
     acceptance: Object.fromEntries(entry.acceptance),
     unapproval: Object.fromEntries(entry.unapproval),
+    workflow: entry.workflow?.state ?? emptyQueue(),
+    workflowLastRefreshAt: entry.workflow?.lastRefreshAt ?? null,
+    workflowError: entry.workflow?.error ?? null,
     sidecarStartup: entry.sidecarStartup,
     stale: view.stale === true,
     error: view.error ?? null,
   };
+}
+
+async function hydrateWorkflow(entry, { force = false } = {}) {
+  if (entry.workflow.loaded && !force) return entry.workflow.state;
+  const remote = await entry.client.getWorkflowState();
+  // Recovery is a load-time view transform only; it must never reach a write
+  // (see `recoverQueue`), so the merge path below re-reads the raw remote queue.
+  adoptWorkflowState(entry, recoverQueue(normalizeQueue(remote.state)), remote.etag);
+  return entry.workflow.state;
+}
+
+/** Adopt a freshly-read/written queue as this instance's local view. */
+function adoptWorkflowState(entry, state, etag) {
+  entry.workflow.state = state;
+  entry.workflow.etag = etag;
+  entry.workflow.loaded = true;
+  entry.workflow.lastRefreshAt = new Date().toISOString();
+  entry.workflow.error = null;
+  return state;
+}
+
+/**
+ * Persist just the changed item against the newest Azure blob. This prevents one
+ * canvas instance from dropping unrelated items written by DevTools or another
+ * canvas between its last read and its write.
+ */
+async function saveWorkflowItem(entry, localState, itemId, changedFields = null, options = {}) {
+  let state = localState;
+  let targetId = itemId;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const remote = await entry.client.getWorkflowState();
+    const remoteState = normalizeQueue(remote.state);
+    const remoteItem = remoteState.items.find((item) => item.id === targetId);
+    if (
+      (options.requireRemoteStage && remoteItem?.stage !== options.requireRemoteStage) ||
+      (options.requireRemoteGenerationRequestedAt &&
+        remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt)
+    ) {
+      return adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag);
+    }
+    if (options.create && remoteState.items.some((item) => item.id === targetId)) {
+      const created = state.items.find((item) => item.id === targetId);
+      if (!created) throw new Error(`Workflow item ${targetId} is missing from local state.`);
+      const seq = remoteState.nextSeq;
+      targetId = `item-${seq}`;
+      const reminted = { ...created, id: targetId, seq };
+      state = {
+        ...state,
+        items: state.items.map((item) => (item.id === created.id ? reminted : item)),
+        selectedId: state.selectedId === created.id ? targetId : state.selectedId,
+        nextSeq: Math.max(state.nextSeq, seq + 1),
+      };
+    }
+    const merged = mergeChangedItem(remoteState, state, targetId, changedFields, options);
+    try {
+      const saved = await entry.client.putWorkflowState(merged, remote.etag);
+      return adoptWorkflowState(entry, recoverQueue(normalizeQueue(merged)), saved.etag);
+    } catch (error) {
+      if (error?.code !== 'etag-conflict' || attempt === 2) throw error;
+      // The next iteration fetches again and re-applies only this item's patch.
+    }
+  }
+  throw new Error('Unable to save workflow state.');
+}
+
+async function replaceWorkflowItem(entry, itemId, updater) {
+  await hydrateWorkflow(entry, { force: true });
+  const current = entry.workflow.state;
+  const item = current.items.find((candidate) => candidate.id === itemId);
+  if (!item) throw new CanvasError('item_not_found', 'Workflow item no longer exists.');
+  const replacement = typeof updater === 'function' ? updater(item) : updater;
+  const changedFields = Object.fromEntries(
+    Object.entries(replacement).filter(([key, value]) => !Object.is(value, item[key])),
+  );
+  const next = updateItem(current, itemId, replacement);
+  return saveWorkflowItem(entry, next, itemId, changedFields);
+}
+
+async function refreshQueuedWorkflowItems(entry) {
+  await hydrateWorkflow(entry, { force: true });
+  let state = entry.workflow.state;
+  let changed = false;
+  for (const item of state.items) {
+    if (item.stage !== 'generating' || !item.generationRequestedAt) continue;
+    const chosenCandidate = item.candidates.find(
+      (candidate) => candidate.yamlPath === item.chosenCandidatePath,
+    );
+    // The promoted YAML retains its chosen candidate's name, so polling every
+    // synthesized candidate can attach an unrelated completed run.
+    const briefIds = [
+      ...new Set(
+        chosenCandidate
+          ? [chosenCandidate.id, item.kebabName]
+          : [item.kebabName, ...item.candidates.map((candidate) => candidate.id)],
+      ),
+    ];
+    let matched = null;
+    for (const briefId of briefIds) {
+      matched = await entry.client
+        .latestWorkflowRun(briefId, item.generationRequestedAt)
+        .catch(() => null);
+      if (matched?.briefId && matched?.runId) break;
+    }
+    if (!matched?.briefId || !matched?.runId) continue;
+    const summary = await entry.client.fetchRunSummary(matched.briefId, matched.runId);
+    const generatedPatch = {
+      stage: 'sheet',
+      run: toQueueRun(matched.briefId, matched.runId, normalizeCandidates(summary)),
+      generationRequestedAt: null,
+      generationStartedAt: null,
+      lastError: null,
+    };
+    state = await saveWorkflowItem(
+      entry,
+      updateItem(state, item.id, generatedPatch),
+      item.id,
+      generatedPatch,
+      {
+        requireRemoteStage: 'generating',
+        requireRemoteGenerationRequestedAt: item.generationRequestedAt,
+      },
+    );
+    const saved = state.items.find((candidate) => candidate.id === item.id);
+    changed ||= saved?.stage === 'sheet' && saved.run?.runId === matched.runId;
+  }
+  return { state, changed };
+}
+
+function workflowMutationAllowed(req, entry) {
+  return tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken);
+}
+
+async function pushWorkflowMutationState(entry, instanceId, reason) {
+  try {
+    const state = await forceLiveState(instanceId);
+    await entry.pushState?.(state);
+  } catch (error) {
+    log(`workflow ${reason} state refresh failed: ${error?.message ?? error}`, 'warn');
+  }
+}
+
+async function workflowMutationRoute({ req, instanceId }, mutate) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { status: 404, json: { error: 'instance-not-found' } };
+  if (!isTrustedMutationOrigin(req, entry))
+    return { status: 403, json: { error: 'forbidden-origin' } };
+  if (!workflowMutationAllowed(req, entry)) {
+    return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+  }
+  if (!isJsonContentType(req)) {
+    return {
+      status: 415,
+      json: { error: 'unsupported-media-type', message: 'Content-Type must be application/json.' },
+    };
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    return {
+      status: error?.code === 'body-too-large' ? 413 : 400,
+      json: {
+        error: error?.code === 'body-too-large' ? 'body-too-large' : 'bad-request',
+        message: error?.message ?? String(error),
+      },
+    };
+  }
+  let result;
+  try {
+    result = await mutate(entry, body ?? {});
+  } catch (error) {
+    await pushWorkflowMutationState(entry, instanceId, 'recovery');
+    return {
+      status: workflowErrorStatus(error),
+      json: { error: error?.code ?? 'workflow-failed', message: error?.message ?? String(error) },
+    };
+  }
+  await pushWorkflowMutationState(entry, instanceId, 'completion');
+  return { json: result };
 }
 
 /**
@@ -535,6 +735,15 @@ function composeState(entry, stat, view) {
 async function buildState(instanceId, { explicitSheet = null } = {}) {
   const entry = instances.get(instanceId);
   if (!entry) return { error: 'instance not found' };
+  try {
+    await hydrateWorkflow(entry);
+  } catch (error) {
+    // Keep the existing local queue visible alongside the normal sidecar-degraded
+    // view; mutations still surface the Azure error explicitly instead of falling
+    // back to a local/noop backend.
+    entry.workflow.error = error?.message ?? String(error);
+    log(`workflow state unavailable: ${error?.message ?? error}`, 'warn');
+  }
   const stat = await getStatic(entry);
 
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
@@ -1580,6 +1789,315 @@ const jsonRoutes = [
       return undefined;
     },
   },
+  {
+    method: 'POST',
+    path: '/api/workflow/refresh',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry) => {
+        await refreshQueuedWorkflowItems(entry);
+        return { workflow: entry.workflow.state, refreshedAt: entry.workflow.lastRefreshAt };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/request',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        await hydrateWorkflow(entry, { force: true });
+        let added;
+        try {
+          added = addRequest(entry.workflow.state, body);
+        } catch (error) {
+          throw new CanvasError('bad-request', error?.message ?? String(error));
+        }
+        await saveWorkflowItem(entry, added.state, added.item.id, null, {
+          select: true,
+          create: true,
+        });
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/select',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const next = selectItem(entry.workflow.state, body.itemId);
+        entry.workflow.state = await saveWorkflowItem(entry, next, null, null, { select: true });
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/synthesize',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await replaceWorkflowItem(entry, body.itemId, { stage: 'synthesizing', lastError: null });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        try {
+          const result = await entry.client.synthesizeWorkflow({
+            name: item.name,
+            brief: item.brief,
+            type: item.requestedType === 'auto' ? undefined : item.requestedType,
+            sizeVariant: item.sizeVariant,
+            candidates: body.candidates,
+            floor: body.floor,
+          });
+          const candidates = Array.isArray(result?.written) ? result.written : [];
+          await replaceWorkflowItem(entry, body.itemId, {
+            stage: 'candidates',
+            resolvedType: typeof result?.type === 'string' ? result.type : item.resolvedType,
+            candidates,
+            chosenCandidatePath: candidates[0]?.yamlPath ?? null,
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, body.itemId, {
+            stage: 'draft',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/brief',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (
+          typeof body.itemId !== 'string' ||
+          typeof body.yamlPath !== 'string' ||
+          typeof body.yaml !== 'string'
+        ) {
+          throw new CanvasError('bad-request', 'itemId, yamlPath, and yaml are required.');
+        }
+        const saved = await entry.client.saveWorkflowBrief(body.yamlPath, body.yaml);
+        await replaceWorkflowItem(entry, body.itemId, (item) => ({
+          ...(body.choose === true ||
+          (item.chosenCandidatePath === body.yamlPath && (item.briefPath || item.run))
+            ? resetDownstreamForBriefChange(
+                item,
+                body.choose === true ? body.yamlPath : item.chosenCandidatePath,
+              )
+            : item),
+          candidates: item.candidates.map((candidate) =>
+            candidate.yamlPath === body.yamlPath
+              ? {
+                  ...candidate,
+                  yaml: saved.yaml ?? body.yaml,
+                  description: saved.description ?? candidate.description,
+                }
+              : candidate,
+          ),
+          chosenCandidatePath: body.choose === true ? body.yamlPath : item.chosenCandidatePath,
+          lastError: null,
+        }));
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/generate',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        let item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
+        const selectedPath =
+          typeof body.yamlPath === 'string'
+            ? body.yamlPath
+            : (item.chosenCandidatePath ?? item.candidates[0]?.yamlPath);
+        if (!selectedPath)
+          throw new CanvasError('missing-brief', 'Choose a synthesized brief before generation.');
+        let briefPath = item.briefPath;
+        if (!briefPath) {
+          const promoted = await entry.client.promoteWorkflowBrief(
+            selectedPath,
+            item.resolvedType ?? item.requestedType,
+            item.kebabName,
+          );
+          briefPath = promoted.briefPath;
+        }
+        const result = await entry.client.generateWorkflow(briefPath);
+        const patch = {
+          briefPath,
+          chosenCandidatePath: selectedPath,
+          stage: result.status === 'queued' ? 'generating' : 'sheet',
+          generationRequestedAt: result.requestedAt ?? null,
+          generationStartedAt: result.status === 'queued' ? (result.requestedAt ?? null) : null,
+          run:
+            result.status === 'completed' && result.briefId && result.runId
+              ? toQueueRun(result.briefId, result.runId, normalizeCandidates(result.summary))
+              : item.run,
+          lastError: null,
+        };
+        await replaceWorkflowItem(entry, body.itemId, patch);
+        if (patch.run) {
+          entry.requested = { briefId: patch.run.briefId, runId: patch.run.runId };
+          entry.selected = { briefId: patch.run.briefId, runId: patch.run.runId, sheet: null };
+          entry.selectionVersion += 1;
+        }
+        return {
+          workflow: entry.workflow.state,
+          item: selectedItem(entry.workflow.state),
+          generation: result,
+        };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/postprocess',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item?.run)
+          throw new CanvasError(
+            'missing-run',
+            'A generated sheet is required before post-processing.',
+          );
+        await replaceWorkflowItem(entry, item.id, { stage: 'postprocessing', lastError: null });
+        try {
+          const result = await entry.client.postprocessRun(item.run.briefId, item.run.runId);
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'postprocessed',
+            run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'sheet',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/judge',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item?.run)
+          throw new CanvasError('missing-run', 'A processed sheet is required before judging.');
+        await replaceWorkflowItem(entry, item.id, { stage: 'judging', lastError: null });
+        try {
+          const result = await entry.client.judgeRun(item.run.briefId, item.run.runId);
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'variants',
+            run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'postprocessed',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/approve',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string' || !Number.isInteger(body.variantIndex)) {
+          throw new CanvasError('bad-request', 'itemId and variantIndex are required.');
+        }
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item?.run)
+          throw new CanvasError('missing-run', 'A judged run is required before approval.');
+        const result = await entry.client.approveWorkflowVariant(
+          item.run.briefId,
+          item.run.runId,
+          body.variantIndex,
+        );
+        await replaceWorkflowItem(entry, item.id, approvalPatch(result, body.variantIndex));
+        return {
+          workflow: entry.workflow.state,
+          item: selectedItem(entry.workflow.state),
+          approval: result,
+        };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/rewind',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (
+          typeof body.itemId !== 'string' ||
+          !['brief', 'sheet', 'postprocess'].includes(body.target)
+        ) {
+          throw new CanvasError('bad-request', 'itemId and a valid rewind target are required.');
+        }
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
+        await replaceWorkflowItem(entry, item.id, rewindItem(item, body.target));
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/metadata',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
+        if (!['approved', 'checked-in'].includes(item.stage)) {
+          throw new CanvasError(
+            'invalid-stage',
+            'Approve and queue a variant before generating metadata.',
+          );
+        }
+        const priorStage = item.stage;
+        await replaceWorkflowItem(entry, item.id, { stage: 'tagging', lastError: null });
+        try {
+          const result = await entry.client.generateWorkflowMetadata([item.kebabName]);
+          await replaceWorkflowItem(
+            entry,
+            item.id,
+            metadataDonePatch(result, item.queueDurability),
+          );
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: priorStage,
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
 ];
 
 const binaryRoutes = [
@@ -1619,6 +2137,7 @@ async function startServerForInstance(ctx) {
 
   const input = ctx.input ?? {};
   const entry = {
+    instanceId: ctx.instanceId,
     url: '',
     client,
     baseUrl,
@@ -1629,6 +2148,14 @@ async function startServerForInstance(ctx) {
     },
     selected: null,
     mutationToken: randomBytes(24).toString('hex'),
+    workflow: {
+      state: emptyQueue(),
+      etag: null,
+      loaded: false,
+      lastRefreshAt: null,
+      error: null,
+    },
+    workflowPoll: null,
     acceptance: new Map(),
     unapproval: new Map(),
     selectionVersion: 0,
@@ -1663,6 +2190,13 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early /api/state request degrades cleanly rather than
   // observing a half-initialized entry.
   instances.set(ctx.instanceId, entry);
+  entry.workflowPoll = setInterval(() => {
+    refreshQueuedWorkflowItems(entry)
+      .then(({ changed }) => (changed ? forceLiveState(ctx.instanceId) : null))
+      .then((state) => (state ? entry.pushState(state) : null))
+      .catch((error) => log(`workflow Azure refresh failed: ${error?.message ?? error}`, 'warn'));
+  }, 10_000);
+  entry.workflowPoll.unref?.();
   beginSpriteSidecarStartup(entry, {
     rebindClients: (url) => {
       entry.client = createSidecarClient({ baseUrl: url, workspaceRoot });
@@ -1900,14 +2434,40 @@ const canvas = createCanvas({
     {
       name: 'reload',
       description:
-        'Recompute the fs backlog + re-probe the sidecar, then push fresh state to the iframe.',
+        'Recompute the fs backlog, refresh durable Azure workflow state, and push fresh state to the iframe.',
       inputSchema: { type: 'object', additionalProperties: false, properties: {} },
       handler: async (ctx) => {
         const entry = instances.get(ctx.instanceId);
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+        await refreshQueuedWorkflowItems(entry);
         const state = await forceLiveState(ctx.instanceId);
         await entry.pushState?.(state);
         return { health: state.health, runCount: state.runs?.length ?? 0 };
+      },
+    },
+    {
+      name: 'get_workflow',
+      description:
+        'Read the complete durable Azure workflow queue, including authoring and completed phases.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (ctx) => {
+        const entry = instances.get(ctx.instanceId);
+        if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+        return hydrateWorkflow(entry, { force: true });
+      },
+    },
+    {
+      name: 'refresh_workflow',
+      description:
+        'Immediately refresh externally completed Azure generation work and push the Author tab state.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (ctx) => {
+        const entry = instances.get(ctx.instanceId);
+        if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+        await refreshQueuedWorkflowItems(entry);
+        const state = await forceLiveState(ctx.instanceId);
+        await entry.pushState(state);
+        return { workflow: entry.workflow.state, refreshedAt: entry.workflow.lastRefreshAt };
       },
     },
   ],
@@ -1922,6 +2482,7 @@ const canvas = createCanvas({
   onClose: async (ctx) => {
     const entry = instances.get(ctx.instanceId);
     if (!entry) return;
+    if (entry.workflowPoll) clearInterval(entry.workflowPoll);
     instances.delete(ctx.instanceId);
     try {
       await entry.close();

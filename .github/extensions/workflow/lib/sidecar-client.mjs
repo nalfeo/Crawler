@@ -131,8 +131,44 @@ export function acceptUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/accept`;
 }
 
+export function runApproveUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/approve`;
+}
+
 export function deleteManifestUrl(baseUrl, variantId) {
   return `${baseUrl}/api/manifest/${enc(variantId)}`;
+}
+
+export function workflowStateUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/state`;
+}
+
+export function workflowSynthesizeUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/synthesize`;
+}
+
+export function workflowBriefUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/brief`;
+}
+
+export function workflowPromoteUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/promote-brief`;
+}
+
+export function workflowGenerateUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/generate`;
+}
+
+export function workflowMetadataUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/metadata`;
+}
+
+export function runJudgeUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/judge`;
+}
+
+export function workflowLatestRunUrl(baseUrl, briefId, requestedAt) {
+  return `${baseUrl}/api/workflow/latest-run?briefId=${enc(briefId)}&requestedAt=${enc(requestedAt)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +448,26 @@ async function readJson(response) {
   return response.json();
 }
 
+async function readResponse(response, fallback) {
+  let payload = null;
+  try {
+    payload = await readJson(response);
+  } catch {
+    payload = null;
+  }
+  if (response.ok) return payload;
+  const error = new Error(
+    typeof payload?.message === 'string'
+      ? payload.message
+      : `${fallback} (${response.status} ${response.statusText})`,
+  );
+  error.code = typeof payload?.error === 'string' ? payload.error : `http-${response.status}`;
+  error.status = response.status;
+  error.payload = payload;
+  error.etag = response.headers?.get?.('etag') ?? payload?.etag ?? null;
+  throw error;
+}
+
 function isSidecarStrictReady(payload) {
   if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
     return false;
@@ -507,6 +563,16 @@ export function createSidecarClient(options) {
     return payload;
   }
 
+  async function approveWorkflowVariant(briefId, runId, variantIndex) {
+    const response = await fetchImpl(runApproveUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variantIndex }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to approve sprite variant');
+  }
+
   /**
    * Evict a previously approved variant via `DELETE /api/manifest/:variantId`.
    * Removes the manifest entry, catalog entry, and on-disk PNG. Returns the
@@ -537,6 +603,111 @@ export function createSidecarClient(options) {
       throw error;
     }
     return payload;
+  }
+
+  async function getWorkflowState() {
+    const response = await fetchImpl(workflowStateUrl(baseUrl), { cache: 'no-store' });
+    const payload = await readResponse(response, 'Failed to load workflow state');
+    return {
+      state: payload?.state ?? null,
+      etag: typeof payload?.etag === 'string' ? payload.etag : null,
+    };
+  }
+
+  async function putWorkflowState(state, etag = null) {
+    const headers = { 'Content-Type': 'application/json' };
+    // With no ETag the state has never been read as existing, so this write is
+    // a create. `If-None-Match: *` makes that explicit — without it the sidecar
+    // treats a preconditionless PUT as an unconditional overwrite and two
+    // clients creating the first queue would silently clobber each other.
+    if (etag) headers['If-Match'] = etag;
+    else headers['If-None-Match'] = '*';
+    const response = await fetchImpl(workflowStateUrl(baseUrl), {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ state }),
+      cache: 'no-store',
+    });
+    const payload = await readResponse(response, 'Failed to save workflow state');
+    return { ...payload, etag: typeof payload?.etag === 'string' ? payload.etag : null };
+  }
+
+  async function synthesizeWorkflow(input) {
+    const response = await fetchImpl(workflowSynthesizeUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to synthesize brief');
+  }
+
+  async function saveWorkflowBrief(yamlPath, yaml) {
+    const response = await fetchImpl(workflowBriefUrl(baseUrl), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yamlPath, yaml }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to save brief');
+  }
+
+  async function promoteWorkflowBrief(sourceYamlPath, type, name) {
+    const response = await fetchImpl(workflowPromoteUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceYamlPath, type, name, target: 'draft' }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to promote brief');
+  }
+
+  async function generateWorkflow(briefPath) {
+    const response = await fetchImpl(workflowGenerateUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ briefPath }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to generate sheet');
+  }
+
+  async function generateWorkflowMetadata(ids) {
+    const response = await fetchImpl(workflowMetadataUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, provider: 'auto', minScore: 70 }),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to tag sprite metadata');
+  }
+
+  async function postprocessRun(briefId, runId) {
+    const response = await fetchImpl(runPostprocessUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to postprocess sheet');
+  }
+
+  async function judgeRun(briefId, runId) {
+    const response = await fetchImpl(runJudgeUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to judge variants');
+  }
+
+  async function latestWorkflowRun(briefId, requestedAt) {
+    const response = await fetchImpl(workflowLatestRunUrl(baseUrl, briefId, requestedAt), {
+      cache: 'no-store',
+    });
+    const payload = await readResponse(response, 'Failed to find generated run');
+    return payload?.run ?? null;
   }
 
   /**
@@ -599,7 +770,18 @@ export function createSidecarClient(options) {
     fetchSheets,
     fetchSliceMap,
     acceptVariant,
+    approveWorkflowVariant,
     unapproveVariant,
+    getWorkflowState,
+    putWorkflowState,
+    synthesizeWorkflow,
+    saveWorkflowBrief,
+    promoteWorkflowBrief,
+    generateWorkflow,
+    generateWorkflowMetadata,
+    postprocessRun,
+    judgeRun,
+    latestWorkflowRun,
     probeHealth,
     urls: {
       health: () => healthUrl(baseUrl),
@@ -613,6 +795,13 @@ export function createSidecarClient(options) {
       accept: (b, r) => acceptUrl(baseUrl, b, r),
       deleteManifest: (v) => deleteManifestUrl(baseUrl, v),
       runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
+      runJudge: (b, r) => runJudgeUrl(baseUrl, b, r),
+      workflowState: () => workflowStateUrl(baseUrl),
+      workflowSynthesize: () => workflowSynthesizeUrl(baseUrl),
+      workflowBrief: () => workflowBriefUrl(baseUrl),
+      workflowPromote: () => workflowPromoteUrl(baseUrl),
+      workflowGenerate: () => workflowGenerateUrl(baseUrl),
+      workflowLatestRun: (b, at) => workflowLatestRunUrl(baseUrl, b, at),
     },
   };
 }
