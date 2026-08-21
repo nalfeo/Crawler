@@ -1199,6 +1199,58 @@ test('shouldResolveThread lets a current-head marker supersede an older stale ma
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
 });
 
+test('shouldResolveThread ignores trailing trusted duplicate-reply notes after a valid marker', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'Duplicate reply skipped — already posted above.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects a valid marker followed by an untrusted duplicate-reply note', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Root finding',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc1234: current head contains the fix',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'Duplicate reply skipped — already posted above.',
+          authorAssociation: 'NONE',
+          author: { login: 'random-user' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
 test('shouldResolveThread accepts trusted copilot-swe-agent markers without bot suffix', () => {
   const thread = {
     comments: {
@@ -1247,6 +1299,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   const commitUrl = `https://github.com/nalfeo/Crawler/commit/${commitSha}`;
   const accepted = new Map([
     ['✅ Addressed in abc1234def: note', 'abc1234def'],
+    ['Addressed in abc1234def: note', 'abc1234def'],
     ['✅ Addressed in abc1234def).', 'abc1234def'],
     [`✅ Addressed in <${commitUrl}>`, commitSha],
     [`✅ Addressed in ${commitUrl},`, commitSha],
@@ -1259,6 +1312,7 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   }
 
   const rejected = [
+    'Partially addressed in abc1234def: note',
     '✅ Addressed in not-a-commit-link',
     '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1234',
     '✅ Addressed in `abc1234def: note',
