@@ -130,15 +130,22 @@ test('transient authoring phases recover to their prior retryable phase with an 
   assert.match(source, /stage: priorStage,\s*lastError: error\?\.message/);
 });
 
-test('workflow mutation failures push the recovered item state to the iframe', () => {
+test('workflow mutations preserve their HTTP outcome when the live refresh fails', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf('async function workflowMutationRoute(');
   const end = source.indexOf('async function buildState(', start);
   assert.ok(start >= 0 && end > start);
   const route = source.slice(start, end);
+  assert.match(source, /async function pushWorkflowMutationState\(/);
+  assert.match(source, /workflow \$\{reason\} state refresh failed/);
+  assert.match(route, /result = await mutate\(entry, body \?\? \{\}\)/);
   assert.match(
     route,
-    /catch \(error\) \{\s*const state = await forceLiveState\(instanceId\);\s*await entry\.pushState\?\.\(state\);/,
+    /catch \(error\) \{\s*await pushWorkflowMutationState\(entry, instanceId, 'recovery'\);/,
+  );
+  assert.match(
+    route,
+    /await pushWorkflowMutationState\(entry, instanceId, 'completion'\);\s*return \{ json: result \};/,
   );
 });
 

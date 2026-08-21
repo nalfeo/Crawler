@@ -646,6 +646,15 @@ function workflowMutationAllowed(req, entry) {
   return tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken);
 }
 
+async function pushWorkflowMutationState(entry, instanceId, reason) {
+  try {
+    const state = await forceLiveState(instanceId);
+    await entry.pushState?.(state);
+  } catch (error) {
+    log(`workflow ${reason} state refresh failed: ${error?.message ?? error}`, 'warn');
+  }
+}
+
 async function workflowMutationRoute({ req, instanceId }, mutate) {
   const entry = instances.get(instanceId);
   if (!entry) return { status: 404, json: { error: 'instance-not-found' } };
@@ -664,8 +673,6 @@ async function workflowMutationRoute({ req, instanceId }, mutate) {
   try {
     body = await readJsonBody(req);
   } catch (error) {
-    const state = await forceLiveState(instanceId);
-    await entry.pushState?.(state);
     return {
       status: error?.code === 'body-too-large' ? 413 : 400,
       json: {
@@ -674,17 +681,18 @@ async function workflowMutationRoute({ req, instanceId }, mutate) {
       },
     };
   }
+  let result;
   try {
-    const result = await mutate(entry, body ?? {});
-    const state = await forceLiveState(instanceId);
-    await entry.pushState?.(state);
-    return { json: result };
+    result = await mutate(entry, body ?? {});
   } catch (error) {
+    await pushWorkflowMutationState(entry, instanceId, 'recovery');
     return {
       status: Number.isInteger(error?.status) ? error.status : 502,
       json: { error: error?.code ?? 'workflow-failed', message: error?.message ?? String(error) },
     };
   }
+  await pushWorkflowMutationState(entry, instanceId, 'completion');
+  return { json: result };
 }
 
 /**
