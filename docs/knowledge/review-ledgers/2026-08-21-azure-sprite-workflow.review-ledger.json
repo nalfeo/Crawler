@@ -3,7 +3,9 @@
   "date": "2026-08-21",
   "session_slug": "azure-sprite-workflow",
   "task_title": "Complete Azure Sprite Generation Workflow canvas",
-  "estimated_apples": 4,
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "The implementation is tooling-only: a thin canvas adapter over existing sidecar lifecycle contracts, which is capped at 3 apples by AGENTS.md.",
   "stages": {
     "plan_review": {
       "completed": true,

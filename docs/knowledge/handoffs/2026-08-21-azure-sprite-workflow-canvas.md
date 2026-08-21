@@ -4,7 +4,7 @@
 
 ## Apples
 
-Estimated: 4🍎 — actual: 4🍎. Extended the existing Workflow canvas as a thin operator adapter over the canonical sidecar authoring lifecycle.
+Estimated: 4🍎 — rescored: 3🍎 — actual: 3🍎. This tooling-only canvas is a thin operator adapter over the canonical sidecar authoring lifecycle, within the repository's 3-apple tooling cap.
 
 ## Summary
 

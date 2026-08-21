@@ -145,6 +145,7 @@ export function normalizeQueue(value) {
   const items = Array.isArray(value.items) ? value.items.map(normalizeItem).filter(Boolean) : [];
   const maxSeq = items.reduce((max, item) => Math.max(max, item.seq), 0);
   return {
+    ...value,
     items,
     selectedId:
       typeof value.selectedId === 'string' && items.some((item) => item.id === value.selectedId)
@@ -317,6 +318,7 @@ export function mergeChangedItem(
   if (index >= 0) items[index] = { ...items[index], ...(changedFields ?? changed) };
   else items.push(changed);
   return {
+    ...remote,
     items,
     selectedId: select ? local.selectedId : remote.selectedId,
     nextSeq: Math.max(remote.nextSeq, local.nextSeq),

@@ -118,3 +118,15 @@ test('new request merge durably selects the newly created item when requested', 
   const merged = mergeChangedItem(remote, added.state, added.item.id, null, { select: true });
   assert.equal(merged.selectedId, 'item-2');
 });
+
+test('queue normalization and writes retain unknown top-level DevTools metadata', () => {
+  const remote = {
+    items: [item(1)],
+    selectedId: 'item-1',
+    nextSeq: 2,
+    devToolsQueueMetadata: { recoveryVersion: 7 },
+  };
+  const normalized = normalizeQueue(remote);
+  const merged = mergeChangedItem(remote, normalized, 'item-1', { stage: 'sheet' });
+  assert.deepEqual(merged.devToolsQueueMetadata, { recoveryVersion: 7 });
+});

@@ -538,9 +538,24 @@ async function hydrateWorkflow(entry, { force = false } = {}) {
  */
 async function saveWorkflowItem(entry, localState, itemId, changedFields = null, options = {}) {
   let state = localState;
+  let targetId = itemId;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const remote = await entry.client.getWorkflowState();
-    const merged = mergeChangedItem(remote.state, state, itemId, changedFields, options);
+    const remoteState = normalizeQueue(remote.state);
+    if (options.create && remoteState.items.some((item) => item.id === targetId)) {
+      const created = state.items.find((item) => item.id === targetId);
+      if (!created) throw new Error(`Workflow item ${targetId} is missing from local state.`);
+      const seq = remoteState.nextSeq;
+      targetId = `item-${seq}`;
+      const reminted = { ...created, id: targetId, seq };
+      state = {
+        ...state,
+        items: state.items.map((item) => (item.id === created.id ? reminted : item)),
+        selectedId: state.selectedId === created.id ? targetId : state.selectedId,
+        nextSeq: Math.max(state.nextSeq, seq + 1),
+      };
+    }
+    const merged = mergeChangedItem(remoteState, state, targetId, changedFields, options);
     try {
       const saved = await entry.client.putWorkflowState(merged, remote.etag);
       entry.workflow.state = normalizeQueue(merged);
@@ -1752,7 +1767,10 @@ const jsonRoutes = [
       workflowMutationRoute(context, async (entry, body) => {
         await hydrateWorkflow(entry, { force: true });
         const added = addRequest(entry.workflow.state, body);
-        await saveWorkflowItem(entry, added.state, added.item.id, null, { select: true });
+        await saveWorkflowItem(entry, added.state, added.item.id, null, {
+          select: true,
+          create: true,
+        });
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },
@@ -1778,22 +1796,30 @@ const jsonRoutes = [
           throw new CanvasError('bad-request', 'itemId is required.');
         await replaceWorkflowItem(entry, body.itemId, { stage: 'synthesizing', lastError: null });
         const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
-        const result = await entry.client.synthesizeWorkflow({
-          name: item.name,
-          brief: item.brief,
-          type: item.requestedType === 'auto' ? undefined : item.requestedType,
-          sizeVariant: item.sizeVariant,
-          candidates: body.candidates,
-          floor: body.floor,
-        });
-        const candidates = Array.isArray(result?.written) ? result.written : [];
-        await replaceWorkflowItem(entry, body.itemId, {
-          stage: 'candidates',
-          resolvedType: typeof result?.type === 'string' ? result.type : item.resolvedType,
-          candidates,
-          chosenCandidatePath: candidates[0]?.yamlPath ?? null,
-          lastError: null,
-        });
+        try {
+          const result = await entry.client.synthesizeWorkflow({
+            name: item.name,
+            brief: item.brief,
+            type: item.requestedType === 'auto' ? undefined : item.requestedType,
+            sizeVariant: item.sizeVariant,
+            candidates: body.candidates,
+            floor: body.floor,
+          });
+          const candidates = Array.isArray(result?.written) ? result.written : [];
+          await replaceWorkflowItem(entry, body.itemId, {
+            stage: 'candidates',
+            resolvedType: typeof result?.type === 'string' ? result.type : item.resolvedType,
+            candidates,
+            chosenCandidatePath: candidates[0]?.yamlPath ?? null,
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, body.itemId, {
+            stage: 'draft',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },
@@ -1892,14 +1918,23 @@ const jsonRoutes = [
             'A generated sheet is required before post-processing.',
           );
         await replaceWorkflowItem(entry, item.id, { stage: 'postprocessing', lastError: null });
-        const result = await entry.client.postprocessRun(item.run.briefId, item.run.runId);
-        const summary =
-          result?.summary ?? (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
-        await replaceWorkflowItem(entry, item.id, {
-          stage: 'postprocessed',
-          run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
-          lastError: null,
-        });
+        try {
+          const result = await entry.client.postprocessRun(item.run.briefId, item.run.runId);
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'postprocessed',
+            run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'sheet',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },
@@ -1915,14 +1950,23 @@ const jsonRoutes = [
         if (!item?.run)
           throw new CanvasError('missing-run', 'A processed sheet is required before judging.');
         await replaceWorkflowItem(entry, item.id, { stage: 'judging', lastError: null });
-        const result = await entry.client.judgeRun(item.run.briefId, item.run.runId);
-        const summary =
-          result?.summary ?? (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
-        await replaceWorkflowItem(entry, item.id, {
-          stage: 'variants',
-          run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
-          lastError: null,
-        });
+        try {
+          const result = await entry.client.judgeRun(item.run.briefId, item.run.runId);
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(item.run.briefId, item.run.runId));
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'variants',
+            run: toQueueRun(item.run.briefId, item.run.runId, normalizeCandidates(summary)),
+            lastError: null,
+          });
+        } catch (error) {
+          await replaceWorkflowItem(entry, item.id, {
+            stage: 'postprocessed',
+            lastError: error?.message ?? String(error),
+          });
+          throw error;
+        }
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },

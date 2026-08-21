@@ -96,6 +96,16 @@ test('Azure polling pushes an iframe update only when a queued generation comple
   assert.match(source, /\.then\(\(state\) => \(state \? entry\.pushState\(state\) : null\)\)/);
 });
 
+test('transient authoring phases recover to their prior retryable phase with an error', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /path: '\/api\/workflow\/synthesize'/);
+  assert.match(source, /stage: 'draft',\s*lastError: error\?\.message/);
+  assert.match(source, /path: '\/api\/workflow\/postprocess'/);
+  assert.match(source, /stage: 'sheet',\s*lastError: error\?\.message/);
+  assert.match(source, /path: '\/api\/workflow\/judge'/);
+  assert.match(source, /stage: 'postprocessed',\s*lastError: error\?\.message/);
+});
+
 test('feedback and plan/brief content routes import the shared (not duplicated) helpers', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /from '\.\.\/shared\/sprite-feedback-store\.mjs'/);
