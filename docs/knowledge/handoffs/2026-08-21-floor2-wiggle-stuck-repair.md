@@ -217,6 +217,22 @@ is exactly what task 1 asked for. **Follow-up recommended**: use the new always-
 telemetry to sweep more Floor 2 seeds and find the remaining stuck sources; this was
 out of scope for the single-bug repair this issue's clue pointed to.
 
+**Distribution-wide smoke sweep** (`npm run ai:winrate-sweep -- --floor floor2 --seeds
+1-10 --weapons sword --skip-events`, this HEAD): 3/10 (30.0%) win rate, 7 seeds hit the
+1200s per-run timeout. This repo has no pre-existing recorded Floor 2 win-rate baseline
+to diff against (unlike Floor 1's documented 90%+ target — rule #12 is explicitly
+Floor-1-scoped), and an in-session attempt to A/B this specific sweep against
+`FLOOR2_TERRITORY_HYSTERESIS_TILES = 0` did not complete in the time available for this
+session (each 10-seed batch takes 5-10+ minutes on this box). This number is therefore
+**directional evidence only, not proof the territory-hysteresis change is neutral** —
+it cannot rule out either "Floor 2 has always had a low win rate independent of this
+change" or "the wider 3-tile engagement latch measurably hurt completion." Per
+AGENTS.md rule #15, resolving this for real requires a GitHub Actions
+`workflow_dispatch` sweep (broad sweeps default to CI, not local/session compute); that
+dispatch is a required follow-up before this specific tuning change should be
+considered validated at scale, and is out of scope to complete within this recovery
+session.
+
 The Floor 1 seed-42 number (11.2% stuck) is a **pre-existing** behavior, newly visible
 because `movementQuality` is now always computed — not a regression introduced here
 (the territory-hysteresis fix is Floor2-only code). Its stuck episodes cluster near the

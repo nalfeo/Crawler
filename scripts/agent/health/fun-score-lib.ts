@@ -448,10 +448,15 @@ function pacingForRun(run: RunStats): number {
   // fun" signal and must move pacing. `movementQuality` is optional (older
   // recordings / synthetic fixtures may not have it), so treat a missing
   // value as neutral (no penalty, no bonus) rather than skewing the score.
-  // Target is 0% combined stuck+wiggle time (the issue's own <1% goal);
-  // scores fall to 0 once combined waste reaches 10%.
+  // `stuckPct` and `wigglePct` are NOT mutually exclusive per-sample buckets
+  // (a sustained stuck window opens on any non-excluded sample regardless of
+  // that sample's own wiggle/idle classification — see event-log.ts's module
+  // doc), so summing them would double-count overlapping time. Take the max
+  // instead: whichever "wasted motion" signal is worse drives the score.
+  // Target is 0% wasted motion (the issue's own <1% goal); scores fall to 0
+  // once the worse of the two reaches 10%.
   const movementScore = run.movementQuality
-    ? bandScore(run.movementQuality.stuckPct + run.movementQuality.wigglePct, 0, 10)
+    ? bandScore(Math.max(run.movementQuality.stuckPct, run.movementQuality.wigglePct), 0, 10)
     : 100;
   const base =
     bandScore(firstQuestSec, 120, 120) * 0.45 +
