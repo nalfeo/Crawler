@@ -246,10 +246,22 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
   };
 
+  // Scene shutdown can tear down `backdrop.scene` before this module's own
+  // `shutdown`/`destroy` handlers run `close()` → `rerender()`. Phaser's
+  // `disableInteractive()` unconditionally dereferences `this.scene.sys`, so
+  // it throws once the backdrop is scene-less mid-teardown; skip the input
+  // call in that case since there's no input plugin left to detach from.
+  const disableBackdropInteractive = (): void => {
+    backdrop.removeAllListeners('pointerdown');
+    if (backdrop.scene) {
+      backdrop.disableInteractive();
+    }
+  };
+
   const rerender = (): void => {
     if (!state) {
       overlay.setVisible(false);
-      backdrop.removeAllListeners('pointerdown').disableInteractive();
+      disableBackdropInteractive();
       clearEntries();
       clearTextNodes();
       return;
@@ -292,7 +304,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
         }
       });
     } else {
-      backdrop.disableInteractive();
+      disableBackdropInteractive();
     }
     const panelX = panel.x;
     const panelY = panel.y;
