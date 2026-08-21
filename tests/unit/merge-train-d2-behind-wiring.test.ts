@@ -68,7 +68,7 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     // 403 must be dequeued (removeLabel) so it does not poison every reconcile cycle
     expect(catchBlock).toContain('err.status === 403');
     expect(catchBlock).toContain('removeLabel');
-    expect(catchBlock).toContain('dequeuedFork = true');
+    expect(catchBlock).toContain('yieldFifoLine = true');
     // 422 ("already up-to-date" / stale expected_head_sha) is expected and benign.
     expect(catchBlock).toContain('err.status === 422');
     expect(catchBlock).toContain('non-fatal:');

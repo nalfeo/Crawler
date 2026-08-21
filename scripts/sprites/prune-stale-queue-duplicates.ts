@@ -30,9 +30,12 @@
  *   tsx scripts/sprites/prune-stale-queue-duplicates.ts --dry-run \
  *     --queue-generated-dir <path-to-queue-checkout>/public/assets/generated \
  *     --main-generated-dir <path-to-main-checkout>/public/assets/generated
- *   tsx scripts/sprites/prune-stale-queue-duplicates.ts --apply ... (same flags)
+ *   tsx scripts/sprites/prune-stale-queue-duplicates.ts --apply ... (same flags) \
+ *     --source-sha <exact-queue-tip> --removal-manifest <reviewed-json-file>
  */
-import { existsSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -51,8 +54,155 @@ export interface PruneResult {
   readonly renamesApplied: number;
 }
 
+/**
+ * Destructive maintenance is deliberately two-party: the planned deletion and a
+ * checked, source-bound manifest.  This file is not a queue publisher itself,
+ * but making the CLI reject an unmanifested prune prevents a later `git add &&
+ * push` from turning a broad local cleanup into an unreviewable queue rewrite.
+ */
+interface RemovalManifest {
+  readonly version: 1;
+  readonly sourceSha: string;
+  readonly normalization: 'bare-concept-v1';
+  readonly removals: readonly {
+    readonly key: string;
+    readonly duplicateOf: string;
+    readonly contentHash: string;
+  }[];
+}
+
 function assetAbsPath(generatedDir: string, assetPath: string): string {
   return path.join(generatedDir, path.basename(assetPath));
+}
+
+function fileSha256(file: string): string {
+  return createHash('sha256').update(readFileSync(file)).digest('hex');
+}
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function assertSourceCheckoutState(queueGeneratedDir: string, sourceSha: string): void {
+  let repoRoot: string;
+  try {
+    repoRoot = git(queueGeneratedDir, 'rev-parse', '--show-toplevel');
+  } catch (error) {
+    throw new Error(
+      `Cannot resolve git checkout for --queue-generated-dir ${queueGeneratedDir}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+  const generatedRel = path
+    .relative(repoRoot, path.resolve(queueGeneratedDir))
+    .split(path.sep)
+    .join('/');
+  if (generatedRel !== 'public/assets/generated') {
+    throw new Error(
+      `--queue-generated-dir must point to <checkout>/public/assets/generated (got ${generatedRel || '.'}).`,
+    );
+  }
+  const head = git(repoRoot, 'rev-parse', 'HEAD');
+  if (head !== sourceSha) {
+    throw new Error(
+      `Refusing destructive prune: checkout HEAD ${head} does not match --source-sha ${sourceSha}.`,
+    );
+  }
+  const generatedStatus = git(
+    repoRoot,
+    'status',
+    '--porcelain',
+    '--untracked-files=all',
+    '--',
+    'public/assets/generated',
+  );
+  if (generatedStatus !== '') {
+    throw new Error(
+      'Refusing destructive prune: queue generated surface is not clean for the bound source SHA.',
+    );
+  }
+}
+
+function assertRemovalManifest(
+  manifestPath: string,
+  queueGeneratedDir: string,
+  mainGeneratedDir: string,
+  expectedSourceSha: string,
+  queueEntries: Record<string, Record<string, unknown>>,
+  mainEntries: Record<string, Record<string, unknown>>,
+  duplicatesPruned: readonly string[],
+): void {
+  let manifest: RemovalManifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as RemovalManifest;
+  } catch (error) {
+    throw new Error(
+      `Cannot read removal manifest ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  if (
+    manifest.version !== 1 ||
+    manifest.sourceSha !== expectedSourceSha ||
+    manifest.normalization !== 'bare-concept-v1' ||
+    !Array.isArray(manifest.removals)
+  ) {
+    throw new Error(
+      `Removal manifest must be version 1, bound to source SHA ${expectedSourceSha}, and use normalization bare-concept-v1.`,
+    );
+  }
+  const byKey = new Map(manifest.removals.map((removal) => [removal.key, removal]));
+  if (byKey.size !== manifest.removals.length || byKey.size !== duplicatesPruned.length) {
+    throw new Error(
+      'Removal manifest must contain exactly one entry for every planned PNG/shard pair.',
+    );
+  }
+  for (const key of duplicatesPruned) {
+    const removal = byKey.get(key);
+    const queued = queueEntries[key];
+    const duplicate = removal ? mainEntries[removal.duplicateOf] : undefined;
+    if (removal === undefined || queued === undefined || duplicate === undefined) {
+      throw new Error(
+        `Removal manifest cannot prove ${key} is a same-content duplicate under ${manifest.normalization}. Regenerate the dry-run manifest and do not publish this prune.`,
+      );
+    }
+    const queuedAssetPath = typeof queued?.assetPath === 'string' ? queued.assetPath : undefined;
+    const duplicateAssetPath =
+      typeof duplicate?.assetPath === 'string' ? duplicate.assetPath : undefined;
+    const queuedPng = queuedAssetPath
+      ? assetAbsPath(queueGeneratedDir, queuedAssetPath)
+      : undefined;
+    const duplicatePng = duplicateAssetPath
+      ? assetAbsPath(mainGeneratedDir, duplicateAssetPath)
+      : undefined;
+    const queuedPngHash = queuedPng && existsSync(queuedPng) ? fileSha256(queuedPng) : undefined;
+    const duplicatePngHash =
+      duplicatePng && existsSync(duplicatePng) ? fileSha256(duplicatePng) : undefined;
+    if (queuedPngHash === undefined || duplicatePngHash === undefined) {
+      throw new Error(
+        `Removal manifest requires existing queue/main PNGs for ${key}; regenerate the dry-run manifest and retry.`,
+      );
+    }
+    if (
+      queuedPngHash !== removal.contentHash ||
+      duplicatePngHash !== removal.contentHash ||
+      queued.contentHash !== removal.contentHash ||
+      duplicate.contentHash !== removal.contentHash ||
+      typeof queued.briefId !== 'string' ||
+      typeof duplicate.briefId !== 'string' ||
+      bareConcept(queued.briefId) !== bareConcept(duplicate.briefId)
+    ) {
+      throw new Error(
+        `Removal manifest cannot prove ${key} is a same-content duplicate under ${manifest.normalization}. Regenerate the dry-run manifest and do not publish this prune.`,
+      );
+    }
+  }
 }
 
 /**
@@ -84,6 +234,7 @@ export async function pruneStaleQueueDuplicates(options: PruneOptions): Promise<
       hashes = new Set<string>();
       mainHashesByConcept.set(concept, hashes);
     }
+
     hashes.add(entry.contentHash);
   }
 
@@ -146,6 +297,8 @@ export async function main(argv: readonly string[]): Promise<number> {
   const apply = argv.includes('--apply');
   const queueGeneratedDir = parseFlagValue(argv, '--queue-generated-dir');
   const mainGeneratedDir = parseFlagValue(argv, '--main-generated-dir');
+  const removalManifest = parseFlagValue(argv, '--removal-manifest');
+  const sourceSha = parseFlagValue(argv, '--source-sha');
 
   if (queueGeneratedDir === undefined || mainGeneratedDir === undefined) {
     console.error(
@@ -154,7 +307,47 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 1;
   }
 
-  const result = await pruneStaleQueueDuplicates({ queueGeneratedDir, mainGeneratedDir, apply });
+  let result: PruneResult;
+  if (apply) {
+    if (removalManifest === undefined || sourceSha === undefined) {
+      console.error(
+        'Refusing destructive prune: --apply requires --source-sha <queue-tip> and --removal-manifest <file>. Run --dry-run, write a source-bound manifest, then retry.',
+      );
+      return 1;
+    }
+    // Validate the planned removals BEFORE touching either half of a pair.
+    const plan = await pruneStaleQueueDuplicates({
+      queueGeneratedDir,
+      mainGeneratedDir,
+      apply: false,
+    });
+    const queueEntries = readAllShards(queueGeneratedDir) as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const mainEntries = readAllShards(mainGeneratedDir) as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    try {
+      assertSourceCheckoutState(queueGeneratedDir, sourceSha);
+      assertRemovalManifest(
+        removalManifest,
+        queueGeneratedDir,
+        mainGeneratedDir,
+        sourceSha,
+        queueEntries,
+        mainEntries,
+        plan.duplicatesPruned,
+      );
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+    result = await pruneStaleQueueDuplicates({ queueGeneratedDir, mainGeneratedDir, apply: true });
+  } else {
+    result = await pruneStaleQueueDuplicates({ queueGeneratedDir, mainGeneratedDir, apply: false });
+  }
 
   console.log(`mode: ${apply ? 'apply' : 'dry-run'}`);
   console.log(`duplicate entries pruned: ${result.duplicatesPruned.length}`);

@@ -56,6 +56,7 @@ export class QueueCommitError extends Error {
       | 'invalid-asset-path'
       | 'invalid-annotation'
       | 'invalid-brief-path'
+      | 'generated-deletion-refused'
       | 'git-failed'
       | 'push-retries-exhausted',
     message: string,
@@ -395,6 +396,32 @@ export function isNonFastForwardRejection(stderr: string): boolean {
   );
 }
 
+function generatedDeletionRepairCommand(): string {
+  return (
+    'npm run sprites:repair-queue -- --audit --policy acc25eda-selective-v1 ' +
+    '(then re-run with --apply --expect-main <sha> --expect-queue <sha>)'
+  );
+}
+
+/**
+ * Normal queue ingestion is additive.  A generated deletion in the remote queue
+ * is corruption until a deliberately invoked, source-bound maintenance recovery
+ * proves otherwise; never auto-heal it by rewriting the branch mid-ingestion.
+ */
+export function assertNoGeneratedQueueDeletions(paths: readonly string[]): void {
+  const assetPaths = paths.filter(
+    (path) =>
+      /^public\/assets\/generated\/.+\.png$/u.test(path) ||
+      /^public\/assets\/generated\/entries\/.+\.json$/u.test(path),
+  );
+  if (assetPaths.length === 0) return;
+  throw new QueueCommitError(
+    'generated-deletion-refused',
+    `assets/queue deletes generated asset path(s): ${assetPaths.join(', ')}. ` +
+      `Normal ingestion refuses to publish over a destructive queue. Run ${generatedDeletionRepairCommand()}.`,
+  );
+}
+
 /**
  * Commit `assets`' current live state onto the remote `assets/queue` branch.
  * Never mutates the caller's working branch/index/HEAD.
@@ -495,6 +522,25 @@ export async function runQueueCommit(
             remote,
             `+${baseBranch}:${mainRef}`,
           ]);
+          const deleted = await runGit(deps.exec, repoRoot, [
+            'diff',
+            '--no-renames',
+            '--name-only',
+            '--diff-filter=D',
+            mainRef,
+            baseRef,
+            '--',
+            'public/assets/generated/',
+          ]);
+          if (deleted.code !== 0) {
+            throw new QueueCommitError(
+              'git-failed',
+              `Could not inspect ${queueBranch} for generated-path deletions: ${deleted.stderr || deleted.stdout}`,
+            );
+          }
+          assertNoGeneratedQueueDeletions(
+            deleted.stdout.split(/\r?\n/).filter((path) => path.trim() !== ''),
+          );
         }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
         // never check the queue branch out by name, so there is no

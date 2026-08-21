@@ -26,6 +26,10 @@ Create an ADR for any decision that affects **two or more systems**, layers, or 
 - Store ADRs in `docs/knowledge/adr/`
 - Cross-link the ADR from any policy or guide it changes
 - Prefer ADRs for architectural, testing, CI, AI-content, or memory-governance decisions
+- If CI Recovery or PR shepherding discovers that a PR is missing a required ADR,
+  the agent should author the ADR from the PR diff/review context instead of
+  escalating to the human. Escalate only when the underlying decision itself is
+  unclear or requires human product judgment.
 
 ## Promotion Rules
 
