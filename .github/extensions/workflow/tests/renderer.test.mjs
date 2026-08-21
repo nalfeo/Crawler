@@ -75,6 +75,14 @@ test('the Author tab exposes the complete Azure workflow controls and visible re
   assert.doesNotMatch(html, /worker\/start/);
 });
 
+test('Author workflow mutations serialize duplicate clicks until the state refresh settles', () => {
+  const html = renderHtml('x');
+  assert.match(html, /var workflowMutationInFlight = false/);
+  assert.match(html, /if \(workflowMutationInFlight\) return Promise\.resolve\(false\)/);
+  assert.match(html, /workflowMutationInFlight = true/);
+  assert.match(html, /\.finally\(function \(\) \{\s*workflowMutationInFlight = false;\s*\}\)/);
+});
+
 test('the client script wires SSE + run selection', () => {
   const html = renderHtml('x');
   assert.match(html, /new EventSource\('\/events'\)/);

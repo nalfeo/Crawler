@@ -1497,7 +1497,12 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   // ---- Author tab: durable Azure workflow state machine -------------------
+  var workflowMutationInFlight = false;
   function workflowPost(path, body, label) {
+    // A mutation can enqueue paid Azure work, so ignore duplicate clicks until
+    // its response and refreshed workflow state have both settled.
+    if (workflowMutationInFlight) return Promise.resolve(false);
+    workflowMutationInFlight = true;
     setBusy(true, label || 'Updating Azure workflow…');
     return fetch(path, {
       method: 'POST',
@@ -1515,6 +1520,8 @@ const CLIENT_SCRIPT = String.raw`
         lastState.error = 'Workflow action failed: ' + error.message;
         render(lastState);
       }
+    }).finally(function () {
+      workflowMutationInFlight = false;
     });
   }
 
