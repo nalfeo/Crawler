@@ -37,6 +37,7 @@ import {
   getEntityNormalizedWeaponAnchor,
 } from '../shared/generated-assets.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
+import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
@@ -940,8 +941,15 @@ function getGroundFlowField(
     return cached;
   }
 
-  const field = computeFlowField(floorMap, goal, { traversalMode: PATH_TRAVERSAL.GROUND });
-  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, field };
+  const field = computeFlowField(floorMap, goal, {
+    traversalMode: PATH_TRAVERSAL.GROUND,
+  });
+  const next: GroundFlowCache = {
+    goalX: goal.x,
+    goalY: goal.y,
+    doorRevision,
+    field,
+  };
   groundFlowByWorld.set(world, next);
   return next;
 }
@@ -1821,12 +1829,23 @@ export function enemyAISystem(world: GameWorld): void {
     // no override here — familyFeudSystem left decision.bypassPlayerDetection
     // false in that case. The hate/hostile rival-fallback is resolved lower
     // down, once canDetectPlayer has been computed.
+    const companionDecision = getCompanionAIDecision(world, eid);
+    if (companionDecision?.kind === 'disabled') {
+      setVelocity(world, eid, 0, 0);
+      enemyBehavior.stuckFrames[eid] = 0;
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
+      continue;
+    }
     const familyDecision = getFamilyAIDecision(world, eid);
+    const targetOverride =
+      companionDecision?.bypassPlayerDetection === true ? companionDecision : familyDecision;
     let virtualPlayerX = playerX;
     let virtualPlayerY = playerY;
-    if (familyDecision !== undefined && familyDecision.bypassPlayerDetection) {
-      virtualPlayerX = familyDecision.x;
-      virtualPlayerY = familyDecision.y;
+    if (targetOverride !== undefined && targetOverride.bypassPlayerDetection) {
+      virtualPlayerX = targetOverride.x;
+      virtualPlayerY = targetOverride.y;
     }
     let playerDx = virtualPlayerX - enemyX;
     let playerDy = virtualPlayerY - enemyY;
@@ -1840,10 +1859,11 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
-    // For a mob with a family-driven virtual target we measure aggro against
-    // the virtual target (distanceToPlayer already reflects that), and set
-    // `familyBypass` so player-side FOV/room checks don't cancel engagement.
-    const familyBypass = familyDecision !== undefined && familyDecision.bypassPlayerDetection;
+    // For a mob with a prepass-driven virtual target (Companion or Family Feud)
+    // we measure aggro against the virtual target (distanceToPlayer already
+    // reflects that), and set `familyBypass` so player-side FOV/room checks
+    // don't cancel engagement.
+    const familyBypass = targetOverride !== undefined && targetOverride.bypassPlayerDetection;
     const inAggroRange =
       familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
     // Cave interiors can share open geometry without sharing a semantic room ID.

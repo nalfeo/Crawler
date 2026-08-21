@@ -512,6 +512,80 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
   );
 });
 
+test('restart issue intake removes existing Copilot assignee before reassigning', async () => {
+  const calls = [];
+  const graphql = async (_token, query, variables) => {
+    if (query.includes('suggestedActors')) {
+      calls.push(['discover', variables]);
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            assignees: {
+              nodes: [
+                { id: 'USER_NALFEO', login: 'nalfeo' },
+                { id: 'BOT_COPILOT', login: 'copilot-swe-agent' },
+              ],
+            },
+          },
+        },
+      };
+    }
+    if (query.includes('removeAssigneesFromAssignable')) {
+      calls.push(['remove', variables]);
+      return {
+        removeAssigneesFromAssignable: {
+          assignable: { assignees: { nodes: [{ login: 'nalfeo' }] } },
+        },
+      };
+    }
+    calls.push(['assign', variables]);
+    return {
+      replaceActorsForAssignable: {
+        assignable: {
+          assignees: { nodes: [{ login: 'nalfeo' }, { login: 'Copilot' }] },
+        },
+      },
+    };
+  };
+  const paginate = async () => {
+    calls.push(['comments']);
+    return [
+      {
+        id: 1,
+        body: ISSUE_INTAKE_BODY,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ];
+  };
+
+  const result = await runIssueIntake({
+    graphql,
+    paginate,
+    request: async () => assert.fail('existing kickoff comment should be reused'),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue,
+    restart: true,
+  });
+
+  assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'existing' });
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ['discover', 'comments', 'remove', 'assign'],
+  );
+  assert.deepEqual(calls[2][1], {
+    assignableId: 'ISSUE_1067',
+    assigneeIds: ['BOT_COPILOT'],
+  });
+});
+
 test('deletes the kickoff comment when assignment does not persist', async () => {
   const requestCalls = [];
   let graphqlCall = 0;

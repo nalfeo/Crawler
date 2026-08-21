@@ -145,6 +145,25 @@ export const Harvestable = {};
 export const FamilyMembership = {};
 
 /**
+ * Floor 3 tag: marks an allied auto-battler companion.
+ *
+ * `speciesToken` is an opaque numeric key for the species line (string species
+ * ids live in higher-level data registries), `form` is 0/1/2 (baby/adolescent/adult),
+ * `level`/`xp` track floor-scoped creature progression, `ownerTeam` mirrors the
+ * owning handler/wrangler team id, and `knockedOut` is the in-engagement KO flag.
+ */
+export const Companion = {};
+
+/**
+ * Floor 3 party slot metadata on the player entity.
+ *
+ * `slot` is the ordered party index (0-based) and `locked` latches once the
+ * party reaches its floor cap so recruiting can be gated without mutating
+ * existing slots.
+ */
+export const PartySlot = {};
+
+/**
  * Marks an entity as a physical boss chest world-object. Proximity-opened by
  * `bossChestPickupSystem` when the player walks within BOSS_CHEST_RANGE_FT.
  * The chest's lifecycle record is keyed by `chestId` in `world.bossChests`
@@ -520,6 +539,23 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       familyId: new Uint8Array(maxEntities),
       /** 1 for the family boss, 0 for regular members. */
       isBoss: new Uint8Array(maxEntities),
+    },
+    companion: {
+      /** Opaque numeric species key (string species ids stay in higher-level registries). */
+      speciesToken: new Uint16Array(maxEntities),
+      /** Form tier: 0 baby, 1 adolescent, 2 adult. */
+      form: new Uint8Array(maxEntities),
+      level: new Uint8Array(maxEntities),
+      xp: new Float32Array(maxEntities),
+      ownerTeam: new Uint16Array(maxEntities),
+      /** 1 when this companion is KO'd for the active engagement. */
+      knockedOut: new Uint8Array(maxEntities),
+    },
+    partySlot: {
+      /** Ordered 0-based slot index in the player's floor-scoped party. */
+      slot: new Uint8Array(maxEntities),
+      /** 1 once party recruitment has locked; 0 while still recruitable. */
+      locked: new Uint8Array(maxEntities),
     },
   };
 }

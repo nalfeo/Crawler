@@ -1560,3 +1560,50 @@ test('promoteExactBatch defaults verifyMergeSlot to a permissive no-op', () => {
     'promoteExactBatch must default verifyMergeSlot to a null-returning no-op',
   );
 });
+
+// ---------------------------------------------------------------------------
+// update-branch 403 must not be misclassified as "PR is a fork" for a
+// same-repo PR (e.g. a `copilot/*` coding-agent branch, which GitHub
+// restricts to the Copilot App / branch owner and 403s every other token).
+//
+// PR #3027 was same-repo (isCrossRepository: false) but got dequeued as
+// "fork/no-permission" on every reconcile pass for 3+ days: CI Recovery kept
+// re-labeling it `merge-train`, the reconciler kept treating the 403 as fork
+// evidence and removing the label again, producing an unbounded livelock
+// (label added/removed every 1-2 minutes). These assertions pin the fix:
+// a same-repo 403 must take a distinct, non-dequeuing path.
+// ---------------------------------------------------------------------------
+test('a same-repo update-branch 403 is not treated as a fork dequeue', () => {
+  assert.match(
+    RECONCILE_SOURCE,
+    /if \(err\.status === 403 && !sameRepository\(livePr, repository\)\)/,
+    'the fork/dequeue branch must be gated on !sameRepository(...) so a same-repo ' +
+      '403 (e.g. a restricted copilot/* branch) cannot be misclassified as a fork',
+  );
+});
+
+test('the same-repo 403 branch does not remove the queue label', () => {
+  const forkBranchStart = RECONCILE_SOURCE.indexOf(
+    'if (err.status === 403 && !sameRepository(livePr, repository))',
+  );
+  const sameRepoBranchStart = RECONCILE_SOURCE.indexOf(
+    'same-repo-restricted-branch (403)',
+    forkBranchStart,
+  );
+  const branch422Start = RECONCILE_SOURCE.indexOf('err.status === 422', sameRepoBranchStart);
+  assert.ok(forkBranchStart > -1, 'fork branch must exist');
+  assert.ok(sameRepoBranchStart > forkBranchStart, 'same-repo branch must follow the fork branch');
+  assert.ok(branch422Start > sameRepoBranchStart, '422 branch must follow the same-repo branch');
+  const sameRepoBranchSource = RECONCILE_SOURCE.slice(sameRepoBranchStart, branch422Start);
+  assert.doesNotMatch(
+    sameRepoBranchSource,
+    /removeLabel\(pr\.number, QUEUE_LABEL\)/,
+    'a same-repo 403 must leave the PR queued (no removeLabel) instead of dequeuing it ' +
+      'like a genuine fork, or CI Recovery will just re-label it into the same 403 forever',
+  );
+  assert.match(
+    sameRepoBranchSource,
+    /dispatchRecoveryGated\(pr\.number, 'merge-train-restricted-branch-update'\)/,
+    'a same-repo 403 must dispatch recovery so the stall is visible instead of silently repeating',
+  );
+});

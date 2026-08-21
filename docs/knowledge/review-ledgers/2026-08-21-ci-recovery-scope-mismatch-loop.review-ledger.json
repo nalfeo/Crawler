@@ -1,0 +1,52 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "ci-recovery-scope-mismatch-loop",
+  "task_title": "CI recovery scope mismatch loop bound",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "rubber-duck agent",
+      "concerns_count": 5,
+      "resolved_count": 2,
+      "plan_divergence": "minor-to-moderate",
+      "notes": "Plan review found the structure matched the intended fix but flagged two material gaps: KEEP needed durable suppression to avoid re-quarantine oscillation, and scope-mismatch quarantine needed trusted-author gating. Both were fixed. It also noted over-broad heuristic wording and missing disposition coverage; the heuristic was narrowed and focused restart/remove-reassign plus quarantine-entry tests were added."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["code_review tool"],
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Initial code_review flagged that ABANDON logic should be explicitly guarded rather than relying on parseDispositionCommand only returning KEEP/ABANDON; added an explicit command !== ABANDON guard."
+        },
+        {
+          "models": ["code_review tool"],
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Second code_review flagged use of raw live instead of shouldMutate in quarantine disposition mutations; updated strip/close/restart to use shouldMutate."
+        },
+        {
+          "models": ["code_review tool"],
+          "clean": false,
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "Final attempted review timed out after earlier successful rounds. The surfaced comments before timeout were addressed: recovery marker replies are again retained in reviewThreadCommentDigest while blockerFingerprint canonicalizes review-thread IDs for retry accounting, and ABANDON release now writes an explicit terminal recovery state after applying lifecycle abandonment."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

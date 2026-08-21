@@ -765,7 +765,31 @@ export async function intakeUnblockedDependents({
   return results;
 }
 
-export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
+/**
+ * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
+ * OPEN. Exported (and used as a marker via `instanceof`) so callers like
+ * `intakeUnblockedDependents` can distinguish this benign race — the issue
+ * closed between eligibility/blocked_by checks and the assignment mutation —
+ * from a genuine API/infra failure, and report it as a skip rather than an
+ * error.
+ */
+export class IssueNoLongerOpenError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is no longer open; skipping intake`);
+    this.name = 'IssueNoLongerOpenError';
+  }
+}
+
+export async function runIssueIntake({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  issue,
+  restart = false,
+}) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
     graphql,
     token,
@@ -818,10 +842,21 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
+    if (
+      restart &&
+      assignmentContext.assignees.some((actor) => actor.id === assignmentContext.copilot.id)
+    ) {
+      await removeIssueAssignees({
+        graphql,
+        token,
+        assignableId: issue.node_id || issue.id,
+        actorIds: [assignmentContext.copilot.id],
+      });
+    }
     assignment = await replaceIssueAssignees({
       graphql,
       token,
-      assignableId: issue.node_id,
+      assignableId: issue.node_id || issue.id,
       actorIds,
     });
   } catch (err) {
