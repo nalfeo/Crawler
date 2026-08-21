@@ -1,0 +1,161 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Workflow
+dslVersion: '2.0'
+metadata:
+  name: crawler-feature-pr
+spec:
+  gaggle: crawler
+  displayName: Crawler feature (approved issue to reviewed PR)
+  triggers:
+    - type: manual
+  readiness:
+    maxConcurrentRuns: 1
+  start: query-backlog
+  tasks:
+    - name: query-backlog
+      type: deterministic
+      goal: Claim one maintainer-approved Crawler feature issue.
+      run:
+        command: ['goobers', 'backlog-query', '--claim']
+      inputs:
+        trustLabel: 'goobers:approved'
+        requireUnassigned: 'true'
+        excludeLabel: 'goobers/status:in-review'
+        maxItems: '1'
+        resultFile: 'claimed-item.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - claim-backlog-items
+      expectedOutputs:
+        - claimed-item
+      next: plan
+    - name: plan
+      type: agentic
+      goober: producer
+      goal: Plan the claimed Crawler feature without modifying the repository.
+      capabilities:
+        - repo:read
+        - agent:model
+      expectedOutputs:
+        - implementation-plan
+      next: implement
+    - name: implement
+      type: agentic
+      goober: coder
+      contextFrom:
+        - query-backlog
+        - plan
+        - implement
+        - review
+        - local-ci
+      goal: >-
+        Implement the claimed Crawler feature according to the producer plan,
+        run focused checks, and commit the change. On a repass, address the
+        attached reviewer or local-gate evidence before continuing.
+      capabilities:
+        - repo:push
+        - agent:model
+      policyActions:
+        - modify-repository
+      next: review
+    - name: push-branch
+      type: deterministic
+      goal: Push the implemented change as a branch.
+      run:
+        command: ['goobers', 'push-branch']
+      capabilities:
+        - repo:push
+      policyActions:
+        - push-repository-branch
+      next: local-ci
+    - name: local-ci
+      type: deterministic
+      goal: Run the configured Crawler local verification command.
+      run:
+        command: ['npm', 'run', 'verify:fast']
+        syncBase: true
+      next: local-gate
+    - name: open-pr
+      type: deterministic
+      goal: Open the pull request for the pushed branch.
+      run:
+        command: ['goobers', 'open-pr']
+      inputs:
+        resultFile: 'pr-result.json'
+      capabilities:
+        - provider:pr:write
+      policyActions:
+        - open-or-update-pr
+      expectedOutputs:
+        - pull-request-url
+        - prNumber
+        - opened
+      next: pr-opened-gate
+    - name: close-out
+      type: deterministic
+      goal: Mark the source issue as awaiting review and link the PR.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'in-review'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+    - name: park-needs-human
+      type: deterministic
+      goal: Park an issue that requires a maintainer product decision.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'needs-human'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+      next: '@abort'
+    - name: needs-remediation
+      type: deterministic
+      goal: Mark an issue that requires remediation and human escalation.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'needs-remediation'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+      next: '@escalate'
+  gates:
+    - name: review
+      evaluator: agentic
+      agentic:
+        goober: reviewer
+      branches:
+        pass: push-branch
+        needs-changes: implement
+        fail: park-needs-human
+        escalate: needs-remediation
+    - name: local-gate
+      evaluator: automated
+      automated:
+        check: failure-class
+      branches:
+        pass: open-pr
+        fail: implement
+        infra: local-ci
+        escalate: needs-remediation
+    - name: pr-opened-gate
+      evaluator: automated
+      automated:
+        check: output-equals
+        output: opened
+        equals: 'true'
+      branches:
+        pass: close-out
+        fail: '@abort'
+        infra: needs-remediation

@@ -7,6 +7,7 @@ import {
 
 export { FOLLOWUP_BACKLOG_MARKER, ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+export const GOOBERS_APPROVED_LABEL = 'goobers:approved';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
 const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
@@ -153,8 +154,16 @@ export const ISSUE_INTAKE_BODY = [
 ].join('\n');
 
 export function isTelemetryIssue(issue) {
+  return hasIssueLabel(issue, 'telemetry');
+}
+
+export function isGoobersApprovedIssue(issue) {
+  return hasIssueLabel(issue, GOOBERS_APPROVED_LABEL);
+}
+
+function hasIssueLabel(issue, expectedLabel) {
   return (issue?.labels || []).some(
-    (label) => String(label?.name || '').toLowerCase() === 'telemetry',
+    (label) => String(label?.name || '').toLowerCase() === expectedLabel,
   );
 }
 
@@ -165,6 +174,13 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
 
   if (isTelemetryIssue(issue)) {
     return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
+  }
+
+  if (isGoobersApprovedIssue(issue)) {
+    return {
+      eligible: false,
+      reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+    };
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
@@ -300,6 +316,11 @@ export async function getCopilotIssueAssignmentContext({
           issue(number: $issueNumber) {
             id
             state
+            labels(first: 50) {
+              nodes {
+                name
+              }
+            }
             assignees(first: 50) {
               nodes {
                 id
@@ -330,6 +351,7 @@ export async function getCopilotIssueAssignmentContext({
     copilot,
     issueId: issueData.id,
     issueState: issueData.state,
+    labels: issueData.labels?.nodes || [],
     assignees: issueData.assignees?.nodes || [],
   };
 }
@@ -587,13 +609,19 @@ export async function intakeOpenedIssue({
   let eligibilityReason;
   if (fromUnblockSweep) {
     // Automation-label restriction is intentionally skipped here — see JSDoc.
-    // We still reject non-issues (PR payloads), telemetry issues, and
-    // untrusted openers.
+    // We still reject non-issues (PR payloads), telemetry issues,
+    // Goobers-owned issues, and untrusted openers.
     if (!issue || issue.pull_request) {
       return { assigned: false, reason: 'event has no eligible issue payload' };
     }
     if (isTelemetryIssue(issue)) {
       return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
+    }
+    if (isGoobersApprovedIssue(issue)) {
+      return {
+        assigned: false,
+        reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+      };
     }
     const opener = String(issue.user?.login || '').toLowerCase();
     const maintainer = String(maintainerLogin || '').toLowerCase();
@@ -628,6 +656,34 @@ export async function intakeOpenedIssue({
     assignee: result.assignee,
     comment: result.comment,
   };
+}
+
+/**
+ * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
+ * OPEN. Exported (and used as a marker via `instanceof`) so callers like
+ * `intakeUnblockedDependents` can distinguish this benign race — the issue
+ * closed between eligibility/blocked_by checks and the assignment mutation —
+ * from a genuine API/infra failure, and report it as a skip rather than an
+ * error.
+ */
+export class IssueNoLongerOpenError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is no longer open; skipping intake`);
+    this.name = 'IssueNoLongerOpenError';
+  }
+}
+
+/**
+ * Thrown by `runIssueIntake` when a live GraphQL re-fetch sees the
+ * `goobers:approved` label even though the triggering payload was eligible for
+ * Cloud Copilot intake. Exported so callers like `intakeUnblockedDependents`
+ * can treat this ownership race as a benign skip instead of an infra failure.
+ */
+export class IssueClaimedByGoobersError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is now labeled goobers:approved; skipping intake`);
+    this.name = 'IssueClaimedByGoobersError';
+  }
 }
 
 /**
@@ -685,13 +741,17 @@ export async function intakeUnblockedDependents({
       results.push({ number: dependent.number, ...outcome });
     } catch (err) {
       // A dependent closing between our `open` check above and the live
-      // assignment mutation is a benign race, not an infra failure — report it
-      // as a skip so the sweep doesn't flag the workflow run red for it.
-      if (err instanceof IssueNoLongerOpenError) {
+      // assignment mutation, or being claimed by Goobers in that same window,
+      // are both benign races. Report them as skips so the sweep doesn't flag
+      // the workflow run red for them.
+      if (err instanceof IssueNoLongerOpenError || err instanceof IssueClaimedByGoobersError) {
         results.push({
           number: dependent.number,
           assigned: false,
-          reason: 'dependent closed during processing',
+          reason:
+            err instanceof IssueNoLongerOpenError
+              ? 'dependent closed during processing'
+              : 'dependent claimed by Goobers during processing',
         });
         continue;
       }
@@ -705,22 +765,16 @@ export async function intakeUnblockedDependents({
   return results;
 }
 
-/**
- * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
- * OPEN. Exported (and used as a marker via `instanceof`) so callers like
- * `intakeUnblockedDependents` can distinguish this benign race — the issue
- * closed between eligibility/blocked_by checks and the assignment mutation —
- * from a genuine API/infra failure, and report it as a skip rather than an
- * error.
- */
-export class IssueNoLongerOpenError extends Error {
-  constructor(issueNumber) {
-    super(`Issue #${issueNumber} is no longer open; skipping intake`);
-    this.name = 'IssueNoLongerOpenError';
-  }
-}
-
-export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
+export async function runIssueIntake({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  issue,
+  restart = false,
+}) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
     graphql,
     token,
@@ -735,6 +789,9 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
   // longer open.
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
+  }
+  if (isGoobersApprovedIssue({ labels: assignmentContext.labels })) {
+    throw new IssueClaimedByGoobersError(issue.number);
   }
 
   const actorIds = buildIssueActorIds({
@@ -770,10 +827,21 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
+    if (
+      restart &&
+      assignmentContext.assignees.some((actor) => actor.id === assignmentContext.copilot.id)
+    ) {
+      await removeIssueAssignees({
+        graphql,
+        token,
+        assignableId: issue.node_id || issue.id,
+        actorIds: [assignmentContext.copilot.id],
+      });
+    }
     assignment = await replaceIssueAssignees({
       graphql,
       token,
-      assignableId: issue.node_id,
+      assignableId: issue.node_id || issue.id,
       actorIds,
     });
   } catch (err) {
