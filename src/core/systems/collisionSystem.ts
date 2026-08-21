@@ -29,7 +29,7 @@ export function collisionSystem(world: GameWorld): CollisionResult {
   // a render concern only. `check:size-coverage` guards that every collision
   // participant carries Size, so entities without one are excluded here.
   const entities = query(world.ecs, [Position, Size]);
-  const { position } = world.stores;
+  const { position, size } = world.stores;
 
   grid.clear();
 
@@ -40,8 +40,17 @@ export function collisionSystem(world: GameWorld): CollisionResult {
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
-    const halfWidth = getBodyHalfWidth(world, eid, 'collisionSystem');
-    const halfHeight = getBodyHalfHeight(world, eid, 'collisionSystem');
+    const radius = size.radius[eid] ?? 0;
+    const storedHalfWidth = size.halfWidth[eid] ?? 0;
+    const storedHalfHeight = size.halfHeight[eid] ?? 0;
+    let halfWidth = storedHalfWidth;
+    if (!(halfWidth > 0)) {
+      halfWidth = radius > 0 ? radius : getBodyHalfWidth(world, eid, 'collisionSystem');
+    }
+    let halfHeight = storedHalfHeight;
+    if (!(halfHeight > 0)) {
+      halfHeight = radius > 0 ? radius : getBodyHalfHeight(world, eid, 'collisionSystem');
+    }
 
     grid.insert(eid, x, y, halfWidth, halfHeight);
   }
