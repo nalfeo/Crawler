@@ -1761,6 +1761,7 @@ test('isScopeMismatchReviewBlocker detects unsupported closing-reference finding
   assert.equal(
     isScopeMismatchReviewBlocker({
       kind: 'review-thread',
+      scopeMismatchTrusted: true,
       summary:
         'reviewer: PR body says Fixes #3198, but the diff only changes planning-policy docs and does not implement the promised Floor 2 repair.',
     }),
@@ -1769,7 +1770,16 @@ test('isScopeMismatchReviewBlocker detects unsupported closing-reference finding
   assert.equal(
     isScopeMismatchReviewBlocker({
       kind: 'review-thread',
+      scopeMismatchTrusted: true,
       summary: 'reviewer: Please add a missing unit test for this implementation.',
+    }),
+    false,
+  );
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      summary:
+        'drive-by: PR body says Fixes #3198, but the diff only changes docs and does not implement the feature.',
     }),
     false,
   );

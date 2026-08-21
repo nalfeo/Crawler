@@ -2903,6 +2903,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     isOutdated: thread.isOutdated === true,
+    scopeMismatchTrusted: isTrustedComment(root),
     url: root?.url,
   });
 }
@@ -3032,7 +3033,8 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
   }
 }
 
-const scopeMismatchBlocker = normalized.find(isScopeMismatchReviewBlocker);
+const scopeMismatchBlocker =
+  latestOwnerDispositionCommand() === 'KEEP' ? null : normalized.find(isScopeMismatchReviewBlocker);
 if (scopeMismatchBlocker) {
   const reason = 'scope-mismatch-review-finding';
   await applyPrLifecycle(PHASE.QUARANTINED, reason);

@@ -333,6 +333,7 @@ export function normalizeBlockers(blockers) {
           }
         : {}),
       ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
+      ...(blocker.scopeMismatchTrusted === true ? { scopeMismatchTrusted: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -391,7 +392,9 @@ export function blockerFingerprint(blockers) {
   const fingerprintBlockers = normalized
     .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
     .map(normalizeReviewRecoveryChurn)
-    .map(({ line: _line, url: _url, ...rest }) => rest);
+    .map(
+      ({ line: _line, url: _url, scopeMismatchTrusted: _scopeMismatchTrusted, ...rest }) => rest,
+    );
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
@@ -831,9 +834,9 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
 const scopeMismatchClosingReferencePattern =
   /\b(?:fix(?:e[sd])?|clos(?:e[sd])?|resolv(?:e[sd])?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i;
 const scopeMismatchUnsupportedPattern =
-  /\b(?:unsupported|not\s+supported|does\s+not\s+support|doesn't\s+support|mismatch|scope\s+mismatch|materially\s+inconsistent|not\s+implemented|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
+  /\b(?:unsupported|not\s+supported|does\s+not\s+support|doesn't\s+support|scope\s+mismatch|materially\s+inconsistent|not\s+implemented|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
-  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|claim(?:s|ed)?|fixes?\s+#\d+)\b/i;
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
 
 /**
  * Detect a trusted-review finding that says the PR's declared scope (closing
@@ -844,6 +847,7 @@ const scopeMismatchPromisePattern =
  */
 export function isScopeMismatchReviewBlocker(blocker) {
   if (blocker?.kind !== 'review-thread') return false;
+  if (blocker.scopeMismatchTrusted !== true) return false;
   const text = compact(blocker.summary);
   if (!text) return false;
   const namesClosingReference = scopeMismatchClosingReferencePattern.test(text);
