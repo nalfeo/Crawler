@@ -1,5 +1,39 @@
 [
   {
+    "commit": "4db28a6eac24c390eef3ea2e72fd3f66650bc0ab",
+    "commitDate": "2026-08-21T04:48:18Z",
+    "commitSubject": "Reduce per-frame HUD arrow layout cost by removing redundant placement rescans (#3196)",
+    "capturedAt": "2026-08-21T06:02:45.895Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32449415330",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/4db28a6eac24c390eef3ea2e72fd3f66650bc0ab.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.2733333333333333,
+        "totalWins": 41,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.3466666666666667,
+        "totalWins": 52,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.92,
+      "gatePass": false,
+      "path": "by-sha/4db28a6eac24c390eef3ea2e72fd3f66650bc0ab.fun-report.json"
+    }
+  },
+  {
     "commit": "d4011b7291d81820932be0c013abe8af268dfbcc",
     "commitDate": "2026-08-21T04:11:24Z",
     "commitSubject": "Guarantee a canonical current-main baseline sweep for the nightly balance issue (#3186)",
