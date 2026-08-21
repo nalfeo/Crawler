@@ -26,6 +26,7 @@ import {
   resolveEquipmentInstance,
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
+import { computeEffectiveStatsFromLoadout } from '../core/effective-stats.js';
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import {
   SLOT_REGISTRY,
@@ -33,7 +34,13 @@ import {
   type SlotDefinition,
 } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
-import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import {
+  PRIMARY_STATS,
+  SECONDARY_STATS,
+  ALL_STAT_IDS,
+  type PrimaryStatId,
+  type StatId,
+} from '../shared/stats.js';
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
 import {
   addItem,
@@ -223,7 +230,24 @@ function generatedRarityColor(rarity: string): number {
   }
 }
 
-function formatStatValue(value: number): string {
+const PERCENT_STAT_IDS = new Set<StatId>([
+  'damagePercent',
+  'attackSpeed',
+  'moveSpeed',
+  'critChance',
+  'dodgeChance',
+  'xpBonus',
+  'cooldownReduction',
+  'accuracy',
+]);
+
+function formatStatValue(statId: StatId, value: number): string {
+  if (PERCENT_STAT_IDS.has(statId)) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  if (statId === 'critMultiplier') {
+    return `${value.toFixed(2)}x`;
+  }
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
@@ -232,15 +256,16 @@ function formatStatLabel(statId: string): string {
   // readers use to scan a stat list, and the screenshot judge penalises them as
   // legibility strain. Capitalising each word keeps the labels scannable while
   // preserving the existing column widths.
-  return statId
+  const label = statId
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+  return label.replace(/\bXp\b/g, 'XP').replace(/\bHp\b/g, 'HP');
 }
 
 function formatWeightLb(value: number): string {
-  return `${formatStatValue(value)} lb`;
+  return `${Number.isInteger(value) ? value : value.toFixed(2)} lb`;
 }
 
 function formatEncumbranceBandLabel(band: string): string {
@@ -1159,7 +1184,7 @@ export function createEquipmentUI(
       .filter(([, value]) => typeof value === 'number' && value !== 0)
       .map(
         ([statId, value]) =>
-          `${value! > 0 ? '+' : ''}${formatStatValue(value!)} ${formatStatLabel(statId)}`,
+          `${value! > 0 ? '+' : ''}${formatStatValue(statId as StatId, value!)} ${formatStatLabel(statId)}`,
       );
   }
 
@@ -1308,7 +1333,7 @@ export function createEquipmentUI(
   }
 
   function formatSignedStatDelta(statId: StatId, delta: number): string {
-    const magnitude = formatStatValue(Math.abs(delta));
+    const magnitude = formatStatValue(statId, Math.abs(delta));
     const sign = delta > 0 ? '+' : '-';
     return `${formatStatLabel(statId)} ${sign}${magnitude}`;
   }
@@ -1821,6 +1846,30 @@ export function createEquipmentUI(
 
     const effective = getEffectiveStats(lastWorld, playerEid);
     const baseStore = lastWorld.stores.baseStats;
+    const baseStats: Partial<Record<StatId, number>> = {};
+    const coreStatPoints: Partial<Record<PrimaryStatId, number>> = {};
+    for (const statId of ALL_STAT_IDS) {
+      baseStats[statId] = baseStore[statId][playerEid] ?? 0;
+    }
+    for (const statId of PRIMARY_STATS) {
+      coreStatPoints[statId] = lastWorld.stores.coreStatPoints[statId][playerEid] ?? 0;
+    }
+    const state = getEquipmentState(lastWorld, playerEid);
+    const seenInstanceIds = new Set<number | string>();
+    const equippedDefs: EquipmentItemDef[] = [];
+    if (state) {
+      for (const instanceId of Object.values(state.equipped)) {
+        if (instanceId === null || seenInstanceIds.has(instanceId)) continue;
+        seenInstanceIds.add(instanceId);
+        const instance = resolveEquipmentInstance(lastWorld, state, instanceId);
+        if (instance) equippedDefs.push(instance.def);
+      }
+    }
+    // Green is reserved for player-visible increases caused by equipped gear.
+    // Recomputing without equipped definitions excludes baseline primary-stat
+    // derivatives and unrelated active modifiers from this cue.
+    const withoutGear = computeEffectiveStatsFromLoadout(baseStats, coreStatPoints, []);
+    const withGear = computeEffectiveStatsFromLoadout(baseStats, coreStatPoints, equippedDefs);
 
     const heading = crispText(statsX + 10, columnHeadingTextY, 'Stats', {
       fontFamily: FONT_FAMILY,
@@ -1928,16 +1977,13 @@ export function createEquipmentUI(
 
     const drawStat = (statId: StatId): void => {
       const value = effective[statId] ?? 0;
-      const base = baseStore[statId]?.[playerEid] ?? 0;
-      // Match the highlight to player-visible precision. A fractional bonus such
-      // as 0.0025 renders as "0.00", so comparing the raw values (or their
-      // differently formatted strings) would incorrectly paint a displayed zero green.
-      const displayedValue = Number(formatStatValue(value));
-      const displayedBase = Number(formatStatValue(base));
-      const buffed = displayedValue > 0 && displayedBase >= 0 && displayedValue > displayedBase;
+      const gearDelta = (withGear[statId] ?? 0) - (withoutGear[statId] ?? 0);
+      const displayedValue = Number.parseFloat(formatStatValue(statId, value));
+      const displayedGearDelta = Number.parseFloat(formatStatValue(statId, gearDelta));
+      const buffed = displayedValue > 0 && displayedGearDelta > 0;
       drawRow(
         formatStatLabel(statId),
-        formatStatValue(value),
+        formatStatValue(statId, value),
         buffed ? COLORS.statBuff : COLORS.textPrimary,
         buffed,
         false,

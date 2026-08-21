@@ -97,6 +97,31 @@ zero as a green bonus. The comparison now uses numeric values at the same precis
 shown to the player. The real-Phaser e2e test explicitly asserts a rendered zero
 Move Speed value remains neutral.
 
+### v0.1.7 gear-only emphasis and stat units
+
+The stats column now computes a separate no-equipment loadout using the canonical
+effective-stat formula, then compares it against the currently equipped loadout.
+Green text is reserved for a _visible positive delta caused by equipped gear_,
+including a primary-stat bonus that produces a derived secondary effect. Baseline
+primary-stat derivatives and unrelated active modifiers remain neutral.
+
+Stat values now use their player-facing units: fractional bonuses render as
+`N.X%`, critical multiplier renders as `N.NNx`, and labels use `XP`/`HP`.
+The focused real-Phaser test proves both a neutral baseline and a green
+Move Speed value after equipping Leather Boots, plus the unit/label contract.
+
+All five tracked scenarios were recaptured and Azure-reviewed at:
+
+`files/visual-review/after/v0.1.7/{equipment,equipment-hover-equipped,equipment-hover-duplicate,equipment-hover-empty-slot,equipment-hover-mixed-delta}.{png,review.json}`
+
+Every v0.1.7 capture has zero deterministic geometry blockers. The Azure model
+continued to offer subjective density/theme critiques and, for the duplicate
+hover state, incorrectly described a gear-derived green value as a baseline
+highlight. The declared state has Iron Helm equipped, so that green value is
+the intended equipment attribution. The deterministic baseline comparison is
+unchanged: v0.1.6 and v0.1.7 both pass the same 30 visual/interaction checks
+with zero geometry blockers.
+
 ## Validation
 
 - `npx vitest run tests/ecs/equip-delta-preview.test.ts` — 16 passed.
@@ -114,6 +139,10 @@ Move Speed value remains neutral.
 - `npm run verify:fast` — passed after the v0.1.6 changes.
 - `npx vitest run --project e2e tests/e2e/inventory-flow.test.ts -t "uses square labeled slots"` — passed after the display-precision fix.
 - `npm run verify:fast` — passed after the display-precision fix.
+- `npm run typecheck` — passed for the gear-only attribution and unit-format change.
+- `npm run test:e2e -- -t "uses square labeled slots"` — passed for the
+  gear-only attribution and unit-format change.
+- `npm run review:visual:deterministic` — 30 passed for the v0.1.7 capture set.
 
 ## Systems touched
 

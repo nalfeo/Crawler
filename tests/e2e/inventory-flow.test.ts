@@ -891,13 +891,46 @@ describe('equipment decision gate (e2e)', () => {
       );
       expect(moveSpeedValue, 'Move Speed should have a rendered value on its row').toBeDefined();
       expect(
-        Number(moveSpeedValue?.text),
-        'a value rendered as zero must not imply a positive gear bonus',
-      ).toBe(0);
-      expect(
         moveSpeedValue?.color.toLowerCase(),
-        'a Move Speed value rendered as zero must use the neutral stat color',
+        'baseline Move Speed must use the neutral stat color',
       ).not.toBe('#49d06f');
+      const statRuns = await probe.getEquipmentTextRuns(layoutPage);
+      const valueOnStatRow = (label: string): string | undefined => {
+        const labelRun = statRuns.find((run) => run.region === 'stats' && run.text === label);
+        return statRuns.find(
+          (run) =>
+            labelRun !== undefined &&
+            run.region === 'stats' &&
+            run.text !== label &&
+            Math.abs(run.bounds.y - labelRun.bounds.y) <= 1,
+        )?.text;
+      };
+      expect(statRuns.some((run) => run.region === 'stats' && run.text === 'XP Bonus')).toBe(true);
+      expect(statRuns.some((run) => run.region === 'stats' && run.text === 'Max HP')).toBe(true);
+      expect(valueOnStatRow('Move Speed')).toMatch(/^\d+\.\d%$/);
+      expect(valueOnStatRow('Crit Multiplier')).toMatch(/^\d+\.\d{2}x$/);
+
+      await layoutPage.evaluate(() => {
+        window.__uiProbe!.seedAllGear();
+        window.__uiProbe!.equipFromEquipmentBag('leather-boots');
+      });
+      await layoutPage.waitForTimeout(100);
+      const gearMoveSpeed = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) =>
+          moveSpeed !== undefined &&
+          run.region === 'stats' &&
+          run.text !== 'Move Speed' &&
+          Math.abs(run.bounds.y - moveSpeed.bounds.y) <= 1,
+      );
+      expect(gearMoveSpeed, 'Move Speed should update after equipping boots').toBeDefined();
+      expect(
+        Number.parseFloat(gearMoveSpeed?.text ?? ''),
+        'the boots should visibly increase Move Speed',
+      ).toBeGreaterThan(0);
+      expect(
+        gearMoveSpeed?.color.toLowerCase(),
+        'only a visible Move Speed increase caused by equipped gear should be green',
+      ).toBe('#49d06f');
     } finally {
       await closeQuietly(context);
     }
