@@ -60,7 +60,22 @@ function makeFakeExec(
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
   const exec: Exec = (command, args, options) => {
     calls.push({ command, args: [...args], cwd: options?.cwd });
-    return Promise.resolve({ stdout: '', stderr: '', code: 0, ...responder(command, args) });
+    const result = { stdout: '', stderr: '', code: 0, ...responder(command, args) };
+    // Historical tests use `code: 1` for every `git diff` to model the later
+    // `--cached --quiet` check. A name-only deletion scan has no --exit-code and
+    // succeeds with an empty result in real git, so normalize that fixture-only
+    // shorthand without hiding an explicit simulated error/output.
+    if (
+      command === 'git' &&
+      args[0] === 'diff' &&
+      args.includes('--diff-filter=D') &&
+      result.code === 1 &&
+      result.stdout === '' &&
+      result.stderr === ''
+    ) {
+      result.code = 0;
+    }
+    return Promise.resolve(result);
   };
   return { exec, calls };
 }
@@ -745,6 +760,39 @@ describe('runQueueCommit (control flow)', () => {
     // finally: git worktree remove + removeDir both ran.
     expect(calls.some((c) => c.args.includes('remove'))).toBe(true);
     expect(removed).toEqual(['/tmp/qc-xyz']);
+  });
+
+  it('fails closed when a 1c-style generated queue deletion is detected before ingestion', async () => {
+    let validations = 0;
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: 'queue-sha\trefs/heads/assets/queue\n' };
+      if (args[0] === 'diff' && args.includes('--diff-filter=D')) {
+        return {
+          stdout: 'public/assets/generated/lost.png\npublic/assets/generated/entries/lost.json\n',
+        };
+      }
+      if (args[0] === 'diff') return { code: 1 }; // staged incoming asset exists
+      if (args[0] === 'rev-parse') return { stdout: 'abc123def456\n' };
+      return {};
+    });
+
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), {
+        message: 'm',
+        validateDestination: async () => {
+          validations++;
+        },
+      }),
+    ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
+    ).rejects.toThrow('sprites:repair-queue -- --audit --policy acc25eda-selective-v1');
+    expect(validations).toBe(0);
+    const deletionDiff = calls.find(
+      (call) =>
+        call.command === 'git' && call.args[0] === 'diff' && call.args.includes('--diff-filter=D'),
+    );
+    expect(deletionDiff?.args).toContain('--no-renames');
   });
 });
 
