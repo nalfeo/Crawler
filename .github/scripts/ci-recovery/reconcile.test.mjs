@@ -7828,6 +7828,105 @@ test('reconcile skips outdated-marker for isOutdated thread that already has a t
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('live reconcile resolves a thread whose valid marker is followed by a duplicate-reply no-op', async (t) => {
+  const reviewCommentId = '3828391116';
+  const threadId = 'PRRT_kwDOSvo2Ms6bFDVg';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-08-21T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'scripts/sprites/asset-requests/reconcile.ts',
+            line: 784,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-original',
+                  body: 'Treat proof paths as read dependencies and revalidate every proof against the complete planned result before applying.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+                {
+                  id: 'comment-addressed',
+                  body: `✅ Addressed in ${HEAD_SHA}: added plan-level proof validation.`,
+                  author: { login: 'copilot-swe-agent' },
+                  authorAssociation: 'NONE',
+                  url: '',
+                },
+                {
+                  id: 'comment-duplicate-noop',
+                  body: 'Duplicate reply skipped — already posted above.',
+                  author: { login: 'copilot-swe-agent' },
+                  authorAssociation: 'NONE',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected the review thread to be resolved via GraphQL mutation');
+  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'expected no Copilot repair task for an already-addressed thread',
+  );
+});
+
 test('reconcile does not post outdated-marker for non-outdated thread with no trusted marker', async (t) => {
   const reviewCommentId = '9876543210';
   const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
