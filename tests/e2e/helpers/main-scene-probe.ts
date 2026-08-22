@@ -153,6 +153,10 @@ export const mainSceneProbe = {
     ),
   equipPlayerActiveAbility: (page: Page, abilityId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipPlayerActiveAbility(id), abilityId),
+  primeMagicMissileLightProbe: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeMagicMissileLightProbe()),
+  getMagicMissileLightProbe: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getMagicMissileLightProbe()),
   getAbilityFloaters: (
     page: Page,
   ): Promise<
