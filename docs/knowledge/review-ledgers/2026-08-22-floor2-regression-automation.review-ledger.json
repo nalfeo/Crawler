@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "floor2-regression-automation",
+  "task_title": "Move the Floor 2 / chain win-rate investigation into the release workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.4) before any code was written. (1) Blocking: a stable (non-commit) marker plus per-SHA-only job serialization lets two overlapping releases each create an issue -- adopted: the filer now sorts open marker matches by issue number, updates the lowest-numbered canonical issue, and closes the rest as superseded, with a unit test. (2) Blocking: skipping a missing monitored leg would silently retire the check on a publisher bug or leg rename -- adopted: monitored leg ids are derived from RELEASE_SWEEP_LEGS (non-blocking legs) instead of a second hardcoded copy, and a leg missing from a baseline captured under the current RELEASE_SWEEP_REVISION throws; older revisions are still skipped as history. (3) The plan undercounted test churn from deleting buildWinRateInvestigationClause -- adopted: the nightly-balance tests were pruned/updated and re-run (36 node --test cases green). (4) Dual-output plumbing needs CLI-level coverage, not just pure-function tests -- adopted: a spawn-based CLI test asserts both result files and both GITHUB_OUTPUT keys on a release where Floor 1 also lost runs. (5) Do not lose threshold provenance when moving the 0.9 constant -- adopted: ci-config-knobs.md row rewritten to point at the new location and the now-dead entry removed from the ci-knobs-guard allowlist. Reviewer confirmed the one-script/two-results shape and the report-only (non-blocking) reading of the maintainer intent were correct."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code_review tool reviewed all 13 changed files and returned no comments. The plan-review concerns (duplicate-issue race, fail-closed missing leg, CLI coverage, knob provenance) had already been folded in before this round."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
