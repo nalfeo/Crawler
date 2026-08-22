@@ -388,10 +388,21 @@ function runMinutes(run: RunStats): number {
   return Math.max(1 / 60, run.gameTimeMs / 60_000);
 }
 
+/**
+ * % of total game time the player was actively engaged in live combat
+ * (`RunStats.combat.combatTimeMs` / `gameTimeMs`), now that `combatTimeMs`
+ * tracks real combat-event activity within a 5s window rather than "any
+ * enemy exists somewhere on the floor". Shared by every dimension that wants
+ * an engagement *rate* — a percentage of time, not a per-minute frequency.
+ */
+function combatUptimeRatio(run: RunStats): number {
+  return ratio(run.combat.combatTimeMs, run.gameTimeMs);
+}
+
 function engagementForRun(run: RunStats): number {
   const minutes = runMinutes(run);
   const killsPerMin = run.combat.totalKills / minutes;
-  const combatRatio = ratio(run.combat.combatTimeMs, run.gameTimeMs);
+  const combatRatio = combatUptimeRatio(run);
   const questRatio =
     run.quests.questsAccepted > 0 ? run.quests.questsCompleted / run.quests.questsAccepted : 0;
   const outcome = normalizedOutcome(run) * 100;
@@ -426,14 +437,20 @@ function challengeBalanceForRun(run: RunStats): number {
 function excitementForRun(run: RunStats): number {
   const minutes = runMinutes(run);
   const damageRate = run.combat.damageDealt / minutes;
-  const engagementRate = run.combat.engagementCount / minutes;
+  // Engagement rate is % of time actively engaged in combat, not a
+  // per-minute engagement-burst count (which stayed pinned near a single
+  // burst per run under the old enemy-presence-based detection). Reuses
+  // `engagementForRun`'s combat-ratio target (0.45/0.35) rather than
+  // inventing a fresh excitement-specific threshold, since both scores now
+  // read the exact same underlying quantity.
+  const engagementRate = combatUptimeRatio(run);
   const clutchSignal =
     run.outcome === 'victory' && run.health.closeCallCount > 0
       ? Math.min(run.health.closeCallCount, 4)
       : 0;
   return round2(
     bandScore(damageRate, 850, 650) * 0.4 +
-      bandScore(engagementRate, 0.75, 0.6) * 0.35 +
+      bandScore(engagementRate, 0.45, 0.35) * 0.35 +
       bandScore(clutchSignal, 2, 2) * 0.25,
   );
 }
@@ -1033,16 +1050,18 @@ export function scoreFunSessions(
   });
   const criteria: FunCriteria = {
     unsafe_combat_uptime: criterion(
-      // `RunStats.combat.combatTimeMs` accumulates on every frame where any
-      // Enemy entity exists anywhere in the world -- including frames spent in
-      // a safe room -- while the denominator would exclude all safe-room time.
-      // That ratio can exceed 1 and report healthy without any sustained
-      // nearby combat, so this stays unmeasured until zone-aware combat time
-      // is recorded on RunStats.
+      // `RunStats.combat.combatTimeMs` now tracks real live-combat-event
+      // activity (a 5s window keyed off `world.combatEvents`) rather than
+      // "any Enemy entity exists anywhere in the world", so the always-~1.0
+      // ratio bug is fixed. It is still not proven zone-aware, though:
+      // nothing in the damage-resolution path currently suppresses combat
+      // events while `world.playerInSafeRoom` is true, so a straggler hit
+      // landing during a safe-room frame would still count toward uptime.
+      // Stays unmeasured until that is verified/enforced.
       null,
       0.75,
       false,
-      'Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames.',
+      'Needs confirmation that combat events cannot occur while playerInSafeRoom is true before combatTimeMs can be trusted as zone-aware uptime.',
     ),
     survivability_variance: criterion(
       round2(survivabilityVariance),

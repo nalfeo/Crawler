@@ -418,6 +418,34 @@ describe('headless runner AI telemetry', () => {
     // be strictly less than totalEventDamage.
     expect(attributedDamage).toBe(totalEventDamage);
   });
+
+  it('measures engagement from live combat events within a 5s window, not from any enemy existing anywhere', async () => {
+    // Before this fix, `engagementCount` was pinned at exactly 1 and
+    // `combatTimeMs` tracked total game time (minus one frame) for every run,
+    // because "in combat" was defined as "at least one Enemy entity exists
+    // anywhere in the world" — which Floor 1/2's ambient spawners keep true
+    // almost the entire run. With live-combat-event detection, a full Floor 1
+    // clear has real lulls (navigation, looting, shopping, quest turn-ins)
+    // between bursts of actual fighting, so both metrics must reflect that.
+    const run = () =>
+      runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+        seed: 42,
+        maxFrames: 20_000,
+        maxWallTimeMs: 60_000,
+        forceWeaponId: 'sword',
+      });
+
+    const stats = await run();
+    expect(stats.outcome).toBe('victory');
+    expect(stats.combat.engagementCount).toBeGreaterThan(1);
+    expect(stats.combat.combatTimeMs).toBeGreaterThan(0);
+    expect(stats.combat.combatTimeMs).toBeLessThan(stats.gameTimeMs);
+
+    // Deterministic: identical seed/config reproduces identical telemetry.
+    const again = await run();
+    expect(again.combat.engagementCount).toBe(stats.combat.engagementCount);
+    expect(again.combat.combatTimeMs).toBe(stats.combat.combatTimeMs);
+  });
 });
 
 describe('headless runner weapon telemetry (opt-in)', () => {

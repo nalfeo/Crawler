@@ -298,8 +298,9 @@ describe('scoreFunSessions', () => {
       { id: 'expert', persona: 'experienced_player', run: makeRun({ startingWeapon: 'bow' }) },
     ]);
 
-    // combatTimeMs accumulates during safe-room frames too, so uptime stays
-    // unmeasured until zone-aware combat time is recorded.
+    // Unsafe-zone combat uptime still stays unmeasured: nothing verifies that
+    // combat events cannot occur during safe-room frames, so the ratio isn't
+    // trusted as zone-aware yet even though combatTimeMs is now real activity.
     expect(report.criteria.unsafe_combat_uptime.status).toBe('unmeasured');
     expect(report.criteria.dopamine_cadence.status).toBe('unmeasured');
     expect(report.criteria.snowball_frequency.status).toBe('unmeasured');

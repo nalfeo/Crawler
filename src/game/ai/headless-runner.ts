@@ -103,6 +103,17 @@ import {
 const logger = createLogger('game:headless-runner');
 
 /**
+ * How recently a live combat event (any entry pushed to `world.combatEvents`
+ * — hits, blocks, dodges, misses, deaths) must have occurred for the player
+ * to be considered "actively engaged". Replaces the previous "any Enemy
+ * entity exists anywhere in the world" check, which — combined with Floor
+ * 1/2's ambient spawners keeping at least one enemy alive almost the entire
+ * run — pinned `engagementCount` at 1 and made `combatTimeMs` track total
+ * game time instead of real combat activity.
+ */
+const ENGAGEMENT_WINDOW_MS = 5000;
+
+/**
  * Reads `world.state` outside the run loop's control-flow narrowing.
  *
  * `runHeadless` throws unless `world.state === 'playing'` right after setup,
@@ -747,6 +758,11 @@ export async function runHeadless(
   let engagementCount = 0;
   let inCombat = false;
   let combatStartFrame = 0;
+  // Game-time timestamp of the most recent live combat event (any entry
+  // pushed to `world.combatEvents`, which are only ever emitted from the
+  // damage-resolution choke point in `applyDamage`). Starts at -Infinity so
+  // the first frame is correctly evaluated as "no recent combat activity".
+  let lastCombatEventMs = Number.NEGATIVE_INFINITY;
   let damageDealt = 0;
   let damageTaken = 0;
   const damageTakenBySource: Record<string, number> = {};
@@ -1204,7 +1220,6 @@ export async function runHeadless(
         break;
       }
 
-      const currentEnemyCount = enemyEids.length;
       if (mergedConfig.settlementReturnRouting) {
         const settlementReturnIntent = getSettlementReturnIntent(world);
         if (settlementReturnIntent.status !== lastSettlementReturnStatus) {
@@ -1300,24 +1315,10 @@ export async function runHeadless(
         damageTaken += previousPlayerHealth - playerHealth;
       }
 
-      // 3. Combat tracking
-      const enemiesNearby = currentEnemyCount > 0;
-
-      if (enemiesNearby && !inCombat) {
-        // Combat started
-        inCombat = true;
-        combatStartFrame = frameCount;
-        engagementCount++;
-      } else if (!enemiesNearby && inCombat) {
-        // Combat ended
-        inCombat = false;
-        const combatDurationFrames = frameCount - combatStartFrame;
-        combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
-      }
-
-      // Track real enemy deaths rather than enemy-count deltas. The ambient
-      // director legitimately prunes and recycles distant mobs; treating those
-      // removals as kills inflates RunStats and obscures Floor 2 attribution.
+      // 3. Combat tracking — track real enemy deaths rather than
+      // enemy-count deltas. The ambient director legitimately prunes and
+      // recycles distant mobs; treating those removals as kills inflates
+      // RunStats and obscures Floor 2 attribution.
       const combatEvents = world.combatEvents;
       if (
         combatEventCursor > combatEvents.length ||
@@ -1327,6 +1328,14 @@ export async function runHeadless(
       }
       for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
         const event = combatEvents[eventIndex]!;
+        // Every entry in `world.combatEvents` is emitted from the damage
+        // resolution choke point in `applyDamage`, so any event this frame is
+        // live combat activity — mark it regardless of type/target so the
+        // engagement window below reflects real fighting, not "an Enemy
+        // entity exists somewhere on the floor" (which stayed true almost the
+        // whole run under Floor 1/2's ambient spawners and pinned
+        // `engagementCount` at 1 while `combatTimeMs` tracked total game time).
+        lastCombatEventMs = event.timestamp;
         if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
           // Prefer the pre-snapshotted stable archetype key over the EID lookup:
           // sourceEid is best-effort (may reference a recycled entity). For
@@ -1367,6 +1376,23 @@ export async function runHeadless(
       }
       combatEventCursor = combatEvents.length;
       lastProcessedCombatEvent = combatEvents[combatEventCursor - 1];
+
+      // A player is "actively engaged" while a live combat event happened
+      // within the last `ENGAGEMENT_WINDOW_MS` (5s granularity) — not merely
+      // while any enemy exists anywhere on the floor. `engagementCount`
+      // increments once per rising edge (a new burst of activity after a
+      // 5s+ lull); `combatTimeMs` accumulates the duration of each burst,
+      // flushed either on the falling edge below or at run end.
+      const activelyEngaged = world.elapsedMs - lastCombatEventMs <= ENGAGEMENT_WINDOW_MS;
+      if (activelyEngaged && !inCombat) {
+        inCombat = true;
+        combatStartFrame = frameCount;
+        engagementCount++;
+      } else if (!activelyEngaged && inCombat) {
+        inCombat = false;
+        const combatDurationFrames = frameCount - combatStartFrame;
+        combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
+      }
 
       // 4. Quest tracking (basic - would need event system for full tracking)
       if (world.floorScenario) {
