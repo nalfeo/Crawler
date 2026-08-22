@@ -665,6 +665,23 @@ export class MainGameScene extends Phaser.Scene {
   /** Generated stairs-art decal stamped over `staircaseMarker`'s footprint, when loaded. */
   private staircaseSprite?: Phaser.GameObjects.Image;
 
+  /**
+   * Whether the last `renderStaircaseMarker()` pass stamped the approved
+   * generated stairs art (vs. the plain-circle fallback). Read by the
+   * main-scene-probe-lab observe seam (`getStaircaseMarkerRenderInfo`) to
+   * prove — in a REAL booted scene — that the floor-exit marker renders real
+   * stairs art rather than only a circle.
+   */
+  private staircaseMarkerUsesGeneratedArt = false;
+
+  /**
+   * Cached opaque-bounds lookup for `STAIRS_TEXTURE_KEY` in the generated
+   * sprite registry: `undefined` = not yet looked up, `null` = looked up but
+   * not found. The registry entry never changes after boot, so this avoids
+   * re-scanning it on every `renderStaircaseMarker()` call.
+   */
+  private staircaseBoundsCache?: OpaqueBounds | null;
+
   private readonly npcQuestIndicators = new Map<number, Phaser.GameObjects.Text>();
 
   private loadoutText?: Phaser.GameObjects.Text;
@@ -3782,6 +3799,7 @@ export class MainGameScene extends Phaser.Scene {
     if (!hasStairsArt) {
       this.staircaseMarker.setFillStyle(fillColor, 0.25);
       this.staircaseSprite?.setVisible(false);
+      this.staircaseMarkerUsesGeneratedArt = false;
       return;
     }
     const source = this.textures.get(STAIRS_TEXTURE_KEY).getSourceImage() as {
@@ -3793,24 +3811,28 @@ export class MainGameScene extends Phaser.Scene {
     if (canvasWidth <= 0 || canvasHeight <= 0) {
       this.staircaseMarker.setFillStyle(fillColor, 0.25);
       this.staircaseSprite?.setVisible(false);
+      this.staircaseMarkerUsesGeneratedArt = false;
       return;
     }
-    const rawStairsRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
-      | GeneratedSpriteRegistry
-      | undefined;
-    const stairsRegistry =
-      rawStairsRegistry && typeof rawStairsRegistry.entries === 'function'
-        ? rawStairsRegistry
-        : null;
-    let bounds: OpaqueBounds | undefined;
-    if (stairsRegistry) {
-      for (const entry of stairsRegistry.entries()) {
-        if (entry.textureKey === STAIRS_TEXTURE_KEY) {
-          bounds = entry.opaqueBounds;
-          break;
+    if (this.staircaseBoundsCache === undefined) {
+      const rawStairsRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
+        | GeneratedSpriteRegistry
+        | undefined;
+      const stairsRegistry =
+        rawStairsRegistry && typeof rawStairsRegistry.entries === 'function'
+          ? rawStairsRegistry
+          : null;
+      this.staircaseBoundsCache = null;
+      if (stairsRegistry) {
+        for (const entry of stairsRegistry.entries()) {
+          if (entry.textureKey === STAIRS_TEXTURE_KEY) {
+            this.staircaseBoundsCache = entry.opaqueBounds ?? null;
+            break;
+          }
         }
       }
     }
+    const bounds = this.staircaseBoundsCache ?? undefined;
     const fit = resolveStairsContainFit({
       bounds,
       canvasWidth,
@@ -3818,7 +3840,7 @@ export class MainGameScene extends Phaser.Scene {
       markerRadiusPx: radiusPx,
     });
     if (!this.staircaseSprite) {
-      this.staircaseSprite = this.add.image(x, y, STAIRS_TEXTURE_KEY).setDepth(19);
+      this.staircaseSprite = this.add.image(x, y, STAIRS_TEXTURE_KEY).setDepth(21);
     }
     this.staircaseSprite
       .setTexture(STAIRS_TEXTURE_KEY)
@@ -3829,6 +3851,20 @@ export class MainGameScene extends Phaser.Scene {
       .setVisible(visible);
     // Art carries the fill weight now; keep only the outline ring.
     this.staircaseMarker.setFillStyle(fillColor, 0);
+    this.staircaseMarkerUsesGeneratedArt = true;
+  }
+
+  /**
+   * Whether the last `renderStaircaseMarker()` pass stamped the approved
+   * generated stairs art (vs. the plain-circle fallback), plus whether the
+   * marker is currently visible. Lets the main-scene-probe-lab prove — in a
+   * REAL booted scene — that the floor-exit marker renders real stairs art.
+   */
+  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean } {
+    return {
+      usesGeneratedArt: this.staircaseMarkerUsesGeneratedArt,
+      visible: this.staircaseSprite?.visible ?? this.staircaseMarker?.visible ?? false,
+    };
   }
 
   private updateObjectiveMarkers(): void {
@@ -3871,6 +3907,7 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         this.staircaseMarker?.setVisible(false);
         this.staircaseSprite?.setVisible(false);
+        this.staircaseMarkerUsesGeneratedArt = false;
         this.stairsLabel?.setVisible(false);
       }
       this.updateNpcQuestIndicators();
