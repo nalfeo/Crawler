@@ -114,6 +114,21 @@ copilot-guards/lib/pr-scope.mjs` classifies **any** `.md`/`.txt` outside `src/` 
   economy/RNG/UI/headless-decision surface for a feature the brief never asked for; the plan
   review was right to call it premature. It is now recorded as explicitly out of scope so it
   is not silently re-invented.
+- Wrote three requirements that asserted behavior the existing code does not have, and only
+  caught them because a second review round checked the spec against the source rather than
+  against itself: the Green Room was described via `spawnRoomIsSafe` (which protects only
+  `floorMap.spawnRoom` — the arena) instead of `RoomRole.SAFE`; "no timer in the Green Room"
+  ignored that `resolveFloorTimerRemainingMs` derives from `world.elapsedMs`, which keeps
+  advancing while shopping; and generated shop offers were specified as "instantiated only on
+  purchase" when `quartermaster-stock.ts` already generates at roll time and retires unsold
+  instances. Lesson: when a spec claims to _reuse_ an existing system, open that file and
+  quote its actual behavior — "reuse" written from memory is how a spec quietly becomes a
+  rewrite.
+- Let a self-contradiction survive the first draft: the state table ended an act on the boss
+  kill while the prose insisted act marks were absolute, which would have made a fast act 5
+  win at 9:35 on a floor advertised as ten minutes. Resolved with the victory lap (act always
+  ends on its mark; the leftover window is chest/loot collection), which also removed the
+  need for a separate "chest resolved before transition" ordering rule.
 
 ### Opportunities for Future Improvement
 

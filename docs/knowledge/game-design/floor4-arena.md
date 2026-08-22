@@ -94,20 +94,25 @@ Five rules define the beat:
 3. **Every act is split into a wave window and a headline window.** Waves spawn for the
    act's first 90 seconds. At the 1:30 mark the feed gates seal, surviving trash is _cut_
    (§5.4), and the act's **Headliner** enters for the last 30 seconds — with the clock
-   still running. Killing a Headliner fast does not extend the act; the act still ends on
-   its mark.
-4. **Overtime is the only thing that ever pauses combat time.** If an act's mark arrives
+   still running.
+4. **The act always ends on its mark, not on the kill.** Killing a Headliner early does
+   not end the act early: the remainder of the headline window becomes the **victory
+   lap** — the window in which the player collects the boss chest, hoovers the act's
+   leftover drops, and takes the Director's post-match interview. The cut to commercial
+   happens at the mark. This is what keeps the ten minutes exact and the act marks
+   absolute, and it is why the chest is never stranded (§7.3).
+5. **Overtime is the only thing that ever pauses combat time.** If an act's mark arrives
    with the Headliner still alive, the arena clock **holds** at that mark — it must never
    bleed into the next act, which would corrupt the wave schedule — and the fight goes to
    **Overtime** (§6.2): a deterministic escalation ramp with a hard 60-second cap ending in
    a guaranteed-lethal finisher. Overtime is a bounded, self-terminating failure path, not
    an open-ended pause.
-5. **Every Headliner is followed by a Green Room.** Five bosses, five shopping trips. The
+6. **Every Headliner is followed by a Green Room.** Five bosses, five shopping trips. The
    fifth Green Room is the **Winner's Circle** and its exit is the stairs.
 
-Because of rules 1 and 4 the floor's total combat time is hard-bounded at **10:00 plus at
-most 5 × 0:60 of overtime**, which is what makes the floor testable under a headless
-win-rate gate at all.
+Because of rules 1, 4 and 5 the floor's total combat time is exactly **10:00 plus at most
+5 × 0:60 of overtime**, which is what makes the floor testable under a headless win-rate
+gate at all.
 
 The player verb is unchanged from Floors 1–2: move, auto-attack, use abilities, collect.
 Floor 4 changes the **shape of the pressure**, not the controls.
@@ -223,8 +228,9 @@ Five bosses, one per act, each entering at its act's 1:30 mark.
   stay stable even if the same archetype is ever reachable from two slots.
 - **Every Headliner drops a boss chest** (the existing boss-chest reward path) plus a
   guaranteed **appearance fee** in gold, sized so the following Green Room is always
-  meaningfully affordable. The chest is resolved and collected **before** the Green Room
-  transition (§7.3), never left behind on the arena floor.
+  meaningfully affordable. The chest is collected during the **victory lap** — the
+  remainder of the headline window after the kill (§3 rule 4) — so the reward is never
+  stranded in an arena the player has already left.
 
 ### 6.1 Candidate pool (authored roster — grades in brackets)
 
@@ -239,6 +245,10 @@ Five bosses, one per act, each entering at its act's 1:30 mark.
 | `floor4-understudy`     | **The Understudy**                 | 4     | Copies the player's currently-equipped weapon archetype.                               |
 | `floor4-prime-time`     | **Prime Time**                     | 4     | Alternates a heavy melee "live" phase with a ranged "commercial" phase.                |
 | `floor4-showrunner`     | **The Showrunner** (finale, fixed) | 5     | Books the fight: summons a short scripted wave mid-fight, then finishes it personally. |
+
+The Showrunner's scripted wave is a **boss ability, not a scheduled wave**: it is owned by
+the encounter, shares the arena's live-enemy cap, never contributes to or draws from spawn
+debt, and is cut when the encounter ends by either kill or overtime finisher.
 
 Grade eligibility per act slot: act 1 → grades 1–2, act 2 → grades 1–3, act 3 → grades 2–4,
 act 4 → grades 3–4, act 5 → the fixed finale. The pool is **append-only**: adding a
@@ -318,22 +328,21 @@ blunt so the economy has no hidden state:
   stock is rolled independently, so a passed-over item may or may not reappear.
 - **Unsold stock does not carry over.** Leaving the Green Room retires the whole offer; the
   next break is a clean roll. "I'll buy it next break" is never a valid plan, which is what
-  gives each break real decision weight.
-- **Generated equipment offered on a table is instantiated when purchased**, under the
-  existing generated-equipment ownership rules, so an unbought generated offer leaves no
-  orphaned instance behind.
+  gives each break real decision weight. Generated-equipment offers follow the existing
+  roll-then-retire pattern the Floor 2 Quartermaster already uses, so an unbought offer is
+  retired rather than orphaned.
 
 ### 7.3 Entering and leaving (the intermission transaction)
 
 The Green Room is only safe if the hand-off from the arena is a **transaction**, not a
-door. Design requirement, in order: the Headliner dies → its chest and appearance fee are
-resolved and collected → every remaining arena entity, projectile, and pending spawn debt
-is cleared → the arena seals → the player is placed in the Green Room → the visit's stock
-is rolled → the player shops → the exit is taken → the next act's schedule is armed and the
-arena unseals.
+door. Design requirement, in order: the Headliner dies → the victory lap runs to the act
+mark while the player collects the chest and leftover drops → every remaining arena entity,
+projectile, and pending spawn debt is cleared → the arena seals → the player is placed in
+the Green Room → the visit's stock is rolled → the player shops → the exit is taken → the
+next act's schedule is armed and the arena unseals.
 
 Nothing about that ordering is optional: skipping the clear step leaks live enemies or
-projectiles into a "safe" room, and skipping the chest step strands the act's reward on a
+projectiles into a "safe" room, and skipping the victory lap strands the act's reward on a
 floor the player can no longer reach.
 
 The Green Room does **not** heal the player for free. Healing is something you buy, which
@@ -368,11 +377,17 @@ Design targets (to be tuned against the win-rate gate, not against individual se
   (wave kills + appearance fee) and each break declares a target price band, so "can the
   player afford a meaningful purchase at break _n_?" is a number the balance pass checks,
   not a hope.
-- **Every Green Room must be able to buy something meaningful.** A break where the player
-  can only window-shop is a failed beat.
-- **The player should leave the floor spent, not rich.** Gold is a floor-scoped resource;
-  hoarding it to carry out is a worse decision than spending it, and the numbers should say
-  so.
+- **Every Green Room must be able to buy something meaningful — as a measurable
+  invariant, not an aspiration.** Every visit's rolled stock must contain at least one
+  entry priced at or below the floor's declared worst-case gold-on-hand for that break,
+  computed from the guaranteed appearance fees alone (i.e. assuming no wave income and a
+  player who has already spent everything). This is asserted per seed in the sweep, so an
+  unlucky roll or an early healing purchase can never produce a window-shopping break.
+- **Gold is not floor-scoped.** `playerGold` already carries between floors via the
+  existing carryover snapshot, and Floor 4 does not change that or introduce a second
+  currency. The pressure to spend is created by **pricing**, not by confiscation: the
+  price bands are sized so that converting gold into power inside the Green Room beats
+  carrying it out.
 - **Power should roughly double across the five acts**, matching the ~3.2× threat
   escalation once the player's own level gains are counted.
 - **Anti-snowball:** because stock is a fresh roll each break and never accumulates, a
@@ -433,6 +448,12 @@ upside, never a requirement.
 | **Green Room shopfront** | Per-table inventory with prices, affordability, and the sponsor's name.                                                                                                                |
 | **Break summary**        | On entering the Green Room: gold earned, kills, and the act just survived.                                                                                                             |
 | **Winner's Circle**      | Final tally + the stairs prompt.                                                                                                                                                       |
+
+Floor 4 **suppresses the generic floor-timer readout**. The act clock is the only clock the
+player sees, and it holds during a Green Room visit — shopping is untimed, and showing a
+second, still-advancing number there would create pressure the design explicitly rejects.
+The manifest's `timer.durationMs` remains a real wall-clock stall backstop (§ spec R8.4),
+but it is sized far above any legitimate run and is never surfaced as a countdown.
 
 Each of these is a design requirement here and an implementation slice in the spec; none
 ships without deterministic visual validation in the real game artifact (project rule #9).

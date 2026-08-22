@@ -67,12 +67,17 @@ Two constraints shape everything:
   which continues to advance normally for every existing consumer (cooldowns, VFX,
   telemetry, `resolveFloorTimerRemainingMs`).
 - **FR1.2** The arena clock advances during **all combat phases** (`WAVES`, `HEADLINE`) and
-  is **held** during `OVERTIME`, `INTERMISSION`, and any modal/paused state.
+  is **held** during `OVERTIME`, `INTERMISSION`, and any modal/paused state. It advances
+  during `HEADLINE` whether or not the Headliner is still alive (FR1.4).
 - **FR1.3** The arena's total combat budget is **600,000 ms**, divided into **five acts of
   120,000 ms**. Act boundaries are absolute marks at 120k / 240k / 360k / 480k / 600k and
   never drift.
 - **FR1.4** Each act is split into a **wave window** (first 90,000 ms) and a **headline
-  window** (last 30,000 ms).
+  window** (last 30,000 ms). The headline window always runs to the act mark. Defeating the
+  Headliner before the mark does **not** end the act early; the remainder of the window is
+  the **victory lap**, during which the player collects the boss chest and the act's
+  leftover drops. This is what makes FR1.3's marks absolute and keeps the floor's duration
+  a known constant.
 - **FR1.5** The clock is derived from accumulated integer deltas only. No wall-clock source
   may be read.
 
@@ -80,20 +85,28 @@ Two constraints shape everything:
 
 - **FR2.1** The floor is always in exactly one phase:
   `COUNTDOWN → WAVES(act) → HEADLINE(act) → [OVERTIME(act)] → INTERMISSION(act) → …
-→ VICTORY`, with `DEFEAT` reachable from any combat phase on player death.
+→ VICTORY`, with `DEFEAT` reachable from any combat phase on player death. `HEADLINE(n)`
+  carries a **cleared latch** distinguishing "Headliner alive" from "Headliner defeated,
+  victory lap running"; it is a latch rather than a separate phase so that no consumer has
+  to special-case two combat phases with identical rules.
 - **FR2.2** Transitions and their triggers are exhaustive and total:
 
-  | From              | Trigger                                             | To                |
-  | ----------------- | --------------------------------------------------- | ----------------- |
-  | `COUNTDOWN`       | countdown elapsed                                   | `WAVES(1)`        |
-  | `WAVES(n)`        | arena clock reaches act `n`'s wave-window end       | `HEADLINE(n)`     |
-  | `HEADLINE(n)`     | Headliner `n` defeated                              | `INTERMISSION(n)` |
-  | `HEADLINE(n)`     | arena clock reaches act `n`'s mark, Headliner alive | `OVERTIME(n)`     |
-  | `OVERTIME(n)`     | Headliner `n` defeated                              | `INTERMISSION(n)` |
-  | `OVERTIME(n)`     | overtime cap reached (finisher resolves)            | `DEFEAT`          |
-  | `INTERMISSION(n)` | player takes the Green Room exit, `n < 5`           | `WAVES(n + 1)`    |
-  | `INTERMISSION(5)` | player takes the stairs                             | `VICTORY`         |
-  | any combat phase  | player death                                        | `DEFEAT`          |
+  | From                       | Trigger                                       | To                |
+  | -------------------------- | --------------------------------------------- | ----------------- |
+  | `COUNTDOWN`                | countdown elapsed                             | `WAVES(1)`        |
+  | `WAVES(n)`                 | arena clock reaches act `n`'s wave-window end | `HEADLINE(n)`     |
+  | `HEADLINE(n)`, latch clear | Headliner `n` defeated                        | `HEADLINE(n)`\*   |
+  | `HEADLINE(n)`, latch set   | arena clock reaches act `n`'s mark            | `INTERMISSION(n)` |
+  | `HEADLINE(n)`, latch clear | arena clock reaches act `n`'s mark            | `OVERTIME(n)`     |
+  | `OVERTIME(n)`              | Headliner `n` defeated                        | `INTERMISSION(n)` |
+  | `OVERTIME(n)`              | overtime cap reached (finisher resolves)      | `DEFEAT`          |
+  | `INTERMISSION(n)`          | player takes the Green Room exit, `n < 5`     | `WAVES(n + 1)`    |
+  | `INTERMISSION(5)`          | player takes the stairs                       | `VICTORY`         |
+  | any combat phase           | player death                                  | `DEFEAT`          |
+
+  \* Sets the cleared latch and begins the victory lap; the phase itself is unchanged.
+  Defeat during `OVERTIME(n)` skips the victory lap — the act mark has already passed — and
+  intermission begins immediately.
 
 - **FR2.3** Phase is single-authority: exactly one system advances it, and every other
   system reads it. No system may infer the phase from entity counts or clock values.
@@ -121,6 +134,10 @@ Two constraints shape everything:
 - **FR3.6** At the end of a wave window every surviving wave enemy is **cut**: removed with
   standard death VFX, awarding **no** XP, gold, or drops, and counting as neither a kill nor
   a death in telemetry.
+- **FR3.7** Boss-summoned enemies (notably the Showrunner's scripted mid-fight wave, FR4.8)
+  are **not** scheduled waves: they are owned by the encounter, are excluded from wave
+  manifests and from spawn debt, count against the same live-enemy cap, and are removed with
+  the encounter rather than by the cut.
 
 ### R4 — Headliners
 
@@ -134,23 +151,30 @@ Two constraints shape everything:
   archetype id. Defeat latches, chest attribution, achievements, and telemetry key off the
   slot.
 - **FR4.5** On defeat, a Headliner drops a boss chest (existing boss-chest path, ADR 0070)
-  plus a fixed act-scaled gold **appearance fee**. The `INTERMISSION` transition must not
-  begin until chest resolution has completed and the reward is in the player's possession;
-  a missing or unresolved chest is a hard error, never a silent skip.
+  plus a fixed act-scaled gold **appearance fee**. The chest is collected during the victory
+  lap (FR1.4). Any chest still unopened when the act mark arrives is **force-resolved into
+  the player's possession** as part of the intermission transaction (FR5.2); a chest that is
+  neither collected nor force-resolved is a hard error, never a silent skip.
 - **FR4.6** `OVERTIME` applies a deterministic escalation ramp (damage/speed steps on a
   fixed schedule) and is hard-capped at **60,000 ms**, at which point a telegraphed
   guaranteed-lethal finisher resolves. Overtime is announced on the HUD before it begins.
 - **FR4.7** Every Headliner ability must be expressible in arena geometry (no corridor-,
   door-, or cover-dependent abilities) and must carry an observable telegraph.
+- **FR4.8** The finale's scripted summon is a bounded boss ability: a fixed, manifest-authored
+  roster and count drawn from the Headliner-selection stream, subject to FR3.7.
 
 ### R5 — The Green Room (intermission)
 
-- **FR5.1** The Green Room is a physically separate sealed room that is a **safe space**
-  (`spawnRoomIsSafe` semantics + `safeRoomWeaponImmunity` + `safeRoomDoorsAutoClose`), not a
-  menu overlay. The brief asks the player to _enter_ a safe room.
+- **FR5.1** The Green Room is a physically separate sealed room, not a menu overlay — the
+  brief asks the player to _enter_ a safe room. It must be tagged `RoomRole.SAFE` in the
+  room graph so that `safeRoomSystem` (`src/core/safe-space.ts`) recognises it; the
+  `spawnRoomIsSafe` flag is **not** used, because it protects only `floorMap.spawnRoom`,
+  which on Floor 4 is the arena itself. The `safeRoomWeaponImmunity` and
+  `safeRoomDoorsAutoClose` behavior flags are enabled (FR8.7).
 - **FR5.2** Entry is an ordered **transaction**, and every step is mandatory:
-  1. Headliner death detected and its defeat latch set.
-  2. Chest + appearance fee resolved and collected (FR4.5).
+  1. Headliner death detected and its defeat latch set (FR2.1); the victory lap runs to the
+     act mark.
+  2. Any unopened boss chest force-resolved and the appearance fee collected (FR4.5).
   3. All remaining arena enemies, projectiles, ground effects, and spawn debt cleared.
   4. Arena sealed (dynamic barrier / door lock, ADR 0023 / 0050).
   5. Player relocated into the Green Room; arena clock held.
@@ -162,9 +186,12 @@ Two constraints shape everything:
   player owns**, not only newly-purchased items.
 - **FR5.5** The Green Room applies **no** free healing or resource reset. Recovery is a
   purchase.
-- **FR5.6** No combat, no enemies, no timer, and no player damage may occur in the Green
+- **FR5.6** No combat, no enemies, no countdown, and no player damage may occur in the Green
   Room. This is an invariant, not a behavior — an integration test asserts an empty hostile
-  set for the whole visit.
+  set for the whole visit. "No countdown" is a **HUD** guarantee: the arena clock is held
+  (FR1.2) and the generic floor-timer readout is suppressed on Floor 4 (FR8.4), so the
+  player sees no advancing number while shopping. `world.elapsedMs` itself keeps advancing,
+  as it must for every existing consumer.
 
 ### R6 — Shop stock and re-randomization
 
@@ -179,20 +206,38 @@ Two constraints shape everything:
 - **FR6.4** Stock is **immutable within a visit** — no mid-visit restock.
 - **FR6.5** Purchased entries are removed for that visit; unsold entries are **retired** on
   exit and do not carry into the next visit.
-- **FR6.6** A generated-equipment offer is **instantiated only on purchase**, under existing
-  generated-equipment ownership rules, so retiring an unbought offer leaves no orphaned
-  instance in the registry.
+- **FR6.6** Generated-equipment offers follow the existing Floor 2 Quartermaster lifecycle
+  (`src/game/quartermaster-stock.ts`): instances are generated when the visit's stock is
+  rolled and every unpurchased instance is **retired** on exit, tracked by instance id, so
+  retiring a visit leaves no orphaned instance in the registry. Floor 4 reuses that
+  epoch-and-retire pattern rather than introducing deferred instantiation.
 - **FR6.7** Price bands and tier pools scale with `visitIndex` from manifest-authored data.
+- **FR6.8** **Affordability invariant.** Every visit's rolled stock must contain at least one
+  entry priced at or below the declared worst-case gold-on-hand for that visit, computed
+  from the guaranteed appearance fees alone (no wave income, all prior gold spent). This is
+  asserted per seed in the headless sweep, so no roll can produce a window-shopping break.
 
 ### R7 — Determinism contract
 
 - **FR7.1** All Floor 4 randomness is drawn from **derived, isolated streams**, never from
-  the shared combat `world.rng`. The derivation is a pure function of
-  `(floorSeed, purposeLabel, index…)`; the exact derivation recipe is a data contract owned
-  by this spec, and the _architectural_ commitment (isolated per-purpose streams) is owned
-  by ADR 0090.
-- **FR7.2** Distinct purposes get distinct labels: wave manifests, Headliner selection, shop
-  stock (per visit, per table), and Green Room dressing.
+  the shared combat `world.rng`. A stream is constructed as
+  `new SeededRandom(hashStreamKey(streamKey))` where
+  `streamKey = [floorSeed, 'floor4', purposeLabel, ...indices].join(':')`, indices are
+  base-10 integers, and `hashStreamKey` is the repo's existing deterministic string-to-seed
+  hash (the same one used for named sub-seeds elsewhere; a new one is only introduced if
+  none exists, and then it lives in `src/shared/random.ts`). The delimiter is `:` and
+  labels may not contain it, so distinct purposes can never collide. The _architectural_
+  commitment (isolated per-purpose streams) is owned by ADR 0090; this recipe is the data
+  contract.
+- **FR7.2** Canonical purpose labels and their indices:
+
+  | Purpose             | Label      | Indices                   |
+  | ------------------- | ---------- | ------------------------- |
+  | Wave manifests      | `waves`    | act, waveIndex            |
+  | Headliner selection | `headline` | — (one draw for the card) |
+  | Shop stock          | `stock`    | visitIndex, tableId       |
+  | Green Room dressing | `dressing` | visitIndex                |
+
 - **FR7.3** Re-running a seed must reproduce: identical phase timeline, identical wave
   manifests, an identical Headliner card, and identical stock for all five visits — asserted
   by unit tests, not by inspection.
@@ -212,10 +257,15 @@ Two constraints shape everything:
 - **FR8.3** Floor 4 sets `objectives.*` to zero — it has no kill/gold/junk gate — and gates
   the stairs through the scenario's `onStairDescend`, which returns false unless the phase
   is `INTERMISSION(5)`.
-- **FR8.4** `timer.durationMs` is a **hard broadcast-window backstop** sized well above the
-  bounded worst case (600,000 ms of combat + 5 × 60,000 ms of overtime). Reaching it means a
-  non-terminating bug, and the floor must record that explicitly rather than treating it as
-  an ordinary timeout.
+- **FR8.4** `timer.durationMs` is a **hard stall backstop on `world.elapsedMs`**, not a
+  broadcast countdown. Because `resolveFloorTimerRemainingMs`
+  (`src/engine/floor-timer-state.ts`) derives from `world.elapsedMs`, which advances during
+  Green Room visits, the backstop must be sized to cover the bounded worst case
+  (600,000 ms of combat + 5 × 60,000 ms of overtime) **plus** a generous allowance for five
+  untimed shopping visits. Floor 4 **suppresses the generic floor-timer HUD readout**
+  (FR5.6) so this value is never surfaced as a countdown; the act clock is the only clock
+  the player sees. Reaching the backstop means a non-terminating bug or an abandoned run,
+  and the floor must record that explicitly rather than treating it as an ordinary timeout.
 - **FR8.5** `implemented.mvp` stays `false` until the floor is finishable end-to-end and the
   headless gate passes; `implemented.winBudgetMs` is set to the bounded worst case
   (900,000 ms).
@@ -332,13 +382,13 @@ Slices are ordered so that each one is independently observable in a **real** ar
 
 ## Test Plan
 
-| Level            | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unit**         | Phase transition table totality (every trigger from every phase); arena clock advances in combat and holds in overtime/intermission; wave manifest determinism for a fixed seed; budget curve maths; debt cap and phase-boundary clearing; debt release consumes no RNG; Headliner draw is without-replacement, grade-legal, and seed-stable; per-visit shop stock is seed-stable **and** path-independent (identical after divergent simulated combat); stock retires on exit. |
-| **Integration**  | Full act cycle `WAVES → HEADLINE → INTERMISSION → WAVES`; the intermission transaction in order, including chest resolution before transition; zero hostile entities and zero player damage across a Green Room visit; the cut awards nothing; overtime terminates at its cap; stairs refuse to descend outside `INTERMISSION(5)`.                                                                                                                                              |
-| **Headless**     | `tests/headless/floor4-arena-completion.test.ts` — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the worst-case combat bound).                                                                                                                                                                                           |
-| **E2E / visual** | HUD surfaces from slice 6 via `tests/e2e/helpers/pixels.ts` and `ui-probe.ts`, deterministic only — never an LLM judge.                                                                                                                                                                                                                                                                                                                                                         |
-| **Lab**          | `src/labs/floor4-arena-lab/` for exploratory phase/wave/boss inspection. **Lab proof is never sufficient** for a wiring or behavior claim (project rule #9); each slice's "done when" names a real-pipeline artifact.                                                                                                                                                                                                                                                           |
+| Level            | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**         | Phase transition table totality (every trigger from every phase); arena clock advances in combat (including the victory lap) and holds in overtime/intermission; an early kill does not shorten the act; wave manifest determinism for a fixed seed; budget curve maths; debt cap and phase-boundary clearing; debt release consumes no RNG; Headliner draw is without-replacement, grade-legal, and seed-stable; per-visit shop stock is seed-stable **and** path-independent (identical after divergent simulated combat); stock retires on exit and retires unpurchased generated instances; the affordability invariant (FR6.8) holds for every visit. |
+| **Integration**  | Full act cycle `WAVES → HEADLINE → INTERMISSION → WAVES`; the intermission transaction in order, including force-resolution of an uncollected chest at the act mark; zero hostile entities and zero player damage across a Green Room visit; the Green Room is `RoomRole.SAFE` and the generic floor-timer HUD is suppressed; the cut awards nothing; overtime terminates at its cap; stairs refuse to descend outside `INTERMISSION(5)`.                                                                                                                                                                                                                  |
+| **Headless**     | `tests/headless/floor4-arena-completion.test.ts` — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the worst-case combat bound).                                                                                                                                                                                                                                                                                                                                                                      |
+| **E2E / visual** | HUD surfaces from slice 6 via `tests/e2e/helpers/pixels.ts` and `ui-probe.ts`, deterministic only — never an LLM judge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Lab**          | `src/labs/floor4-arena-lab/` for exploratory phase/wave/boss inspection. **Lab proof is never sufficient** for a wiring or behavior claim (project rule #9); each slice's "done when" names a real-pipeline artifact.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Constitutional Compliance
 

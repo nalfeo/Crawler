@@ -69,6 +69,12 @@ Headliner.
 The clock is held only where there is no combat and no risk: the Green Room, and overtime
 (D3).
 
+An act therefore always ends on its mark rather than on the kill: defeating a Headliner
+early converts the rest of the headline window into a **victory lap** (collect the chest and
+leftover drops) instead of shortening the show. Ending the act on the kill would have made
+the floor's duration player-dependent again — the exact failure D1 exists to prevent — and
+would have needed a separate rule for the boss chest the player had not yet reached.
+
 ### D2 — One `arenaDirectorSystem` owns the phase machine
 
 A single system owns the clock, the phase, wave release, the cut, Headliner entry, overtime,
@@ -119,9 +125,9 @@ per table) — never from the shared combat `world.rng`.
 The consequence that matters to players: **shop stock is path-independent.** Green Room visit
 _n_ for a given seed is identical no matter how the preceding acts went, so shopping is a
 build decision rather than an RNG-manipulation minigame. The consequence that matters to us:
-the economy is reproducible in sweeps and assertable in tests. The exact derivation recipe is
-a data contract owned by the spec; the architectural commitment — isolated per-purpose
-streams — is owned here.
+the economy is reproducible in sweeps and assertable in tests. The exact derivation recipe —
+key format, delimiter, labels, and hash — is a data contract owned by the spec (FR7.1/FR7.2);
+the architectural commitment — isolated per-purpose streams — is owned here.
 
 ### D6 — The Headliner card is a graded, append-only, without-replacement draw keyed by act slot
 
