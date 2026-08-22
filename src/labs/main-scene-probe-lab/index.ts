@@ -36,7 +36,6 @@ import { Glowing, Harvestable, Homing, Position, Prop } from '../../core/compone
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
-import { pickRoomAnchorCell } from '../../core/floor2-settlement-anchor.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import { spawnEnemy } from '../../core/spawners/combatants.js';
 import {
@@ -1555,17 +1554,19 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         .getAll()
         .find(
           (candidate) =>
-            (candidate.interiorCells?.length ?? 0) >= 2 ||
-            (candidate.bounds.width >= 4 && candidate.bounds.height >= 4),
+            !candidate.interiorCells && candidate.bounds.width >= 4 && candidate.bounds.height >= 4,
         );
       if (!room) {
         return;
       }
-      const cells = room.interiorCells?.slice(0, 2) ?? [
+      const cells = [
         { x: room.bounds.x + 1, y: room.bounds.y + 1 },
-        { x: room.bounds.x + 2, y: room.bounds.y + 1 },
+        { x: room.bounds.x + 2, y: room.bounds.y + 2 },
       ];
-      const anchorCell = pickRoomAnchorCell(room) ?? cells[0]!;
+      const anchorCell = {
+        x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+        y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+      };
       const anchor = floorMap.tileToWorld(anchorCell.x, anchorCell.y);
       const [welcome, shop] = cells.map((cell) => floorMap.tileToWorld(cell.x, cell.y));
       world.stores.position.x[eid] = anchor.x - 100;
