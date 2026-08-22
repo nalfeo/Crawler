@@ -14,7 +14,7 @@ import type { GameWorld } from '../world.js';
 import { getActiveQuests, getQuestObjectiveViews, getTrackedQuest } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
-import { resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
+import { pickRoomAnchorCell, resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
 
 /** Coarse classification used by the HUD to colour the marker/arrow. */
 export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
@@ -135,6 +135,55 @@ function objectiveTarget(
   }
 }
 
+function normalizeSharedRoomTargets(
+  world: GameWorld,
+  waypoints: readonly QuestWaypoint[],
+): QuestWaypoint[] {
+  const floorMap = world.floorMap;
+  if (!floorMap || waypoints.length < 2) {
+    return [...waypoints];
+  }
+
+  const indicesByRoom = new Map<number, number[]>();
+  for (const [index, waypoint] of waypoints.entries()) {
+    const tile = floorMap.worldToTile(waypoint.x, waypoint.y);
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    if (roomId < 0) {
+      continue;
+    }
+    const indices = indicesByRoom.get(roomId) ?? [];
+    indices.push(index);
+    indicesByRoom.set(roomId, indices);
+  }
+
+  const normalized = [...waypoints];
+  for (const [roomId, indices] of indicesByRoom) {
+    const first = waypoints[indices[0]!]!;
+    if (
+      indices.length < 2 ||
+      indices.every((index) => {
+        const waypoint = waypoints[index]!;
+        return waypoint.x === first.x && waypoint.y === first.y;
+      })
+    ) {
+      continue;
+    }
+    const room = floorMap.roomGraph.get(roomId);
+    if (!room) {
+      continue;
+    }
+    const anchorTile = pickRoomAnchorCell(room) ?? {
+      x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+      y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+    };
+    const anchor = floorMap.tileToWorld(anchorTile.x, anchorTile.y);
+    for (const index of indices) {
+      normalized[index] = { ...waypoints[index]!, ...anchor };
+    }
+  }
+  return normalized;
+}
+
 /**
  * Waypoints for every visible active quest's current step, in quest-log insertion
  * order. Quests without a fixed location (for example, grind-anywhere objectives)
@@ -199,7 +248,7 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
       kind: target.kind,
     });
   }
-  return waypoints;
+  return normalizeSharedRoomTargets(world, waypoints);
 }
 
 /** The tracked quest's fixed waypoint, or undefined when its objective has no location. */

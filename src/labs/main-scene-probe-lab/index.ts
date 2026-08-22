@@ -36,6 +36,7 @@ import { Glowing, Harvestable, Homing, Position, Prop } from '../../core/compone
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
+import { pickRoomAnchorCell } from '../../core/floor2-settlement-anchor.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import { spawnEnemy } from '../../core/spawners/combatants.js';
 import {
@@ -785,8 +786,8 @@ export interface MainSceneProbeApi {
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Seed three off-screen quests through the real scene's live world. */
   primeQuestWaypointArrows(): void;
-  /** Seed crowded down-right quests through the real scene's live world. */
-  primeCrowdedDownRightQuestWaypointArrows(): void;
+  /** Seed two quest targets in one off-screen room through the real scene's live world. */
+  primeSameRoomQuestWaypointArrows(): void;
   /** Visible quest arrow ids on the real MainGameScene display list. */
   getVisibleQuestArrowIds(): string[];
   /** Rendered quest arrow positions and rotations from the real display list. */
@@ -1533,12 +1534,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.slimeRatRoomPos.y = py - 1;
     },
 
-    primeCrowdedDownRightQuestWaypointArrows: () => {
+    primeSameRoomQuestWaypointArrows: () => {
       const scene = getScene();
       const world = scene?.world;
       const eid = playerEidOf(scene);
       const objective = world?.floorScenario?.objective;
-      if (!scene || !world || !objective || eid < 0) {
+      const floorMap = world?.floorMap;
+      if (!scene || !world || !objective || !floorMap || eid < 0) {
         return;
       }
       if (world.state === 'loadout') {
@@ -1549,23 +1551,42 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
       acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
       acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
-      const px = world.stores.position.x[eid] ?? 0;
-      const py = world.stores.position.y[eid] ?? 0;
-      objective.welcomeOfficePos.x = px + 100;
-      objective.welcomeOfficePos.y = py + 30;
-      objective.shopRoomPos.x = px + 101;
-      objective.shopRoomPos.y = py + 30;
-      objective.slimeRatRoomPos.x = px + 102;
-      objective.slimeRatRoomPos.y = py + 30;
+      const room = floorMap.roomGraph
+        .getAll()
+        .find(
+          (candidate) =>
+            (candidate.interiorCells?.length ?? 0) >= 2 ||
+            (candidate.bounds.width >= 4 && candidate.bounds.height >= 4),
+        );
+      if (!room) {
+        return;
+      }
+      const cells = room.interiorCells?.slice(0, 2) ?? [
+        { x: room.bounds.x + 1, y: room.bounds.y + 1 },
+        { x: room.bounds.x + 2, y: room.bounds.y + 1 },
+      ];
+      const anchorCell = pickRoomAnchorCell(room) ?? cells[0]!;
+      const anchor = floorMap.tileToWorld(anchorCell.x, anchorCell.y);
+      const [welcome, shop] = cells.map((cell) => floorMap.tileToWorld(cell.x, cell.y));
+      world.stores.position.x[eid] = anchor.x - 100;
+      world.stores.position.y[eid] = anchor.y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      objective.welcomeOfficePos.x = welcome!.x;
+      objective.welcomeOfficePos.y = welcome!.y;
+      objective.shopRoomPos.x = shop!.x;
+      objective.shopRoomPos.y = shop!.y;
+      objective.slimeRatRoomPos.x = anchor.x - 200;
+      objective.slimeRatRoomPos.y = anchor.y;
       const guideEid = world.floorScenario?.guideNpcEid;
       const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
       if (guideEid !== null && guideEid !== undefined) {
-        world.stores.position.x[guideEid] = px + 100;
-        world.stores.position.y[guideEid] = py + 30;
+        world.stores.position.x[guideEid] = welcome!.x;
+        world.stores.position.y[guideEid] = welcome!.y;
       }
       if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
-        world.stores.position.x[shopkeeperEid] = px + 101;
-        world.stores.position.y[shopkeeperEid] = py + 30;
+        world.stores.position.x[shopkeeperEid] = shop!.x;
+        world.stores.position.y[shopkeeperEid] = shop!.y;
       }
     },
 
