@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "improve-win-rates",
+  "task_title": "Diagnose and fix floor1-2 chain/floor2 win-rate failures",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged: (1) whether the nightly-balance-issue automation counts as the release workflow vs deploy.yml itself -- resolved: nightly-balance-issue runs on a schedule and always resolves the newest published release baseline, so it effectively re-checks after every release without needing deploy.yml changes; (2) post-fix re-measurement should use canonical legs, not local smoke -- resolved: per explicit maintainer instruction, diagnosis and before/after evidence use the already-published real release baseline RunStats (baselines branch), not a freshly dispatched sweep; the next automatic release sweep is the canonical re-measurement and the new nightly ask self-corrects if it has not improved; (3) chain-failure diagnosis should use progression-runner leg/carryover data, not just flattened final RunStats -- adopted, background agent instructed to analyze legs[\"floor1-chain\"].runs and legs.floor2.runs separately; (4) telemetry set should include progression/den/combat fields, not just movementQuality, for non-movement failure modes -- adopted, real baseline analysis showed movementQuality.stuckPct + aiTelemetry.decisionStateMs already sufficiently explains the dominant timeout bucket (stuck/wiggle during ENGAGE), with family/den completion spread thin across many families ruling out a single mapgen lockout; (5) spell out concrete ledger/verify steps -- adopted into this session checklist."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

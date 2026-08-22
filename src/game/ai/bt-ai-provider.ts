@@ -5506,6 +5506,35 @@ export class BehaviorTreeAI implements AIInputProvider {
             state.moveY = 0;
             return;
           }
+          // Abandon an ENGAGE target the moment A* proves it has no tile path,
+          // exactly like the COLLECT/EXPLORE branches above. Without this, the
+          // "Fallback: direct movement toward target" arm below (ENGAGE-only)
+          // takes over and calls `moveWithLocalNavigation` straight at the
+          // enemy's raw position every single frame with no path re-evaluation
+          // — if the enemy is genuinely unreachable (e.g. on the far side of an
+          // impassable wall segment with no connecting tile route), this glues
+          // the player to that wall for the rest of the run instead of
+          // re-selecting a reachable target. Reproduced on a real headless Floor
+          // 2 seed: a single ENGAGE episode pinned at a fixed ~13ft standoff
+          // distance for 365s straight (see the 2026-08-22
+          // floor1-2-winrate-ai-fix handoff). `findNearestEnemy` /
+          // `findNearestFloor2HuntEnemy` already skip a target once it lands in
+          // `ignoredEnemyUntilFrame`, so marking it here — rather than only
+          // clearing the local decision fields — lets the very next poll commit
+          // to a different, actually-reachable enemy (or fall through to
+          // EXPLORE) instead of re-selecting the same unreachable eid.
+          if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
+            this.ignoredEnemyUntilFrame.set(
+              this.decision.targetEid,
+              world.frameCount + ENEMY_IGNORE_FRAMES,
+            );
+            this.decision.targetEid = null;
+            this.decision.targetX = null;
+            this.decision.targetY = null;
+            state.moveX = 0;
+            state.moveY = 0;
+            return;
+          }
         }
       }
     }
@@ -6322,6 +6351,21 @@ export class BehaviorTreeAI implements AIInputProvider {
       ) {
         return null;
       }
+      // Honor updateEngageWatchdog's blacklist. Without this check, an enemy
+      // the watchdog just gave up on (no progress for ENGAGE_GIVEUP_FRAMES —
+      // e.g. wedged against geometry with a "valid" but untraversable A* path)
+      // is immediately re-selected as the nearest hunt target next tick, since
+      // it is usually still the closest family member. That resets the
+      // watchdog's per-eid baseline (first-sight treatment) and repeats the
+      // giveup cycle forever, manifesting as a multi-minute stuck loop instead
+      // of the intended brief retarget away from the unreachable enemy.
+      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+      if (ignoredUntil !== undefined) {
+        if (ignoredUntil > world.frameCount) {
+          return null;
+        }
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
       if (
         familyId !== null &&
         (!hasComponent(world.ecs, eid, FamilyMembership) ||
@@ -6393,6 +6437,14 @@ export class BehaviorTreeAI implements AIInputProvider {
         continue;
       }
       if (bossFamilyId !== undefined && decapitated?.has(bossFamilyId)) continue;
+      // See findNearestFloor2HuntEnemy: honor updateEngageWatchdog's blacklist
+      // so a boss the watchdog just gave up on (wedged against geometry) isn't
+      // immediately re-selected, which would defeat the giveup entirely.
+      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+      if (ignoredUntil !== undefined) {
+        if (ignoredUntil > world.frameCount) continue;
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
       const x = world.stores.position.x[eid] ?? 0;
