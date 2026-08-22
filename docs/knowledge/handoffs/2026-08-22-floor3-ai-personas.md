@@ -45,6 +45,7 @@ Implemented the next incomplete Floor 3 Companion League slice from `.specify/sp
   - `npm test -- tests/game/enemy-ai.test.ts tests/unit/floor3-species-roster.test.ts tests/ecs/companion-ai-system.test.ts` — 64 passed.
   - Re-ran after pre-publish sync — 64 passed.
   - `npm test -- tests/game/enemy-ai.test.ts` after code-review comment fix — 48 passed.
+  - `npx vitest run tests/game/enemy-ai.test.ts` after CI-recovery fix (`stuckFrames` reset on Guardian/Support intentional holds, plus two new 30-tick mapped regression tests) — 50 passed. Confirmed the new tests fail without the fix (reverted the Guardian pathing reset locally, saw the regression test fail with the mob having crept 0.25ft off its guard position, then restored the fix).
 - Type/format/guards:
   - `npm run typecheck` — passed.
   - `npm run format:check` — passed.
@@ -61,7 +62,7 @@ Implemented the next incomplete Floor 3 Companion League slice from `.specify/sp
 
 ## Runtime / observe-before-done evidence
 
-Before this slice, Floor 3 style data already named `GUARDIAN` and `SUPPORT`, but the runtime AI enum had no corresponding personas, so those styles had no real game-layer behavior. After the slice, deterministic tests exercise the real pipeline (`enemyAISystem` and `companionAISystem → enemyAISystem → movementSystem`) for both personas. The Floor 3 companion lab now exposes the same pipeline with visible position/velocity deltas for Guardian and Support.
+Before this slice, Floor 3 style data already named `GUARDIAN` and `SUPPORT`, but the runtime AI enum had no corresponding personas, so those styles had no real game-layer behavior. `enemyAISystem` is wired into the canonical pipeline (`src/bootstrap/floor-main-scene-options.ts` `preSystems`) shared by the live game and the headless runner, so the new Guardian/Support branches run for real wherever an enemy of that `AI_TYPE` is spawned. That said, no Floor 3 scenario currently spawns Guardian/Support-typed enemies — recruiting/mapgen content is a later, explicitly out-of-scope slice — so there is no real-game or headless run to observe end-to-end yet, and `companionAISystem` itself is invoked only by the lab and its own unit tests, not by the shipped pipeline. The actual evidence for this slice is: single-call unit assertions plus new multi-frame regression tests (`tests/game/enemy-ai.test.ts`) that drive the real `enemyAISystem`/`movementSystem` functions through 30 ticks each for both mapped-pathing Guardian hold and Support standoff, confirming neither persona drifts or accumulates a false "stuck" state; and manual observation in the Floor 3 companion lab (`companionAISystem → enemyAISystem → movementSystem`), which is a lab-forced pipeline, not a substitute for real/headless wiring evidence.
 
 ## Key Decisions Made
 

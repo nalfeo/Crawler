@@ -1421,6 +1421,9 @@ function applyLegacyGuardian(
 ): void {
   if (!isAggroActive(aggroRange, distanceToPlayer) || shouldGuardianHold(distanceToPlayer)) {
     setVelocity(world, eid, 0, 0);
+    // Intentional hold (out of aggro range or already at guard distance), not
+    // a stuck state — see the pathing-branch Guardian hold comment.
+    world.stores.enemyBehavior.stuckFrames[eid] = 0;
     return;
   }
 
@@ -1439,6 +1442,7 @@ function applyLegacySupport(
 ): void {
   if (!isAggroActive(aggroRange, distanceToPlayer)) {
     setVelocity(world, eid, 0, 0);
+    world.stores.enemyBehavior.stuckFrames[eid] = 0;
     return;
   }
 
@@ -1454,6 +1458,8 @@ function applyLegacySupport(
     return;
   }
   setVelocity(world, eid, 0, 0);
+  // Intentional standoff hold within the band, not a stuck state.
+  world.stores.enemyBehavior.stuckFrames[eid] = 0;
 }
 
 function buildRangedPathTarget(
@@ -1572,6 +1578,10 @@ function applyPathDrivenBehavior(
   const enemyY = world.stores.position.y[eid] ?? 0;
   if (behaviorType === AI_TYPE.GUARDIAN && shouldGuardianHold(distanceToPlayer)) {
     setVelocity(world, eid, 0, 0);
+    // Intentional hold, not a stuck state — otherwise the generic unstuck
+    // block below fires after STUCK_FRAMES_THRESHOLD frames and drags the
+    // Guardian in past its guard radius.
+    world.stores.enemyBehavior.stuckFrames[eid] = 0;
     return;
   }
   const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
@@ -1632,6 +1642,9 @@ function applyPathDrivenBehavior(
     );
     if (supportTargetFt === null) {
       setVelocity(world, eid, 0, 0);
+      // Intentional standoff hold, not a stuck state — see the Guardian hold
+      // comment above for why this must not accumulate stuckFrames.
+      world.stores.enemyBehavior.stuckFrames[eid] = 0;
       return;
     }
     const preferred = asTilePoint(world, supportTargetFt.x, supportTargetFt.y);
