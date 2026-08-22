@@ -15,16 +15,94 @@
     },
     "code_review": {
       "clean": false,
-      "rounds": []
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged non-null assertions in settlement-return cycle index handling; resolved by adding explicit cycle guard and structured status-index lookup."
+        },
+        {
+          "round": 2,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged positional magic constants for armed/cooldown indexes; resolved by deriving indexes by status label."
+        },
+        {
+          "round": 3,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged seed-rationale comments; resolved by documenting behavioral fixture selection rather than balance sampling."
+        },
+        {
+          "round": 4,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged exact frame numbers in comments; resolved by keeping only stable behavioral criteria."
+        },
+        {
+          "round": 5,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged assertion structure and silent return risk; resolved by removing the silent return and asserting named telemetry/status indexes."
+        },
+        {
+          "round": 6,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Final clean re-review could not be obtained: the code_review tool timed out and instructed not to rerun. No known actionable code-review concern remains after the latest fix; escalated for human confirmation per the bounded-loop policy."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 6,
+        "reason": "Automated code_review did not produce a clean terminal round after repeated addressed low-level test-assertion findings, then timed out with an instruction not to rerun. Human confirmation is required for the final assertion shape.",
+        "unresolved_concerns": 1
+      }
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "aeb446253cb6bf4c94ed2a0f2c72c097cadc9634",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/review-ledgers/2026-08-22-improve-win-rates.review-ledger.json",
+          "detail": "For a declared 3\ud83c\udf4e change the ledger's code_review stage is incomplete. Complete the code-review loop before PR finalization."
+        },
+        {
+          "severity": "minor",
+          "file": ".github/workflows/deploy.yml",
+          "detail": "The release-path nightly balance automation is cohesive around the win-rate theme and tested, but could have been a sibling automation change."
+        },
+        {
+          "severity": "minor",
+          "file": "tests/headless/settlement-return-routing.test.ts",
+          "detail": "The deterministic AI behavior change required updating one settlement-return fixture seed; verify affected headless coverage remains green."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "The core fix is sound: it closes a real Floor 2 stall where updateEngageWatchdog's ignoredEnemyUntilFrame blacklist was ignored by findNearestFloor2HuntEnemy/findNearestFloor2Boss, letting the AI immediately re-select the same unreachable target and loop forever, plus an ENGAGE-abandon guard mirroring the existing COLLECT/EXPLORE pattern. The logic is deterministic, stays within src/game/ai layer boundaries, self-heals via time-bounded ignore with expiry cleanup, and is backed by a headless regression that asserts victory, kill count, stuckPct<25, and replay determinism. The automation half is unit-tested and documented. No blocker was found, so this passes while the ledger is completed before PR."
     }
   }
 }
