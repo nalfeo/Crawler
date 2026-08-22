@@ -1,8 +1,7 @@
-import { addComponent, removeEntity, set } from 'bitecs';
+import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Companion, Team } from '../../src/core/components.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
-import { clearEntityStores } from '../../src/core/spawners/entity-core.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
 import { applyDamage, type DamageOptions } from '../../src/core/apply-damage.js';
 import {
