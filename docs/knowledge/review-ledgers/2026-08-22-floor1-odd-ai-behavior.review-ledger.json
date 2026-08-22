@@ -9,7 +9,7 @@
       "completed": true,
       "reviewer_model": "gpt-5.4",
       "concerns_count": 5,
-      "resolved_count": 4,
+      "resolved_count": 5,
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "major_fork",
@@ -22,6 +22,7 @@
           "round": 1,
           "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
           "concerns_count": 5,
+          "valid_count": 4,
           "resolved_count": 4,
           "clean": false,
           "notes": "gpt-5.4: cross-floor leak of world.clearedSafeRoomIds (reproduced on seed 10 -- a cleared Floor 1 room id made an unrelated Floor 2 room safe) -> fixed by stamping the owning FloorMap in world.clearedSafeRoomMap; missing integration coverage for the shipped farm-window path -> added. gemini-3.1-pro-preview: per-tick object allocation in sampleBossLastKnownPos -> now mutates in place; missing auto-progression driver coverage -> added 3 cases; save/load rehydration of clearedSafeRoomIds -> NOT APPLICABLE, the repo has no gameplay save/load path and initializeFloor1Scenario builds floorScenario fresh."
@@ -30,6 +31,7 @@
           "round": 2,
           "models": ["gpt-5.4", "claude-opus-4.6"],
           "concerns_count": 3,
+          "valid_count": 3,
           "resolved_count": 1,
           "clean": false,
           "notes": "claude-opus-4.6 returned clean, explicitly clearing the three riskiest interactions (safe-room deadline pause cannot stall a run because farming happens outside the room; calmFarmPullBoost is strictly one-sided at panic===0; the floor1 scoping of requiredShopPurchaseReserve is correct). gpt-5.4 raised 3 coverage-only findings, no bugs: (a) planner-side reserve had no test -> ADDED to tests/game/floor1-goal-graph.test.ts; (b) staircase-boss chest position/safe conversion covered only for the slime-rat branch; (c) no BehaviorTreeAI-level test of the farm-window branch. (b) and (c) are duplicate-coverage asks on code paths already exercised end-to-end by the 25-seed headless gate and the slime-rat branch tests; left as follow-ups rather than weakening anything."
@@ -49,6 +51,7 @@
           "round": 1,
           "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
           "concerns_count": 5,
+          "valid_count": 4,
           "resolved_count": 4,
           "clean": false,
           "notes": "Adjudication: the two models overlapped only on 'missing regression coverage', which was accepted once. The cross-floor id leak (gpt-5.4) was accepted as the single highest-severity finding and fixed by scoping the set to its owning FloorMap. The save/load finding (gemini) was adjudicated invalid: no gameplay serialization path exists in the repo."
@@ -57,6 +60,7 @@
           "round": 2,
           "models": ["gpt-5.4", "claude-opus-4.6"],
           "concerns_count": 3,
+          "valid_count": 3,
           "resolved_count": 1,
           "clean": false,
           "notes": "Adjudication: claude-opus-4.6 clean; gpt-5.4's planner-reserve coverage gap accepted and fixed, its remaining two findings adjudicated as lower-value duplicate coverage of paths the 25-seed headless gate already exercises."
@@ -69,13 +73,21 @@
       }
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-sonnet-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "48be381f34f2c1852a5f571cdcd3caa5a225f155",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Verified independently: full typecheck is clean, and all changed/new test files pass, including required-purchase-reserve, post-boss-farm-window, calm-farm-pull-boost, boss-defeat-drops, and cleared-safe-room coverage. Traced reserve-netting end-to-end through required-purchase-reserve, spell-broker-intent spendableGold, auto-progression executor, and floor1-goal-graph optionalPurchaseGold; merchant-weapon-intent does not need the same reserve because it is gated behind floor1-shop-quest-complete. Verified cleared-safe-room scoping invalidates ids across floor transitions and is honored by both isPointInSafeSpace and resolveNearestSafeAnchor. Boss death-position sampling mutates in place and freezes on the lethal frame. No Date.now()/Math.random(), no layer-boundary violations, and RoomRole remains deliberately unchanged. Scope is broad but proportionate to a declared 4-apple task bundling distinct diagnosed bugs, each implemented through narrow necessary hooks rather than refactors."
     }
   }
 }
