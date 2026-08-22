@@ -26,13 +26,20 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "a7514a75bf17afe050e35ae60a275c0b9257d7b7",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff implements the Floor 3 companion progression requirements flawlessly. It correctly restricts XP logic to Enemy targets and Companion sources, isolates progression processing to a sim-wired deterministic step cleanly decoupled from dropSystem's death cycle, and properly uses clearEntityStores to prevent stale EID leaks. Complex edge cases for merit XP vs assist XP splits among living and KO'd teammates are thoroughly handled and proven by robust ECS tests. All repository policies regarding layer boundaries, test-only export strictness, and lab wiring are strictly maintained."
     }
   }
 }
