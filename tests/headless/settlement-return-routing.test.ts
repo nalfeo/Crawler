@@ -183,12 +183,14 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
-    const cooldownIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
-    expect(cooldownIndex).toBeGreaterThan(armedIndex);
+    const armedTelemetryIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
+    const cooldownTelemetryIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
+    expect(statuses[armedTelemetryIndex]).toBe('armed');
+    expect(statuses[cooldownTelemetryIndex]).toBe('cooldown');
+    expect(cooldownTelemetryIndex).toBeGreaterThan(armedTelemetryIndex);
 
-    const armedFrame = telemetry[armedIndex]!.frame;
-    const cooldownFrame = telemetry[cooldownIndex]!.frame;
+    const armedFrame = telemetry[armedTelemetryIndex]!.frame;
+    const cooldownFrame = telemetry[cooldownTelemetryIndex]!.frame;
     const BOUNDED_ROUND_TRIP_FRAMES = 3000;
     expect(cooldownFrame - armedFrame).toBeLessThan(BOUNDED_ROUND_TRIP_FRAMES);
   }, 60_000);
