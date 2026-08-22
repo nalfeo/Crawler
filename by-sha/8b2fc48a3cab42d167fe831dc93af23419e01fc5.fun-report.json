@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "commit": "8b2fc48a3cab42d167fe831dc93af23419e01fc5",
+    "commitDate": "2026-08-22T20:05:26Z",
+    "commitSubject": "Magic Missile: arcing homing bolts, milestone missile counts, and light-source VFX (#3249)",
+    "capturedAt": "2026-08-22T21:34:25.274Z",
+    "runId": "32596937072",
+    "runNumber": 1629,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32596937072",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 438,
+      "death": 6,
+      "timeout": 149,
+      "stalled": 7,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 35.99,
+    "dimensions": {
+      "engagement": 52.54,
+      "challenge_balance": 2.76,
+      "excitement": 29,
+      "pacing": 27.16,
+      "competence_growth": 38.08,
+      "choice_depth": 88.08,
+      "run_distinctness": 42.61
+    },
+    "sameness_grade": 57.39,
+    "objective_score": 35.99,
+    "subjective_score": null,
+    "confidence": 0.82,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 35.49,
+      "pass": false,
+      "failing_dimensions": [
+        "engagement",
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 2.76,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 27.16,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 29,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.29,
+        "target": 0.14,
+        "status": "healthy",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 42.61,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": 829.57,
+        "target": 90,
+        "status": "needs_attention",
+        "reason": "Worst active-play gap is 829.57s; 59.64% of active time is in gaps at or below 90s."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "0/300 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.47,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "172/369 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      },
+      "early_death_rate": {
+        "observed": 0.01,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "Fraction of runs that ended in death on Floor 2 or earlier. Tutorial-phase deaths are un-fun; healthy is <= 10%."
+      }
+    },
+    "persona_scores": {}
+  }
+}
