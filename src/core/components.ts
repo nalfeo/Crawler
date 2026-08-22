@@ -164,6 +164,13 @@ export const Companion = {};
 export const PartySlot = {};
 
 /**
+ * Floor 3 world-object tag: a safe node where knocked-out party Companions
+ * instantly recover (spec R5/R11, slice 6). Pure position-based proximity
+ * trigger (`companionKOSystem`) — no per-entity data needed.
+ */
+export const RallyPoint = {};
+
+/**
  * Marks an entity as a physical boss chest world-object. Proximity-opened by
  * `bossChestPickupSystem` when the player walks within BOSS_CHEST_RANGE_FT.
  * The chest's lifecycle record is keyed by `chestId` in `world.bossChests`

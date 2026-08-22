@@ -31,6 +31,11 @@ declare -A SHARED_LAB_MAP=(
   # drives the real applyDamage -> companionProgressionSystem path and
   # displays the resulting level/form/ability changes.
   [companionprogression]="floor3-companion-lab"
+  # Floor 3 Companion League KO/recovery state machine + Rally Point recovery
+  # (slice 6) is exercised by the same floor3-companion-lab's "KO companion
+  # now" / "Advance frames" / "Place Rally Point" actions, which drive the
+  # real companionKOSystem and display knockedOut/idle/party-wipe state.
+  [companionko]="floor3-companion-lab"
   # enemyTelegraph.ts is a shared resolver/state module (not a per-frame
   # System), called from enemyAISystem's real fire path. enemy-ai-lab already
   # spawns AI_TYPE.RANGED enemy groups, ticks the real enemyAISystem every

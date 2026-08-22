@@ -5,6 +5,7 @@ import { areaDamageSystem } from './systems/areaDamageSystem.js';
 import { beamSystem } from './systems/beamSystem.js';
 import { bloodyFootprintSystem } from './systems/bloodyFootprintSystem.js';
 import { collisionSystem } from './systems/collisionSystem.js';
+import { companionKOSystem } from './systems/companionKOSystem.js';
 import { companionProgressionSystem } from './systems/companionProgressionSystem.js';
 import { corpseStepSystem } from './systems/corpseStepSystem.js';
 import { damageSystem } from './systems/damageSystem.js';
@@ -69,8 +70,13 @@ export function runCoreSimulationStep(
   itemPickupSystem(world, collision);
   harvestSystem(world);
   bossChestPickupSystem(world);
-  dropSystem(world);
+  // companionProgressionSystem MUST run before companionKOSystem: it detects
+  // a Companion kill by reading Health.current <= 0 (still the "real" 0 from
+  // damageSystem here), and companionKOSystem immediately after clamps that
+  // same field back to 1 for any Companion so dropSystem never removes it.
   companionProgressionSystem(world);
+  companionKOSystem(world);
+  dropSystem(world);
   corpseStepSystem(world);
   bloodyFootprintSystem(world);
   deathTimerSystem(world);
