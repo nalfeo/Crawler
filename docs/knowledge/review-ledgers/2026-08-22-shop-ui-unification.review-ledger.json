@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "shop-ui-unification",
+  "task_title": "Unify merchant/shop UX onto one shared shop system",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer endorsed the boundary (share offer/presentation contract, keep panel+modal surfaces). Blocking concerns adopted: (1) collapse overlapping booleans into one discriminated availability state; (2) preserve each Floor-1 flow's current empty/unpurchasable behavior via an explicit policy rather than a blanket decline. Non-blocking adopted: forward ModalPicker kind unchanged (spell-broker automation contract); keep the model presentation-only (no re-derived eligibility, authoritative purchase stays in core/game callbacks); add deterministic coverage for the three Floor-1 adapters plus panel wording."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

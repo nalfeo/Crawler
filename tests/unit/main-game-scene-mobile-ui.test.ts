@@ -105,7 +105,7 @@ describe('HUD panel UX consistency', () => {
     expect(source).toContain('this.equipmentUI?.destroy();');
     expect(source).toContain('this.achievementsUI?.destroy();');
     expect(source).toContain('this.rewardOpeningUI?.destroy();');
-    expect(source).toContain('this.quartermasterUI?.destroy();');
+    expect(source).toContain('this.shopPanelUI?.destroy();');
     expect(source).toContain('this.rewardAudioEngine?.dispose();');
   });
 
