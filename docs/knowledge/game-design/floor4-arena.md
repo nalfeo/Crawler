@@ -82,7 +82,7 @@ COUNTDOWN
   ACT 5  [8:00 → 9:30 waves | 9:30 → 10:00 HEADLINER 5] → WINNER'S CIRCLE → stairs
 ```
 
-Five rules define the beat:
+Six rules define the beat:
 
 1. **The arena clock runs continuously through all combat.** Waves and Headliner fights
    share one clock, so **"ten minutes" is ten real minutes of the show** — legible on the
