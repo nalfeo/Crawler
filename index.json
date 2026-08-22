@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1161b2025e647db3197020dad92818f4ffdc9721",
+    "commitDate": "2026-08-21T23:45:05Z",
+    "commitSubject": "Fix Floor 2 territory-boundary wiggle and add always-on movement-quality telemetry (#3209)",
+    "capturedAt": "2026-08-22T01:01:45.100Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32539031668",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/1161b2025e647db3197020dad92818f4ffdc9721.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.28,
+        "totalWins": 42,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.95,
+      "gatePass": false,
+      "path": "by-sha/1161b2025e647db3197020dad92818f4ffdc9721.fun-report.json"
+    }
+  },
+  {
     "commit": "ec653aae68002c889c2a016ed7aad1c67636ed66",
     "commitDate": "2026-08-21T22:35:17Z",
     "commitSubject": "feat(workflow): add Azure authoring canvas (#3223)",
