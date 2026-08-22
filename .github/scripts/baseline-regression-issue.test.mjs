@@ -109,6 +109,51 @@ test('updates an open marker match instead of creating a duplicate', async () =>
   assert.equal(h.calls.filter((call) => call[2] === '/repos/nalfeo/Crawler/issues').length, 0);
 });
 
+test('collapses duplicate stable-marker issues onto the oldest and closes the rest', async () => {
+  // A stable (non-commit) marker is long-lived and the release workflow is only
+  // serialized per head SHA, so two overlapping releases can each create one.
+  // Converging on the oldest and closing the duplicates makes that self-heal.
+  const h = harness([
+    {
+      number: 9,
+      node_id: 'ISSUE_9',
+      state: 'open',
+      body: decision().issue.body,
+    },
+    {
+      number: 5,
+      node_id: 'ISSUE_5',
+      state: 'open',
+      body: decision().issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: decision(),
+  });
+
+  assert.equal(result.action, 'updated');
+  assert.equal(result.issueNumber, 5);
+  const patches = h.calls.filter((call) => call[0] === 'request');
+  assert.equal(patches[0][2], '/repos/nalfeo/Crawler/issues/5');
+  assert.equal(patches[0][3].body.state, undefined);
+  assert.equal(patches[1][2], '/repos/nalfeo/Crawler/issues/9');
+  assert.equal(patches[1][3].body.state, 'closed');
+  assert.match(patches[1][3].body.body, /Superseded by #5/);
+  // Intake still runs exactly once, on the surviving canonical issue.
+  assert.deepEqual(
+    h.calls.filter((call) => call[0] === 'intake'),
+    [['intake', 'pat-token', 5]],
+  );
+});
+
 test('updates an existing open issue when the failure signature repeats on a new release', async () => {
   const signature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
