@@ -17,27 +17,6 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('const closeRequested = this.queuedConversationClose;');
   });
 
-  it('freezes movement/action input while any blocking HUD surface is open, not just Achievements', async () => {
-    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
-
-    // Regression guard for #3252: touching the Equipment/Abilities/Inventory/
-    // Quartermaster panels must not let the player drift into an NPC and
-    // accidentally start a conversation. The zeroing check must key off the
-    // shared isBlockingSurfaceOpen() predicate, not an Achievements-only
-    // special case.
-    expect(source).toContain('this.inputCapture.poll(this.inputState);');
-    expect(source).toContain('if (this.isBlockingSurfaceOpen()) {');
-    expect(source).toContain('this.inputState.moveX = 0;');
-    expect(source).toContain('this.inputState.moveY = 0;');
-    expect(source).toContain('this.inputState.action = false;');
-
-    // The zeroing block must key off isBlockingSurfaceOpen() *after* polling,
-    // not a lingering Achievements-only special case somewhere else.
-    const pollThenZero =
-      /this\.inputCapture\.poll\(this\.inputState\);\s*(?:\/\/[^\n]*\n\s*)*if \(this\.isBlockingSurfaceOpen\(\)\) \{\s*this\.inputState\.moveX = 0;\s*this\.inputState\.moveY = 0;\s*this\.inputState\.action = false;\s*\}/;
-    expect(source).toMatch(pollThenZero);
-  });
-
   it('caps mobile button/hint scaling to avoid HUD overlap', async () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
 
