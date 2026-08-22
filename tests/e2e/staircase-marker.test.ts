@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
 describe('Floor-exit staircase marker', () => {
   let browser: Browser;
@@ -35,12 +35,11 @@ describe('Floor-exit staircase marker', () => {
     await mainSceneProbe.resolveLoadout(page);
     await mainSceneProbe.primeFloor1StairTransition(page);
 
-    // primeFloor1StairTransition() spawns+unlocks the staircase and moves the
-    // player onto it; wait for the render pass this depends on to settle.
-    await waitForState(page, (s) => s.displayObjectCount > 0);
-
-    const info = await mainSceneProbe.getStaircaseMarkerRenderInfo(page);
-    expect(info.usesGeneratedArt).toBe(true);
-    expect(info.visible).toBe(true);
+    await expect
+      .poll(() => mainSceneProbe.getStaircaseMarkerRenderInfo(page), {
+        timeout: 8_000,
+        interval: 100,
+      })
+      .toEqual({ usesGeneratedArt: true, visible: true });
   });
 });

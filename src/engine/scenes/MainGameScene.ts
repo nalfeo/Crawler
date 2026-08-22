@@ -19,7 +19,11 @@ import {
   GAME,
   safeRoomCameraZoom,
 } from '../../shared/constants.js';
-import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
+import {
+  LIGHTING_OVERLAY_DEPTH,
+  UI_DEPTH_CUTOFF,
+  WORLD_VFX_DEPTH,
+} from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
@@ -3788,7 +3792,7 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseMarker = this.add
         .circle(x, y, radiusPx, fillColor, 0.25)
         .setStrokeStyle(2, strokeColor, 0.95)
-        .setDepth(20);
+        .setDepth(WORLD_VFX_DEPTH.staircaseMarkerRing);
     }
     this.staircaseMarker.setPosition(x, y);
     this.staircaseMarker.setRadius(radiusPx);
@@ -3840,7 +3844,9 @@ export class MainGameScene extends Phaser.Scene {
       markerRadiusPx: radiusPx,
     });
     if (!this.staircaseSprite) {
-      this.staircaseSprite = this.add.image(x, y, STAIRS_TEXTURE_KEY).setDepth(21);
+      this.staircaseSprite = this.add
+        .image(x, y, STAIRS_TEXTURE_KEY)
+        .setDepth(WORLD_VFX_DEPTH.staircaseMarkerSprite);
     }
     this.staircaseSprite
       .setTexture(STAIRS_TEXTURE_KEY)
