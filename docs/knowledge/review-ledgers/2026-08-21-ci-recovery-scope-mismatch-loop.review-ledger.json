@@ -50,7 +50,8 @@
       "completed": true,
       "grader_model": "gpt-5.5",
       "implementer_model": "copilot coding agent",
-      "head_sha": "52ca22a9d",
+      "head_sha": "9d621f3093aa50f650289de95ec56144205e3e7f",
+      "findings": [],
       "criteria": {
         "correctness": 5,
         "scope_discipline": 5,
@@ -59,7 +60,8 @@
         "maintainability": 4
       },
       "verdict": "pass",
-      "findings_count": 0
+      "findings_count": 0,
+      "notes": "Independent review found the quarantine disposition routing fix correct; exact commands now bypass only the quarantine block and retain all other blocks."
     }
   }
 }
