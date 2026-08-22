@@ -200,8 +200,8 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
         : HOMING_IMPACT_FALLBACK_COLOR;
       pushVfxEvent(world.vfxEvents, {
         kind: 'arcaneBoltImpact',
-        x: world.stores.position.x[enemy] ?? 0,
-        y: world.stores.position.y[enemy] ?? 0,
+        x: world.stores.position.x[projectile] ?? world.stores.position.x[enemy] ?? 0,
+        y: world.stores.position.y[projectile] ?? world.stores.position.y[enemy] ?? 0,
         color,
       });
     }

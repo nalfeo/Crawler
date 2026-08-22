@@ -560,12 +560,9 @@ describe('spell skills', () => {
     },
   );
 
-  it('does not additionally apply the shared damage-breakpoint bonus to Magic Missile at 5/10/15/20 (that dimension is redirected into extra missiles)', () => {
-    // Per-hit damage should scale only by the continuous per-level bonus
-    // (1 + level * 0.02) for Magic Missile — NOT also jump by the shared
-    // SPELL_SKILL_BREAKPOINT_BONUSES step the moment level crosses 5, since
-    // those breakpoints already grant an extra missile instead (issue #3248,
-    // adversarial plan review concern #1).
+  it('redirects every Magic Missile breakpoint entirely into its extra bolt', () => {
+    // Per-hit damage must not advance at level 5: that level's entire gain is
+    // the extra missile, while only non-breakpoint levels improve damage.
     function perHitDamageAtLevel(level: number): number {
       const { world, player } = createSpellEffectWorld('magic-missile', level);
       // Crit is RNG-gated (canCrit:true) and would make a fine-grained ratio
@@ -600,11 +597,11 @@ describe('spell skills', () => {
 
     const perHitAtFour = perHitDamageAtLevel(4);
     const perHitAtFive = perHitDamageAtLevel(5);
-    const expectedRatio = (1 + 5 * 0.02) / (1 + 4 * 0.02);
-    const withBreakpointRatio = (1 + 5 * 0.02 + 0.1) / (1 + 4 * 0.02);
+    const expectedRatio = 1;
+    const continuousBonusRatio = (1 + 5 * 0.02) / (1 + 4 * 0.02);
 
     expect(perHitAtFive / perHitAtFour).toBeCloseTo(expectedRatio, 2);
-    expect(perHitAtFive / perHitAtFour).not.toBeCloseTo(withBreakpointRatio, 2);
+    expect(perHitAtFive / perHitAtFour).not.toBeCloseTo(continuousBonusRatio, 2);
   });
 
   it('emits one spell-use event only after successful player activation', () => {

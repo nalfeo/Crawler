@@ -542,7 +542,9 @@ describe('abilitySystem', () => {
     expect(world.stores.health.current[target]).toBeLessThan(100);
     const impacts = world.vfxEvents.filter((e) => e.kind === 'arcaneBoltImpact');
     expect(impacts).toHaveLength(1);
-    expect(impacts[0]!.x).toBeCloseTo(2);
+    // A projectile contact occurs at its own collision position, before it
+    // reaches the target's centre.
+    expect(impacts[0]!.x).toBeLessThan(2);
     // Impact color is derived from the bolt's own Glowing light (not a
     // hardcoded Homing-tag color), so a future non-Magic-Missile homing
     // projectile with a different glow wouldn't inherit this purple tint.

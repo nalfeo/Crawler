@@ -44,9 +44,8 @@ const SPELL_SKILL_BREAKPOINT_BONUSES = [
  * the shared damage-breakpoint bonus below — see issue #3248 ("The 5/10/15/20
  * skill levels up grant extra missiles. The other levels improve damage.").
  * `getSpellSkillEfficacyMultiplier` special-cases 'magic-missile' to skip
- * `SPELL_SKILL_BREAKPOINT_BONUSES` so a breakpoint level doesn't double-dip
- * (extra missile AND the generic magnitude jump); the continuous per-level
- * bonus still applies at every level, magic-missile included.
+ * both the shared breakpoint bonus and the continuous bonus at each missile
+ * breakpoint, so a breakpoint level only gains its extra bolt.
  */
 const MAGIC_MISSILE_EXTRA_MISSILE_LEVELS = [5, 10, 15, 20] as const;
 const MAGIC_MISSILE_SPELL_ID = 'magic-missile';
@@ -69,7 +68,13 @@ function getSpellSkillEfficacyMultiplier(
 ): number {
   if (!getSpellSkillId(spellId)) return 1;
   const level = getSpellSkillLevel(world, holderEid, spellId);
-  let multiplier = 1 + level * SPELL_SKILL_PER_LEVEL_BONUS;
+  const efficacyLevels =
+    spellId === MAGIC_MISSILE_SPELL_ID
+      ? level -
+        MAGIC_MISSILE_EXTRA_MISSILE_LEVELS.filter((breakpointLevel) => breakpointLevel <= level)
+          .length
+      : level;
+  let multiplier = 1 + efficacyLevels * SPELL_SKILL_PER_LEVEL_BONUS;
   // Magic Missile redirects the breakpoint dimension into extra bolts instead
   // of a magnitude jump (see MAGIC_MISSILE_EXTRA_MISSILE_LEVELS doc above).
   if (spellId !== MAGIC_MISSILE_SPELL_ID) {
@@ -388,13 +393,13 @@ function castPulseShield(
   }
 }
 
-/** Magic Missile travel speed, in ft/frame — deliberately slow (well under the
- * 4-8 ft/frame range of starting weapons) so its arc-and-home flight is easy
+/** Magic Missile travel speed, in ft/frame — deliberately slower than the
+ * 0.5 ft/frame Fire Wand projectile so its arc-and-home flight is easy
  * for a human to track, per issue #3248. */
-const MAGIC_MISSILE_SPEED_FT_PER_FRAME = 1.1;
+const MAGIC_MISSILE_SPEED_FT_PER_FRAME = 0.4;
 /** Frames a missile flies its initial launch heading before homing kicks in —
  * the visible "arcs out from the player" phase. Deliberately short: at
- * `MAGIC_MISSILE_SPEED_FT_PER_FRAME` this is a ~6.6ft off-axis excursion
+ * `MAGIC_MISSILE_SPEED_FT_PER_FRAME` this is a ~2.4ft off-axis excursion
  * before the bolt starts curving back, small enough to reliably clear most
  * doorway/corridor geometry while still reading as a visible arc rather than
  * a beeline (adversarial plan review, issue #3248). */

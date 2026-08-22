@@ -32,7 +32,7 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Harvestable, Prop } from '../../core/components.js';
+import { Glowing, Harvestable, Position, Prop } from '../../core/components.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
@@ -84,7 +84,7 @@ import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shar
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
-import { createAbilityState } from '../../game/systems/abilitySystem.js';
+import { createAbilityState, forceActivateAbility } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
@@ -146,6 +146,17 @@ interface MainSceneInternals {
    * against the flagstone spawn room instead of the cave.
    */
   lightOverlayRt?: { visible: boolean };
+  lightField?: {
+    stepPx: number;
+    widthCells: number;
+    heightCells: number;
+    values: Float32Array;
+  };
+  setLightingConfig?(partial: {
+    ambient?: number;
+    sourceRadiusPx?: number;
+    sourceIntensity?: number;
+  }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
@@ -803,6 +814,13 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /** Arrange and fire a real Magic Missile against a live nearby enemy. */
+  primeMagicMissileLightProbe(): boolean;
+  /** Live projectile-light state sampled from the rendered scene light field. */
+  getMagicMissileLightProbe(): {
+    readonly inFlightCount: number;
+    readonly emitterLight: number | null;
+  };
   /**
    * Ability-activation floater labels currently on the REAL scene's display
    * list, paired with the ability id encoded in the object name.
@@ -1629,6 +1647,51 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getOrCreateAbilityState(world, holderEid);
       equipActiveAbility(world, holderEid, abilityId);
       return true;
+    },
+
+    primeMagicMissileLightProbe: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!scene || !world || holderEid < 0) return false;
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.featureUnlocks.spells = true;
+      scene.setLightingConfig?.({ ambient: 0.05, sourceRadiusPx: 0, sourceIntensity: 0 });
+      getOrCreateAbilityState(world, holderEid);
+      equipActiveAbility(world, holderEid, 'magic-missile');
+      spawnEnemy(
+        world,
+        (world.stores.position.x[holderEid] ?? 0) + 8,
+        world.stores.position.y[holderEid] ?? 0,
+        1_000,
+      );
+      return forceActivateAbility(world, holderEid, 'magic-missile');
+    },
+
+    getMagicMissileLightProbe: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const glowEid = world ? query(world.ecs, [Glowing, Position])[0] : undefined;
+      const field = scene?.lightField;
+      if (glowEid === undefined || !world || !field) {
+        return { inFlightCount: 0, emitterLight: null };
+      }
+      const x = Math.min(
+        field.widthCells - 1,
+        Math.max(0, Math.floor(ftToPx(world.stores.position.x[glowEid] ?? 0) / field.stepPx)),
+      );
+      const y = Math.min(
+        field.heightCells - 1,
+        Math.max(0, Math.floor(ftToPx(world.stores.position.y[glowEid] ?? 0) / field.stepPx)),
+      );
+      return {
+        inFlightCount: query(world.ecs, [Glowing, Position]).length,
+        emitterLight: field.values[y * field.widthCells + x] ?? null,
+      };
     },
 
     getAbilityFloaters: () => {
