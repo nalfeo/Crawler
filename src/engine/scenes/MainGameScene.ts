@@ -159,7 +159,11 @@ import {
   type SettlementShopOfferView,
 } from '../../core/settlement-shop-purchase.js';
 import type { ShopPanelOfferView } from '../shop/ShopPanelUI.js';
-import { describeShopPurchaseFailure, type ShopOffer } from '../shop/shop-offer-model.js';
+import {
+  blockReasonFromGold,
+  describeShopPurchaseFailure,
+  type ShopOffer,
+} from '../shop/shop-offer-model.js';
 import { openShopModal } from '../shop/shop-modal-presenter.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
@@ -5097,7 +5101,12 @@ export class MainGameScene extends Phaser.Scene {
       owned: offer.purchased,
       purchasable:
         !offer.purchased && broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
-      blockedReason: offer.purchased ? 'owned' : 'insufficient-funds',
+      // The Broker refuses spells for reasons beyond price (already learned this
+      // run, no free ability slot), so only claim a gold shortfall when gold is
+      // actually short.
+      blockedReason: offer.purchased
+        ? 'owned'
+        : blockReasonFromGold(offer.cost, this.world.playerGold),
     }));
     return openShopModal(
       this.modalPicker,

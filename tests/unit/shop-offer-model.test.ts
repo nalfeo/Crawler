@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  blockReasonFromGold,
   describeShopOfferAvailability,
   describeShopOfferStatus,
   describeShopPurchaseFailure,
@@ -79,6 +80,24 @@ describe('shop offer model — failure-code normalization', () => {
     expect(toShopBlockReason('inventory-capacity')).toBe('inventory-capacity');
     expect(toShopBlockReason('stock-unavailable')).toBe('sold-out');
     expect(toShopBlockReason('owned')).toBe('owned');
+  });
+
+  it('only blames gold when gold is actually short for codeless merchants', () => {
+    expect(blockReasonFromGold(60, 10)).toBe('insufficient-funds');
+    expect(blockReasonFromGold(60, 60)).toBe('unknown');
+    expect(blockReasonFromGold(60, 500)).toBe('unknown');
+  });
+
+  it('renders a codeless refusal the player can afford as unavailable, not too expensive', () => {
+    const refused = offer({
+      priceGold: 60,
+      purchasable: false,
+      blockedReason: blockReasonFromGold(60, 500),
+    });
+    expect(resolveShopOfferAvailability(refused)).toBe('unavailable');
+    expect(describeShopOfferStatus(resolveShopOfferAvailability(refused))).toBe(
+      'Unavailable right now.',
+    );
   });
 
   it('never guesses at an unrecognized or absent code', () => {

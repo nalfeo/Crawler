@@ -101,6 +101,20 @@ export function toShopBlockReason(code: string | null | undefined): ShopPurchase
   }
 }
 
+/**
+ * Block reason for a merchant that refuses a purchase without reporting a code.
+ * Such a merchant can decline for reasons beyond price (already learned, no
+ * free slot), so a gold shortfall is only claimed when gold is genuinely short;
+ * otherwise the offer reads as unavailable rather than mislabeled as too
+ * expensive.
+ */
+export function blockReasonFromGold(
+  priceGold: number,
+  playerGold: number,
+): ShopPurchaseBlockReason {
+  return playerGold < priceGold ? 'insufficient-funds' : 'unknown';
+}
+
 /** True when the player can buy this offer right now. */
 export function isShopOfferPurchasable(offer: ShopOffer): boolean {
   return resolveShopOfferAvailability(offer) === 'available';
