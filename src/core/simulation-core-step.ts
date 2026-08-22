@@ -16,6 +16,7 @@ import { fovSystem } from './systems/fovSystem.js';
 import { harvestSystem } from './systems/harvestSystem.js';
 import { bossChestPickupSystem } from './systems/bossChestPickupSystem.js';
 import { healthSystem } from './systems/healthSystem.js';
+import { homingSystem } from './systems/homingSystem.js';
 import { itemPickupSystem } from './systems/itemPickupSystem.js';
 import { knockbackSystem } from './systems/knockbackSystem.js';
 import { lifetimeSystem } from './systems/lifetimeSystem.js';
@@ -56,6 +57,7 @@ export function runCoreSimulationStep(
 
   options.afterInput?.();
 
+  homingSystem(world);
   movementSystem(world);
   returningProjectileSystem(world);
   const collision = collisionSystem(world);
