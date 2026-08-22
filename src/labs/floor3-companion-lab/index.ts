@@ -1,17 +1,20 @@
 /**
- * Floor 3 Companion Lab — slice 3.
+ * Floor 3 Companion Lab — slices 3–5.
  *
- * Text-mode sandbox for the team-tagged companion AI prepass:
- * - rival targeting (different team id),
- * - player follow outside leash,
- * - idle inside leash,
- * - Guardian / Support persona movement through the real AI → movement pipeline.
+ * Text-mode sandbox for:
+ * - rival targeting (different team id), player follow/idle leash,
+ * - Guardian / Support persona movement through the real AI → movement pipeline (slice 4),
+ * - combat-XP attribution, evolution, and ability unlocks via the real
+ *   `applyDamage` → `companionProgressionSystem` pipeline (slice 5).
  */
 import GUI from 'lil-gui';
 import { addComponent, set } from 'bitecs';
 import {
   Companion,
   Team,
+  applyDamage,
+  companionLearnedAbilityIds,
+  companionProgressionSystem,
   createGameWorld,
   movementSystem,
   spawnBehaviorEnemy,
@@ -25,6 +28,11 @@ import {
   getCompanionAIDecision,
 } from '../../game/index.js';
 import { TeamId } from '../../shared/constants.js';
+import {
+  formForLevel,
+  getPetSpecies,
+  speciesTokenForId,
+} from '../../shared/data/floor3/species.js';
 import tuning from '../../shared/data/tuning.json';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -50,6 +58,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     spawnRival: true,
     companionKnockedOut: false,
     aiType: 'GUARDIAN' as LabAiType,
+    attackDamage: 6,
   };
 
   const panel = document.createElement('pre');
@@ -80,7 +89,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       world.ecs,
       companionEid,
       set(Companion, {
-        speciesToken: 1,
+        speciesToken: speciesTokenForId('ember-charger'),
         form: 0,
         level: 1,
         xp: 0,
@@ -123,6 +132,21 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     render();
   }
 
+  function attackRival(): void {
+    if (companionEid < 0 || rivalEid < 0) return;
+    const rivalX = world.stores.position.x[rivalEid] ?? 0;
+    const rivalY = world.stores.position.y[rivalEid] ?? 0;
+    applyDamage(world, rivalEid, state.attackDamage, rivalX, rivalY, {
+      origin: 'enemy',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceEid: companionEid,
+    });
+    companionProgressionSystem(world);
+    render();
+  }
+
   function render(): void {
     const beforeX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
     const beforeY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
@@ -143,7 +167,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     lines.push(`velocity: (${velocityX.toFixed(3)}, ${velocityY.toFixed(3)})`);
     lines.push(
       state.spawnRival
-        ? `rival eid=${rivalEid} @ (${state.rivalX}, ${state.rivalY})`
+        ? `rival eid=${rivalEid} @ (${state.rivalX}, ${state.rivalY}) hp=${(world.stores.health.current[rivalEid] ?? 0).toFixed(0)}/${(world.stores.health.max[rivalEid] ?? 0).toFixed(0)}`
         : 'rival: (not spawned)',
     );
     lines.push(
@@ -156,6 +180,18 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(
         `decision: ${decision.kind} target=${decision.targetEid ?? '-'} @(${decision.x.toFixed(2)}, ${decision.y.toFixed(2)}) bypass=${decision.bypassPlayerDetection}`,
       );
+    }
+    lines.push('');
+    if (companionEid >= 0) {
+      const level = world.stores.companion.level[companionEid] ?? 0;
+      const xp = world.stores.companion.xp[companionEid] ?? 0;
+      const form = world.stores.companion.form[companionEid] ?? 0;
+      const species = getPetSpecies('ember-charger');
+      const formName = species ? formForLevel(species, level).name : '?';
+      const abilities = companionLearnedAbilityIds(world, companionEid);
+      lines.push(`slice 5 — companion progression (ember-charger):`);
+      lines.push(`  level=${level} xp=${xp.toFixed(1)} form=${form} (${formName})`);
+      lines.push(`  abilities learned: ${abilities.join(', ')}`);
     }
     panel.textContent = lines.join('\n');
   }
@@ -200,6 +236,8 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     .add(state, 'companionKnockedOut')
     .name('Companion KO')
     .onChange(() => applyState());
+  gui.add(state, 'attackDamage', 1, 100, 1).name('Attack damage');
+  gui.add({ attack: () => attackRival() }, 'attack').name('⚔ Companion attacks rival');
   gui.add({ reseed: () => reseed() }, 'reseed').name('↻ Reseed');
 
   reseed();
@@ -211,6 +249,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
 registerLab('floor3-companion-lab', {
   category: 'Entities' as LabCategory,
   name: 'Floor 3 Companion Lab',
-  description: 'Floor 3 — inspect companion targeting plus Guardian/Support persona movement.',
+  description:
+    'Floor 3 — inspect companion targeting, Guardian/Support persona movement, and slice-5 combat-XP/evolution/ability progression.',
   create: createFloor3CompanionLab,
 });
