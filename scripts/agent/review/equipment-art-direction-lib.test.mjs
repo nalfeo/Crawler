@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   ART_DIRECTION_PILLARS,
   buildArtDirectionPrompt,
@@ -257,9 +260,20 @@ test('summarizes repeated diagnoses without treating consistency as failure', ()
 });
 
 test('discovers only versioned neutral equipment captures', () => {
-  const captures = discoverEquipmentCaptures('files/visual-review/after');
-  assert.deepEqual(
-    captures.map((capture) => capture.version),
-    ['v0.1.0', 'v0.1.1', 'v0.1.2', 'v0.1.3', 'v0.1.4', 'v0.1.5', 'v0.1.6', 'v0.1.7'],
-  );
+  const root = mkdtempSync(join(tmpdir(), 'equipment-art-direction-'));
+  try {
+    for (const version of ['v0.1.2', 'v0.1.0', 'v0.1.1']) {
+      const versionDir = join(root, version);
+      mkdirSync(versionDir);
+      writeFileSync(join(versionDir, 'equipment.png'), '');
+    }
+    mkdirSync(join(root, 'unversioned'));
+    writeFileSync(join(root, 'unversioned', 'equipment.png'), '');
+    assert.deepEqual(
+      discoverEquipmentCaptures(root).map((capture) => capture.version),
+      ['v0.1.0', 'v0.1.1', 'v0.1.2'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
