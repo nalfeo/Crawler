@@ -48,6 +48,7 @@ import {
   KENNEY_DOOR_FRAME_PX,
   resolveDoorContainFit,
 } from '../sprites/door-visuals.js';
+import { STAIRS_TEXTURE_KEY, resolveStairsContainFit } from '../sprites/stairs-visuals.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
 import { type GeneratedSpriteRegistry, type OpaqueBounds } from '../../shared/generated-assets.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
@@ -661,6 +662,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
 
+  /** Generated stairs-art decal stamped over `staircaseMarker`'s footprint, when loaded. */
+  private staircaseSprite?: Phaser.GameObjects.Image;
+
   private readonly npcQuestIndicators = new Map<number, Phaser.GameObjects.Text>();
 
   private loadoutText?: Phaser.GameObjects.Text;
@@ -1254,6 +1258,7 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.doorImages.length = 0;
       this.staircaseMarker?.destroy();
+      this.staircaseSprite?.destroy();
       this.stairsLabel?.destroy();
       for (const indicator of this.npcQuestIndicators.values()) {
         indicator.destroy();
@@ -1318,6 +1323,7 @@ export class MainGameScene extends Phaser.Scene {
       this.lightField = undefined;
       this.doorGraphics = undefined;
       this.staircaseMarker = undefined;
+      this.staircaseSprite = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.directorCommentaryText = undefined;
@@ -3743,6 +3749,88 @@ export class MainGameScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * Stamp the approved "the-stairs" generated art at the marker's footprint,
+   * falling back to the plain filled circle when the art isn't loaded.
+   *
+   * Mirrors `updateDoorOverlay`'s generated-art-first, degrade-gracefully
+   * pattern: the fallback circle stays fully wired (fresh checkouts / a
+   * pipeline unapproval never break the objective marker), it just yields
+   * its fill to the sprite once real art is available, keeping only a thin
+   * stroke ring for affordance.
+   */
+  private renderStaircaseMarker(
+    x: number,
+    y: number,
+    radiusPx: number,
+    fillColor: number,
+    strokeColor: number,
+    visible: boolean,
+  ): void {
+    if (!this.staircaseMarker) {
+      this.staircaseMarker = this.add
+        .circle(x, y, radiusPx, fillColor, 0.25)
+        .setStrokeStyle(2, strokeColor, 0.95)
+        .setDepth(20);
+    }
+    this.staircaseMarker.setPosition(x, y);
+    this.staircaseMarker.setRadius(radiusPx);
+    this.staircaseMarker.setStrokeStyle(2, strokeColor, 0.95);
+    this.staircaseMarker.setVisible(visible);
+
+    const hasStairsArt = this.textures.exists(STAIRS_TEXTURE_KEY);
+    if (!hasStairsArt) {
+      this.staircaseMarker.setFillStyle(fillColor, 0.25);
+      this.staircaseSprite?.setVisible(false);
+      return;
+    }
+    const source = this.textures.get(STAIRS_TEXTURE_KEY).getSourceImage() as {
+      width?: number;
+      height?: number;
+    };
+    const canvasWidth = typeof source?.width === 'number' ? source.width : 0;
+    const canvasHeight = typeof source?.height === 'number' ? source.height : 0;
+    if (canvasWidth <= 0 || canvasHeight <= 0) {
+      this.staircaseMarker.setFillStyle(fillColor, 0.25);
+      this.staircaseSprite?.setVisible(false);
+      return;
+    }
+    const rawStairsRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
+      | GeneratedSpriteRegistry
+      | undefined;
+    const stairsRegistry =
+      rawStairsRegistry && typeof rawStairsRegistry.entries === 'function'
+        ? rawStairsRegistry
+        : null;
+    let bounds: OpaqueBounds | undefined;
+    if (stairsRegistry) {
+      for (const entry of stairsRegistry.entries()) {
+        if (entry.textureKey === STAIRS_TEXTURE_KEY) {
+          bounds = entry.opaqueBounds;
+          break;
+        }
+      }
+    }
+    const fit = resolveStairsContainFit({
+      bounds,
+      canvasWidth,
+      canvasHeight,
+      markerRadiusPx: radiusPx,
+    });
+    if (!this.staircaseSprite) {
+      this.staircaseSprite = this.add.image(x, y, STAIRS_TEXTURE_KEY).setDepth(19);
+    }
+    this.staircaseSprite
+      .setTexture(STAIRS_TEXTURE_KEY)
+      .setOrigin(fit.originX, fit.originY)
+      .setScale(fit.scale)
+      .setPosition(x, y)
+      .setTint(strokeColor)
+      .setVisible(visible);
+    // Art carries the fill weight now; keep only the outline ring.
+    this.staircaseMarker.setFillStyle(fillColor, 0);
+  }
+
   private updateObjectiveMarkers(): void {
     const floor2State = this.world.floorExtendedState?.familyState;
     if (!this.world.floorScenario) {
@@ -3755,17 +3843,14 @@ export class MainGameScene extends Phaser.Scene {
         const staircaseX = ftToPx(floor2State.staircasePos.x);
         const staircaseY = ftToPx(floor2State.staircasePos.y);
         const markerRadiusPx = ftToPx(FLOOR2_STAIR_MARKER_RADIUS_FT);
-        if (!this.staircaseMarker) {
-          this.staircaseMarker = this.add
-            .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
-            .setStrokeStyle(2, 0x86efac, 0.95)
-            .setDepth(20);
-        }
-        this.staircaseMarker.setPosition(staircaseX, staircaseY);
-        this.staircaseMarker.setRadius(markerRadiusPx);
-        this.staircaseMarker.setFillStyle(0x10b981, 0.25);
-        this.staircaseMarker.setStrokeStyle(2, 0x86efac, 0.95);
-        this.staircaseMarker.setVisible(true);
+        this.renderStaircaseMarker(
+          staircaseX,
+          staircaseY,
+          markerRadiusPx,
+          0x10b981,
+          0x86efac,
+          true,
+        );
         if (!this.stairsLabel) {
           this.stairsLabel = this.add
             .text(staircaseX, staircaseY - markerRadiusPx - 10, '▼ EXIT', {
@@ -3785,6 +3870,7 @@ export class MainGameScene extends Phaser.Scene {
         this.stairsLabel.setVisible(true);
       } else {
         this.staircaseMarker?.setVisible(false);
+        this.staircaseSprite?.setVisible(false);
         this.stairsLabel?.setVisible(false);
       }
       this.updateNpcQuestIndicators();
@@ -3796,19 +3882,16 @@ export class MainGameScene extends Phaser.Scene {
     const staircaseX = ftToPx(objective.staircasePos.x);
     const staircaseY = ftToPx(objective.staircasePos.y);
     const markerRadiusPx = ftToPx(objective.markerRadiusFt);
-    if (!this.staircaseMarker) {
-      this.staircaseMarker = this.add
-        .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
-        .setStrokeStyle(2, 0x86efac, 0.95)
-        .setDepth(20);
-    }
     const staircaseFill = objective.staircaseLocked ? 0xf59e0b : 0x10b981;
     const staircaseStroke = objective.staircaseLocked ? 0xfcd34d : 0x86efac;
-    this.staircaseMarker.setPosition(staircaseX, staircaseY);
-    this.staircaseMarker.setRadius(markerRadiusPx);
-    this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
-    this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
-    this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
+    this.renderStaircaseMarker(
+      staircaseX,
+      staircaseY,
+      markerRadiusPx,
+      staircaseFill,
+      staircaseStroke,
+      objective.staircaseSpawned && !objective.staircaseDiscovered,
+    );
     // World-space staircase label above the marker
     if (!this.stairsLabel) {
       this.stairsLabel = this.add
