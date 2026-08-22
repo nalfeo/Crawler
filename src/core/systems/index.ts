@@ -18,6 +18,10 @@ export { aoeOnImpactPreDamage, aoeOnImpactPostDamage } from './aoeOnImpactSystem
 export { meleeSwingSystem, clearMeleeSwingHits } from './meleeSwingSystem.js';
 export { knockbackSystem } from './knockbackSystem.js';
 export { dropSystem, clearProcessedDeaths } from './dropSystem.js';
+export {
+  companionProgressionSystem,
+  companionLearnedAbilityIds,
+} from './companionProgressionSystem.js';
 export { deathTimerSystem } from './deathTimerSystem.js';
 export {
   corpseStepSystem,

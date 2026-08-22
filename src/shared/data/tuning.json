@@ -40,6 +40,12 @@
       "large": 10
     }
   },
+  "floor3Companion": {
+    "killXpBase": 20,
+    "_killXpBase_note": "Flat combat-XP pool awarded to a Companion team per enemy Companion KO'd (spec R7 / slice 5). Placeholder magnitude — no Floor 3 scenario spawns Companions yet, so this is not balance-swept; downstream slice 16 tunes it via a win-rate sweep.",
+    "assistFloorShare": 0.2,
+    "_assistFloorShare_note": "Fraction of killXpBase split evenly across every living (non-knocked-out) Companion on the credited team, regardless of whether they landed a hit. The remainder splits damage-weighted across contributors only."
+  },
   "floor": {
     "minDurationS": 120,
     "maxDurationS": 300,

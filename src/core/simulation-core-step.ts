@@ -5,6 +5,7 @@ import { areaDamageSystem } from './systems/areaDamageSystem.js';
 import { beamSystem } from './systems/beamSystem.js';
 import { bloodyFootprintSystem } from './systems/bloodyFootprintSystem.js';
 import { collisionSystem } from './systems/collisionSystem.js';
+import { companionProgressionSystem } from './systems/companionProgressionSystem.js';
 import { corpseStepSystem } from './systems/corpseStepSystem.js';
 import { damageSystem } from './systems/damageSystem.js';
 import { deathTimerSystem } from './systems/deathTimerSystem.js';
@@ -71,6 +72,7 @@ export function runCoreSimulationStep(
   harvestSystem(world);
   bossChestPickupSystem(world);
   dropSystem(world);
+  companionProgressionSystem(world);
   corpseStepSystem(world);
   bloodyFootprintSystem(world);
   deathTimerSystem(world);

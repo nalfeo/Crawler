@@ -496,6 +496,16 @@ export interface GameWorld {
    */
   lethalDamageSourceByTarget: Map<number, number>;
   /**
+   * Floor 3 Companion League: cumulative damage each Companion (attacker eid)
+   * has dealt to each still-alive Enemy target (target eid), written by
+   * `applyDamage`. `companionProgressionSystem` (invoked from
+   * `runCoreSimulationStep` after `dropSystem`) reads this to split combat XP
+   * damage-weighted across contributing Companions once the target's health
+   * reaches 0, then deletes the target's entry. See
+   * `.specify/specs/floor3-companion-league.md` R7 / slice 5.
+   */
+  companionDamageContribution: Map<number, Map<number, number>>;
+  /**
    * Durable record of the most recent damaging hit that landed on the player,
    * written at the `applyDamage` choke point. Unlike {@link combatEvents} —
    * which the render layer drains every rendered frame (`combatVfx.update`)
@@ -962,6 +972,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     goalFlags: new Map(),
     combatEvents: [],
     lethalDamageSourceByTarget: new Map(),
+    companionDamageContribution: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     floaterEvents: [],

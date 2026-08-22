@@ -17,6 +17,8 @@ import {
   loadPetSpecies,
   petSpeciesByAffinity,
   petSpeciesByStyle,
+  speciesForToken,
+  speciesTokenForId,
 } from '../../src/shared/data/floor3/species.js';
 import { AI_TYPE } from '../../src/game/index.js';
 
@@ -137,5 +139,21 @@ describe('Floor 3 species roster', () => {
 
   it('returns undefined for an unknown species id', () => {
     expect(getPetSpecies('nope')).toBeUndefined();
+  });
+
+  it('round-trips speciesId <-> ECS speciesToken deterministically, reserving 0', () => {
+    const roster = loadPetSpecies();
+    const seenTokens = new Set<number>();
+    for (const species of roster) {
+      const token = speciesTokenForId(species.speciesId);
+      expect(token).toBeGreaterThan(0);
+      expect(seenTokens.has(token)).toBe(false);
+      seenTokens.add(token);
+      expect(speciesForToken(token)?.speciesId).toBe(species.speciesId);
+    }
+    expect(speciesTokenForId('ember-charger')).toBe(speciesTokenForId('ember-charger'));
+    expect(speciesForToken(0)).toBeUndefined();
+    expect(speciesForToken(-1)).toBeUndefined();
+    expect(() => speciesTokenForId('nope')).toThrow(/Unknown Floor 3 speciesId/);
   });
 });

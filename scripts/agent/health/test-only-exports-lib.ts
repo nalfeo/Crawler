@@ -713,6 +713,20 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Floor 3 slice 1: runtime guard for the FightingStyle union; consumed once Floor 3 wild-spawn and recruiting data (slice 6-7) validate untrusted content input.',
     expiresOn: '2026-11-15',
   },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'speciesTokenForId',
+    reason:
+      'Floor 3 slice 5: converts a species id to the compact ECS Companion.speciesToken value; no production Companion spawner exists yet (recruiting/overworld spawns land in slices 6-7), so only the lab and unit tests call it until that spawn path lands.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/core/systems/companionProgressionSystem.ts',
+    name: 'companionLearnedAbilityIds',
+    reason:
+      'Floor 3 slice 5: derived (species, level) -> learned ability ids read for the ability-command UX (slice 12-14) and ability-selection AI, neither of which has landed yet; only the lab panel and unit tests call it until those consumers land.',
+    expiresOn: '2026-11-22',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {
