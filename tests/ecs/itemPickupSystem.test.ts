@@ -145,6 +145,34 @@ describe('itemPickupSystem', () => {
       expect(world.vfxEvents).toHaveLength(0);
     });
   });
+
+  describe('material floater', () => {
+    it('emits a material-gain floater when picking up a material dropped item', () => {
+      const materialIndex = 0;
+      const materialDef = getItemByIndex(materialIndex);
+      expect(materialDef).toBeDefined();
+      spawnDroppedItem(world, 100, 100, materialIndex);
+
+      itemPickupSystem(world, collisionSystem(world));
+
+      expect(world.floaterEvents).toHaveLength(1);
+      expect(world.floaterEvents[0]).toMatchObject({
+        kind: 'materialGain',
+        x: 100,
+        y: 100,
+        label: `+1 ${materialDef!.name}`,
+      });
+    });
+
+    it('does not emit a material-gain floater for non-material dropped items', () => {
+      // Index 20 is the first weapon in the catalog.
+      spawnDroppedItem(world, 100, 100, 20);
+
+      itemPickupSystem(world, collisionSystem(world));
+
+      expect(world.floaterEvents).toHaveLength(0);
+    });
+  });
   describe('loot ledger', () => {
     it('counts spawned XP/gold value even when nothing is collected', () => {
       spawnXpGem(world, 500, 500, 7);

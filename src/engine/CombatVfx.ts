@@ -115,8 +115,8 @@ export function _abilityFloaterStyle(event: AbilityActivationEvent): FloaterStyl
 
 /**
  * Pure mapping from a non-combat floater event to its presentation. Skill
- * level-ups read in the class-skill green already used by the HUD skill
- * tracker, so the "+1" is legible as progression rather than damage.
+ * level-ups and material gains read in the class-skill green already used by
+ * the HUD skill tracker, so the "+1" is legible as progression rather than damage.
  */
 function noticeFloaterStyle(event: FloaterEvent): FloaterStyle {
   return {
