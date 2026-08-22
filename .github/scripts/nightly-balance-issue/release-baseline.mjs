@@ -115,50 +115,6 @@ export async function resolveLatestReleaseBaselineSafely(options) {
   }
 }
 
-// The floor1->2 chained run and the Floor2-only run are the two release-sweep
-// legs (see `scripts/agent/perf/sweep-legs.ts`) that most directly measure
-// whether a player who clears Floor 1 can keep going. Both are report-only
-// (non-blocking) legs today, so nothing stops main if they slip — this
-// threshold is what turns a slipping win rate into an explicit nightly ask
-// instead of a number nobody reads. See https://github.com/nalfeo/Crawler/issues/3240.
-export const WIN_RATE_INVESTIGATION_LEGS = Object.freeze(['floor1-chain', 'floor2']);
-export const WIN_RATE_INVESTIGATION_THRESHOLD = 0.9;
-
-function legWinRate(legs, id) {
-  const leg = legs && typeof legs === 'object' ? legs[id] : null;
-  if (!leg || typeof leg !== 'object') return null;
-  const wins = Number(leg.totalWins);
-  const runs = Number(leg.totalRuns);
-  if (!Number.isFinite(wins) || !Number.isFinite(runs) || runs <= 0) return null;
-  return wins / runs;
-}
-
-/**
- * Builds the nightly issue's "diagnose the chain/Floor2 win rate" ask, but
- * only when the newest release baseline actually reports one of those legs
- * below threshold. Returns null when there's no baseline, neither leg is
- * present, or both legs are already at/above 90% — a healthy win rate must
- * never produce an ask.
- */
-export function buildWinRateInvestigationClause(baseline) {
-  const legs = baseline?.legs;
-  const below = WIN_RATE_INVESTIGATION_LEGS.map((id) => ({
-    id,
-    rate: legWinRate(legs, id),
-  })).filter(({ rate }) => rate !== null && rate < WIN_RATE_INVESTIGATION_THRESHOLD);
-  if (below.length === 0) return null;
-  const summary = below
-    .map(({ id, rate }) => `\`${id}\` at ${(rate * 100).toFixed(1)}%`)
-    .join(', ');
-  return `## Win-rate investigation — floor1→2 chain / Floor 2 below 90% (tracking issue #3240)
-The newest release baseline reports ${summary}, below the ${WIN_RATE_INVESTIGATION_THRESHOLD * 100}% target for those legs. In addition to the balance-improvement objective above:
-- Diagnose the failing \`floor1-chain\` and/or \`floor2\` runs using the per-run \`RunStats\` already published inside this same release baseline payload (\`legs["floor1-chain"].runs\` / \`legs.floor2.runs\` in \`by-sha/<commit>.json\` on the \`${RELEASE_BASELINE_BRANCH}\` branch) — this is published release-sweep panel data, already in git. Do not dispatch or run a new sweep to redo this categorization; only a small number of individual single-seed local headless runs (\`npm run ai:headless\`) to observe/reproduce a specific failure and confirm a fix are appropriate, per the "observe before done" rule.
-- Categorize those runs' \`outcome\` field and correlate with \`movementQuality\` (stuck/wiggle %), \`aiTelemetry.decisionStateMs\`, and progression/den fields to find the root cause (stuck pathfinding, target-selection deadlock, timeout/stalled budget exhaustion, a specific lethal mechanic, or a mapgen/lockout class where the player is physically unable to reach required content).
-- Attempt to fix the single largest bucket that is solvable in the AI runner (\`src/game/ai/**\`) without materially changing core gameplay in \`src/game/**\`/\`src/core/**\`.
-- If the largest bucket is instead a mapgen/lockout-class bug, do not patch map generation as part of this nightly sweep — document the failure with a repro seed and file it as a separate follow-up issue instead.
-- This ask stands independently of the balance-candidate ledger above: zero eligible balance candidates is still a valid outcome, but the win-rate diagnosis itself must still be reported in the closing comment.`;
-}
-
 function formatLegs(legs) {
   if (!legs || typeof legs !== 'object') return null;
   const parts = Object.entries(legs)

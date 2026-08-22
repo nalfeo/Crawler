@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "floor2-regression-automation",
+  "task_title": "Move the Floor 2 / chain win-rate investigation into the release workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.4) before any code was written. (1) Blocking: a stable (non-commit) marker plus per-SHA-only job serialization lets two overlapping releases each create an issue -- adopted: the filer now sorts open marker matches by issue number, updates the lowest-numbered canonical issue, and closes the rest as superseded, with a unit test. (2) Blocking: skipping a missing monitored leg would silently retire the check on a publisher bug or leg rename -- adopted: monitored leg ids are derived from RELEASE_SWEEP_LEGS (non-blocking legs) instead of a second hardcoded copy, and a leg missing from a baseline captured under the current RELEASE_SWEEP_REVISION throws; older revisions are still skipped as history. (3) The plan undercounted test churn from deleting buildWinRateInvestigationClause -- adopted: the nightly-balance tests were pruned/updated and re-run (36 node --test cases green). (4) Dual-output plumbing needs CLI-level coverage, not just pure-function tests -- adopted: a spawn-based CLI test asserts both result files and both GITHUB_OUTPUT keys on a release where Floor 1 also lost runs. (5) Do not lose threshold provenance when moving the 0.9 constant -- adopted: ci-config-knobs.md row rewritten to point at the new location and the now-dead entry removed from the ci-knobs-guard allowlist. Reviewer confirmed the one-script/two-results shape and the report-only (non-blocking) reading of the maintainer intent were correct."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code_review tool reviewed all 13 changed files and returned no comments. The plan-review concerns (duplicate-issue race, fail-closed missing leg, CLI coverage, knob provenance) had already been folded in before this round."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "baaa12a6db2c125f020b5593d0cfc14ed3f327ac",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change cleanly relocates the report-only Floor 2 / floor1-chain win-rate investigation from the scheduled nightly-balance issue body into the release workflow. The old buildWinRateInvestigationClause/threshold/legs machinery in release-baseline.mjs and its use in nightly-balance-issue.mjs are fully removed, and the new evaluateLegWinRateFloor in baseline-regression-check.ts is deliberately independent of the aggregate regression decision so a Floor 1 loss (which short-circuits that decision) cannot mask a Floor 2 breach in the same release. Edge cases are handled correctly: the 0.9 boundary is inclusive (>=0.9 does not fire, verified by a 135/150 test), zero-run and winRate-vs-wins/runs mismatches throw via validateMetrics, and the check fails closed (throws) when a baseline captured under the CURRENT sweep revision is missing a monitored leg while still skipping genuinely older-revision baselines as history. Monitored leg ids are derived from RELEASE_SWEEP_LEGS non-blocking entries rather than a second hardcoded copy, preventing silent drift. The deploy.yml wiring writes a separate result file and a separate legWinRateFloorBreach output, gating an independent Copilot-assignment step, and the shared filer is extended with a deterministic duplicate-issue collapse (sort open marker matches by number, update the oldest, close the rest as superseded) that is genuinely necessary because the new stable, non-commit-scoped marker plus per-SHA-only job serialization can race two overlapping releases. Coverage is thorough and would fail without the change: pure-function tests for the floor/marker/fail-closed/boundary behavior, a spawn-based CLI test asserting both result files and both GITHUB_OUTPUT keys on a release where Floor 1 also lost runs, a workflow-YAML structural test asserting step ordering and env wiring, and the duplicate-collapse unit test. Deleted tests correspond only to deleted functions, and their behavior is re-covered in the new location. These are all CI/automation scripts, so determinism/layer/Math.random/Date.now rules do not apply; the moved 0.9 constant is re-documented in ci-config-knobs.md and the now-dead allowlist entry is removed from the ci-knobs guard. No high-confidence blocker, major, or minor bug found."
+    }
+  }
+}

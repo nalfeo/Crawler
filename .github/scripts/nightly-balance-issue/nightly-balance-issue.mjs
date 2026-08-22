@@ -6,7 +6,6 @@ import {
 import { graphql, paginate, request } from '../ci-recovery/github.mjs';
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import {
-  buildWinRateInvestigationClause,
   formatReleaseBaselineLine,
   RELEASE_BASELINE_BRANCH,
   RELEASE_BASELINE_INDEX_PATH,
@@ -27,7 +26,6 @@ export function buildReleaseBaselineClause() {
 }
 
 export function buildIssueBody(issueNumber = '<this issue number>', releaseBaseline = null) {
-  const winRateClause = buildWinRateInvestigationClause(releaseBaseline);
   return `## Objective
 Examine eligible current telemetry, identify and rank up to 3 evidence-backed game-balance improvements, evaluate each independently with canonical sweeps, and ship only treatments supported by comparable aggregate evidence. Zero eligible ideas is valid and produces no implementation PR.
 
@@ -40,7 +38,7 @@ ${formatReleaseBaselineLine(releaseBaseline)}
 - State how far current main has advanced past the baseline commit and which of those commits are gameplay-affecting, and scope every claim to the baseline commit. The next release publishes the next baseline, so never block on dispatching a baseline sweep yourself.
 - No new release baseline since the prior analysis => stop duplicate work.
 - State releases/tags and real-player telemetry honestly; never call headless data release/player telemetry or invent lookback.
-${winRateClause ? `\n${winRateClause}\n` : ''}
+
 ## Candidate eligibility — hard gate
 Propose UP TO 3, including zero; never fill quota. For each candidate at exact baseline SHA require: exact measured aggregate fields/values; telemetry-backed causal attribution; real production reachability on a floor the baseline actually covers, traced from headless/simulation entry through enabling config; proof feature/entity/mode/spawn table/flag was enabled in baseline; named observable canonical metric. Registry/export/lab/test presence, empty config, disabled flags, dormant definitions, unreachable code are ineligible. Never claim enemy/room/encounter/attack/damage source unless artifact records it. Unknown/unproven => reject before ranking; missing attribution => telemetry/investigation, not tuning. Separate facts, hypotheses, source inspection.
 
