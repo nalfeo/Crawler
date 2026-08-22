@@ -482,6 +482,68 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
   });
 
+  describe('post-boss farm-window stair-descend deferral (issue #3275 items 2 and 4)', () => {
+    function stairWorld(): { world: GameWorld; player: number } {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.state = 'playing';
+      world.stores.position.x[player] = 100;
+      world.stores.position.y[player] = 100;
+      world.floorScenario = makeFloor1({
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircaseSpawned: true,
+        staircasePos: { x: 100, y: 100 },
+      });
+      return { world, player };
+    }
+
+    function farmingProvider(farming: boolean): AIInputProvider {
+      return {
+        poll: (): AIDecision => ({
+          moveX: 0,
+          moveY: 0,
+          attack: false,
+          aimX: 0,
+          aimY: 0,
+          state: AIState.EXPLORE,
+        }),
+        isFarmingPostBossFloorTime: () => farming,
+      };
+    }
+
+    it('holds the floor open while the provider is still farming its budget', () => {
+      const { world, player } = stairWorld();
+      autoFloor1ProgressionSystem(world, player, farmingProvider(true));
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+    });
+
+    it('descends as soon as the farm window closes', () => {
+      const { world, player } = stairWorld();
+      autoFloor1ProgressionSystem(world, player, farmingProvider(true));
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      autoFloor1ProgressionSystem(world, player, farmingProvider(false));
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+
+    it('descends for a provider that does not implement the farm window at all', () => {
+      const { world, player } = stairWorld();
+      const legacy: AIInputProvider = {
+        poll: (): AIDecision => ({
+          moveX: 0,
+          moveY: 0,
+          attack: false,
+          aimX: 0,
+          aimY: 0,
+          state: AIState.EXPLORE,
+        }),
+      };
+      autoFloor1ProgressionSystem(world, player, legacy);
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+  });
+
   describe('loot-aware stair-descend deferral', () => {
     function stairWorld() {
       const world = createTestWorld();

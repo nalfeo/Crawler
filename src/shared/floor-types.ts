@@ -21,6 +21,16 @@ export interface FloorBossEncounterState {
   bossEid: number | null;
   /** True once the boss has been defeated. */
   defeated: boolean;
+  /**
+   * Last position (feet) the boss entity occupied while alive.
+   *
+   * Sampled every tick by the floor objective so the boss's reward chest can
+   * drop where it actually died. Normal death cleanup clears the typed-array
+   * component stores before the defeat branch runs, so reading the dead eid's
+   * `Position` would return (0, 0) and strand the chest outside the dungeon.
+   * Undefined until the boss has spawned.
+   */
+  lastKnownPos?: { x: number; y: number };
   /** Display name shown in the HUD boss health bar. */
   displayName: string;
   /**

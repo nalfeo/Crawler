@@ -28,6 +28,16 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
       return true;
     }
   }
+  // Rooms that became safe during the run (a cleared boss arena) are safe on
+  // top of the authored SAFE rooms. Resolved by room id because the cleared
+  // room keeps its generated role — see `GameWorld.clearedSafeRoomIds`. Ids are
+  // per-floor, so they only apply to the map they were recorded against.
+  if (world.clearedSafeRoomIds.size > 0 && world.clearedSafeRoomMap === floorMap) {
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    if (roomId >= 0 && world.clearedSafeRoomIds.has(roomId)) {
+      return true;
+    }
+  }
   const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
   if (safeRooms.length === 0) return false;
   return safeRooms.some((room) => roomContainsTile(room, tile.x, tile.y));

@@ -863,8 +863,10 @@ describe('floor1Scenario', () => {
     expect(world.bossChests.has(slimeRatChestId)).toBe(true);
     const slimeRatChestEid = world.bossChestEids.get(slimeRatChestId);
     expect(slimeRatChestEid).toBeTypeOf('number');
-    expect(world.stores.position.x[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.x);
-    expect(world.stores.position.y[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.y);
+    // The chest drops off the body: the boss's last sampled position, not the
+    // authored room anchor it used to teleport to (issue #3275 item 3).
+    expect(world.stores.position.x[slimeRatChestEid!]).toBe(expectedSlimeRatPlacement.position.x);
+    expect(world.stores.position.y[slimeRatChestEid!]).toBe(expectedSlimeRatPlacement.position.y);
     expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&

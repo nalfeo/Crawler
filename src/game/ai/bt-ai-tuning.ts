@@ -47,6 +47,25 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
   // Raised 0.07→0.12 by the AI Sweep winner promotion above.
   farmPullWeight: 0.12,
+  // Post-boss farm reserve: with the final boss dead and the stairs open, the
+  // only remaining failure mode is the collapse clock, so the production
+  // (= experienced_player) cohort spends its leftover budget farming and keeps
+  // 20% of the floor budget as the exit reserve. Sized off the observed exit
+  // pace, not guessed: the pre-change seed-42 run left the floor at 470.9s of
+  // the 600s budget, so a 120s reserve is still more than twice the longest
+  // stairs-bound leg that run ever walked. The reserve is a floor, not a
+  // target — `resolvePostBossFarmWindow` closes the window the moment the
+  // remaining time drops to it, and the existing collapse-panic beeline is
+  // untouched underneath.
+  postBossFarmReserveFraction: 0.2,
+  // Issue #3275 item 2: the same cohort was reading as a speed-runner on the
+  // way TO its objectives, not just after them. While the collapse clock is
+  // applying no pressure at all (`panic === 0`), lean a little harder into the
+  // loot/enemy pull so the run sweeps what is already near its path. Bounded
+  // and one-sided: the panic ramp still scales both pulls down to zero as the
+  // deadline approaches, and this multiplier is inactive the instant panic
+  // starts, so it can never cost the run its exit.
+  calmFarmPullBoost: 1.35,
   // A/B axis 1: RISK_REWARD_FUSED is the 2026-07-21 AI Sweep winner (294/300).
   // A/B axis 2: LEGACY — fixed-priority Track A ladder.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
