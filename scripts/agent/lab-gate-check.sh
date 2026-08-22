@@ -13,6 +13,10 @@ declare -A SHARED_LAB_MAP=(
   [aoeonimpact]="weapon-lab"
   [areadamage]="weapon-lab"
   [returningprojectile]="weapon-lab"
+  # Homing steers Magic Missile bolts (issue #3248), cast via the real
+  # ability pipeline that abilities-lab boots (MainGameScene + shared
+  # simulation step), so casting magic-missile there genuinely exercises it.
+  [homing]="abilities-lab"
   # DeathTimer is post-death cleanup (counts down before removeEntity),
   # exercised through the health-lab death-flow scenarios.
   [deathtimer]="health-lab"

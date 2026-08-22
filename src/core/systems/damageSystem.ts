@@ -7,6 +7,7 @@ import {
   EnemyProjectile,
   EffectiveStats,
   Health,
+  Homing,
   Owner,
   Player,
   Projectile,
@@ -22,6 +23,10 @@ import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 import { computeArmorReducedDamage } from '../combat-math.js';
 import { getMobAbilityMeleeDamageMultiplier } from '../mob-abilities/runtime.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
+
+/** Themed impact tint for a Homing spell projectile's contact burst (Magic Missile). */
+const HOMING_IMPACT_COLOR = 0xc084fc;
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -178,6 +183,17 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       world.stores.projectile.hitCount[projectile] = 0;
       clearProjectilePierceHits(world, projectile);
       return;
+    }
+    if (hasComponent(world.ecs, projectile, Homing)) {
+      // Guided spell bolt (Magic Missile — issue #3248): the themed impact
+      // burst fires here, at its real point of contact, rather than at cast
+      // time, since the missile now travels before it actually connects.
+      pushVfxEvent(world.vfxEvents, {
+        kind: 'arcaneBoltImpact',
+        x: world.stores.position.x[enemy] ?? 0,
+        y: world.stores.position.y[enemy] ?? 0,
+        color: HOMING_IMPACT_COLOR,
+      });
     }
     destroyEntity(world, projectile);
   }

@@ -62,6 +62,8 @@ import {
   AoeOnImpact,
   Returning,
   Bouncing,
+  Homing,
+  Glowing,
   LineDamage,
   Trap,
   MeleeSwing,
@@ -451,8 +453,11 @@ export interface GameWorld {
   /**
    * Weapon skill IDs keyed by spawned attack entity EID (projectile/beam/swing/trap/AoE).
    * Preferred over `attackerWeaponSkills` so delayed hits keep the weapon that spawned them.
+   * A value of `null` explicitly suppresses the `attackerWeaponSkills` fallback — used by
+   * non-weapon attack entities (e.g. a spell-cast Magic Missile projectile) so a hit never
+   * gets mis-attributed to whatever weapon the player last fired.
    */
-  attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string }>;
+  attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string } | null>;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
@@ -890,6 +895,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
   wireStore(ecs, Returning, stores.returning);
   wireStore(ecs, Bouncing, stores.bouncing);
+  wireStore(ecs, Homing, stores.homing);
+  wireStore(ecs, Glowing, stores.glowing);
   wireStore(ecs, LineDamage, stores.lineDamage);
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);

@@ -5,6 +5,7 @@ import {
   createGameWorld,
   Enemy,
   fovSystem,
+  Glowing,
   Harvestable,
   isInSafeContext,
   Position,
@@ -2956,6 +2957,27 @@ export class MainGameScene extends Phaser.Scene {
         colorHex,
       });
       secondarySourceKeyParts.push(`p:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
+    }
+    // Transient/moving light emitters (e.g. an in-flight Magic Missile bolt —
+    // issue #3248). Unlike PropLight, `Glowing` is not tied to a static Prop,
+    // so any entity can carry it.
+    for (const glowEid of query(this.world.ecs, [Glowing, Position])) {
+      const sourceX = ftToPx(this.world.stores.position.x[glowEid] ?? 0);
+      const sourceY = ftToPx(this.world.stores.position.y[glowEid] ?? 0);
+      const sourceRadius = this.world.stores.glowing.radiusPx[glowEid] ?? 0;
+      const sourceIntensity = this.world.stores.glowing.intensity[glowEid] ?? 0;
+      const r = this.world.stores.glowing.colorR[glowEid] ?? 0;
+      const g = this.world.stores.glowing.colorG[glowEid] ?? 0;
+      const b = this.world.stores.glowing.colorB[glowEid] ?? 0;
+      const colorHex = (r << 16) | (g << 8) | b;
+      lightSources.push({
+        x: sourceX,
+        y: sourceY,
+        radiusPx: sourceRadius,
+        intensity: sourceIntensity,
+        colorHex,
+      });
+      secondarySourceKeyParts.push(`g:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
     }
     for (const harvestableEid of query(this.world.ecs, [Harvestable, Position])) {
       const defIndex = this.world.stores.harvestable.defIndex[harvestableEid] ?? -1;

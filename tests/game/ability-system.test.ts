@@ -1,12 +1,18 @@
 import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { EffectiveStats, SkillHolder, Size, Enemy } from '../../src/core/components.js';
+import { EffectiveStats, Homing, SkillHolder, Size, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { getStatusEffects } from '../../src/core/status-effects.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
-import { statSystem } from '../../src/core/systems/index.js';
+import {
+  collisionSystem,
+  damageSystem,
+  homingSystem,
+  movementSystem,
+  statSystem,
+} from '../../src/core/systems/index.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
 import {
@@ -521,6 +527,17 @@ describe('abilitySystem', () => {
     world.vfxEvents.length = 0;
     world.frameCount = 100;
     abilitySystem(world);
+
+    // Magic Missile now spawns a real homing projectile (issue #3248) rather
+    // than applying damage instantly — simulate flight to impact.
+    for (let frame = 0; frame < 60; frame += 1) {
+      if (query(world.ecs, [Homing]).length === 0) break;
+      world.frameCount += 1;
+      homingSystem(world);
+      movementSystem(world);
+      const collision = collisionSystem(world);
+      damageSystem(world, collision);
+    }
 
     expect(world.stores.health.current[target]).toBeLessThan(100);
     const impacts = world.vfxEvents.filter((e) => e.kind === 'arcaneBoltImpact');

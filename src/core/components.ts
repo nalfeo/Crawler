@@ -72,6 +72,19 @@ export const AoeOnImpact = {};
 export const Returning = {};
 /** Projectile that can bounce off arena bounds before despawning. */
 export const Bouncing = {};
+/**
+ * Projectile that arcs away from its origin, then steers onto a stored target
+ * once its arc-out delay elapses (Magic Missile — issue #3248). Driven by
+ * `homingSystem`, which runs before `movementSystem` each tick.
+ */
+export const Homing = {};
+/**
+ * Generic dynamic light emitter, independent of `Prop`/`PropLight` (which are
+ * tied to static decoration entities). Any moving or transient entity — e.g. a
+ * homing Magic Missile bolt — can carry this to register as a light source in
+ * `MainGameScene.updateLightingOverlay`.
+ */
+export const Glowing = {};
 /** Continuous beam/line damage from this entity's position. */
 export const LineDamage = {};
 /** Placed trap that arms and triggers on proximity. */
@@ -341,6 +354,31 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     bouncing: {
       remainingBounces: new Uint8Array(maxEntities),
+    },
+    homing: {
+      /** Target entity id to steer toward once active. Only meaningful while
+       * the target still exists and has Health > 0 — checked every frame by
+       * `homingSystem` rather than relying on a sentinel "no target" value. */
+      targetEid: new Uint16Array(maxEntities),
+      /** Constant travel speed (ft/frame) maintained while steering. */
+      speed: new Float32Array(maxEntities),
+      /** Maximum heading change per frame, in radians, once active. */
+      turnRateRadPerFrame: new Float32Array(maxEntities),
+      /** `world.frameCount` at which steering begins; before it, the
+       * projectile keeps its initial arc-out velocity untouched. */
+      activateFrame: new Float32Array(maxEntities),
+    },
+    glowing: {
+      /** Emission radius in render pixels. */
+      radiusPx: new Float32Array(maxEntities),
+      /** Light intensity 0–1. */
+      intensity: new Float32Array(maxEntities),
+      /** Red channel 0–255. */
+      colorR: new Uint8Array(maxEntities),
+      /** Green channel 0–255. */
+      colorG: new Uint8Array(maxEntities),
+      /** Blue channel 0–255. */
+      colorB: new Uint8Array(maxEntities),
     },
     lineDamage: {
       dirX: new Float32Array(maxEntities),
