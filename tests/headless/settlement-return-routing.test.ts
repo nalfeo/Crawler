@@ -107,6 +107,22 @@ function findOrderedSubsequenceIndexes(
   return indexes;
 }
 
+function requireSubsequenceIndex(
+  indexes: readonly number[],
+  sequence: readonly string[],
+  status: string,
+): number {
+  const sequenceIndex = sequence.indexOf(status);
+  if (sequenceIndex < 0) {
+    throw new Error(`Expected status ${status} to be part of ${sequence.join(' -> ')}`);
+  }
+  const index = indexes[sequenceIndex];
+  if (index === undefined) {
+    throw new Error(`Expected observed index for settlement-return status ${status}`);
+  }
+  return index;
+}
+
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
     const seed = 2;
@@ -168,8 +184,8 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = fullCycleIndexes[1] as number;
-    const cooldownIndex = fullCycleIndexes[5] as number;
+    const armedIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
+    const cooldownIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
 
     const armedFrame = telemetry[armedIndex]!.frame;
     const cooldownFrame = telemetry[cooldownIndex]!.frame;
