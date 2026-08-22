@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "remove-floor-specific-engine-code",
+  "task_title": "Remove floor-specific engine behavior with scenario contracts",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "minor",
+      "notes": "Approved with refinements. Rejected manifest-only DSL, bootstrap floorId switch, unified state rewrite, parallel presentation registry, monolithic ScenarioUiSnapshot, and event-stream rewrite. Adopted one normalized contract, typed bootstrap seam, generic transition callback, canonical terminal outcome, behavior matrix, synthetic third scenario, lifecycle/reset/timeout/rejection coverage, both-floor real observation, and a new ADR extending ADR 0086."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

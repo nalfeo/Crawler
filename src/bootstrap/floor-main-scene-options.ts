@@ -10,7 +10,11 @@ import {
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
-import { getScenarioDefinition } from '../game/scenarioDefinitions.js';
+import {
+  getScenarioDefinition,
+  getScenarioPresentationContract,
+  type ScenarioPresentationContract,
+} from '../game/scenarioDefinitions.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
@@ -29,6 +33,23 @@ import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
 import type { RunBundle } from '../shared/run-bundle.js';
+
+/**
+ * Compile-time layer-safe adapter: attaches the normalized scenario
+ * presentation contract to `MainGameSceneOptions` via module augmentation
+ * rather than editing the engine's own interface declaration. `src/engine/`
+ * still never imports `src/game/` — only this bootstrap module (which
+ * already imports both layers) knows the concrete `ScenarioPresentationContract`
+ * shape. The field is unread by `MainGameScene` today; see this slice's
+ * handoff for the exact call sites a follow-up engine-side slice must read
+ * it from (Director commentary, the stair marker, the stair-descend
+ * confirmation modal, and the floor-completion screen).
+ */
+declare module '../engine/scenes/MainGameScene.js' {
+  interface MainGameSceneOptions {
+    scenarioPresentation?: ScenarioPresentationContract;
+  }
+}
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
@@ -82,6 +103,12 @@ export function createFloorMainSceneOptions(
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
     onStairDescend: scenario.onStairDescend,
+    // Normalized presentation contract for this scenario (terminal outcome,
+    // stair marker/proximity, stair-descend confirmation copy, ordered
+    // Director milestones, completion-variant copy). See the module
+    // augmentation above for why this compiles against the engine's own
+    // `MainGameSceneOptions` without `src/engine/` importing `src/game/`.
+    scenarioPresentation: getScenarioPresentationContract(scenario),
     onFloor1Cleared: nextFloorId
       ? (world: GameWorld, playerEid: number) => {
           const playerCarryover = capturePlayerCarryover(world, playerEid);
