@@ -1,12 +1,14 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **In progress — slices 1–4 landed (2026-08-21).** Slice 1 (affinity matrix +
+> **Status:** **In progress — slices 1–5 landed (2026-08-22).** Slice 1 (affinity matrix +
 > species/style data) is implemented in `src/shared/data/floor3/`; slice 2 (the
 > `AFFINITY_MATRIX` damage-multiplier hook) is implemented in `src/core/apply-damage.ts`;
 > slice 3 (`Companion`/`PartySlot` + ally AI prepass) is implemented in the ECS/game AI
-> pipeline; slice 4 adds the `GUARDIAN` and `SUPPORT` movement personas. No Floor 3
-> manifests or sprites exist yet. The remaining schemas, wiring, and slices below are the
-> **plan** the implementation sessions build against.
+> pipeline; slice 4 adds the `GUARDIAN` and `SUPPORT` movement personas; slice 5 adds
+> combat-XP attribution, leveling, form evolution, and ability unlocks via
+> `src/core/systems/companionProgressionSystem.ts`. No Floor 3 manifests or sprites exist
+> yet. The remaining schemas, wiring, and slices below are the **plan** the implementation
+> sessions build against.
 > **Authored:** 2026-07-24.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — spans core ECS, game systems, content,
 > and 14 UX surfaces; sliced in §Epic decomposition). _This design session was 🍎🍎🍎._
@@ -212,7 +214,7 @@ Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices
 | 2     | **Damage multiplier hook** ✅ _landed 2026-08-17_                          | 🍎🍎        | affinity multiplier in the `apply-damage` path + tests                                                                                                                                                                              | after 1   |
 | 3     | **Companion entity + ally AI generalization** ✅ _landed 2026-08-21_       | 🍎🍎🍎      | `Companion`/`PartySlot` components, team-tagged ally AI from Floor 2 follow-AI, companion lab                                                                                                                                       | after 1   |
 | 4     | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`) ✅ _landed 2026-08-21_ | 🍎🍎🍎      | `AI_TYPE` additions + deterministic Guardian/Support movement behavior in `enemyAISystem.ts`, companion lab pipeline observation                                                                                                    | after 3   |
-| 5     | **Per-creature leveling + evolution + abilities**                          | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
+| 5     | **Per-creature leveling + evolution + abilities** ✅ _landed 2026-08-22_   | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
 | 6     | **Recruiting, party-lock, KO/recovery, lose**                              | 🍎🍎🍎      | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab                                                                                                                                           | after 3   |
 | 7     | **Overworld + biomes + wild spawns**                                       | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
 | 8     | **Studios + Final Four + seeded variety + objective tick**                 | 🍎🍎🍎🍎    | `TrainerDef`/`StudioDef`/`FinalFourDef`, candidate pools, `SeededRandom` selection, `floor3ObjectiveTick`, sealed dens, determinism test                                                                                            | after 6,7 |
