@@ -8,10 +8,11 @@
  * `combat-events.ts` and `vfx-events.ts`.
  *
  * Damage numbers still ride on `combatEvents`; this queue exists for signals
- * with no combat event to ride on, such as a skill gaining a level.
+ * with no combat event to ride on, such as a skill gaining a level or material
+ * pickups.
  */
 
-export type FloaterEventKind = 'skillLevelUp';
+export type FloaterEventKind = 'skillLevelUp' | 'materialGain';
 
 export interface FloaterEvent {
   /** Which presentation preset the renderer should use. */

@@ -12,6 +12,7 @@ import { spawnPlayer, spawnHarvestableNode } from '../../src/core/helpers.js';
 import { harvestSystem, HARVEST_RANGE_FT } from '../../src/core/systems/harvestSystem.js';
 import { Harvestable } from '../../src/core/components.js';
 import { getItemCount } from '../../src/shared/inventory.js';
+import { getItemById } from '../../src/shared/items.js';
 import {
   HARVESTABLE_DEFS,
   FLOOR2_HARVESTABLE_START_INDEX,
@@ -115,6 +116,23 @@ describe('harvestSystem', () => {
     tick(world, neededTicks);
     const sparkles = world.vfxEvents.filter((e) => e.kind === 'pickupSparkle');
     expect(sparkles.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('emits a material-gain floater on harvest completion', () => {
+    const defIndex = 0;
+    const def = HARVESTABLE_DEFS[defIndex]!;
+    const itemDef = getItemById(def.itemId);
+    expect(itemDef).toBeDefined();
+    spawnHarvestableNode(world, 0, 0, defIndex);
+    tick(world, ticksForDef(defIndex));
+
+    expect(world.floaterEvents).toHaveLength(1);
+    expect(world.floaterEvents[0]).toMatchObject({
+      kind: 'materialGain',
+      x: 0,
+      y: 0,
+      label: `+1 ${itemDef!.name}`,
+    });
   });
 
   it('handles multiple independent nodes without interference', () => {

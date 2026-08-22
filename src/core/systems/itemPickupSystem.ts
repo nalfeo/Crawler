@@ -14,6 +14,7 @@ import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
+import { pushFloaterEvent } from '../../shared/floater-events.js';
 import { PICKUP_SPARKLE_COLORS, pushVfxEvent, type PickupKind } from '../../shared/vfx-events.js';
 
 /** Queue a cosmetic collect-sparkle at a pickup's position (render-only). */
@@ -80,6 +81,15 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       const def = getItemByIndex(itemIndex);
       if (def) {
         addItem(bag, def.id, 1);
+        if (def.tags.includes('Materials')) {
+          // Anchor to the pickup world position (same origin rule as harvest nodes).
+          pushFloaterEvent(world.floaterEvents, {
+            kind: 'materialGain',
+            x: world.stores.position.x[otherEid] ?? 0,
+            y: world.stores.position.y[otherEid] ?? 0,
+            label: `+1 ${def.name}`,
+          });
+        }
       }
       emitPickupSparkle(world, otherEid, 'item');
       removeEntity(world.ecs, otherEid);
