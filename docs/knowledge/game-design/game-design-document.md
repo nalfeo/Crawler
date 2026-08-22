@@ -51,6 +51,10 @@ Theme + gimmick + boss. "Broadcast Deadline" timer triggers boss. Sample: Shoppi
 
 **Floor 2 — "Family Matters"** (designed): an open cave system of feuding mob families the player can befriend, betray, or exterminate. Content bible: [floor2-families-and-resources.md](floor2-families-and-resources.md); system spec: [`.specify/specs/floor2-family-territories.md`](../../../.specify/specs/floor2-family-territories.md); architecture: [ADR 0040](../adr/0040-floor2-family-territory-and-relationship-architecture.md).
 
+**Floor 3 — "The Companion League"** (designed): a monster-taming game-show floor where the player commands auto-battling Companions instead of fighting. Content bible: [floor3-companion-league.md](floor3-companion-league.md); system spec: [`.specify/specs/floor3-companion-league.md`](../../../.specify/specs/floor3-companion-league.md); architecture: [ADR 0071](../adr/0071-floor3-companion-league.md).
+
+**Floor 4 — "The Main Event"** (designed): the first non-exploration floor — a ten-minute survival arena in five two-minute acts, a Headliner boss closing each act, and a Green Room safe room between acts whose sponsor stock re-randomizes every visit. This is the clearest expression of the Brotato DNA above. Content bible: [floor4-arena.md](floor4-arena.md); system spec: [`.specify/specs/floor4-arena.md`](../../../.specify/specs/floor4-arena.md); architecture: [ADR 0090](../adr/0090-floor4-arena.md).
+
 ## Rogue-Lite Meta-Progression
 
 Persists: Ratings currency, item pool unlocks, character roster, season narrative, sponsor contracts, Production Office upgrades, cosmetics.
