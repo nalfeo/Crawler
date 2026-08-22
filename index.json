@@ -1,5 +1,39 @@
 [
   {
+    "commit": "300ee1618edbc71dd7d594092ddadf5a48de35ca",
+    "commitDate": "2026-08-22T00:48:18Z",
+    "commitSubject": "fix(ci): continue timed-out PR sessions (#3231)",
+    "capturedAt": "2026-08-22T01:57:06.178Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32542155987",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/300ee1618edbc71dd7d594092ddadf5a48de35ca.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.28,
+        "totalWins": 42,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.95,
+      "gatePass": false,
+      "path": "by-sha/300ee1618edbc71dd7d594092ddadf5a48de35ca.fun-report.json"
+    }
+  },
+  {
     "commit": "1161b2025e647db3197020dad92818f4ffdc9721",
     "commitDate": "2026-08-21T23:45:05Z",
     "commitSubject": "Fix Floor 2 territory-boundary wiggle and add always-on movement-quality telemetry (#3209)",
