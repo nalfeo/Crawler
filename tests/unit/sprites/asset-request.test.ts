@@ -31,6 +31,8 @@ function formBody(parts: {
   type?: string;
   floor?: string;
   size?: string;
+  priority?: string;
+  requester?: string;
 }): string {
   const lines: string[] = [];
   if (parts.name !== undefined) lines.push('### Name', parts.name, '');
@@ -38,6 +40,8 @@ function formBody(parts: {
   if (parts.type !== undefined) lines.push('### Type (optional)', parts.type, '');
   if (parts.floor !== undefined) lines.push('### Floor (optional)', parts.floor, '');
   if (parts.size !== undefined) lines.push('### Size (optional)', parts.size, '');
+  if (parts.priority !== undefined) lines.push('### Priority (optional)', parts.priority, '');
+  if (parts.requester !== undefined) lines.push('### Requester (optional)', parts.requester, '');
   return lines.join('\n');
 }
 
@@ -246,6 +250,45 @@ describe('parseAssetRequestIssueBody', () => {
     const parsed = parseAssetRequestIssueBody(body);
     expect(parsed).not.toBeNull();
     expect(parsed?.floor).toBe(5);
+  });
+
+  it('parses validated priority and requester identity without changing legacy defaults', () => {
+    const parsed = parseAssetRequestIssueBody(
+      formBody({
+        name: 'bone-dagger',
+        brief: 'A chipped bone dagger with twine-wrapped handle.',
+        priority: 'high',
+        requester: 'asset-bot/session-42',
+      }),
+    );
+    expect(parsed).toMatchObject({
+      priority: 'high',
+      requester: 'asset-bot/session-42',
+    });
+
+    expect(
+      parseAssetRequestIssueBody(
+        formBody({
+          name: 'bone-dagger',
+          brief: 'A chipped bone dagger with twine-wrapped handle.',
+        }),
+      ),
+    ).not.toHaveProperty('priority');
+  });
+
+  it.each([
+    ['priority', 'urgent'],
+    ['requester', 'not a valid requester'],
+  ])('rejects invalid %s metadata', (field, value) => {
+    expect(() =>
+      parseAssetRequestIssueBody(
+        formBody({
+          name: 'bone-dagger',
+          brief: 'A chipped bone dagger with twine-wrapped handle.',
+          ...(field === 'priority' ? { priority: value } : { requester: value }),
+        }),
+      ),
+    ).toThrow(AssetRequestValidationError);
   });
 
   it('rejects form-rendered floor when out of range', () => {

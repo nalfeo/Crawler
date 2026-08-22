@@ -155,6 +155,30 @@ test('request creation rejects a name that cannot become a consumer id', () => {
   );
 });
 
+test('request creation persists the local counterpart of GitHub request context fields', () => {
+  const { item } = addRequest(normalizeQueue({ items: [], selectedId: null, nextSeq: 1 }), {
+    name: 'floor-two-goblin',
+    floor: 2,
+    floorId: 'floor2',
+    familyId: 'goblins',
+    mobRole: 'elite',
+    injectionOverrides: { floor: 'cold blue stone', family: 'patched green leather' },
+    priority: 'high',
+    requester: 'sprite-author',
+  });
+
+  assert.equal(item.floorId, 'floor2');
+  assert.equal(item.floor, 2);
+  assert.equal(item.familyId, 'goblins');
+  assert.equal(item.mobRole, 'elite');
+  assert.deepEqual(item.injectionOverrides, {
+    floor: 'cold blue stone',
+    family: 'patched green leather',
+  });
+  assert.equal(item.priority, 'high');
+  assert.equal(item.requester, 'sprite-author');
+});
+
 test('rewinds only pointers while durable generated artifacts remain addressable', () => {
   const original = item(1, {
     stage: 'checked-in',

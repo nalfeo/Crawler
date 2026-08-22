@@ -60,6 +60,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  IssueClaimedByGoobersError,
   IssueNoLongerOpenError,
   runIssueIntake,
   removeIssueAssignees,
@@ -1391,13 +1392,14 @@ async function drainPendingIssueRestarts() {
         `restarted linked issue #${issueNumber} after abandoning pr=#${prNumber}\n`,
       );
     } catch (error) {
-      // A linked issue that is no longer open can never be restarted; drop it
-      // instead of pinning the pending list forever. Any other failure keeps the
-      // issue pending so a later reconciliation retries it, and never aborts the
-      // remaining restarts in this batch.
-      if (error instanceof IssueNoLongerOpenError) {
+      // A linked issue that is no longer open (or is now owned by Goobers) can
+      // never be restarted via CI recovery; drop it instead of pinning the
+      // pending list forever. Any other failure keeps the issue pending so a
+      // later reconciliation retries it, and never aborts the remaining restarts
+      // in this batch.
+      if (error instanceof IssueNoLongerOpenError || error instanceof IssueClaimedByGoobersError) {
         process.stdout.write(
-          `skipped restart for closed linked issue #${issueNumber} pr=#${prNumber}\n`,
+          `skipped restart for linked issue #${issueNumber} pr=#${prNumber}: ${error.message}\n`,
         );
         continue;
       }

@@ -82,4 +82,98 @@ describe('sidecar POST /api/workflow/synthesize sizeVariant passthrough', () => 
     expect(res.statusCode).toBe(200);
     expect(vi.mocked(synthesizeBrief).mock.calls[0]![0].sizeVariant).toBeUndefined();
   });
+
+  it('forwards the shared floor, family, role, and request-local injection contract', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        name: 'goblin-elite-scout',
+        type: 'enemy',
+        floor: 2,
+        floorId: 'floor2',
+        familyId: 'goblins',
+        mobRole: 'elite',
+        injectionOverrides: { family: 'LOCAL AUTHOR OVERRIDE' },
+        priority: 'high',
+        requester: 'local-author/session-42',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(synthesizeBrief).mock.calls[0]![0]).toMatchObject({
+      floor: 2,
+      mobRole: 'elite',
+      requestMetadata: {
+        priority: 'high',
+        requester: 'local-author/session-42',
+      },
+      assetRequestContext: {
+        sourceIds: {
+          floorId: 'floor2',
+          enemyPackId: 'floor2-families',
+          familyId: 'goblins',
+        },
+        mobRole: 'elite',
+        injections: {
+          family: 'LOCAL AUTHOR OVERRIDE',
+        },
+      },
+    });
+    expect(res.json()).toMatchObject({
+      requestMetadata: {
+        priority: 'high',
+        requester: 'local-author/session-42',
+      },
+    });
+  });
+
+  it.each([
+    [
+      { priority: 'urgent' },
+      "Invalid priority 'urgent' in body.priority. Expected one of normal, high.",
+    ],
+    [
+      { requester: 'not a valid requester' },
+      "Invalid requester 'not a valid requester' in body.requester. Use a 1-128 character identity without whitespace.",
+    ],
+  ])('rejects invalid local author request metadata', async (payload, message) => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', ...payload },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: 'bad-request',
+      message,
+    });
+  });
+
+  it('exposes canonical floor and family injections for local author editing', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/workflow/asset-context' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      capabilities: Array<{
+        floorId: string;
+        enemyPackId: string;
+        canonicalFloorInjection?: string;
+        families: Array<{ id: string; canonicalFamilyInjection?: string }>;
+      }>;
+    };
+    expect(body.capabilities).toContainEqual(
+      expect.objectContaining({
+        floorId: 'floor2',
+        enemyPackId: 'floor2-families',
+        canonicalFloorInjection: expect.stringContaining('Family Matters'),
+        families: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'goblins',
+            canonicalFamilyInjection: expect.stringContaining('Snaggle Cartel'),
+          }),
+        ]),
+      }),
+    );
+  });
 });

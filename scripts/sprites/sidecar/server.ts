@@ -123,6 +123,20 @@ import {
 } from '../rerun.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
+import {
+  AssetRequestContextError,
+  getAssetRequestContextCapabilities,
+  MOB_ROLES,
+  resolveAssetRequestContext,
+  type DirectionInjectionOverrides,
+  type MobRole,
+  type AssetRequestContext,
+} from '../asset-request-context.js';
+import {
+  parseOptionalPriority,
+  parseOptionalRequester,
+  type AssetRequestPriority,
+} from '../asset-request.js';
 import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
@@ -362,6 +376,12 @@ interface WorkflowSynthesizeBody {
   readonly candidates?: unknown;
   readonly sizeVariant?: unknown;
   readonly floor?: unknown;
+  readonly floorId?: unknown;
+  readonly familyId?: unknown;
+  readonly mobRole?: unknown;
+  readonly injectionOverrides?: unknown;
+  readonly priority?: unknown;
+  readonly requester?: unknown;
 }
 
 interface WorkflowPromoteBody {
@@ -2411,6 +2431,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     },
   );
 
+  app.get('/api/workflow/asset-context', async () => ({
+    capabilities: getAssetRequestContextCapabilities(),
+  }));
+
   app.post<{ Body: WorkflowSynthesizeBody }>('/api/workflow/synthesize', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowSynthesizeBody;
     if (typeof body.name !== 'string' || body.name.trim() === '') {
@@ -2455,7 +2479,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       candidates = body.candidates;
     }
-    let floor = 1;
+    let floor: number | undefined;
     if (body.floor !== undefined) {
       if (
         typeof body.floor !== 'number' ||
@@ -2482,6 +2506,101 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       sizeVariant = body.sizeVariant;
     }
+    let floorId: string | undefined;
+    if (body.floorId !== undefined) {
+      if (typeof body.floorId !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.floorId must be a string when provided' };
+      }
+      floorId = body.floorId.trim() || undefined;
+    }
+    let familyId: string | undefined;
+    if (body.familyId !== undefined) {
+      if (typeof body.familyId !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.familyId must be a string when provided' };
+      }
+      familyId = body.familyId.trim() || undefined;
+    }
+    let mobRole: MobRole | undefined;
+    if (body.mobRole !== undefined && body.mobRole !== null) {
+      if (typeof body.mobRole !== 'string' || !MOB_ROLES.includes(body.mobRole as MobRole)) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: `body.mobRole must be one of ${MOB_ROLES.join(', ')}`,
+        };
+      }
+      mobRole = body.mobRole as MobRole;
+    }
+    let injectionOverrides: DirectionInjectionOverrides | undefined;
+    if (body.injectionOverrides !== undefined && body.injectionOverrides !== null) {
+      if (
+        !body.injectionOverrides ||
+        typeof body.injectionOverrides !== 'object' ||
+        Array.isArray(body.injectionOverrides)
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message:
+            'body.injectionOverrides must be an object with optional floor and family strings',
+        };
+      }
+      const values = body.injectionOverrides as Record<string, unknown>;
+      if (
+        Object.keys(values).some((key) => key !== 'floor' && key !== 'family') ||
+        Object.values(values).some((value) => typeof value !== 'string')
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.injectionOverrides accepts only floor and family string values',
+        };
+      }
+      injectionOverrides = {
+        ...(typeof values.floor === 'string' && values.floor.trim() ? { floor: values.floor } : {}),
+        ...(typeof values.family === 'string' && values.family.trim()
+          ? { family: values.family }
+          : {}),
+      };
+    }
+    let priority: AssetRequestPriority;
+    let requester: string | undefined;
+    try {
+      priority = parseOptionalPriority(body.priority, 'body.priority') ?? 'normal';
+      requester = parseOptionalRequester(body.requester, 'body.requester');
+    } catch (error) {
+      if (error instanceof Error) {
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
+      throw error;
+    }
+    let assetRequestContext: AssetRequestContext | undefined;
+    try {
+      assetRequestContext =
+        floorId || familyId || mobRole || injectionOverrides || floor !== undefined
+          ? resolveAssetRequestContext({
+              floor,
+              ...(floorId ? { floorId } : {}),
+              ...(familyId ? { familyId } : {}),
+              ...(mobRole ? { mobRole } : {}),
+              ...(injectionOverrides ? { injectionOverrides } : {}),
+            })
+          : undefined;
+    } catch (error) {
+      if (error instanceof AssetRequestContextError) {
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
+      throw error;
+    }
+    const effectiveFloor =
+      floor ??
+      (assetRequestContext?.sourceIds.floorId
+        ? Number(assetRequestContext.sourceIds.floorId.replace(/^floor/, ''))
+        : 1);
 
     try {
       const env = deps.env ?? process.env;
@@ -2491,8 +2610,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(briefHint ? { briefHint } : {}),
         ...(type ? { type } : {}),
         ...(sizeVariant ? { sizeVariant } : {}),
+        ...(assetRequestContext ? { assetRequestContext } : {}),
+        requestMetadata: {
+          priority,
+          ...(requester ? { requester } : {}),
+        },
+        ...(assetRequestContext?.mobRole ? { mobRole: assetRequestContext.mobRole } : {}),
         candidates,
-        floor,
+        floor: effectiveFloor,
         partial: true,
         provider,
         repoRoot: deps.repoRoot,
@@ -2508,6 +2633,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         name: result.name,
         type: result.type,
         sizeVariant: result.sizeVariant,
+        requestMetadata: {
+          priority,
+          ...(requester ? { requester } : {}),
+        },
+        ...(assetRequestContext ? { assetRequestContext } : {}),
         written: result.written.map((candidate) => ({
           id: candidate.id,
           yamlPath: toRepoRelativePath(deps.repoRoot, candidate.yamlPath),

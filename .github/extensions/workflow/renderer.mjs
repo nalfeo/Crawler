@@ -1578,13 +1578,115 @@ const CLIENT_SCRIPT = String.raw`
     ['default', 'wide', 'tall', 'large'].forEach(function (value) {
       size.appendChild(h('option', { value: value, text: value }));
     });
+    var contextCapabilities = state.assetContext && Array.isArray(state.assetContext.capabilities)
+      ? state.assetContext.capabilities : [];
+    var floorNumber = h('input', {
+      type: 'number',
+      min: '1',
+      max: '20',
+      placeholder: 'Floor 1-20',
+      'aria-label': 'Floor intensity'
+    });
+    var floor = h('select', { 'aria-label': 'Floor context' });
+    floor.appendChild(h('option', { value: '', text: 'No floor context' }));
+    contextCapabilities.forEach(function (capability) {
+      floor.appendChild(h('option', {
+        value: capability.floorId,
+        text: 'Floor ' + capability.floor + ' · ' + capability.name
+      }));
+    });
+    var family = h('select', { 'aria-label': 'Enemy family context' });
+    var role = h('select', { 'aria-label': 'Mob role context' });
+    var priority = h('select', { 'aria-label': 'Request priority' });
+    ['normal', 'high'].forEach(function (value) {
+      priority.appendChild(h('option', { value: value, text: value + ' priority' }));
+    });
+    var requester = h('input', {
+      type: 'text',
+      placeholder: 'Requester identity (optional)',
+      'aria-label': 'Requester identity'
+    });
+    var floorInjection = h('textarea', {
+      placeholder: 'Canonical floor design language appears after selecting a floor. Edits apply only to this request.',
+      'aria-label': 'Floor injection override',
+      style: { minHeight: '74px' }
+    });
+    var familyInjection = h('textarea', {
+      placeholder: 'Canonical family design language appears after selecting a family. Edits apply only to this request.',
+      'aria-label': 'Family injection override',
+      style: { minHeight: '74px' }
+    });
+    function selectedFloorCapability() {
+      for (var ci = 0; ci < contextCapabilities.length; ci++) {
+        if (contextCapabilities[ci].floorId === floor.value) return contextCapabilities[ci];
+      }
+      return null;
+    }
+    function clearOptions(select, emptyLabel) {
+      select.replaceChildren(h('option', { value: '', text: emptyLabel }));
+    }
+    function updateRoleOptions() {
+      clearOptions(role, 'No mob role');
+      var selectedFloor = selectedFloorCapability();
+      var families = selectedFloor && Array.isArray(selectedFloor.families) ? selectedFloor.families : [];
+      var selectedFamily = null;
+      for (var fi = 0; fi < families.length; fi++) {
+        if (families[fi].id === family.value) selectedFamily = families[fi];
+      }
+      if (selectedFamily && Array.isArray(selectedFamily.roles)) {
+        selectedFamily.roles.forEach(function (value) {
+          role.appendChild(h('option', { value: value, text: value }));
+        });
+      }
+      role.disabled = !selectedFamily;
+      familyInjection.value = selectedFamily && selectedFamily.canonicalFamilyInjection
+        ? selectedFamily.canonicalFamilyInjection : '';
+    }
+    function updateFamilyOptions() {
+      clearOptions(family, 'No enemy family');
+      var selectedFloor = selectedFloorCapability();
+      var families = selectedFloor && Array.isArray(selectedFloor.families) ? selectedFloor.families : [];
+      families.forEach(function (entry) {
+        family.appendChild(h('option', { value: entry.id, text: entry.id }));
+      });
+      family.disabled = !selectedFloor;
+      if (selectedFloor) floorNumber.value = String(selectedFloor.floor);
+      floorInjection.value = selectedFloor && selectedFloor.canonicalFloorInjection
+        ? selectedFloor.canonicalFloorInjection : '';
+      updateRoleOptions();
+    }
+    floor.addEventListener('change', updateFamilyOptions);
+    family.addEventListener('change', updateRoleOptions);
+    updateFamilyOptions();
     var create = h('button', { class: 'accept-button', text: 'Create request' });
     create.addEventListener('click', function () {
       workflowPost('/api/workflow/request', {
-        name: name.value, brief: brief.value, type: type.value, sizeVariant: size.value
+        name: name.value,
+        brief: brief.value,
+        type: type.value,
+        sizeVariant: size.value,
+        floor: floorNumber.value === '' ? undefined : Number(floorNumber.value),
+        floorId: floor.value || undefined,
+        familyId: family.value || undefined,
+        mobRole: role.value || undefined,
+        injectionOverrides: {
+          floor: floorInjection.value,
+          family: familyInjection.value
+        },
+        priority: priority.value,
+        requester: requester.value
       }, 'Creating request…');
     });
     composer.appendChild(h('div', { class: 'row' }, [name, brief, type, size, create]));
+    composer.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, [
+      floorNumber, floor, family, role, priority, requester
+    ]));
+    composer.appendChild(h('div', { class: 'muted', style: { marginTop: '8px' },
+      text: contextCapabilities.length
+        ? 'Floor, family, and role choices are derived from the current game manifests. Injection edits are request-local overrides.'
+        : 'Game-derived request context is unavailable until the sprite sidecar responds.' }));
+    composer.appendChild(h('label', { text: 'Floor design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [floorInjection]));
+    composer.appendChild(h('label', { text: 'Family/theme design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [familyInjection]));
     wrap.appendChild(composer);
 
     if (workflow.items.length === 0) {
@@ -1611,6 +1713,23 @@ const CLIENT_SCRIPT = String.raw`
         h('code', { text: selected.kebabName })
       ]));
       if (selected.brief) detail.appendChild(h('p', { class: 'muted', text: selected.brief }));
+      if (selected.floorId || selected.familyId || selected.mobRole) {
+        detail.appendChild(h('div', { class: 'muted', text:
+          'Context: ' + [
+            selected.floor ? 'floor ' + selected.floor : null,
+            selected.floorId,
+            selected.familyId,
+            selected.mobRole
+          ].filter(Boolean).join(' · ') + ' · ' + (selected.priority || 'normal') + ' priority' +
+          (selected.requester ? ' · requester: ' + selected.requester : '')
+        }));
+      }
+      if (selected.assetRequestContext && selected.assetRequestContext.injections) {
+        var injectionLines = [];
+        if (selected.assetRequestContext.injections.floor) injectionLines.push('Floor: ' + selected.assetRequestContext.injections.floor);
+        if (selected.assetRequestContext.injections.family) injectionLines.push('Family/theme: ' + selected.assetRequestContext.injections.family);
+        if (injectionLines.length) detail.appendChild(h('pre', { class: 'muted', text: injectionLines.join('\n') }));
+      }
       var controls = h('div', { class: 'row' }, []);
       if (selected.stage === 'draft') {
         controls.appendChild(h('button', { class: 'accept-button', text: 'Synthesize draft briefs',

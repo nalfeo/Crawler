@@ -75,6 +75,22 @@ test('the Author tab exposes the complete Azure workflow controls and visible re
   assert.doesNotMatch(html, /worker\/start/);
 });
 
+test('Author exposes the same request context and operations as the GitHub asset-request form', () => {
+  const html = renderHtml('x');
+  assert.match(html, /Floor context/);
+  assert.match(html, /Floor intensity/);
+  assert.match(html, /Enemy family context/);
+  assert.match(html, /Mob role context/);
+  assert.match(html, /Request priority/);
+  assert.match(html, /Requester identity/);
+  assert.match(html, /Floor injection override/);
+  assert.match(html, /Family injection override/);
+  assert.match(html, /state\.assetContext\.capabilities/);
+  assert.match(html, /canonicalFloorInjection/);
+  assert.match(html, /canonicalFamilyInjection/);
+  assert.match(html, /injectionOverrides:/);
+});
+
 test('Author workflow mutations serialize duplicate clicks until the state refresh settles', () => {
   const html = renderHtml('x');
   assert.match(html, /var workflowMutationInFlight = false/);

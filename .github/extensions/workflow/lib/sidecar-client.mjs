@@ -143,6 +143,10 @@ export function workflowStateUrl(baseUrl) {
   return `${baseUrl}/api/workflow/state`;
 }
 
+export function workflowAssetContextUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/asset-context`;
+}
+
 export function workflowSynthesizeUrl(baseUrl) {
   return `${baseUrl}/api/workflow/synthesize`;
 }
@@ -608,6 +612,11 @@ export function createSidecarClient(options) {
     };
   }
 
+  async function getWorkflowAssetContext() {
+    const response = await fetchImpl(workflowAssetContextUrl(baseUrl), { cache: 'no-store' });
+    return readResponse(response, 'Failed to load asset request context');
+  }
+
   async function putWorkflowState(state, etag = null) {
     const headers = { 'Content-Type': 'application/json' };
     // With no ETag the state has never been read as existing, so this write is
@@ -767,6 +776,7 @@ export function createSidecarClient(options) {
     approveWorkflowVariant,
     unapproveVariant,
     getWorkflowState,
+    getWorkflowAssetContext,
     putWorkflowState,
     synthesizeWorkflow,
     saveWorkflowBrief,
@@ -791,6 +801,7 @@ export function createSidecarClient(options) {
       runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
       runJudge: (b, r) => runJudgeUrl(baseUrl, b, r),
       workflowState: () => workflowStateUrl(baseUrl),
+      workflowAssetContext: () => workflowAssetContextUrl(baseUrl),
       workflowSynthesize: () => workflowSynthesizeUrl(baseUrl),
       workflowBrief: () => workflowBriefUrl(baseUrl),
       workflowPromote: () => workflowPromoteUrl(baseUrl),

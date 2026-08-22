@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DEFAULT_FLOOR, MAX_FLOOR } from './content-direction.js';
 import { SIZE_VARIANTS } from './size-variants.js';
+import { MOB_ROLES } from './asset-request-context.js';
 
 /**
  * Sprite brief schema.
@@ -214,6 +215,43 @@ export const briefThemeSchema = z
   })
   .strict();
 
+const assetRequestContextSchema = z
+  .object({
+    sourceIds: z
+      .object({
+        floorId: z.string().min(1).optional(),
+        enemyPackId: z.string().min(1).optional(),
+        familyId: z.string().min(1).optional(),
+        archetypeId: z.string().min(1).optional(),
+      })
+      .strict(),
+    mobRole: z.enum(MOB_ROLES).optional(),
+    injections: z
+      .object({
+        floor: z.string().min(1).optional(),
+        family: z.string().min(1).optional(),
+      })
+      .strict(),
+    injectionOverrides: z
+      .object({
+        floor: z.string().min(1).optional(),
+        family: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const requestMetadataSchema = z
+  .object({
+    priority: z.enum(['normal', 'high']),
+    requester: z
+      .string()
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_.@:/-]{0,127}$/, 'requester must be a stable identity')
+      .optional(),
+  })
+  .strict();
+
 export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
@@ -223,6 +261,14 @@ export const briefSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
     theme: briefThemeSchema.optional(),
+    /**
+     * Immutable provenance captured from a GitHub asset request or local author
+     * request. It records game-source IDs plus the exact direction strings sent
+     * to synthesis; overrides are request-local and never mutate canonical data.
+     */
+    assetRequestContext: assetRequestContextSchema.optional(),
+    /** Durable queue/request provenance, independent of synthesized art direction. */
+    requestMetadata: requestMetadataSchema.optional(),
     size: sizeSchema,
     palette: paletteSchema,
     anchor: anchorSchema,

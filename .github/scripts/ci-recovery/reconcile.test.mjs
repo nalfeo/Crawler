@@ -12421,6 +12421,79 @@ test('a failed linked-issue restart keeps the pending intent for the next run', 
   );
 });
 
+test('a Goobers-owned pending restart is cleared and does not fail reconciliation', async (t) => {
+  // Regression: if a linked issue acquires the goobers:approved label between
+  // abandonment and the restart attempt, runIssueIntake throws
+  // IssueClaimedByGoobersError. That error must be treated the same as
+  // IssueNoLongerOpenError — clear the pending intent and continue — rather
+  // than recording a retry failure and throwing.
+  const stateComment = {
+    id: 773,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3199],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199`]: () => ({
+      body: { number: 3199, node_id: 'ISSUE_3199', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: () => ({
+      body: {
+        data: {
+          repository: {
+            suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+            issue: {
+              id: 'ISSUE_3199',
+              state: 'OPEN',
+              labels: { nodes: [{ name: 'goobers:approved' }] },
+              assignees: { nodes: [] },
+            },
+          },
+        },
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /skipped restart for linked issue #3199/);
+  assert.equal(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    undefined,
+    'Goobers-owned pending restart must be cleared from recovery state',
+  );
+});
+
 test('trusted scope-mismatch review finding quarantines instead of dispatching Copilot', async (t) => {
   const thread = {
     id: 'PRRT_scope_mismatch',

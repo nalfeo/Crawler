@@ -43,6 +43,69 @@ body:
     validations:
       required: false
   - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (optional)
+      description: Queue priority. Defaults to normal; high does not imply an SLA.
+      options:
+        - ''
+        - normal
+        - high
+    validations:
+      required: false
+  - type: input
+    id: requester
+    attributes:
+      label: Requester (optional)
+      description: Requester identity for service or delegated requests. GitHub author identity remains authoritative when available.
+      placeholder: agent/session-or-github-login
+    validations:
+      required: false
+  - type: dropdown
+    id: floor-id
+    attributes:
+      label: Floor ID (optional)
+      description: Selectable floors are derived from the registered game floor manifests. This freezes the manifest source in the request.
+      options:
+        - ''
+        - floor1
+        - floor2
+    validations:
+      required: false
+  - type: input
+    id: family-id
+    attributes:
+      label: Family ID (optional)
+      description: Floor-bound enemy family id (for example `goblins`). Must exist in the selected floor's enemy pack.
+    validations:
+      required: false
+  - type: dropdown
+    id: mob-role
+    attributes:
+      label: Mob Role (optional)
+      description: Family role derived from the selected enemy pack.
+      options:
+        - ''
+        - normal
+        - elite
+        - boss
+    validations:
+      required: false
+  - type: textarea
+    id: floor-injection-override
+    attributes:
+      label: Floor Injection Override (optional)
+      description: Viewable request-local replacement for the canonical floor design language. Does not modify game data.
+    validations:
+      required: false
+  - type: textarea
+    id: family-injection-override
+    attributes:
+      label: Family Injection Override (optional)
+      description: Viewable request-local replacement for the canonical family design language. Does not modify game data.
+    validations:
+      required: false
+  - type: dropdown
     id: size
     attributes:
       label: Size (optional)

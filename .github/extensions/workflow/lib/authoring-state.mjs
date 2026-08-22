@@ -34,6 +34,8 @@ const SPRITE_TYPES = new Set([
   'character',
 ]);
 const SIZE_VARIANTS = new Set(['default', 'wide', 'tall', 'large']);
+const MOB_ROLES = new Set(['normal', 'elite', 'boss']);
+const REQUEST_PRIORITIES = new Set(['normal', 'high']);
 const STAGES = new Set(WORKFLOW_STAGES);
 
 export function emptyQueue() {
@@ -55,6 +57,27 @@ function asString(value, fallback = '') {
 
 function asNullableString(value) {
   return typeof value === 'string' ? value : null;
+}
+
+function optionalTrimmedString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeInjectionOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const floor = optionalTrimmedString(value.floor);
+  const family = optionalTrimmedString(value.family);
+  return {
+    ...(floor ? { floor } : {}),
+    ...(family ? { family } : {}),
+  };
+}
+
+function normalizeFloor(value) {
+  if (!Number.isInteger(value) || value < 1 || value > 20) return null;
+  return value;
 }
 
 function normalizeCandidate(value) {
@@ -112,6 +135,17 @@ export function normalizeItem(value) {
     brief,
     requestedType,
     sizeVariant: SIZE_VARIANTS.has(value.sizeVariant) ? value.sizeVariant : 'default',
+    floor: normalizeFloor(value.floor),
+    floorId: optionalTrimmedString(value.floorId),
+    familyId: optionalTrimmedString(value.familyId),
+    mobRole: MOB_ROLES.has(value.mobRole) ? value.mobRole : null,
+    injectionOverrides: normalizeInjectionOverrides(value.injectionOverrides),
+    priority: REQUEST_PRIORITIES.has(value.priority) ? value.priority : 'normal',
+    requester: optionalTrimmedString(value.requester),
+    assetRequestContext:
+      value.assetRequestContext && typeof value.assetRequestContext === 'object'
+        ? value.assetRequestContext
+        : null,
     resolvedType: SPRITE_TYPES.has(value.resolvedType) ? value.resolvedType : null,
     kebabName: asString(value.kebabName, slugify(name)),
     stage: STAGES.has(value.stage) ? value.stage : 'draft',
@@ -215,6 +249,14 @@ export function createRequestItem(state, input) {
     brief: String(input.brief ?? '').trim(),
     requestedType,
     sizeVariant: SIZE_VARIANTS.has(input.sizeVariant) ? input.sizeVariant : 'default',
+    floor: normalizeFloor(input.floor),
+    floorId: optionalTrimmedString(input.floorId),
+    familyId: optionalTrimmedString(input.familyId),
+    mobRole: MOB_ROLES.has(input.mobRole) ? input.mobRole : null,
+    injectionOverrides: normalizeInjectionOverrides(input.injectionOverrides),
+    priority: REQUEST_PRIORITIES.has(input.priority) ? input.priority : 'normal',
+    requester: optionalTrimmedString(input.requester),
+    assetRequestContext: null,
     resolvedType: requestedType === 'auto' ? null : requestedType,
     kebabName: slugify(name),
     stage: 'draft',

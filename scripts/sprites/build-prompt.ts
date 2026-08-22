@@ -5,6 +5,7 @@ import { variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
 import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
+import { directionAddendaFromContext } from './asset-request-context.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -87,8 +88,12 @@ function designLanguageAddendaBlocks(
   name: string,
   floor: number,
   themeOverride?: string,
+  assetRequestContext?: Brief['assetRequestContext'],
 ): string[] {
-  const addenda = resolveDesignLanguageAddenda(name, floor, themeOverride);
+  const addenda =
+    assetRequestContext === undefined
+      ? resolveDesignLanguageAddenda(name, floor, themeOverride)
+      : directionAddendaFromContext(assetRequestContext);
   const blocks: string[] = [];
   if (addenda.floor !== undefined) {
     blocks.push('', `## World context\n${addenda.floor}`);
@@ -109,7 +114,12 @@ function designLanguageAddendaBlocks(
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
-  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor, brief.theme?.designLanguage);
+  const addenda = designLanguageAddendaBlocks(
+    brief.name,
+    brief.floor,
+    brief.theme?.designLanguage,
+    brief.assetRequestContext,
+  );
   return [
     styleGuide,
     '',
@@ -138,7 +148,12 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
-  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor, brief.theme?.designLanguage);
+  const addenda = designLanguageAddendaBlocks(
+    brief.name,
+    brief.floor,
+    brief.theme?.designLanguage,
+    brief.assetRequestContext,
+  );
   return [
     styleGuide,
     '',

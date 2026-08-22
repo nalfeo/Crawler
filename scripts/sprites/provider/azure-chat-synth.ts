@@ -30,6 +30,7 @@ import type {
 import { SynthProviderError } from './synth-types.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 import { contentDirectionBlock } from '../content-direction.js';
+import { directionAddendaFromContext } from '../asset-request-context.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -195,7 +196,12 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const lines: string[] = [
     "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
-    contentDirectionBlock(request.floor),
+    contentDirectionBlock(
+      request.floor,
+      request.assetRequestContext
+        ? directionAddendaFromContext(request.assetRequestContext)
+        : undefined,
+    ),
     ...(request.theme
       ? [
           '',
@@ -252,6 +258,16 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
   return [
     `Subject name: ${request.name}.`,
     ...(request.theme ? [`Theme set: ${request.theme.displayName} (${request.theme.setId}).`] : []),
+    ...(request.assetRequestContext
+      ? [
+          `Game sources: ${Object.entries(request.assetRequestContext.sourceIds)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(', ')}.`,
+          ...(request.assetRequestContext.mobRole
+            ? [`Mob role: ${request.assetRequestContext.mobRole}.`]
+            : []),
+        ]
+      : []),
     ...(hint ? [`Additional direction: ${hint}`] : []),
     typeLine,
     `Floor: ${request.floor} of 20.`,

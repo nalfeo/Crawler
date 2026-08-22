@@ -24,6 +24,7 @@ import {
   deleteManifestUrl,
   runPostprocessUrl,
   workflowStateUrl,
+  workflowAssetContextUrl,
   workflowSynthesizeUrl,
   workflowBriefUrl,
   workflowPromoteUrl,
@@ -82,6 +83,27 @@ test('runsUrl omits the query by default and only adds a promoted filter when na
   // 'all' is the no-op default → no query param.
   assert.equal(runsUrl(BASE, { promoted: 'all' }), `${BASE}/api/runs`);
   assert.equal(runsUrl(BASE, { promoted: 'promoted' }), `${BASE}/api/runs?promoted=promoted`);
+});
+
+test('workflow asset-context URL targets the shared game-data capability route', () => {
+  assert.equal(workflowAssetContextUrl(BASE), `${BASE}/api/workflow/asset-context`);
+});
+
+test('workflow client fetches game-derived authoring capabilities without caching', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return jsonResponse({ capabilities: [{ floorId: 'floor2', families: [] }] });
+    },
+  });
+
+  assert.deepEqual(await client.getWorkflowAssetContext(), {
+    capabilities: [{ floorId: 'floor2', families: [] }],
+  });
+  assert.equal(calls[0].url, `${BASE}/api/workflow/asset-context`);
+  assert.equal(calls[0].options.cache, 'no-store');
 });
 
 test('run/sheet/slice-map url builders encode their path + query segments', () => {

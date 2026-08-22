@@ -37,6 +37,7 @@ import { SPRITE_TYPES, type Brief, type BriefTheme } from './brief-schema.js';
 import { isCiPipelineBypassed } from './ci-bypass.js';
 import { coerceSizeVariant, DEFAULT_SIZE_VARIANT, type SizeVariant } from './size-variants.js';
 import { buildSystemPrompt, buildUserPrompt } from './provider/azure-chat-synth.js';
+import type { AssetRequestContext } from './asset-request-context.js';
 import type {
   SynthProvider,
   SynthesizeBriefResponse,
@@ -73,6 +74,13 @@ export interface SynthesizeBriefOptions {
   readonly briefHint?: string;
   /** Authored collection direction that must survive into every candidate brief. */
   readonly theme?: BriefTheme;
+  /** Immutable game-context snapshot to serialize and use in provider prompts. */
+  readonly assetRequestContext?: AssetRequestContext;
+  /** Durable queue/request provenance serialized into every candidate YAML. */
+  readonly requestMetadata?: {
+    readonly priority: 'normal' | 'high';
+    readonly requester?: string;
+  };
   /**
    * Caller-supplied type. When omitted, the model must classify with
    * `typeConfidence >= ${MIN_TYPE_CONFIDENCE}` or the call throws.
@@ -218,10 +226,13 @@ export async function synthesizeBrief(
   const { effectiveMinSeeds, effectiveMaxSeeds } = resolveSeedBounds(callerType, loadMinVariations);
   const briefHint = options.briefHint?.trim();
   const theme = options.theme;
+  const assetRequestContext = options.assetRequestContext;
+  const requestMetadata = options.requestMetadata;
   const request = {
     name,
     ...(briefHint ? { briefHint } : {}),
     ...(theme ? { theme } : {}),
+    ...(assetRequestContext ? { assetRequestContext } : {}),
     type: callerType,
     floor,
     candidates: requested,
@@ -291,7 +302,15 @@ export async function synthesizeBrief(
 
   const written = accepted.map(({ candidate }, i) => {
     const yamlPath = path.join(outDir, `${name}-v${i + 1}.yaml`);
-    const yaml = renderCandidateYaml(candidate, sizeVariant, floor, options.mobRole, theme);
+    const yaml = renderCandidateYaml(
+      candidate,
+      sizeVariant,
+      floor,
+      options.mobRole ?? assetRequestContext?.mobRole,
+      theme,
+      assetRequestContext,
+      requestMetadata,
+    );
     writes.writeFile(yamlPath, yaml);
     return { ...candidate, id: `${name}-v${i + 1}`, yamlPath };
   });
@@ -303,6 +322,8 @@ export async function synthesizeBrief(
     sizeVariant,
     floor,
     ...(theme ? { theme } : {}),
+    ...(assetRequestContext ? { assetRequestContext } : {}),
+    ...(requestMetadata ? { requestMetadata } : {}),
     requestedCandidates: requested,
     providerLabel: options.provider.providerLabel,
     promptHash,
@@ -453,6 +474,8 @@ function renderCandidateYaml(
   floor: number,
   mobRole?: 'normal' | 'elite' | 'boss',
   theme?: BriefTheme,
+  assetRequestContext?: AssetRequestContext,
+  requestMetadata?: SynthesizeBriefOptions['requestMetadata'],
 ): string {
   // Minimal-brief shape only: type, [mobRole], name, [sizeVariant], description,
   // variations. Let the loader's deep-merge fill in defaults.
@@ -463,6 +486,8 @@ function renderCandidateYaml(
     ...(mobRole ? { mobRole } : {}),
     name: candidate.id,
     ...(theme ? { theme } : {}),
+    ...(assetRequestContext ? { assetRequestContext } : {}),
+    ...(requestMetadata ? { requestMetadata } : {}),
     ...(sizeVariant === DEFAULT_SIZE_VARIANT ? {} : { sizeVariant }),
     ...(floor === 1 ? {} : { floor }),
     description: candidate.description,

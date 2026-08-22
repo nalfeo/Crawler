@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IssueAssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
+import { resolveAssetRequestContext } from '../../../scripts/sprites/asset-request-context.js';
 
 const { mockRunFull } = vi.hoisted(() => ({
   mockRunFull: vi.fn(),
@@ -121,6 +122,7 @@ describe('runIssuePipeline', () => {
       providerLabel: 'azure-openai:synth',
       promptHash: 'prompt-hash',
     });
+
     mockRunFull.mockResolvedValueOnce({
       summary: { brief: `${type}-sprite`, runId: 'run-1' },
       summaryPath: '/tmp/run-1/summary.json',
@@ -149,6 +151,77 @@ describe('runIssuePipeline', () => {
     expect(mockRunFull).toHaveBeenCalledWith(
       expect.objectContaining({
         briefPath: promotedPath,
+      }),
+    );
+  });
+
+  it('forwards a frozen request context from the GitHub pipeline to synthesis', async () => {
+    const winnerPath = path.join(repoRoot, 'goblin-elite-scout.yaml');
+    writeFileSync(winnerPath, 'name: goblin-elite-scout\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'goblin-elite-scout',
+      type: 'enemy',
+      sizeVariant: 'default',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'goblin-elite-scout-v1',
+          type: 'enemy',
+          description: 'goblin scout',
+          embellishmentSeeds: [],
+          synthesisRationale: 'readable role',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: 'goblin-elite-scout', runId: 'run-1' },
+      summaryPath: '/tmp/run-1/summary.json',
+    } as never);
+    const assetRequestContext = resolveAssetRequestContext({
+      floor: 2,
+      floorId: 'floor2',
+      familyId: 'goblins',
+      mobRole: 'elite',
+      injectionOverrides: { family: 'GITHUB REQUEST OVERRIDE' },
+    });
+
+    await runIssuePipeline({
+      request: makeRequest({
+        name: 'goblin-elite-scout',
+        type: 'enemy',
+        floor: 2,
+        assetRequestContext,
+        priority: 'high',
+        requester: 'github-author',
+      }),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    expect(mockSynthesizeBrief).toHaveBeenCalledWith(
+      expect.objectContaining({
+        floor: 2,
+        mobRole: 'elite',
+        assetRequestContext,
+        requestMetadata: { priority: 'high', requester: 'github-author' },
       }),
     );
   });

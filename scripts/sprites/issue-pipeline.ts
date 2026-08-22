@@ -161,7 +161,16 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
         type: spriteType as Brief['type'],
         floor: request.floor ?? 1,
         sizeVariant,
-        ...(mobRole ? { mobRole } : {}),
+        ...(request.assetRequestContext
+          ? { assetRequestContext: request.assetRequestContext }
+          : {}),
+        requestMetadata: {
+          priority: request.priority,
+          ...(request.requester ? { requester: request.requester } : {}),
+        },
+        ...((request.assetRequestContext?.mobRole ?? mobRole)
+          ? { mobRole: request.assetRequestContext?.mobRole ?? mobRole }
+          : {}),
         candidates: 3,
         partial: true,
         provider: options.synthProvider,
@@ -274,6 +283,8 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     issueFingerprint: request.fingerprint,
     synthModel: promotion.output.synthModel,
     briefSelectorModel: promotion.output.selectorModel,
+    priority: request.priority,
+    ...(request.requester ? { requester: request.requester } : {}),
   });
 
   const finalResult: Pick<GenerateOneResult, 'summary' | 'summaryPath'> = {
@@ -323,6 +334,8 @@ async function attachIssueMetadata(
     readonly issueFingerprint: string;
     readonly synthModel: string;
     readonly briefSelectorModel: string;
+    readonly priority: 'normal' | 'high';
+    readonly requester?: string;
   },
 ): Promise<void> {
   const key = `${briefId}/${runId}/issue-metadata.json`;

@@ -519,6 +519,8 @@ function composeState(entry, stat, view) {
     workflow: entry.workflow?.state ?? emptyQueue(),
     workflowLastRefreshAt: entry.workflow?.lastRefreshAt ?? null,
     workflowError: entry.workflow?.error ?? null,
+    assetContext: entry.assetContext?.value ?? null,
+    assetContextError: entry.assetContext?.error ?? null,
     sidecarStartup: entry.sidecarStartup,
     stale: view.stale === true,
     error: view.error ?? null,
@@ -532,6 +534,15 @@ async function hydrateWorkflow(entry, { force = false } = {}) {
   // (see `recoverQueue`), so the merge path below re-reads the raw remote queue.
   adoptWorkflowState(entry, recoverQueue(normalizeQueue(remote.state)), remote.etag);
   return entry.workflow.state;
+}
+
+async function hydrateAssetContext(entry, { force = false } = {}) {
+  if (entry.assetContext.loaded && !force) return entry.assetContext.value;
+  const value = await entry.client.getWorkflowAssetContext();
+  entry.assetContext.value = value;
+  entry.assetContext.loaded = true;
+  entry.assetContext.error = null;
+  return value;
 }
 
 /** Adopt a freshly-read/written queue as this instance's local view. */
@@ -744,6 +755,12 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
     entry.workflow.error = error?.message ?? String(error);
     log(`workflow state unavailable: ${error?.message ?? error}`, 'warn');
   }
+  try {
+    await hydrateAssetContext(entry);
+  } catch (error) {
+    entry.assetContext.error = error?.message ?? String(error);
+    log(`asset request context unavailable: ${error?.message ?? error}`, 'warn');
+  }
   const stat = await getStatic(entry);
 
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
@@ -845,6 +862,12 @@ async function forceLiveState(instanceId) {
   entry.selectionVersion += 1;
   const versionAtCall = entry.selectionVersion;
   entry.cache = null;
+  try {
+    await hydrateAssetContext(entry, { force: true });
+  } catch (error) {
+    entry.assetContext.error = error?.message ?? String(error);
+    log(`asset request context unavailable: ${error?.message ?? error}`, 'warn');
+  }
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
   const priorSelectedSnapshot = entry.selected;
   const targetKey = runViewKey(
@@ -1846,7 +1869,15 @@ const jsonRoutes = [
             type: item.requestedType === 'auto' ? undefined : item.requestedType,
             sizeVariant: item.sizeVariant,
             candidates: body.candidates,
-            floor: body.floor,
+            ...(item.floor ? { floor: item.floor } : {}),
+            ...(item.floorId ? { floorId: item.floorId } : {}),
+            ...(item.familyId ? { familyId: item.familyId } : {}),
+            ...(item.mobRole ? { mobRole: item.mobRole } : {}),
+            ...(Object.keys(item.injectionOverrides ?? {}).length > 0
+              ? { injectionOverrides: item.injectionOverrides }
+              : {}),
+            priority: item.priority,
+            ...(item.requester ? { requester: item.requester } : {}),
           });
           const candidates = Array.isArray(result?.written) ? result.written : [];
           await replaceWorkflowItem(entry, body.itemId, {
@@ -1854,6 +1885,10 @@ const jsonRoutes = [
             resolvedType: typeof result?.type === 'string' ? result.type : item.resolvedType,
             candidates,
             chosenCandidatePath: candidates[0]?.yamlPath ?? null,
+            assetRequestContext:
+              result?.assetRequestContext && typeof result.assetRequestContext === 'object'
+                ? result.assetRequestContext
+                : item.assetRequestContext,
             lastError: null,
           });
         } catch (error) {
@@ -2153,6 +2188,11 @@ async function startServerForInstance(ctx) {
       etag: null,
       loaded: false,
       lastRefreshAt: null,
+      error: null,
+    },
+    assetContext: {
+      value: null,
+      loaded: false,
       error: null,
     },
     workflowPoll: null,
