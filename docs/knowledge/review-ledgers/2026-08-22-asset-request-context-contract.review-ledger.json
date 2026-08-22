@@ -33,13 +33,25 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "6d7de8c5fbd4e8ef9a2dc067574725ff254c0d05",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "fail",
+      "findings_count": 0,
+      "notes": "Independent grader found the context, validation, and CI recovery changes synchronized and fully covered.",
+      "escalated_to_human": {
+        "reason": "grader returned a failing verdict",
+        "unresolved_findings": 1
+      }
     }
   }
 }
