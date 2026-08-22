@@ -670,7 +670,7 @@ export function computeCollapsePanicProfile(
  * mattering the boost is gone, so extra farming can never eat the exit margin.
  * A non-finite or sub-1 value is ignored (1 = the pre-knob behavior).
  */
-export function resolveCalmFarmPullBoost(
+export function _resolveCalmFarmPullBoost(
   profile: Pick<CollapsePanicProfile, 'panic' | 'beeline'>,
   boost: number | undefined,
 ): number {
@@ -4553,7 +4553,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     farmPullWeight: number;
   } {
     const profile = this.getCollapsePanicProfile(world);
-    const calmBoost = resolveCalmFarmPullBoost(profile, this.config.calmFarmPullBoost);
+    const calmBoost = _resolveCalmFarmPullBoost(profile, this.config.calmFarmPullBoost);
     const collectScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.1) * calmBoost;
     const farmScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.35) * calmBoost;
     const dodgeFloor = profile.stairsUnlocked

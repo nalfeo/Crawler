@@ -17,7 +17,7 @@
  */
 
 /** Inputs to {@link resolvePostBossFarmWindow}. All times are simulated ms. */
-export interface PostBossFarmWindowParams {
+interface PostBossFarmWindowParams {
   /**
    * Fraction of {@link floorBudgetMs} the cohort keeps in reserve for the exit.
    * `1` (or anything >= 1) opts out — leave as soon as the stairs open.

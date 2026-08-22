@@ -31,6 +31,8 @@ export interface FloorBossEncounterState {
    * Undefined until the boss has spawned.
    */
   lastKnownPos?: { x: number; y: number };
+  /** True once the lethal-frame position has been captured and must not slide. */
+  deathPosFrozen?: boolean;
   /** Display name shown in the HUD boss health bar. */
   displayName: string;
   /**

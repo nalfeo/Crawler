@@ -75,7 +75,7 @@ level 9, score 171, **454 gold (43.1%) unspent**, **9 vendor visits**.
 **Observed in the real pipeline (rule #9), headless AI runner, seed 42, at the
 gate's 39600-frame budget — before: victory 470.9s, level 9, score 171, 9 vendor
 visits with an `unaffordable` merchant bounce; after: victory 540.8s, level 13,
-score 339, 7 vendor visits, zero `unaffordable`.** The blocking 25-seed /
+score 358, 7 vendor visits, zero `unaffordable`.** The blocking 25-seed /
 100%-win-rate gate `tests/headless/floor1-completion.test.ts` still passes.
 
 ## Key Decisions Made

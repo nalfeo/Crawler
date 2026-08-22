@@ -16,12 +16,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  resolvePostBossFarmWindow,
-  type PostBossFarmWindowParams,
-} from '../../../src/game/ai/post-boss-farm-window.js';
+import { resolvePostBossFarmWindow } from '../../../src/game/ai/post-boss-farm-window.js';
 
 const BUDGET_MS = 600_000;
+
+type PostBossFarmWindowParams = Parameters<typeof resolvePostBossFarmWindow>[0];
 
 function params(overrides: Partial<PostBossFarmWindowParams> = {}): PostBossFarmWindowParams {
   return {

@@ -12,34 +12,34 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { resolveCalmFarmPullBoost } from '../../../src/game/ai/bt-ai-provider.js';
+import { _resolveCalmFarmPullBoost } from '../../../src/game/ai/bt-ai-provider.js';
 
 const CALM = { panic: 0, beeline: false };
 
 describe('resolveCalmFarmPullBoost', () => {
   it('applies the configured boost while the clock is quiet', () => {
-    expect(resolveCalmFarmPullBoost(CALM, 1.35)).toBe(1.35);
+    expect(_resolveCalmFarmPullBoost(CALM, 1.35)).toBe(1.35);
   });
 
   it('is off the instant the panic ramp starts', () => {
-    expect(resolveCalmFarmPullBoost({ panic: 0.01, beeline: false }, 1.35)).toBe(1);
-    expect(resolveCalmFarmPullBoost({ panic: 1, beeline: false }, 1.35)).toBe(1);
+    expect(_resolveCalmFarmPullBoost({ panic: 0.01, beeline: false }, 1.35)).toBe(1);
+    expect(_resolveCalmFarmPullBoost({ panic: 1, beeline: false }, 1.35)).toBe(1);
   });
 
   it('is off during the exit beeline even at zero panic', () => {
-    expect(resolveCalmFarmPullBoost({ panic: 0, beeline: true }, 1.35)).toBe(1);
+    expect(_resolveCalmFarmPullBoost({ panic: 0, beeline: true }, 1.35)).toBe(1);
   });
 
   it('treats a missing, non-finite, or non-boosting value as no boost', () => {
-    expect(resolveCalmFarmPullBoost(CALM, undefined)).toBe(1);
-    expect(resolveCalmFarmPullBoost(CALM, Number.NaN)).toBe(1);
-    expect(resolveCalmFarmPullBoost(CALM, Number.POSITIVE_INFINITY)).toBe(1);
-    expect(resolveCalmFarmPullBoost(CALM, 1)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, undefined)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, Number.NaN)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, Number.POSITIVE_INFINITY)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, 1)).toBe(1);
   });
 
   it('never scales the pulls down — a cohort opts out, it cannot opt below 1', () => {
-    expect(resolveCalmFarmPullBoost(CALM, 0)).toBe(1);
-    expect(resolveCalmFarmPullBoost(CALM, -5)).toBe(1);
-    expect(resolveCalmFarmPullBoost(CALM, 0.5)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, 0)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, -5)).toBe(1);
+    expect(_resolveCalmFarmPullBoost(CALM, 0.5)).toBe(1);
   });
 });

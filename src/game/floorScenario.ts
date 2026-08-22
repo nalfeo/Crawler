@@ -2921,15 +2921,21 @@ function markBossRoomCleared(world: GameWorld, room: RoomData | null): void {
 /**
  * Record where a live boss currently stands so its reward chest can drop there.
  *
- * Called every tick while the boss entity is alive. The defeat branches run
- * after death cleanup has already zeroed the typed-array component stores, so
- * this sample is the only surviving record of the death spot.
+ * Called every tick while the boss entity exists. The defeat branches run after
+ * death cleanup has already zeroed the typed-array component stores, so this
+ * sample is the only surviving record of the death spot. Once DeathTimer is
+ * first observed, the lethal-frame sample is frozen so corpse knockback cannot
+ * slide the eventual chest location.
  */
 function sampleBossLastKnownPos(
   world: GameWorld,
   battle: FloorBossEncounterState,
   bossEid: number,
+  freeze = false,
 ): void {
+  if (battle.deathPosFrozen) {
+    return;
+  }
   const x = world.stores.position.x[bossEid];
   const y = world.stores.position.y[bossEid];
   if (x === undefined || y === undefined) {
@@ -2940,9 +2946,11 @@ function sampleBossLastKnownPos(
   if (battle.lastKnownPos) {
     battle.lastKnownPos.x = x;
     battle.lastKnownPos.y = y;
+    battle.deathPosFrozen = freeze;
     return;
   }
   battle.lastKnownPos = { x, y };
+  battle.deathPosFrozen = freeze;
 }
 
 /**
@@ -3859,7 +3867,12 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const slimeRatEid = slimeRatBattle.bossEid;
   const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
   if (slimeRatAlive && slimeRatEid !== null) {
-    sampleBossLastKnownPos(world, slimeRatBattle, slimeRatEid);
+    sampleBossLastKnownPos(
+      world,
+      slimeRatBattle,
+      slimeRatEid,
+      hasComponent(world.ecs, slimeRatEid, DeathTimer),
+    );
   }
   if (slimeRatBattle.started && !slimeRatAlive && !slimeRatBattle.defeated) {
     // This branch runs only after the entity is gone. Normal death cleanup
@@ -3903,15 +3916,19 @@ function floor1ObjectiveTick(world: GameWorld): void {
   }
 
   const staircaseEid = staircaseBattle.bossEid;
+  const staircaseExists = staircaseEid !== null && entityExists(world.ecs, staircaseEid);
+  if (staircaseExists && staircaseEid !== null) {
+    sampleBossLastKnownPos(
+      world,
+      staircaseBattle,
+      staircaseEid,
+      hasComponent(world.ecs, staircaseEid, DeathTimer),
+    );
+  }
   // Treat the boss as dead as soon as its HP reaches 0 (DeathTimer added by dropSystem),
   // so the stairs unlock during the death animation rather than after the body despawns.
   const staircaseAlive =
-    staircaseEid !== null &&
-    entityExists(world.ecs, staircaseEid) &&
-    !hasComponent(world.ecs, staircaseEid, DeathTimer);
-  if (staircaseAlive && staircaseEid !== null) {
-    sampleBossLastKnownPos(world, staircaseBattle, staircaseEid);
-  }
+    staircaseEid !== null && staircaseExists && !hasComponent(world.ecs, staircaseEid, DeathTimer);
   if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
     const chest = resolveBossDeathChestPos(
       world,

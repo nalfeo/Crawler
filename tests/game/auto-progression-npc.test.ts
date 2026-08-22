@@ -499,15 +499,11 @@ describe('autoFloor1ProgressionSystem', () => {
     }
 
     function farmingProvider(farming: boolean): AIInputProvider {
+      const currentDecision = decision({ state: AIState.EXPLORE });
       return {
-        poll: (): AIDecision => ({
-          moveX: 0,
-          moveY: 0,
-          attack: false,
-          aimX: 0,
-          aimY: 0,
-          state: AIState.EXPLORE,
-        }),
+        poll: () => {},
+        getDecision: () => currentDecision,
+        reset: () => {},
         isFarmingPostBossFloorTime: () => farming,
       };
     }
@@ -529,15 +525,11 @@ describe('autoFloor1ProgressionSystem', () => {
 
     it('descends for a provider that does not implement the farm window at all', () => {
       const { world, player } = stairWorld();
+      const currentDecision = decision({ state: AIState.EXPLORE });
       const legacy: AIInputProvider = {
-        poll: (): AIDecision => ({
-          moveX: 0,
-          moveY: 0,
-          attack: false,
-          aimX: 0,
-          aimY: 0,
-          state: AIState.EXPLORE,
-        }),
+        poll: () => {},
+        getDecision: () => currentDecision,
+        reset: () => {},
       };
       autoFloor1ProgressionSystem(world, player, legacy);
       expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
