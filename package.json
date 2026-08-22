@@ -139,6 +139,7 @@
     "review:visual:deterministic": "vitest run --project e2e tests/e2e/inventory-flow.test.ts tests/e2e/hud-overlap-visual.test.ts",
     "review:visual:llm": "tsx scripts/agent/review/visual-review-agent.ts",
     "review:visual:arbitrary": "tsx scripts/agent/review/arbitrary-screenshot-review.ts",
+    "review:visual:equipment-art-direction": "tsx scripts/agent/review/equipment-art-direction-review.ts",
     "review:visual:equipment": "tsx scripts/agent/review/visual-review-agent.ts --url http://127.0.0.1:4176/lab.html?lab=ui-probe-lab --setup-file scripts/agent/review/setup/ui-probe-equipment.js --ux-name \"equipment panel\" --ux-goal \"clean slot grouping, no overlap, clear hierarchy, readable typography, icon-first item rendering\" --screenshot-name equipment-panel",
     "release:capture-ux-baselines": "tsx scripts/agent/release/capture-ux-baselines.ts",
     "producer": "tsx scripts/agent/producer.ts",
