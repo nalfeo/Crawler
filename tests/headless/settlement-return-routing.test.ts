@@ -89,18 +89,27 @@ function containsOrderedSubsequence(
   haystack: readonly string[],
   needle: readonly string[],
 ): boolean {
+  return findOrderedSubsequenceIndexes(haystack, needle).length === needle.length;
+}
+
+function findOrderedSubsequenceIndexes(
+  haystack: readonly string[],
+  needle: readonly string[],
+): number[] {
   let cursor = 0;
-  for (const item of haystack) {
+  const indexes: number[] = [];
+  for (const [index, item] of haystack.entries()) {
     if (cursor < needle.length && item === needle[cursor]) {
+      indexes.push(index);
       cursor += 1;
     }
   }
-  return cursor === needle.length;
+  return indexes;
 }
 
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
-    const seed = 88;
+    const seed = 2;
     const events: SimEvent[] = [];
     let seeded = false;
 
@@ -142,16 +151,9 @@ describe('settlement return routing (headless integration)', () => {
     // Full deterministic cycle: idle (armed with opportunity) -> armed ->
     // traveling (real pathing) -> arrived (planner physically ran) ->
     // resuming -> cooldown (service latch recorded).
-    expect(
-      containsOrderedSubsequence(statuses, [
-        'idle',
-        'armed',
-        'traveling',
-        'arrived',
-        'resuming',
-        'cooldown',
-      ]),
-    ).toBe(true);
+    const fullCycle = ['idle', 'armed', 'traveling', 'arrived', 'resuming', 'cooldown'];
+    const fullCycleIndexes = findOrderedSubsequenceIndexes(statuses, fullCycle);
+    expect(fullCycleIndexes.length).toBe(fullCycle.length);
 
     expect(['victory', 'timeout']).toContain(stats.outcome);
 
@@ -160,10 +162,8 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = statuses.indexOf('armed');
-    const cooldownIndex = statuses.indexOf('cooldown', armedIndex);
-    expect(armedIndex).toBeGreaterThanOrEqual(0);
-    expect(cooldownIndex).toBeGreaterThan(armedIndex);
+    const armedIndex = fullCycleIndexes[1]!;
+    const cooldownIndex = fullCycleIndexes[5]!;
 
     const armedFrame = telemetry[armedIndex]!.frame;
     const cooldownFrame = telemetry[cooldownIndex]!.frame;

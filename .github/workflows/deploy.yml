@@ -819,6 +819,12 @@ jobs:
             sleep $((RANDOM % 5 + 2))
           done
 
+      - name: File nightly balance issue for release baseline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+        run: node .github/scripts/nightly-balance-issue/run.mjs
+
       - name: Detect baseline win-rate regression
         id: baseline-regression
         env:
