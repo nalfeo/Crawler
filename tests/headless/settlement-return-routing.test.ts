@@ -107,22 +107,6 @@ function findOrderedSubsequenceIndexes(
   return indexes;
 }
 
-function requireSubsequenceIndex(
-  indexes: readonly number[],
-  sequence: readonly string[],
-  status: string,
-): number {
-  const sequenceIndex = sequence.indexOf(status);
-  if (sequenceIndex < 0) {
-    throw new Error(`Expected status ${status} to be part of ${sequence.join(' -> ')}`);
-  }
-  const index = indexes[sequenceIndex];
-  if (index === undefined) {
-    throw new Error(`Expected observed index for settlement-return status ${status}`);
-  }
-  return index;
-}
-
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
     // Fixture seed, not a balance sample: scanning upward from seed 1 found
@@ -173,13 +157,12 @@ describe('settlement return routing (headless integration)', () => {
     // resuming -> cooldown (service latch recorded).
     const fullCycle = ['idle', 'armed', 'traveling', 'arrived', 'resuming', 'cooldown'];
     const fullCycleIndexes = findOrderedSubsequenceIndexes(statuses, fullCycle);
-    if (fullCycleIndexes.length !== fullCycle.length) {
-      throw new Error(
-        `Expected settlement-return full cycle ${fullCycle.join(' -> ')}, observed ${statuses.join(
-          ' -> ',
-        )}`,
-      );
-    }
+    expect(
+      fullCycleIndexes,
+      `Expected settlement-return full cycle ${fullCycle.join(' -> ')}, observed ${statuses.join(
+        ' -> ',
+      )}`,
+    ).toHaveLength(fullCycle.length);
 
     expect(['victory', 'timeout']).toContain(stats.outcome);
 
@@ -188,8 +171,11 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
-    const cooldownIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
+    const armedIndex = fullCycleIndexes[fullCycle.indexOf('armed')];
+    const cooldownIndex = fullCycleIndexes[fullCycle.indexOf('cooldown')];
+    expect(armedIndex).toBeDefined();
+    expect(cooldownIndex).toBeDefined();
+    if (armedIndex === undefined || cooldownIndex === undefined) return;
     expect(armedIndex).toBeGreaterThanOrEqual(0);
     expect(cooldownIndex).toBeGreaterThan(armedIndex);
 
