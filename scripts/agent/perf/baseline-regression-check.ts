@@ -552,10 +552,18 @@ export function evaluateLegWinRateFloor(baseline: BaselineFile): LegWinRateFloor
     });
   }
 
+  if (!currentMatrix) {
+    return {
+      regression: false,
+      reason: `baseline sweep revision ${baseline.meta?.sweep?.revision ?? 'absent'} predates current revision ${RELEASE_SWEEP_REVISION}; report-only win-rate floor not evaluated`,
+      legs: evaluated,
+    };
+  }
+
   // A leg that vanished from a baseline captured under the CURRENT matrix means
   // a truncated publisher or a rename, which would silently retire this check.
   // Fail closed rather than pass quietly.
-  if (missing.length > 0 && currentMatrix) {
+  if (missing.length > 0) {
     throw new Error(
       `baseline for the current sweep matrix (revision ${RELEASE_SWEEP_REVISION}) is missing ` +
         `report-only leg metrics: ${missing.join(', ')}`,
@@ -563,11 +571,7 @@ export function evaluateLegWinRateFloor(baseline: BaselineFile): LegWinRateFloor
   }
 
   if (evaluated.length === 0) {
-    return {
-      regression: false,
-      reason: `baseline reports none of the monitored legs (${REPORT_ONLY_LEG_IDS.join(', ')})`,
-      legs: [],
-    };
+    throw new Error('report-only leg win-rate floor has no legs to monitor');
   }
 
   const below = evaluated.filter((leg) => leg.belowFloor);

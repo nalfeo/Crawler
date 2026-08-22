@@ -13,6 +13,7 @@ import {
   type BaselineFile,
   type BaselineIndexEntry,
 } from '../../scripts/agent/perf/baseline-regression-check';
+import { RELEASE_SWEEP_REVISION } from '../../scripts/agent/perf/sweep-legs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -132,7 +133,11 @@ describe('release baseline regression check', () => {
       }).trim();
       const withLegs: BaselineFile = {
         ...regression,
-        meta: { ...regression.meta, commit: headCommit },
+        meta: {
+          ...regression.meta,
+          commit: headCommit,
+          sweep: { seeds: '1-150', kind: 'winrate', revision: RELEASE_SWEEP_REVISION },
+        },
         legs: {
           floor1: { totalWins: 584, totalRuns: 600, winRate: 584 / 600 },
           floor2: { totalWins: 41, totalRuns: 150, winRate: 41 / 150 },

@@ -104,9 +104,18 @@ describe('report-only leg win-rate floor', () => {
     expect(legacy.regression).toBe(false);
     expect(legacy.reason).toContain('no leg metrics');
 
-    const partialLegacy = evaluateLegWinRateFloor(baseline({ floor2: leg(140, 150) }, 1));
+    const partialLegacy = evaluateLegWinRateFloor(baseline({ floor2: leg(41, 150) }, 1));
     expect(partialLegacy.regression).toBe(false);
+    expect(partialLegacy.reason).toContain('revision 1 predates current revision');
     expect(partialLegacy.legs.map((l) => l.legId)).toEqual(['floor2']);
+    expect(partialLegacy.legs[0]?.belowFloor).toBe(true);
+
+    const populatedLegacy = evaluateLegWinRateFloor(
+      baseline({ floor2: leg(41, 150), 'floor1-chain': leg(89, 150) }, 1),
+    );
+    expect(populatedLegacy.regression).toBe(false);
+    expect(populatedLegacy.issue).toBeUndefined();
+    expect(populatedLegacy.legs.every((l) => l.belowFloor)).toBe(true);
   });
 
   it('fails closed when the current matrix publishes no monitored leg', () => {
