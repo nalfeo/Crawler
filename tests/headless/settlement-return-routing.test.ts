@@ -107,6 +107,18 @@ function findOrderedSubsequenceIndexes(
   return indexes;
 }
 
+function expectSubsequenceIndex(
+  indexes: readonly number[],
+  sequence: readonly string[],
+  status: string,
+): number {
+  const sequenceIndex = sequence.indexOf(status);
+  expect(sequenceIndex).toBeGreaterThanOrEqual(0);
+  const observedIndex = indexes[sequenceIndex] ?? -1;
+  expect(observedIndex).toBeGreaterThanOrEqual(0);
+  return observedIndex;
+}
+
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
     // Fixture seed, not a balance sample: scanning upward from seed 1 found
@@ -171,12 +183,8 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = fullCycleIndexes[fullCycle.indexOf('armed')];
-    const cooldownIndex = fullCycleIndexes[fullCycle.indexOf('cooldown')];
-    expect(armedIndex).toBeDefined();
-    expect(cooldownIndex).toBeDefined();
-    if (armedIndex === undefined || cooldownIndex === undefined) return;
-    expect(armedIndex).toBeGreaterThanOrEqual(0);
+    const armedIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
+    const cooldownIndex = expectSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
     expect(cooldownIndex).toBeGreaterThan(armedIndex);
 
     const armedFrame = telemetry[armedIndex]!.frame;
