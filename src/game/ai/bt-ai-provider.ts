@@ -935,6 +935,24 @@ export class BehaviorTreeAI implements AIInputProvider {
   private exploreReachabilityDepth: Int32Array | null = null;
   /** Reused queue scratch for {@link pickExploreTarget} reachability flood. */
   private exploreReachabilityQueue: Int32Array | null = null;
+  /**
+   * Reused BFS depth scratch for {@link computeReachableGoalTile}'s reachability
+   * flood. Never returned, stored, or captured beyond the call that fills it --
+   * the function only reads plain numbers/`TilePoint`s back out of it before
+   * returning -- so a fresh call safely overwrites the previous call's contents.
+   * Sized to the floor's tile count and lazily (re)allocated on a size change.
+   */
+  private goalReachabilityDepth: Int32Array | null = null;
+  /** Reused queue scratch for {@link computeReachableGoalTile}'s reachability flood. */
+  private goalReachabilityQueue: Int32Array | null = null;
+  /**
+   * Reused BFS depth scratch for {@link resolveNpcInteractionAnchor}'s
+   * reachability flood. Same non-escaping contract as
+   * {@link goalReachabilityDepth}: local working storage only.
+   */
+  private npcAnchorReachabilityDepth: Int32Array | null = null;
+  /** Reused queue scratch for {@link resolveNpcInteractionAnchor}'s reachability flood. */
+  private npcAnchorReachabilityQueue: Int32Array | null = null;
   private globalDwellActive: boolean = false;
   private globalDwellAnchorX: number = 0;
   private globalDwellAnchorY: number = 0;
@@ -5661,8 +5679,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       return goalTile;
     }
 
-    const dist = new Int32Array(width * height).fill(-1);
-    const queue = new Int32Array(width * height);
+    const tileCount = width * height;
+    if (!this.goalReachabilityDepth || this.goalReachabilityDepth.length !== tileCount) {
+      this.goalReachabilityDepth = new Int32Array(tileCount);
+    }
+    if (!this.goalReachabilityQueue || this.goalReachabilityQueue.length !== tileCount) {
+      this.goalReachabilityQueue = new Int32Array(tileCount);
+    }
+    const dist = this.goalReachabilityDepth;
+    const queue = this.goalReachabilityQueue;
+    dist.fill(-1);
     const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
     const startIndex = startTile.y * width + startTile.x;
     floodReachabilityDepth(dist, queue, width, height, startIndex, maxDepth, passable);
@@ -7748,8 +7774,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       return { x: npcX, y: npcY };
     }
 
-    const dist = new Int32Array(width * height).fill(-1);
-    const queue = new Int32Array(width * height);
+    const tileCount = width * height;
+    if (!this.npcAnchorReachabilityDepth || this.npcAnchorReachabilityDepth.length !== tileCount) {
+      this.npcAnchorReachabilityDepth = new Int32Array(tileCount);
+    }
+    if (!this.npcAnchorReachabilityQueue || this.npcAnchorReachabilityQueue.length !== tileCount) {
+      this.npcAnchorReachabilityQueue = new Int32Array(tileCount);
+    }
+    const dist = this.npcAnchorReachabilityDepth;
+    const queue = this.npcAnchorReachabilityQueue;
+    dist.fill(-1);
     const startIndex = startTile.y * width + startTile.x;
     floodReachabilityDepth(
       dist,
