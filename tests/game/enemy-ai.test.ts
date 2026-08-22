@@ -328,6 +328,7 @@ describe('enemyAISystem', () => {
 
     expect(world.stores.velocity.x[enemy]).toBeGreaterThan(0);
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    // Floor 3 slice 4 keeps SUPPORT movement-only until Kindler abilities land.
     expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
   });
 
@@ -384,6 +385,7 @@ describe('enemyAISystem', () => {
     enemyAISystem(world);
 
     expect(world.stores.velocity.x[enemy]).toBeGreaterThan(0);
+    // Floor 3 slice 4 keeps SUPPORT movement-only until Kindler abilities land.
     expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
   });
 

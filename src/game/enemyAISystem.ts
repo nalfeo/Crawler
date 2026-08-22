@@ -2221,6 +2221,8 @@ export function enemyAISystem(world: GameWorld): void {
       );
     }
 
+    // Floor 3 slice 4: SUPPORT is movement-only; remove this exclusion when
+    // the Kindler support-ability slice wires its actual attack/buff payload.
     if (
       behaviorType !== AI_TYPE.SUPPORT &&
       attackRange > EPSILON &&
