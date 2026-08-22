@@ -217,6 +217,8 @@ const STRUCTURAL_ALLOWLIST = new Set([
   // sweep-budget.mjs
   'SWEEP_POOL_SIZE', // max concurrent sweep runs in the pool
   'ACCOUNT_RUNNER_LIMIT', // GitHub Free account-level runner concurrency limit
+  // nightly-balance-issue/release-baseline.mjs
+  'WIN_RATE_INVESTIGATION_THRESHOLD', // hardcoded 90% issue #3240 release-sweep investigation target
 ]);
 
 /** Regex that matches a top-level `const NAME = <number>;` declaration. */

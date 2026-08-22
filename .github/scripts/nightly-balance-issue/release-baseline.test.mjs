@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildWinRateInvestigationClause,
   formatReleaseBaselineLine,
   parseReleaseBaselineIndex,
   RELEASE_BASELINE_BRANCH,
@@ -144,6 +145,52 @@ test('the rendered provenance line reports the payload shape without requiring o
   assert.doesNotMatch(line, /seeds\/weapon/);
   assert.match(formatReleaseBaselineLine(null), /Resolve it yourself/);
   assert.doesNotMatch(formatReleaseBaselineLine({ ...entry(), legs: undefined }), /legs:/);
+});
+
+test('the win-rate investigation clause is silent when there is no baseline or no matching legs', () => {
+  assert.equal(buildWinRateInvestigationClause(null), null);
+  assert.equal(buildWinRateInvestigationClause(entry({ legs: undefined })), null);
+  assert.equal(
+    buildWinRateInvestigationClause(
+      entry({ legs: { floor1: { totalWins: 300, totalRuns: 300 } } }),
+    ),
+    null,
+  );
+});
+
+test('the win-rate investigation clause is silent when both legs are at/above 90%', () => {
+  const clause = buildWinRateInvestigationClause(
+    entry({
+      legs: {
+        'floor1-chain': { totalWins: 135, totalRuns: 150 },
+        floor2: { totalWins: 140, totalRuns: 150 },
+      },
+    }),
+  );
+  assert.equal(clause, null);
+});
+
+test('the win-rate investigation clause fires when the chained or floor2 leg drops below 90%', () => {
+  const clause = buildWinRateInvestigationClause(
+    entry({
+      legs: {
+        'floor1-chain': { totalWins: 90, totalRuns: 150 },
+        floor2: { totalWins: 140, totalRuns: 150 },
+      },
+    }),
+  );
+  assert.match(clause, /`floor1-chain` at 60\.0%/);
+  assert.doesNotMatch(clause, /`floor2` at/);
+  assert.match(clause, /issue #3240/);
+  assert.match(clause, /src\/game\/ai/);
+  assert.match(clause, /mapgen/);
+});
+
+test('the win-rate investigation clause ignores a leg with zero runs', () => {
+  const clause = buildWinRateInvestigationClause(
+    entry({ legs: { 'floor1-chain': { totalWins: 0, totalRuns: 0 } } }),
+  );
+  assert.equal(clause, null);
 });
 
 test('the entrypoint resolves the git release baseline and never dispatches a sweep', async () => {
