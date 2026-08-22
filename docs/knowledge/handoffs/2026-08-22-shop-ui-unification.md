@@ -31,7 +31,7 @@ Introduced one shared shop system in `src/engine/shop/`:
 
 - `shop-offer-model.ts` — pure, Phaser-free offer model with a single
   discriminated `ShopOfferAvailability` (`available` / `sold-out` / `owned` /
-  `insufficient-gold` / `unavailable`) and all shared wording
+  `insufficient-funds` / `inventory-capacity` / `unavailable`) and all shared wording
   (`formatShopPrice`, `formatShopGoldLine`, `formatShopOfferLabel`,
   `describeShopOfferStatus`, `describeShopPurchaseFailure`). It is
   presentation-only: it never re-derives eligibility, so authoritative purchase

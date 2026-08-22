@@ -80,7 +80,11 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { setActiveWeapon } from '../../game/weaponSystem.js';
 import { CARRIED_WEAPON_OBJECT_NAME_PREFIX } from '../../engine/phaser-bridge/carried-weapon.js';
-import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
+import {
+  addItem,
+  createInventoryBag,
+  listGeneratedEquipmentReferences,
+} from '../../shared/inventory.js';
 import type {
   ModalPickerContentSnapshot,
   ModalPickerLayoutSnapshot,
@@ -761,6 +765,30 @@ export interface MainSceneProbeApi {
    * Returns the merchant's position, or null when it is not spawned.
    */
   primeShopkeeperPurchase(gold: number): ProbePoint | null;
+  /**
+   * Arrange the live Floor-1 world so the post-quest merchant weapon rack is
+   * available, optionally marking the first stock item as already owned.
+   */
+  primeShopkeeperPostQuestStock(
+    gold: number,
+    ownFirstOffer?: boolean,
+  ): {
+    readonly position: ProbePoint;
+    readonly firstItemId: string | null;
+    readonly stockCount: number;
+  } | null;
+  /**
+   * Arrange the live Floor-1 world so the Spell Broker shop is unlocked,
+   * optionally making the first broker spell ineligible for a non-price reason.
+   */
+  primeSpellBrokerStock(
+    gold: number,
+    learnFirstOffer?: boolean,
+  ): {
+    readonly position: ProbePoint;
+    readonly firstSpellId: string | null;
+    readonly offerCount: number;
+  } | null;
   /**
    * Design-space safe-area insets currently in force plus the bounds of every
    * edge-anchored screen-space surface, so an e2e gate can assert none of them
@@ -1720,6 +1748,85 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
       return { x, y };
+    },
+
+    primeShopkeeperPostQuestStock: (gold: number, ownFirstOffer = false) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let shopkeeperEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = false;
+        if (instance.defId === 'shopkeeper') {
+          shopkeeperEid = npcEid;
+          instance.nearbyPlayer = true;
+        }
+      }
+      if (shopkeeperEid === null) {
+        return null;
+      }
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-shop-prize-returned', true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.playerGold = gold;
+      const stock = sceneOptions.shopkeeper?.getPostQuestStock?.(world) ?? [];
+      const firstItemId = stock[0]?.itemId ?? null;
+      if (ownFirstOffer && firstItemId !== null) {
+        const bag = world.inventories.get(eid) ?? createInventoryBag();
+        addItem(bag, firstItemId, 1);
+        world.inventories.set(eid, bag);
+      }
+      const x = world.stores.position.x[shopkeeperEid] ?? 0;
+      const y = world.stores.position.y[shopkeeperEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { position: { x, y }, firstItemId, stockCount: stock.length };
+    },
+
+    primeSpellBrokerStock: (gold: number, learnFirstOffer = false) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let brokerEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = false;
+        if (instance.defId === 'spell-quest-giver') {
+          brokerEid = npcEid;
+          instance.nearbyPlayer = true;
+        }
+      }
+      if (brokerEid === null) {
+        return null;
+      }
+      world.featureUnlocks.spells = true;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+      world.playerGold = gold;
+      const offers = sceneOptions.spellQuestGiver?.getSpellBrokerOffers?.(world) ?? [];
+      const firstSpellId = offers[0]?.spellId ?? null;
+      if (learnFirstOffer && firstSpellId !== null) {
+        const state = getOrCreateAbilityState(world, eid);
+        if (!state.learnedSpellIds.includes(firstSpellId)) {
+          state.learnedSpellIds = [...state.learnedSpellIds, firstSpellId];
+        }
+        world.abilityStatesByEntity.set(eid, state);
+      }
+      const x = world.stores.position.x[brokerEid] ?? 0;
+      const y = world.stores.position.y[brokerEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { position: { x, y }, firstSpellId, offerCount: offers.length };
     },
 
     queueInteraction: () => {

@@ -37,6 +37,14 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
     await waitForState(page, (s) => s.modalOpen, { label: 'merchant modal opened' });
   }
 
+  async function loadResolvedScene(): Promise<void> {
+    await loadMainSceneProbeLab(page);
+    await mainSceneProbe.resolveLoadout(page);
+    await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+      label: 'loadout resolved + simulation paused',
+    });
+  }
+
   it('renders an affordable ware as a shared, enabled offer row', async () => {
     await openMerchantModal(500);
 
@@ -61,5 +69,59 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
     expect(option!.disabled).toBe(true);
     expect(option!.description).toBe('Not enough gold.');
     expect(option!.label).toMatch(/^.+ \(\d+g\)$/);
+  });
+
+  it('maps already-owned post-quest stock to a disabled shared merchant row', async () => {
+    await loadResolvedScene();
+    const merchant = await mainSceneProbe.primeShopkeeperPostQuestStock(page, 500, true);
+    expect(merchant, 'post-quest merchant stock should be available').not.toBeNull();
+    expect(merchant!.stockCount).toBeGreaterThan(1);
+
+    await mainSceneProbe.queueInteraction(page);
+    await waitForState(page, (s) => s.modalOpen, { label: 'post-quest merchant modal opened' });
+
+    const content = await mainSceneProbe.getModalPickerContent(page);
+    expect(content).not.toBeNull();
+    expect(content!.title).toBe("The Merchant's Extra Wares");
+    expect(content!.subtitle).toBe('Gold: 500g');
+    expect(content!.options).toHaveLength(merchant!.stockCount);
+    expect(content!.options[0]!.id).toBe(`shop-stock:${merchant!.firstItemId}`);
+    expect(content!.options[0]!.disabled).toBe(true);
+    expect(content!.options[0]!.description).toBe('Already owned.');
+    expect(content!.options.some((option) => option.disabled === false)).toBe(true);
+  });
+
+  it('lets post-quest stock decline to dialogue when nothing is purchasable', async () => {
+    await loadResolvedScene();
+    const merchant = await mainSceneProbe.primeShopkeeperPostQuestStock(page, 0);
+    expect(merchant, 'post-quest merchant stock should be available').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(page);
+    await waitForState(page, (s) => s.conversationOpen && !s.modalOpen, {
+      label: 'post-quest merchant declined to dialogue',
+    });
+
+    expect(await mainSceneProbe.getModalPickerContent(page)).toBeNull();
+  });
+
+  it('opens the Spell Broker through the real scene with kind and non-price refusals intact', async () => {
+    await loadResolvedScene();
+    const broker = await mainSceneProbe.primeSpellBrokerStock(page, 500, true);
+    expect(broker, 'Spell Broker stock should be available').not.toBeNull();
+    expect(broker!.offerCount).toBeGreaterThan(1);
+
+    await mainSceneProbe.queueInteraction(page);
+    await waitForState(page, (s) => s.modalOpen, { label: 'Spell Broker modal opened' });
+
+    const content = await mainSceneProbe.getModalPickerContent(page);
+    expect(content).not.toBeNull();
+    expect(content!.kind).toBe('spell-broker');
+    expect(content!.title).toBe('The Spell Broker');
+    expect(content!.subtitle).toBe('Gold: 500g');
+    expect(content!.options).toHaveLength(broker!.offerCount);
+    expect(content!.options[0]!.id).toBe(broker!.firstSpellId);
+    expect(content!.options[0]!.disabled).toBe(true);
+    expect(content!.options[0]!.description).toBe('Unavailable right now.');
+    expect(content!.options.some((option) => option.disabled === false)).toBe(true);
   });
 });
