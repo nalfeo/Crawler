@@ -55,10 +55,13 @@ export default defineConfig({
         // Dedicated branch-coverage tests added 2026-06-24
         // (tests/game/enemy-ai-coverage.test.ts) lifted measured coverage to
         // ~93.7% lines / 77.2% branches / 100% funcs; thresholds raised to lock
-        // in the gains with a small margin.
+        // in the gains with a small margin. Drift later put the file back under
+        // its own line bar (91.86%); the Floor 2 den-boss gating and
+        // line-of-sight aggro tests added 2026-08-22 restored it to ~92.5%
+        // lines / ~80.2% branches, so the branch bar moves up with it.
         'src/game/enemyAISystem.ts': {
           lines: 92,
-          branches: 75,
+          branches: 78,
           statements: 92,
         },
         'src/game/enemySpawnerSystem.ts': {
