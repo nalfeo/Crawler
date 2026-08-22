@@ -67,24 +67,68 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (s) => !s.simulationPaused, {
       label: 'simulation running before report',
     });
+
     await page.keyboard.press('F8');
-    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker opened with simulation paused',
     });
     await page.keyboard.press('Escape');
-    await waitForState(page, (s) => !s.modalOpen && !s.simulationPaused, {
+    await waitForState(page, (s) => !s.issueReportOpen && !s.simulationPaused, {
       label: 'issue picker restored running simulation',
     });
 
     await mainSceneProbe.setSimulationPaused(page, true);
     await page.keyboard.press('F8');
-    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker opened from an already paused scene',
     });
     await page.keyboard.press('Escape');
-    await waitForState(page, (s) => !s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => !s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker preserved pre-existing pause',
     });
+  });
+
+  it('keeps the Issue button clickable over inventory without closing the underlying UX', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    const inventoryState = await waitForState(
+      page,
+      (s) => s.inventoryOpen && s.issueButtonVisible,
+      {
+        label: 'inventory opened with Issue button visible',
+      },
+    );
+    expect(
+      inventoryState.simulationPaused,
+      'safe-room inventory should preserve the paused state',
+    ).toBe(true);
+
+    const issueBounds = await mainSceneProbe.getIssueButtonBounds(page);
+    expect(issueBounds, 'visible Issue button should expose screen-space bounds').not.toBeNull();
+    const canvas = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(canvas, 'main-scene probe canvas should exist').not.toBeNull();
+    if (!issueBounds || !canvas) return;
+    await page.mouse.click(
+      canvas.x + (issueBounds.x + issueBounds.width / 2) * (canvas.width / 1280),
+      canvas.y + (issueBounds.y + issueBounds.height / 2) * (canvas.height / 720),
+    );
+
+    await waitForState(page, (s) => s.issueReportOpen && s.inventoryOpen, {
+      label: 'issue picker opened above inventory',
+    });
+    await page.keyboard.press('Escape');
+    const restored = await waitForState(
+      page,
+      (s) => !s.issueReportOpen && s.inventoryOpen && s.simulationPaused,
+      {
+        label: 'issue picker closed with inventory and pause state preserved',
+      },
+    );
+    expect(
+      restored.issueButtonVisible,
+      'Issue button should return after cancelling a report',
+    ).toBe(true);
   });
 
   it('dismisses the issue picker by tapping its backdrop', async () => {
@@ -95,19 +139,19 @@ describe('MainGameScene UI exclusivity', () => {
       label: 'simulation running before touch report dismissal',
     });
     await touchPage.keyboard.press('F8');
-    await waitForState(touchPage, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(touchPage, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker opened before touch dismissal',
     });
 
     // The panel itself must not be treated as its backdrop.
     await tapTouch(touchPage, { x: 800, y: 350 });
-    await waitForState(touchPage, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(touchPage, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker stayed open after an in-panel tap',
     });
 
     // This point is inside the game canvas but outside the centered picker.
     await tapTouch(touchPage, { x: 200, y: 120 });
-    await waitForState(touchPage, (s) => !s.modalOpen && !s.simulationPaused, {
+    await waitForState(touchPage, (s) => !s.issueReportOpen && !s.simulationPaused, {
       label: 'touch backdrop dismissal restored running simulation',
     });
   });

@@ -111,7 +111,10 @@ const LABEL_TOP = 8;
 const DESCRIPTION_TOP = 30;
 const ROW_TEXT_BOTTOM_PADDING = 8;
 
-export function createModalPickerUI(scene: Phaser.Scene): {
+export function createModalPickerUI(
+  scene: Phaser.Scene,
+  depth = 5000,
+): {
   open<TId extends string>(config: ModalPickerConfig<TId>, hooks?: ModalPickerOpenHooks<TId>): void;
   close(): void;
   isOpen(): boolean;
@@ -147,7 +150,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   ): Phaser.GameObjects.Text =>
     scene.add.text(snap(x), snap(y), text, style).setResolution(effectiveResolution);
 
-  const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
+  const overlay = scene.add.container(0, 0).setDepth(depth).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
     .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);

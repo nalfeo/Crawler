@@ -192,6 +192,8 @@ const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
+const ISSUE_REPORT_PICKER_DEPTH = 7000;
+const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
@@ -524,6 +526,7 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+  private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
   private issueReportPausedState?: boolean;
@@ -1021,6 +1024,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.bridge = createPhaserBridge(this);
     this.modalPicker = createModalPickerUI(this);
+    this.issueReportPicker = createModalPickerUI(this, ISSUE_REPORT_PICKER_DEPTH);
     this.abilityLoadoutUI = createAbilityLoadoutUI(this);
     this.keyOne = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     this.keyTwo = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
@@ -1266,6 +1270,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inputCapture = undefined;
       this.modalPicker?.destroy();
       this.modalPicker = undefined;
+      this.issueReportPicker?.destroy();
+      this.issueReportPicker = undefined;
       this.abilityLoadoutUI?.destroy();
       this.abilityLoadoutUI = undefined;
       this.bridge?.destroy();
@@ -1399,7 +1405,16 @@ export class MainGameScene extends Phaser.Scene {
     if (!this.interactionHint?.visible) {
       return null;
     }
+
     const bounds = this.interactionHint.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getIssueButtonBounds(): ScreenBounds | null {
+    if (!this.issueButton?.visible) {
+      return null;
+    }
+    const bounds = this.issueButton.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
@@ -1485,6 +1500,11 @@ export class MainGameScene extends Phaser.Scene {
     if (this.isTextEntryTarget(event)) {
       return;
     }
+    if (event.code === 'F8' && !event.repeat) {
+      event.preventDefault();
+      this.openIssueReport();
+      return;
+    }
     if (this.abilityLoadoutUI?.isOpen()) {
       if (event.code === 'KeyB' && !event.repeat) {
         event.preventDefault();
@@ -1495,11 +1515,6 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.isBlockingSurfaceOpen()) {
-      return;
-    }
-    if (event.code === 'F8' && !event.repeat) {
-      event.preventDefault();
-      this.openIssueReport();
       return;
     }
     if (event.code === 'KeyE') {
@@ -1869,6 +1884,10 @@ export class MainGameScene extends Phaser.Scene {
     this.refreshCameraMasks();
 
     this.processOpenAbilitiesModal();
+    if (this.issueReportPausedState !== undefined) {
+      this.updateOverlayText();
+      return;
+    }
     if (this.modalPicker?.isOpen()) {
       this.updateOverlayText();
       return;
@@ -2596,7 +2615,7 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
       this.openIssueReport();
-    });
+    }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -4049,7 +4068,6 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton?.setVisible(false);
         this.equipButton?.setVisible(false);
         this.achievementsButton?.setVisible(false);
-        this.issueButton?.setVisible(false);
         this.quartermasterButton
           ?.setDepth(quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(quartermasterOpen2);
@@ -4069,13 +4087,13 @@ export class MainGameScene extends Phaser.Scene {
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
 
+    const canFileIssue = this.canFileIssue(issueOpen);
+    this.issueButton?.setVisible(canFileIssue);
+
     if (!this.world.floorScenario) {
       this.loadoutText?.setVisible(false);
       return;
     }
-
-    const canFileIssue = this.canFileIssue(issueOpen);
-    this.issueButton?.setVisible(canFileIssue);
 
     if (this.world.state === 'loadout') {
       const modalOpen = this.modalPicker?.isOpen() ?? false;
@@ -4289,13 +4307,7 @@ export class MainGameScene extends Phaser.Scene {
    * should not additionally trigger the death screen.
    */
   private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
-    return (
-      !issueOpen &&
-      !this.issueReportSubmitting &&
-      this.world.state !== 'loadout' &&
-      this.world.state !== 'game_over' &&
-      !this.isBlockingSurfaceOpen()
-    );
+    return !issueOpen && !this.issueReportSubmitting;
   }
 
   private nextIssueReportRunId(): string {
@@ -4428,7 +4440,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private openIssueReport(): void {
     if (
-      !this.modalPicker ||
+      !this.issueReportPicker ||
       this.issueReportPausedState !== undefined ||
       this.issueReportSubmitting ||
       !this.canFileIssue()
@@ -4471,7 +4483,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showIssueReportPicker(bundle: RunBundle, feedback?: string): void {
-    if (!this.modalPicker) {
+    if (!this.issueReportPicker) {
       this.finishIssueReport();
       return;
     }
@@ -4485,7 +4497,7 @@ export class MainGameScene extends Phaser.Scene {
           ? 'Attach screenshot: on'
           : 'Attach screenshot: waiting'
         : 'Attach screenshot: off';
-    this.modalPicker.open(
+    this.issueReportPicker.open(
       {
         title: 'File an issue',
         subtitle: feedback ?? 'F8 opens this flow. Simulation is paused while it is open.',
