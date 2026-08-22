@@ -32,7 +32,7 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Glowing, Harvestable, Position, Prop } from '../../core/components.js';
+import { Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
@@ -1675,7 +1675,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getMagicMissileLightProbe: () => {
       const scene = getScene();
       const world = scene?.world;
-      const glowingEntities = world ? query(world.ecs, [Glowing, Position]) : [];
+      const glowingEntities = world ? query(world.ecs, [Glowing, Homing, Position]) : [];
       const glowEid = glowingEntities[0];
       const field = scene?.lightField;
       if (glowEid === undefined || !world || !field) {
