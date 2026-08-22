@@ -3563,6 +3563,137 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+test('an explicit incomplete PR-description status dispatches Copilot with the continuation protocol', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: [
+          '## Progress',
+          '',
+          'Status: INCOMPLETE - session ran out of time',
+          '',
+          'The next session should continue the remaining implementation.',
+        ].join('\n'),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      body: { name: LABEL, node_id: 'LABEL_ci_owner' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 991 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.match(stdout, /assigned copilot pr=#42/);
+  const taskComment = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskComment, 'expected the incomplete status to post a recovery task');
+  assert.match(taskComment.body.body, /\*\*Required phases:\*\* session continuation\./);
+  assert.match(taskComment.body.body, /\*\*Session-continuation protocol:\*\*/);
+  assert.match(
+    taskComment.body.body,
+    /Read the PR description and current branch before changing anything/,
+  );
+  assert.match(taskComment.body.body, /continue the unfinished work in this PR/);
+  assert.match(taskComment.body.body, /while any work remains unfinished/);
+  assert.match(taskComment.body.body, /ready for normal review, update the PR description/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.query || '').includes('replaceActorsForAssignable'),
+    ),
+    'expected the continuation task to assign Copilot',
+  );
+});
+
+test('narrative text and comments cannot trigger session continuation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: 'This narrative quotes Status: INCOMPLETE - session ran out of time, but is not itself a status line.',
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [{ id: 992, body: 'Status: INCOMPLETE - session ran out of time' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.doesNotMatch(stdout, /session-continuation/);
+  assert.doesNotMatch(stdout, /would-assign copilot/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
 // ---------------------------------------------------------------------------
 // expected_head_sha binding — fail closed on a time-of-check/time-of-use race
 // between the trusted review-wake bridge's validation and this reconciliation.
