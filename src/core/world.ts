@@ -493,9 +493,10 @@ export interface GameWorld {
   /**
    * Floor 3 Companion League: cumulative damage each Companion (attacker eid)
    * has dealt to each still-alive Enemy target (target eid), written by
-   * `applyDamage`. `companionProgressionSystem` (invoked from `dropSystem`
-   * when the target dies) reads this to split combat XP damage-weighted
-   * across contributing Companions, then deletes the target's entry. See
+   * `applyDamage`. `companionProgressionSystem` (invoked from
+   * `runCoreSimulationStep` after `dropSystem`) reads this to split combat XP
+   * damage-weighted across contributing Companions once the target's health
+   * reaches 0, then deletes the target's entry. See
    * `.specify/specs/floor3-companion-league.md` R7 / slice 5.
    */
   companionDamageContribution: Map<number, Map<number, number>>;

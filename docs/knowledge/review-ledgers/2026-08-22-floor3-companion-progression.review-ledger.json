@@ -6,16 +6,24 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged: 1) ledger safety depending on clearEntityStores discipline - verified every removeEntity call site for a Health-bearing entity (damageSystem, healthSystem, deathTimerSystem, harvestSystem, lifetimeSystem, projectileCleanupSystem, returningProjectileSystem, trapSystem, bossChestPickupSystem) already calls clearEntityStores, and the 3 sites that do not (mob-abilities owned projectiles, itemPickupSystem gold/gem/item pickups) are entity kinds that never carry Health/Companion state, so they cannot poison the ledger. 2) Team.id vs Companion.ownerTeam as two sources of truth - verified components.ts documents ownerTeam as a mirror of the Team.id source of truth, so companionProgressionSystem correctly keys off Team.id. 3) empty per-target contributor maps after contributor cleanup - accepted as bounded/self-limiting since the outer entry is deleted once its target dies or is itself cleared. 4) KO/merit XP semantics - current behavior (contributors keep merit XP even if later KO'd) is intentional and consistent with the assist-floor design notes already in the PR. 5) multi-team full-pool-credit farmability - already flagged in the code/PR as a documented slice-5 simplification for revisit at slices 7/8. 6) species-token load-order stability - accepted for the current lab-only phase, follow-up needed before production spawn/persistence usage. Two alternatives considered (kill-receipt queue at applyDamage time; dropSystem-published dead-target list) were both judged worse on architecture/coupling grounds than the chosen standalone-system design."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
