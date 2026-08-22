@@ -15,6 +15,8 @@ export {
   petSpeciesByAffinity,
   petSpeciesByStyle,
   petSpeciesDefSchema,
+  speciesForToken,
+  speciesTokenForId,
   type PetFormDef,
   type PetSpeciesDef,
 } from './species.js';
