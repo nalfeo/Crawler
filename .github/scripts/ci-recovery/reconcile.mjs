@@ -140,10 +140,39 @@ const AGGREGATE_CI_CHECK_NAMES = new Set(['ci', 'merge gate']);
 // Only this explicit, standalone PR-description status line can request a
 // replacement session. Do not derive continuation work from prose, diffs, or comments.
 const SESSION_CONTINUATION_STATUS_LINE_PATTERN =
-  /^\s*status\s*:\s*(?=[^\r\n]*\bincomplete\b)(?=[^\r\n]*\bsession\s+ran\s+out\s+of\s+time\b)[^\r\n]*$/im;
+  /^ {0,3}status[ \t]*:[ \t]*(?=[^\r\n]*\bincomplete\b)(?=[^\r\n]*\bsession[ \t]+ran[ \t]+out[ \t]+of[ \t]+time\b)[^\r\n]*$/im;
+const HTML_COMMENT_PATTERN = /<!--[\s\S]*?(?:-->|$)/g;
+const MARKDOWN_FENCE_PATTERN = /^ {0,3}(`{3,}|~{3,})/;
+const MARKDOWN_INDENTED_CODE_PATTERN = /^(?: {4,}|\t)/;
+
+// Drop the Markdown regions that never render as a visible standalone status
+// line: HTML comments, fenced code blocks, and indented code blocks. A status
+// line quoted inside a PR template, example block, or commented-out region is
+// documentation, not a control signal.
+function stripNonRenderedMarkdownRegions(prDescription) {
+  const withoutHtmlComments = String(prDescription ?? '').replace(HTML_COMMENT_PATTERN, '');
+  const rendered = [];
+  let openFence = null;
+  for (const line of withoutHtmlComments.split(/\r?\n/)) {
+    const fence = MARKDOWN_FENCE_PATTERN.exec(line)?.[1] ?? null;
+    if (openFence) {
+      if (fence && fence[0] === openFence[0] && fence.length >= openFence.length) openFence = null;
+      continue;
+    }
+    if (fence) {
+      openFence = fence;
+      continue;
+    }
+    if (MARKDOWN_INDENTED_CODE_PATTERN.test(line)) continue;
+    rendered.push(line);
+  }
+  return rendered.join('\n');
+}
 
 function hasSessionContinuationStatus(prDescription) {
-  return SESSION_CONTINUATION_STATUS_LINE_PATTERN.test(String(prDescription ?? ''));
+  return SESSION_CONTINUATION_STATUS_LINE_PATTERN.test(
+    stripNonRenderedMarkdownRegions(prDescription),
+  );
 }
 
 const BLOCKER_PHASES = [
@@ -2613,7 +2642,8 @@ const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
 let trainNoop = labels.has(NOOP_LABEL);
 let validationFailed = labels.has(VALIDATION_FAILED_LABEL);
-if (hasSessionContinuationStatus(pr.body)) {
+const sessionContinuationRequested = hasSessionContinuationStatus(pr.body);
+if (sessionContinuationRequested) {
   blockers.push({
     kind: 'session-continuation',
     id: 'pr-description-status',
@@ -2621,6 +2651,24 @@ if (hasSessionContinuationStatus(pr.body)) {
       'The PR description has an explicit incomplete status because its authoring session ran out of time.',
     url: pr.html_url,
   });
+}
+// The continuation signal is derived from the PR body, which can change without
+// moving the head SHA — `assertExpectedMetadataUnchanged` compares no body and
+// does not run at all for normal scheduled/router reconciliations. Re-read the
+// signal immediately before a terminal mutation so a status removed mid-flight
+// cannot still dispatch a continuation session, and a status added mid-flight
+// cannot be admitted to the merge train. A changed signal aborts this run; the
+// next reconciliation re-derives blockers from the live body.
+async function sessionContinuationSignalChanged(phase) {
+  if (!live) return false;
+  const liveBody = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data
+    ?.body;
+  const liveRequested = hasSessionContinuationStatus(liveBody);
+  if (liveRequested === sessionContinuationRequested) return false;
+  process.stdout.write(
+    `skip pr=#${prNumber} reason=session-continuation-status-changed phase=${phase} expected=${sessionContinuationRequested} actual=${liveRequested}\n`,
+  );
+  return true;
 }
 const incomingConflictPredecessor = trigger.match(/^merge-train-cumulative-conflict:(\d+)$/);
 const storedConflictPredecessor = state?.trigger?.match(/^merge-train-cumulative-conflict:(\d+)$/);
@@ -3486,6 +3534,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   };
 
   if (terminalRow.action === DISPATCH_ACTION.QUEUE_MERGE_TRAIN) {
+    if (await sessionContinuationSignalChanged('queue-merge-train')) process.exit(0);
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
@@ -3561,6 +3610,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   // ARM_AUTO_MERGE
   if (live) {
     await assertExpectedMetadataUnchanged('arm-auto-merge');
+    if (await sessionContinuationSignalChanged('arm-auto-merge')) process.exit(0);
     await graphql(
       pat,
       `
@@ -3848,6 +3898,12 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   ].join('\n');
 
   if (live) {
+    if (await sessionContinuationSignalChanged('post-task-comment')) {
+      // Ownership was acquired above for a dispatch that is no longer valid;
+      // release the fence cleanly so the next reconciliation is unobstructed.
+      stopIfReleaseConvergedElsewhere(await release('session-continuation-status-changed'));
+      process.exit(0);
+    }
     await assertExpectedMetadataUnchanged('post-task-comment');
     await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
       method: 'POST',

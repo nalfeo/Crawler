@@ -3694,6 +3694,188 @@ test('narrative text and comments cannot trigger session continuation', async (t
   assert.deepEqual(mutatingCalls, []);
 });
 
+test('code blocks, indented examples, and HTML comments cannot trigger session continuation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: [
+          '<!--',
+          'Status: INCOMPLETE - session ran out of time',
+          '-->',
+          '',
+          '```',
+          'Status: INCOMPLETE - session ran out of time',
+          '```',
+          '',
+          '~~~text',
+          'Status: INCOMPLETE - session ran out of time',
+          '~~~',
+          '',
+          '    Status: INCOMPLETE - session ran out of time',
+          '',
+          'No visible status line is set in this description.',
+        ].join('\n'),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.doesNotMatch(stdout, /session-continuation/);
+  assert.doesNotMatch(stdout, /would-assign copilot/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('a status removed after the initial fetch aborts the continuation dispatch', async (t) => {
+  const continuationBody = ['## Progress', '', 'Status: INCOMPLETE - session ran out of time'].join(
+    '\n',
+  );
+  let prFetches = 0;
+  let repositoryLabelExists = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      prFetches += 1;
+      // The description is edited (status removed) after the opening fetch,
+      // without any change to the head SHA.
+      return { body: { ...basePr(), body: prFetches === 1 ? continuationBody : '## Progress' } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL, node_id: 'LABEL_ci_owner' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL, node_id: 'LABEL_ci_owner' } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 993 } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/993`]: () => ({ body: { id: 993 } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /skip pr=#42 reason=session-continuation-status-changed phase=post-task-comment/,
+  );
+  assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    'a removed status must not post a continuation task comment',
+  );
+  assert.ok(
+    !mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    'a removed status must not assign Copilot',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    'the aborted dispatch must release the ownership fence',
+  );
+});
+
+test('a status added after the initial fetch aborts merge-train admission', async (t) => {
+  let prFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      prFetches += 1;
+      // The status line is added after the opening fetch, so the admission
+      // decision below was computed from a description that no longer applies.
+      return {
+        body: {
+          ...basePr(),
+          body: prFetches === 1 ? '## Summary' : 'Status: INCOMPLETE - session ran out of time',
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 994 } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: QUEUE_LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /skip pr=#42 reason=session-continuation-status-changed phase=queue-merge-train/,
+  );
+  assert.doesNotMatch(stdout, /queued merge-train pr=#42/);
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        (call.body?.labels || []).includes(QUEUE_LABEL),
+    ),
+    'an added status must not admit the PR to the merge train',
+  );
+});
+
 // ---------------------------------------------------------------------------
 // expected_head_sha binding — fail closed on a time-of-check/time-of-use race
 // between the trusted review-wake bridge's validation and this reconciliation.
