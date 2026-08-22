@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d5c1b6ab1178d641cf86923586bdd15cc5de7a9d",
+    "commitDate": "2026-08-22T21:17:45Z",
+    "commitSubject": "Design Floor 4: \"The Main Event\" arena — content bible, system spec, and ADR 0090 (#3273)",
+    "capturedAt": "2026-08-22T22:18:31.464Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32599210448",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/d5c1b6ab1178d641cf86923586bdd15cc5de7a9d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.56,
+        "totalWins": 84,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36,
+      "gatePass": false,
+      "path": "by-sha/d5c1b6ab1178d641cf86923586bdd15cc5de7a9d.fun-report.json"
+    }
+  },
+  {
     "commit": "8b2fc48a3cab42d167fe831dc93af23419e01fc5",
     "commitDate": "2026-08-22T20:05:26Z",
     "commitSubject": "Magic Missile: arcing homing bolts, milestone missile counts, and light-source VFX (#3249)",
