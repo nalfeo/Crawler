@@ -30,6 +30,15 @@ export const UI_DEPTH_CUTOFF = 900;
 export const ENTITY_DEPTH = 0;
 
 /**
+ * Player sprite depth. Set-piece foreground props intentionally sit above the
+ * generic entity plane for staged NPC scenes, but the controllable player must
+ * stay readable when walking through authored room dressing. Keep this above
+ * the full set-piece foreground band (`actor` z=50 → depth 5) and below world
+ * VFX such as gore/combat text.
+ */
+export const PLAYER_DEPTH = 6;
+
+/**
  * Depth of the dynamic darkness/light overlay. It must sit ABOVE every
  * world-space gameplay object — terrain, props, entities (mobs/NPCs/player) and
  * VFX/objective markers — so the torch falloff dims sprites in shadow, not just
@@ -75,8 +84,9 @@ export const TERRAIN_DEPTH = -20;
  *   front of it. The `< 20` cutoff (not `<= 10`) deliberately keeps a door-kind
  *   prop (`z=12`) in this band instead of leaking above the entity plane.
  * - `z >= 20` → a small POSITIVE "foreground" band (≥2), so a welcome desk
- *   (`z=30`) or clutter (`z=40`) reads as being in front of the NPC, occluding
- *   their lower half like real furniture.
+ *   (`z=30`) or clutter (`z=40`) reads as being in front of staged NPCs on the
+ *   generic entity plane. The player renders above this band via
+ *   {@link PLAYER_DEPTH} so a room prop cannot bury the controllable character.
  *
  * The function is monotonic non-decreasing across the whole ladder and stays
  * strictly between `TERRAIN_DEPTH` and the low world-VFX foreground band, so

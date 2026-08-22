@@ -547,6 +547,36 @@ describe('createPhaserBridge', () => {
     expect(propRects[0]?.destroyed).toBe(true);
   });
 
+  it('renders the player above foreground set-piece props', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const player = addEntity(world.ecs);
+    addComponent(world.ecs, player, Player);
+    addComponent(world.ecs, player, set(Position, { x: 3, y: 2 }));
+    addComponent(world.ecs, player, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+
+    const foregroundDepth = setPieceZToDepth(30);
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
+      depth: foregroundDepth,
+      widthFt: 12,
+      heightFt: 4,
+      label: 'foreground-desk',
+    });
+
+    bridge.sync(world);
+
+    const deskImage = images.find((img) => img.textureKey === 'kenney-tiny-town');
+    const playerImage = images.find((img) => img !== deskImage);
+    expect(playerImage).toBeDefined();
+    expect(deskImage).toBeDefined();
+    expect(deskImage?.depth).toBe(foregroundDepth);
+    expect(playerImage!.depth).toBeGreaterThan(deskImage!.depth);
+
+    bridge.destroy();
+  });
+
   it('applies and then clears set-piece prop-layer rotation on resync', () => {
     const propImages: MockImage[] = [];
     const scene = {

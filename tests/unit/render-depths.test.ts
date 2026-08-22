@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ENTITY_DEPTH,
+  PLAYER_DEPTH,
   TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
   setPieceZToDepth,
@@ -47,6 +48,11 @@ describe('setPieceZToDepth', () => {
 
   it('renders a welcome desk (z=30) in front of the NPC it fronts', () => {
     expect(setPieceZToDepth(30)).toBeGreaterThan(ENTITY_DEPTH);
+  });
+
+  it('keeps the player above all set-piece foreground props but below world VFX', () => {
+    expect(PLAYER_DEPTH).toBeGreaterThan(setPieceZToDepth(PROP_KIND_Z.actor));
+    expect(PLAYER_DEPTH).toBeLessThan(WORLD_VFX_DEPTH.gore);
   });
 
   it('is monotonic non-decreasing across the prop-kind z ladder', () => {
