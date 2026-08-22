@@ -28,6 +28,22 @@ describe('generateStarterOffer', () => {
     expect(new Set(offer.map((s) => s.speciesId)).size).toBe(STARTER_OFFER_SIZE);
   });
 
+  it('spans distinct affinities and styles for every seed — never one Temperament (spec §6.1)', () => {
+    // Seed 2805 previously produced an all-`gloom` (single-Temperament) offer
+    // under the old distinct-species-only sampler; the diversity constraint
+    // must hold across an exhaustive seed sweep, not just for a lucky seed.
+    for (let seed = 1; seed <= 3000; seed++) {
+      const offer = generateStarterOffer(new SeededRandom(seed));
+      expect(offer).toHaveLength(STARTER_OFFER_SIZE);
+      const affinities = new Set(offer.map((s) => s.affinity));
+      const styles = new Set(offer.map((s) => s.fightingStyle));
+      // Full 7×7 grid guarantees the offer spans STARTER_OFFER_SIZE distinct
+      // affinities AND styles, so it can never collapse to one Temperament.
+      expect(affinities.size).toBe(STARTER_OFFER_SIZE);
+      expect(styles.size).toBe(STARTER_OFFER_SIZE);
+    }
+  });
+
   it('is deterministic for the same seed', () => {
     const first = generateStarterOffer(new SeededRandom(42));
     const second = generateStarterOffer(new SeededRandom(42));
@@ -60,24 +76,44 @@ describe('generateStarterOffer', () => {
 });
 
 describe('generateTrainerPoachOffer', () => {
-  it('offers distinct species drawn only from the Trainer roster', () => {
+  it("offers that Trainer's COMPLETE validated roster so the player can choose any of them (spec §6.2)", () => {
     const trainerRoster = ['ember-charger', 'bloom-bruiser', 'stone-slinger'];
-    const offer = generateTrainerPoachOffer(new SeededRandom(7), trainerRoster, 2);
-    expect(offer).toHaveLength(2);
+    const offer = generateTrainerPoachOffer(new SeededRandom(7), trainerRoster);
+    // All 2–3 fielded Companions are offered, not a random subset.
+    expect(offer).toHaveLength(trainerRoster.length);
+    expect(new Set(offer.map((s) => s.speciesId))).toEqual(new Set(trainerRoster));
     for (const species of offer) {
       expect(trainerRoster).toContain(species.speciesId);
     }
   });
 
+  it('drops only unknown species ids and still offers the rest of the roster', () => {
+    const offer = generateTrainerPoachOffer(new SeededRandom(7), [
+      'ember-charger',
+      'not-a-real-species',
+      'stone-slinger',
+    ]);
+    expect(offer.map((s) => s.speciesId).sort()).toEqual(['ember-charger', 'stone-slinger']);
+  });
+
   it('silently drops unknown species ids', () => {
-    const offer = generateTrainerPoachOffer(new SeededRandom(7), ['not-a-real-species'], 3);
+    const offer = generateTrainerPoachOffer(new SeededRandom(7), ['not-a-real-species']);
     expect(offer).toHaveLength(0);
+  });
+
+  it('collapses duplicate ids so the same species is never offered twice', () => {
+    const offer = generateTrainerPoachOffer(new SeededRandom(3), [
+      'ember-charger',
+      'ember-charger',
+      'stone-slinger',
+    ]);
+    expect(offer.map((s) => s.speciesId).sort()).toEqual(['ember-charger', 'stone-slinger']);
   });
 
   it('is deterministic for the same seed', () => {
     const trainerRoster = ['ember-charger', 'bloom-bruiser', 'stone-slinger'];
-    const first = generateTrainerPoachOffer(new SeededRandom(9), trainerRoster, 2);
-    const second = generateTrainerPoachOffer(new SeededRandom(9), trainerRoster, 2);
+    const first = generateTrainerPoachOffer(new SeededRandom(9), trainerRoster);
+    const second = generateTrainerPoachOffer(new SeededRandom(9), trainerRoster);
     expect(second.map((s) => s.speciesId)).toEqual(first.map((s) => s.speciesId));
   });
 });

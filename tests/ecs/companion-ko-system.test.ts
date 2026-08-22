@@ -1,17 +1,20 @@
-import { addComponent, set } from 'bitecs';
+import { addComponent, hasComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   Companion,
   PartySlot,
   Team,
+  applyDamage,
   companionKOSystem,
   isPartyWiped,
   spawnBehaviorEnemy,
   spawnPlayer,
   spawnRallyPoint,
 } from '../../src/core/index.js';
+import { runCoreSimulationStep } from '../../src/core/simulation-core-step.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { AI_TYPE } from '../../src/game/index.js';
+import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function spawnCompanion(
@@ -210,5 +213,48 @@ describe('isPartyWiped', () => {
     );
 
     expect(isPartyWiped(world)).toBe(false);
+  });
+});
+
+describe('companionKOSystem pipeline ordering (runCoreSimulationStep)', () => {
+  // Guards the ordering invariant documented in src/core/simulation-core-step.ts:
+  //   companionProgressionSystem (reads the real Health<=0 to award kill XP)
+  //     -> companionKOSystem (clamps Companion Health back to 1, sets knockedOut)
+  //       -> dropSystem (would otherwise remove the dead Enemy)
+  // The other companionKOSystem tests invoke the system directly, so only this
+  // one fails if a future reorder lets dropSystem death-process a Companion or
+  // lets the KO clamp hide the kill from the progression system.
+  it("keeps a lethally-damaged Companion KO'd (not removed) and awards its killer XP before the clamp", () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const attacker = spawnCompanion(world, 1, 0, TeamId.PLAYER);
+    const victim = spawnCompanion(world, 2, 0, TeamId.ENEMY);
+
+    // The player-team attacker lands a lethal blow on the rival Companion. This
+    // both drives victim Health to 0 and registers the Companion-sourced XP
+    // credit that companionProgressionSystem consumes.
+    applyDamage(world, victim, 999, 2, 0, {
+      origin: 'enemy',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceEid: attacker,
+    });
+    expect(world.stores.health.current[victim]).toBeLessThanOrEqual(0);
+
+    world.frameCount += 1;
+    runCoreSimulationStep(world, createInputState());
+
+    // KO ran before dropSystem: the rival Companion is knocked out, not removed.
+    expect(hasComponent(world.ecs, victim, Companion)).toBe(true);
+    expect(world.stores.companion.knockedOut[victim]).toBe(1);
+    expect(world.stores.health.current[victim]).toBe(1);
+
+    // Progression ran before the clamp: the killer earned XP. If the KO clamp
+    // ran first, the victim's Health would read 1 and no kill (hence no XP)
+    // would ever be detected — so a nonzero XP proves the ordering holds.
+    expect(world.stores.companion.xp[attacker]).toBeGreaterThan(0);
+    expect(world.stores.companion.knockedOut[attacker]).toBe(0);
+    expect(world.stores.health.current[attacker]).toBeGreaterThan(0);
   });
 });

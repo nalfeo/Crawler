@@ -13,6 +13,7 @@ import GUI from 'lil-gui';
 import { addComponent, set } from 'bitecs';
 import {
   Companion,
+  PartySlot,
   Team,
   applyDamage,
   companionKOSystem,
@@ -102,6 +103,11 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
         knockedOut: state.companionKnockedOut ? 1 : 0,
       }),
     );
+    // The wipe predicate (`isPartyWiped`) only counts recruited party members,
+    // i.e. Companions carrying a `PartySlot` (see `recruitPartyCompanion`).
+    // Attach one here so the lab's "party wiped" panel actually reflects the
+    // predicate instead of reading a permanent `false`.
+    addComponent(world.ecs, companionEid, set(PartySlot, { slot: 0, locked: 0 }));
     if (state.spawnRival) {
       rivalEid = spawnBehaviorEnemy(
         world,
