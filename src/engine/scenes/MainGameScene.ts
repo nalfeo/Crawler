@@ -1989,7 +1989,18 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
-    if (this.achievementsUI?.isOpen()) {
+    // Freeze movement/action input whenever any blocking HUD surface (equipment,
+    // inventory, abilities, achievements, quartermaster, map overlay, etc.) is
+    // open. These panels have no dedicated close button — they're dismissed by
+    // re-tapping their corner button — so on touch devices the raw canvas touch
+    // listener in InputCapture (which classifies touches purely by screen-half
+    // position, unaware of any Phaser UI drawn on top) would otherwise keep
+    // driving the player around the still-running simulation while the player
+    // is just trying to browse the panel, letting them drift into an NPC and
+    // accidentally start a conversation. Previously only AchievementsUI froze
+    // input here; broadened to the shared isBlockingSurfaceOpen() predicate
+    // already used elsewhere to gate NPC interaction for the same reason.
+    if (this.isBlockingSurfaceOpen()) {
       this.inputState.moveX = 0;
       this.inputState.moveY = 0;
       this.inputState.action = false;
