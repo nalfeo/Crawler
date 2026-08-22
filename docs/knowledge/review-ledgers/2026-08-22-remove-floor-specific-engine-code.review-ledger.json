@@ -57,13 +57,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "4acca0e9988896c84ea2115ef1f1506ac0f00b28",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff moves the four targeted floor-specific presentation decisions behind a shared scenario contract without introducing validated correctness, determinism, layer-boundary, or wiring regressions. The implementation preserves current Floor 1/Floor 2 semantics for reachable paths, adds focused unit coverage for the new contract and variant selection, and keeps the engine dependent only on shared types. Coverage is good but not perfect because several MainGameScene consumption paths are indirectly characterized rather than directly asserted in the changed tests."
     }
   }
 }
