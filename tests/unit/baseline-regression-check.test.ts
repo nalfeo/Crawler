@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  LEG_WIN_RATE_FLOOR_MARKER,
   buildFailureSignature,
   evaluateBaselineRegression,
   type BaselineFile,
@@ -116,6 +117,71 @@ describe('release baseline regression check', () => {
     expect(() =>
       evaluateBaselineRegression(current, [indexEntry(previous)], [previous.meta.commit]),
     ).toThrow(/failure signature does not match/);
+  });
+
+  it('CLI writes an independent report-only leg verdict alongside the aggregate decision', () => {
+    // The risky half of this wiring is main(), not the pure function: the
+    // workflow only sees the second verdict if BOTH the result file and the
+    // second GITHUB_OUTPUT key are written, and it must still be written on a
+    // release where Floor 1 also lost runs (that decision short-circuits).
+    const dir = mkdtempSync(path.join(tmpdir(), 'baseline-leg-floor-cli-'));
+    try {
+      const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      const withLegs: BaselineFile = {
+        ...regression,
+        meta: { ...regression.meta, commit: headCommit },
+        legs: {
+          floor1: { totalWins: 584, totalRuns: 600, winRate: 584 / 600 },
+          floor2: { totalWins: 41, totalRuns: 150, winRate: 41 / 150 },
+          'floor1-chain': { totalWins: 54, totalRuns: 150, winRate: 54 / 150 },
+        },
+      };
+      const baselinePath = path.join(dir, 'baseline.json');
+      const indexPath = path.join(dir, 'index.json');
+      const resultPath = path.join(dir, 'result.json');
+      const legResultPath = path.join(dir, 'leg-result.json');
+      const githubOutputPath = path.join(dir, 'github-output.txt');
+      writeFileSync(baselinePath, JSON.stringify(withLegs));
+      writeFileSync(indexPath, JSON.stringify([]));
+      writeFileSync(githubOutputPath, '');
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+          'scripts/agent/perf/baseline-regression-check.ts',
+        ],
+        {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASELINE_JSON: baselinePath,
+            BASELINE_INDEX_JSON: indexPath,
+            BASELINE_REGRESSION_RESULT: resultPath,
+            LEG_WIN_RATE_FLOOR_RESULT: legResultPath,
+            GITHUB_OUTPUT: githubOutputPath,
+          },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).not.toContain('[ERROR]');
+      const outputs = readFileSync(githubOutputPath, 'utf8');
+      expect(outputs).toContain('regression=true');
+      expect(outputs).toContain('legWinRateFloorBreach=true');
+      const legDecision = JSON.parse(readFileSync(legResultPath, 'utf8')) as {
+        regression: boolean;
+        issue?: { marker: string };
+      };
+      expect(legDecision.regression).toBe(true);
+      expect(legDecision.issue?.marker).toBe(LEG_WIN_RATE_FLOOR_MARKER);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {
