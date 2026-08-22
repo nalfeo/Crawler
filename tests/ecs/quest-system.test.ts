@@ -156,6 +156,25 @@ describe('questSystem', () => {
     expect(world.featureUnlocks.equipment).toBe(false);
   });
 
+  it('does not unlock Floor 1 equipment from non-merchant loot before the shopkeeper errand is even accepted', () => {
+    // Regression test: the merchant-charm gate must apply for the whole floor,
+    // not just once `FLOOR1_SHOP_QUEST_ID` is already in the quest log. Picking
+    // up unrelated equippable loot before ever talking to the shopkeeper must
+    // not unlock Gear early.
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    const bag = world.inventories.get(player)!;
+    const nonMerchantEquippable = getEquippableItemIds().find(
+      (itemId) => itemId !== SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+    expect(nonMerchantEquippable).toBeDefined();
+    addItem(bag, nonMerchantEquippable!, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(false);
+  });
+
   it('still unlocks equipment once the merchant charm is acquired', () => {
     const world = createTestWorld();
     world.floorId = 'floor1';
