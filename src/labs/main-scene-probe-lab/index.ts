@@ -1675,7 +1675,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getMagicMissileLightProbe: () => {
       const scene = getScene();
       const world = scene?.world;
-      const glowEid = world ? query(world.ecs, [Glowing, Position])[0] : undefined;
+      const glowingEntities = world ? query(world.ecs, [Glowing, Position]) : [];
+      const glowEid = glowingEntities[0];
       const field = scene?.lightField;
       if (glowEid === undefined || !world || !field) {
         return { inFlightCount: 0, emitterLight: null };
@@ -1689,7 +1690,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         Math.max(0, Math.floor(ftToPx(world.stores.position.y[glowEid] ?? 0) / field.stepPx)),
       );
       return {
-        inFlightCount: query(world.ecs, [Glowing, Position]).length,
+        inFlightCount: glowingEntities.length,
         emitterLight: field.values[y * field.widthCells + x] ?? null,
       };
     },
