@@ -28,7 +28,7 @@ import {
 import { AI_TYPE } from './enemyAISystem.js';
 
 /** Species offered for the initial starter pick (spec R5). Signature lines may seed in. */
-export const STARTER_OFFER_SIZE = 4;
+export const _STARTER_OFFER_SIZE = 4;
 
 const AI_TYPE_BY_PERSONA: Readonly<Record<StylePersonaAiType, number>> = {
   CHASE: AI_TYPE.CHASE,
@@ -39,7 +39,7 @@ const AI_TYPE_BY_PERSONA: Readonly<Record<StylePersonaAiType, number>> = {
 };
 
 /** Numeric `AI_TYPE` a species' fighting style drives (spec R4). */
-export function aiTypeForSpecies(species: PetSpeciesDef): number {
+export function _aiTypeForSpecies(species: PetSpeciesDef): number {
   return AI_TYPE_BY_PERSONA[STYLE_PERSONAS[species.fightingStyle].aiType];
 }
 
@@ -88,9 +88,9 @@ function pickDiverse(
  * Temperament"). The signature starter lines may seed into the pool, so they
  * are not excluded here.
  */
-export function generateStarterOffer(
+export function _generateStarterOffer(
   rng: SeededRandom,
-  count: number = STARTER_OFFER_SIZE,
+  count: number = _STARTER_OFFER_SIZE,
 ): readonly PetSpeciesDef[] {
   return pickDiverse(rng, loadPetSpecies(), count);
 }
@@ -104,7 +104,7 @@ export function generateStarterOffer(
  * since the offer pool is Trainer-authored content this module does not own,
  * and duplicate ids are collapsed so the same species is never offered twice.
  */
-export function generateTrainerPoachOffer(
+export function _generateTrainerPoachOffer(
   rng: SeededRandom,
   trainerSpeciesIds: readonly string[],
 ): readonly PetSpeciesDef[] {
@@ -136,7 +136,7 @@ export interface RecruitCompanionOptions {
  * Returns the new entity id, or `undefined` if the party has already locked
  * (spec R5) or `speciesId` is unknown.
  */
-export function recruitCompanion(
+export function _recruitCompanion(
   world: GameWorld,
   speciesId: string,
   options: RecruitCompanionOptions,
@@ -148,7 +148,7 @@ export function recruitCompanion(
     x: options.x,
     y: options.y,
     hp: options.hp,
-    aiType: aiTypeForSpecies(species),
+    aiType: _aiTypeForSpecies(species),
     speed: options.speed,
     aggroRange: options.aggroRange,
     attackRange: options.attackRange,

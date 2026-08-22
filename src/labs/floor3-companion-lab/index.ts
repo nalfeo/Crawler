@@ -20,7 +20,7 @@ import {
   companionLearnedAbilityIds,
   companionProgressionSystem,
   createGameWorld,
-  isPartyWiped,
+  _isPartyWiped,
   movementSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
@@ -103,7 +103,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
         knockedOut: state.companionKnockedOut ? 1 : 0,
       }),
     );
-    // The wipe predicate (`isPartyWiped`) only counts recruited party members,
+    // The wipe predicate (`_isPartyWiped`) only counts recruited party members,
     // i.e. Companions carrying a `PartySlot` (see `recruitPartyCompanion`).
     // Attach one here so the lab's "party wiped" panel actually reflects the
     // predicate instead of reading a permanent `false`.
@@ -239,7 +239,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(
         `  idleSinceFrame=${idleSince ?? '-'} engagementEndFrames=${tuning.floor3Companion.engagementEndFrames}`,
       );
-      lines.push(`  party wiped (isPartyWiped)=${isPartyWiped(world, TeamId.PLAYER)}`);
+      lines.push(`  party wiped (_isPartyWiped)=${_isPartyWiped(world, TeamId.PLAYER)}`);
     }
     panel.textContent = lines.join('\n');
   }

@@ -150,7 +150,7 @@ export function companionKOSystem(world: GameWorld): void {
  * future Floor 3 objective tick (slice 8) calls this each frame to detect a
  * wipe; it is exercised directly by tests until that consumer lands.
  */
-export function isPartyWiped(world: GameWorld, partyTeamId: number = TeamId.PLAYER): boolean {
+export function _isPartyWiped(world: GameWorld, partyTeamId: number = TeamId.PLAYER): boolean {
   const companions = query(world.ecs, [Enemy, Companion, PartySlot, Team]);
   let hasPartyCompanion = false;
   for (const eid of companions) {

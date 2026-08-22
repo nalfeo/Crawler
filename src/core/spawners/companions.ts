@@ -3,7 +3,7 @@
  *
  * `recruitPartyCompanion` spawns a new Companion entity for a team and
  * assigns it the next 0-based `PartySlot`, latching `PartySlot.locked` once
- * the party reaches `PARTY_MAX_SIZE` (starter pick + 5 poaches, spec R5). It
+ * the party reaches `_PARTY_MAX_SIZE` (starter pick + 5 poaches, spec R5). It
  * refuses to spawn anything once the party has already locked, so callers
  * (starter/poach offer flows) can call it unconditionally and check the
  * return value.
@@ -15,18 +15,18 @@ import { spawnBehaviorEnemy } from './combatants.js';
 import tuning from '../../shared/data/tuning.json';
 
 /** Starter pick + 5 Trainer poaches (spec R5), designer-tunable via `tuning.json`. */
-export const PARTY_MAX_SIZE: number = tuning.floor3Companion.partyMaxSize;
+export const _PARTY_MAX_SIZE: number = tuning.floor3Companion.partyMaxSize;
 
 /** Every recruited Companion currently on `ownerTeam`'s party roster. */
-export function partyMembers(world: GameWorld, ownerTeam: number): readonly number[] {
+export function _partyMembers(world: GameWorld, ownerTeam: number): readonly number[] {
   return Array.from(query(world.ecs, [Companion, PartySlot, Team])).filter(
     (eid) => (world.stores.team.id[eid] ?? -1) === ownerTeam,
   );
 }
 
-/** True once `ownerTeam`'s party has recruited to {@link PARTY_MAX_SIZE} and locked. */
-export function isPartyLocked(world: GameWorld, ownerTeam: number): boolean {
-  return partyMembers(world, ownerTeam).some(
+/** True once `ownerTeam`'s party has recruited to {@link _PARTY_MAX_SIZE} and locked. */
+export function _isPartyLocked(world: GameWorld, ownerTeam: number): boolean {
+  return _partyMembers(world, ownerTeam).some(
     (eid) => (world.stores.partySlot.locked[eid] ?? 0) === 1,
   );
 }
@@ -47,15 +47,15 @@ export interface RecruitPartyCompanionOptions {
 /**
  * Recruits a new party Companion (starter pick or Trainer poach). Returns the
  * new entity id, or `undefined` without spawning anything if the party has
- * already locked at {@link PARTY_MAX_SIZE}.
+ * already locked at {@link _PARTY_MAX_SIZE}.
  */
 export function recruitPartyCompanion(
   world: GameWorld,
   options: RecruitPartyCompanionOptions,
 ): number | undefined {
-  const members = partyMembers(world, options.ownerTeam);
+  const members = _partyMembers(world, options.ownerTeam);
   if (members.some((eid) => (world.stores.partySlot.locked[eid] ?? 0) === 1)) return undefined;
-  if (members.length >= PARTY_MAX_SIZE) return undefined; // defensive; lock should already be set
+  if (members.length >= _PARTY_MAX_SIZE) return undefined; // defensive; lock should already be set
 
   const eid = spawnBehaviorEnemy(
     world,
@@ -84,7 +84,7 @@ export function recruitPartyCompanion(
   addComponent(
     world.ecs,
     eid,
-    set(PartySlot, { slot, locked: slot + 1 >= PARTY_MAX_SIZE ? 1 : 0 }),
+    set(PartySlot, { slot, locked: slot + 1 >= _PARTY_MAX_SIZE ? 1 : 0 }),
   );
   return eid;
 }

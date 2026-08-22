@@ -6,7 +6,7 @@ import {
   Team,
   applyDamage,
   companionKOSystem,
-  isPartyWiped,
+  _isPartyWiped,
   spawnBehaviorEnemy,
   spawnPlayer,
   spawnRallyPoint,
@@ -159,10 +159,10 @@ describe('companionKOSystem', () => {
   });
 });
 
-describe('isPartyWiped', () => {
+describe('_isPartyWiped', () => {
   it('is false when the party has no Companions', () => {
     const world = createTestWorld();
-    expect(isPartyWiped(world)).toBe(false);
+    expect(_isPartyWiped(world)).toBe(false);
   });
 
   it('is false when at least one party Companion is still standing', () => {
@@ -171,7 +171,7 @@ describe('isPartyWiped', () => {
     spawnCompanion(world, 1, 0, TeamId.PLAYER);
     world.stores.companion.knockedOut[a] = 1;
 
-    expect(isPartyWiped(world)).toBe(false);
+    expect(_isPartyWiped(world)).toBe(false);
   });
 
   it('is true when every party Companion is knocked out simultaneously', () => {
@@ -181,7 +181,7 @@ describe('isPartyWiped', () => {
     world.stores.companion.knockedOut[a] = 1;
     world.stores.companion.knockedOut[b] = 1;
 
-    expect(isPartyWiped(world)).toBe(true);
+    expect(_isPartyWiped(world)).toBe(true);
   });
 
   it('ignores knocked-out Companions on other teams', () => {
@@ -189,7 +189,7 @@ describe('isPartyWiped', () => {
     const rival = spawnCompanion(world, 0, 0, TeamId.ENEMY);
     world.stores.companion.knockedOut[rival] = 1;
 
-    expect(isPartyWiped(world)).toBe(false);
+    expect(_isPartyWiped(world)).toBe(false);
   });
 
   it('ignores a knocked-out Companion on the party team that has no PartySlot (non-roster ally)', () => {
@@ -212,7 +212,7 @@ describe('isPartyWiped', () => {
       }),
     );
 
-    expect(isPartyWiped(world)).toBe(false);
+    expect(_isPartyWiped(world)).toBe(false);
   });
 });
 
