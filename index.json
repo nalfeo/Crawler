@@ -1,5 +1,39 @@
 [
   {
+    "commit": "c0f8e1639e2649ece7beededcf01c862721689aa",
+    "commitDate": "2026-08-22T17:26:59Z",
+    "commitSubject": "Wire approved stairs sprite into the floor-exit objective marker (#3245)",
+    "capturedAt": "2026-08-22T18:58:57.209Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32588897782",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/c0f8e1639e2649ece7beededcf01c862721689aa.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.28,
+        "totalWins": 42,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.95,
+      "gatePass": false,
+      "path": "by-sha/c0f8e1639e2649ece7beededcf01c862721689aa.fun-report.json"
+    }
+  },
+  {
     "commit": "bba4156d3d5876b4b49b1741ce9a7d8cf338a196",
     "commitDate": "2026-08-22T04:23:21Z",
     "commitSubject": "perf(ai): reuse BFS scratch buffers in goal-tile/NPC-anchor reachability lookups (#3232)",
