@@ -190,6 +190,8 @@ describe('settlement return routing (headless integration)', () => {
     // budget.
     const armedIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'armed');
     const cooldownIndex = requireSubsequenceIndex(fullCycleIndexes, fullCycle, 'cooldown');
+    expect(armedIndex).toBeGreaterThanOrEqual(0);
+    expect(cooldownIndex).toBeGreaterThan(armedIndex);
 
     const armedFrame = telemetry[armedIndex]!.frame;
     const cooldownFrame = telemetry[cooldownIndex]!.frame;
