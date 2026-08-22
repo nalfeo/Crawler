@@ -1,5 +1,39 @@
 [
   {
+    "commit": "3aace1f13dd7d2b1b5637c5ccfc146c472265226",
+    "commitDate": "2026-08-22T18:44:31Z",
+    "commitSubject": "Floor 3 Slice 5: Companion combat-XP attribution, leveling, evolution, and ability unlocks (#3243)",
+    "capturedAt": "2026-08-22T20:03:30.651Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32592546313",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/3aace1f13dd7d2b1b5637c5ccfc146c472265226.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.28,
+        "totalWins": 42,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.95,
+      "gatePass": false,
+      "path": "by-sha/3aace1f13dd7d2b1b5637c5ccfc146c472265226.fun-report.json"
+    }
+  },
+  {
     "commit": "c0f8e1639e2649ece7beededcf01c862721689aa",
     "commitDate": "2026-08-22T17:26:59Z",
     "commitSubject": "Wire approved stairs sprite into the floor-exit objective marker (#3245)",
