@@ -76,18 +76,29 @@
       "completed": true,
       "grader_model": "claude-sonnet-5",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "48be381f34f2c1852a5f571cdcd3caa5a225f155",
-      "findings": [],
+      "head_sha": "1447b22c3406359cd1223ed4f365a9c42616cbef",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/core/components.ts",
+          "detail": "Widening homing.targetEid from Uint16Array to Uint32Array is outside the Floor 1 AI task. It is harmless and validates, but should be tracked as automated-review follow-up rather than core task scope."
+        },
+        {
+          "severity": "minor",
+          "file": "src/core/damage-meta.ts",
+          "detail": "DecodedDamageMeta is a harmless type-only clarification in an unrelated damage metadata system, added as automated-review follow-up rather than core Floor 1 scope."
+        }
+      ],
       "criteria": {
         "correctness": 5,
-        "scope_discipline": 4,
+        "scope_discipline": 3,
         "test_coverage": 5,
         "policy_compliance": 5,
         "maintainability": 5
       },
       "verdict": "pass",
-      "findings_count": 0,
-      "notes": "Verified independently: full typecheck is clean, and all changed/new test files pass, including required-purchase-reserve, post-boss-farm-window, calm-farm-pull-boost, boss-defeat-drops, and cleared-safe-room coverage. Traced reserve-netting end-to-end through required-purchase-reserve, spell-broker-intent spendableGold, auto-progression executor, and floor1-goal-graph optionalPurchaseGold; merchant-weapon-intent does not need the same reserve because it is gated behind floor1-shop-quest-complete. Verified cleared-safe-room scoping invalidates ids across floor transitions and is honored by both isPointInSafeSpace and resolveNearestSafeAnchor. Boss death-position sampling mutates in place and freezes on the lethal frame. No Date.now()/Math.random(), no layer-boundary violations, and RoomRole remains deliberately unchanged. Scope is broad but proportionate to a declared 4-apple task bundling distinct diagnosed bugs, each implemented through narrow necessary hooks rather than refactors."
+      "findings_count": 2,
+      "notes": "The core Floor-1 work (required-purchase-reserve netted into both the executor and the goal-graph planner, the calm-farm-pull-boost cliff-edged at panic===0, the post-boss farm window shared by the BT provider and the headless driver, per-tick boss-death-position sampling with in-place mutation and an out-of-room fallback, and per-floor-scoped clearedSafeRoomIds/clearedSafeRoomMap honored by both isPointInSafeSpace and resolveNearestSafeAnchor) is correct, deterministic (no Date.now/Math.random, pure resolver functions), typechecks cleanly, and is covered by passing tests that would fail without the change. The two automated-review follow-up commits -- widening homing.targetEid from Uint16Array to Uint32Array and introducing DecodedDamageMeta -- are harmless and validated but outside the declared Floor-1 AI task, so scope_discipline is docked as minor non-blocking scope creep."
     }
   }
 }
