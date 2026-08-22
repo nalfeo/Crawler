@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
 import {
@@ -37,6 +37,8 @@ function parseArgs(argv: string[]): { root: string; output: string } {
 
 export async function run(argv = process.argv.slice(2)): Promise<void> {
   const options = parseArgs(argv);
+  const batchPath = resolve(options.output);
+  mkdirSync(dirname(batchPath), { recursive: true });
   const captures = discoverEquipmentCaptures(resolve(options.root));
   if (captures.length === 0) throw new Error(`no equipment captures found under ${options.root}`);
   const deployment = (
@@ -122,7 +124,6 @@ Correct that violation without inventing an alternative defect. Return the exact
     reviews,
     summary: summarizeArtDirectionReviews(reviews),
   };
-  const batchPath = resolve(options.output);
   writeFileSync(batchPath, `${JSON.stringify(batch, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ output: batchPath, summary: batch.summary }));
   if (batch.summary.failed > 0) process.exitCode = 1;

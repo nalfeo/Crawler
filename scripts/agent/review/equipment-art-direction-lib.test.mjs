@@ -10,6 +10,23 @@ import {
 } from './equipment-art-direction-lib.mjs';
 
 function response() {
+  const pillars = Object.fromEntries(
+    ART_DIRECTION_PILLARS.map((pillar) => [
+      pillar,
+      {
+        rating: 3,
+        strength: 'A clear strength.',
+        issue: 'A bounded issue.',
+        direction: 'Refine it.',
+      },
+    ]),
+  );
+  pillars.delta_storytelling = {
+    rating: 3,
+    strength: 'The current build snapshot is coherent.',
+    issue: 'No material concern visible.',
+    direction: 'Preserve the neutral no-candidate presentation.',
+  };
   return {
     scenario_specific_observations: [
       {
@@ -48,17 +65,7 @@ function response() {
       diagnosis: 'The doll has room for one more authored character cue.',
       design_direction: 'Use one subtle body silhouette behind the slot map.',
     },
-    pillars: Object.fromEntries(
-      ART_DIRECTION_PILLARS.map((pillar) => [
-        pillar,
-        {
-          rating: 3,
-          strength: 'A clear strength.',
-          issue: 'A bounded issue.',
-          direction: 'Refine it.',
-        },
-      ]),
-    ),
+    pillars,
   };
 }
 
@@ -127,7 +134,7 @@ test('rejects neutral-state counterfactuals and unsupported color-semantics clai
         scenario: neutralEquipmentScenario('v0.1.7'),
         modelDeployment: 'test',
       }),
-    /unsupported semantics to Bag color treatment/,
+    /Bag border or outline treatment/,
   );
 
   const unsupportedObservation = response();
@@ -153,7 +160,7 @@ test('rejects neutral-state counterfactuals and unsupported color-semantics clai
         scenario: neutralEquipmentScenario('v0.1.7'),
         modelDeployment: 'test',
       }),
-    /unsupported semantics to Bag color treatment/,
+    /Bag border or outline treatment/,
   );
 
   const unsupportedStrength = response();
@@ -167,6 +174,30 @@ test('rejects neutral-state counterfactuals and unsupported color-semantics clai
         modelDeployment: 'test',
       }),
     /unsupported color semantics or behavior/,
+  );
+
+  const deltaHeadline = response();
+  deltaHeadline.biggest_problem.pillar = 'delta_storytelling';
+  assert.throws(
+    () =>
+      normalizeArtDirectionReview(deltaHeadline, {
+        image: 'equipment.png',
+        scenario: neutralEquipmentScenario('v0.1.7'),
+        modelDeployment: 'test',
+      }),
+    /cannot headline/,
+  );
+
+  const invalidDeltaPillar = response();
+  invalidDeltaPillar.pillars.delta_storytelling.issue = 'A candidate preview is missing.';
+  assert.throws(
+    () =>
+      normalizeArtDirectionReview(invalidDeltaPillar, {
+        image: 'equipment.png',
+        scenario: neutralEquipmentScenario('v0.1.7'),
+        modelDeployment: 'test',
+      }),
+    /intentionally absent neutral-state interaction/,
   );
 });
 

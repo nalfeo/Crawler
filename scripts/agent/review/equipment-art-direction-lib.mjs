@@ -15,11 +15,13 @@ export const ART_DIRECTION_PILLARS = Object.freeze([
 
 const STOCK_PHRASES = /\b(?:generic|sterile|cramped|flat|busy)\b/i;
 const NEUTRAL_COUNTERFACTUAL =
-  /\b(?:lack|absence|missing|no)\b[^.]{0,80}\b(?:candidate|preview|delta|comparison|item changes?)\b/i;
+  /\b(?:lack|absence|missing)\b[^.]{0,80}\b(?:candidate|preview|delta|comparison|item changes?)\b|\b(?:candidate|preview|delta|comparison|item changes?)\b[^.]{0,80}\bmissing\b/i;
 const UNSUPPORTED_SEMANTIC_INFERENCE =
   /\b(?:tooltip|legend|universally understood|usable items?|rare items?|negative contributions?|red for reductions?|gray for neutral)\b/i;
-const UNSUPPORTED_BAG_BORDER_SEMANTICS =
+const UNSUPPORTED_BAG_BORDER_TREATMENT =
   /\b(?:green|blue)\b[^.]{0,120}\b(?:borders?|outlines?)\b[^.]{0,120}\b(?:semantic|contribut|equippable|usable|rare|meaning)\b/i;
+const BAG_BORDER_TREATMENT =
+  /\b(?:bag\b[^.]{0,120}\b(?:green|blue|colou?rs?|borders?|outlines?)|(?:green|blue|colou?rs?|borders?|outlines?)\b[^.]{0,120}\bbag)\b/i;
 
 export function neutralEquipmentScenario(version) {
   return {
@@ -153,8 +155,10 @@ function rejectUnsupportedClaim(value, name) {
   if (UNSUPPORTED_SEMANTIC_INFERENCE.test(value)) {
     throw new Error(`${name} infers unsupported color semantics or behavior`);
   }
-  if (UNSUPPORTED_BAG_BORDER_SEMANTICS.test(value)) {
-    throw new Error(`${name} assigns unsupported semantics to Bag color treatment`);
+  if (UNSUPPORTED_BAG_BORDER_TREATMENT.test(value) || BAG_BORDER_TREATMENT.test(value)) {
+    throw new Error(
+      `${name} mentions Bag border or outline treatment outside the scenario contract`,
+    );
   }
 }
 
@@ -173,11 +177,13 @@ function normalizeFinding(value, name) {
   if (!ART_DIRECTION_PILLARS.includes(finding.pillar)) throw new Error(`${name}.pillar is invalid`);
   if (!['low', 'medium', 'high'].includes(finding.severity))
     throw new Error(`${name}.severity is invalid`);
+  if (finding.pillar === 'delta_storytelling') {
+    throw new Error(`${name}.pillar cannot headline a neutral no-candidate review`);
+  }
   if (STOCK_PHRASES.test(finding.diagnosis) && finding.designDirection.length < 12) {
     throw new Error(`${name} uses a stock phrase without a concrete design direction`);
   }
-  rejectUnsupportedClaim(finding.diagnosis, `${name}.diagnosis`);
-  rejectUnsupportedClaim(finding.designDirection, `${name}.design_direction`);
+  rejectUnsupportedClaim(Object.values(finding).join(' '), name);
   return finding;
 }
 
@@ -230,6 +236,18 @@ export function normalizeArtDirectionReview(raw, { image, scenario, modelDeploym
     rejectUnsupportedClaim(strength, `pillars.${pillar}.strength`);
     rejectUnsupportedClaim(pillars[pillar].issue, `pillars.${pillar}.issue`);
     rejectUnsupportedClaim(pillars[pillar].direction, `pillars.${pillar}.direction`);
+    if (pillar === 'delta_storytelling') {
+      if (pillars[pillar].issue !== 'No material concern visible.') {
+        throw new Error(
+          'pillars.delta_storytelling.issue must preserve the neutral no-candidate state',
+        );
+      }
+      if (!/\bpreserv/i.test(pillars[pillar].direction)) {
+        throw new Error(
+          'pillars.delta_storytelling.direction must preserve the neutral no-candidate state',
+        );
+      }
+    }
   }
   const preservationWhy = requiredText(preservation.why_preserve, 'preservation_note.why_preserve');
   rejectUnsupportedClaim(preservationWhy, 'preservation_note.why_preserve');
