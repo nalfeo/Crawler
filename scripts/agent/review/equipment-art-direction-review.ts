@@ -67,6 +67,13 @@ export async function run(argv = process.argv.slice(2)): Promise<void> {
       let result: ReturnType<typeof normalizeArtDirectionReview> | undefined;
       let contractError = '';
       for (let attempt = 0; attempt <= CONTRACT_RETRY_LIMIT; attempt += 1) {
+        const retrySystemInstructions =
+          attempt === 0
+            ? prompt.system
+            : `${prompt.system}
+
+The prior response violated a hard output contract: ${contractError}
+Do not repeat or paraphrase that forbidden claim. If it was the only possible criticism for a pillar, report no material concern visible and preserve the current treatment.`;
         const retryInstruction =
           attempt === 0
             ? prompt.user
@@ -77,7 +84,7 @@ ${contractError}
 
 Correct that violation without inventing an alternative defect. Return the exact requested JSON shape only.`;
         const response = await provider.evaluate({
-          systemInstructions: prompt.system,
+          systemInstructions: retrySystemInstructions,
           userPrompt: retryInstruction,
           images: [{ label: `${capture.version} Equipment`, png: image }],
           temperature: 0,

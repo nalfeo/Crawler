@@ -199,6 +199,45 @@ test('rejects neutral-state counterfactuals and unsupported color-semantics clai
       }),
     /intentionally absent neutral-state interaction/,
   );
+
+  const negativeNeutralState = response();
+  negativeNeutralState.scenario_specific_observations[0].observation =
+    'There is no candidate preview, so comparison is impossible.';
+  assert.throws(
+    () =>
+      normalizeArtDirectionReview(negativeNeutralState, {
+        image: 'equipment.png',
+        scenario: neutralEquipmentScenario('v0.1.7'),
+        modelDeployment: 'test',
+      }),
+    /intentionally absent neutral-state interaction/,
+  );
+
+  const unsupportedObservationMetadata = response();
+  unsupportedObservationMetadata.scenario_specific_observations[0].element =
+    'Bag border colors that mean equippable items';
+  assert.throws(
+    () =>
+      normalizeArtDirectionReview(unsupportedObservationMetadata, {
+        image: 'equipment.png',
+        scenario: neutralEquipmentScenario('v0.1.7'),
+        modelDeployment: 'test',
+      }),
+    /Bag border or outline treatment/,
+  );
+
+  const unsupportedPreservationElement = response();
+  unsupportedPreservationElement.preservation_note.element =
+    'Bag green border meaning equippable items';
+  assert.throws(
+    () =>
+      normalizeArtDirectionReview(unsupportedPreservationElement, {
+        image: 'equipment.png',
+        scenario: neutralEquipmentScenario('v0.1.7'),
+        modelDeployment: 'test',
+      }),
+    /Bag border or outline treatment/,
+  );
 });
 
 test('summarizes repeated diagnoses without treating consistency as failure', () => {

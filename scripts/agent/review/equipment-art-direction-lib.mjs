@@ -16,6 +16,8 @@ export const ART_DIRECTION_PILLARS = Object.freeze([
 const STOCK_PHRASES = /\b(?:generic|sterile|cramped|flat|busy)\b/i;
 const NEUTRAL_COUNTERFACTUAL =
   /\b(?:lack|absence|missing)\b[^.]{0,80}\b(?:candidate|preview|delta|comparison|item changes?)\b|\b(?:candidate|preview|delta|comparison|item changes?)\b[^.]{0,80}\bmissing\b/i;
+const NEGATIVE_NEUTRAL_STATE =
+  /\bno\b[^.]{0,40}\b(?:candidate|preview|delta|comparison|item changes?)\b[^.]{0,120}\b(?:so|therefore|which|making|prevent|impossible|cannot|can't|harder|limit)\b/i;
 const UNSUPPORTED_SEMANTIC_INFERENCE =
   /\b(?:tooltip|legend|universally understood|usable items?|rare items?|negative contributions?|red for reductions?|gray for neutral)\b/i;
 const UNSUPPORTED_BAG_BORDER_TREATMENT =
@@ -149,7 +151,7 @@ function requiredText(value, name) {
 }
 
 function rejectUnsupportedClaim(value, name) {
-  if (NEUTRAL_COUNTERFACTUAL.test(value)) {
+  if (NEUTRAL_COUNTERFACTUAL.test(value) || NEGATIVE_NEUTRAL_STATE.test(value)) {
     throw new Error(`${name} criticizes an intentionally absent neutral-state interaction`);
   }
   if (UNSUPPORTED_SEMANTIC_INFERENCE.test(value)) {
@@ -198,8 +200,7 @@ export function normalizeArtDirectionReview(raw, { image, scenario, modelDeploym
   }
   const observations = raw.scenario_specific_observations.map((value, index) => {
     const observation = requiredText(value?.observation, `observation ${index}.observation`);
-    rejectUnsupportedClaim(observation, `observation ${index}.observation`);
-    return {
+    const normalizedObservation = {
       element: requiredText(value?.element, `observation ${index}.element`),
       property: requiredText(value?.property, `observation ${index}.property`),
       contrastOrPeer: requiredText(
@@ -208,6 +209,8 @@ export function normalizeArtDirectionReview(raw, { image, scenario, modelDeploym
       ),
       observation,
     };
+    rejectUnsupportedClaim(Object.values(normalizedObservation).join(' '), `observation ${index}`);
+    return normalizedObservation;
   });
   const preservation = raw.preservation_note;
   if (!preservation || typeof preservation !== 'object' || Array.isArray(preservation)) {
@@ -249,8 +252,9 @@ export function normalizeArtDirectionReview(raw, { image, scenario, modelDeploym
       }
     }
   }
+  const preservationElement = requiredText(preservation.element, 'preservation_note.element');
   const preservationWhy = requiredText(preservation.why_preserve, 'preservation_note.why_preserve');
-  rejectUnsupportedClaim(preservationWhy, 'preservation_note.why_preserve');
+  rejectUnsupportedClaim(`${preservationElement} ${preservationWhy}`, 'preservation_note');
   return {
     schemaVersion: 1,
     kind: 'equipment-art-direction-review',
@@ -260,7 +264,7 @@ export function normalizeArtDirectionReview(raw, { image, scenario, modelDeploym
     modelDeployment,
     scenarioSpecificObservations: observations,
     preservationNote: {
-      element: requiredText(preservation.element, 'preservation_note.element'),
+      element: preservationElement,
       whyPreserve: preservationWhy,
     },
     biggestProblem: normalizeFinding(raw.biggest_problem, 'biggest_problem'),
