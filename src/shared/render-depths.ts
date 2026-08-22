@@ -125,6 +125,10 @@ export const WORLD_VFX_DEPTH = {
    * the blood pool + corpse + footprints but still below entities so the puff is a
    * ground-plane effect, not something floating in front of the player. */
   playerTrail: -15,
+  /** Floor-exit objective marker ring. */
+  staircaseMarkerRing: -14,
+  /** Generated-art decal stamped above the floor-exit objective marker ring. */
+  staircaseMarkerSprite: -13,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Enemy death "pop" ring + scatter (EffectsVfx). */
