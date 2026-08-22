@@ -320,6 +320,7 @@ interface MainSceneInternals {
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
+  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -671,6 +672,17 @@ export interface DoorRenderSummary {
   readonly renderableOpenCount: number;
 }
 
+/**
+ * Render provenance for the floor-exit staircase objective marker, read from
+ * the last `renderStaircaseMarker()` pass in the REAL booted scene.
+ */
+export interface StaircaseMarkerRenderInfo {
+  /** True when the approved generated "the-stairs" art was stamped. */
+  readonly usesGeneratedArt: boolean;
+  /** Whether the marker (sprite or fallback circle) is currently visible. */
+  readonly visible: boolean;
+}
+
 export interface BloodSurfaceProbeSummary {
   readonly poolCount: number;
   readonly footprintCount: number;
@@ -857,6 +869,13 @@ export interface MainSceneProbeApi {
    * (`generated === renderable`, zero Kenney/colour, `crossOrientationCount === 0`).
    */
   getDoorRenderSummary(): DoorRenderSummary;
+  /**
+   * Whether the floor-exit staircase marker's last render pass stamped the
+   * approved generated stairs art (vs. the plain-circle fallback), plus
+   * current visibility. Used by an e2e to prove — in the REAL booted scene —
+   * that the objective marker renders real stairs art, not just a circle.
+   */
+  getStaircaseMarkerRenderInfo(): StaircaseMarkerRenderInfo;
   /**
    * Unlock (if needed) and claim `achievementId`'s reward through the REAL
    * `AchievementsUI.claimReward` code path — the same exact-once claim +
@@ -1888,6 +1907,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         crossOrientationCount: summary?.crossOrientationCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
         renderableOpenCount: summary?.renderableOpenCount ?? 0,
+      };
+    },
+
+    getStaircaseMarkerRenderInfo: (): StaircaseMarkerRenderInfo => {
+      const info = getScene()?.getStaircaseMarkerRenderInfo();
+      return {
+        usesGeneratedArt: info?.usesGeneratedArt ?? false,
+        visible: info?.visible ?? false,
       };
     },
 

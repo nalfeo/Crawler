@@ -29,6 +29,7 @@ import type {
   SafeAreaLayoutProbe,
   TerrainRenderSummary,
   DoorRenderSummary,
+  StaircaseMarkerRenderInfo,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
@@ -200,6 +201,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getDoorRenderSummary()),
+  getStaircaseMarkerRenderInfo: (page: Page): Promise<StaircaseMarkerRenderInfo> =>
+    page.evaluate(() => window.__mainSceneProbe!.getStaircaseMarkerRenderInfo()),
   claimAchievementReward: (
     page: Page,
     achievementId: string,
