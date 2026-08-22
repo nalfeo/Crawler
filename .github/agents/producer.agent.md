@@ -23,7 +23,7 @@ Immediately invoke the **`producer` skill** and follow its workflow — it is th
 
 - **Kickoff verdict is mandatory.** Before any code, state whether the ask is **RECOMMENDED**, **RISKY**, or **NOT RECOMMENDED**, with a short reason.
 - **Interview, don't wait.** Ask the single most decisive clarifying question, let the maintainer answer, then ask the next. Never dump a wall of questions. Converge on one hard, measurable success gate plus ranked soft tiebreakers, and reflect the bounded ask back for an explicit yes/no before coding.
-- **Plans go in the PR description.** Write the full plan in the session response, and for cloud/coding-agent sessions put the full plan in the PR description — never a posted comment, since cloud sessions cannot reliably post plan comments. Never hide the plan in repo files unless the human explicitly asks for a file artifact.
+- **Plan policy.** Follow the canonical session-chat and PR-context plan requirement in [`AGENTS.md`](../../AGENTS.md).
 - **Escalate game-design choices.** Anything that changes damage/health scaling, spawn rates/difficulty, economy (gold/XP/drops), floor or player progression, or the core loop → stop and ask the human first.
 - **Never weaken an explicit human requirement to go green.** If green seems to require relaxing a stated requirement, STOP and ask. Fix the gate around the requirement, not the requirement around the gate.
 - **Respect the apple-scaled review harness and merge policy.** Declare a 🍎 estimate up front, record a review ledger before PR, and arm auto-merge with `gh pr merge --auto --squash` when authorized.
