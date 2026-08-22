@@ -18,9 +18,29 @@
  * 2. **Rally Point** — a `RallyPoint` entity instantly revives the player's
  *    whole party whenever the player is within `rallyPointRangeFt`,
  *    regardless of engagement state.
+ *
+ * **Downed invariant (plan-review follow-up):** `knockedOut` is the source of
+ * truth for "is this Companion actually able to act/be finished off", not
+ * `Health.current` alone (which reads a nonzero 1, not 0, while KO'd). No
+ * system today reads Companion health for regen/targeting/counting purposes
+ * beyond `dropSystem` and `companionProgressionSystem` (both already handled
+ * above), so nothing is currently exploitable — but any future system that
+ * treats Companions as targetable/healable/countable (status-effect regen,
+ * floor objective counts, etc.) MUST check `Companion.knockedOut` before
+ * treating a Companion as fully "alive", the same way `companionAISystem`
+ * already does.
  */
 import { query } from 'bitecs';
-import { Companion, Enemy, Health, Player, Position, RallyPoint, Team } from '../components.js';
+import {
+  Companion,
+  Enemy,
+  Health,
+  Player,
+  PartySlot,
+  Position,
+  RallyPoint,
+  Team,
+} from '../components.js';
 import type { GameWorld } from '../world.js';
 import { TeamId } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
@@ -122,12 +142,16 @@ export function companionKOSystem(world: GameWorld): void {
 
 /**
  * Lose predicate (spec R5/R11): true when `partyTeamId` has at least one
- * Companion and every one of them is knocked out simultaneously. Pure read —
- * the future Floor 3 objective tick (slice 8) calls this each frame to detect
- * a wipe; it is exercised directly by tests until that consumer lands.
+ * recruited party Companion (i.e. one carrying a `PartySlot` — see
+ * `recruitPartyCompanion` in `spawners/companions.ts`) and every one of them
+ * is knocked out simultaneously. Scoped to `PartySlot` rather than "any
+ * Companion on this team" so a future non-roster ally sharing the same team
+ * (e.g. a temporary summon) can never trip a false wipe. Pure read — the
+ * future Floor 3 objective tick (slice 8) calls this each frame to detect a
+ * wipe; it is exercised directly by tests until that consumer lands.
  */
 export function isPartyWiped(world: GameWorld, partyTeamId: number = TeamId.PLAYER): boolean {
-  const companions = query(world.ecs, [Enemy, Companion, Team]);
+  const companions = query(world.ecs, [Enemy, Companion, PartySlot, Team]);
   let hasPartyCompanion = false;
   for (const eid of companions) {
     if ((world.stores.team.id[eid] ?? -1) !== partyTeamId) continue;

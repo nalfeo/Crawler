@@ -12,9 +12,10 @@ import { addComponent, query, set } from 'bitecs';
 import { Companion, PartySlot, Team } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { spawnBehaviorEnemy } from './combatants.js';
+import tuning from '../../shared/data/tuning.json';
 
-/** Starter pick + 5 Trainer poaches (spec R5). */
-export const PARTY_MAX_SIZE = 6;
+/** Starter pick + 5 Trainer poaches (spec R5), designer-tunable via `tuning.json`. */
+export const PARTY_MAX_SIZE: number = tuning.floor3Companion.partyMaxSize;
 
 /** Every recruited Companion currently on `ownerTeam`'s party roster. */
 export function partyMembers(world: GameWorld, ownerTeam: number): readonly number[] {

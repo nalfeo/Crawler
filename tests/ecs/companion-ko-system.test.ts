@@ -2,6 +2,7 @@ import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   Companion,
+  PartySlot,
   Team,
   companionKOSystem,
   isPartyWiped,
@@ -34,6 +35,7 @@ function spawnCompanion(
       knockedOut: 0,
     }),
   );
+  addComponent(world.ecs, eid, set(PartySlot, { slot: 0, locked: 0 }));
   return eid;
 }
 
@@ -183,6 +185,29 @@ describe('isPartyWiped', () => {
     const world = createTestWorld();
     const rival = spawnCompanion(world, 0, 0, TeamId.ENEMY);
     world.stores.companion.knockedOut[rival] = 1;
+
+    expect(isPartyWiped(world)).toBe(false);
+  });
+
+  it('ignores a knocked-out Companion on the party team that has no PartySlot (non-roster ally)', () => {
+    const world = createTestWorld();
+    // A hypothetical non-roster ally (e.g. a future temporary summon) shares
+    // the player's team id but never went through recruitPartyCompanion, so
+    // it never got a PartySlot — it must not be able to trip a false wipe.
+    const eid = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.CHASE, 0.1, 999, 0);
+    addComponent(world.ecs, eid, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(Companion, {
+        speciesToken: 1,
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 1,
+      }),
+    );
 
     expect(isPartyWiped(world)).toBe(false);
   });
