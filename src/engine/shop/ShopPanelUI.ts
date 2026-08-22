@@ -104,7 +104,7 @@ export type ShopPanelOfferView = QuartermasterOfferView | SettlementShopOfferVie
  * Project a panel offer view onto the shared shop-offer snapshot so the panel
  * resolves availability with exactly the same rules as the dialogue merchants.
  */
-export function toShopOffer(offer: ShopPanelOfferView): ShopOffer {
+function toShopOffer(offer: ShopPanelOfferView): ShopOffer {
   const blockedReason: ShopPurchaseBlockReason = toShopBlockReason(offer.purchaseFailure);
   return {
     id: offer.offerId,

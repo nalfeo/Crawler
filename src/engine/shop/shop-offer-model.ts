@@ -135,11 +135,6 @@ export function formatShopOfferLabel(offer: ShopOffer): string {
   return `${offer.name} (${formatShopPrice(offer.priceGold)})`;
 }
 
-/** Missing gold for an offer the player cannot afford (0 when affordable). */
-export function shopOfferGoldShortfall(offer: ShopOffer, playerGold: number): number {
-  return Math.max(0, offer.priceGold - playerGold);
-}
-
 /** Compact badge/button label for an availability state (buy buttons, chips). */
 export function describeShopOfferAvailability(availability: ShopOfferAvailability): string {
   switch (availability) {

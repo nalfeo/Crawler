@@ -1,15 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ModalPickerConfig } from '../../src/shared/modal-picker.js';
 import type { ModalPickerOpenHooks } from '../../src/engine/ModalPickerUI.js';
-import {
-  buildShopModalConfig,
-  openShopModal,
-  type ShopModalPicker,
-} from '../../src/engine/shop/shop-modal-presenter.js';
+import { openShopModal } from '../../src/engine/shop/shop-modal-presenter.js';
 import type { ShopOffer } from '../../src/engine/shop/shop-offer-model.js';
 
-interface FakePicker extends ShopModalPicker {
+interface FakePicker {
   readonly opened: Array<{ config: ModalPickerConfig; hooks?: ModalPickerOpenHooks }>;
+  isOpen(): boolean;
+  open(config: ModalPickerConfig, hooks?: ModalPickerOpenHooks): void;
   confirm(optionId: string): void;
   setOpen(open: boolean): void;
 }
@@ -61,19 +59,26 @@ const alreadyOwned: ShopOffer = {
 
 describe('shop modal presenter — config construction', () => {
   it('renders every merchant with the same label, wallet line and disabled rules', () => {
-    const config = buildShopModalConfig({
-      kind: 'spell-broker',
-      title: 'The Spell Broker',
-      body: 'Choose one.',
-      gold: 100,
-      offers: [tooExpensive, affordable, alreadyOwned],
-    });
+    const picker = createFakePicker();
 
-    expect(config.kind).toBe('spell-broker');
-    expect(config.subtitle).toBe('Gold: 100g');
-    expect(config.body).toBe('Choose one.');
-    expect(config.allowCancel).toBe(true);
-    expect(config.options).toEqual([
+    openShopModal(
+      picker,
+      {
+        kind: 'spell-broker',
+        title: 'The Spell Broker',
+        body: 'Choose one.',
+        gold: 100,
+        offers: [tooExpensive, affordable, alreadyOwned],
+      },
+      { onPurchase: vi.fn() },
+    );
+    const config = picker.opened[0]?.config;
+
+    expect(config?.kind).toBe('spell-broker');
+    expect(config?.subtitle).toBe('Gold: 100g');
+    expect(config?.body).toBe('Choose one.');
+    expect(config?.allowCancel).toBe(true);
+    expect(config?.options).toEqual([
       {
         id: 'firestorm',
         label: 'Firestorm (300g)',
@@ -91,26 +96,44 @@ describe('shop modal presenter — config construction', () => {
   });
 
   it('preselects the first purchasable offer rather than a blocked one', () => {
-    const config = buildShopModalConfig({
-      title: 'Wares',
-      gold: 100,
-      offers: [tooExpensive, affordable],
-    });
-    expect(config.initialSelectedId).toBe('spark');
+    const picker = createFakePicker();
+
+    openShopModal(
+      picker,
+      { title: 'Wares', gold: 100, offers: [tooExpensive, affordable] },
+      { onPurchase: vi.fn() },
+    );
+
+    expect(picker.opened[0]?.config.initialSelectedId).toBe('spark');
   });
 
   it('falls back to the first row when nothing is purchasable', () => {
-    const config = buildShopModalConfig({
-      title: 'Wares',
-      gold: 0,
-      offers: [tooExpensive, alreadyOwned],
-    });
-    expect(config.initialSelectedId).toBe('firestorm');
+    const picker = createFakePicker();
+
+    openShopModal(
+      picker,
+      {
+        title: 'Wares',
+        gold: 0,
+        offers: [tooExpensive, alreadyOwned],
+        whenNothingPurchasable: 'open-disabled',
+      },
+      { onPurchase: vi.fn() },
+    );
+
+    expect(picker.opened[0]?.config.initialSelectedId).toBe('firestorm');
   });
 
   it('omits the automation kind when the merchant does not declare one', () => {
-    const config = buildShopModalConfig({ title: 'Wares', gold: 10, offers: [affordable] });
-    expect(config.kind).toBeUndefined();
+    const picker = createFakePicker();
+
+    openShopModal(
+      picker,
+      { title: 'Wares', gold: 10, offers: [affordable] },
+      { onPurchase: vi.fn() },
+    );
+
+    expect(picker.opened[0]?.config.kind).toBeUndefined();
   });
 });
 

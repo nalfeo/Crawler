@@ -9,7 +9,6 @@ import {
   formatShopPrice,
   isShopOfferPurchasable,
   resolveShopOfferAvailability,
-  shopOfferGoldShortfall,
   toShopBlockReason,
   type ShopOffer,
 } from '../../src/engine/shop/shop-offer-model.js';
@@ -112,12 +111,6 @@ describe('shop offer model — shared wording', () => {
     expect(formatShopPrice(40)).toBe('40g');
     expect(formatShopGoldLine(120)).toBe('Gold: 120g');
     expect(formatShopOfferLabel(offer())).toBe('Lucky Charm (40g)');
-  });
-
-  it('computes the gold shortfall, clamped at zero', () => {
-    expect(shopOfferGoldShortfall(offer({ priceGold: 40 }), 25)).toBe(15);
-    expect(shopOfferGoldShortfall(offer({ priceGold: 40 }), 40)).toBe(0);
-    expect(shopOfferGoldShortfall(offer({ priceGold: 40 }), 90)).toBe(0);
   });
 
   it('gives every availability state a badge and a status sentence', () => {

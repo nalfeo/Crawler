@@ -10,8 +10,8 @@
  * every merchant reads identically and a new merchant is a description, not a
  * new UX surface.
  *
- * Pure config construction lives in `buildShopModalConfig` (framework-free and
- * unit-testable); `openShopModal` only adds the picker plumbing.
+ * Pure config construction is framework-free and unit-testable through
+ * `openShopModal`; the presenter only adds the picker plumbing.
  */
 import type { ModalPickerConfig, ModalPickerOption } from '../../shared/modal-picker.js';
 import type { ModalPickerOpenHooks } from '../ModalPickerUI.js';
@@ -59,14 +59,14 @@ export interface ShopModalHooks {
   readonly onDeclined?: (reason: ShopModalDeclineReason) => void;
 }
 
-/** Minimal `ModalPickerUI` surface the presenter needs (injectable for tests). */
-export interface ShopModalPicker {
+/** Minimal `ModalPickerUI` surface the presenter needs. */
+interface ShopModalPicker {
   isOpen(): boolean;
   open(config: ModalPickerConfig, hooks?: ModalPickerOpenHooks): void;
 }
 
 /** Build the picker config for a shop presentation. Pure. */
-export function buildShopModalConfig(presentation: ShopModalPresentation): ModalPickerConfig {
+function buildShopModalConfig(presentation: ShopModalPresentation): ModalPickerConfig {
   const options: ModalPickerOption[] = presentation.offers.map((offer) => {
     const availability = resolveShopOfferAvailability(offer);
     const status = describeShopOfferStatus(availability);
