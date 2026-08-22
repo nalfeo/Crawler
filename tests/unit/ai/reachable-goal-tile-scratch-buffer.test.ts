@@ -32,7 +32,9 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import type { TilePoint } from '../../../src/core/map/pathfinding.js';
 import type { FloorMap } from '../../../src/core/map/FloorMap.js';
+import type { GameWorld } from '../../../src/core/world.js';
 import { makeOpenFloorMap } from '../../helpers/map-fixtures.js';
+import { createTestWorld } from '../../helpers/world-factory.js';
 import { TilePresets } from '../../../src/shared/map-types.js';
 
 /** Typed view onto the private BFS internals so the test can drive them directly. */
@@ -49,7 +51,7 @@ type ReachableGoalInternals = {
 /** Typed view onto the sibling NPC-anchor BFS internals (same scratch pattern). */
 type NpcAnchorInternals = {
   resolveNpcInteractionAnchor(
-    world: { floorMap: FloorMap },
+    world: GameWorld,
     playerX: number,
     playerY: number,
     npcX: number,
@@ -65,6 +67,12 @@ function newAi(seed: number): ReachableGoalInternals {
 
 function newNpcAnchorAi(seed: number): NpcAnchorInternals {
   return new BehaviorTreeAI({ seed }) as unknown as NpcAnchorInternals;
+}
+
+function createWorldWithFloorMap(floorMap: FloorMap): GameWorld {
+  const world = createTestWorld({ seed: 42 });
+  world.floorMap = floorMap;
+  return world;
 }
 
 // `makeOpenFloorMap` is a 24x16 all-passable-floor map with an optional full
@@ -181,7 +189,7 @@ describe('BehaviorTreeAI.resolveNpcInteractionAnchor — scratch-buffer reuse', 
   it('reuses the same backing array across different NPCs (the perf claim)', () => {
     const floorMap = makeOpenFloorMap(WALL_X);
     const ai = newNpcAnchorAi(7);
-    const world = { floorMap };
+    const world = createWorldWithFloorMap(floorMap);
     // Two different npcEids so the per-NPC anchor cache cannot short-circuit
     // either call before it reaches the BFS.
     const npcAX = 9 * 4 + 2; // world-space x for tile x=9 (4ft tiles, DEFAULT_MAP_CONFIG)
@@ -213,7 +221,7 @@ describe('BehaviorTreeAI.resolveNpcInteractionAnchor — scratch-buffer reuse', 
     const npcATile = { x: 9, y: 5 };
     floorMap.tileMap.setFlags(npcATile.x, npcATile.y, TilePresets.WALL);
     const ai = newNpcAnchorAi(7);
-    const world = { floorMap };
+    const world = createWorldWithFloorMap(floorMap);
     const npcAX = npcATile.x * 4 + 2;
     const npcAY = npcATile.y * 4 + 2;
     const npcBX = 10 * 4 + 2;

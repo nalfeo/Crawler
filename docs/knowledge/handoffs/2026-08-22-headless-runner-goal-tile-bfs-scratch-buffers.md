@@ -194,7 +194,7 @@ perf:fingerprint -- --check files/perf-baseline.json` after the fix, full
   must resolve to a different real tile) to make the tests actually sensitive
   to this class of bug.
 - The same near-miss repeated for `resolveNpcInteractionAnchor`'s test: an
-  early correctness assertion (`anchorA` must not equal the raw NPC position）
+  early correctness assertion (`anchorA` must not equal the raw NPC position)
   was added on the assumption that a reachable approach tile always differs
   from the NPC's own tile — false in general, since the NPC's own tile can
   legitimately be the closest reachable tile. That assertion failed on the
