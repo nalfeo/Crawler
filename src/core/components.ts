@@ -530,14 +530,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     /**
      * Fail-closed damage-scaling metadata for delayed damage-bearing entities.
      * Numeric zero decodes to the fail-closed default in every field: origin=
-     * environment, affinity=unscaled, scaleWithPrimary=false, canCrit=false.
-     * See `core/damage-meta.ts` for the encode/decode helpers.
+     * environment, affinity=unscaled, scaleWithPrimary=false, canCrit=false,
+     * fromActiveAbility=false. See `core/damage-meta.ts` for the encode/decode
+     * helpers.
      */
     damageMeta: {
       origin: new Uint8Array(maxEntities),
       affinity: new Uint8Array(maxEntities),
       scaleWithPrimary: new Uint8Array(maxEntities),
       canCrit: new Uint8Array(maxEntities),
+      fromActiveAbility: new Uint8Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.

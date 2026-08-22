@@ -560,6 +560,53 @@ describe('spell skills', () => {
     },
   );
 
+  it('does not additionally apply the shared damage-breakpoint bonus to Magic Missile at 5/10/15/20 (that dimension is redirected into extra missiles)', () => {
+    // Per-hit damage should scale only by the continuous per-level bonus
+    // (1 + level * 0.02) for Magic Missile — NOT also jump by the shared
+    // SPELL_SKILL_BREAKPOINT_BONUSES step the moment level crosses 5, since
+    // those breakpoints already grant an extra missile instead (issue #3248,
+    // adversarial plan review concern #1).
+    function perHitDamageAtLevel(level: number): number {
+      const { world, player } = createSpellEffectWorld('magic-missile', level);
+      // Crit is RNG-gated (canCrit:true) and would make a fine-grained ratio
+      // assertion flaky across two independently-seeded casts — zero it out
+      // so per-hit damage is a pure function of the efficacy multiplier.
+      world.stores.effectiveStats.critChance[player] = 0;
+      const enemy = spawnEnemy(world, 4, 0, 1_000_000);
+      applyCatalogEffect(world, {
+        sourceType: 'ability',
+        sourceId: 'magic-missile:active:0',
+        effect: {
+          type: 'spell_magic_missile',
+          // Large base damage keeps per-hit `Math.round` quantization noise
+          // negligible relative to the ~2% linear-scaling delta being tested.
+          damage: { base: 10_000, scalesWithIntelligence: false },
+          rangeTiles: { base: 3, scalesWithIntelligence: false },
+        },
+        holderEid: player,
+      });
+      const missileCount = query(world.ecs, [Homing]).length;
+      for (let frame = 0; frame < 300; frame += 1) {
+        if (query(world.ecs, [Homing]).length === 0) break;
+        world.frameCount += 1;
+        homingSystem(world);
+        movementSystem(world);
+        const collision = collisionSystem(world);
+        damageSystem(world, collision);
+      }
+      const totalDamage = 1_000_000 - (world.stores.health.current[enemy] ?? 1_000_000);
+      return totalDamage / missileCount;
+    }
+
+    const perHitAtFour = perHitDamageAtLevel(4);
+    const perHitAtFive = perHitDamageAtLevel(5);
+    const expectedRatio = (1 + 5 * 0.02) / (1 + 4 * 0.02);
+    const withBreakpointRatio = (1 + 5 * 0.02 + 0.1) / (1 + 4 * 0.02);
+
+    expect(perHitAtFive / perHitAtFour).toBeCloseTo(expectedRatio, 2);
+    expect(perHitAtFive / perHitAtFour).not.toBeCloseTo(withBreakpointRatio, 2);
+  });
+
   it('emits one spell-use event only after successful player activation', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

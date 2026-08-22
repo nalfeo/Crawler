@@ -543,6 +543,10 @@ describe('abilitySystem', () => {
     const impacts = world.vfxEvents.filter((e) => e.kind === 'arcaneBoltImpact');
     expect(impacts).toHaveLength(1);
     expect(impacts[0]!.x).toBeCloseTo(2);
+    // Impact color is derived from the bolt's own Glowing light (not a
+    // hardcoded Homing-tag color), so a future non-Magic-Missile homing
+    // projectile with a different glow wouldn't inherit this purple tint.
+    expect(impacts[0]!.color).toBe(0xc084fc);
   });
 
   it('casts frost nova, damaging and slowing nearby enemies, and emits a frostNovaBurst VFX event', () => {

@@ -12,6 +12,34 @@ function normalizeAngleDelta(deltaRad: number): number {
   return normalized;
 }
 
+/** True if `eid` is a valid homing target: alive, exists, and an Enemy. */
+function isLivingEnemy(world: GameWorld, eid: number): boolean {
+  return (
+    entityExists(world.ecs, eid) &&
+    hasComponent(world.ecs, eid, Enemy) &&
+    hasComponent(world.ecs, eid, Health) &&
+    (world.stores.health.current[eid] ?? 0) > 0
+  );
+}
+
+/** Nearest living enemy to (x, y), or 0 if none remain. */
+function findNearestLivingEnemy(world: GameWorld, x: number, y: number): number {
+  const { position } = world.stores;
+  let bestEid = 0;
+  let bestDistSq = Infinity;
+  for (const enemyEid of query(world.ecs, [Enemy, Health, Position])) {
+    if (!isLivingEnemy(world, enemyEid)) continue;
+    const dx = (position.x[enemyEid] ?? 0) - x;
+    const dy = (position.y[enemyEid] ?? 0) - y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      bestEid = enemyEid;
+    }
+  }
+  return bestEid;
+}
+
 /**
  * Steers `Homing` projectiles (currently only Magic Missile — issue #3248)
  * toward their stored target, once their arc-out delay has elapsed.
@@ -22,6 +50,12 @@ function normalizeAngleDelta(deltaRad: number): number {
  * position by at most `turnRateRadPerFrame` per tick (never snapping), so the
  * missile visibly curves in rather than teleporting onto a beeline. Speed is
  * held constant so the curve is a pure rotation, not an acceleration.
+ *
+ * If the assigned target dies or is removed mid-flight, the missile
+ * retargets to the nearest remaining living enemy rather than continuing to
+ * fly its last heading forever (adversarial plan review, issue #3248). If no
+ * living enemy remains, it keeps its current heading until range/wall
+ * cleanup (`projectileCleanupSystem`) despawns it.
  *
  * Runs before `movementSystem` so the rotated velocity is what actually moves
  * the projectile this tick.
@@ -34,16 +68,14 @@ export function homingSystem(world: GameWorld): void {
     if (!entityExists(world.ecs, eid)) continue;
     if (world.frameCount < (homing.activateFrame[eid] ?? 0)) continue;
 
-    const targetEid = homing.targetEid[eid] ?? 0;
-    if (
-      !entityExists(world.ecs, targetEid) ||
-      !hasComponent(world.ecs, targetEid, Enemy) ||
-      !hasComponent(world.ecs, targetEid, Health) ||
-      (world.stores.health.current[targetEid] ?? 0) <= 0
-    ) {
-      // Target is gone or dead: keep flying the current heading. Range/wall
-      // cleanup (`projectileCleanupSystem`) despawns it eventually.
-      continue;
+    let targetEid = homing.targetEid[eid] ?? 0;
+    if (!isLivingEnemy(world, targetEid)) {
+      targetEid = findNearestLivingEnemy(world, position.x[eid] ?? 0, position.y[eid] ?? 0);
+      if (targetEid === 0) {
+        // No living enemy left anywhere: keep flying the current heading.
+        continue;
+      }
+      homing.targetEid[eid] = targetEid;
     }
 
     const x = position.x[eid] ?? 0;

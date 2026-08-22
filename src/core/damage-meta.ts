@@ -8,10 +8,11 @@
  *
  * Fail-closed: an untagged (or freshly-recycled) entity decodes to
  * `{ origin: 'environment', affinity: 'unscaled', scaleWithPrimary: false,
- * canCrit: false }` — numeric zero in every field — so it can never
- * accidentally scale or crit. `clearEntityStores` (see `spawners/entity-core.ts`)
- * already zeroes every typed array (including this one) on entity creation and
- * removal, so recycled EIDs can never leak a previous entity's metadata.
+ * canCrit: false, fromActiveAbility: false }` — numeric zero in every field —
+ * so it can never accidentally scale or crit. `clearEntityStores` (see
+ * `spawners/entity-core.ts`) already zeroes every typed array (including this
+ * one) on entity creation and removal, so recycled EIDs can never leak a
+ * previous entity's metadata.
  */
 
 import { addComponent, hasComponent } from 'bitecs';
@@ -28,6 +29,14 @@ export interface PersistedDamageMeta {
   readonly affinity: DamageAffinity;
   readonly scaleWithPrimary: boolean;
   readonly canCrit: boolean;
+  /**
+   * Mirrors `DamageOptions.fromActiveAbility` (see `apply-damage.ts`) through
+   * to the eventual delayed hit, so ability-vs-weapon damage attribution
+   * (e.g. `equipment-balance-harness.ts`) stays correct for projectile/AoE
+   * damage that resolves after cast time (Magic Missile — issue #3248).
+   * Optional/defaults to `false` so existing untagged callers are unaffected.
+   */
+  readonly fromActiveAbility?: boolean;
 }
 
 /** Fail-closed defaults — never scales, never crits, environment-sourced. */
@@ -36,6 +45,7 @@ export const FAIL_CLOSED_DAMAGE_META: PersistedDamageMeta = {
   affinity: 'unscaled',
   scaleWithPrimary: false,
   canCrit: false,
+  fromActiveAbility: false,
 };
 
 const ORIGIN_CODE: Readonly<Record<DamageOrigin, number>> = {
@@ -61,6 +71,7 @@ export function tagDamageMeta(world: GameWorld, eid: number, meta: PersistedDama
   world.stores.damageMeta.affinity[eid] = AFFINITY_CODE[meta.affinity];
   world.stores.damageMeta.scaleWithPrimary[eid] = meta.scaleWithPrimary ? 1 : 0;
   world.stores.damageMeta.canCrit[eid] = meta.canCrit ? 1 : 0;
+  world.stores.damageMeta.fromActiveAbility[eid] = meta.fromActiveAbility ? 1 : 0;
 }
 
 /**
@@ -75,6 +86,7 @@ export function readDamageMeta(world: GameWorld, eid: number): PersistedDamageMe
     affinity: AFFINITY_FROM_CODE[damageMeta.affinity[eid] ?? 0] ?? 'unscaled',
     scaleWithPrimary: (damageMeta.scaleWithPrimary[eid] ?? 0) !== 0,
     canCrit: (damageMeta.canCrit[eid] ?? 0) !== 0,
+    fromActiveAbility: (damageMeta.fromActiveAbility[eid] ?? 0) !== 0,
   };
 }
 

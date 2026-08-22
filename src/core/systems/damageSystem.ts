@@ -6,6 +6,7 @@ import {
   Enemy,
   EnemyProjectile,
   EffectiveStats,
+  Glowing,
   Health,
   Homing,
   Owner,
@@ -25,8 +26,8 @@ import { computeArmorReducedDamage } from '../combat-math.js';
 import { getMobAbilityMeleeDamageMultiplier } from '../mob-abilities/runtime.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 
-/** Themed impact tint for a Homing spell projectile's contact burst (Magic Missile). */
-const HOMING_IMPACT_COLOR = 0xc084fc;
+/** Fallback impact tint for a Homing projectile with no `Glowing` color of its own. */
+const HOMING_IMPACT_FALLBACK_COLOR = 0xc084fc;
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -185,14 +186,23 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       return;
     }
     if (hasComponent(world.ecs, projectile, Homing)) {
-      // Guided spell bolt (Magic Missile — issue #3248): the themed impact
-      // burst fires here, at its real point of contact, rather than at cast
-      // time, since the missile now travels before it actually connects.
+      // Guided spell bolt (currently only Magic Missile — issue #3248): the
+      // impact burst fires here, at its real point of contact, rather than
+      // at cast time, since the missile now travels before it actually
+      // connects. Color comes from the projectile's own `Glowing` light (so
+      // a future non-Magic-Missile homing spell isn't forced into Magic
+      // Missile's purple) and falls back to that purple only if the
+      // projectile somehow has no `Glowing` component.
+      const color = hasComponent(world.ecs, projectile, Glowing)
+        ? ((world.stores.glowing.colorR[projectile] ?? 0) << 16) |
+          ((world.stores.glowing.colorG[projectile] ?? 0) << 8) |
+          (world.stores.glowing.colorB[projectile] ?? 0)
+        : HOMING_IMPACT_FALLBACK_COLOR;
       pushVfxEvent(world.vfxEvents, {
         kind: 'arcaneBoltImpact',
         x: world.stores.position.x[enemy] ?? 0,
         y: world.stores.position.y[enemy] ?? 0,
-        color: HOMING_IMPACT_COLOR,
+        color,
       });
     }
     destroyEntity(world, projectile);

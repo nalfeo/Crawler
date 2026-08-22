@@ -40,14 +40,16 @@ const SPELL_SKILL_BREAKPOINT_BONUSES = [
 ] as const;
 
 /**
- * Magic Missile grants an extra bolt at each of these skill levels instead of
- * (in addition to) the shared damage-breakpoint bonus above — see issue
- * #3248 ("The 5/10/15/20 skill levels up grant extra missiles. The other
- * levels improve damage."). Every level still improves damage via the linear
- * per-level bonus and the shared breakpoint multiplier; these breakpoints
- * layer missile count on top for this spell specifically.
+ * Magic Missile grants an extra bolt at each of these skill levels INSTEAD OF
+ * the shared damage-breakpoint bonus below — see issue #3248 ("The 5/10/15/20
+ * skill levels up grant extra missiles. The other levels improve damage.").
+ * `getSpellSkillEfficacyMultiplier` special-cases 'magic-missile' to skip
+ * `SPELL_SKILL_BREAKPOINT_BONUSES` so a breakpoint level doesn't double-dip
+ * (extra missile AND the generic magnitude jump); the continuous per-level
+ * bonus still applies at every level, magic-missile included.
  */
 const MAGIC_MISSILE_EXTRA_MISSILE_LEVELS = [5, 10, 15, 20] as const;
+const MAGIC_MISSILE_SPELL_ID = 'magic-missile';
 
 /** Current level (0-20) of a holder's usage skill for the given spell, or 0. */
 function getSpellSkillLevel(world: GameWorld, holderEid: number, spellId: string): number {
@@ -68,15 +70,19 @@ function getSpellSkillEfficacyMultiplier(
   if (!getSpellSkillId(spellId)) return 1;
   const level = getSpellSkillLevel(world, holderEid, spellId);
   let multiplier = 1 + level * SPELL_SKILL_PER_LEVEL_BONUS;
-  for (const breakpoint of SPELL_SKILL_BREAKPOINT_BONUSES) {
-    if (level >= breakpoint.level) multiplier += breakpoint.bonus;
+  // Magic Missile redirects the breakpoint dimension into extra bolts instead
+  // of a magnitude jump (see MAGIC_MISSILE_EXTRA_MISSILE_LEVELS doc above).
+  if (spellId !== MAGIC_MISSILE_SPELL_ID) {
+    for (const breakpoint of SPELL_SKILL_BREAKPOINT_BONUSES) {
+      if (level >= breakpoint.level) multiplier += breakpoint.bonus;
+    }
   }
   return multiplier;
 }
 
 /** Number of bolts a Magic Missile cast fires: 1 base + 1 per breakpoint reached. */
 function getMagicMissileCount(world: GameWorld, holderEid: number): number {
-  const level = getSpellSkillLevel(world, holderEid, 'magic-missile');
+  const level = getSpellSkillLevel(world, holderEid, MAGIC_MISSILE_SPELL_ID);
   let count = 1;
   for (const breakpointLevel of MAGIC_MISSILE_EXTRA_MISSILE_LEVELS) {
     if (level >= breakpointLevel) count += 1;
@@ -160,6 +166,15 @@ function findNearestLivingEnemy(
  * Up to `maxCount` living enemies within range, nearest first. Used by Magic
  * Missile to fan its bolts across a cluster instead of dog-piling one target
  * when the skill's breakpoint levels grant extra missiles (issue #3248).
+ *
+ * Deliberate design choice (confirmed during adversarial plan review): the
+ * issue only requires "extra missiles," not a specific targeting model, and
+ * classic Magic Missile lore/expectation is multi-target auto-spread, which
+ * also gives the multi-bolt visual payoff room to read clearly against a
+ * cluster rather than always stacking on one enemy. Round-robins over this
+ * list (`targets[i % targets.length]`) when there are fewer enemies than
+ * missiles, so excess bolts still fire at the nearest available target(s)
+ * rather than going unused.
  */
 function findNearestLivingEnemies(
   world: GameWorld,
@@ -378,11 +393,16 @@ function castPulseShield(
  * for a human to track, per issue #3248. */
 const MAGIC_MISSILE_SPEED_FT_PER_FRAME = 1.1;
 /** Frames a missile flies its initial launch heading before homing kicks in —
- * the visible "arcs out from the player" phase. */
-const MAGIC_MISSILE_ARC_OUT_FRAMES = 10;
+ * the visible "arcs out from the player" phase. Deliberately short: at
+ * `MAGIC_MISSILE_SPEED_FT_PER_FRAME` this is a ~6.6ft off-axis excursion
+ * before the bolt starts curving back, small enough to reliably clear most
+ * doorway/corridor geometry while still reading as a visible arc rather than
+ * a beeline (adversarial plan review, issue #3248). */
+const MAGIC_MISSILE_ARC_OUT_FRAMES = 6;
 /** Per-missile launch-angle offset step (radians) used to fan multiple bolts
- * out from the caster instead of stacking them on one heading. */
-const MAGIC_MISSILE_ARC_STEP_RAD = 0.55;
+ * out from the caster instead of stacking them on one heading. Kept modest
+ * (~20°) for the same wall-clearance reason as the arc-out duration above. */
+const MAGIC_MISSILE_ARC_STEP_RAD = 0.35;
 /** Max heading change per frame once homing activates (~14°/frame @60fps —
  * curves smoothly onto the target rather than snapping). */
 const MAGIC_MISSILE_TURN_RATE_RAD_PER_FRAME = 0.24;
@@ -480,6 +500,7 @@ function castMagicMissile(
       affinity: SPELL_DAMAGE_OPTIONS.affinity,
       scaleWithPrimary: SPELL_DAMAGE_OPTIONS.scaleWithPrimary,
       canCrit: SPELL_DAMAGE_OPTIONS.canCrit,
+      fromActiveAbility: SPELL_DAMAGE_OPTIONS.fromActiveAbility,
     });
     // This is a spell cast, not a weapon-dispatched attack — explicitly
     // suppress the `attackerWeaponSkills` fallback so a missile's hit is never

@@ -113,6 +113,37 @@ describe('homingSystem', () => {
     expect(world.stores.velocity.x[bolt]).toBeCloseTo(1);
     expect(world.stores.velocity.y[bolt]).toBeCloseTo(0);
   });
+
+  it('retargets to the nearest surviving enemy when the assigned target dies mid-flight', () => {
+    const world = createTestWorld();
+    const deadTarget = spawnEnemy(world, 0, 100, 50);
+    world.stores.health.current[deadTarget] = 0;
+    // A second, living enemy elsewhere — closer to the bolt than a
+    // hypothetical straight-line continuation would otherwise reach.
+    const livingTarget = spawnEnemy(world, 50, 0, 50);
+    const bolt = spawnHomingBolt(world, 0, 0, 1, 0, deadTarget, {
+      activateFrame: 0,
+      turnRateRadPerFrame: 0.3,
+    });
+
+    world.frameCount = 0;
+    homingSystem(world);
+
+    expect(world.stores.homing.targetEid[bolt]).toBe(livingTarget);
+  });
+
+  it('keeps flying straight when the assigned target dies and no other enemy survives', () => {
+    const world = createTestWorld();
+    const deadTarget = spawnEnemy(world, 0, 100, 50);
+    world.stores.health.current[deadTarget] = 0;
+    const bolt = spawnHomingBolt(world, 0, 0, 1, 0, deadTarget, { activateFrame: 0 });
+
+    world.frameCount = 0;
+    homingSystem(world);
+
+    expect(world.stores.velocity.x[bolt]).toBeCloseTo(1);
+    expect(world.stores.velocity.y[bolt]).toBeCloseTo(0);
+  });
 });
 
 describe('Glowing component', () => {
