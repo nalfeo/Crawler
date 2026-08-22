@@ -296,6 +296,53 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
+  it('makes guardian enemies hold position once they reach guard distance', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 2.5, 0, 20, AI_TYPE.GUARDIAN, 0.25, 25, 0);
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
+  });
+
+  it('makes guardian enemies close from outside guard distance', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 8, 0, 20, AI_TYPE.GUARDIAN, 0.25, 25, 0);
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBeLessThan(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+  });
+
+  it('makes support enemies retreat without firing when inside their standoff band', () => {
+    const world = createTestWorld();
+    world.elapsedMs = 1_000;
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 4, 0, 20, AI_TYPE.SUPPORT, 0.25, 25, 12);
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBeGreaterThan(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    // Floor 3 slice 4 keeps SUPPORT movement-only until Kindler abilities land.
+    expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
+  });
+
+  it('keeps support enemies still while already at standoff range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.SUPPORT, 0.25, 25, 12);
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
+  });
+
   it('pathing ranged enemies strafe while inside attack range band', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
@@ -315,6 +362,95 @@ describe('enemyAISystem', () => {
     enemyAISystem(world);
 
     expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.0125);
+  });
+
+  it('pathing support enemies retreat from too-close targets without firing', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    world.elapsedMs = 1_000;
+    spawnPlayer(world, 7 * 4 + 2, 5 * 4 + 2);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      8 * 4 + 2,
+      5 * 4 + 2,
+      20,
+      AI_TYPE.SUPPORT,
+      0.25,
+      62.5,
+      12,
+      { persona: PATH_PERSONA.NAVIGATOR },
+    );
+    world.stores.enemyBehavior.aggroedPermanently[enemy] = 1;
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBeGreaterThan(0);
+    // Floor 3 slice 4 keeps SUPPORT movement-only until Kindler abilities land.
+    expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
+  });
+
+  it('keeps pathing guardian enemies holding position across many mapped frames without unstuck jiggle', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    world.elapsedMs = 1_000;
+    spawnPlayer(world, 5 * 4 + 2, 5 * 4 + 2);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      5 * 4 + 4,
+      5 * 4 + 2,
+      20,
+      AI_TYPE.GUARDIAN,
+      0.25,
+      62.5,
+      0,
+      { persona: PATH_PERSONA.NAVIGATOR },
+    );
+    world.stores.enemyBehavior.aggroedPermanently[enemy] = 1;
+    const startX = world.stores.position.x[enemy];
+    const startY = world.stores.position.y[enemy];
+
+    // STUCK_FRAMES_THRESHOLD is 15; run well past it so a regressed hold
+    // branch (one that lets stuckFrames accumulate) would trigger
+    // tryUnstuckVelocity and creep the Guardian off its guard distance.
+    runTicks(world, 30);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
+    expect(world.stores.position.x[enemy]).toBeCloseTo(startX ?? 0);
+    expect(world.stores.position.y[enemy]).toBeCloseTo(startY ?? 0);
+    expect(world.stores.enemyBehavior.stuckFrames[enemy]).toBe(0);
+  });
+
+  it('keeps pathing support enemies holding standoff across many mapped frames without unstuck jiggle', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    world.elapsedMs = 1_000;
+    spawnPlayer(world, 2 * 4 + 2, 5 * 4 + 2);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      2 * 4 + 2 + 10,
+      5 * 4 + 2,
+      20,
+      AI_TYPE.SUPPORT,
+      0.25,
+      62.5,
+      12,
+      { persona: PATH_PERSONA.NAVIGATOR },
+    );
+    world.stores.enemyBehavior.aggroedPermanently[enemy] = 1;
+    const startX = world.stores.position.x[enemy];
+    const startY = world.stores.position.y[enemy];
+
+    // Same regression as the Guardian mapped hold test above, but for the
+    // Support standoff band: a regressed hold would let the mob creep inward.
+    runTicks(world, 30);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
+    expect(world.stores.position.x[enemy]).toBeCloseTo(startX ?? 0);
+    expect(world.stores.position.y[enemy]).toBeCloseTo(startY ?? 0);
+    expect(world.stores.enemyBehavior.stuckFrames[enemy]).toBe(0);
+    expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
   });
 
   it('pathing ranged enemies retreat when too close to the player', () => {
