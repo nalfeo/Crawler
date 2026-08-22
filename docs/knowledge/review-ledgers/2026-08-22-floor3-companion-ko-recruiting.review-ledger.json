@@ -18,7 +18,9 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
+          "models": [
+            "claude-sonnet-4.6"
+          ],
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": true
@@ -26,13 +28,27 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.8",
+      "head_sha": "a025514d6786feeeebd7591556616414b5f00616",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/core/systems/companionKOSystem.ts",
+          "detail": "Avoidable per-frame allocation: engagedTeams and teamsWithKnockedOut create new Set instances every frame. Consider hoisting to module scope and .clear()-ing each frame if this system runs on the hot path at party scale."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Independent grade by gemini-3.1-pro-preview (uninvolved; distinct from plan_review gpt-5.4, code_review claude-sonnet-4.6, and implementer claude-opus-4.8). Graded the PR's TRUE NET change vs current main (files/companion-net-diff.patch), which excludes the Magic Missile #3249 code that a naive merge-base (base 8fdda66 is behind main) would show but that is byte-identical to origin/main (git diff origin/main a025514 -- src/core/systems/homingSystem.ts is empty) and thus contributes zero net change. The Floor 3 Companion KO state machine, Rally Point revival, and recruiting flow are correct and tightly scoped to slice 6; ECS ordering safely prevents dropSystem from reaping downed companions; recruiting handles affinity/style diversity and PartySlot locking. Test coverage and lab wiring are excellent. Only a minor per-frame Set-allocation note remains. Verdict: pass."
     }
   }
 }
