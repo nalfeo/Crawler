@@ -144,6 +144,9 @@ test('hardened prompt encodes every evidence and approval gate', () => {
 
   assert.doesNotMatch(ISSUE_BODY, /(?:exactly|at least) 3 (?:ideas|candidates)/i);
   assert.doesNotMatch(ISSUE_BODY, /10-seed (?:results|sweep).*(?:sufficient|acceptable)/i);
+  // No release baseline was provided to ISSUE_BODY, so the win-rate
+  // investigation ask must not fire — a healthy/unknown win rate never nags.
+  assert.doesNotMatch(ISSUE_BODY, /Win-rate investigation/);
   assert.deepEqual(ISSUE_LABELS, [
     'bug',
     'automation',
@@ -507,6 +510,22 @@ test('issue body stamps the resolved release baseline when one is available', ()
   assert.match(body, new RegExp(`commit \`${'c'.repeat(40)}\``));
   assert.match(body, /legs: floor1 300\/300, floor2 41\/150/);
   assert.match(body, /Re-resolve it before analysis/);
+  // floor2 is at 27.3%, below the 90% target, so the win-rate investigation
+  // ask must fire.
+  assert.match(body, /Win-rate investigation/);
+  assert.match(body, /`floor2` at 27\.3%/);
   // Without a resolved baseline the body still explains how to find it.
   assert.match(buildIssueBody(77), /Resolve it yourself from the `baselines` branch/);
+});
+
+test('issue body omits the win-rate investigation ask when the chain/floor2 legs are healthy', () => {
+  const healthyBaseline = {
+    commit: 'd'.repeat(40),
+    legs: {
+      'floor1-chain': { totalWins: 140, totalRuns: 150 },
+      floor2: { totalWins: 145, totalRuns: 150 },
+    },
+  };
+  const body = buildIssueBody(78, healthyBaseline);
+  assert.doesNotMatch(body, /Win-rate investigation/);
 });

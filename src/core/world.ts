@@ -547,8 +547,8 @@ export interface GameWorld {
    */
   vfxEvents: VfxEvent[];
   /**
-   * Cosmetic non-combat floating-text requests (skill level-ups today) emitted
-   * this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
+   * Cosmetic non-combat floating-text requests (skill level-ups, material gains)
+   * emitted this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
    * never read by game logic. Capped defensively by `pushFloaterEvent`.
    */
   floaterEvents: FloaterEvent[];
