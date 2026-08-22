@@ -63,6 +63,10 @@ interface FloatingText {
   risePx: number;
 }
 
+function assertNeverFloaterKind(kind: never): never {
+  throw new Error(`Unhandled floater event kind: ${String(kind)}`);
+}
+
 /** Resolved presentation for a floating combat indicator. */
 export interface FloaterStyle {
   label: string;
@@ -119,11 +123,17 @@ export function _abilityFloaterStyle(event: AbilityActivationEvent): FloaterStyl
  * the HUD skill tracker, so the "+1" is legible as progression rather than damage.
  */
 function noticeFloaterStyle(event: FloaterEvent): FloaterStyle {
-  return {
-    label: event.label,
-    color: SKILL_LEVEL_UP_COLOR,
-    fontSize: SKILL_LEVEL_UP_FONT_SIZE,
-  };
+  switch (event.kind) {
+    case 'skillLevelUp':
+    case 'materialGain':
+      return {
+        label: event.label,
+        color: SKILL_LEVEL_UP_COLOR,
+        fontSize: SKILL_LEVEL_UP_FONT_SIZE,
+      };
+    default:
+      return assertNeverFloaterKind(event.kind);
+  }
 }
 
 function skillFloaterOffsetPx(index: number): { x: number; y: number } {

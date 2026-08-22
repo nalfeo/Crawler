@@ -82,6 +82,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       if (def) {
         addItem(bag, def.id, 1);
         if (def.tags.includes('Materials')) {
+          // Anchor to the pickup world position (same origin rule as harvest nodes).
           pushFloaterEvent(world.floaterEvents, {
             kind: 'materialGain',
             x: world.stores.position.x[otherEid] ?? 0,
