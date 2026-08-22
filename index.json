@@ -1,5 +1,39 @@
 [
   {
+    "commit": "8fdda66312f65a8550b52500f5ff937e19fe55f6",
+    "commitDate": "2026-08-22T19:21:16Z",
+    "commitSubject": "Add +N material gain floaters for harvests and material drops (#3251)",
+    "capturedAt": "2026-08-22T20:44:32.355Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32594608687",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/8fdda66312f65a8550b52500f5ff937e19fe55f6.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.5133333333333333,
+        "totalWins": 77,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.9,
+      "gatePass": false,
+      "path": "by-sha/8fdda66312f65a8550b52500f5ff937e19fe55f6.fun-report.json"
+    }
+  },
+  {
     "commit": "3aace1f13dd7d2b1b5637c5ccfc146c472265226",
     "commitDate": "2026-08-22T18:44:31Z",
     "commitSubject": "Floor 3 Slice 5: Companion combat-XP attribution, leveling, evolution, and ability unlocks (#3243)",
