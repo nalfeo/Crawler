@@ -78,8 +78,9 @@ Two constraints shape everything:
   the **victory lap**, during which the player collects the boss chest and the act's
   leftover drops. This is what makes FR1.3's marks absolute and keeps the floor's duration
   a known constant.
-- **FR1.5** The clock is derived from accumulated integer deltas only. No wall-clock source
-  may be read.
+- **FR1.5** The clock is derived from accumulated fixed-timestep deltas only (the same
+  `GAME.DELTA_MS` accumulator that advances `world.elapsedMs`). No wall-clock source may be
+  read.
 
 ### R2 — Phase state machine
 
@@ -221,14 +222,13 @@ Two constraints shape everything:
 
 - **FR7.1** All Floor 4 randomness is drawn from **derived, isolated streams**, never from
   the shared combat `world.rng`. A stream is constructed as
-  `new SeededRandom(hashStreamKey(streamKey))` where
+  `new SeededRandom(hashStringToSeed(streamKey))` where
   `streamKey = [floorSeed, 'floor4', purposeLabel, ...indices].join(':')`, indices are
-  base-10 integers, and `hashStreamKey` is the repo's existing deterministic string-to-seed
-  hash (the same one used for named sub-seeds elsewhere; a new one is only introduced if
-  none exists, and then it lives in `src/shared/random.ts`). The delimiter is `:` and
-  labels may not contain it, so distinct purposes can never collide. The _architectural_
-  commitment (isolated per-purpose streams) is owned by ADR 0090; this recipe is the data
-  contract.
+  base-10 integers, and `hashStringToSeed` (`src/shared/random.ts`) is the repo's existing
+  deterministic string-to-seed hash (the same one used for named sub-seeds elsewhere). The
+  delimiter is `:` and labels may not contain it, so distinct purposes can never collide.
+  The _architectural_ commitment (isolated per-purpose streams) is owned by ADR 0090; this
+  recipe is the data contract.
 - **FR7.2** Canonical purpose labels and their indices:
 
   | Purpose             | Label      | Indices                   |
@@ -266,9 +266,13 @@ Two constraints shape everything:
   (FR5.6) so this value is never surfaced as a countdown; the act clock is the only clock
   the player sees. Reaching the backstop means a non-terminating bug or an abandoned run,
   and the floor must record that explicitly rather than treating it as an ordinary timeout.
+  This raw elapsed-time safeguard is distinct from FR8.5's active-time win budget.
 - **FR8.5** `implemented.mvp` stays `false` until the floor is finishable end-to-end and the
-  headless gate passes; `implemented.winBudgetMs` is set to the bounded worst case
-  (900,000 ms).
+  headless gate passes; `implemented.winBudgetMs` is set to **900,000 ms** as an
+  **active-time** budget (`gameTimeMs - safeRoomMs`, per `src/game/ai/floor-run-budget.ts`),
+  covering 600,000 ms combat (FR1.3) + 5 × 60,000 ms overtime (FR4.6). `COUNTDOWN` must run
+  while safe-room-tracked so it does not consume this budget; this field is not the raw
+  elapsed-time stall backstop from FR8.4.
 - **FR8.6** A `ScenarioDefinition` for `floor4` is registered in
   `src/game/scenarioDefinitions.ts` with its Director intro/victory/timeout lines, its
   pipeline slots, and its `onStairDescend`.
@@ -319,10 +323,12 @@ state and never writes it. This is the direct lesson of the phase-scattered logi
 `src/game/floor2Scenario.ts`: an objective tick that infers state from world contents is hard
 to test and easy to desynchronize.
 
-Per project rule #14 and ADR 0039, `arenaDirectorSystem` must be referenced from a real
-sim-side wiring site — `src/engine/sim/simulation-step.ts` **and**
-`src/game/ai/simulation-step.ts` — not only from the lab. Lab-only validation does not
-satisfy rule #9 for this system.
+Per project rule #14 and ADR 0039, `arenaDirectorSystem` must be wired through the canonical
+scenario/bootstrap path: `ScenarioDefinition` pipeline slots (`src/game/scenarioDefinitions.ts`)
+consumed by `createFloorMainSceneOptions` (`src/bootstrap/floor-main-scene-options.ts`) and
+threaded into both sim wrappers via `preSystems` / `postSystems` on
+`src/engine/sim/simulation-step.ts` and `src/game/ai/simulation-step.ts`. Lab-only validation
+does not satisfy rule #9 for this system.
 
 ### D2 — Floor 4 state lives in floor-scoped scenario state
 
@@ -372,7 +378,7 @@ Slices are ordered so that each one is independently observable in a **real** ar
 | #   | Slice                                      | Introduces / extends                                                                                                                                                                                                                                         | Done when                                                                                                                                         |
 | --- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Floor plumbing + arena map**             | `src/shared/data/floors/floor4.manifest.json`, `floor4` block in `src/shared/floor-manifest.ts`, registration in `src/shared/floor-registry.ts`, `src/game/floor4Scenario.ts` skeleton, `scenarioDefinitions.ts` entry, authored arena + Green Room geometry | The player can load Floor 4 in `npm run dev`, stand in an empty arena, and walk into the Green Room.                                              |
-| 2   | **Phase machine + clock + headless route** | `arenaDirectorSystem` (clock, phases, transitions), wiring into both sim steps, `RunStats` phase timeline, minimal headless traversal                                                                                                                        | A headless run walks the full `COUNTDOWN → … → VICTORY` timeline on an empty arena, and the timeline is byte-identical across two runs of a seed. |
+| 2   | **Phase machine + clock + headless route** | `arenaDirectorSystem` (clock, phases, transitions), wiring via scenario pipeline slots into both sim steps, `RunStats` phase timeline, minimal headless traversal                                                                                            | A headless run walks the full `COUNTDOWN → … → VICTORY` timeline on an empty arena, and the timeline is byte-identical across two runs of a seed. |
 | 3   | **Waves**                                  | `enemies.floor4.json`, per-act rosters/threat costs, precomputed wave manifests, release cursor, concurrency cap + debt, the cut, gate telegraphs                                                                                                            | Waves spawn on schedule in the real game; two runs of a seed produce identical manifests; the cap holds.                                          |
 | 4   | **Headliners**                             | Headliner pool data + graded seeded draw, act-slot encounters, entry/announcement, boss chest + appearance fee, overtime ramp and cap, `boss-abilities.floor4.json`                                                                                          | Five Headliners appear on the seeded card, drop their chests, and overtime terminates a stalled fight.                                            |
 | 5   | **Green Room**                             | Intermission transaction, sealed room, shop tables, per-visit stock roll + retire, purchase/sell/equip surfaces, exit/stairs                                                                                                                                 | Five visits occur, stock differs between visits and matches across two runs of a seed, and nothing hostile ever exists in the room.               |
@@ -386,23 +392,23 @@ Slices are ordered so that each one is independently observable in a **real** ar
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Unit**         | Phase transition table totality (every trigger from every phase); arena clock advances in combat (including the victory lap) and holds in overtime/intermission; an early kill does not shorten the act; wave manifest determinism for a fixed seed; budget curve maths; debt cap and phase-boundary clearing; debt release consumes no RNG; Headliner draw is without-replacement, grade-legal, and seed-stable; per-visit shop stock is seed-stable **and** path-independent (identical after divergent simulated combat); stock retires on exit and retires unpurchased generated instances; the affordability invariant (FR6.8) holds for every visit. |
 | **Integration**  | Full act cycle `WAVES → HEADLINE → INTERMISSION → WAVES`; the intermission transaction in order, including force-resolution of an uncollected chest at the act mark; zero hostile entities and zero player damage across a Green Room visit; the Green Room is `RoomRole.SAFE` and the generic floor-timer HUD is suppressed; the cut awards nothing; overtime terminates at its cap; stairs refuse to descend outside `INTERMISSION(5)`.                                                                                                                                                                                                                  |
-| **Headless**     | `tests/headless/floor4-arena-completion.test.ts` — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the worst-case combat bound).                                                                                                                                                                                                                                                                                                                                                                      |
+| **Headless**     | `tests/headless/floor4-arena-completion.test.ts` — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the configured raw elapsed-time stall backstop).                                                                                                                                                                                                                                                                                                                                                   |
 | **E2E / visual** | HUD surfaces from slice 6 via `tests/e2e/helpers/pixels.ts` and `ui-probe.ts`, deterministic only — never an LLM judge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **Lab**          | `src/labs/floor4-arena-lab/` for exploratory phase/wave/boss inspection. **Lab proof is never sufficient** for a wiring or behavior claim (project rule #9); each slice's "done when" names a real-pipeline artifact.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Constitutional Compliance
 
-| Principle                   | How Floor 4 complies                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lab-gated development       | `floor4-arena-lab` ships with the phase machine; every later slice extends it.                                                                          |
-| Deterministic CI only       | Every gate is a script with an exit code; the win-rate gate is a seed sweep, never a judge.                                                             |
-| Never `Math.random()`       | All draws come from derived `SeededRandom` streams (R7).                                                                                                |
-| Never `Date.now()`          | The arena clock accumulates per-tick deltas (FR1.5).                                                                                                    |
-| Every system sim-side wired | `arenaDirectorSystem` is wired into both `src/engine/sim/simulation-step.ts` and `src/game/ai/simulation-step.ts` in the slice that introduces it (D1). |
-| Observe before done         | Each slice's "done when" names the real game or headless artifact; HUD work adds deterministic visual checks.                                           |
-| Win-rate, not seeds         | Balance is gated on a seed sweep; per-seed tuning is prohibited (FR10.4).                                                                               |
-| ADR for 2+ system decisions | [ADR 0090](../../docs/knowledge/adr/0090-floor4-arena.md).                                                                                              |
-| Layer boundaries            | Clock/phase/wave-schedule logic is pure and core-eligible; spawning and scenario glue live in `src/game/`; HUD lives in `src/engine/`.                  |
+| Principle                   | How Floor 4 complies                                                                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lab-gated development       | `floor4-arena-lab` ships with the phase machine; every later slice extends it.                                                                                                      |
+| Deterministic CI only       | Every gate is a script with an exit code; the win-rate gate is a seed sweep, never a judge.                                                                                         |
+| Never `Math.random()`       | All draws come from derived `SeededRandom` streams (R7).                                                                                                                            |
+| Never `Date.now()`          | The arena clock accumulates per-tick deltas (FR1.5).                                                                                                                                |
+| Every system sim-side wired | `arenaDirectorSystem` is wired via scenario pipeline slots into both `src/engine/sim/simulation-step.ts` and `src/game/ai/simulation-step.ts` in the slice that introduces it (D1). |
+| Observe before done         | Each slice's "done when" names the real game or headless artifact; HUD work adds deterministic visual checks.                                                                       |
+| Win-rate, not seeds         | Balance is gated on a seed sweep; per-seed tuning is prohibited (FR10.4).                                                                                                           |
+| ADR for 2+ system decisions | [ADR 0090](../../docs/knowledge/adr/0090-floor4-arena.md).                                                                                                                          |
+| Layer boundaries            | Clock/phase/wave-schedule logic is pure and core-eligible; spawning and scenario glue live in `src/game/`; HUD lives in `src/engine/`.                                              |
 
 ## Docs / index updates required
 
