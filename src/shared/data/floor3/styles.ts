@@ -26,7 +26,7 @@ export type FightingStyle = (typeof FIGHTING_STYLES)[number];
 /**
  * AI persona key a style drives. `CHASE`/`RANGED`/`LEAPER` already exist in the
  * game-layer `AI_TYPE` enum; `GUARDIAN` and `SUPPORT` are the two net-new
- * personas added by the Floor 3 epic (spec slice 4). Kept as string keys here
+ * personas added by Floor 3 spec slice 4. Kept as string keys here
  * because `src/shared/` must not depend on `src/game/`.
  */
 export type StylePersonaAiType = 'CHASE' | 'RANGED' | 'LEAPER' | 'GUARDIAN' | 'SUPPORT';

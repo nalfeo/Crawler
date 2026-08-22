@@ -18,6 +18,7 @@ import {
   petSpeciesByAffinity,
   petSpeciesByStyle,
 } from '../../src/shared/data/floor3/species.js';
+import { AI_TYPE } from '../../src/game/index.js';
 
 describe('Floor 3 style personas', () => {
   it('defines a persona for all seven styles', () => {
@@ -39,6 +40,9 @@ describe('Floor 3 style personas', () => {
     expect(STYLE_PERSONAS.pouncer.aiType).toBe('LEAPER');
     expect(STYLE_PERSONAS.warden.aiType).toBe('GUARDIAN');
     expect(STYLE_PERSONAS.kindler.aiType).toBe('SUPPORT');
+    expect(AI_TYPE.LEAPER).toBe(3);
+    expect(AI_TYPE.GUARDIAN).toBe(4);
+    expect(AI_TYPE.SUPPORT).toBe(5);
     const netNew = FIGHTING_STYLES.map((s) => STYLE_PERSONAS[s].aiType).filter(
       (aiType) => aiType === 'GUARDIAN' || aiType === 'SUPPORT',
     );

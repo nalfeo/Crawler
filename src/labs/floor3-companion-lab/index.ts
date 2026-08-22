@@ -4,7 +4,8 @@
  * Text-mode sandbox for the team-tagged companion AI prepass:
  * - rival targeting (different team id),
  * - player follow outside leash,
- * - idle inside leash.
+ * - idle inside leash,
+ * - Guardian / Support persona movement through the real AI → movement pipeline.
  */
 import GUI from 'lil-gui';
 import { addComponent, set } from 'bitecs';
@@ -12,16 +13,27 @@ import {
   Companion,
   Team,
   createGameWorld,
+  movementSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
-import { AI_TYPE, companionAISystem, getCompanionAIDecision } from '../../game/index.js';
+import {
+  AI_TYPE,
+  companionAISystem,
+  enemyAISystem,
+  getCompanionAIDecision,
+} from '../../game/index.js';
 import { TeamId } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+type LabAiType = 'CHASE' | 'GUARDIAN' | 'SUPPORT';
+
+function labAiTypeValue(type: LabAiType): number {
+  return AI_TYPE[type];
+}
 
 function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -37,6 +49,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     rivalY: 0,
     spawnRival: true,
     companionKnockedOut: false,
+    aiType: 'GUARDIAN' as LabAiType,
   };
 
   const panel = document.createElement('pre');
@@ -57,10 +70,10 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       state.companionX,
       state.companionY,
       100,
-      AI_TYPE.CHASE,
+      labAiTypeValue(state.aiType),
       0.12,
       999,
-      0,
+      state.aiType === 'SUPPORT' ? 12 : 0,
     );
     addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
     addComponent(
@@ -111,11 +124,23 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
   }
 
   function render(): void {
+    const beforeX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
+    const beforeY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
     companionAISystem(world);
+    enemyAISystem(world);
+    movementSystem(world);
     const decision = companionEid >= 0 ? getCompanionAIDecision(world, companionEid) : undefined;
+    const afterX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
+    const afterY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
+    const velocityX = companionEid >= 0 ? (world.stores.velocity.x[companionEid] ?? 0) : 0;
+    const velocityY = companionEid >= 0 ? (world.stores.velocity.y[companionEid] ?? 0) : 0;
     const lines: string[] = [];
     lines.push(`player eid=${playerEid} @ (${state.playerX}, ${state.playerY})`);
-    lines.push(`companion eid=${companionEid} @ (${state.companionX}, ${state.companionY})`);
+    lines.push(`companion eid=${companionEid} ai=${state.aiType}`);
+    lines.push(
+      `companion step: (${beforeX.toFixed(2)}, ${beforeY.toFixed(2)}) -> (${afterX.toFixed(2)}, ${afterY.toFixed(2)})`,
+    );
+    lines.push(`velocity: (${velocityX.toFixed(3)}, ${velocityY.toFixed(3)})`);
     lines.push(
       state.spawnRival
         ? `rival eid=${rivalEid} @ (${state.rivalX}, ${state.rivalY})`
@@ -135,6 +160,10 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     panel.textContent = lines.join('\n');
   }
 
+  gui
+    .add(state, 'aiType', ['CHASE', 'GUARDIAN', 'SUPPORT'])
+    .name('Companion AI')
+    .onChange(() => reseed());
   gui
     .add(state, 'seed')
     .name('Seed')
@@ -182,6 +211,6 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
 registerLab('floor3-companion-lab', {
   category: 'Entities' as LabCategory,
   name: 'Floor 3 Companion Lab',
-  description: 'Floor 3 Slice 3 — inspect companion team-targeting, follow, and idle decisions.',
+  description: 'Floor 3 — inspect companion targeting plus Guardian/Support persona movement.',
   create: createFloor3CompanionLab,
 });
