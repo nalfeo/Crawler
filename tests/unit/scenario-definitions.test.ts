@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getScenarioDefinition,
   getScenarioPresentationContract,
+  type ScenarioDefinition,
+} from '../../src/game/scenarioDefinitions.js';
+import {
   selectScenarioCompletionVariant,
   type ScenarioCompletionVariant,
-  type ScenarioDefinition,
   type ScenarioRunOutcome,
-} from '../../src/game/scenarioDefinitions.js';
+} from '../../src/shared/scenario-presentation.js';
 import * as floorRegistry from '../../src/shared/floor-registry.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
@@ -14,6 +16,7 @@ import {
   confirmFloor1StairDescend,
   initializeFloor1Scenario,
 } from '../../src/game/floorScenario.js';
+import { confirmFloor2StairDescend } from '../../src/game/floor2Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -152,7 +155,11 @@ describe('scenario definitions', () => {
       const hidden = scenario.getStairMarkerState!(world);
       expect(hidden).not.toBeNull();
       expect(hidden!.visible).toBe(false);
-      expect(hidden!.locked).toBe(objective.staircaseLocked);
+      // `locked` must track the same flag the descend confirmation enforces,
+      // so the prompt is never offered for a descent that would be rejected.
+      expect(objective.staircaseUnlocked).toBe(false);
+      expect(hidden!.locked).toBe(true);
+      expect(confirmFloor1StairDescend(world, player)).toBe(false);
       expect(hidden!.radiusFt).toBe(objective.markerRadiusFt);
       expect(hidden!.positionFt).toEqual(objective.staircasePos);
       // No Phaser/pixel/color/depth values leak into the semantic contract.
@@ -163,6 +170,8 @@ describe('scenario definitions', () => {
       objective.staircaseSpawned = true;
       objective.staircaseDiscovered = false;
       expect(scenario.getStairMarkerState!(world)!.visible).toBe(true);
+      objective.staircaseUnlocked = true;
+      expect(scenario.getStairMarkerState!(world)!.locked).toBe(false);
       objective.staircaseDiscovered = true;
       expect(scenario.getStairMarkerState!(world)!.visible).toBe(false);
     });
@@ -170,7 +179,7 @@ describe('scenario definitions', () => {
     it('floor2 stair marker is null until the exit staircase position is set, uses the shared radius constant', () => {
       const scenario = getScenarioDefinition('floor2');
       const world = createTestWorld({ seed: 42 });
-      spawnPlayer(world, 0, 0);
+      const playerEid = spawnPlayer(world, 0, 0);
       world.floorExtendedState = {
         familyState: {
           presentFamilies: [asFamilyId('rats')],
@@ -187,7 +196,13 @@ describe('scenario definitions', () => {
       expect(marker!.positionFt).toEqual({ x: 12, y: 34 });
       expect(marker!.radiusFt).toBe(FLOOR2_STAIR_MARKER_RADIUS_FT);
       expect(marker!.visible).toBe(true);
-      expect(marker!.locked).toBe(false);
+      // Stairs spawned but not unlocked: `confirmFloor2StairDescend` would
+      // reject, so the contract must report the exit as locked.
+      expect(confirmFloor2StairDescend(world, playerEid)).toBe(false);
+      expect(marker!.locked).toBe(true);
+
+      world.floorExtendedState.familyState!.staircaseUnlocked = true;
+      expect(scenario.getStairMarkerState!(world)!.locked).toBe(false);
 
       world.floorExtendedState.familyState!.staircaseDiscovered = true;
       expect(scenario.getStairMarkerState!(world)!.visible).toBe(false);

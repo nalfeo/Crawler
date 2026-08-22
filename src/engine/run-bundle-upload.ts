@@ -196,7 +196,8 @@ export async function submitRunSurvey(
   return submitRunSurveyAppend(bundle.meta.runId, survey, options);
 }
 
-export async function submitRunSurveyAppend(
+/** Internal append-path helper; the exported entry point is {@link submitRunSurvey}. */
+async function submitRunSurveyAppend(
   runId: string | undefined,
   survey: PlaytestSurvey,
   options: { fetchImpl?: typeof fetch } = {},

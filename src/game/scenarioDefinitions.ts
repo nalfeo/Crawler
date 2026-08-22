@@ -4,6 +4,16 @@ import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../shared/constants.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
+import type {
+  ScenarioCompletionCopy,
+  ScenarioCompletionVariant,
+  ScenarioDirectorContract,
+  ScenarioDirectorMilestone,
+  ScenarioPresentationContract,
+  ScenarioRunOutcome,
+  ScenarioStairConfirmationCopy,
+  ScenarioStairMarkerState,
+} from '../shared/scenario-presentation.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
@@ -40,106 +50,6 @@ import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
-}
-
-/**
- * Canonical terminal outcome for a floor run. This is the SOLE signal every
- * completion-selection decision (which screen, which copy) is derived from —
- * `selectScenarioCompletionVariant` never re-derives victory/defeat from any
- * other world shape once a scenario reports an outcome here.
- */
-export type ScenarioRunOutcome = 'cleared_floor' | 'failed_timeout';
-
-/**
- * Which completion-screen branch a terminal outcome should present.
- * Structurally mirrors `FloorCompletionPresentation` in
- * `src/engine/scenes/main-game-scene-helpers.ts`; declared independently here
- * because `src/game/` must not import from `src/engine/` (layer boundary).
- */
-export type ScenarioCompletionVariant =
-  | 'failed_timeout'
-  | 'transition_to_next_floor'
-  | 'terminal_victory'
-  | 'terminal_complete';
-
-/** Presentation copy for a single completion-screen variant. */
-export interface ScenarioCompletionCopy {
-  readonly title: string;
-  readonly subtitle: string;
-  readonly body: string;
-}
-
-/**
- * Semantic (no Phaser/pixel/color/depth) presentation state for the
- * floor-exit stair marker and its proximity radius. Distances are expressed
- * in feet, matching every other gameplay distance in `src/shared` — the
- * renderer alone is responsible for converting to pixels and choosing colors.
- */
-export interface ScenarioStairMarkerState {
-  readonly positionFt: { readonly x: number; readonly y: number };
-  readonly radiusFt: number;
-  /** True while the marker should be shown (stairs spawned, not yet taken). */
-  readonly visible: boolean;
-  /** True while descent is barred; renderer chooses its own locked styling. */
-  readonly locked: boolean;
-  readonly label: string;
-}
-
-/** Presentation copy for the stair-descend confirmation prompt. */
-export interface ScenarioStairConfirmationCopy {
-  readonly title: string;
-  readonly subtitle: string;
-  readonly body: string;
-  readonly confirmLabel: string;
-  readonly confirmDescription: string;
-}
-
-/**
- * One ordered Director-commentary beat, shown strictly between `intro` and
- * `victory`/`timeout`. `id` is a stable identifier the presenting layer
- * latches "already shown" against (mirroring the engine's existing
- * `commentaryMilestones` flags) — ids must never be reordered or reused for a
- * different beat once shipped.
- */
-export interface ScenarioDirectorMilestone {
-  readonly id: string;
-  readonly copy: string;
-  readonly isReached: (world: GameWorld) => boolean;
-}
-
-export interface ScenarioDirectorContract {
-  readonly intro: string;
-  readonly victory: string;
-  readonly timeout?: string;
-  /**
-   * Ordered beats between `intro` and `victory`/`timeout`. Empty for
-   * scenarios with no mid-run commentary (Floor 2 today). Order is the
-   * presentation order; a milestone's own `isReached` predicate is what gates
-   * it, not array position alone.
-   */
-  readonly milestones: ReadonlyArray<ScenarioDirectorMilestone>;
-  /**
-   * True once the top-level `victory` beat should fire. Kept independent of
-   * `getRunOutcome`/`milestones` because "victory announced" is a genuine
-   * per-scenario judgment call that a single terminal-outcome signal cannot
-   * express: Floor 1 fires it exactly when the stairs are taken (the same
-   * instant as its terminal `cleared_floor` outcome), while Floor 2 fires it
-   * the moment the family feud resolves — well before the exit stairs are
-   * reached or `getRunOutcome` reports a terminal state. Required so the
-   * engine's ordered Director rule evaluator never has to branch on floor
-   * identity to know when to queue this copy.
-   */
-  readonly isVictoryReached: (world: GameWorld) => boolean;
-  /**
-   * True once the top-level `timeout` beat should fire. Optional because
-   * `timeout` copy itself is optional; only ever consulted when `timeout` is
-   * set. Kept independent of `getRunOutcome` for the same reason as
-   * {@link isVictoryReached}: Floor 1 gates it on the precise
-   * `failReason === 'stair_timeout'` signal, while Floor 2 gates it on the
-   * coarser `world.state === 'game_over'` (its only wired "run ended badly"
-   * signal today, shared with player death).
-   */
-  readonly isTimeoutReached?: (world: GameWorld) => boolean;
 }
 
 /**
@@ -207,7 +117,7 @@ export interface ScenarioDefinition {
   readonly nextFloorId?: string;
   /** Quest-giver callbacks this floor exposes to the scene. */
   readonly npcs?: ScenarioNpcCallbacks;
-  readonly director: ScenarioDirectorContract;
+  readonly director: ScenarioDirectorContract<GameWorld>;
   /**
    * Canonical terminal-outcome selector — pure with respect to `world`. This
    * is the SOLE input `selectScenarioCompletionVariant` consults to decide
@@ -235,30 +145,10 @@ export interface ScenarioDefinition {
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
 }
 
-/**
- * The normalized, engine-facing slice of a `ScenarioDefinition` — everything
- * a presentation layer needs to render Director commentary, the stair
- * marker/confirmation, and the completion screen, with zero floor-identity
- * branching. Bootstrap injects exactly this shape into `MainGameSceneOptions`
- * via a compile-time module augmentation (see
- * `src/bootstrap/floor-main-scene-options.ts`), keeping `src/engine/` free of
- * any import from `src/game/`.
- */
-export type ScenarioPresentationContract = Pick<
-  ScenarioDefinition,
-  | 'director'
-  | 'getRunOutcome'
-  | 'isTerminalRunVictory'
-  | 'getCompletionCopy'
-  | 'getStairMarkerState'
-  | 'stairConfirmation'
-  | 'nextFloorId'
->;
-
 /** Extracts the normalized presentation contract from a full scenario definition. */
 export function getScenarioPresentationContract(
   scenario: ScenarioDefinition,
-): ScenarioPresentationContract {
+): ScenarioPresentationContract<GameWorld> {
   return {
     director: scenario.director,
     getRunOutcome: scenario.getRunOutcome,
@@ -271,33 +161,8 @@ export function getScenarioPresentationContract(
 }
 
 /**
- * Chooses which completion-screen variant a terminal `outcome` should present
- * for a scenario. Pure function of `outcome` (the sole "is this run over, and
- * how" signal) plus two static-per-scenario fields that only disambiguate
- * *which* non-failure screen to show. No floor identity is ever consulted —
- * this generalizes to any number of registered scenarios.
- */
-export function selectScenarioCompletionVariant(
-  outcome: ScenarioRunOutcome | null,
-  scenario: Pick<ScenarioDefinition, 'nextFloorId' | 'isTerminalRunVictory'>,
-): ScenarioCompletionVariant | null {
-  if (outcome === null) {
-    return null;
-  }
-  if (outcome === 'failed_timeout') {
-    return 'failed_timeout';
-  }
-  if (scenario.nextFloorId) {
-    return 'transition_to_next_floor';
-  }
-  return scenario.isTerminalRunVictory ? 'terminal_victory' : 'terminal_complete';
-}
-
-/**
- * Floor 1's canonical terminal outcome. Mirrors the Floor-1 branch of the
- * engine's `getFloorRunOutcome` (`src/engine/scenes/main-game-scene-helpers.ts`)
- * exactly — this is the pure per-scenario replacement for that structural
- * dual-path check.
+ * Floor 1's canonical terminal outcome — the per-scenario replacement for the
+ * engine's former structural `runSummary`-vs-`familyState` dual-path check.
  */
 function getFloor1RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
   const outcome = world.floorScenario?.runSummary?.outcome;
@@ -305,8 +170,7 @@ function getFloor1RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
 }
 
 /**
- * Floor 2's canonical terminal outcome. Mirrors the Floor-2 branch of the
- * engine's `getFloorRunOutcome` exactly (Floor 2 has no wired timeout path at
+ * Floor 2's canonical terminal outcome (Floor 2 has no wired timeout path at
  * this layer today, so only `cleared_floor` is reachable).
  */
 function getFloor2RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
@@ -325,7 +189,12 @@ function getFloor1StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     positionFt: objective.staircasePos,
     radiusFt: objective.markerRadiusFt,
     visible: objective.staircaseSpawned && !objective.staircaseDiscovered,
-    locked: objective.staircaseLocked,
+    // `locked` must mean exactly "descent is barred", because the presentation
+    // layer withholds the descend prompt while it is set and
+    // `confirmFloor1StairDescend` rejects whenever `staircaseUnlocked` is
+    // false. Deriving it from that same flag keeps prompt and confirmation
+    // from ever disagreeing.
+    locked: !objective.staircaseUnlocked,
     label: '▼ STAIRS',
   };
 }
@@ -340,7 +209,9 @@ function getFloor2StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     positionFt: familyState.staircasePos,
     radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
     visible: familyState.staircaseSpawned === true && familyState.staircaseDiscovered !== true,
-    locked: false,
+    // Same rule as Floor 1: `confirmFloor2StairDescend` rejects unless
+    // `staircaseUnlocked` is set, so the prompt must be withheld until then.
+    locked: familyState.staircaseUnlocked !== true,
     label: '▼ EXIT',
   };
 }
@@ -428,7 +299,7 @@ const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
  * `intro`/`staircaseDiscovered`/`timeout`, which remain the top-level
  * `intro`/`victory`/`timeout` fields below).
  */
-const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone> = [
+const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = [
   {
     id: 'floor1-quest-accepted',
     copy: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -453,7 +324,7 @@ const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone> = [
   },
 ];
 
-const FLOOR_1_DIRECTOR: ScenarioDirectorContract = {
+const FLOOR_1_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   victory: 'Floor 1 cleared. Queueing the transfer to the next floor.',
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
@@ -463,7 +334,7 @@ const FLOOR_1_DIRECTOR: ScenarioDirectorContract = {
   isTimeoutReached: (world: GameWorld) => world.floorScenario?.failReason === 'stair_timeout',
 };
 
-const FLOOR_2_DIRECTOR: ScenarioDirectorContract = {
+const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   intro: 'Floor 2 opens: families feud over the Mother Lode. Pick allies or wipe the board.',
   victory: 'Floor 2 secured. The tunnel network is yours — roll stairs for the next segment.',
   timeout: 'The floor collapsed before a side won. The Director calls the run.',
