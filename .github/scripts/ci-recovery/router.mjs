@@ -8,6 +8,7 @@ import {
   isHealthyRecoveryOwner,
   OWNER_LABEL_PREFIX,
   ownerLabel,
+  parseDispositionCommand,
   parseStateComment,
   STATE_MARKER,
   WAITING_LABEL,
@@ -140,6 +141,10 @@ function parsePositiveInt(raw, fallback) {
   }
   const parsed = Number(normalized);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isQuarantineDispositionEvent(payload, eventName) {
+  return eventName === 'issue_comment' && parseDispositionCommand(payload.comment?.body) !== null;
 }
 
 // Like parsePositiveInt, but additionally:
@@ -402,9 +407,22 @@ export function isExternallyBlocked(pullRequest) {
   return (pullRequest.labels || []).some((label) => EXTERNALLY_BLOCKED_LABEL_NAMES.has(label.name));
 }
 
-function isFlagOffDispatchEligibleByBlockState(pullRequest) {
+function isFlagOffDispatchEligibleByBlockState(
+  pullRequest,
+  { allowQuarantineDisposition = false } = {},
+) {
   if (!pullRequest || !isDispatchBlocked(pullRequest)) return true;
   const labels = pullRequest.labels || [];
+  if (
+    allowQuarantineDisposition &&
+    labels.some((label) => label.name === 'ci-lifecycle-quarantined') &&
+    !labels.some(
+      (label) =>
+        label.name !== 'ci-lifecycle-quarantined' && DISPATCH_BLOCKED_LABEL_NAMES.has(label.name),
+    )
+  ) {
+    return true;
+  }
   const isWaiting = labels.some((label) => label.name === WAITING_LABEL);
   if (!isWaiting) return false;
   const hasOwner = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
@@ -513,6 +531,7 @@ export function collectPrNumbers({
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
+  const quarantineDispositionEvent = isQuarantineDispositionEvent(payload, eventName);
   // Map from PR number → PR object, populated for ALL events so that
   // label-based blocked/ci-fix checks can work on any flag-off path,
   // including direct events such as pull_request_target, issue_comment,
@@ -551,7 +570,9 @@ export function collectPrNumbers({
   // returns undefined and the filter passes it through as unblocked — safe
   // fallback behaviour that preserves the previous pass-through semantics.
   const unblocked = eligible.filter((number) =>
-    isFlagOffDispatchEligibleByBlockState(pullsByNumber.get(number)),
+    isFlagOffDispatchEligibleByBlockState(pullsByNumber.get(number), {
+      allowQuarantineDisposition: quarantineDispositionEvent && directNumbers.has(number),
+    }),
   );
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {

@@ -1129,6 +1129,45 @@ test('flag-off schedule: blocked PRs excluded even when directly triggered by ev
   assert.ok(numbers.includes(43), 'unblocked PR must be included');
 });
 
+test('flag-off issue comments route exact quarantine disposition commands without unblocking other labels', () => {
+  const quarantinedPr = {
+    number: 42,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'ci-lifecycle-quarantined' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const doublyBlockedPr = {
+    ...quarantinedPr,
+    number: 43,
+    labels: [{ name: 'ci-lifecycle-quarantined' }, { name: 'human-approval-required' }],
+  };
+
+  for (const body of ['KEEP', 'ABANDON']) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: { issue: { number: 42, pull_request: {} }, comment: { body } },
+        eventName: 'issue_comment',
+        repository: 'nalfeo/Crawler',
+        scheduledPulls: [quarantinedPr, doublyBlockedPr],
+      }),
+      [42],
+      `${body} must reach the quarantined PR's disposition handler`,
+    );
+  }
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { issue: { number: 42, pull_request: {} }, comment: { body: 'please KEEP' } },
+      eventName: 'issue_comment',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [quarantinedPr],
+    }),
+    [],
+    'non-command comments must not bypass quarantine',
+  );
+});
+
 test('flag-off schedule: genuine ci-recovery-waiting PR stays excluded even when directly triggered', () => {
   const waitingPr = {
     number: 55,
