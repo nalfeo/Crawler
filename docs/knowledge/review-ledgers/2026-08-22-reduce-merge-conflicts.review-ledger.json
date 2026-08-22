@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "reduce-merge-conflicts",
+  "task_title": "Reduce merge conflicts: derive the guard-test registry from the filesystem",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.6-sol). BLOCKING concern accepted and plan changed: docs/knowledge/agent-memory.jsonl is NOT append-only (scripts/agent/docs/promote-mistakes-lib.ts upserts/replaces the Session_Mistakes entity line; every recent commit is 1 insertion + 1 deletion), so the proposed .gitattributes merge=union entry would silently duplicate the entity and drop observations. Step 4 dropped entirely. Non-blocking concerns also adopted: (a) assert non-empty discovery PER ROOT, not just per group, and reject unknown group names, so a mistyped root cannot silently drop tests; (b) split pure discovery/exec functions into a lib with injected spawn and fixture roots so the runner test cannot recursively invoke the real guards group; (c) anchor discovery at the repo root derived from import.meta.url rather than CWD, emit relative POSIX paths, use process.execPath, and treat spawn errors and signal termination (code === null) as failure. Confirmed no better/smaller intervention: bare node --test globs exit 0 on zero matches, which would weaken the gate."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
