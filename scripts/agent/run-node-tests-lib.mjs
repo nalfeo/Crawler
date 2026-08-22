@@ -15,7 +15,7 @@
  */
 import { readdirSync } from 'node:fs';
 import process from 'node:process';
-import { posix, resolve, sep } from 'node:path';
+import { posix, relative, resolve, sep } from 'node:path';
 
 /** File suffix that marks a `node --test` suite. */
 const TEST_SUFFIX = '.test.mjs';
@@ -32,17 +32,21 @@ export const TEST_GROUPS = Object.freeze({
   'sweep-viewer': Object.freeze(['.github/extensions/sweep-results-viewer/tests']),
 });
 
-/** Repo-relative POSIX path for `absolutePath`, which must live under `root`. */
+/**
+ * Repo-relative POSIX path for `absolutePath`. `path.relative` (rather than a
+ * prefix slice) keeps this correct on Windows, where drive-letter casing and
+ * trailing separators would otherwise corrupt the result.
+ */
 function toRelativePosix(root, absolutePath) {
-  return absolutePath
-    .slice(root.length + 1)
-    .split(sep)
-    .join(posix.sep);
+  return relative(root, absolutePath).split(sep).join(posix.sep);
 }
 
 /**
  * Recursively collect `*.test.mjs` files under `absoluteDirectory`.
+ *
  * Throws when the directory is missing so a stale root cannot pass silently.
+ * Symlinks are not followed (`Dirent.isDirectory()` is false for them), which
+ * also makes the walk immune to symlink cycles.
  */
 function walk(repoRoot, absoluteDirectory, found) {
   for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
@@ -104,32 +108,81 @@ export function rootsForGroup(group) {
 }
 
 /**
+ * Conservative per-invocation argument budget, in characters.
+ *
+ * Windows caps a `CreateProcess` command line at 32,767 characters, so a
+ * single `node --test <every file>` call would eventually break there as the
+ * suite grows. Chunking keeps each invocation well inside that ceiling on
+ * every platform while preserving the discovered (sorted) order.
+ */
+export const ARG_BUDGET_CHARS = 16000;
+
+/** Split `files` into deterministic, budget-bounded batches. */
+export function chunkFiles(files, budget = ARG_BUDGET_CHARS) {
+  const chunks = [];
+  let current = [];
+  let length = 0;
+  for (const file of files) {
+    // +1 for the separating space the OS command line needs.
+    const cost = file.length + 1;
+    if (current.length > 0 && length + cost > budget) {
+      chunks.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(file);
+    length += cost;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+/**
  * Discover and run one group with `node --test`.
  *
  * `roots` is injectable so tests can exercise the runner against a fixture
  * tree instead of re-entering the repository's real groups.
  *
- * @returns {number} process exit code (0 only when the child exited 0)
+ * @returns {number} process exit code (0 only when every batch exited 0)
  */
-export function runGroup({ group, repoRoot, spawn, roots = rootsForGroup(group), log = () => {} }) {
+export function runGroup({
+  group,
+  repoRoot,
+  spawn,
+  roots = rootsForGroup(group),
+  argBudget = ARG_BUDGET_CHARS,
+  log = () => {},
+}) {
   const files = discoverTests(repoRoot, roots);
-  log(`node --test: ${files.length} file(s) discovered for group "${group}"`);
+  const batches = chunkFiles(files, argBudget);
+  log(
+    `node --test: ${files.length} file(s) discovered for group "${group}" ` +
+      `in ${batches.length} batch(es)`,
+  );
 
-  const result = spawn(process.execPath, ['--test', ...files], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    shell: false,
-  });
+  let exitCode = 0;
+  for (const batch of batches) {
+    const result = spawn(process.execPath, ['--test', ...batch], {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      shell: false,
+    });
 
-  // Fail closed on every non-clean outcome: a spawn error or a signal kill
-  // leaves `status` null, which must never be read as success.
-  if (result.error) {
-    log(`node --test could not be started: ${result.error.message}`);
-    return 1;
+    // Fail closed on every non-clean outcome: a spawn error or a signal kill
+    // leaves `status` null, which must never be read as success.
+    if (result.error) {
+      log(`node --test could not be started: ${result.error.message}`);
+      exitCode = exitCode || 1;
+      continue;
+    }
+    if (typeof result.status !== 'number') {
+      log(`node --test terminated by signal ${result.signal ?? 'unknown'}`);
+      exitCode = exitCode || 1;
+      continue;
+    }
+    // Run every batch so one failing suite does not hide later failures, but
+    // keep the first non-zero code as the group's result.
+    if (result.status !== 0) exitCode = exitCode || result.status;
   }
-  if (typeof result.status !== 'number') {
-    log(`node --test terminated by signal ${result.signal ?? 'unknown'}`);
-    return 1;
-  }
-  return result.status;
+  return exitCode;
 }

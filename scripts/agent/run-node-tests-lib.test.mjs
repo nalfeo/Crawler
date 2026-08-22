@@ -6,7 +6,14 @@ import process from 'node:process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { TEST_GROUPS, discoverTests, rootsForGroup, runGroup } from './run-node-tests-lib.mjs';
+import {
+  ARG_BUDGET_CHARS,
+  TEST_GROUPS,
+  chunkFiles,
+  discoverTests,
+  rootsForGroup,
+  runGroup,
+} from './run-node-tests-lib.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -123,6 +130,55 @@ test('runGroup fails when the child cannot start or dies from a signal', () => {
       }),
       1,
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('chunkFiles keeps batches inside the argument budget without reordering', () => {
+  const files = Array.from(
+    { length: 50 },
+    (_, index) => `dir/file-${String(index).padStart(3, '0')}.test.mjs`,
+  );
+  const chunks = chunkFiles(files, 100);
+  assert.deepEqual(chunks.flat(), files, 'chunking must preserve discovery order');
+  for (const chunk of chunks) {
+    assert.ok(chunk.length > 0);
+    assert.ok(chunk.reduce((sum, file) => sum + file.length + 1, 0) <= 100);
+  }
+  // A single file longer than the whole budget still gets its own batch rather
+  // than being silently dropped.
+  assert.deepEqual(chunkFiles(['x'.repeat(200)], 100), [['x'.repeat(200)]]);
+  assert.deepEqual(chunkFiles([], 100), []);
+});
+
+test('the repository guards group stays inside the argument budget per batch', () => {
+  for (const chunk of chunkFiles(discoverTests(REPO_ROOT, TEST_GROUPS.guards))) {
+    assert.ok(chunk.reduce((sum, file) => sum + file.length + 1, 0) <= ARG_BUDGET_CHARS);
+  }
+});
+
+test('runGroup runs every batch and reports the first failing exit code', () => {
+  const root = withFixture([
+    path.join('a', 'one.test.mjs'),
+    path.join('a', 'two.test.mjs'),
+    path.join('a', 'three.test.mjs'),
+  ]);
+  try {
+    const statuses = [0, 4, 5];
+    let calls = 0;
+    const code = runGroup({
+      group: 'guards',
+      roots: ['a'],
+      repoRoot: root,
+      // A one-character budget forces exactly one batch per discovered file.
+      argBudget: 1,
+      spawn: () => ({ status: statuses[calls++], signal: null }),
+    });
+    // Every batch runs (later failures are not hidden) and the first non-zero
+    // status is the group's result.
+    assert.equal(calls, 3);
+    assert.equal(code, 4);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
