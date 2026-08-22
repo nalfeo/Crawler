@@ -1,5 +1,39 @@
 [
   {
+    "commit": "caec7771b4d08df2a521c970e191f696d6f04660",
+    "commitDate": "2026-08-22T22:03:14Z",
+    "commitSubject": "Restore enemyAISystem coverage gate with Floor 2 den-boss and line-of-sight aggro tests (#3284)",
+    "capturedAt": "2026-08-22T23:48:47.674Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32602524001",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/caec7771b4d08df2a521c970e191f696d6f04660.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.56,
+        "totalWins": 84,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36,
+      "gatePass": false,
+      "path": "by-sha/caec7771b4d08df2a521c970e191f696d6f04660.fun-report.json"
+    }
+  },
+  {
     "commit": "d5c1b6ab1178d641cf86923586bdd15cc5de7a9d",
     "commitDate": "2026-08-22T21:17:45Z",
     "commitSubject": "Design Floor 4: \"The Main Event\" arena — content bible, system spec, and ADR 0090 (#3273)",
