@@ -125,8 +125,10 @@ function requireSubsequenceIndex(
 
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
-    // Seed 2 reliably reaches the full successful return cycle within this
-    // bounded happy-path window; seed 88 now repeatedly aborts on organic danger.
+    // Fixture seed, not a balance sample: scanning upward from seed 1 found
+    // seed 2 as the first low seed whose initial settlement-return statuses
+    // exactly match this bounded happy-path cycle. Seed 88 now repeatedly
+    // aborts on organic danger before the successful-cycle assertion window.
     const seed = 2;
     const events: SimEvent[] = [];
     let seeded = false;
