@@ -153,7 +153,13 @@ describe('settlement return routing (headless integration)', () => {
     // resuming -> cooldown (service latch recorded).
     const fullCycle = ['idle', 'armed', 'traveling', 'arrived', 'resuming', 'cooldown'];
     const fullCycleIndexes = findOrderedSubsequenceIndexes(statuses, fullCycle);
-    expect(fullCycleIndexes.length).toBe(fullCycle.length);
+    if (fullCycleIndexes.length !== fullCycle.length) {
+      throw new Error(
+        `Expected settlement-return full cycle ${fullCycle.join(' -> ')}, observed ${statuses.join(
+          ' -> ',
+        )}`,
+      );
+    }
 
     expect(['victory', 'timeout']).toContain(stats.outcome);
 
@@ -162,8 +168,8 @@ describe('settlement return routing (headless integration)', () => {
     // between arming and settling into cooldown (round trip + planner
     // execution) against a generous ceiling far below the run's frame
     // budget.
-    const armedIndex = fullCycleIndexes[1]!;
-    const cooldownIndex = fullCycleIndexes[5]!;
+    const armedIndex = fullCycleIndexes[1] as number;
+    const cooldownIndex = fullCycleIndexes[5] as number;
 
     const armedFrame = telemetry[armedIndex]!.frame;
     const cooldownFrame = telemetry[cooldownIndex]!.frame;
