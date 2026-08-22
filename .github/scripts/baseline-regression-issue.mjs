@@ -121,9 +121,17 @@ export async function fileBaselineRegressionIssue({
     return outcomes;
   }
 
-  const markerMatches = openIssues.filter((issue) => String(issue.body || '').includes(marker));
+  // A stable (non-commit-scoped) marker is long-lived, and the release workflow
+  // is only serialized per head SHA, so two overlapping releases can each see
+  // "no open marker match" and each create one. Converge deterministically on
+  // the lowest-numbered (oldest) match and close the rest as duplicates, so the
+  // race self-heals on the next release instead of leaving parallel issues.
+  const markerMatches = openIssues
+    .filter((issue) => String(issue.body || '').includes(marker))
+    .sort((left, right) => Number(left.number) - Number(right.number));
   const existingOpen = markerMatches[0];
   const existing = existingOpen;
+  const superseded = markerMatches.slice(1);
 
   let issue;
   let action;
@@ -157,6 +165,15 @@ export async function fileBaselineRegressionIssue({
 
   if (!issue?.number || !issue?.node_id) {
     throw new Error(`GitHub ${action} response did not include an issue number and node_id`);
+  }
+  for (const duplicate of superseded) {
+    await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${duplicate.number}`, {
+      method: 'PATCH',
+      body: {
+        state: 'closed',
+        body: `${String(duplicate.body || '')}\n\nSuperseded by #${issue.number}, which now tracks this release-sweep finding.`,
+      },
+    });
   }
   const intake = await intakeFn({
     graphql: graphqlFn,
