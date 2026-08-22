@@ -280,37 +280,53 @@ interface CollisionFingerprint {
 //   seed  13: 3/183.00/5/0  →  3/141.60/5/0
 //   seed  42: 3/199.30/10/2 →  3/192.45/5/6
 //   seed 137: 3/152.72/5/0  →  2/113.68/0/0
+//
+// 2026-08-22 re-baseline — Floor 1 AI: calm-clock farm pull boost + post-boss
+// farm window (PR: Fix Floor 1 AI merchant round-trips/farming/boss chest
+// spot/cleared-arena safe room). `resolveCalmFarmPullBoost` widens
+// opportunistic loot/enemy pulls while the AI is calm (not beelining or
+// panic-ramping), and the post-boss farm window defers the descend confirm.
+// Both are early-slice, always-on behavior changes to the default
+// BehaviorTreeAI used by this guard, so they legitimately shift which
+// entities engage within the first 1500 frames — a design-owned divergence,
+// not a collision-migration regression. Verified stable across two
+// back-to-back invocations on the current branch head before pinning.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7: 6/152.18/0/2   → 5/152.30/5/2
+//   seed  13: 3/141.60/5/0   → 4/126.20/5/0
+//   seed  42: 3/192.45/5/6   → 3/188.30/0/4
+//   seed 137: 2/113.68/0/0   → 4/162.56/5/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 192.44999933242798,
-    damageTaken: 5,
-    finalScore: 6,
+    damageDealt: 188.2999997138977,
+    damageTaken: 0,
+    finalScore: 4,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 152.18000078201294,
-    damageTaken: 0,
+    kills: 5,
+    damageDealt: 152.2999997138977,
+    damageTaken: 5,
     finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 141.6000019311905,
+    kills: 4,
+    damageDealt: 126.20000040531158,
     damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 2,
-    damageDealt: 113.67999935150146,
-    damageTaken: 0,
+    kills: 4,
+    damageDealt: 162.55999946594238,
+    damageTaken: 5,
     finalScore: 0,
   },
 };
