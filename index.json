@@ -1,5 +1,39 @@
 [
   {
+    "commit": "bba4156d3d5876b4b49b1741ce9a7d8cf338a196",
+    "commitDate": "2026-08-22T04:23:21Z",
+    "commitSubject": "perf(ai): reuse BFS scratch buffers in goal-tile/NPC-anchor reachability lookups (#3232)",
+    "capturedAt": "2026-08-22T05:40:04.797Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32552439631",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/bba4156d3d5876b4b49b1741ce9a7d8cf338a196.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.28,
+        "totalWins": 42,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.94,
+      "gatePass": false,
+      "path": "by-sha/bba4156d3d5876b4b49b1741ce9a7d8cf338a196.fun-report.json"
+    }
+  },
+  {
     "commit": "24f5a2d18209eb397adb23068f381fc8d7e817cb",
     "commitDate": "2026-08-22T02:10:37Z",
     "commitSubject": "Implement Floor 3 Guardian and Support AI personas (#3228)",
