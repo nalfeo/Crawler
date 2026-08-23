@@ -18,6 +18,7 @@ import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
+import floor4ManifestJson from './data/floors/floor4.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { BiomeType } from './map-types.js';
@@ -114,8 +115,17 @@ export const floorManifestDefSchema = z
         floorDensity: z.number().min(0).max(1),
       })
       .strict(),
-    /** Reference to enemy pack ID (e.g., "floor1-ambient"). */
-    enemyPackId: z.string().min(1),
+    /**
+     * Reference to enemy pack ID (e.g., "floor1-ambient") for floors whose
+     * enemies come from an ambient pack.
+     *
+     * Omitted by floors that spawn exclusively from an authored schedule rather
+     * than an ambient director — Floor 4's waves are precomputed manifests
+     * (spec FR3.2), so it has no ambient pack to name. A floor that DOES run an
+     * ambient director must set it; the director paths throw when it is absent
+     * rather than silently spawning nothing.
+     */
+    enemyPackId: z.string().min(1).optional(),
     /**
      * Optional loot table ID to apply as a floor-bonus drop on every enemy kill.
      * Matched against the `id` field of each `LootTable` entry in `LOOT_TABLES` (e.g. `"floor_1"`).
@@ -244,6 +254,71 @@ export const floorManifestDefSchema = z
       .strict()
       .optional(),
     /**
+     * Floor-4-specific scenario config (ignored by other floors).
+     *
+     * Slice 1 authors ONLY the venue geometry — the act/wave/Headliner/shop
+     * blocks named by spec FR8.2 arrive with the slices that consume them, so
+     * this block never carries data no system reads yet.
+     */
+    floor4: z
+      .object({
+        /** Authored venue geometry, in tiles (see `ShowcaseArenaGenerator`). */
+        arena: z
+          .object({
+            widthTiles: z.number().int().min(16),
+            heightTiles: z.number().int().min(16),
+            pillarSizeTiles: z.number().int().min(1),
+            pillarInsetTiles: z.number().int().min(1),
+            borderThicknessTiles: z.number().int().min(1),
+          })
+          .strict(),
+        greenRoom: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+          })
+          .strict(),
+        tunnel: z
+          .object({
+            lengthTiles: z.number().int().min(1),
+            widthTiles: z.number().int().min(2),
+          })
+          .strict(),
+      })
+      .strict()
+      .superRefine((floor4, ctx) => {
+        // Cross-field geometry checks the per-field bounds cannot express. A
+        // venue that does not fit would move gate tiles, which is a breaking
+        // change to every seeded wave manifest (FR3.4), so it must fail loudly
+        // at load rather than clamp at generation.
+        const { arena, greenRoom, tunnel } = floor4;
+        if (
+          arena.pillarInsetTiles + arena.pillarSizeTiles >=
+          Math.min(arena.widthTiles, arena.heightTiles) / 2
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['arena', 'pillarInsetTiles'],
+            message: 'pit-fixture pillars would meet in the middle of the arena',
+          });
+        }
+        if (tunnel.widthTiles > greenRoom.heightTiles) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['tunnel', 'widthTiles'],
+            message: 'curtain tunnel is wider than the Green Room it opens into',
+          });
+        }
+        if (greenRoom.heightTiles > arena.heightTiles) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['greenRoom', 'heightTiles'],
+            message: 'Green Room is taller than the arena, so it would overflow the venue border',
+          });
+        }
+      })
+      .optional(),
+    /**
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
      * doors. Omitted entirely by floors that use the legacy 16-mask
@@ -293,6 +368,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor2ManifestJson;
   } else if (floorId === 'floor3') {
     manifestJson = floor3ManifestJson;
+  } else if (floorId === 'floor4') {
+    manifestJson = floor4ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -308,3 +385,4 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
 export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
 export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
+export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');

@@ -386,6 +386,21 @@ Slices are ordered so that each one is independently observable in a **real** ar
 | 7   | **Economy & balance**                      | Per-act income budgets, price bands, tuning pass, `tests/headless/floor4-arena-completion.test.ts` win-rate gate, achievements/quests data                                                                                                                   | The floor holds its declared win-rate gate over a seed sweep, with sweep evidence linked.                                                         |
 | 8   | **Floor 3 co-star (optional)**             | Kept-Companion carryover consumption                                                                                                                                                                                                                         | A run carrying a kept Companion fights with it; a run without one is unchanged.                                                                   |
 
+### Slice-1 deviation: the curtain tunnel ships open
+
+Slice 1's done-when ("walk into the Green Room") and **FR9.4** ("the arena and the
+Green Room are never simultaneously reachable") cannot both hold before the
+intermission transaction exists. Slice 1 therefore ships the tunnel **permanently
+open**, with no doors and no sealing logic, so the venue is observable in the real
+game. FR9.4 is satisfied by the **slice-5** intermission transaction, which owns
+the seal; until that lands, Floor 4 is explicitly non-conformant to FR9.4 and is
+marked `implemented.mvp: false`.
+
+For the same reason slice 1 does not stub the act clock: Floor 4 shows no
+countdown (FR5.6), and `timer.durationMs` is only the FR8.4 stall backstop, so the
+generic floor-timer HUD is suppressed and the backstop raises its own
+`floor4-stall-backstop` flag rather than an ordinary floor timeout.
+
 ## Test Plan
 
 | Level            | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
