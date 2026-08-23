@@ -216,6 +216,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.world.playerInSafeRoom = settings.keepSafeRoomContext;
       this.world.featureUnlocks.inventory = true;
       this.world.featureUnlocks.equipment = true;
+      this.world.featureUnlocks.equipmentPanel = true;
 
       this.playerEid = spawnPlayer(this.world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
       initializeBaseStats(this.world, this.playerEid);
