@@ -1,0 +1,9 @@
+{
+  "date": "2026-08-23",
+  "session": "report-only-release-sweep-legs",
+  "estimated_apples": 3,
+  "actual_apples": 2,
+  "delta": -1,
+  "verdict": "over",
+  "hello_kitties": 0.4
+}
