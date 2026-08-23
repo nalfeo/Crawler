@@ -35,13 +35,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "f9acfbfaf6311e38f424b945271af5d737692dde",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change perfectly addresses the Floor 2 collapse deadline awareness issue by correctly resolving the manifest timer and plumbing it into the existing panic profile calculations. The scope is highly disciplined, introducing only the required resolution logic without unrelated refactoring. Test coverage is excellent, featuring both robust unit tests for the edge cases of staircase spawning and a full integration test demonstrating the decision flip from loot sweeping to stair descent. The solution adheres to determinism and pure-function standards, and the copious inline documentation makes it highly maintainable."
     }
   }
 }
