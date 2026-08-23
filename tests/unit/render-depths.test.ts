@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ENTITY_DEPTH,
   PLAYER_DEPTH,
-  SET_PIECE_FOREGROUND_MAX_DEPTH,
   TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
   setPieceZToDepth,
@@ -62,7 +61,8 @@ describe('setPieceZToDepth', () => {
     // exactly onto PLAYER_DEPTH and anything above it strictly higher.
     for (const z of [PROP_KIND_Z.actor, 51, 60, 100, 10_000]) {
       const depth = setPieceZToDepth(z);
-      expect(depth).toBe(SET_PIECE_FOREGROUND_MAX_DEPTH);
+      expect(depth).toBe(setPieceZToDepth(PROP_KIND_Z.actor));
+      expect(depth).toBe(5);
       // Even with the whole per-layer stamping epsilon budget (<0.1) added.
       expect(depth + 0.1).toBeLessThan(PLAYER_DEPTH);
     }

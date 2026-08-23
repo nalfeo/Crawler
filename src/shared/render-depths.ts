@@ -77,7 +77,7 @@ export const TERRAIN_DEPTH = -20;
  * every prop strictly below {@link PLAYER_DEPTH} even with the per-layer
  * stamping epsilon added on top.
  */
-export const SET_PIECE_FOREGROUND_MAX_DEPTH = 5;
+const SET_PIECE_FOREGROUND_MAX_DEPTH = 5;
 
 /**
  * Map a set-piece prop's authored `z` (the `PROP_KIND_Z` ladder: floor=0,
