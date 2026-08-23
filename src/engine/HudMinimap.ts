@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { hasComponent, query } from 'bitecs';
 import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { getQuestWaypoints, getTrackedQuestWaypoint } from '../core/systems/questWaypoints.js';
+import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
+import { getTrackedQuest } from '../core/systems/questSystem.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
@@ -773,7 +774,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return;
     }
     const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
-    const trackedWaypointId = getTrackedQuestWaypoint(world, playerEid)?.questId ?? null;
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
     for (const waypoint of getQuestWaypoints(world, playerEid)) {
       const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
@@ -829,7 +830,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         questId: waypoint.questId,
         bounds,
       });
-      if (waypoint.questId === trackedWaypointId) {
+      if (waypoint.questId === trackedQuestId) {
         lastTrackedOverlayWaypointArrowBounds = bounds;
       }
     }
@@ -984,7 +985,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     // Quest waypoint blips — active objectives, always shown.
     // If a waypoint is outside the radar dial, a small edge arrow points toward it.
-    const trackedWaypointId = getTrackedQuestWaypoint(world, playerEid)?.questId ?? null;
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
     for (const waypoint of getQuestWaypoints(world, playerEid)) {
       const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       const wx = localX(wpTile.x + 0.5);
@@ -1035,7 +1036,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
             questId: waypoint.questId,
             bounds,
           });
-          if (waypoint.questId === trackedWaypointId) {
+          if (waypoint.questId === trackedQuestId) {
             lastTrackedRadarWaypointArrowBounds = bounds;
           }
         }
