@@ -37,7 +37,7 @@ function makeRegistry(entries: readonly GeneratedSpriteEntry[]): GeneratedSprite
     version: 1,
     lookup: (briefId: string) => byBrief.get(briefId)?.[0] ?? null,
     variants: (briefId: string) => byBrief.get(briefId) ?? [],
-    entries: () => entries,
+    entries: vi.fn(() => entries),
     briefIds: () => [...byBrief.keys()],
     has: (briefId: string) => byBrief.has(briefId),
     size: entries.length,
@@ -137,10 +137,13 @@ describe('resolveGeneratedIconEntry', () => {
     const scene = makeScene(registry, new Set(['tex-a', 'tex-b']));
     const result = resolveGeneratedIconEntry(scene, {
       briefIds: [],
-      textureKeys: ['tex-a', 'tex-b'],
+      textureKeys: ['tex-b', 'tex-a'],
       seed: 1,
     });
-    // Same variantIndex → tie-break by textureKey localeCompare, so 'tex-a' wins.
+    // 'tex-b' is scanned first and becomes the incumbent `best`; only the
+    // textureKey localeCompare tie-break in `compareEntries` can make 'tex-a'
+    // displace it. If that tie-break were removed, `best` would stay 'tex-b'
+    // and this assertion would fail.
     expect(result).toEqual(entryTexA);
   });
 
@@ -153,6 +156,9 @@ describe('resolveGeneratedIconEntry', () => {
     const second = resolveGeneratedIconEntry(scene, options);
     expect(first).toEqual(entry);
     expect(second).toEqual(entry);
+    // The texture index (and the registry.entries() scan that builds it) must be
+    // built once and cached, not rebuilt on every call.
+    expect(vi.mocked(registry.entries)).toHaveBeenCalledTimes(1);
   });
 
   it('skips a textureKey with no indexed variants at all', () => {

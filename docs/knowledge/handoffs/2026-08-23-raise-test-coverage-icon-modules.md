@@ -14,7 +14,13 @@ testing-strategy
 
 ## Apples
 
-2🍎 exact (test-only change, capped per the tooling/test-only ceiling in AGENTS.md)
+2🍎 exact — four new test files added for existing, already-shipped modules
+(`reduced-motion.ts`, `generated-icon-resolver.ts`, `achievement-icon.ts`,
+`ability-icon.ts`), with no production code changed. This matches the
+`complexity-policy.md` Codebase Examples entry "Add a new test file for an
+existing system → 🍎🍎" (repeated four times for four small, independent
+modules, not a new sub-system or ECS component), so no lab, ADR, or review
+ledger is required at this tier.
 
 ## What Was Done
 
