@@ -20,6 +20,21 @@ function smallConfig(seed: number, widthTiles = 80, heightTiles = 60): MapConfig
   };
 }
 
+function smallFloor3Config(seed: number, widthTiles = 96, heightTiles = 96): MapConfig {
+  return {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: 4,
+    biome: BiomeType.CAVE_SYSTEM_BIOMES,
+    seed,
+    roomWidthRange: [5, 12],
+    roomHeightRange: [5, 12],
+    maxRooms: 20,
+    floorDensity: 0.45,
+    caveSystem: { presentCount: 7, layout: 'floor3-biomes' },
+  };
+}
+
 function generateWithPresent(seed: number, presentCount: number, w = 80, h = 60) {
   const gen = new CaveSystemGenerator({ presentCount });
   return gen.generate(smallConfig(seed, w, h), new SeededRandom(seed));
@@ -111,6 +126,13 @@ describe('CaveSystemGenerator', () => {
     expect(g.name).toBe('CaveSystemGenerator');
   });
 
+  it('registers the floor3 biome-overworld layout', () => {
+    const g = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    expect(g.name).toBe('CaveSystemGenerator');
+    const floor = g.generate(smallFloor3Config(91), new SeededRandom(91));
+    expect(floor.territoryZones).toHaveLength(7);
+  });
+
   it('is deterministic: same seed → identical output', () => {
     const a = generateWithPresent(1234, 4);
     const b = generateWithPresent(1234, 4);
@@ -118,6 +140,25 @@ describe('CaveSystemGenerator', () => {
     expect(a.terrain).toEqual(b.terrain);
     expect(a.roomGraph.getAll().length).toBe(b.roomGraph.getAll().length);
     expect(a.playerSpawn).toEqual(b.playerSpawn);
+  });
+
+  it('builds deterministic floor3 biome territory zones with no Floor 2-only rooms', () => {
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    const config = smallFloor3Config(4321);
+    const left = generator.generate(config, new SeededRandom(4321));
+    const right = generator.generate(config, new SeededRandom(4321));
+
+    expect(left.terrain).toEqual(right.terrain);
+    expect(left.playerSpawn).toEqual(right.playerSpawn);
+    expect(left.territoryZones).toEqual(right.territoryZones);
+    expect(left.territoryZones).toHaveLength(7);
+
+    const rooms = left.roomGraph.getAll();
+    expect(rooms.filter((room) => room.role === RoomRole.SPAWN)).toHaveLength(1);
+    expect(rooms.filter((room) => room.role === RoomRole.TERRITORY)).toHaveLength(7);
+    expect(rooms.filter((room) => room.role === RoomRole.BOSS_DEN)).toHaveLength(0);
+    expect(rooms.filter((room) => room.role === RoomRole.SETTLEMENT)).toHaveLength(0);
+    expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
   });
 
   it('produces exactly the required role counts for presentCount=4', () => {

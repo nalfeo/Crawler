@@ -4,7 +4,12 @@
  * This module provides a registry for loading floor manifests by ID,
  * enabling multi-floor support and floor progression.
  */
-import { floor1Manifest, floor2Manifest, type FloorManifestDef } from './floor-manifest.js';
+import {
+  floor1Manifest,
+  floor2Manifest,
+  floor3Manifest,
+  type FloorManifestDef,
+} from './floor-manifest.js';
 
 /**
  * Registry of available floor manifests.
@@ -12,6 +17,7 @@ import { floor1Manifest, floor2Manifest, type FloorManifestDef } from './floor-m
 const FLOOR_REGISTRY = new Map<string, FloorManifestDef>([
   ['floor1', floor1Manifest],
   ['floor2', floor2Manifest],
+  ['floor3', floor3Manifest],
 ]);
 
 /**
