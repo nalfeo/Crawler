@@ -1385,6 +1385,10 @@ export class BehaviorTreeAI implements AIInputProvider {
           isProjectileWeaponType(activeWeapon.weaponType) &&
           ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
           !criticallyLow;
+        if (ctx.world.playerInSafeRoom) {
+          this.endRetreat(ctx.world);
+          return false;
+        }
         if (!criticallyLow && !rangedEmergency) {
           this.endRetreat(ctx.world);
           return false;
@@ -2237,10 +2241,11 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (projectileWeapon && !woundedProjectile) {
+            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below.
+              // direct-approach path below. Inside safe rooms, weapons are disabled,
+              // so threat-clearing cannot make progress until movement exits first.
               this.resetNpcApproachThreatTracking();
             } else if (this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
