@@ -762,10 +762,10 @@ describe('achievementSystem', () => {
       );
     });
 
-    it('does not report floor2SafeRoomVisited from a cleared boss arena', () => {
-      // A cleared arena satisfies `isInSafeContext` so the customization panels
-      // open there (ADR-0092), but it is not a safe room — a "visited the safe
-      // room" feat must not be credited for standing in one.
+    it('does not report floor2SafeRoomVisited from a stale cleared-arena flag alone', () => {
+      // `safeRoomSystem` promotes cleared arenas into `playerInSafeRoom`.
+      // Achievement facts should still read the safe-room location fact rather
+      // than the discriminator flag directly.
       const world = createTestWorld({ seed: 42, floor: 2 });
       world.playerInClearedArena = true;
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(

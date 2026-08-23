@@ -73,16 +73,11 @@ describe('isPointInSafeSpace', () => {
     expect(isPointInSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(false);
   });
 
-  it('does NOT treat a cleared boss room as safe space (Floor 1 seed-1 stall)', () => {
-    // A cleared arena is a customization/retreat space, never a safe SPACE:
-    // `isPointInSafeSpace` disables the player's weapon, keeps enemies out,
-    // pauses the collapse deadline and flips the AI into leave-the-safe-room
-    // mode. Floor 1's cleared arena owns the staircase, so answering true here
-    // stalled the run beside its own exit. Room 1 is the NORMAL room the
-    // fixture puts at tiles (10,10)-(13,13).
+  it('treats a cleared boss room as safe space', () => {
+    // Room 1 is the NORMAL room the fixture puts at tiles (10,10)-(13,13).
     world.clearedSafeRoomIds.add(1);
     world.clearedSafeRoomMap = world.floorMap;
-    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
   });
 
   it('uses interiorCells for SAFE caverns instead of bounding-box membership', () => {
@@ -159,8 +154,8 @@ describe('isPointInClearedArena', () => {
     // The cleared room keeps its generated role, so the stairs/minimap
     // consumers that resolve the boss room BY ROLE still find it.
     expect(world.floorMap.bossStairRoom?.id).toBe(bossRoomId);
-    // ...and it is still NOT a safe space.
-    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    // ...and it is a safe space without rewriting the generated room role.
+    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
   });
 });
 
@@ -211,7 +206,7 @@ describe('safeRoomSystem', () => {
     expect(emptyWorld.playerInSafeRoom).toBe(false);
   });
 
-  it('tracks playerInClearedArena without making the arena a safe room', () => {
+  it('tracks cleared boss arenas as safe rooms with a discriminator flag', () => {
     world.stores.position.x[playerEid] = NORMAL_FT.x;
     world.stores.position.y[playerEid] = NORMAL_FT.y;
     world.clearedSafeRoomIds.add(1);
@@ -219,7 +214,7 @@ describe('safeRoomSystem', () => {
     world.state = 'playing';
     safeRoomSystem(world);
     expect(world.playerInClearedArena).toBe(true);
-    expect(world.playerInSafeRoom).toBe(false);
+    expect(world.playerInSafeRoom).toBe(true);
 
     // Walking back out of the arena clears the flag again.
     world.stores.position.x[playerEid] = SAFE_FT.x;
@@ -293,13 +288,11 @@ describe('isInSafeContext', () => {
     expect(isInSafeContext(world)).toBe(true);
   });
 
-  it('returns true inside a cleared boss arena', () => {
-    // A cleared arena opens the customization panels (ADR-0091's equip beat)
-    // WITHOUT being a safe space — nothing there can still hurt the player.
+  it('ignores stale positional flags after gameplay ends', () => {
     world.playerInSafeRoom = false;
     world.playerInClearedArena = true;
-    world.state = 'playing';
-    expect(isInSafeContext(world)).toBe(true);
+    world.state = 'game_over';
+    expect(isInSafeContext(world)).toBe(false);
   });
 });
 
@@ -338,10 +331,14 @@ describe('equipment safe-room gate', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('allows equip while standing in a cleared boss arena', () => {
-    world.playerInSafeRoom = false;
-    world.playerInClearedArena = true;
+  it('allows equip while standing in a cleared boss arena safe room', () => {
+    world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
+    world.stores.position.x[playerEid] = NORMAL_FT.x;
+    world.stores.position.y[playerEid] = NORMAL_FT.y;
+    world.clearedSafeRoomIds.add(1);
+    world.clearedSafeRoomMap = world.floorMap;
     world.state = 'playing';
+    safeRoomSystem(world);
     const result = equip(world, playerEid, MERCHANTS_CHARM_DEF);
     expect(result.ok).toBe(true);
   });

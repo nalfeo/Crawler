@@ -1,14 +1,11 @@
 /**
- * Floor 1 release-sweep regression: the cleared boss arena must not become a
- * safe space.
+ * Floor 1 release-sweep regression: a cleared boss arena becomes a safe room,
+ * but the post-boss farm window must still close so the AI takes the stairs.
  *
  * `d143f15a` promoted a cleared boss arena to a full `isPointInSafeSpace`
- * member. Floor 1's cleared arena is the room that OWNS the staircase, and that
- * predicate is the engine's combat-suppression contract: it disables the
- * player's weapon, keeps enemies from pathing in, pauses the floor-collapse
- * deadline, and switches the AI into its leave-the-safe-room regime — including
- * suspending the anti-wedge dwell/engage watchdogs that exist to break exactly
- * the "player vibrates in place forever" livelock.
+ * member. Floor 1's cleared arena is the room that OWNS the staircase, so the
+ * post-boss farm window must be bounded against the authored floor budget
+ * instead of the pause-inflated collapse deadline.
  *
  * On `seed=1 --weapon throwing-knife` the run then killed the staircase boss at
  * ~392s and vibrated ~20ft from the staircase — same room, no wall between —
@@ -35,6 +32,9 @@ async function runThrowingKnife1(): Promise<RunStats> {
     maxWallTimeMs: 180_000,
     forceWeaponId: 'throwing-knife',
     enemyDamageMultiplier: 1,
+    enemyTelegraphMs: 250,
+    floorId: 'floor1',
+    settlementReturnRouting: false,
   });
 }
 

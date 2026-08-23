@@ -7,20 +7,15 @@
  *
  * Item 5: "boss room turning to safe room after boss defeat doesn't seem to be
  * working." A cleared arena is the design's Commercial Break: once the boss is
- * dead the room must open the customization panels and be routable as a retreat
- * anchor.
- *
- * It must NOT become an `isPointInSafeSpace` member, though: that predicate is
- * the engine's combat-suppression contract (weapon disabled, enemies excluded,
- * collapse deadline paused, AI switched into leave-the-safe-room mode with its
- * anti-wedge watchdogs suspended). Floor 1's final arena owns the staircase, so
- * promoting it stalled `seed=1 --weapon throwing-knife` beside the stairs and
- * cost four Floor-1 wins in the release sweep (issue #3352).
+ * dead the room becomes a safe room, opens the customization panels, and is
+ * routable as a retreat anchor. Any live enemies already inside burst without
+ * loot or XP before the room is safe to use.
  */
 
-import { removeEntity } from 'bitecs';
+import { hasComponent, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { DroppedItem, Enemy, Gold, XpGem } from '../../src/core/components.js';
 import {
   floorObjectiveSystem,
   initializeFloor1Scenario,
@@ -118,8 +113,8 @@ describe('floor1 boss chest drops at the death spot', () => {
   });
 });
 
-describe('floor1 cleared boss arena becomes a customization space', () => {
-  it('is hostile ground while the boss lives and a cleared arena once it is defeated', () => {
+describe('floor1 cleared boss arena becomes a safe room', () => {
+  it('is hostile ground while the boss lives and a safe room once it is defeated', () => {
     const { world, player } = startedSlimeRatWorld(123);
     const objective = world.floorScenario!.objective;
     const { x, y } = objective.slimeRatRoomPos;
@@ -139,9 +134,43 @@ describe('floor1 cleared boss arena becomes a customization space', () => {
     expect(world.playerInClearedArena).toBe(true);
     expect(isInSafeContext(world)).toBe(true);
 
-    // ...but the arena is never a safe space, so the weapon stays live, enemies
-    // may still walk in, and the floor-collapse clock keeps running.
-    expect(isPointInSafeSpace(world, x, y)).toBe(false);
-    expect(world.playerInSafeRoom).toBe(false);
+    // ...as a full safe space.
+    expect(isPointInSafeSpace(world, x, y)).toBe(true);
+    expect(world.playerInSafeRoom).toBe(true);
+  });
+
+  it('purges enemies already inside without loot or XP and unlocks the achievement once', () => {
+    const { world } = startedSlimeRatWorld(123);
+    const objective = world.floorScenario!.objective;
+    const { x, y } = objective.slimeRatRoomPos;
+    const ambientEnemy = spawnEnemy(world, x + 1, y + 1, 10);
+    const outsideEnemy = spawnEnemy(world, x + 400, y + 400, 10);
+    const pickupsBefore =
+      query(world.ecs, [XpGem]).length +
+      query(world.ecs, [Gold]).length +
+      query(world.ecs, [DroppedItem]).length;
+
+    removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
+    floorObjectiveSystem(world);
+
+    expect(hasComponent(world.ecs, ambientEnemy, Enemy)).toBe(false);
+    expect(hasComponent(world.ecs, outsideEnemy, Enemy)).toBe(true);
+    expect(
+      query(world.ecs, [XpGem]).length +
+        query(world.ecs, [Gold]).length +
+        query(world.ecs, [DroppedItem]).length,
+    ).toBe(pickupsBefore);
+    expect(world.combatEvents.some((event) => event.type === 'corpseExplode')).toBe(true);
+    expect(world.achievements.unlockedIds.has('boss-room-sanitized')).toBe(true);
+    expect(
+      world.achievements.pendingUnlockIds.filter((id) => id === 'boss-room-sanitized'),
+    ).toHaveLength(1);
+
+    const secondRoomEnemy = spawnEnemy(world, x + 2, y + 2, 10);
+    floorObjectiveSystem(world);
+    expect(hasComponent(world.ecs, secondRoomEnemy, Enemy)).toBe(true);
+    expect(
+      world.achievements.pendingUnlockIds.filter((id) => id === 'boss-room-sanitized'),
+    ).toHaveLength(1);
   });
 });

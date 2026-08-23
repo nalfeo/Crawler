@@ -30,13 +30,15 @@ into `buildLeaveSafeRoomBehavior`, and stands down the anti-wedge dwell/ENGAGE
 watchdogs. Clearing the arena therefore told the AI to leave the one room it had to
 walk into, and removed the safety net that would have broken it out.
 
-The fix splits the two meanings:
+The fix keeps the safe-room conversion but removes the failure mode:
 
-- `isPointInSafeSpace` is back to authored SAFE rooms + the safe spawn room only.
-- New `isPointInClearedArena` + `world.playerInClearedArena` (maintained by
-  `safeRoomSystem`) carry the cleared-arena concept.
-- `isInSafeContext` is widened with `playerInClearedArena`, so a cleared arena still
-  opens the customization/equip panels (ADR-0091's actual intent).
+- `isPointInSafeSpace` includes authored SAFE rooms, the safe spawn room, and
+  cleared boss rooms scoped to the current `FloorMap`.
+- `isPointInClearedArena` + `world.playerInClearedArena` remain as discriminator
+  facts for callers that need to know the safe room came from a boss arena.
+- When a boss room becomes safe, live enemies already inside burst and are
+  removed without going through `dropSystem`, so they grant no loot or XP; the
+  first such purge unlocks `boss-room-sanitized`.
 - `resolveNearestSafeAnchor` keeps its cleared-arena retreat branch untouched.
 - Defence in depth: `resolvePostBossFarmWindow` now measures its reserve against
   `min(planningDeadlineMs, floorBudgetMs)`, so the window is bounded in `elapsedMs`
@@ -49,16 +51,14 @@ staircase in the same room for ~570s; after: `VICTORY` in 34,469 frames.
 
 ## Key Decisions Made
 
-- The overreach is in the predicate's _meaning_, not in one room's identity, so the
-  fix narrows the predicate rather than special-casing `bossStairRoom`. The same trap
-  would otherwise fire on any future floor whose exit sits in a boss room. Recorded as
-  ADR-0092, amending ADR-0091's final decision bullet.
+- The feature intent is that a cleared boss room becomes a true safe room, so the
+  fix preserves the predicate membership and instead purges existing occupants plus
+  clamps the post-boss farm window. Recorded as ADR-0092, amending ADR-0091's final
+  decision bullet.
 - Rejected a wholesale revert of #3276 — four of its five fixes are correct and
   unrelated.
-- Rejected keeping the arena "safe" and patching the AI around it: that needs
-  LeaveSafeRoom suppression _plus_ watchdog re-enablement _plus_ a farm-window rework,
-  and still leaves the player weaponless at the exit with an unbounded collapse clock
-  (which is also a scoring hole, since `isOfficialWin` discounts safe-room time).
+- Rejected special-casing the staircase boss room out of safe-room conversion: that
+  would quietly disable the requested feature in the most visible Floor 1 boss room.
 
 ## What's Next / Blockers
 

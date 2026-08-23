@@ -811,8 +811,8 @@ export interface GameWorld {
   /**
    * True when the player entity's current position is inside a boss arena this
    * run already cleared (see {@link clearedSafeRoomIds}). Updated each tick by
-   * `safeRoomSystem`. Opens the customization panels via `isInSafeContext`, and
-   * nothing else — a cleared arena is deliberately NOT a safe *space*.
+   * `safeRoomSystem`. Cleared arenas also set {@link playerInSafeRoom}; this
+   * flag is only a discriminator for callers that need the converted-room fact.
    */
   playerInClearedArena: boolean;
   /**
@@ -821,12 +821,10 @@ export interface GameWorld {
    * A boss arena stops being dangerous the moment its boss dies — the design's
    * "Boss → Commercial Break" beat — so the floor scenario registers the
    * cleared arena here. It then counts as a retreat anchor
-   * (`resolveNearestSafeAnchor`) and opens the customization panels
-   * (`isInSafeContext`), but it is deliberately NOT part of
-   * `isPointInSafeSpace`: that predicate disables the player's weapon, keeps
-   * enemies out, pauses the collapse deadline and switches the AI into its
-   * leave-the-safe-room regime, none of which may apply to the arena that owns
-   * the floor's staircase (see `isPointInClearedArena` for the full rationale).
+   * (`resolveNearestSafeAnchor`), opens the customization panels
+   * (`isInSafeContext`), and participates in `isPointInSafeSpace`. Any live
+   * enemies already inside are purged without loot or XP before the room becomes
+   * usable as a safe room.
    * The room's generated {@link RoomRole} likewise stays `BOSS_STAIR`:
    * `FloorMap.bossStairRoom` and every stair/spawn/minimap consumer resolve
    * that room *by role*, so rewriting the role would make the boss room

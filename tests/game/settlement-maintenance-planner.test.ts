@@ -250,6 +250,7 @@ describe('runSettlementMaintenancePlanner', () => {
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, playerEid);
     world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    world.state = 'playing';
     world.playerInSafeRoom = true;
     world.playerLevel.level = 1;
     const instanceId = addBagEquipment(world, playerEid, 'weapon.ember-wand');
@@ -270,6 +271,7 @@ describe('runSettlementMaintenancePlanner', () => {
     const world = createTestWorld({ seed: 7, floor: 1 });
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, playerEid);
+    world.state = 'playing';
     world.playerInSafeRoom = true;
     world.playerGold = SHOPKEEPER_EQUIPMENT_COST;
     world.playerLevel.level = 1;

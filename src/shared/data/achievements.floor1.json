@@ -1440,6 +1440,22 @@
     ]
   },
   {
+    "id": "boss-room-sanitized",
+    "floor": 1,
+    "title": "Sanitized Set",
+    "popupText": "New achievement: Sanitized Set!",
+    "unlockCriteria": "Watch a boss room purge its remaining enemies when it becomes a safe room.",
+    "details": "Unlock the first time a newly cleared boss room removes enemies that were still inside it.",
+    "directorFlavor": "The boss dropped, the room flipped to commercial break, and the remaining extras got vaporized by standards-and-practices magic. No loot. No XP. Just an expensive puff of compliance smoke and a crew member yelling that the set is safe now.",
+    "iconId": "achv-boss-room-sanitized-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "directorMessage",
+      "message": "Reward: the room is clean. Try not to track anything back in."
+    },
+    "unlockRules": []
+  },
+  {
     "id": "npc-social",
     "floor": 1,
     "title": "Social Build",

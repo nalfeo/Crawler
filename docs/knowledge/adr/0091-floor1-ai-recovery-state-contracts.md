@@ -3,7 +3,7 @@
 ## Status
 
 Accepted — the cleared-arena bullet below is amended by
-[ADR-0092](0092-cleared-arena-is-not-a-safe-space.md)
+[ADR-0092](0092-cleared-arena-safe-room-purge.md)
 
 ## Date
 
@@ -47,10 +47,9 @@ between headless planning and runtime execution.
   later floor.
 - Preserve boss room roles instead of rewriting them to `SAFE`; safe-space
   helpers consult the cleared-room set when resolving retreat/equip anchors.
-  (Amended by ADR-0092: retreat/equip only. The implementation also made
-  `isPointInSafeSpace` itself true for cleared arenas, which suppressed combat
-  and paused the collapse clock at Floor 1's staircase and stalled four release
-  sweep runs; ADR-0092 splits that into `isPointInClearedArena`.)
+  (Amended by ADR-0092: cleared boss rooms remain true safe spaces, but any
+  live enemies already inside are purged without loot/XP and the post-boss
+  farm window is clamped against the authored floor budget.)
 
 ## Consequences
 

@@ -43,6 +43,7 @@ import {
   Health,
   Harvestable,
   BroadcastScore,
+  BloodColor,
   Size,
   Sprite,
   DoorState,
@@ -131,7 +132,10 @@ import {
 } from '../core/systems/questSystem.js';
 import { isInSafeContext } from '../core/safe-space.js';
 import { getOrCreateAbilityState, memorizeSpell } from './systems/abilitySystem.js';
-import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
+import {
+  evaluateAchievementUnlocksForPhase,
+  unlockAchievement,
+} from './systems/achievementSystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
@@ -174,6 +178,7 @@ const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
 const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
+const SAFE_ROOM_PURGE_ACHIEVEMENT_ID = 'boss-room-sanitized';
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
 // mirrored from the procedural texture in PhaserBridge (48x26 px) so the Sprite
@@ -2892,17 +2897,66 @@ function roomAtPosition(world: GameWorld, pos: { x: number; y: number }): RoomDa
   return floorMap.roomGraph.get(roomId) ?? null;
 }
 
+function emitSafeRoomPurgeExplosion(world: GameWorld, eid: number, x: number, y: number): void {
+  const bloodColor = hasComponent(world.ecs, eid, BloodColor)
+    ? ((world.stores.bloodColor.r[eid] ?? 0) << 16) |
+      ((world.stores.bloodColor.g[eid] ?? 0) << 8) |
+      (world.stores.bloodColor.b[eid] ?? 0)
+    : DEFAULT_BLOOD_COLOR;
+
+  world.combatEvents.push({
+    type: 'corpseExplode',
+    x,
+    y,
+    amount: world.stores.health.current[eid] ?? 0,
+    targetType: 'enemy',
+    timestamp: world.elapsedMs,
+    targetEid: eid,
+    bloodColor,
+    spriteTextureId: world.stores.sprite.textureId[eid] ?? 0,
+    spriteAppearanceKey: world.enemyAppearanceKeys.get(eid),
+    spriteVariantRoll: world.stores.sprite.variantRoll[eid] ?? 0,
+    spriteSizeScale: world.stores.sprite.sizeScale[eid] || 1,
+    knockbackDirX: 0,
+    knockbackDirY: 0,
+  });
+}
+
+function purgeEnemiesInRoomWithoutRewards(world: GameWorld, room: RoomData): number {
+  let purged = 0;
+  for (const eid of Array.from(query(world.ecs, [Enemy, Position]))) {
+    if (hasComponent(world.ecs, eid, DeathTimer)) {
+      continue;
+    }
+    if (hasComponent(world.ecs, eid, Health) && (world.stores.health.current[eid] ?? 0) <= 0) {
+      continue;
+    }
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    if (!isInRoom(world, x, y, room)) {
+      continue;
+    }
+
+    emitSafeRoomPurgeExplosion(world, eid, x, y);
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+    world.floorScenario?.enemyArchetypes.delete(eid);
+    world.floorExtendedState?.ambientEnemyArchetypes?.delete(eid);
+    world.lethalDamageSourceByTarget.delete(eid);
+    purged += 1;
+  }
+  return purged;
+}
+
 /**
- * Register a cleared boss arena as a run-time customization/retreat space.
+ * Register a cleared boss arena as a run-time safe room.
  *
  * The design's floor loop is "Floor Combat → Boss → Commercial Break": once the
- * boss is dead its arena is the player's breather, so the customization panels
- * open there (`isInSafeContext`) and retreat routing may aim for it
- * (`resolveNearestSafeAnchor`). It is deliberately NOT promoted to a real safe
- * *space*: `isPointInSafeSpace` also disables the weapon, keeps enemies out,
- * pauses the collapse deadline and flips the AI into leave-the-safe-room mode,
- * which must never apply to the arena that owns the floor's staircase — see
- * `isPointInClearedArena`.
+ * boss is dead its arena is the player's breather, so it becomes a real safe
+ * space (`isPointInSafeSpace`), opens the customization panels
+ * (`isInSafeContext`), and remains a retreat anchor
+ * (`resolveNearestSafeAnchor`). Any live enemies already inside burst and are
+ * removed without going through `dropSystem`, so they grant no loot or XP.
  *
  * Registering the room *id* rather than rewriting its {@link RoomRole} is
  * likewise deliberate: `FloorMap.bossStairRoom` (and the stair,
@@ -2922,6 +2976,9 @@ function markBossRoomCleared(world: GameWorld, room: RoomData | null): void {
     world.clearedSafeRoomMap = world.floorMap;
   }
   world.clearedSafeRoomIds.add(room.id);
+  if (purgeEnemiesInRoomWithoutRewards(world, room) > 0) {
+    unlockAchievement(world, SAFE_ROOM_PURGE_ACHIEVEMENT_ID);
+  }
 }
 
 /**
