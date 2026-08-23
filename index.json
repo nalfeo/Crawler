@@ -1,5 +1,39 @@
 [
   {
+    "commit": "3291d5cdf5abdb575a8628b7e4fbd6b0ad44e4c8",
+    "commitDate": "2026-08-23T07:18:37Z",
+    "commitSubject": "Document report-only Floor 2 sweep regression diagnosis (#3369)",
+    "capturedAt": "2026-08-23T08:28:12.519Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32625255085",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/3291d5cdf5abdb575a8628b7e4fbd6b0ad44e4c8.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.86,
+        "totalWins": 129,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.88,
+        "totalWins": 132,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.28,
+      "gatePass": false,
+      "path": "by-sha/3291d5cdf5abdb575a8628b7e4fbd6b0ad44e4c8.fun-report.json"
+    }
+  },
+  {
     "commit": "d8cdaa69943ba34e643591c0743708abc9d36c56",
     "commitDate": "2026-08-23T06:49:31Z",
     "commitSubject": "Hold the Floor 1 stair objective during the post-boss farm window on the live goal-graph path (#3354)",
