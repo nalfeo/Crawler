@@ -3873,7 +3873,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       : []),
     ...(hasReviewThreadBlockers
       ? [
-          `**GitHub auth/repo guardrail:** For any \`gh\` command, set \`GH_TOKEN="$CRAWLER_CI_PAT"\` and pass \`--repo ${owner}/${repo}\`.`,
+          `**GitHub auth/repo guardrail:** For any \`gh\` command, set \`GH_TOKEN="$CRAWLER_CI_PAT"\` and \`GH_REPO="${owner}/${repo}"\`. For \`gh api\`, use a fully qualified \`repos/${owner}/${repo}/...\` endpoint; do not pass \`--repo\` to \`gh api\`.`,
           '',
           `**Review-thread protocol:** Validate every listed thread with a different model and fix applicable findings. Use \`✅ Not applicable: [one-line reason]\` only for deterministic non-applicability; leave substantive disagreements unresolved for escalation.`,
           '',

@@ -7008,8 +7008,16 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'task comment should include the canonical owner/repo slug for GitHub API calls',
   );
   assert.ok(
-    taskCommentCall.body.body.includes(`pass \`--repo ${OWNER}/${REPO}\``),
-    'review-thread task comment should force explicit --repo usage for gh commands',
+    taskCommentCall.body.body.includes(`\`GH_REPO="${OWNER}/${REPO}"\``),
+    'review-thread task comment should set GH_REPO for gh commands',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`\`repos/${OWNER}/${REPO}/...\` endpoint`),
+    'review-thread task comment should require fully qualified gh api endpoints',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not pass `--repo` to `gh api`'),
+    'review-thread task comment should not require an unsupported gh api flag',
   );
   assert.equal(
     taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
