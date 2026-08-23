@@ -1,17 +1,18 @@
 /**
- * Integration coverage for the combat/loot SFX pipeline's read-before-drain
- * contract: `createCombatAudio` must observe `world.combatEvents`,
- * `world.abilityActivations`, and `world.vfxEvents` events BEFORE the real
- * engine-layer renderers (`CombatVfx`/`EffectsVfx`) drain them each frame —
- * see `src/engine/combat-audio.ts`'s module doc comment.
+ * Integration coverage for the parts of the combat/loot SFX pipeline that a
+ * real `GameWorld` can actually prove: that `createCombatAudio` maps all three
+ * source queues (`world.combatEvents`, `world.abilityActivations`,
+ * `world.vfxEvents`) to cues, that it NEVER mutates (drains) any of them, and
+ * that per-kind throttling holds across frames even when the real drainers
+ * clear the queues in between.
  *
- * This uses a REAL `GameWorld` (via `createTestWorld`) and drives the SAME
- * per-frame call order `PhaserBridge.ts` uses (`combatAudio.update()` before
- * the drainers), simulating each drainer's `queue.length = 0` the way
- * `EffectsVfx`/`CombatVfx` actually do, rather than needing a real Phaser
- * scene — a WebAudio `AudioContext`/Phaser renderer have nothing further to
- * prove here (see `tests/unit/audio-cue-engine.test.ts` /
- * `tests/unit/combat-audio.test.ts` for those in isolation).
+ * It deliberately does NOT claim to prove the runtime call ORDER (that
+ * `combatAudio.update()` runs before `CombatVfx`/`EffectsVfx` drain): this
+ * suite drives the frame itself, so moving the production call after a drainer
+ * would leave it green. That ordering is covered where it is real, against the
+ * booted scene + bridge, in `tests/e2e/combat-audio-real-wiring.test.ts`,
+ * which pushes onto the real queues and asserts the cue still fires on the
+ * next real frame.
  */
 import { describe, expect, it } from 'vitest';
 import { createCombatAudio } from '../../src/engine/combat-audio.js';
@@ -31,8 +32,8 @@ function createFakeEngine(): AudioCueEngine & { specs: SynthCueSpec[] } {
   };
 }
 
-describe('combat-audio pipeline: read-before-drain ordering', () => {
-  it('sees combatEvents/abilityActivations/vfxEvents pushed this frame even though a drainer clears them immediately after', () => {
+describe('combat-audio pipeline: queue mapping and non-draining contract', () => {
+  it('maps combatEvents/abilityActivations/vfxEvents pushed in one frame to their cues', () => {
     const engine = createFakeEngine();
     const audio = createCombatAudio(engine);
     const world = createTestWorld();
@@ -57,14 +58,7 @@ describe('combat-audio pipeline: read-before-drain ordering', () => {
     });
     world.vfxEvents.push({ kind: 'pickupSparkle', x: 0, y: 0, color: 0xffd166 });
 
-    // Frame order mirrors PhaserBridge.ts: combatAudio.update() first, then
-    // the real drainers (simulated here as their documented sole-consumer
-    // `length = 0` resets — CombatVfx drains combatEvents+abilityActivations,
-    // EffectsVfx drains vfxEvents).
     audio.update(world, 0);
-    world.combatEvents.length = 0; // CombatVfx's drain
-    world.abilityActivations.length = 0; // CombatVfx's drain
-    world.vfxEvents.length = 0; // EffectsVfx's drain
 
     const labels = engine.specs.map((s) => s.label);
     expect(labels).toContain('combat:damage-taken');

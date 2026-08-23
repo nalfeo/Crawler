@@ -45,6 +45,20 @@ describe('cueForCombatEvent', () => {
     expect(cue?.kind).toBe('weaponCrit');
   });
 
+  it('maps an ability-sourced enemy hit to spellImpact, never a weapon cue', () => {
+    const cue = cueForCombatEvent(
+      combatEvent({ type: 'hit', targetType: 'enemy', fromActiveAbility: true }),
+    );
+    expect(cue?.kind).toBe('spellImpact');
+  });
+
+  it('still maps an ability-sourced crit to spellImpact rather than weaponCrit', () => {
+    const cue = cueForCombatEvent(
+      combatEvent({ type: 'hit', targetType: 'enemy', isCrit: true, fromActiveAbility: true }),
+    );
+    expect(cue?.kind).toBe('spellImpact');
+  });
+
   it('maps a player hit to damageTaken', () => {
     const cue = cueForCombatEvent(combatEvent({ type: 'hit', targetType: 'player', amount: 20 }));
     expect(cue?.kind).toBe('damageTaken');

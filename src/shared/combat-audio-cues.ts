@@ -9,8 +9,10 @@
  * `apply-damage.ts` / `weaponSystem.ts` / `abilitySystem.ts` /
  * `skillSystem.ts` / `itemPickupSystem.ts` already populate every tick, so it
  * needs ZERO new core/game plumbing to cover weapons, spells, abilities,
- * damage taken, and loot pickups (see ADR for the reused-queue rationale and
- * why a brand new `audioEvents` queue was rejected).
+ * damage taken, and loot pickups (see
+ * `docs/knowledge/adr/2026-08-23-combat-loot-audio-cues.md` for the
+ * reused-queue rationale and why a brand new `audioEvents` queue was
+ * rejected).
  *
  * `world.abilityActivations` — not `vfxEvents`' `abilityActivateFlash` /
  * spell-cast VFX kinds — is the audio source for spells/abilities: it is the
@@ -18,7 +20,9 @@
  * `kind: 'active' | 'spell'`), whereas `abilityActivateFlash` fires for
  * passive activation/re-activation too and the spell-cast VFX kinds
  * (`fireballBlast` etc.) are cosmetic presentation, not a semantic contract
- * (plan review finding — see ADR). Loot pickups have no equivalent
+ * (plan review finding — see
+ * `docs/knowledge/adr/2026-08-23-combat-loot-audio-cues.md`). Loot pickups
+ * have no equivalent
  * authoritative queue, so `pickupSparkle` is used, but ONLY as a single
  * generic "pickup happened" signal — never to infer WHICH item was picked up
  * from its cosmetic tint, since at least two producers
@@ -34,19 +38,18 @@ import type { AbilityActivationEvent } from './ability-activation-events.js';
 import type { CombatEvent } from './combat-events.js';
 import type { VfxEvent } from './vfx-events.js';
 
-export const COMBAT_AUDIO_CUE_KINDS = [
-  'weaponHit',
-  'weaponCrit',
-  'weaponMiss',
-  'damageTaken',
-  'blocked',
-  'dodge',
-  'enemyDeath',
-  'spellCast',
-  'abilityActivate',
-  'pickup',
-] as const;
-export type CombatAudioCueKind = (typeof COMBAT_AUDIO_CUE_KINDS)[number];
+export type CombatAudioCueKind =
+  | 'weaponHit'
+  | 'weaponCrit'
+  | 'weaponMiss'
+  | 'damageTaken'
+  | 'blocked'
+  | 'dodge'
+  | 'enemyDeath'
+  | 'spellCast'
+  | 'spellImpact'
+  | 'abilityActivate'
+  | 'pickup';
 
 export interface CombatAudioCue {
   readonly kind: CombatAudioCueKind;
@@ -80,12 +83,23 @@ function intensityForDamage(amount: number): number {
  * types/target combinations with no audio signal in scope (e.g. an enemy
  * dodging, which never happens; a `corpseExplode`, already covered visually
  * by gore VFX and not one of the issue's five requested categories).
+ *
+ * Non-player hits are classified from the event's own authoritative source
+ * metadata, never from `targetType` alone: `fromActiveAbility` (set by
+ * `apply-damage.ts` for player active/spell damage — see
+ * `progressionEffects.ts`) means the impact came from a spell/active ability,
+ * so it gets the distinct `spellImpact` cue instead of a weapon cue. Without
+ * that split, spell damage would play weapon SFX on top of the activation's
+ * own `spellCast` cue (code review finding).
  */
 export function cueForCombatEvent(event: CombatEvent): CombatAudioCue | null {
   switch (event.type) {
     case 'hit':
       if (event.targetType === 'player') {
         return { kind: 'damageTaken', intensity: intensityForDamage(event.amount) };
+      }
+      if (event.fromActiveAbility === true) {
+        return { kind: 'spellImpact', intensity: intensityForDamage(event.amount) };
       }
       return {
         kind: event.isCrit ? 'weaponCrit' : 'weaponHit',

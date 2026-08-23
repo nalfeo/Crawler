@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createCombatAudio, synthSpecForCue } from '../../src/engine/combat-audio.js';
+import { createCombatAudio } from '../../src/engine/combat-audio.js';
+import { combatSynthSpecForCue } from '../../src/engine/audio/combat-cue-specs.js';
 import type { AudioCueEngine, SynthCueSpec } from '../../src/engine/audio/audio-cue-engine.js';
 import type { CombatAudioCue, CombatAudioCueKind } from '../../src/shared/combat-audio-cues.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -13,6 +14,7 @@ const ALL_KINDS: readonly CombatAudioCueKind[] = [
   'dodge',
   'enemyDeath',
   'spellCast',
+  'spellImpact',
   'abilityActivate',
   'pickup',
 ];
@@ -21,10 +23,10 @@ function cue(kind: CombatAudioCueKind, intensity = 0.5): CombatAudioCue {
   return { kind, intensity };
 }
 
-describe('synthSpecForCue', () => {
+describe('combatSynthSpecForCue', () => {
   it('produces a valid SynthCueSpec for every cue kind', () => {
     for (const kind of ALL_KINDS) {
-      const spec = synthSpecForCue(cue(kind));
+      const spec = combatSynthSpecForCue(cue(kind));
       expect(spec.durationMs).toBeGreaterThan(0);
       expect(spec.gain).toBeGreaterThan(0);
       expect(spec.gain).toBeLessThanOrEqual(1);

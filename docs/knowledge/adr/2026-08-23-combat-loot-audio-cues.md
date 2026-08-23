@@ -52,18 +52,26 @@ Mirror ADR 0071's three-module shape exactly:
 1. **`src/shared/combat-audio-cues.ts`** (pure, no Phaser/WebAudio imports) —
    the deterministic decision layer. Three pure functions —
    `cueForCombatEvent`, `cueForAbilityActivation`, `cueForVfxEvent` — map an
-   event to one of 10 `CombatAudioCueKind`s (`weaponHit`, `weaponCrit`,
+   event to one of 11 `CombatAudioCueKind`s (`weaponHit`, `weaponCrit`,
    `weaponMiss`, `damageTaken`, `blocked`, `dodge`, `enemyDeath`, `spellCast`,
-   `abilityActivate`, `pickup`) plus a damage-derived intensity
+   `spellImpact`, `abilityActivate`, `pickup`) plus a damage-derived intensity
    (`intensityForDamage`, floored at 0.3, scaling to 1.0 at 40 damage).
+   Non-player hits are classified from the event's own authoritative source
+   metadata rather than `targetType`: `CombatEvent.fromActiveAbility` (set by
+   `apply-damage.ts` for player active/spell damage) routes to `spellImpact`,
+   so spell damage never plays weapon SFX on top of its own `spellCast` cue
+   (code review finding).
 2. **`src/engine/audio/audio-cue-engine.ts`** — unchanged, reused as-is. Each
    feature that uses it owns its **own** instance (the module's own doc
    comment discourages sharing one instance across unrelated features, since
    `stopAll()`/`dispose()` are global to that instance), so `combat-audio.ts`
    creates a separate `AudioCueEngine` from the reward-opening feature's.
-3. **`src/engine/combat-audio.ts`** — the glue. `synthSpecForCue` maps a
-   decided cue to a `SynthCueSpec` (waveform/frequency/duration/gain, labeled
-   `combat:<kind>`). `createCombatAudio(engine)` returns a controller with
+3. **`src/engine/combat-audio.ts`** — the glue, plus
+   **`src/engine/audio/combat-cue-specs.ts`**, whose `combatSynthSpecForCue`
+   maps a decided cue to a `SynthCueSpec` (waveform/frequency/duration/gain,
+   labeled `combat:<kind>`); it lives beside the engine so the spec table has
+   a real production importer and a name distinct from
+   `reward-opening-audio.ts`'s `synthSpecForCue`. `createCombatAudio(engine)` returns a controller with
    `update(world, renderElapsedMs)` (reads, never drains, all three queues
    every frame) and `destroy()`. Bursty frames are arbitrated by **two**
    layers: a per-kind cooldown (`MIN_GAP_MS_BY_KIND`) and a priority-ranked
@@ -120,22 +128,24 @@ considered 3 alternative designs and **rejected** the original plan
 5. **Non-blocking — frame ordering fragility.** **Resolved**: `combatAudio`
    reads (never drains) all three queues, called before any drainer in
    `PhaserBridge.ts`'s render loop, with the ordering constraint documented
-   inline and locked by `tests/integration/combat-audio-pipeline.test.ts`.
+   inline and locked — against the REAL booted scene + bridge frame loop,
+   where the order is real — by `tests/e2e/combat-audio-real-wiring.test.ts`.
 6. **Non-blocking — test strategy needed both isolation and real-wiring
    coverage.** **Resolved**: unit tests for the pure decision layer and the
    cooldown/priority-budget arbitration in isolation, an integration test
-   proving read-before-drain ordering against a real `GameWorld`, and (added
-   after initial implementation, per rule #9) a real-scene E2E suite (see
-   below).
+   proving queue mapping, the never-drains contract, and cross-frame
+   throttling against a real `GameWorld`, and (added after initial
+   implementation, per rule #9) a real-scene E2E suite that is the actual
+   read-before-drain ordering proof (see below).
 7. **Non-blocking — mixing/ownership.** **Resolved**: `combat-audio.ts` owns
    its own `AudioCueEngine` instance, matching ADR 0071's per-feature
    ownership guidance; no cross-feature `stopAll()`/`dispose()` interference.
 
 ## Observe Before Done
 
-Unit and integration tests prove the pure decision logic and the
-read-before-drain ordering contract against a `createTestWorld()` fixture, but
-per rule #9 that cannot prove `MainGameScene`/`PhaserBridge` actually wire
+Unit and integration tests prove the pure decision logic and the never-drains
+contract against a `createTestWorld()` fixture, but per rule #9 that cannot
+prove the runtime call ORDER, nor that `MainGameScene`/`PhaserBridge` wire
 `combatAudio.update()` into the real per-frame render loop, nor that a real
 `AudioCueEngine` instance is actually constructed and reachable end-to-end.
 `tests/e2e/combat-audio-real-wiring.test.ts` boots the real `MainGameScene`

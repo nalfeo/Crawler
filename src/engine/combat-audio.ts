@@ -11,9 +11,11 @@
  * (`EffectsVfx`, `CombatVfx`) to consume.
  *
  * Sources (see `combat-audio-cues.ts`'s doc comment for why each was picked):
- * - `world.combatEvents` → weapon hit/crit/miss, damage taken, blocked,
- *   dodge, enemy death. Authoritative (this queue already carries
- *   `amount`/`isCrit`/`targetType`, not merely cosmetic).
+ * - `world.combatEvents` → weapon hit/crit/miss, spell/ability impact, damage
+ *   taken, blocked, dodge, enemy death. Authoritative (this queue already
+ *   carries `amount`/`isCrit`/`targetType`/`fromActiveAbility`, not merely
+ *   cosmetic) — `fromActiveAbility` is what separates a spell landing from a
+ *   weapon strike, so ability damage never plays weapon SFX.
  * - `world.abilityActivations` → spell cast / ability activate. Authoritative
  *   "a player active/spell ability fired" signal — NOT `vfxEvents`' cosmetic
  *   spell-cast/ability-flash VFX kinds, which also fire for passive
@@ -34,8 +36,11 @@
  * `effectsVfx`'s own combatEvents read-before-drain requirement). Because
  * this module never mutates any of the three queues, wiring it in is purely
  * additive — it cannot itself break `EffectsVfx`/`CombatVfx`'s drain
- * contracts. `tests/integration/combat-audio-pipeline.test.ts` locks this
- * ordering with a real `GameWorld` rather than relying on comments alone.
+ * contracts. `tests/e2e/combat-audio-real-wiring.test.ts` locks this ordering
+ * against the REAL booted `MainGameScene` + `PhaserBridge` frame loop (it
+ * pushes onto the real queues and asserts the cue still fires on the next
+ * real frame, which is only possible if this module runs before the
+ * drainers), rather than relying on comments or a hand-rolled call order.
  *
  * Per-frame arbitration: `AudioCueEngine` has no built-in voice cap/pooling
  * beyond `stopAll()`, and a single frame can carry many DIFFERENT-kind events
@@ -76,7 +81,8 @@ import type { AbilityActivationEvent } from '../shared/ability-activation-events
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { GameWorld } from '../core/world.js';
-import type { AudioCueEngine, SynthCueSpec } from './audio/audio-cue-engine.js';
+import type { AudioCueEngine } from './audio/audio-cue-engine.js';
+import { combatSynthSpecForCue } from './audio/combat-cue-specs.js';
 
 /**
  * Minimum gap (ms, render clock) between two cues of the SAME kind. Tuned per
@@ -94,6 +100,7 @@ const MIN_GAP_MS_BY_KIND: Record<CombatAudioCueKind, number> = {
   dodge: 150,
   enemyDeath: 80,
   spellCast: 150,
+  spellImpact: 80,
   abilityActivate: 150,
   pickup: 50,
 };
@@ -110,6 +117,7 @@ const CUE_PRIORITY: Record<CombatAudioCueKind, number> = {
   weaponCrit: 80,
   spellCast: 70,
   abilityActivate: 65,
+  spellImpact: 62,
   blocked: 60,
   dodge: 55,
   weaponHit: 40,
@@ -119,105 +127,6 @@ const CUE_PRIORITY: Record<CombatAudioCueKind, number> = {
 
 /** Max distinct cue kinds played per `update()` call — see module doc comment. */
 const MAX_CUES_PER_FRAME = 4;
-
-/**
- * Pure mapping from a decided cue to concrete oscillator/gain synth
- * parameters. Exported for direct unit testing without any `AudioContext`.
- */
-export function synthSpecForCue(cue: CombatAudioCue): SynthCueSpec {
-  const intensity = cue.intensity;
-  switch (cue.kind) {
-    case 'weaponHit':
-      return {
-        waveform: 'square',
-        frequencyHz: 180 + intensity * 120,
-        durationMs: 70,
-        gain: 0.08 + intensity * 0.1,
-        label: 'combat:weapon-hit',
-      };
-    case 'weaponCrit':
-      return {
-        waveform: 'sawtooth',
-        frequencyHz: 260 + intensity * 220,
-        glideToHz: 180,
-        durationMs: 120,
-        gain: 0.12 + intensity * 0.16,
-        label: 'combat:weapon-crit',
-      };
-    case 'weaponMiss':
-      return {
-        waveform: 'sine',
-        frequencyHz: 300,
-        glideToHz: 160,
-        durationMs: 90,
-        gain: 0.06,
-        label: 'combat:weapon-miss',
-      };
-    case 'damageTaken':
-      return {
-        waveform: 'triangle',
-        frequencyHz: 160 - intensity * 40,
-        glideToHz: 90,
-        durationMs: 140,
-        gain: 0.14 + intensity * 0.18,
-        label: 'combat:damage-taken',
-      };
-    case 'blocked':
-      return {
-        waveform: 'square',
-        frequencyHz: 420,
-        glideToHz: 320,
-        durationMs: 90,
-        gain: 0.12,
-        label: 'combat:blocked',
-      };
-    case 'dodge':
-      return {
-        waveform: 'sine',
-        frequencyHz: 500,
-        glideToHz: 700,
-        durationMs: 100,
-        gain: 0.1,
-        label: 'combat:dodge',
-      };
-    case 'enemyDeath':
-      return {
-        waveform: 'sawtooth',
-        frequencyHz: 220 + intensity * 80,
-        glideToHz: 60,
-        durationMs: 180,
-        gain: 0.14 + intensity * 0.14,
-        label: 'combat:enemy-death',
-      };
-    case 'spellCast':
-      return {
-        waveform: 'triangle',
-        frequencyHz: 300 + intensity * 180,
-        glideToHz: 480 + intensity * 220,
-        durationMs: 260,
-        gain: 0.12 + intensity * 0.18,
-        label: 'combat:spell-cast',
-      };
-    case 'abilityActivate':
-      return {
-        waveform: 'square',
-        frequencyHz: 400 + intensity * 200,
-        glideToHz: 600 + intensity * 260,
-        durationMs: 200,
-        gain: 0.1 + intensity * 0.14,
-        label: 'combat:ability-activate',
-      };
-    case 'pickup':
-      return {
-        waveform: 'triangle',
-        frequencyHz: 640,
-        glideToHz: 820,
-        durationMs: 110,
-        gain: 0.1,
-        label: 'combat:pickup',
-      };
-  }
-}
 
 export interface CombatAudioController {
   /** Read this frame's event queues (without draining any of them) and play any throttled-through cues. */
@@ -280,7 +189,7 @@ export function createCombatAudio(engine: AudioCueEngine): CombatAudioController
 
       for (const cue of toPlay) {
         lastPlayedMs.set(cue.kind, renderElapsedMs);
-        engine.play(synthSpecForCue(cue));
+        engine.play(combatSynthSpecForCue(cue));
       }
     },
     destroy(): void {
