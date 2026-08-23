@@ -32,8 +32,8 @@ quest waypoint on both minimap surfaces:
 - docked radar blips and edge arrows.
 
 Existing single-arrow probe getters remain backward-compatible by returning the
-first arrow state. New probe getters expose all active minimap/radar arrow states
-so deterministic coverage can assert both quest IDs.
+currently tracked quest's arrow bounds. New probe getters expose all active
+minimap/radar arrow states so deterministic coverage can assert both quest IDs.
 
 ## Files changed
 
