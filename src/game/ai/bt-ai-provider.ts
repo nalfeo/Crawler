@@ -7328,21 +7328,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         // Active battle — let Engage/Hunt fight it, exactly like legacy.
         return null;
       case 'take-stairs': {
-        // Post-boss farm window — the SAME hold the legacy `take-stairs` branch
-        // and the headless auto-progression driver apply. It has to live here
-        // too: whenever a floor map exists this goal-graph planner owns the
-        // `take-stairs` goal and returns before the legacy branch is reachable,
-        // so without this check the provider kept routing to the staircase while
-        // the driver refused to confirm the descend underneath it. The player
-        // then parked on the stairs, thrashed with the pre-exit loot sweep, and
-        // the explore-dwell watchdog re-armed `progressGoalSuppressed` forever —
-        // a livelock that timed out the run (seed 11 / throwing-knife).
-        // Yielding `null` hands the frame to the normal Engage/Collect/Explore
-        // ladder (i.e. "farm the floor") and the window closes on its own once
-        // only the cohort's exit reserve is left, restoring this target.
-        if (this.isFarmingPostBossFloorTime(world, objective.deadlineMs)) {
-          return null;
-        }
         const reason = 'Heading to the stairs to clear the floor';
         if (progressSuppressed)
           return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');

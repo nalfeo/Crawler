@@ -1,4 +1,4 @@
-# Session Handoff: Floor 1 post-boss farm-window stair livelock
+# Session Handoff: Floor 1 post-boss farm-window stair livelock (investigation, no fix landed)
 
 ## Date
 
@@ -14,106 +14,126 @@ ai-behavior-tree, ai-combat-balance
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual (🎯 Exact). A one-line production behavior change, but it
-needed sweep-scale reproduction, event-log timeline diagnosis, two new deterministic
-regression tests, and a full 300-run release Floor 1 leg to prove the gate.
+2🍎 estimated, 2🍎 actual (🎯 Exact). The branch now carries no production change —
+the attempted one-line fix was measured, found to be a net win-rate regression, and
+reverted. What remains is documented evidence.
 
 ## Issue
 
-Closes nalfeo/Crawler#3351.
+Relates to nalfeo/Crawler#3351 (does **not** close it).
 
 ## What Was Done
 
-The release sweep at `d143f15a` dropped the Floor 1 leg from 300/300 to 296/300, with
-the published failure signature
-`floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=11|weapon=throwing-knife`.
+### Diagnosis (stands)
 
-Reproduced deterministically with the sweep's exact `runHeadless` option set
-(`npm run ai:winrate-sweep -- --seeds 11 --weapons throwing-knife --floor floor1`
-→ 0/1, `timeout` at 660s, dominant state `suppressedProgressNav 52.8%`). Dumping the
-per-sample decision timeline showed the staircase boss dying at ~228s and the player
-then parking at `(924, 495)` from 229s to the 660s frame cap, thrashing every frame
-between the pre-exit `Loot sweep: xp …` behavior and `Heading to the stairs to clear
-the floor`, with the explore-dwell watchdog re-arming `progressGoalSuppressed`
-(`source: exploreDwellFrontierTarget`) from ~315s onward — a permanent livelock.
+The release sweep at `d143f15a` dropped the Floor 1 leg to 296/300 with the published
+signature `seed=11|weapon=throwing-knife`: a livelock that parks the run at the
+staircase until the 660s frame cap, dominant state `suppressedProgressNav`.
 
-Root cause: PR #3276 added the post-boss farm window (`isFarmingPostBossFloorTime`)
-and wired it into the auto-progression **driver** and into the **legacy**
-`take-stairs` branch of `findProgressObjective`. But `findProgressObjective`
+PR #3276 added the post-boss farm window (`isFarmingPostBossFloorTime`) and wired it
+into the auto-progression **driver** and into the **legacy** `take-stairs` branch of
+`findProgressObjective`. That legacy branch is dead code — `findProgressObjective`
 delegates to `resolveFloor1MiddleChainObjective` (the goal-graph planner) whenever
-`world.floorMap` exists — which is every real run — so the legacy branch is dead code
-and the live goal-graph `take-stairs` branch had no farm-window check. The provider
-therefore steered to the staircase while the driver refused to confirm the descend:
-exactly the provider/driver disagreement that `post-boss-farm-window.ts` documents
-itself as existing to prevent.
+`world.floorMap` exists, which is every real run — and the goal-graph's own
+`take-stairs` branch has no farm-window check. So on the live path the provider steers
+to the stairs while the driver refuses to confirm the descend: the provider/driver
+disagreement `src/game/ai/post-boss-farm-window.ts` documents itself as preventing.
 
-Fix: the same `isFarmingPostBossFloorTime` guard now runs at the top of the
-goal-graph `take-stairs` branch, so the provider holds the stair objective for as
-long as the driver will refuse it.
+**This asymmetry is real and still present on `main`.**
 
-Observed in the real headless pipeline (not a lab) — before: seed 11 /
-throwing-knife timed out at 660s (level 7, 89 kills); after: victory at 512s
-(level 14, 247 kills, 724 gold).
+### Attempted fix and why it was reverted
+
+Applying the same `isFarmingPostBossFloorTime` guard at the top of the goal-graph
+`take-stairs` branch does fix the reported combo (seed 11 / throwing-knife: timeout
+660s → victory 512s). But it makes the post-boss farm window **live for the first
+time**, and farming instead of parking at the stairs is a net loss at PR tier.
+
+Measured on the blocking gate's exact option set (`tests/headless/floor1-completion.test.ts`,
+seed-selected weapons, `experienced_player`):
+
+| seed | weapon   | baseline (`main`) | with the goal-graph farm hold                                   |
+| ---- | -------- | ----------------- | --------------------------------------------------------------- |
+| 5    | fireball | victory 541s      | **death 242s** (died farming ~60s after the boss)               |
+| 22   | sword    | victory 541s      | **timeout 660s** (`EXPLORE 264s`, `suppressedProgressNav 178s`) |
+
+That takes the `Headless Floor 1 Gate` from 25/25 to 23/25 against a 100% floor
+(observed as the CI failure on this branch:
+`win-rate 92% (23/25) below 100% floor — failures: [5:death@242s lv8, 22:timeout@660s lv10]`).
+
+Trading two PR-tier wins for one release-tier win is exactly the kind of balance
+regression AGENTS.md rules #11/#12 forbid papering over, so the production change and
+its two regression tests were reverted. The branch is now behaviorally identical to
+`main`.
+
+### Alternative also tested and rejected
+
+Keeping baseline routing but ignoring `progressGoalSuppressed` for an already-unlocked
+staircase (so the stall's dominant `suppressedProgressNav` cannot recur) removes the
+suppression but does **not** fix the combo: seed 11 / throwing-knife still times out at
+660s, now dominated by `EXPLORE 543s`. The suppression is a symptom; the run's real
+problem in that combo is that it never converges on the exit after the boss dies at
+~141s.
 
 ## Key Decisions Made
 
-- **Fix the provider, not the driver.** Removing the driver's farm-window hold would
-  also have cleared the livelock, but it would have deleted the post-boss farm
-  feature that #3276 deliberately shipped. Restoring provider/driver agreement is the
-  smaller and more faithful change (AGENTS.md rule #11).
-- **Left the legacy branch in place.** It is unreachable today but is the correct
-  behavior for a `world.floorMap`-less world; deleting it is a separate cleanup.
-- **Did not touch the cleared-arena safe room** (`world.clearedSafeRoomIds`, also
-  from #3276). It explains the `inSafe` flicker at the stall site and the 82s of
-  safe-room credit that made the raw 660s frame cap bite, but it is not the root
-  cause and changing it would have been unscoped balance drift.
-- **Two-level regression coverage.** A unit test pins the goal-graph contract
-  directly (fast, fails pre-fix, will catch any future re-divergence at the exact
-  call site); a headless test pins the real seed-11 pipeline end to end.
+- **Do not land a fix that lowers the blocking win-rate gate.** The gate is the
+  established 25/25 Floor 1 baseline; a change that fixes one release-tier seed by
+  losing two PR-tier seeds is a regression regardless of the sweep number it targets.
+- **Do not tune the reserve fraction to dodge the gate.** Picking a farm reserve that
+  happens to keep seeds 5 and 22 alive is cherry-picking (rule #12).
+- **Leave `main`'s asymmetry documented rather than silently "fixed".** Making the
+  farm window live is a balance change that needs a full sweep and a Game Designer /
+  Playtester loop, not a CI-recovery one-liner.
 
 ## What's Next / Blockers
 
-- The `floor1-chain` leg also regressed in the same sweep (56.00% → 51.33%). That leg
-  has no 100% requirement, so it was out of scope here, but it plausibly shares this
-  root cause and is worth re-measuring after this lands.
-- The dead legacy `take-stairs` branch in `findProgressObjective` is a cleanup
-  candidate: any invariant added to one branch and not the other silently does
-  nothing.
+- **Decide the intent of #3276's farm window.** Either (a) make it live _and_
+  re-baseline Floor 1 with a full release sweep, bounding the farm so the AI stays
+  within return range of the stairs and does not fight itself to death, or (b) delete
+  the driver-side hold and the dead legacy branch so the feature stops being
+  half-wired. Today it is neither.
+- **Seed 11 / throwing-knife is still failing** on the release tier, and its post-boss
+  behavior needs its own diagnosis (boss dies ~141s; the remaining ~520s never
+  converge on the exit).
+- The other three release-leg losses are distinct signatures and unexamined:
+  `5:sword death@224s (EXPLORE 52.3%)`, `38:pistol timeout (ENGAGE 52.4%)`,
+  `1:throwing-knife timeout (EXPLORE 89.4%)`.
+- `floor1-chain` regressed 4.67pp in the same sweep; unmeasured here.
 
 ## Retrospective
 
 ### Lessons Learned
 
+- **Wiring a dormant feature into the live path is a balance change, not a bug fix.**
+  The farm window looked inert-by-accident; turning it on changed run outcomes across
+  the seed panel. Any "this guard was never reached" fix must be win-rate-measured on
+  the gate panel _before_ it is proposed, not after CI rejects it.
 - **`npm run ai:headless` is NOT the sweep.** The CLI applies a persona config,
-  `enemyTelegraphMs`, `playerPersona`, a wall-clock cap, and
-  `eventSampleInterval: 15`; `winrate-sweep.ts` calls `runHeadless` with a bare
-  `BehaviorTreeAI` and `eventSampleInterval: 60`. The CLI **won** seed 11 while the
-  sweep **lost** it. Always reproduce a sweep failure through the sweep, or through a
-  harness that replicates its exact option set.
-- **tsx diagnostic scripts must live inside the repo.** A scratch script in `/tmp`
-  fails with "Top-level await is currently not supported with the cjs output format"
-  because the package's `"type": "module"` does not apply there. Put throwaway
-  harnesses in the gitignored `files/` directory instead.
-- **A "provider and driver must agree" doc comment is not a gate.** The contract was
-  written down in `post-boss-farm-window.ts` and still broke within one PR. The unit
-  test added here is the enforcement the comment was standing in for.
+  `enemyTelegraphMs`, a wall-clock cap and `eventSampleInterval: 15`;
+  `winrate-sweep.ts` calls `runHeadless` with a bare `BehaviorTreeAI` and
+  `eventSampleInterval: 60`. The CLI **won** seed 11 while the sweep **lost** it.
+  Reproduce a sweep failure through the sweep's exact option set.
+- **The PR gate panel and the release leg disagree about seeds.** Gate seed 11 selects
+  `baseball-bat` and wins; the reported failure is seed 11 with a _forced_
+  `throwing-knife`. Always restate which tier a seed number belongs to.
+- **`suppressedProgressNav` dominance is a symptom, not a root cause.** Removing the
+  suppression path for that objective just moved the same 660s timeout into `EXPLORE`.
 
 ### Mistakes Made
 
-- Burned an early cycle diagnosing with `npm run ai:headless`, which won the
-  supposedly-failing seed. The early signal was that the reported signature includes
-  the sweep's own option fingerprint (`forceWeapon=true|damage=1`) — if the repro
-  command does not set those the same way, it is not the same run.
-- Initially assumed the legacy `take-stairs` branch that already had the farm-window
-  check was the live one. The early signal was that
-  `resolveFloor1MiddleChainObjective` returns non-`undefined` for any world with a
-  `floorMap`, so the code below its call site can never run in a real game.
+- Proposed the goal-graph guard without first running the 25-seed gate panel locally;
+  CI found the two-seed regression instead. The cheap check (two seeds, ~3 minutes
+  each) would have caught it immediately.
+- Initially assumed the legacy `take-stairs` branch carrying the farm-window check was
+  the live one. The early signal was that `resolveFloor1MiddleChainObjective` returns
+  non-`undefined` for any world with a `floorMap`.
 
 ### Opportunities for Future Improvement
 
-- A deterministic guard could assert that every Floor 1 progress objective kind
-  handled in the legacy `findProgressObjective` switch is also handled in the
-  goal-graph switch, which would have caught this at authoring time rather than in a
-  release sweep.
+- A deterministic guard could assert that every Floor 1 progress objective kind handled
+  in the legacy `findProgressObjective` switch is also handled in the goal-graph
+  switch — it would flag the asymmetry at authoring time instead of leaving a feature
+  half-wired.
 - Sweep failure signatures would be far cheaper to act on if the sweep emitted a
-  copy-pasteable single-run repro command alongside each loss.
+  copy-pasteable single-run repro command (including forced weapon and sampling
+  options) alongside each loss.
