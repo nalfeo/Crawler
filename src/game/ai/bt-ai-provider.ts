@@ -361,7 +361,6 @@ const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
-const FLOOR1_STAIR_CLOSE_APPROACH_RADIUS_MULTIPLIER = 3;
 const TARGET_POSITION_EPSILON_FT = 0.01;
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
@@ -5522,10 +5521,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         targetY - floor1Objective.staircasePos.y,
       ) <= TARGET_POSITION_EPSILON_FT;
     const directApproachFt = floor1UnlockedStairTarget
-      ? Math.max(
-          CLOSE_APPROACH_DIRECT_FT,
-          floor1Objective.markerRadiusFt * FLOOR1_STAIR_CLOSE_APPROACH_RADIUS_MULTIPLIER,
-        )
+      ? Math.max(CLOSE_APPROACH_DIRECT_FT, floor1Objective.markerRadiusFt)
       : CLOSE_APPROACH_DIRECT_FT;
 
     // Close-range direct approach. Tile-granular A* targets tile centers and

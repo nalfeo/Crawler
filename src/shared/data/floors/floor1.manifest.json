@@ -18,7 +18,7 @@
     "requiredTotalKills": 10,
     "requiredGold": 15,
     "requiredJunk": 2,
-    "markerRadiusFt": 8.0
+    "markerRadiusFt": 24.0
   },
   "map": {
     "widthTiles": 240,
