@@ -116,6 +116,7 @@ import {
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
+import type { Affinity } from '../shared/data/floor3/affinity.js';
 
 const logger = createLogger('core:world');
 
@@ -126,6 +127,8 @@ const logger = createLogger('core:world');
 export interface FloorExtendedState {
   /** Family faction state for floors with a families mechanic (e.g. Floor 2). */
   familyState?: Floor2State;
+  /** Floor 3 biome roster in territory-zone index order. */
+  floor3BiomeAffinities?: readonly Affinity[];
   /** Settlement snapshot for floors with a settlement mechanic (e.g. Floor 2). */
   settlement?: Floor2SettlementSnapshot;
   /** Trash territory assignments for floors with territorial trash spawning (e.g. Floor 2). Maps quadrant ID ('N', 'S', 'E', 'W') to archetype ID. */

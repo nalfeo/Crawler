@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import floor1EnemyPackJson from './data/enemies.floor1.json';
 import floor2EnemyPackJson from './data/enemies.floor2.json';
+import floor3EnemyPackJson from './data/enemies.floor3.json';
 
 /**
  * Single enemy archetype configuration for spawning.
@@ -30,7 +31,9 @@ const enemyArchetypeDefSchema = z
     /** Sprite height in feet. */
     spriteHeight: z.number().positive().default(2),
     /** AI behavior type. */
-    aiType: z.enum(['chase', 'patrol', 'ranged', 'flee']).default('chase'),
+    aiType: z
+      .enum(['chase', 'patrol', 'ranged', 'flee', 'leaper', 'guardian', 'support'])
+      .default('chase'),
     /** Spawn weight for weighted random selection (0-1). */
     spawnWeight: z.number().min(0).max(1),
     /**
@@ -52,6 +55,8 @@ const enemyArchetypeDefSchema = z
      * its width.
      */
     collisionRadius: z.number().positive().optional(),
+    /** Optional Floor 3 species line for wild-companion spawns. */
+    speciesId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((archetype, ctx) => {
@@ -129,6 +134,7 @@ function loadEnemyPackByJson(json: unknown): EnemyPackDef {
 const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
   ['floor1-ambient', loadEnemyPackByJson(floor1EnemyPackJson)],
   ['floor2-families', loadEnemyPackByJson(floor2EnemyPackJson)],
+  ['floor3-wild', loadEnemyPackByJson(floor3EnemyPackJson)],
 ]);
 
 /**

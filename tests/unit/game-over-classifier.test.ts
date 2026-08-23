@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
 import { classifyGameOverOutcome } from '../../src/game/ai/headless-runner-invariants.js';
 import { FLOOR2_TIMEOUT_GOAL_ID } from '../../src/game/floor2Scenario.js';
+import { FLOOR3_TIMEOUT_GOAL_ID } from '../../src/game/floor3Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('classifyGameOverOutcome', () => {
@@ -17,6 +18,13 @@ describe('classifyGameOverOutcome', () => {
     const world = createTestWorld({ seed: 42, floor: 2 });
     world.floorScenario = null;
     world.goalFlags.set(FLOOR2_TIMEOUT_GOAL_ID, true);
+    expect(classifyGameOverOutcome(world)).toBe('timeout');
+  });
+
+  it('returns timeout for the Floor 3 Companion League timer goal flag', () => {
+    const world = createTestWorld({ seed: 42, floor: 3 });
+    world.floorScenario = null;
+    world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, true);
     expect(classifyGameOverOutcome(world)).toBe('timeout');
   });
 
