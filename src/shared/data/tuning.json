@@ -44,7 +44,15 @@
     "killXpBase": 20,
     "_killXpBase_note": "Flat combat-XP pool awarded to a Companion team per enemy Companion KO'd (spec R7 / slice 5). Placeholder magnitude — no Floor 3 scenario spawns Companions yet, so this is not balance-swept; downstream slice 16 tunes it via a win-rate sweep.",
     "assistFloorShare": 0.2,
-    "_assistFloorShare_note": "Fraction of killXpBase split evenly across every living (non-knocked-out) Companion on the credited team, regardless of whether they landed a hit. The remainder splits damage-weighted across contributors only."
+    "_assistFloorShare_note": "Fraction of killXpBase split evenly across every living (non-knocked-out) Companion on the credited team, regardless of whether they landed a hit. The remainder splits damage-weighted across contributors only.",
+    "engagementRangeFt": 12,
+    "_engagementRangeFt_note": "Distance (ft) within which a rival-team Companion counts as keeping a team 'engaged' for KO recovery purposes (spec R5/R11, slice 6). Placeholder magnitude, not yet balance-swept.",
+    "engagementEndFrames": 180,
+    "_engagementEndFrames_note": "Frames (at 60 FPS, ~3s) a team must go without any rival within engagementRangeFt before its knocked-out Companions recover (spec R11 'short window', slice 6).",
+    "rallyPointRangeFt": 4,
+    "_rallyPointRangeFt_note": "Proximity radius (ft) within which the player instantly revives the whole party at a Rally Point (spec §8/R11, slice 6); matches the harvest/boss-chest pickup radius convention.",
+    "partyMaxSize": 6,
+    "_partyMaxSize_note": "Starter pick + 5 poaches = 6 (spec R5); PartySlot.locked latches once this many Companions have been recruited."
   },
   "floor": {
     "minDurationS": 120,

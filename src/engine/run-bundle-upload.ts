@@ -196,7 +196,7 @@ export async function submitRunSurvey(
   return submitRunSurveyAppend(bundle.meta.runId, survey, options);
 }
 
-export async function submitRunSurveyAppend(
+async function submitRunSurveyAppend(
   runId: string | undefined,
   survey: PlaytestSurvey,
   options: { fetchImpl?: typeof fetch } = {},

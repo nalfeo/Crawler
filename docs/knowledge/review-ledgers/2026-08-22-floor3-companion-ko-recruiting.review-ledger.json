@@ -1,0 +1,54 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "floor3-companion-ko-recruiting",
+  "task_title": "Floor 3 Slice 6: Companion KO/recovery, Rally Points, recruiting",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer (gpt-5.4, high effort) via rubber-duck agent: verdict approved_with_changes, no re-architecture warranted. (1) Health clamp-to-1 alone is not a full downed invariant for future regen/targeting/counting systems — resolved by documenting the invariant in companionKOSystem.ts module doc (no functional change needed: no floor3 ability currently grants hpRegen, and no non-drop system reads Companion health today, so nothing is exploitable yet; future consumers are now required to check knockedOut). (2) party membership should be PartySlot-scoped, not team-id-scoped, so a future non-roster ally sharing TeamId.PLAYER cannot trip a false wipe — resolved by adding PartySlot to isPartyWiped's query (partyMembers already had this filter) + a regression test for a non-roster same-team Companion. (3) O(n^2) engagement scan is fine at party-scale (<=6v6) but should be revisited before Floor 3 has many simultaneous companions/wild encounters — accepted as documented follow-up, not blocking for this slice. (4) Rally Point checks only player proximity, not full-party proximity — accepted as intentional design (matches the Floor 3 companion-league GDD framing of a convenience recovery waypoint the player walks to). (5) Team-level idle timer (not per-companion) is intentional: recovery is a whole-team event per spec R11, not per-individual. divergence=minor (two concerns produced concrete detail fixes: PartySlot scoping + an invariant doc comment; no re-architecture)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.8",
+      "head_sha": "a025514d6786feeeebd7591556616414b5f00616",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/core/systems/companionKOSystem.ts",
+          "detail": "Avoidable per-frame allocation: engagedTeams and teamsWithKnockedOut create new Set instances every frame. Consider hoisting to module scope and .clear()-ing each frame if this system runs on the hot path at party scale."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Independent grade by gemini-3.1-pro-preview (uninvolved; distinct from plan_review gpt-5.4, code_review claude-sonnet-4.6, and implementer claude-opus-4.8). Graded the PR's TRUE NET change vs current main (files/companion-net-diff.patch), which excludes the Magic Missile #3249 code that a naive merge-base (base 8fdda66 is behind main) would show but that is byte-identical to origin/main (git diff origin/main a025514 -- src/core/systems/homingSystem.ts is empty) and thus contributes zero net change. The Floor 3 Companion KO state machine, Rally Point revival, and recruiting flow are correct and tightly scoped to slice 6; ECS ordering safely prevents dropSystem from reaping downed companions; recruiting handles affinity/style diversity and PartySlot locking. Test coverage and lab wiring are excellent. Only a minor per-frame Set-allocation note remains. Verdict: pass."
+    }
+  }
+}

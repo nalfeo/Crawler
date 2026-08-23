@@ -22,6 +22,7 @@ export {
   companionProgressionSystem,
   companionLearnedAbilityIds,
 } from './companionProgressionSystem.js';
+export { companionKOSystem, _isPartyWiped } from './companionKOSystem.js';
 export { deathTimerSystem } from './deathTimerSystem.js';
 export {
   corpseStepSystem,
