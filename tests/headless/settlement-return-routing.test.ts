@@ -306,7 +306,7 @@ describe('settlement return routing (headless integration)', () => {
     expect(settlementReturnTelemetry(events)).toHaveLength(0);
   }, 30_000);
 
-  it('keeps Floor 1 settlement-return routing default-off when the option is omitted', async () => {
+  it('enables Floor 1 settlement-return routing when the option is omitted', async () => {
     const events: SimEvent[] = [];
     let seeded = false;
     const enabledStates: boolean[] = [];
@@ -331,9 +331,9 @@ describe('settlement return routing (headless integration)', () => {
       },
     });
 
-    expect(enabledStates).toContain(false);
-    expect(enabledStates).not.toContain(true);
-    expect(settlementReturnTelemetry(events)).toHaveLength(0);
+    expect(enabledStates).toContain(true);
+    expect(enabledStates).not.toContain(false);
+    expect(settlementReturnTelemetry(events)).not.toHaveLength(0);
   }, 30_000);
 
   it('aborts as unreachable when the shared progress-suppression signal fires mid-travel, then recovers via cooldown', async () => {

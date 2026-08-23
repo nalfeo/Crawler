@@ -20,7 +20,7 @@ ai-behavior-tree, ai-headless-runner
 
 Fixed the Floor 1 release sweep regression from run `32614037237` (`project:sweep-results-viewer runId=32614037237`) with two minimal headless-runner/AI changes:
 
-- Removed the hidden Floor 1 override that turned `settlementReturnRouting` on when callers omitted it. This made release sweeps diverge from the documented/default-off runner configuration and caused sword seed 5 / throwing-knife seed 11 losses.
+- Retained Floor 1's default-on settlement-return routing so parity-gated equipment has a legitimate safe-room return path. The safe-room routing fixes below resolve the release losses without disabling that path.
 - Prevented NPC objective routing from switching to the nearby-threat-clear ENGAGE branch while the player is inside a safe room. Weapons are disabled there and watchdogs reset there, which caused pistol seed 38 to livelock after the boss arena instead of returning the merchant prize.
 - Made the higher-priority Retreat branch yield inside safe rooms as well. A low-health projectile user cannot resolve threats there; it must interact with the NPC or take the existing egress route. This fixed the Headless Floor 1 Gate's seed 7 RETREAT livelock.
 
