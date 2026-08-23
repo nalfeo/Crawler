@@ -2,11 +2,11 @@ import GUI from 'lil-gui';
 import { query } from 'bitecs';
 import { Enemy, Player, Position, createGameWorld, spawnPlayer } from '../../core/index.js';
 import {
-  FLOOR3_WILD_TEAM_ID,
+  _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
-  resolveFloor3WildSpawnWeights,
 } from '../../game/floor3Scenario.js';
+import { TeamId } from '../../shared/constants.js';
 import { AFFINITY_RING } from '../../shared/data/floor3/affinity.js';
 import { getFloorEnemyPack } from '../../shared/enemy-packs.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -52,8 +52,8 @@ function createFloor3OverworldLab(canvasHost: HTMLElement, controls: HTMLElement
 
   function tickDirector(): void {
     const pack = getFloorEnemyPack('floor3-wild');
-    world.elapsedMs += (pack?.spawnIntervalMs ?? 1000) * state.steps;
     for (let i = 0; i < state.steps; i += 1) {
+      world.elapsedMs += pack?.spawnIntervalMs ?? 1000;
       floor3WildDirectorSystem(world);
     }
     render();
@@ -63,7 +63,7 @@ function createFloor3OverworldLab(canvasHost: HTMLElement, controls: HTMLElement
     if (playerEid < 0) return;
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
-    const weights = resolveFloor3WildSpawnWeights(world, playerX, playerY);
+    const weights = _resolveFloor3WildSpawnWeights(world, playerX, playerY);
     const sorted = [...weights.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     const tile = world.floorMap?.worldToTile(playerX, playerY);
     const biomeZones = world.floorMap?.territoryZones ?? [];
@@ -82,7 +82,7 @@ function createFloor3OverworldLab(canvasHost: HTMLElement, controls: HTMLElement
       `seed=${state.seed} floor=${world.floorId} ambientTracked=${world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0}`,
       `player=(${playerX.toFixed(1)}, ${playerY.toFixed(1)}) tile=${tile ? `${tile.x},${tile.y}` : '-'}`,
       `activeBiomes=${active.join(', ') || '(nearest fallback only)'}`,
-      `zoneCount=${biomeZones.length} wildTeam=${FLOOR3_WILD_TEAM_ID}`,
+      `zoneCount=${biomeZones.length} wildTeam=${TeamId.ENEMY}`,
       '',
       'top spawn weights:',
       ...sorted.map(([id, probability]) => `  ${id}: ${probability.toFixed(3)}`),

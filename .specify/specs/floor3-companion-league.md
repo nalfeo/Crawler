@@ -1,6 +1,6 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **In progress — slices 1–7 landed (2026-08-23).** Slice 1 (affinity matrix +
+> **Status:** **In progress — slices 1–6 landed; Slice 7 is under review (2026-08-23).** Slice 1 (affinity matrix +
 > species/style data) is implemented in `src/shared/data/floor3/`; slice 2 (the
 > `AFFINITY_MATRIX` damage-multiplier hook) is implemented in `src/core/apply-damage.ts`;
 > slice 3 (`Companion`/`PartySlot` + ally AI prepass) is implemented in the ECS/game AI
@@ -222,7 +222,7 @@ Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices
 | 4     | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`) ✅ _landed 2026-08-21_ | 🍎🍎🍎      | `AI_TYPE` additions + deterministic Guardian/Support movement behavior in `enemyAISystem.ts`, companion lab pipeline observation                                                                                                    | after 3   |
 | 5     | **Per-creature leveling + evolution + abilities** ✅ _landed 2026-08-22_   | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
 | 6     | **Recruiting, party-lock, KO/recovery, lose** ✅ _landed 2026-08-22_       | 🍎🍎🍎      | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab                                                                                                                                           | after 3   |
-| 7     | **Overworld + biomes + wild spawns** ✅ _landed 2026-08-23_                | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
+| 7     | **Overworld + biomes + wild spawns** 🔄 _under review_                     | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
 | 8     | **Studios + Final Four + seeded variety + objective tick**                 | 🍎🍎🍎🍎    | `TrainerDef`/`StudioDef`/`FinalFourDef`, candidate pools, `SeededRandom` selection, `floor3ObjectiveTick`, sealed dens, determinism test                                                                                            | after 6,7 |
 | 9     | **Set-pieces** (6 Studio dens + Final Four arena)                          | 🍎🍎        | `set-pieces.json` entries, set-piece-lab validation                                                                                                                                                                                 | after 7   |
 | 10    | **Persistent player track wiring**                                         | 🍎🍎        | route gems/gold/loot → `world.playerLevel`/gold/inventory on Floor 3                                                                                                                                                                | after 3   |

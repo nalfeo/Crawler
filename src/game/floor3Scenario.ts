@@ -54,9 +54,9 @@ import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 
-export const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
-export const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
-export const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
+const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
+const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
+const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 
 function getFloor3WildPack(): EnemyPackDef {
@@ -129,7 +129,7 @@ function collectFloor3AffinityWeights(
   return weights;
 }
 
-export function resolveFloor3WildSpawnWeights(
+export function _resolveFloor3WildSpawnWeights(
   world: GameWorld,
   x: number,
   y: number,
@@ -161,7 +161,7 @@ export function resolveFloor3WildSpawnWeights(
 
 function pickFloor3WildArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
   const pack = getFloor3WildPack();
-  const weights = resolveFloor3WildSpawnWeights(world, x, y);
+  const weights = _resolveFloor3WildSpawnWeights(world, x, y);
   const { pickedId } = pickFromSpawnZones(
     [weights] as const satisfies readonly SpawnZoneWeights[],
     () => world.rng.next(),

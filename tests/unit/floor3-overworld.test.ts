@@ -4,13 +4,10 @@ import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { Companion, Enemy, PartySlot, Prop } from '../../src/core/index.js';
 import {
-  FLOOR3_BIOME_MATCH_SPAWN_SHARE,
-  FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE,
   FLOOR3_TIMEOUT_GOAL_ID,
-  FLOOR3_WILD_TEAM_ID,
+  _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
-  resolveFloor3WildSpawnWeights,
 } from '../../src/game/floor3Scenario.js';
 import { getFloorEnemyPack } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
@@ -20,6 +17,7 @@ import {
   type Affinity,
 } from '../../src/shared/data/floor3/affinity.js';
 import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function createFloor3World(seed: number) {
@@ -90,7 +88,7 @@ describe('Floor 3 overworld + wild spawns', () => {
     setSingleBiomeZone(world, biomeAffinity);
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
-    const weights = resolveFloor3WildSpawnWeights(world, playerX, playerY);
+    const weights = _resolveFloor3WildSpawnWeights(world, playerX, playerY);
     const pack = getFloorEnemyPack('floor3-wild');
     expect(pack).toBeDefined();
 
@@ -113,8 +111,8 @@ describe('Floor 3 overworld + wild spawns', () => {
       }
     }
 
-    expect(matchingMass).toBeCloseTo(FLOOR3_BIOME_MATCH_SPAWN_SHARE, 6);
-    expect(neutralMass).toBeCloseTo(FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE, 6);
+    expect(matchingMass).toBeCloseTo(0.75, 6);
+    expect(neutralMass).toBeCloseTo(0.25, 6);
     expect(offBiomeMass).toBeCloseTo(0, 6);
   });
 
@@ -195,7 +193,7 @@ describe('Floor 3 overworld + wild spawns', () => {
       expect(hasComponent(world.ecs, eid, Enemy)).toBe(true);
       expect(hasComponent(world.ecs, eid, Companion)).toBe(false);
       expect(hasComponent(world.ecs, eid, PartySlot)).toBe(false);
-      expect(world.stores.team.id[eid]).toBe(FLOOR3_WILD_TEAM_ID);
+      expect(world.stores.team.id[eid]).toBe(TeamId.ENEMY);
     }
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
   });

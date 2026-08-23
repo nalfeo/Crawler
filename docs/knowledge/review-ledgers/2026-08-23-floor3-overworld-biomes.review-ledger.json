@@ -14,8 +14,16 @@
       "notes": "Resolved reviewer concerns before coding: kept TerritoryZone legacy familyIndex contract intact (Floor 3 will interpret the numeric zone index in scenario code rather than optionalizing the type), kept AI_TYPE numeric mapping in src/game rather than leaking it into shared, will use a dedicated Floor 3 biome-overworld generator path/helper instead of a giant in-place CaveSystem mode branch, defined neutral wilds strictly as multiplier===1 and affinity!=biome affinity, and added negative/wiring tests for no Floor-2-only room state plus canonical createFloorMainSceneOptions(\"floor3\") pipeline wiring."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
