@@ -10,7 +10,10 @@ import {
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
-import { getScenarioDefinition } from '../game/scenarioDefinitions.js';
+import {
+  getScenarioDefinition,
+  getScenarioPresentationContract,
+} from '../game/scenarioDefinitions.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
@@ -80,8 +83,13 @@ export function createFloorMainSceneOptions(
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,
-    director: scenario.director,
     onStairDescend: scenario.onStairDescend,
+    // Normalized presentation contract for this scenario (terminal outcome,
+    // stair marker/proximity, stair-descend confirmation copy, ordered
+    // Director milestones, completion-variant copy). Both sides name the
+    // shape from `src/shared/scenario-presentation.ts`, so the engine reads
+    // it without ever importing `src/game/`.
+    scenarioPresentation: getScenarioPresentationContract(scenario),
     onFloor1Cleared: nextFloorId
       ? (world: GameWorld, playerEid: number) => {
           const playerCarryover = capturePlayerCarryover(world, playerEid);
