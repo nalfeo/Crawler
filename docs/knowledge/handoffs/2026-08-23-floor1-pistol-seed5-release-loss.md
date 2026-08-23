@@ -38,7 +38,7 @@ Added deterministic coverage for the exact regressed signature by extending the 
 - `npx vitest run --project headless tests/headless/floor1-release-sweep-loss-regressions.test.ts --reporter=verbose` — passed (5/5, includes new `pistol seed 5` case).
 - `npx vitest run --project headless tests/headless/settlement-return-routing.test.ts -t "enables Floor 1 settlement-return routing when the option is omitted" --reporter=verbose` — passed.
 - `bash scripts/agent/verify-fast.sh` — passed.
-- `npm run verify:pr-prereqs` — initially failed due missing handoff, now expected to pass for a 2🍎 code-touching change with no review ledger required.
+- `npm run verify:pr-prereqs` — passed (`✅ PR prerequisites are satisfied (except final PR-title validation).`).
 
 ## Unresolved issues
 
