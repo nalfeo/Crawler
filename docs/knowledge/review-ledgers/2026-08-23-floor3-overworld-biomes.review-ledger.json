@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "131bdc986a4cc7405f97db8f5bb902f573ec582e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation successfully delivers the biome-overworld map generation and affinity-weighted wild spawn director exactly as planned. The generator correctly branches without breaking Floor 2's base, and the weighting math robustly handles biome-matching and neutral fallbacks. The code respects all layer and determinism boundaries (no Math.random or Date.now) and is backed by excellent test coverage validating exact room roles, determinism invariants, and the new ECS pipeline stages."
     }
   }
 }
