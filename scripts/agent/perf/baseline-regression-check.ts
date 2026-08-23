@@ -5,10 +5,36 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { Report } from '../shared/report';
+import { RELEASE_SWEEP_LEGS, RELEASE_SWEEP_REVISION } from './sweep-legs';
 
 export const MIN_WIN_RATE_DROP = 0.005;
 export const MIN_ADDITIONAL_LOSSES = 2;
 export const BASELINE_REGRESSION_MARKER_PREFIX = 'release-baseline-regression';
+
+/**
+ * Win-rate target the report-only release legs (`floor2`, `floor1-chain`) are
+ * held to. Below it, the release workflow files an investigation issue — the
+ * same release-time treatment Floor 1 already gets for its 100% invariant,
+ * rather than a clause buried in the scheduled nightly balance issue
+ * (nalfeo/Crawler#3293, follow-up to #3240).
+ *
+ * Hardcoded on purpose: moving this target is a gameplay-policy decision, not
+ * an operator knob.
+ */
+export const REPORT_ONLY_LEG_WIN_RATE_FLOOR = 0.9;
+
+/**
+ * The legs held to {@link REPORT_ONLY_LEG_WIN_RATE_FLOOR}: every non-blocking
+ * leg of the release matrix. Derived from the matrix itself so adding a
+ * report-only leg automatically monitors it instead of silently leaving it
+ * unwatched, and so the leg ids can never drift from the sweep that produces
+ * them.
+ */
+export const REPORT_ONLY_LEG_IDS: readonly string[] = Object.freeze(
+  RELEASE_SWEEP_LEGS.filter((leg) => !leg.blocking).map((leg) => leg.id),
+);
+
+export const LEG_WIN_RATE_FLOOR_MARKER = `<!-- ${BASELINE_REGRESSION_MARKER_PREFIX}:report-only-leg-win-rate -->`;
 
 interface BaselineMetadata {
   commit: string;
@@ -416,6 +442,158 @@ export function evaluateLegRegressions(
   return results;
 }
 
+export interface LegWinRateFloorLeg extends BaselineLegMetrics {
+  legId: string;
+  belowFloor: boolean;
+}
+
+export interface LegWinRateFloorDecision {
+  /**
+   * True when at least one monitored leg is below the floor.
+   *
+   * Named `regression` (rather than `belowFloor`) because
+   * `.github/scripts/baseline-regression-issue.mjs` files any decision of this
+   * shape, and one filer for both release-sweep checks means one dedupe,
+   * labelling, and Copilot-assignment path instead of two.
+   */
+  regression: boolean;
+  reason: string;
+  legs: LegWinRateFloorLeg[];
+  issue?: { marker: string; title: string; body: string };
+}
+
+function buildLegWinRateFloorIssue(
+  baseline: BaselineFile,
+  legs: readonly LegWinRateFloorLeg[],
+): NonNullable<LegWinRateFloorDecision['issue']> {
+  const below = legs.filter((leg) => leg.belowFloor);
+  const target = `${(REPORT_ONLY_LEG_WIN_RATE_FLOOR * 100).toFixed(0)}%`;
+  const summary = below
+    .map((leg) => `\`${leg.legId}\` at ${formatPercent(leg.winRate)}`)
+    .join(', ');
+  return {
+    // Deliberately stable rather than commit-scoped: the release workflow runs
+    // on every main deploy, so a per-commit marker would open a fresh issue
+    // every release while a leg sits under target. A stable marker makes the
+    // filer update the one open investigation issue with the newest numbers.
+    marker: LEG_WIN_RATE_FLOOR_MARKER,
+    title: `bug: report-only release sweep legs below the ${target} win-rate target`,
+    body: [
+      LEG_WIN_RATE_FLOOR_MARKER,
+      `## Report-only release sweep legs below ${target}`,
+      '',
+      `The release sweep for \`${baseline.meta.commit}\` reports ${summary}, below the ${target} target for the report-only legs. These legs measure whether a player who clears Floor 1 can keep going, so a slipping win rate here is a real progression problem even though the leg never blocks the release.`,
+      '',
+      '| Leg | Win rate | Wins | Below target |',
+      '| --- | ---: | ---: | :---: |',
+      ...legs.map(
+        (leg) =>
+          `| \`${leg.legId}\` | ${formatPercent(leg.winRate)} | ${leg.totalWins}/${leg.totalRuns} | ${leg.belowFloor ? '**yes**' : 'no'} |`,
+      ),
+      '',
+      `- **Release commit:** ${baseline.meta.commitSubject}`,
+      `- **Commit date:** ${baseline.meta.commitDate}`,
+      `- **Sweep run:** ${baseline.meta.runUrl}`,
+      '',
+      '### Investigation',
+      '',
+      `- Diagnose the failing runs using the per-run \`RunStats\` already published inside this release baseline payload (\`legs["floor1-chain"].runs\` / \`legs.floor2.runs\` in \`by-sha/${baseline.meta.commit}.json\` on the \`baselines\` branch) — this is published release-sweep panel data, already in git. Do not dispatch or run a new sweep to redo this categorization; only a small number of individual single-seed local headless runs (\`npm run ai:headless\`) to observe/reproduce a specific failure and confirm a fix are appropriate, per the "observe before done" rule.`,
+      "- Categorize those runs' `outcome` field and correlate with `movementQuality` (stuck/wiggle %), `aiTelemetry.decisionStateMs`, and progression/den fields to find the root cause (stuck pathfinding, target-selection deadlock, timeout/stalled budget exhaustion, a specific lethal mechanic, or a mapgen/lockout class where the player is physically unable to reach required content).",
+      '- Fix the single largest bucket that is solvable in the AI runner (`src/game/ai/**`) without materially changing core gameplay in `src/game/**`/`src/core/**`.',
+      '- If the largest bucket is instead a mapgen/lockout-class bug, do not patch map generation here — document the failure with a repro seed and file it as a separate follow-up issue.',
+      '- Add deterministic regression coverage, run the required repository verification, and publish a ready-for-review PR. The next release sweep is the canonical re-measurement.',
+    ].join('\n'),
+  };
+}
+
+/**
+ * Absolute win-rate floor for the report-only legs, evaluated against the
+ * CURRENT baseline alone.
+ *
+ * Deliberately independent of {@link evaluateBaselineRegression}: that decision
+ * carries exactly one issue and short-circuits on a Floor 1 loss, so folding
+ * this in would let a Floor 1 loss mask a Floor 2 breach in the same release.
+ * Like the Floor 1 100% invariant it needs no previous baseline — a chronically
+ * low leg must keep reporting instead of quietly becoming the new normal, which
+ * is exactly what a trend-only rule does.
+ */
+export function evaluateLegWinRateFloor(baseline: BaselineFile): LegWinRateFloorDecision {
+  const legs = baseline.legs;
+  // A baseline captured under a different (or absent) sweep revision predates
+  // this leg matrix, so a missing leg there is history, not a broken publisher.
+  const currentMatrix = baseline.meta?.sweep?.revision === RELEASE_SWEEP_REVISION;
+  if (!legs) {
+    if (currentMatrix) {
+      throw new Error(
+        `baseline for the current sweep matrix (revision ${RELEASE_SWEEP_REVISION}) has no leg metrics; ` +
+          `expected ${REPORT_ONLY_LEG_IDS.join(', ')}`,
+      );
+    }
+    return {
+      regression: false,
+      reason: 'baseline carries no leg metrics; report-only win-rate floor not evaluated',
+      legs: [],
+    };
+  }
+
+  const evaluated: LegWinRateFloorLeg[] = [];
+  const missing: string[] = [];
+  for (const legId of REPORT_ONLY_LEG_IDS) {
+    const leg = legs[legId];
+    if (!leg) {
+      missing.push(legId);
+      continue;
+    }
+    validateMetrics(leg, `current baseline leg "${legId}"`);
+    evaluated.push({
+      legId,
+      ...leg,
+      belowFloor: leg.winRate < REPORT_ONLY_LEG_WIN_RATE_FLOOR,
+    });
+  }
+
+  if (!currentMatrix) {
+    return {
+      regression: false,
+      reason: `baseline sweep revision ${baseline.meta?.sweep?.revision ?? 'absent'} predates current revision ${RELEASE_SWEEP_REVISION}; report-only win-rate floor not evaluated`,
+      legs: evaluated,
+    };
+  }
+
+  // A leg that vanished from a baseline captured under the CURRENT matrix means
+  // a truncated publisher or a rename, which would silently retire this check.
+  // Fail closed rather than pass quietly.
+  if (missing.length > 0) {
+    throw new Error(
+      `baseline for the current sweep matrix (revision ${RELEASE_SWEEP_REVISION}) is missing ` +
+        `report-only leg metrics: ${missing.join(', ')}`,
+    );
+  }
+
+  if (evaluated.length === 0) {
+    throw new Error('report-only leg win-rate floor has no legs to monitor');
+  }
+
+  const below = evaluated.filter((leg) => leg.belowFloor);
+  const target = `${(REPORT_ONLY_LEG_WIN_RATE_FLOOR * 100).toFixed(0)}%`;
+  if (below.length === 0) {
+    return {
+      regression: false,
+      reason: `every monitored leg met the ${target} target (${evaluated
+        .map((leg) => `${leg.legId} ${formatPercent(leg.winRate)}`)
+        .join(', ')})`,
+      legs: evaluated,
+    };
+  }
+
+  return {
+    regression: true,
+    reason: `${below.map((leg) => `${leg.legId} ${formatPercent(leg.winRate)}`).join(', ')} below the ${target} target`,
+    legs: evaluated,
+    issue: buildLegWinRateFloorIssue(baseline, evaluated),
+  };
+}
+
 export function evaluateBaselineRegression(
   currentBaseline: BaselineFile,
   index: readonly BaselineIndexEntry[],
@@ -583,6 +761,7 @@ function main(): void {
   const baselinePath = process.env.BASELINE_JSON;
   const indexPath = process.env.BASELINE_INDEX_JSON;
   const resultPath = process.env.BASELINE_REGRESSION_RESULT;
+  const legFloorResultPath = process.env.LEG_WIN_RATE_FLOOR_RESULT;
 
   try {
     if (!baselinePath || !indexPath || !resultPath) {
@@ -611,6 +790,28 @@ function main(): void {
       );
     } else {
       report.info(`No release sweep regression: ${decision.reason}`);
+    }
+
+    // Evaluated after (and independently of) the aggregate decision so a Floor 1
+    // loss can never mask a report-only leg falling under target in the same
+    // release. Opt-in via the result path so other callers keep the old shape.
+    if (legFloorResultPath) {
+      const legFloor = evaluateLegWinRateFloor(baseline);
+      writeJsonAtomically(legFloorResultPath, legFloor);
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(
+          process.env.GITHUB_OUTPUT,
+          `legWinRateFloorBreach=${legFloor.regression}\n`,
+        );
+      }
+      if (legFloor.regression) {
+        report.warn(`report-only leg win-rate floor breached: ${legFloor.reason}`, {
+          file: baselinePath,
+          remediation: 'Run the report-only leg win-rate issue-filing step.',
+        });
+      } else {
+        report.info(`Report-only leg win-rate floor: ${legFloor.reason}`);
+      }
     }
   } catch (error) {
     report.error(error instanceof Error ? error.message : String(error), {

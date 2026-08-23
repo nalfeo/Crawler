@@ -133,6 +133,14 @@ export {
 } from './systems/companionAISystem.js';
 export type { CompanionAIDecision, CompanionTargetKind } from './systems/companionAISystem.js';
 export {
+  _aiTypeForSpecies,
+  _generateStarterOffer,
+  _generateTrainerPoachOffer,
+  _recruitCompanion,
+  _STARTER_OFFER_SIZE,
+} from './floor3Recruiting.js';
+export type { RecruitCompanionOptions } from './floor3Recruiting.js';
+export {
   familyFeudSystem,
   getFamilyAIDecision,
   resolveHostileFallback,

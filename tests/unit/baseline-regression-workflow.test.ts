@@ -77,6 +77,31 @@ describe('release baseline regression workflow', () => {
     expect(file?.run).toContain('baseline-regression-issue.mjs');
   });
 
+  it('files the report-only leg win-rate issue from its own independent verdict', () => {
+    // The Floor 2 / chain win-rate ask lives in the release workflow (issue
+    // #3293), gated on a SEPARATE output so a Floor 1 loss cannot mask it.
+    const steps = baselineSteps();
+    const detect = steps.find((step) => step.name === 'Detect baseline win-rate regression');
+    const file = steps.find(
+      (step) => step.name === 'File report-only leg win-rate issue and assign Copilot',
+    );
+    const detectIndex = steps.findIndex(
+      (step) => step.name === 'Detect baseline win-rate regression',
+    );
+    const fileIndex = steps.findIndex(
+      (step) => step.name === 'File report-only leg win-rate issue and assign Copilot',
+    );
+    const upload = steps.findIndex((step) => step.name === 'Upload baseline as artifact');
+    expect(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT).toContain('leg-win-rate-floor.json');
+    expect(file?.if).toBe("steps.baseline-regression.outputs.legWinRateFloorBreach == 'true'");
+    expect(file?.env?.BASELINE_REGRESSION_RESULT).toBe(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT);
+    expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
+    expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
+    expect(file?.run).toContain('baseline-regression-issue.mjs');
+    expect(fileIndex).toBeGreaterThan(detectIndex);
+    expect(upload).toBeGreaterThan(fileIndex);
+  });
+
   it('serializes concurrent sweeps for the same release without cancelling either run', () => {
     const concurrency = baselineSweepJob()?.concurrency;
     expect(concurrency?.group).toBe(
