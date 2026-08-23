@@ -281,52 +281,44 @@ interface CollisionFingerprint {
 //   seed  42: 3/199.30/10/2 →  3/192.45/5/6
 //   seed 137: 3/152.72/5/0  →  2/113.68/0/0
 //
-// 2026-08-22 re-baseline — Floor 1 AI: calm-clock farm pull boost + post-boss
-// farm window (PR: Fix Floor 1 AI merchant round-trips/farming/boss chest
-// spot/cleared-arena safe room). `resolveCalmFarmPullBoost` widens
-// opportunistic loot/enemy pulls while the AI is calm (not beelining or
-// panic-ramping), and the post-boss farm window defers the descend confirm.
-// Both are early-slice, always-on behavior changes to the default
-// BehaviorTreeAI used by this guard, so they legitimately shift which
-// entities engage within the first 1500 frames — a design-owned divergence,
-// not a collision-migration regression. Verified stable across two
-// back-to-back invocations on the current branch head before pinning.
-// Before → after (kills / damageDealt / damageTaken / score):
-//   seed   7: 6/152.18/0/2   → 5/152.30/5/2
-//   seed  13: 3/141.60/5/0   → 4/126.20/5/0
-//   seed  42: 3/192.45/5/6   → 3/188.30/0/4
-//   seed 137: 2/113.68/0/0   → 4/162.56/5/0
+// 2026-08-23 CI recovery — calm-clock farm pull boost default neutralized.
+// Issue #3275 item 2 remains as an opt-in persona/sweep axis, but the
+// production `BehaviorTreeAI` default is back to `calmFarmPullBoost: 1` until a
+// broad sweep promotes a non-neutral value. With the boost neutral, the
+// post-boss farm window cannot affect this first-1500-frame slice, so the guard
+// returns to the prior RISK_REWARD_FUSED fingerprint family. Verified stable
+// across two back-to-back invocations by the determinism assertion below.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 188.2999997138977,
-    damageTaken: 0,
-    finalScore: 4,
+    damageDealt: 192.44999933242798,
+    damageTaken: 5,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 152.2999997138977,
-    damageTaken: 5,
+    kills: 6,
+    damageDealt: 152.18000078201294,
+    damageTaken: 0,
     finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 126.20000040531158,
+    kills: 3,
+    damageDealt: 141.6000019311905,
     damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 162.55999946594238,
-    damageTaken: 5,
+    kills: 2,
+    damageDealt: 113.67999935150146,
+    damageTaken: 0,
     finalScore: 0,
   },
 };
