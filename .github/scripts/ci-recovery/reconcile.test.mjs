@@ -6976,7 +6976,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'use that full SHA in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+      'use that full SHA in `✅ Addressed in [post-push-head-sha]: [one-line note]`',
     ),
     'top-level-comment warning should require the post-push HEAD marker',
   );

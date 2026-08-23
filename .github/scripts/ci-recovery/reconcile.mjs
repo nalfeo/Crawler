@@ -257,10 +257,10 @@ const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
   'copilot-swe-agent[bot]',
   'app/copilot-swe-agent',
 ]);
-const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
-const POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>';
+const ADDRESSED_MARKER_REPLY = '`✅ Addressed in [sha]: [one-line note]`';
+const POST_PUSH_HEAD_SHA_PLACEHOLDER = '[post-push-head-sha]';
 const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
-  '<sha>',
+  '[sha]',
   POST_PUSH_HEAD_SHA_PLACEHOLDER,
 );
 let releaseUnexpectedOwnership = null;
