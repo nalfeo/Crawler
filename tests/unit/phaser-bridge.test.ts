@@ -33,13 +33,17 @@ import {
 } from '../fixtures/phaser-bridge-harness.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import { addSetPieceProp } from '../../src/core/spawners/world-objects.js';
-import { setPieceZToDepth } from '../../src/shared/render-depths.js';
+import { PLAYER_DEPTH, setPieceZToDepth } from '../../src/shared/render-depths.js';
 import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX, getDecorationDef } from '../../src/shared/decorationDefs.js';
-import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
+import {
+  PROP_KIND_Z,
+  flattenSetPieceLayers,
+  getSetPieceDef,
+} from '../../src/shared/set-piece-types.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
@@ -67,6 +71,7 @@ class SwingImage {
   originX = 0.5;
   originY = 0.5;
   rotation = 0;
+  depth = 0;
   frame: { name: string | number };
 
   constructor(
@@ -118,6 +123,11 @@ class SwingImage {
 
   setAlpha(a: number): this {
     this.alpha = a;
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
     return this;
   }
 }
@@ -172,8 +182,10 @@ class PropRect {
 function makeBatSwingScene(readyKeys: Set<string>): {
   scene: Phaser.Scene;
   images: SwingImage[];
+  graphics: MockGraphics[];
 } {
   const images: SwingImage[] = [];
+  const graphics: MockGraphics[] = [];
   const registry = buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
@@ -198,7 +210,11 @@ function makeBatSwingScene(readyKeys: Set<string>): {
         images.push(img);
         return img as unknown as Phaser.GameObjects.Image;
       }),
-      graphics: vi.fn(() => new MockGraphics() as unknown as Phaser.GameObjects.Graphics),
+      graphics: vi.fn(() => {
+        const g = new MockGraphics();
+        graphics.push(g);
+        return g as unknown as Phaser.GameObjects.Graphics;
+      }),
     },
     textures: {
       // generateTextures() early-returns when the player texture already
@@ -209,7 +225,7 @@ function makeBatSwingScene(readyKeys: Set<string>): {
       get: () => ({ getSourceImage: () => ({ width: 64, height: 64 }) }),
     },
   } as unknown as Phaser.Scene;
-  return { scene, images };
+  return { scene, images, graphics };
 }
 
 describe('createPhaserBridge', () => {
@@ -1507,6 +1523,28 @@ describe('createPhaserBridge', () => {
     // key: 'staircase' → rat-slime, 'slime-rat' (mid-boss) → slime-rat-boss.
     expect(images[0]?.textureKey).toBe('rat-slime-var-1');
     expect(images[1]?.textureKey).toBe('slime-rat-boss-var-1');
+  });
+
+  it('renders the melee swing sprite and arc above the player and foreground props', () => {
+    const { scene, images, graphics } = makeBatSwingScene(new Set(['baseball-bat-var-0']));
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const owner = addEntity(world.ecs);
+    spawnMeleeSwing(world, 10, 10, owner, 5, 3, 5_000, 1, 0, 90, 0, 0, 0, 1, 0, MeleeSpriteId.BAT);
+
+    bridge.sync(world);
+
+    const swingImage = images[0];
+    const arc = graphics[0];
+    expect(swingImage).toBeDefined();
+    expect(arc).toBeDefined();
+    // The swing replaces the hidden carried weapon, so both the blade sprite
+    // and its arc trail must draw above the player body and every set-piece
+    // foreground prop the player can walk past.
+    expect(swingImage!.depth).toBeGreaterThan(PLAYER_DEPTH);
+    expect(arc!.depth).toBeGreaterThan(PLAYER_DEPTH);
+    expect(arc!.depth).toBeLessThan(swingImage!.depth);
+    expect(arc!.depth).toBeGreaterThan(setPieceZToDepth(PROP_KIND_Z.actor));
   });
 
   it('renders the approved baseball-bat generated art on a bat swing once its texture is ready', () => {

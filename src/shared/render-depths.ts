@@ -71,6 +71,15 @@ export const PROP_DEPTH = {
 export const TERRAIN_DEPTH = -20;
 
 /**
+ * Ceiling of the set-piece foreground band produced by {@link setPieceZToDepth}
+ * — the depth of the topmost authored prop kind (`actor`, z=50). Authored `z`
+ * is only schema-bounded to "an integer", so the mapper clamps here to keep
+ * every prop strictly below {@link PLAYER_DEPTH} even with the per-layer
+ * stamping epsilon added on top.
+ */
+export const SET_PIECE_FOREGROUND_MAX_DEPTH = 5;
+
+/**
  * Map a set-piece prop's authored `z` (the `PROP_KIND_Z` ladder: floor=0,
  * wall=10, door=12, fixture=20, furniture=30, decoration=40, actor=50) to a
  * Phaser render depth that deliberately STRADDLES the entity plane so layered
@@ -83,10 +92,14 @@ export const TERRAIN_DEPTH = -20;
  *   wall behind the NPC; a bookcase (`z=9`) sits behind the broker who stands in
  *   front of it. The `< 20` cutoff (not `<= 10`) deliberately keeps a door-kind
  *   prop (`z=12`) in this band instead of leaking above the entity plane.
- * - `z >= 20` → a small POSITIVE "foreground" band (≥2), so a welcome desk
+ * - `z >= 20` → a small POSITIVE "foreground" band (2..5), so a welcome desk
  *   (`z=30`) or clutter (`z=40`) reads as being in front of staged NPCs on the
  *   generic entity plane. The player renders above this band via
  *   {@link PLAYER_DEPTH} so a room prop cannot bury the controllable character.
+ *   The band is CLAMPED at the top of the authored ladder (`actor` z=50 → 5)
+ *   because `propSourceSchema` accepts any integer `z`; without the clamp an
+ *   authored `z=60` would map onto {@link PLAYER_DEPTH} and a larger `z` would
+ *   render strictly above the player.
  *
  * The function is monotonic non-decreasing across the whole ladder and stays
  * strictly between `TERRAIN_DEPTH` and the low world-VFX foreground band, so
@@ -102,8 +115,10 @@ export function setPieceZToDepth(z: number): number {
     return -19 + z * 0.8;
   }
   // Foreground band: fixture 20→2, furniture 30→3, decoration 40→4, actor 50→5
-  // (in front of entities, below gore=10).
-  return 2 + (z - 20) * 0.1;
+  // (in front of entities, below gore=10). Clamped at the `actor` ceiling so an
+  // out-of-ladder authored z can never reach PLAYER_DEPTH; the per-layer
+  // epsilon (<0.1) stamped on top still lands below it.
+  return Math.min(SET_PIECE_FOREGROUND_MAX_DEPTH, 2 + (z - 20) * 0.1);
 }
 
 /**
