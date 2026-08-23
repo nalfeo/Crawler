@@ -847,7 +847,7 @@ export interface MainSceneProbeApi {
     readonly y: number;
     readonly rotation: number;
   }>;
-  /** Seed merchant + Spell Broker NPC-return quest arrows through the real scene's live world. */
+  /** Seed all active merchant + Spell Broker NPC-return arrows through the real scene's world. */
   primeMerchantAndSpellBrokerQuestArrows(): void;
   /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
   getMinimapRadarWaypointArrowIds(): string[];

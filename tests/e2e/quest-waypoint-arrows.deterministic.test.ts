@@ -53,7 +53,7 @@ describe('quest waypoint arrows deterministic guard', () => {
     }
   });
 
-  it('shows merchant and Spell Broker quest arrows on both the main screen and minimap radar', async () => {
+  it('shows all active merchant and Spell Broker arrows on the main screen and minimap radar', async () => {
     await mainSceneProbe.primeMerchantAndSpellBrokerQuestArrows(page);
 
     await expect
