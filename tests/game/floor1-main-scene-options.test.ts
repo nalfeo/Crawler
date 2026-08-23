@@ -190,6 +190,31 @@ describe('createFloor1MainSceneOptions', () => {
     expect(options.onFloor1Cleared).toBeUndefined();
   });
 
+  it("injects each scenario's presentation contract so the scene never branches on floor identity", () => {
+    // Regression guard: the contract shipped once as an injected-but-unread
+    // field, which left the engine's Floor 1/Floor 2 branches alive. Every
+    // surface the scene renders must be reachable from these options.
+    for (const floorId of ['floor1', 'floor2'] as const) {
+      const options = createFloorMainSceneOptions(floorId);
+      const scenario = getScenarioDefinition(floorId);
+      const presentation = options.scenarioPresentation;
+
+      expect(presentation).toBeDefined();
+      expect(presentation!.director).toBe(scenario.director);
+      expect(presentation!.getRunOutcome).toBe(scenario.getRunOutcome);
+      expect(presentation!.getCompletionCopy).toBe(scenario.getCompletionCopy);
+      expect(presentation!.getStairMarkerState).toBe(scenario.getStairMarkerState);
+      expect(presentation!.stairConfirmation).toBe(scenario.stairConfirmation);
+      expect(presentation!.nextFloorId).toBe(scenario.nextFloorId);
+    }
+
+    // A transition-capable floor must advertise a next floor, since the scene
+    // selects its completion variant from that field plus the callback.
+    const floor1Options = createFloorMainSceneOptions('floor1');
+    expect(floor1Options.scenarioPresentation!.nextFloorId).toBeDefined();
+    expect(typeof floor1Options.onFloor1Cleared).toBe('function');
+  });
+
   it('routes NPC and stair callbacks from the scenario definition, not a floor branch', () => {
     const floor1 = createFloorMainSceneOptions('floor1');
     const floor2 = createFloorMainSceneOptions('floor2');

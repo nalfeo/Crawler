@@ -32,59 +32,6 @@ import {
 /** Render-pixel padding added around the camera view when rebuilding light. */
 export const LIGHTING_VIEW_BUFFER_PX = 64;
 
-/**
- * The floor-run terminal outcome, if the run has reached one. Handles both
- * Floor 1 (runSummary) and Floor 2 (staircaseDiscovered) terminal states.
- * Only `cleared_floor` and `failed_timeout` are treated as terminal; anything
- * else is `null`.
- */
-export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_timeout' | null {
-  // Floor 2: player confirmed exit descent → victory
-  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
-    return 'cleared_floor';
-  }
-  // Floor 1
-  const outcome = world.floorScenario?.runSummary?.outcome;
-  if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
-    return outcome;
-  }
-  return null;
-}
-
-export type FloorCompletionPresentation =
-  | 'failed_timeout'
-  | 'transition_to_next_floor'
-  | 'terminal_victory'
-  | 'terminal_complete';
-
-/**
- * Chooses which completion-screen branch the scene should present once
- * {@link getFloorRunOutcome} reports a terminal state.
- *
- * Transition callbacks take precedence over the Floor 2 terminal-victory branch
- * so scenarios that clear via `familyState.staircaseDiscovered` can still route
- * onward to another authored floor.
- */
-export function getFloorCompletionPresentation(
-  world: GameWorld,
-  hasFloorTransition: boolean,
-): FloorCompletionPresentation | null {
-  const outcome = getFloorRunOutcome(world);
-  if (!outcome) {
-    return null;
-  }
-  if (outcome === 'failed_timeout') {
-    return 'failed_timeout';
-  }
-  if (hasFloorTransition) {
-    return 'transition_to_next_floor';
-  }
-  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
-    return 'terminal_victory';
-  }
-  return 'terminal_complete';
-}
-
 /** Exact-equality of two light-field dirty rects (component-wise). */
 export function areLightingRectsEqual(a: LightFieldDirtyRect, b: LightFieldDirtyRect): boolean {
   return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;

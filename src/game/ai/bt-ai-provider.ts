@@ -291,7 +291,11 @@ import {
   LOOT_SWEEP_PANIC_THRESHOLD,
   LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
-import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs,
+} from './floor1-run-budget.js';
+import { resolvePostBossFarmWindow } from './post-boss-farm-window.js';
 // Collapse deadline for floors whose timer lives on the floor manifest (Floor 2).
 import { resolveManifestFloorCollapseState } from './collapse-deadline.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
@@ -656,6 +660,30 @@ export function computeCollapsePanicProfile(
     stairsUnlocked: input.staircaseUnlocked,
     travelBeelineActive,
   };
+}
+
+/**
+ * Multiplier for the opportunistic loot/enemy pulls while the collapse clock is
+ * applying no pressure at all.
+ *
+ * The panic ramp already scales both pulls **down** toward the deadline; this is
+ * the missing other half — issue #3275 item 2, "it should farm more on the way
+ * to quest objectives, it should know it has plenty of time". Deliberately
+ * one-sided and cliff-edged at `panic === 0`: the moment the clock starts
+ * mattering the boost is gone, so extra farming can never eat the exit margin.
+ * A non-finite or sub-1 value is ignored (1 = the pre-knob behavior).
+ */
+export function _resolveCalmFarmPullBoost(
+  profile: Pick<CollapsePanicProfile, 'panic' | 'beeline'>,
+  boost: number | undefined,
+): number {
+  if (profile.beeline || profile.panic > 0) {
+    return 1;
+  }
+  if (typeof boost !== 'number' || !Number.isFinite(boost) || boost <= 1) {
+    return 1;
+  }
+  return boost;
 }
 
 interface NpcTarget extends WorldTarget {
@@ -1192,6 +1220,30 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveDeadlineMs,
       this.runnerPlanningDeadlineMs,
     );
+  }
+
+  /**
+   * True while the run should keep farming Floor 1 instead of taking the
+   * unlocked stairs (see {@link resolvePostBossFarmWindow}).
+   *
+   * Single source of truth for the hold: the Progress objective below uses it
+   * to stop routing to the staircase, and the headless auto-progression driver
+   * calls it through {@link AIInputProvider.isFarmingPostBossFloorTime} so the
+   * two can never disagree about when the floor is done.
+   */
+  isFarmingPostBossFloorTime(world: GameWorld, objectiveDeadlineMs: number): boolean {
+    const objective = world.floorScenario?.objective;
+    if (!objective) {
+      return false;
+    }
+    return resolvePostBossFarmWindow({
+      reserveFraction: this.config.postBossFarmReserveFraction,
+      elapsedMs: world.elapsedMs,
+      planningDeadlineMs: this.resolveFloor1PlanningDeadlineMs(objectiveDeadlineMs),
+      floorBudgetMs: FLOOR1_ACTIVE_TIME_BUDGET_MS,
+      staircaseUnlocked: objective.staircaseUnlocked,
+      staircaseDiscovered: objective.staircaseDiscovered,
+    }).farming;
   }
 
   /**
@@ -4535,8 +4587,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     farmPullWeight: number;
   } {
     const profile = this.getCollapsePanicProfile(world);
-    const collectScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.1);
-    const farmScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.35);
+    const calmBoost = _resolveCalmFarmPullBoost(profile, this.config.calmFarmPullBoost);
+    const collectScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.1) * calmBoost;
+    const farmScale = profile.beeline ? 0 : Math.max(0, 1 - profile.panic * 1.35) * calmBoost;
     const dodgeFloor = profile.stairsUnlocked
       ? PANIC_MIN_DODGE_WEIGHT_SCALE
       : PANIC_MIN_DODGE_WEIGHT_SCALE_LOCKED;
@@ -7652,6 +7705,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
+      // Post-boss farm window: the floor's remaining time is spare budget once
+      // the boss is dead, so cohorts with a farm appetite keep working the
+      // floor for loot/XP instead of walking out early. Yielding `null` here
+      // (rather than steering somewhere) hands the frame to the normal
+      // Engage/Collect/Explore ladder — i.e. exactly the "farm the floor"
+      // behavior — and the window closes on its own once only the cohort's exit
+      // reserve is left, restoring this staircase target.
+      if (this.isFarmingPostBossFloorTime(world, objective.deadlineMs)) {
+        return null;
+      }
       const reason = 'Heading to the stairs to clear the floor';
       // F2 (SLACK_AWARE exit-commitment tail) — NARROWED after plan review.
       // The original design forced the staircase Progress target under urgency by

@@ -26,6 +26,7 @@ import {
   getMerchantWeaponIntent,
   merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
+import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
@@ -336,8 +337,13 @@ export function autoFloor1ProgressionSystem(
       // A repeat spell is the run's lowest-priority purchase: it exists to
       // absorb gold that has nowhere else to go, so it must leave a pending
       // weapon-class switch fully funded (see `merchantWeaponReserve`). The
-      // headline first spell keeps its priority and ignores the reserve.
-      const reserve = spellIntent.purchaseCount > 0 ? merchantWeaponReserve(world) : 0;
+      // headline first spell keeps its priority and ignores that reserve — but
+      // NO spell, headline or repeat, may spend gold the run still owes the
+      // *required* shopkeeper charm (see `requiredShopPurchaseReserve`), or the
+      // AI arrives at the merchant broke and has to farm and walk back.
+      const reserve =
+        (spellIntent.purchaseCount > 0 ? merchantWeaponReserve(world) : 0) +
+        requiredShopPurchaseReserve(world);
       const offerCost = (id: string): number =>
         getSpellBrokerOffers(world).find((offer) => offer.spellId === id)?.cost ?? 0;
       const spellId = candidateSpellIds.find(
@@ -369,6 +375,12 @@ export function autoFloor1ProgressionSystem(
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
   if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
+    return;
+  }
+  // The provider may be deliberately holding the floor open to farm its
+  // leftover budget (post-boss farm window). Confirming the descend here would
+  // end the run underneath it, so the driver defers to the provider's verdict.
+  if (aiProvider?.isFarmingPostBossFloorTime?.(world, objective.deadlineMs) === true) {
     return;
   }
   if (
