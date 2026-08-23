@@ -57,6 +57,7 @@ import {
   isBloodyFootprintSourceActive,
 } from '../../shared/blood-surfaces.js';
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
+import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
@@ -170,10 +171,7 @@ interface MainSceneInternals {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
     getMinimapBounds?(): ScreenBounds | null;
-    getMinimapRadarWaypointArrowStates?(): ReadonlyArray<{
-      readonly questId: string;
-      readonly bounds: ScreenBounds;
-    }>;
+    getMinimapRadarWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
     getNavigationBounds?(): {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
