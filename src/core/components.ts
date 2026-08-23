@@ -366,7 +366,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       /** Target entity id to steer toward once active. Only meaningful while
        * the target still exists and has Health > 0 — checked every frame by
        * `homingSystem` rather than relying on a sentinel "no target" value. */
-      targetEid: new Uint16Array(maxEntities),
+      targetEid: new Uint32Array(maxEntities),
       /** Constant travel speed (ft/frame) maintained while steering. */
       speed: new Float32Array(maxEntities),
       /** Maximum heading change per frame, in radians, once active. */

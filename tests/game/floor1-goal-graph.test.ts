@@ -301,6 +301,32 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
     );
   });
 
+  it('still plans a farm leg for an optional purchase the unpaid charm prices out (issue #3275 item 1)', () => {
+    // The player is holding exactly the spell price, but the REQUIRED charm is
+    // still unpaid, so that gold is spoken for. Without the reserve the planner
+    // saw the purchase as already affordable, dropped the farm leg, and routed
+    // the AI to a vendor the purchase code then refused to fund — the wasted
+    // merchant round trip the issue reported.
+    const base = {
+      shopStage: 'awaiting-prize' as const,
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      playerGold: 30,
+      shopkeeperEquipmentCost: 10,
+      spellBrokerIntent: { status: 'farming' as const, cost: 30 },
+    };
+    const reserved = buildFloor1GoalGraph(snapshot(base));
+    expect(reserved.goals.map((goal) => goal.id)).toContain('farm-spell-broker-gold');
+    expect(reserved.meta.get('farm-spell-broker-gold')?.detail).toContain('10 gold remaining');
+
+    // Once the charm is paid for, the same gold is spendable and no farm leg
+    // is needed.
+    const released = buildFloor1GoalGraph(snapshot({ ...base, shopStage: 'complete' }));
+    expect(released.goals.map((goal) => goal.id)).not.toContain('farm-spell-broker-gold');
+  });
+
   it('plans the enabled merchant weapon as one optional bundle and drops it before required completion', () => {
     const snap = snapshot({
       shopStage: 'complete',

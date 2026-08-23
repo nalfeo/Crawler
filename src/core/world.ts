@@ -808,6 +808,30 @@ export interface GameWorld {
    * timers and enable customization panels.
    */
   playerInSafeRoom: boolean;
+  /**
+   * Room ids that have become safe rooms *during* the run rather than at
+   * generation time.
+   *
+   * A boss arena stops being dangerous the moment its boss dies — the design's
+   * "Boss → Commercial Break" beat — so the floor scenario registers the
+   * cleared arena here and `isPointInSafeSpace` treats it like any authored
+   * SAFE room (timer pause, customization panels). The room's generated
+   * {@link RoomRole} deliberately stays `BOSS_STAIR`: `FloorMap.bossStairRoom`
+   * and every stair/spawn/minimap consumer resolve that room *by role*, so
+   * rewriting the role would make the boss room disappear from under the
+   * staircase it owns.
+   *
+   * Room ids are only unique *within* one generated floor, so the set is
+   * scoped to the map that produced it via {@link clearedSafeRoomMap}: a stale
+   * Floor 1 id must never make an unrelated Floor 2 room safe.
+   */
+  clearedSafeRoomIds: Set<number>;
+  /**
+   * The floor map {@link clearedSafeRoomIds} was recorded against. Any other
+   * map invalidates the whole set, so a floor transition needs no explicit
+   * reset — the ids simply stop applying.
+   */
+  clearedSafeRoomMap: FloorMap | null;
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -1036,6 +1060,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
+    clearedSafeRoomIds: new Set<number>(),
+    clearedSafeRoomMap: null,
     floor2EquipmentFlags: {
       floor2EquipmentRegistry: false,
       floor2EquipmentCatalog: false,

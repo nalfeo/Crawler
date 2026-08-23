@@ -1,0 +1,104 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "floor1-odd-ai-behavior",
+  "task_title": "Fix Floor 1 AI merchant round-trips, post-boss farming, boss chest drop spot, and cleared-arena safe room",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review by gpt-5.4 red-teamed the design with 3 alternatives: (A) planner-centric gold budgeting instead of point-of-sale reserves, (B) a pre-boss en-route farming policy instead of a post-boss staircase hold, (C) a shared 'effective safe rooms' abstraction instead of one-off clearedSafeRoomIds reads. Concern 1 (blocking, adopted from alternative A): buildFloor1GoalGraph still computed broker/merchant-weapon deficits from raw snapshot.playerGold, so the planner could emit a buy detour the executor refuses to fund. Resolved: added optionalPurchaseGold() to floor1-goal-graph.ts and moved the unpaid-stage set to src/shared/quest-types.ts (UNPAID_SHOPKEEPER_STAGES) so the pure planner shares the executor's affordability view without importing world code. Concern 2 (blocking, adopted from alternative C): resolveNearestSafeAnchor only scanned RoomRole.SAFE, so retreat routing ignored the cleared arena. Resolved: safe-anchor.ts now includes cleared rooms with the same per-floor scoping as isPointInSafeSpace, covered by two new tests. Concern 3 (blocking, adopted from alternative B): the post-boss window addressed issue item 4 but not item 2 ('farm more en route to objectives'). Resolved: added the calmFarmPullBoost knob and resolveCalmFarmPullBoost(), which lifts the opportunistic loot/enemy pulls only while panic === 0 and no exit beeline is active; seed 42 score 339 -> 358, kills 237 -> 245, and the 25-seed gate was re-run. Concern 4 (non-blocking, declined with reason): closing the farm window early when no reachable loot remains would need a floor-wide reachability scan every tick in the hottest AI path; the time reserve already bounds the cost and the collapse-panic beeline still fires underneath. Recorded as a follow-up in the handoff. Concern 5 (suggestion, adopted): added integration coverage for the shipped paths -- auto-progression stair deferral (3 cases), boss chest death placement plus the out-of-room fallback, cleared-arena safe conversion, and the broker's reserve-aware farming/returning transitions."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "gpt-5.4: cross-floor leak of world.clearedSafeRoomIds (reproduced on seed 10 -- a cleared Floor 1 room id made an unrelated Floor 2 room safe) -> fixed by stamping the owning FloorMap in world.clearedSafeRoomMap; missing integration coverage for the shipped farm-window path -> added. gemini-3.1-pro-preview: per-tick object allocation in sampleBossLastKnownPos -> now mutates in place; missing auto-progression driver coverage -> added 3 cases; save/load rehydration of clearedSafeRoomIds -> NOT APPLICABLE, the repo has no gameplay save/load path and initializeFloor1Scenario builds floorScenario fresh."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-opus-4.6"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "claude-opus-4.6 returned clean, explicitly clearing the three riskiest interactions (safe-room deadline pause cannot stall a run because farming happens outside the room; calmFarmPullBoost is strictly one-sided at panic===0; the floor1 scoping of requiredShopPurchaseReserve is correct). gpt-5.4 raised 3 coverage-only findings, no bugs: (a) planner-side reserve had no test -> ADDED to tests/game/floor1-goal-graph.test.ts; (b) staircase-boss chest position/safe conversion covered only for the slime-rat branch; (c) no BehaviorTreeAI-level test of the farm-window branch. (b) and (c) are duplicate-coverage asks on code paths already exercised end-to-end by the 25-seed headless gate and the slime-rat branch tests; left as follow-ups rather than weakening anything."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Two genuinely-attempted rounds completed. One reviewer returned clean; the other's remaining 2 findings are additional-coverage requests (staircase-boss branch assertions, BehaviorTreeAI-level farm-window test) rather than defects, and both paths are already exercised by the blocking 25-seed headless gate. Recorded for human confirmation instead of looping further or silently closing them.",
+        "unresolved_concerns": 2
+      }
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "claude-opus-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "Adjudication: the two models overlapped only on 'missing regression coverage', which was accepted once. The cross-floor id leak (gpt-5.4) was accepted as the single highest-severity finding and fixed by scoping the set to its owning FloorMap. The save/load finding (gemini) was adjudicated invalid: no gameplay serialization path exists in the repo."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "claude-opus-4.6"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Adjudication: claude-opus-4.6 clean; gpt-5.4's planner-reserve coverage gap accepted and fixed, its remaining two findings adjudicated as lower-value duplicate coverage of paths the 25-seed headless gate already exercises."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Same terminal state as the code_review loop: 2 coverage-only findings remain after two rounds, both on paths covered by the blocking headless gate. Escalated rather than looping or weakening a gate.",
+        "unresolved_concerns": 2
+      }
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-sonnet-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "cf841badabacdca14d4ada1ab4091716bfde60c8",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/core/components.ts",
+          "detail": "Widening homing.targetEid from Uint16Array to Uint32Array is outside the Floor 1 AI task. It is harmless and validates, but should be tracked as automated-review follow-up rather than core task scope."
+        },
+        {
+          "severity": "minor",
+          "file": "src/core/damage-meta.ts",
+          "detail": "DecodedDamageMeta is a harmless type-only clarification in an unrelated damage metadata system, added as automated-review follow-up rather than core Floor 1 scope."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 3,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The core Floor-1 work (required-purchase-reserve netted into both the executor and the goal-graph planner, the calm-farm-pull-boost cliff-edged at panic===0, the post-boss farm window shared by the BT provider and the headless driver, per-tick boss-death-position sampling with in-place mutation and an out-of-room fallback, and per-floor-scoped clearedSafeRoomIds/clearedSafeRoomMap honored by both isPointInSafeSpace and resolveNearestSafeAnchor) is correct, deterministic (no Date.now/Math.random, pure resolver functions), typechecks cleanly, and is covered by passing tests that would fail without the change. The two automated-review follow-up commits -- widening homing.targetEid from Uint16Array to Uint32Array and introducing DecodedDamageMeta -- are harmless and validated but outside the declared Floor-1 AI task, so scope_discipline is docked as minor non-blocking scope creep."
+    }
+  }
+}

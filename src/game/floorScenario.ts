@@ -119,7 +119,7 @@ import {
   type Floor1BossRewardSpellId,
 } from '../shared/abilities.js';
 import { generateFloor1SpellBrokerOffers } from '../shared/spell-skills.js';
-import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import type { Floor1SpellBrokerOffer, FloorBossEncounterState } from '../shared/floor-types.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import {
@@ -2892,6 +2892,93 @@ function roomAtPosition(world: GameWorld, pos: { x: number; y: number }): RoomDa
   return floorMap.roomGraph.get(roomId) ?? null;
 }
 
+/**
+ * Turn a cleared boss arena into a safe room.
+ *
+ * The design's floor loop is "Floor Combat → Boss → Commercial Break (safe
+ * room)": once the boss is dead its arena is the player's breather — the
+ * collapse timer pauses there and the customization panels open, exactly like
+ * an authored SAFE room. Registering the room *id* rather than rewriting its
+ * {@link RoomRole} is deliberate: `FloorMap.bossStairRoom` (and the stair,
+ * spawn-suppression and minimap consumers behind it) resolves the boss room by
+ * role, so a role rewrite would make the boss room vanish from under its own
+ * staircase.
+ */
+function markBossRoomCleared(world: GameWorld, room: RoomData | null): void {
+  if (!room || !world.floorMap) {
+    return;
+  }
+  // Room ids are unique only within one generated floor, so stamp the owning
+  // map alongside them; a later floor invalidates the whole set rather than
+  // inheriting a stale id (see `GameWorld.clearedSafeRoomMap`).
+  if (world.clearedSafeRoomMap !== world.floorMap) {
+    world.clearedSafeRoomIds.clear();
+    world.clearedSafeRoomMap = world.floorMap;
+  }
+  world.clearedSafeRoomIds.add(room.id);
+}
+
+/**
+ * Record where a live boss currently stands so its reward chest can drop there.
+ *
+ * Called every tick while the boss entity exists. The defeat branches run after
+ * death cleanup has already zeroed the typed-array component stores, so this
+ * sample is the only surviving record of the death spot. Once DeathTimer is
+ * first observed, the lethal-frame sample is frozen so corpse knockback cannot
+ * slide the eventual chest location.
+ */
+function sampleBossLastKnownPos(
+  world: GameWorld,
+  battle: FloorBossEncounterState,
+  bossEid: number,
+  freeze = false,
+): void {
+  if (battle.deathPosFrozen) {
+    return;
+  }
+  const x = world.stores.position.x[bossEid];
+  const y = world.stores.position.y[bossEid];
+  if (x === undefined || y === undefined) {
+    return;
+  }
+  // Mutate in place: this runs every frame the boss is alive, and a fresh
+  // object per tick would be pure GC pressure.
+  if (battle.lastKnownPos) {
+    battle.lastKnownPos.x = x;
+    battle.lastKnownPos.y = y;
+    battle.deathPosFrozen = freeze;
+    return;
+  }
+  battle.lastKnownPos = { x, y };
+  battle.deathPosFrozen = freeze;
+}
+
+/**
+ * Where a defeated boss's reward chest should physically drop.
+ *
+ * Prefers the boss's death spot (see {@link sampleBossLastKnownPos}) so the
+ * drop reads as coming off the body rather than teleporting to the middle of
+ * the room. Falls back to the authored room anchor when no sample exists or the
+ * sample landed outside the boss's own room (defensive: a chest outside the
+ * arena could be unreachable, and a stranded reward is worse than a centred
+ * one).
+ */
+function resolveBossDeathChestPos(
+  world: GameWorld,
+  lastKnownPos: { x: number; y: number } | undefined,
+  anchorPos: { x: number; y: number },
+): { x: number; y: number } {
+  if (!lastKnownPos) {
+    return anchorPos;
+  }
+  const anchorRoom = roomAtPosition(world, anchorPos);
+  const deathRoom = roomAtPosition(world, lastKnownPos);
+  if (!anchorRoom || !deathRoom || deathRoom.id !== anchorRoom.id) {
+    return anchorPos;
+  }
+  return lastKnownPos;
+}
+
 function isFullyInsideObjectiveRoom(
   world: GameWorld,
   px: number,
@@ -3779,13 +3866,27 @@ function floor1ObjectiveTick(world: GameWorld): void {
 
   const slimeRatEid = slimeRatBattle.bossEid;
   const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
+  if (slimeRatAlive && slimeRatEid !== null) {
+    sampleBossLastKnownPos(
+      world,
+      slimeRatBattle,
+      slimeRatEid,
+      hasComponent(world.ecs, slimeRatEid, DeathTimer),
+    );
+  }
   if (slimeRatBattle.started && !slimeRatAlive && !slimeRatBattle.defeated) {
     // This branch runs only after the entity is gone. Normal death cleanup
     // clears typed-array component stores first, so reading the old eid would
     // return (0, 0), not `undefined`, and strand the physical chest outside
-    // the dungeon. Use the authored, reachable boss-room anchor.
-    const chestX = objective.slimeRatRoomPos.x;
-    const chestY = objective.slimeRatRoomPos.y;
+    // the dungeon — hence the per-tick `lastKnownPos` sample above, with the
+    // authored, reachable boss-room anchor as the fallback.
+    const chest = resolveBossDeathChestPos(
+      world,
+      slimeRatBattle.lastKnownPos,
+      objective.slimeRatRoomPos,
+    );
+    const chestX = chest.x;
+    const chestY = chest.y;
     slimeRatBattle.defeated = true;
     slimeRatBattle.bossEid = null;
     spawnBossChestForDefeatedBoss(world, 'floor1-slime-rat-boss', chestX, chestY);
@@ -3800,6 +3901,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
+    markBossRoomCleared(world, slimeRatRoom);
     setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
     questSystem(world);
   }
@@ -3814,15 +3916,27 @@ function floor1ObjectiveTick(world: GameWorld): void {
   }
 
   const staircaseEid = staircaseBattle.bossEid;
+  const staircaseExists = staircaseEid !== null && entityExists(world.ecs, staircaseEid);
+  if (staircaseExists && staircaseEid !== null) {
+    sampleBossLastKnownPos(
+      world,
+      staircaseBattle,
+      staircaseEid,
+      hasComponent(world.ecs, staircaseEid, DeathTimer),
+    );
+  }
   // Treat the boss as dead as soon as its HP reaches 0 (DeathTimer added by dropSystem),
   // so the stairs unlock during the death animation rather than after the body despawns.
   const staircaseAlive =
-    staircaseEid !== null &&
-    entityExists(world.ecs, staircaseEid) &&
-    !hasComponent(world.ecs, staircaseEid, DeathTimer);
+    staircaseEid !== null && staircaseExists && !hasComponent(world.ecs, staircaseEid, DeathTimer);
   if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
-    const chestX = objective.staircasePos.x;
-    const chestY = objective.staircasePos.y;
+    const chest = resolveBossDeathChestPos(
+      world,
+      staircaseBattle.lastKnownPos,
+      objective.staircasePos,
+    );
+    const chestX = chest.x;
+    const chestY = chest.y;
     objective.staircaseSpawned = true;
     objective.staircaseLocked = false;
     objective.staircaseUnlocked = true;
@@ -3841,6 +3955,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
+    markBossRoomCleared(world, floorMap?.bossStairRoom ?? null);
     setGoalFlag(world, 'floor1-defeat-boss', true);
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
