@@ -35,6 +35,7 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
+import { achievementSystem } from '../../src/game/systems/achievementSystem.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
   acceptQuest,
@@ -1314,6 +1315,42 @@ describe('floor1Scenario', () => {
   });
 
   describe('shopkeeper errand questline', () => {
+    it('keeps Gear and the gear-purchase achievement locked while only the starter weapon is equipped', () => {
+      // Regression (issue #3310): `selectFloor1StarterWeapon` routes the
+      // starter through `equip()`, so the player has a non-null `mainHand`
+      // from frame one. `latchFeatureUnlocks` used to treat that as "the
+      // player owns equipment" whenever the merchant errand was not yet in
+      // the quest log, so Gear — and the "Buy your first piece of gear"
+      // achievement that reads `equipmentUnlocked` — unlocked on the very
+      // first simulated frame, before the player had bought anything.
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      questSystem(world);
+      achievementSystem(world);
+      expect(world.featureUnlocks.equipment).toBe(false);
+      expect(world.achievements.unlockedIds.has('merchant-customer')).toBe(false);
+
+      // Buying the charm is the intended unlock, and it still works.
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
+      meetShopkeeper(world);
+      questSystem(world);
+      addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      questSystem(world);
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      questSystem(world);
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+
+      questSystem(world);
+      achievementSystem(world);
+      expect(world.featureUnlocks.equipment).toBe(true);
+      expect(world.achievements.unlockedIds.has('merchant-customer')).toBe(true);
+    });
+
     it('starts the player on the find-welcome quest and gates NPC quests', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);
