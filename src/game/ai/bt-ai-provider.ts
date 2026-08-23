@@ -2238,9 +2238,21 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
-          } else {
-            this.resetNpcApproachThreatTracking();
           }
+          // Deliberately NOT resetting the no-progress tracking here when no
+          // threat is currently within `npcThreatRadius`. A ranged-orbit
+          // standoff distance naturally hovers right at the radius boundary
+          // (e.g. a pistol's ~8-11ft kite loop straddling the 8ft
+          // NPC_APPROACH_THREAT_RADIUS_FT gate), so "no threat this exact
+          // frame" flips every other poll. Wiping `npcApproachThreatNpcEid`/
+          // `npcApproachThreatBestDistance` on every such flicker prevented
+          // `npcApproachThreatNoProgressFrames` from ever accumulating past
+          // 0-2, so the escape valve could never latch — an infinite
+          // ENGAGE/EXPLORE livelock (issue #3353, seed 38 pistol). Tracking
+          // now only resets when the NPC target changes, is reached, or the
+          // scenario no longer applies (handled by `shouldClearThreatBeforeNpc`
+          // and the surrounding branches below), so a returning threat resumes
+          // the same no-progress count instead of restarting from zero.
         } else {
           this.resetNpcApproachThreatTracking();
         }
