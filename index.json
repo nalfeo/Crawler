@@ -1,5 +1,39 @@
 [
   {
+    "commit": "e4bf599179cac006d1022bf44a2ad9b532745cac",
+    "commitDate": "2026-08-23T18:02:57Z",
+    "commitSubject": "Fix Floor 1 seed-11 throwing-knife timeout by hardening urgent stair confirmation (#3377)",
+    "capturedAt": "2026-08-23T19:33:55.582Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32658310594",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/e4bf599179cac006d1022bf44a2ad9b532745cac.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9,
+        "totalWins": 135,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.69,
+      "gatePass": false,
+      "path": "by-sha/e4bf599179cac006d1022bf44a2ad9b532745cac.fun-report.json"
+    }
+  },
+  {
     "commit": "80e7ea91b0e57d5773937d8a791b1a18c9b427f3",
     "commitDate": "2026-08-23T16:48:55Z",
     "commitSubject": "Restore Floor 1 release-sweep win for pistol seed 5 by fixing Progress priority (#3407)",
