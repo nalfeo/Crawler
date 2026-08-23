@@ -19,7 +19,6 @@ import {
 } from '../../shared/data/floor2-reward-pool.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
 import { bandFor, getRelation } from '../../core/faction-relations.js';
-import { isInSafeContext } from '../../core/safe-space.js';
 import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
@@ -233,7 +232,12 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   const allPresentFamilyBossesEngaged =
     presentFamilyCount > 0 && familyBossEncounterCount === presentFamilyCount;
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
-  const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
+  // Deliberately NOT `isInSafeContext`: this is a fact about visiting the
+  // floor-2 safe room, not a customization gate. `isInSafeContext` also admits
+  // cleared boss arenas (ADR-0092), which are not safe rooms and must not
+  // satisfy a "visited the safe room" feat.
+  const floor2SafeRoomVisited =
+    world.floor === 2 && (world.playerInSafeRoom || world.state === 'safe_room');
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
 
   return {

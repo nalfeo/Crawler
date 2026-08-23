@@ -58,6 +58,12 @@ The pause also made the post-boss farm window unclosable:
   equipment panels where the boss died.
 - `resolveNearestSafeAnchor` keeps its cleared-arena retreat branch, so a cleared
   arena remains a routable retreat destination.
+- Consumers that use `isInSafeContext` as a _location_ fact rather than a
+  customization gate must not follow it into a cleared arena. The one such caller
+  today is `achievementSystem`'s `floor2SafeRoomVisited`, which now reads
+  `playerInSafeRoom || state === 'safe_room'` directly. The AI's
+  settlement-maintenance parity gate deliberately keeps `isInSafeContext`: it
+  exists to mirror exactly what the human panels allow.
 - `resolvePostBossFarmWindow` measures its reserve against
   `min(planningDeadlineMs, floorBudgetMs)`, so the window is provably bounded in
   `elapsedMs` even if some future change re-inflates a deadline.

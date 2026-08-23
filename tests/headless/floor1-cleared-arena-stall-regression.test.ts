@@ -32,7 +32,7 @@ async function runThrowingKnife1(): Promise<RunStats> {
   return runHeadless(new BehaviorTreeAI({ seed: 1 }), {
     seed: 1,
     maxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
-    maxWallTimeMs: 300_000,
+    maxWallTimeMs: 180_000,
     forceWeaponId: 'throwing-knife',
     enemyDamageMultiplier: 1,
   });
@@ -50,5 +50,8 @@ describe('Floor 1 release sweep cleared-arena stall regression', () => {
     expect(first.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
     expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
     expect(deterministicStats(second)).toEqual(deterministicStats(first));
-  }, 120_000);
+    // Two full Floor 1 runs, each capped at `maxWallTimeMs`. On a contended
+    // CI box a single run has been observed at ~80s, so the vitest timeout has
+    // to clear 2x the per-run wall cap or the test reports a false regression.
+  }, 420_000);
 });

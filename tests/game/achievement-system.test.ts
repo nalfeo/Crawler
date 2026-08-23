@@ -762,6 +762,17 @@ describe('achievementSystem', () => {
       );
     });
 
+    it('does not report floor2SafeRoomVisited from a cleared boss arena', () => {
+      // A cleared arena satisfies `isInSafeContext` so the customization panels
+      // open there (ADR-0092), but it is not a safe room — a "visited the safe
+      // room" feat must not be credited for standing in one.
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.playerInClearedArena = true;
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        false,
+      );
+    });
+
     it('unlocks the new Floor 2 family/boss/settlement achievements from real constructed state', () => {
       const world = createTestWorld({ seed: 42, floor: 2 });
       world.floorId = 'floor2';
