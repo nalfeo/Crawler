@@ -338,6 +338,12 @@ import {
   buildFloor1GoalGraph,
   PLAYER_START_LOCATION,
 } from './floor1-goal-graph.js';
+import { FLOOR1_AI_TASK_CONFIG } from '../scenarios/floor1AiTasks.js';
+import {
+  buildInteractionActionToTaskId,
+  resolveScenarioTaskOperation,
+  type ScenarioAiOperation,
+} from './scenario-ai-tasks.js';
 import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
 import { planObjectiveRoute } from './objective-route-planner.js';
 import {
@@ -542,25 +548,17 @@ interface ProgressTarget extends WorldTarget {
   npcInteraction: AINpcInteractionIntent | null;
 }
 
+/**
+ * Reverse map: committed NPC-interaction action → the scenario task id it
+ * fulfils. Sourced from the Floor 1 AI task config so the mapping lives with
+ * the task definitions, not in a hardcoded switch here. Actions with no task
+ * (generic/intro interactions) resolve to null.
+ */
+const FLOOR1_ACTION_TO_TASK_ID = buildInteractionActionToTaskId(FLOOR1_AI_TASK_CONFIG);
+
 function floor1GoalIdForNpcInteraction(action: AINpcInteractionActionValue | null): string | null {
-  switch (action) {
-    case AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST:
-      return 'meet-tutorial-goon';
-    case AINpcInteractionAction.MEET_SHOPKEEPER:
-      return 'meet-shopkeeper';
-    case AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE:
-      return 'return-shop-prize';
-    case AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT:
-      return 'buy-shop-charm';
-    case AINpcInteractionAction.ACCEPT_SPELL_QUEST:
-      return 'accept-spell-quest';
-    case AINpcInteractionAction.CLAIM_SPELL_REWARD:
-      return 'claim-spell-reward';
-    case AINpcInteractionAction.GENERIC_INTERACTION:
-    case AINpcInteractionAction.MEET_BROKER_INTRO:
-    case null:
-      return null;
-  }
+  if (action === null) return null;
+  return FLOOR1_ACTION_TO_TASK_ID.get(action) ?? null;
 }
 
 /**
@@ -7276,229 +7274,176 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     if (!nextGoalId) return null;
 
-    switch (nextGoalId) {
-      case 'meet-shopkeeper': {
-        const reason = 'Seeking Shopkeeper to start the merchant errand';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+    const operation = resolveScenarioTaskOperation(FLOOR1_AI_TASK_CONFIG, nextGoalId);
+    if (!operation) {
+      // Fail loudly: the planner returned a goal the scenario config does not
+      // define an operation for. Config validation should make this impossible.
+      throw new Error(`Unsupported Floor 1 objective planner goal "${nextGoalId}".`);
+    }
+    return this.dispatchScenarioProgressOperation(
+      world,
+      playerX,
+      playerY,
+      floorScenario,
+      objective,
+      operation,
+      progressSuppressed,
+      maybeDetourToQuestGiver,
+    );
+  }
+
+  /**
+   * Execute a generic scenario AI navigation operation. This switches only on
+   * the operation's generic `kind` — never on a task id — so all knowledge of
+   * which task uses which NPC/location/reason lives in the scenario config, not
+   * here. The small `resolveFloor1*` binders map the operation's declared
+   * location/NPC/farm-strategy *names* onto live Floor 1 world state.
+   */
+  private dispatchScenarioProgressOperation(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    floorScenario: NonNullable<GameWorld['floorScenario']>,
+    objective: NonNullable<GameWorld['floorScenario']>['objective'],
+    operation: ScenarioAiOperation,
+    progressSuppressed: boolean,
+    maybeDetourToQuestGiver: (target: ProgressTarget) => ProgressTarget,
+  ): ProgressTarget | null {
+    switch (operation.kind) {
+      case 'interact_npc': {
+        if (progressSuppressed) {
+          return this.recordSuppressedProgressNavigation(
+            world,
+            operation.reason,
+            operation.phaseTag as RunPlanSegmentPhase,
+          );
+        }
+        const npc = this.resolveFloor1Npc(floorScenario, objective, operation.npc);
         return maybeDetourToQuestGiver(
           this.createNpcProgressTarget(
             world,
             playerX,
             playerY,
-            floorScenario.shopkeeperNpcEid ?? -1,
-            reason,
-            objective.shopRoomPos.x,
-            objective.shopRoomPos.y,
-            AINpcInteractionAction.MEET_SHOPKEEPER,
+            npc.eid,
+            operation.reason,
+            npc.pos.x,
+            npc.pos.y,
+            operation.action as AINpcInteractionActionValue,
           ),
         );
       }
-      case 'fetch-shop-prize': {
-        const reason = 'Seeking the merchant fetch item';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.questItemPos.x,
-            objective.questItemPos.y,
-            playerX,
-            playerY,
-            reason,
-          ),
-        );
-      }
-      case 'return-shop-prize': {
-        const reason = 'Returning the merchant prize';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
-        return maybeDetourToQuestGiver(
-          this.createNpcProgressTarget(
-            world,
-            playerX,
-            playerY,
-            floorScenario.shopkeeperNpcEid ?? -1,
-            reason,
-            objective.shopRoomPos.x,
-            objective.shopRoomPos.y,
-            AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE,
-          ),
-        );
-      }
-      case 'farm-shop-gold': {
-        const goldOwed = Math.max(0, SHOPKEEPER_EQUIPMENT_COST - world.playerGold);
-        const target = this.findMerchantGoldFarmTarget(
-          world,
-          playerX,
-          playerY,
-          goldOwed,
-          'merchant charm',
-        );
-        return target ? maybeDetourToQuestGiver(target) : null;
-      }
-      case 'buy-shop-charm': {
-        const reason = 'Returning to the Shopkeeper to buy the charm';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
-        return maybeDetourToQuestGiver(
-          this.createNpcProgressTarget(
-            world,
-            playerX,
-            playerY,
-            floorScenario.shopkeeperNpcEid ?? -1,
-            reason,
-            objective.shopRoomPos.x,
-            objective.shopRoomPos.y,
-            AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT,
-          ),
-        );
-      }
-      case 'equip-shop-charm':
-        // Handled ambiently/automatically — no legacy branch existed for
-        // this transient stage either (the shop-stage switch had no
-        // 'awaiting-equip' case), so Progress correctly has nothing to say.
-        return null;
-      case 'farm-merchant-weapon-gold': {
-        const intent = getMerchantWeaponIntent(world);
-        const goldOwed = Math.max(0, intent.cost - world.playerGold);
-        const target = this.findMerchantGoldFarmTarget(
-          world,
-          playerX,
-          playerY,
-          goldOwed,
-          'merchant weapon',
-        );
-        return target ? maybeDetourToQuestGiver(target) : null;
-      }
-      case 'buy-merchant-weapon': {
-        const reason = 'Returning to the Shopkeeper to buy the selected weapon';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.shopRoomPos.x,
-            objective.shopRoomPos.y,
-            playerX,
-            playerY,
-            reason,
-            floorScenario.shopkeeperNpcEid ?? -1,
-          ),
-        );
-      }
-      case 'farm-spell-broker-gold': {
-        const spellIntent = getSpellBrokerIntent(world);
-        const goldOwed = Math.max(0, spellIntent.cost - world.playerGold);
-        const target = this.findMerchantGoldFarmTarget(
-          world,
-          playerX,
-          playerY,
-          goldOwed,
-          'spell broker',
-        );
-        return target ? maybeDetourToQuestGiver(target) : null;
-      }
-      case 'buy-broker-spell': {
-        const reason = 'Returning to the Spell Broker to purchase the offered spell';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.spellQuestGiverPos.x,
-            objective.spellQuestGiverPos.y,
-            playerX,
-            playerY,
-            reason,
-            floorScenario.spellQuestGiverNpcEid ?? -1,
-          ),
-        );
-      }
-      case 'accept-spell-quest': {
-        const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
-        return maybeDetourToQuestGiver(
-          this.createNpcProgressTarget(
-            world,
-            playerX,
-            playerY,
-            floorScenario.spellQuestGiverNpcEid ?? -1,
-            reason,
-            objective.spellQuestGiverPos.x,
-            objective.spellQuestGiverPos.y,
-            AINpcInteractionAction.ACCEPT_SPELL_QUEST,
-          ),
-        );
-      }
-      case 'kill-slime-rat': {
-        const reason = 'Heading to the Slime Rat room';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.slimeRatRoomPos.x,
-            objective.slimeRatRoomPos.y,
-            playerX,
-            playerY,
-            reason,
-          ),
-        );
-      }
-      case 'finish-slime-rat':
-        // Active battle — let Engage/Hunt fight it, exactly like legacy.
-        return null;
-      case 'claim-spell-reward': {
-        const reason = 'Returning to the Spell Broker to claim a spell reward';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
-        return maybeDetourToQuestGiver(
-          this.createNpcProgressTarget(
-            world,
-            playerX,
-            playerY,
-            floorScenario.spellQuestGiverNpcEid ?? -1,
-            reason,
-            objective.spellQuestGiverPos.x,
-            objective.spellQuestGiverPos.y,
-            AINpcInteractionAction.CLAIM_SPELL_REWARD,
-          ),
-        );
-      }
-      case 'kill-staircase-boss': {
-        const reason = 'Heading to the staircase boss room';
-        if (progressSuppressed)
-          return this.recordSuppressedProgressNavigation(world, reason, 'staircase');
-        return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.staircasePos.x,
-            objective.staircasePos.y,
-            playerX,
-            playerY,
-            reason,
-          ),
-        );
-      }
-      case 'finish-staircase-boss':
-        // Active battle — let Engage/Hunt fight it, exactly like legacy.
-        return null;
-      case 'take-stairs': {
-        const reason = 'Heading to the stairs to clear the floor';
+      case 'move_to':
+      case 'engage': {
         // The final unlocked staircase is a terminal target, not a recoverable
         // prerequisite. Keep reacquiring it instead of exploring away until the
         // player physically reaches the normal marker radius.
-        if (progressSuppressed && !objective.staircaseUnlocked)
-          return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
+        const keepUnlockedStairTarget =
+          operation.phaseTag === 'post-stairs' && objective.staircaseUnlocked;
+        if (progressSuppressed && !keepUnlockedStairTarget) {
+          return this.recordSuppressedProgressNavigation(
+            world,
+            operation.reason,
+            operation.phaseTag as RunPlanSegmentPhase,
+          );
+        }
+        const pos = this.resolveFloor1Location(objective, operation.location);
+        const npcEid =
+          operation.kind === 'move_to' && operation.npc !== undefined
+            ? this.resolveFloor1NpcEid(floorScenario, operation.npc)
+            : undefined;
         return maybeDetourToQuestGiver(
-          this.createProgressTarget(
-            objective.staircasePos.x,
-            objective.staircasePos.y,
-            playerX,
-            playerY,
-            reason,
-          ),
+          npcEid === undefined
+            ? this.createProgressTarget(pos.x, pos.y, playerX, playerY, operation.reason)
+            : this.createProgressTarget(pos.x, pos.y, playerX, playerY, operation.reason, npcEid),
         );
       }
+      case 'farm': {
+        const cost = this.resolveFloor1FarmCost(world, operation.strategy);
+        const goldOwed = Math.max(0, cost - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          operation.label,
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'ambient':
+        // No navigation target of its own (handled ambiently, or a boss fight
+        // already in progress that Engage/Hunt owns).
+        return null;
+    }
+  }
+
+  /** Bind a config location name to its live Floor 1 world position. */
+  private resolveFloor1Location(
+    objective: NonNullable<GameWorld['floorScenario']>['objective'],
+    location: string,
+  ): { x: number; y: number } {
+    switch (location) {
+      case 'welcomeOffice':
+        return objective.welcomeOfficePos;
+      case 'shop':
+        return objective.shopRoomPos;
+      case 'questItem':
+        return objective.questItemPos;
+      case 'spellQuestGiver':
+        return objective.spellQuestGiverPos;
+      case 'slimeRatRoom':
+        return objective.slimeRatRoomPos;
+      case 'staircase':
+        return objective.staircasePos;
       default:
-        throw new Error(`Unsupported Floor 1 objective planner goal "${nextGoalId}".`);
+        throw new Error(`Unknown Floor 1 location "${location}".`);
+    }
+  }
+
+  /** Bind a config NPC name to its live entity id (or -1 when absent). */
+  private resolveFloor1NpcEid(
+    floorScenario: NonNullable<GameWorld['floorScenario']>,
+    npc: string,
+  ): number {
+    switch (npc) {
+      case 'shopkeeper':
+        return floorScenario.shopkeeperNpcEid ?? -1;
+      case 'spellQuestGiver':
+        return floorScenario.spellQuestGiverNpcEid ?? -1;
+      default:
+        throw new Error(`Unknown Floor 1 NPC "${npc}".`);
+    }
+  }
+
+  /** Bind a config NPC name to its live entity id and canonical fallback pos. */
+  private resolveFloor1Npc(
+    floorScenario: NonNullable<GameWorld['floorScenario']>,
+    objective: NonNullable<GameWorld['floorScenario']>['objective'],
+    npc: string,
+  ): { eid: number; pos: { x: number; y: number } } {
+    switch (npc) {
+      case 'shopkeeper':
+        return { eid: floorScenario.shopkeeperNpcEid ?? -1, pos: objective.shopRoomPos };
+      case 'spellQuestGiver':
+        return {
+          eid: floorScenario.spellQuestGiverNpcEid ?? -1,
+          pos: objective.spellQuestGiverPos,
+        };
+      default:
+        throw new Error(`Unknown Floor 1 NPC "${npc}".`);
+    }
+  }
+
+  /** Resolve the gold cost a farm strategy is grinding toward. */
+  private resolveFloor1FarmCost(world: GameWorld, strategy: string): number {
+    switch (strategy) {
+      case 'shop-charm':
+        return SHOPKEEPER_EQUIPMENT_COST;
+      case 'merchant-weapon':
+        return getMerchantWeaponIntent(world).cost;
+      case 'spell-broker':
+        return getSpellBrokerIntent(world).cost;
+      default:
+        throw new Error(`Unknown Floor 1 farm strategy "${strategy}".`);
     }
   }
 
