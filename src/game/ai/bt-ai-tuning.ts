@@ -889,9 +889,12 @@ export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable lull but surrenders in the final 1-min
-// crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
-// panic is always 0 there — the sweep runs until all reachable loot is taken.
+// stays active during the comfortable lull but surrenders in the final crunch
+// period when panic > 0.5. Floor 2 collapses too — its deadline lives on the
+// floor manifest timer (`resolveManifestFloorCollapseState`), not on a Floor-1
+// objective — so the same surrender applies there. It did NOT before: the panic
+// profile was Floor-1-only, so the unbounded pre-exit sweep swept until the
+// floor collapsed and runs that had already unlocked the exit never descended.
 export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
 // Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
 // sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.
