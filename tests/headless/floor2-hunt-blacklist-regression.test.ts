@@ -25,6 +25,26 @@ const TEST_TIMEOUT_MS = MAX_WALL_TIME_MS * 2 + 20_000;
  */
 describe('Floor 2 hunt-target blacklist regression', () => {
   it(
+    'seed 107 relocates from blocked family targets and completes every den',
+    async () => {
+      const seed = 107;
+      const stats = await runHeadless(new BehaviorTreeAI({ seed }), {
+        seed,
+        floorId: 'floor2',
+        maxFrames: MAX_FRAMES,
+        maxWallTimeMs: MAX_WALL_TIME_MS,
+      });
+
+      expect(stats.outcome).toBe('victory');
+      const families = Object.values(stats.floor2Progression?.families ?? {});
+      expect(families).toHaveLength(4);
+      expect(families.every((family) => family.encounterDefeated)).toBe(true);
+      expect(stats.movementQuality?.stuckPct ?? 100).toBeLessThan(20);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     'sword seed 3 does not fixate on a blacklisted llamas target and wins within budget',
     async () => {
       const seed = 3;
