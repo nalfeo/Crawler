@@ -5,6 +5,7 @@ import { spawnEnemy } from '../../src/core/helpers.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
 import {
   getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
   type SettlementReturnStatus,
 } from '../../src/game/ai/settlement-return-router.js';
 import { getLastSettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-planner.js';
@@ -308,6 +309,7 @@ describe('settlement return routing (headless integration)', () => {
   it('keeps Floor 1 settlement-return routing default-off when the option is omitted', async () => {
     const events: SimEvent[] = [];
     let seeded = false;
+    const enabledStates: boolean[] = [];
 
     await runHeadless(new BehaviorTreeAI({ seed: 5 }), {
       seed: 5,
@@ -319,6 +321,7 @@ describe('settlement return routing (headless integration)', () => {
       simulationOptions: {
         postSystems: [
           (world) => {
+            enabledStates.push(isSettlementReturnRoutingEnabled(world));
             if (!seeded) {
               seeded = true;
               armEligibleOpportunity(world);
@@ -328,6 +331,8 @@ describe('settlement return routing (headless integration)', () => {
       },
     });
 
+    expect(enabledStates).toContain(false);
+    expect(enabledStates).not.toContain(true);
     expect(settlementReturnTelemetry(events)).toHaveLength(0);
   }, 30_000);
 
