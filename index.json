@@ -1,5 +1,39 @@
 [
   {
+    "commit": "e986debd30135cb43ef1b2d51eaaf85df41055d3",
+    "commitDate": "2026-08-23T04:15:40Z",
+    "commitSubject": "[WIP] Fix dev build issue with prop in front of player (#3306)",
+    "capturedAt": "2026-08-23T06:21:21.678Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32618823235",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/e986debd30135cb43ef1b2d51eaaf85df41055d3.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.5133333333333333,
+        "totalWins": 77,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.6,
+      "gatePass": false,
+      "path": "by-sha/e986debd30135cb43ef1b2d51eaaf85df41055d3.fun-report.json"
+    }
+  },
+  {
     "commit": "ead76b6aad783cb87b2cf51c36678fdf1200c6b1",
     "commitDate": "2026-08-23T03:19:32Z",
     "commitSubject": "Align quest arrows for objectives in the same room (#3316)",
