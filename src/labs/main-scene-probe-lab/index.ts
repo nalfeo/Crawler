@@ -259,6 +259,9 @@ interface MainSceneInternals {
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
+  issueButton?: { visible: boolean };
+  issueReportPicker?: { isOpen(): boolean };
+  getIssueButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -486,6 +489,8 @@ export interface MainSceneState {
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
+  readonly issueButtonVisible: boolean;
+  readonly issueReportOpen: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
@@ -844,6 +849,8 @@ export interface MainSceneProbeApi {
   requestEquipToggle(): void;
   /** Queue Quartermaster ([Q]) through the scene request path. */
   requestQuartermasterToggle(): void;
+  /** Bounds of the live Issue button, or null when it is unavailable. */
+  getIssueButtonBounds(): ScreenBounds | null;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
@@ -1233,6 +1240,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
+        issueButtonVisible: scene?.issueButton?.visible ?? false,
+        issueReportOpen: scene?.issueReportPicker?.isOpen() ?? false,
         primarySurfaceCount: [
           modalOpen,
           abilityLoadoutOpen,
@@ -1658,6 +1667,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     requestQuartermasterToggle: () => {
       getScene()?.requestQuartermasterToggle?.();
     },
+
+    getIssueButtonBounds: () => getScene()?.getIssueButtonBounds?.() ?? null,
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
