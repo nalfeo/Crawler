@@ -30,6 +30,7 @@ import {
   markSpellBrokerPurchased,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
+import { requiredShopPurchaseReserve } from '../../src/game/ai/required-purchase-reserve.js';
 import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import { MERCHANTS_CHARM_COST } from '../../src/shared/equipmentDefs.js';
@@ -668,12 +669,17 @@ describe('autoFloor1ProgressionSystem spell broker purchase', () => {
   it('buys the intended headline spell once it is affordable', () => {
     const { world, player } = setUpBrokerVisit(1);
     const intent = ensureSpellBrokerDecision(world);
-    world.playerGold = intent.cost;
+    // Fund the still-unpaid required shopkeeper charm on top of the spell:
+    // "affordable" means affordable without raiding the reserved charm price
+    // (issue #3275 item 1).
+    const reserve = requiredShopPurchaseReserve(world);
+    expect(reserve).toBeGreaterThan(0);
+    world.playerGold = intent.cost + reserve;
 
     autoFloor1ProgressionSystem(world, player);
 
     expect(getOrCreateAbilityState(world, player).learnedSpellIds).toContain(intent.spellId);
-    expect(world.playerGold).toBe(0);
+    expect(world.playerGold).toBe(reserve);
     expect(getSpellBrokerIntent(world).purchaseCount).toBe(1);
   });
 
@@ -688,7 +694,7 @@ describe('autoFloor1ProgressionSystem spell broker purchase', () => {
     // (not a broker purchase) — this is the one legitimate "unavailable for a
     // non-affordability reason" case, so the fallback is allowed to run.
     memorizeSpell(world, player, intent.spellId!);
-    world.playerGold = cheaper!.cost;
+    world.playerGold = cheaper!.cost + requiredShopPurchaseReserve(world);
 
     autoFloor1ProgressionSystem(world, player);
 

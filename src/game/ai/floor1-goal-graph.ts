@@ -24,6 +24,7 @@
  * deterministic runtime AI).
  */
 
+import { UNPAID_SHOPKEEPER_STAGES } from '../../shared/quest-types.js';
 import {
   IN_PLACE_LOCATION,
   type GoalId,
@@ -59,6 +60,22 @@ export interface Floor1GoalGraph {
 }
 
 const EPSILON = 1e-6;
+
+/**
+ * Gold the run may put toward an **optional** purchase (merchant weapon, broker
+ * spell) — everything except the still-unpaid required shopkeeper charm.
+ *
+ * Keeps the planner's affordability view identical to the executor's
+ * (`requiredShopPurchaseReserve`). Without it the graph emits a `buy-*` detour
+ * the purchase code then refuses to fund, routing the AI to a vendor it cannot
+ * pay — the exact round trip issue #3275 item 1 reported.
+ */
+function optionalPurchaseGold(snapshot: Floor1RunPlannerSnapshot): number {
+  const reserved = UNPAID_SHOPKEEPER_STAGES.has(snapshot.shopStage)
+    ? snapshot.shopkeeperEquipmentCost
+    : 0;
+  return Math.max(0, snapshot.playerGold - reserved);
+}
 
 /**
  * Build the Floor 1 goal graph for the current snapshot. Only goals that are
@@ -333,7 +350,7 @@ export function buildFloor1GoalGraph(snapshot: Floor1RunPlannerSnapshot): Floor1
     (merchantWeaponIntent?.status === 'farming' || merchantWeaponIntent?.status === 'returning')
   ) {
     let merchantWeaponTail: GoalId[] = [];
-    const weaponGoldOwed = Math.max(0, merchantWeaponIntent.cost - snapshot.playerGold);
+    const weaponGoldOwed = Math.max(0, merchantWeaponIntent.cost - optionalPurchaseGold(snapshot));
     if (merchantWeaponIntent.status === 'farming' && weaponGoldOwed > 0) {
       add(
         {
@@ -382,7 +399,7 @@ export function buildFloor1GoalGraph(snapshot: Floor1RunPlannerSnapshot): Floor1
     (spellBrokerIntent?.status === 'farming' || spellBrokerIntent?.status === 'returning')
   ) {
     let spellBrokerTail: GoalId[] = [];
-    const spellGoldOwed = Math.max(0, spellBrokerIntent.cost - snapshot.playerGold);
+    const spellGoldOwed = Math.max(0, spellBrokerIntent.cost - optionalPurchaseGold(snapshot));
     if (spellBrokerIntent.status === 'farming' && spellGoldOwed > 0) {
       add(
         {
@@ -604,14 +621,12 @@ export function applyFloor1WorkCosts(
     ratsLeft + slimesLeft,
   );
   const goldOwed = Math.max(0, snapshot.shopkeeperEquipmentCost - snapshot.playerGold);
+  const optionalGold = optionalPurchaseGold(snapshot);
   const merchantWeaponGoldOwed = Math.max(
     0,
-    (snapshot.merchantWeaponIntent?.cost ?? 0) - snapshot.playerGold,
+    (snapshot.merchantWeaponIntent?.cost ?? 0) - optionalGold,
   );
-  const spellBrokerGoldOwed = Math.max(
-    0,
-    (snapshot.spellBrokerIntent?.cost ?? 0) - snapshot.playerGold,
-  );
+  const spellBrokerGoldOwed = Math.max(0, (snapshot.spellBrokerIntent?.cost ?? 0) - optionalGold);
 
   const workCostById: Record<string, number> = {
     'meet-tutorial-goon': params.interactionMs,
