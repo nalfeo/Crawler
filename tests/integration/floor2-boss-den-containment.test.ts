@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { removeComponent } from 'bitecs';
+import { removeComponent, removeEntity } from 'bitecs';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
+  bossDefeatGoalId,
   initializeFloor2Bosses,
   floor2ObjectiveTick,
   markDenUnlocked,
@@ -13,7 +14,7 @@ import {
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
-import { Enemy, Position, spawnPlayer } from '../../src/core/index.js';
+import { Enemy, Position, doorSystem, spawnPlayer } from '../../src/core/index.js';
 import {
   captureBossEncounterSnapshots,
   diffBossEncounterSnapshots,
@@ -132,6 +133,67 @@ describe('Floor 2 boss den containment', () => {
 
     expect(encounter.started).toBe(false);
     expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+  });
+
+  it('unseals a den whose encounter boss vanishes without a death combat event', () => {
+    // Release-sweep signature (chained leg, 8 of 16 failures): the den boss
+    // entity is gone (`bossAlive:false`) while the encounter is still
+    // `started` + `!defeated`, so the relock flag keeps the den sealed with
+    // the player inside for the rest of the run.
+    const seed = 42;
+    const { world, encounter, familyId } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+
+    markDenUnlocked(world, familyId);
+    spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    world.state = 'playing';
+
+    floor2ObjectiveTick(world);
+    expect(encounter.started).toBe(true);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(true);
+    doorSystem(world);
+    expect(encounter.doorEids.every((eid) => world.stores.doorState.isLocked[eid] === 1)).toBe(
+      true,
+    );
+
+    // The boss entity disappears with no `death` combat event behind it.
+    removeEntity(world.ecs, bossEid);
+
+    floor2ObjectiveTick(world);
+
+    expect(encounter.defeated).toBe(true);
+    expect(encounter.bossEid).toBeNull();
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+    expect(world.goalFlags.get(bossDefeatGoalId(familyId))).toBe(true);
+    doorSystem(world);
+    expect(encounter.doorEids.every((eid) => world.stores.doorState.isLocked[eid] === 0)).toBe(
+      true,
+    );
+  });
+
+  it('keeps a dying boss sealed in until its death event is processed', () => {
+    // Ordering guard for the safety net above: a corpse still carries every
+    // boss component, so the net must NOT front-run `dropSystem`'s death event
+    // and latch the family (which would move the boss chest to the den spawn
+    // point instead of the boss's real death position).
+    const seed = 42;
+    const { world, encounter, familyId } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+
+    markDenUnlocked(world, familyId);
+    spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    world.state = 'playing';
+
+    floor2ObjectiveTick(world);
+    expect(encounter.started).toBe(true);
+
+    world.stores.health.current[bossEid] = 0;
+
+    floor2ObjectiveTick(world);
+
+    expect(encounter.defeated).toBe(false);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(true);
+    expect(world.goalFlags.get(bossDefeatGoalId(familyId))).toBe(false);
   });
 
   it('returns a stuck boss to its den spawn when the nearest passable tile is outside the den', () => {
