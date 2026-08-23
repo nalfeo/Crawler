@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { acceptQuest, setTrackedQuest } from '../../src/core/systems/questSystem.js';
-import {
-  getQuestWaypoints,
-  getTrackedQuestWaypoint,
-} from '../../src/core/systems/questWaypoints.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -201,36 +198,6 @@ describe('getQuestWaypoints', () => {
     const noQuest = withFloor1(createTestWorld());
     spawnPlayer(noQuest, 0, 0);
     expect(getQuestWaypoints(noQuest)).toEqual([]);
-  });
-
-  it('returns no tracked waypoint when no quest is tracked', () => {
-    const world = withFloor1(createTestWorld());
-    spawnPlayer(world, 0, 0);
-
-    expect(getTrackedQuestWaypoint(world)).toBeUndefined();
-  });
-
-  it('returns no tracked waypoint when the tracked objective has no location', () => {
-    const world = withFloor1(createTestWorld());
-    spawnPlayer(world, 0, 0);
-    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-
-    expect(getTrackedQuestWaypoint(world)).toBeUndefined();
-  });
-
-  it('returns the tracked quest waypoint from the active waypoint set', () => {
-    const world = withFloor1(createTestWorld());
-    spawnPlayer(world, 0, 0);
-    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
-    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
-    setTrackedQuest(world, FLOOR1_SHOP_QUEST_ID);
-
-    expect(getTrackedQuestWaypoint(world)).toMatchObject({
-      questId: FLOOR1_SHOP_QUEST_ID,
-      x: POS.shop.x,
-      y: POS.shop.y,
-    });
   });
 
   it('prefers the live NPC entity position over the fallback room position', () => {
