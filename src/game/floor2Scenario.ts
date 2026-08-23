@@ -583,25 +583,35 @@ export function initializeFloor2Bosses(
  * family stays retryable on the next tick instead of being permanently latched
  * as defeated with no chest ever created. It is idempotent, so calling it for
  * an already-chested family is a no-op.
+ *
+ * `markStarted` is opt-in so a reconciliation of a boss that vanished before
+ * the player ever entered its den does not retroactively claim the encounter
+ * was engaged — `encounter.started` is diagnostic history that den telemetry
+ * reports, and the encounter-start block is already gated on `defeated`.
  */
 function latchFloor2FamilyDefeated(
   world: GameWorld,
   familyId: FamilyId,
-  chestX?: number,
-  chestY?: number,
+  options: {
+    readonly chestX?: number;
+    readonly chestY?: number;
+    readonly markStarted?: boolean;
+  } = {},
 ): void {
   const encounter = world.floorExtendedState?.familyState?.bossEncounters?.get(familyId);
   spawnBossChestForDefeatedBoss(
     world,
     familyId,
-    chestX ?? encounter?.bossSpawnX,
-    chestY ?? encounter?.bossSpawnY,
+    options.chestX ?? encounter?.bossSpawnX,
+    options.chestY ?? encounter?.bossSpawnY,
   );
 
   ensureDecapitatedSet(world).add(familyId);
   setGoalFlag(world, bossDefeatGoalId(familyId), true);
   if (encounter) {
-    encounter.started = true;
+    if (options.markStarted === true) {
+      encounter.started = true;
+    }
     encounter.defeated = true;
     encounter.bossEid = null;
     setGoalFlag(world, encounter.activeGoalId, false);
@@ -769,7 +779,7 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     // Spawn the chest at the boss's position so it drops in-world.
     const bossX = world.stores.position.x[eid] ?? 0;
     const bossY = world.stores.position.y[eid] ?? 0;
-    latchFloor2FamilyDefeated(world, familyId, bossX, bossY);
+    latchFloor2FamilyDefeated(world, familyId, { chestX: bossX, chestY: bossY, markStarted: true });
   }
   cursorState.cursor = combatEvents.length;
   cursorState.lastEvent = combatEvents.at(-1);
