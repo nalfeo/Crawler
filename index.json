@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a2c749aa10195a63f17a25f8ae38d056b6c35cf6",
+    "commitDate": "2026-08-23T20:16:12Z",
+    "commitSubject": "Fix Floor 2 sealed-den softlock behind the sub-90% floor1-chain release leg (#3417)",
+    "capturedAt": "2026-08-23T22:00:12.884Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32665383979",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/a2c749aa10195a63f17a25f8ae38d056b6c35cf6.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.75,
+      "gatePass": false,
+      "path": "by-sha/a2c749aa10195a63f17a25f8ae38d056b6c35cf6.fun-report.json"
+    }
+  },
+  {
     "commit": "e4bf599179cac006d1022bf44a2ad9b532745cac",
     "commitDate": "2026-08-23T18:02:57Z",
     "commitSubject": "Fix Floor 1 seed-11 throwing-knife timeout by hardening urgent stair confirmation (#3377)",
