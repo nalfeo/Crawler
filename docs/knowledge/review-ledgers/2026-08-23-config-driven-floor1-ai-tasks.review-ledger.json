@@ -44,13 +44,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.7",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "75057e4d97ef32bd9325dc80a868d058ac64c233",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The refactor extracts Floor 1's imperative goal-graph builder into a generic chain/anchor interpreter plus a scenario-owned overlay, and the semantic mapping is faithful. I verified the delicate cases: (a) initialSatisfiedEffects seeding — every old top-level `if` block (`questCompleted`, `bossBattleAccepted||slimeRatStarted`, `slimeRatDefeated`, `bossBattleComplete`, `staircaseDefeated`, `shopStage==='complete'`) is reproduced by a matching task's `satisfiedInitially` + `unlockEffects` pair; (b) chain-anchor prerequisites reproduce the old `preChainTail`/`shopTail`/`spellTail` tail-hopping, including the empty-tail fallback that made `staircaseGate` empty when a chain contributed nothing; (c) the dynamic `take-stairs` prereq (kill / finish / staircaseGate) falls out naturally from the chain because kill-* and finish-* are mutually exclusive on `slimeRatStarted`/`staircaseStarted`; (d) the dispatch switch in `bt-ai-provider.ts` reproduces each old case's `createProgressTarget` arity, phaseTag, and NPC anchor, and the `post-stairs` unlocked-stair suppression exception is preserved. Scope is well-contained; validation is loud and covered by targeted failure tests, and the module-load `validateScenarioAiTaskConfig` against the compiled quest registry protects the canonical-quest linkage. Determinism is preserved (pure functions; no clocks/RNG). Test coverage of the generic interpreter is strong via `tests/game/scenario-ai-tasks.test.ts`; Floor 1's byte-equivalence is asserted only indirectly through the existing headless tests referenced in the handoff (no new Floor-1-specific snapshot fixtures), which is the one place a targeted regression test would harden the claim — enough to keep test_coverage below 5 but not a blocker."
     }
   }
 }
