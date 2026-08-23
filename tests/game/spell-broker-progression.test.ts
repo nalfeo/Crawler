@@ -241,6 +241,31 @@ describe('spell skills', () => {
       expect(dropped.purchaseStatus).toBe('abandoned');
     });
 
+    it('keeps an affordable repeat spell returning when the planner drops its bundle', () => {
+      const world = createTestWorld({ seed: 5 });
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      world.playerGold = first.cost;
+      updateSpellBrokerIntent(world, null, 3_000);
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+
+      const repeat = getSpellBrokerIntent(world);
+      world.playerGold = repeat.cost;
+      const droppedPlan: Pick<
+        Floor1RunPlan,
+        'slackMs' | 'droppedOptionalBundleIds' | 'includedOptionalBundleIds'
+      > = {
+        slackMs: 0,
+        droppedOptionalBundleIds: ['spell-broker-purchase'],
+        includedOptionalBundleIds: [],
+      };
+
+      const result = updateSpellBrokerIntent(world, droppedPlan as Floor1RunPlan, 3_000);
+
+      expect(result.purchaseStatus).toBe('returning');
+    });
+
     it('runs the merchant weapon purchase alongside the broker, behind a gold reserve', () => {
       // These two purchases used to be mutually exclusive, capping a run at one
       // optional pickup no matter how much gold it had. They now run
