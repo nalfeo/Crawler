@@ -568,6 +568,47 @@ export function initializeFloor2Bosses(
 }
 
 /**
+ * Latch one family's boss as defeated and reconcile its den encounter.
+ *
+ * Single home for every defeat route (combat-event death, vanished-boss safety
+ * net, victory-path reconciliation) so a family can never be latched
+ * "defeated" while its den encounter still holds `activeGoalId` true — the den
+ * doors relock on that flag, and a latched-but-unreconciled encounter seals the
+ * player inside a boss-less room for the rest of the run.
+ *
+ * `chestX`/`chestY` place the boss chest; callers that saw the real death pass
+ * the boss's death position, and reconciliation callers fall back to the
+ * recorded den spawn point. Chest creation runs BEFORE any latch (ADR 0070
+ * fail-closed boundary): if it throws on a genuine catalog integrity bug, the
+ * family stays retryable on the next tick instead of being permanently latched
+ * as defeated with no chest ever created. It is idempotent, so calling it for
+ * an already-chested family is a no-op.
+ */
+function latchFloor2FamilyDefeated(
+  world: GameWorld,
+  familyId: FamilyId,
+  chestX?: number,
+  chestY?: number,
+): void {
+  const encounter = world.floorExtendedState?.familyState?.bossEncounters?.get(familyId);
+  spawnBossChestForDefeatedBoss(
+    world,
+    familyId,
+    chestX ?? encounter?.bossSpawnX,
+    chestY ?? encounter?.bossSpawnY,
+  );
+
+  ensureDecapitatedSet(world).add(familyId);
+  setGoalFlag(world, bossDefeatGoalId(familyId), true);
+  if (encounter) {
+    encounter.started = true;
+    encounter.defeated = true;
+    encounter.bossEid = null;
+    setGoalFlag(world, encounter.activeGoalId, false);
+  }
+}
+
+/**
  * Floor 2's `floorObjectiveTick`. Registered by the Floor 2 scenario at init
  * time. Called every frame by `floorObjectiveSystem` (already wired into the
  * postSystems pipeline for Floor 1; Slice 8 wires the Floor 2 entry point).
@@ -728,20 +769,31 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     // Spawn the chest at the boss's position so it drops in-world.
     const bossX = world.stores.position.x[eid] ?? 0;
     const bossY = world.stores.position.y[eid] ?? 0;
-    spawnBossChestForDefeatedBoss(world, familyId, bossX, bossY);
-
-    decapitated.add(familyId);
-    setGoalFlag(world, bossDefeatGoalId(familyId), true);
-    const encounter = floor2State.bossEncounters?.get(familyId);
-    if (encounter) {
-      encounter.started = true;
-      encounter.defeated = true;
-      encounter.bossEid = null;
-      setGoalFlag(world, encounter.activeGoalId, false);
-    }
+    latchFloor2FamilyDefeated(world, familyId, bossX, bossY);
   }
   cursorState.cursor = combatEvents.length;
   cursorState.lastEvent = combatEvents.at(-1);
+
+  // Sealed-den safety net. A started encounter relocks its den doors on
+  // `activeGoalId`, and ONLY a defeat latch clears that flag — so an encounter
+  // whose boss entity vanishes without a `death` combat event (recycled id,
+  // stripped components, any despawn path) leaves the player sealed inside a
+  // boss-less room with no way to ever satisfy the unlock condition. That is a
+  // permanent softlock, and it is the largest single failure bucket in the
+  // release sweep's chained leg. Resolving the family here reopens the den.
+  //
+  // This runs AFTER the combat-event loop so a normal kill always latches
+  // first, with the boss's real death position for the chest — the net is
+  // reachable only for a boss that is already gone from the ECS. A
+  // dead-but-lingering corpse still satisfies `isLiveFamilyBoss`, so the net
+  // never front-runs `dropSystem`'s death event.
+  if (floor2State.bossEncounters) {
+    for (const encounter of floor2State.bossEncounters.values()) {
+      if (!encounter.started || encounter.defeated) continue;
+      if (isLiveFamilyBoss(world, encounter)) continue;
+      latchFloor2FamilyDefeated(world, encounter.familyId);
+    }
+  }
 
   for (const familyId of floor2State.presentFamilies) {
     const questId = `floor2-den-${familyId}-unlock`;
@@ -808,20 +860,14 @@ export function floor2VictorySystem(world: GameWorld): void {
   const allBossEntitiesGone = livingBossFamilies.size === 0;
   if (!allBossesDead && allDensUnlocked && allBossEntitiesGone) {
     for (const familyId of presentFamilies) {
-      // Chest creation boundary (ADR 0070), mirrored from the primary
-      // combat-event path above: this is a second defeat-latch that fires
-      // when a family's boss ECS entity vanishes without a normal `death`
-      // combat event (e.g. all dens unlocked while the boss entity was
-      // otherwise despawned/recycled). Without this call such a family would
-      // be permanently latched "defeated" with no boss chest ever created.
-      // `spawnBossChestForDefeatedBoss` is idempotent (checks
-      // `world.bossChests.has(chestId)` first), so it is safe to call here
-      // even for families already chested via the primary path.
-      // Use the stored spawn position from the encounter state when available.
-      const enc = world.floorExtendedState?.familyState?.bossEncounters?.get(familyId);
-      spawnBossChestForDefeatedBoss(world, familyId, enc?.bossSpawnX, enc?.bossSpawnY);
-      decapitated.add(familyId);
-      setGoalFlag(world, bossDefeatGoalId(familyId), true);
+      // Second defeat-latch: fires when a family's boss ECS entity vanishes
+      // without a normal `death` combat event (e.g. all dens unlocked while the
+      // boss entity was otherwise despawned/recycled). Routed through the
+      // shared latch so the family's den encounter is reconciled too — chest
+      // created at the recorded den spawn point, defeat goal latched, and the
+      // den's relock flag cleared so a player standing in that den is never
+      // sealed in behind a boss that no longer exists.
+      latchFloor2FamilyDefeated(world, familyId);
     }
   }
   const allBossesResolved = allBossesDead || (allDensUnlocked && allBossEntitiesGone);
