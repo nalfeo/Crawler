@@ -12,6 +12,9 @@ import {
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
+import { spawnRosterCompanion } from '../core/spawners/companions.js';
+import { setGoalFlag } from '../core/door-lock.js';
+import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   getFloorEnemyPack,
@@ -24,11 +27,28 @@ import {
   affinityMultiplier,
   type Affinity,
 } from '../shared/data/floor3/affinity.js';
-import { getPetSpecies, type PetSpeciesDef } from '../shared/data/floor3/species.js';
+import {
+  formForLevel,
+  getPetSpecies,
+  speciesTokenForId,
+  type PetSpeciesDef,
+} from '../shared/data/floor3/species.js';
+import { selectFloor3FinalFour, selectFloor3Studios } from '../shared/data/floor3/studios.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
-import { BiomeType, RoomRole, TerrainType, type MapConfig } from '../shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  type MapConfig,
+  type RoomData,
+} from '../shared/map-types.js';
 import { TeamId } from '../shared/constants.js';
+import type {
+  Floor3EncounterState,
+  Floor3PendingRosterSpawn,
+  Floor3StudiosState,
+} from '../shared/floor-types.js';
 import {
   countDirectorEnemies,
   countEngagingEnemies,
@@ -58,6 +78,19 @@ const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
 const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
 const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
+export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
+export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
+export const FLOOR3_STAIRS_DISCOVERED_GOAL_ID = 'floor3-stairs-discovered';
+export const FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID = 'floor3-final-four-unlock';
+/** First Team id used by Studio trainers — two per Studio, none overlap `TeamId`'s 0..2. */
+const FLOOR3_STUDIO_TEAM_BASE = 10;
+/** First Team id used by Final Four handlers — one per handler. */
+const FLOOR3_FINAL_FOUR_TEAM_BASE = 30;
+
+/** Per-Studio goal flag latched true once that Studio's rosters are wiped. */
+export function floor3StudioDefeatGoalId(studioId: string): string {
+  return `floor3-studio-${studioId}-defeated`;
+}
 
 function getFloor3WildPack(): EnemyPackDef {
   const pack = getFloorEnemyPack('floor3-wild');
@@ -245,6 +278,272 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
   return eid;
 }
 
+/**
+ * Resolves the wild-archetype whose base combat stats a roster Companion
+ * should use: an exact `speciesId` match when the species is also an
+ * ambient wild spawn, otherwise any archetype sharing its `fightingStyle`.
+ * The fallback is safe because the wild pack authors identical hp/speed/
+ * detect-range/aiType numbers for every affinity of one fighting style (see
+ * `enemies.floor3.json` — e.g. `ember-charger`/`bloom-charger`/`stone-charger`
+ * all share one stat block); a style-only lookup can never disagree with an
+ * exact-match lookup, it just also covers species that never spawn in the
+ * wild — namely the Final Four's `signature-*` companions (spec R8), which
+ * intentionally have no wild-pack archetype of their own.
+ */
+function findFloor3ArchetypeForSpecies(
+  pack: EnemyPackDef,
+  species: PetSpeciesDef,
+): EnemyArchetypeDef | undefined {
+  return (
+    pack.archetypes.find((a) => a.speciesId === species.speciesId) ??
+    pack.archetypes.find((a) => a.id.endsWith(`-${species.fightingStyle}`))
+  );
+}
+
+/**
+ * Resolve a roster Companion's (Trainer/Studio/Final-Four) base combat stats
+ * from the Floor 3 wild-archetype pack — the same authored hp/speed/detect
+ * numbers wild spawns of that species (or, for wild-pack-absent species like
+ * the Final Four's signatures, any species sharing its fighting style) use —
+ * scaled by the species' form at the requested level
+ * (`formForLevel().statScale`, R3's authored per-form growth curve) rather
+ * than inventing new balance numbers. Levels here are a first playable pass;
+ * slice 16 tunes them via the win-rate sweep.
+ */
+function spawnFloor3RosterCompanion(
+  world: GameWorld,
+  x: number,
+  y: number,
+  speciesId: string,
+  level: number,
+  teamId: number,
+): number | undefined {
+  const species = getPetSpecies(speciesId);
+  if (!species) return undefined;
+  const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
+  if (!archetype) return undefined;
+
+  const form = formForLevel(species, level);
+  const hp = Math.max(1, Math.round(archetype.hp * form.statScale));
+  const aiType = resolveFloor3ArchetypeAiType(archetype);
+  const attackRange =
+    archetype.aiType === 'ranged' || archetype.aiType === 'support'
+      ? archetype.detectRange * 0.65
+      : 0;
+
+  const eid = spawnRosterCompanion(world, {
+    x,
+    y,
+    hp,
+    aiType,
+    speed: archetype.speed,
+    aggroRange: archetype.detectRange,
+    attackRange,
+    speciesToken: speciesTokenForId(speciesId),
+    level,
+    ownerTeam: teamId,
+  });
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, archetype.id);
+  return eid;
+}
+
+/** Deterministic interior spawn tile inside a room, spreading multiple spawns across cells. */
+function pickFloor3RosterSpawnTile(room: RoomData, index: number): { x: number; y: number } {
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    return room.interiorCells[index % room.interiorCells.length]!;
+  }
+  return {
+    x: room.bounds.x + Math.floor(room.bounds.width / 2),
+    y: room.bounds.y + Math.floor(room.bounds.height / 2),
+  };
+}
+
+/**
+ * Nearest passable tile to the map centre — the Final Four's "arena" point.
+ * The floor3-biomes map generator (`cave-system.ts`) does not carve a
+ * dedicated `RESOURCE_HEART` chamber the way the floor2-families layout does
+ * (that physical set piece is spec slice 9's deliverable); this outward
+ * spiral scan finds a guaranteed-passable rally point without requiring
+ * generator changes in this slice.
+ */
+function findFloor3ArenaTile(floorMap: NonNullable<GameWorld['floorMap']>): {
+  x: number;
+  y: number;
+} {
+  const cx = Math.floor(floorMap.width / 2);
+  const cy = Math.floor(floorMap.height / 2);
+  if (floorMap.tileMap.isPassable(cx, cy)) return { x: cx, y: cy };
+  const maxRadius = Math.max(floorMap.width, floorMap.height);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!floorMap.tileMap.inBounds(x, y)) continue;
+        if (floorMap.tileMap.isPassable(x, y)) return { x, y };
+      }
+    }
+  }
+  return { x: cx, y: cy };
+}
+
+/**
+ * Seeded Studio + Final Four selection and world placement (spec R6/R8,
+ * slice 8). Studios spawn immediately, one per `TERRITORY` biome zone
+ * (deterministically shuffled so which zone hosts which Studio varies by
+ * seed). The Final Four roster is deferred (`finalFourPendingSpawns`) —
+ * `floor3ObjectiveTick` spawns it once the Studios-defeated counter opens the
+ * gate (R6's "soft-gated" Final Four), never at floor init.
+ */
+function initializeFloor3Studios(
+  world: GameWorld,
+  floorMap: NonNullable<GameWorld['floorMap']>,
+): Floor3StudiosState {
+  const rng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor3-studios`));
+  const selectedStudios = selectFloor3Studios(rng);
+  const selectedFinalFour = selectFloor3FinalFour(rng);
+
+  const territoryRooms = rng.shuffle(
+    floorMap.roomGraph.getAll().filter((room) => room.role === RoomRole.TERRITORY),
+  );
+
+  const studios: Floor3EncounterState[] = [];
+  let nextStudioTeamId = FLOOR3_STUDIO_TEAM_BASE;
+  selectedStudios.forEach((studio, studioIndex) => {
+    const room =
+      territoryRooms.length > 0 ? territoryRooms[studioIndex % territoryRooms.length] : undefined;
+    const teamIds: number[] = [];
+    let cellIndex = 0;
+    for (const trainer of studio.trainers) {
+      const teamId = nextStudioTeamId;
+      nextStudioTeamId += 1;
+      teamIds.push(teamId);
+      for (const companion of trainer.companions) {
+        if (!room) continue;
+        const tile = pickFloor3RosterSpawnTile(room, cellIndex);
+        cellIndex += 1;
+        const spawnPos = floorMap.tileToWorld(tile.x, tile.y);
+        spawnFloor3RosterCompanion(
+          world,
+          spawnPos.x,
+          spawnPos.y,
+          companion.speciesId,
+          companion.level,
+          teamId,
+        );
+      }
+    }
+    studios.push({
+      id: studio.studioId,
+      name: studio.name,
+      teamIds,
+      roomId: room ? room.id : -1,
+      defeated: false,
+    });
+  });
+
+  const finalFourTeamIds: number[] = [];
+  const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
+  selectedFinalFour.forEach((handler, handlerIndex) => {
+    const teamId = FLOOR3_FINAL_FOUR_TEAM_BASE + handlerIndex;
+    finalFourTeamIds.push(teamId);
+    for (const companion of handler.companions) {
+      finalFourPendingSpawns.push({
+        speciesId: companion.speciesId,
+        level: companion.level,
+        teamId,
+      });
+    }
+  });
+
+  for (const studio of studios) {
+    setGoalFlag(world, floor3StudioDefeatGoalId(studio.id), false);
+  }
+  setGoalFlag(world, FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID, false);
+  setGoalFlag(world, FLOOR3_VICTORY_GOAL_ID, false);
+  setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, false);
+  setGoalFlag(world, FLOOR3_STAIRS_DISCOVERED_GOAL_ID, false);
+
+  return {
+    studios,
+    finalFour: {
+      id: 'final-four',
+      name: 'The Final Four',
+      teamIds: finalFourTeamIds,
+      roomId: -1,
+      defeated: false,
+    },
+    finalFourPendingSpawns,
+    studiosDefeatedCount: 0,
+  };
+}
+
+/** Spawns the deferred Final Four roster at the arena tile and clears the pending list. */
+function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3StudiosState): void {
+  const floorMap = world.floorMap;
+  if (!floorMap || studiosState.finalFourPendingSpawns.length === 0) return;
+  const arenaTile = findFloor3ArenaTile(floorMap);
+  const arenaPos = floorMap.tileToWorld(arenaTile.x, arenaTile.y);
+  for (const pending of studiosState.finalFourPendingSpawns) {
+    spawnFloor3RosterCompanion(
+      world,
+      arenaPos.x,
+      arenaPos.y,
+      pending.speciesId,
+      pending.level,
+      pending.teamId,
+    );
+  }
+  studiosState.finalFourPendingSpawns = [];
+}
+
+/** Pops the exit staircase at the player's spawn point (spec R6 win path). */
+function popFloor3ExitStairs(world: GameWorld): void {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  const floorMap = world.floorMap;
+  if (!studiosState || !floorMap) return;
+  if (world.goalFlags.get(FLOOR3_STAIRS_POPPED_GOAL_ID) === true) return;
+
+  studiosState.staircasePos = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
+  studiosState.staircaseSpawned = true;
+  studiosState.staircaseUnlocked = true;
+  setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, true);
+}
+
+function latchFloor3Victory(world: GameWorld): void {
+  setGoalFlag(world, FLOOR3_VICTORY_GOAL_ID, true);
+  popFloor3ExitStairs(world);
+}
+
+/**
+ * Called when the player confirms exit descent on Floor 3.
+ * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.
+ * Returns `true` on success, `false` if preconditions not met.
+ */
+export function confirmFloor3StairDescend(world: GameWorld, _playerEid: number): boolean {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState || world.state !== 'playing') return false;
+  if (!studiosState.staircaseSpawned || !studiosState.staircaseUnlocked) return false;
+  if (studiosState.staircaseDiscovered) return false;
+  studiosState.staircaseDiscovered = true;
+  setGoalFlag(world, FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
+  world.state = 'safe_room';
+  return true;
+}
+
 function countFloor3CardinalPassableNeighbors(
   floorMap: NonNullable<GameWorld['floorMap']>,
   tx: number,
@@ -362,6 +661,45 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
     world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
+    return;
+  }
+  if (world.state !== 'playing') return;
+
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState) return;
+
+  if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) {
+    for (const studio of studiosState.studios) {
+      if (studio.defeated) continue;
+      if (!_isEncounterTeamsWiped(world, studio.teamIds)) continue;
+      studio.defeated = true;
+      studiosState.studiosDefeatedCount += 1;
+      setGoalFlag(world, floor3StudioDefeatGoalId(studio.id), true);
+    }
+
+    if (
+      studiosState.studios.length > 0 &&
+      studiosState.studiosDefeatedCount >= studiosState.studios.length &&
+      world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID) !== true
+    ) {
+      setGoalFlag(world, FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID, true);
+      spawnFloor3FinalFourRoster(world, studiosState);
+    }
+
+    if (
+      !studiosState.finalFour.defeated &&
+      studiosState.finalFourPendingSpawns.length === 0 &&
+      world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID) === true &&
+      _isEncounterTeamsWiped(world, studiosState.finalFour.teamIds)
+    ) {
+      studiosState.finalFour.defeated = true;
+      latchFloor3Victory(world);
+    }
+
+    if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true && _isPartyWiped(world)) {
+      world.state = 'game_over';
+      return;
+    }
   }
 }
 
@@ -405,6 +743,7 @@ export function initializeFloor3Scenario(
   world.floorExtendedState = {
     floor3BiomeAffinities: AFFINITY_RING.slice(),
     ambientEnemyArchetypes: new Map<number, string>(),
+    floor3Studios: initializeFloor3Studios(world, floorMap),
   };
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);

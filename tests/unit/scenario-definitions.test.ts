@@ -41,7 +41,7 @@ describe('scenario definitions', () => {
     expect(typeof scenario.configureWorld).toBe('function');
     expect(scenario.selectLoadoutOption).toBeUndefined();
     expect(scenario.director.intro).toContain('wilds');
-    expect(scenario.isTerminalRunVictory).toBe(false);
+    expect(scenario.isTerminalRunVictory).toBe(true);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {

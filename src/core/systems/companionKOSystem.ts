@@ -160,3 +160,26 @@ export function _isPartyWiped(world: GameWorld, partyTeamId: number = TeamId.PLA
   }
   return hasPartyCompanion;
 }
+
+/**
+ * Floor 3 Studio/Final-Four defeat predicate (spec R6, slice 8): true when
+ * every one of `teamIds` has at least one Companion AND every Companion
+ * across all of them is simultaneously knocked out. Unlike {@link
+ * _isPartyWiped}, this is NOT scoped to `PartySlot` — a Trainer's/Handler's
+ * roster is never recruited into a `PartySlot`, so it must be read from raw
+ * `Team` membership instead. Returns `false` (never "defeated") if any team
+ * id in `teamIds` currently has zero live Companion entities recorded,
+ * matching `_isPartyWiped`'s "no wipe if nothing was ever there" behavior.
+ */
+export function _isEncounterTeamsWiped(world: GameWorld, teamIds: readonly number[]): boolean {
+  if (teamIds.length === 0) return false;
+  const companions = query(world.ecs, [Enemy, Companion, Team]);
+  const seenTeams = new Set<number>();
+  for (const eid of companions) {
+    const teamId = world.stores.team.id[eid] ?? -1;
+    if (!teamIds.includes(teamId)) continue;
+    seenTeams.add(teamId);
+    if ((world.stores.companion.knockedOut[eid] ?? 0) !== 1) return false;
+  }
+  return teamIds.every((teamId) => seenTeams.has(teamId));
+}
