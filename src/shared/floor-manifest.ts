@@ -17,6 +17,7 @@
 import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
+import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { BiomeType } from './map-types.js';
@@ -235,6 +236,13 @@ export const floorManifestDefSchema = z
       })
       .strict()
       .optional(),
+    /** Floor-3-specific scenario config (ignored by other floors). */
+    floor3: z
+      .object({
+        biomeRegionCount: z.number().int().min(1).optional(),
+      })
+      .strict()
+      .optional(),
     /**
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
@@ -283,6 +291,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor1ManifestJson;
   } else if (floorId === 'floor2') {
     manifestJson = floor2ManifestJson;
+  } else if (floorId === 'floor3') {
+    manifestJson = floor3ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -297,3 +307,4 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
  */
 export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
 export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
+export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');

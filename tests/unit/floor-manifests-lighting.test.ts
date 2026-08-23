@@ -29,4 +29,12 @@ describe('floor manifest lighting defaults', () => {
     expect(manifest.floor2?.presentCount).toBeGreaterThanOrEqual(3);
     expect(manifest.floor2?.settlement?.shopCountRange[0]).toBeGreaterThanOrEqual(1);
   });
+
+  it('floor3 manifest declares the biome-overworld layout and seven biome regions', () => {
+    const raw = JSON.parse(readFileSync(join(floorsDir, 'floor3.manifest.json'), 'utf-8'));
+    const manifest = floorManifestDefSchema.parse(raw);
+    expect(manifest.map.biome).toBe(BiomeType.CAVE_SYSTEM_BIOMES);
+    expect(manifest.enemyPackId).toBe('floor3-wild');
+    expect(manifest.floor3?.biomeRegionCount).toBe(7);
+  });
 });
