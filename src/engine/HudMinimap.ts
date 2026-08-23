@@ -793,7 +793,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const vRX = viewport.width / 2 - OVERLAY_EDGE_ARROW_INSET;
       const vRY = viewport.height / 2 - OVERLAY_EDGE_ARROW_INSET;
       if (vRX <= 0 || vRY <= 0) {
-        return;
+        continue;
       }
       const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
       const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
