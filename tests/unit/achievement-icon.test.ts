@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Phaser from 'phaser';
 import { hashStringToSeed } from '../../src/shared/random.js';
 import type { AchievementDef } from '../../src/shared/achievements.js';
@@ -23,6 +23,10 @@ function makeAchievement(overrides: Partial<AchievementDef>): AchievementDef {
 describe('getAchievementIconEntry', () => {
   const scene = {} as Phaser.Scene;
   const stubEntry = { textureKey: 'stub' } as GeneratedSpriteEntry;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('passes through the iconId unchanged when it has no -placeholder suffix', () => {
     resolveGeneratedIconEntry.mockReturnValueOnce(stubEntry);

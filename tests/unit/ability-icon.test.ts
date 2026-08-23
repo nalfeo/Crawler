@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Phaser from 'phaser';
 import { hashStringToSeed } from '../../src/shared/random.js';
 import type { AbilityPresentation } from '../../src/shared/ability-presentation.js';
@@ -19,6 +19,10 @@ const { getAbilityIconEntry } = await import('../../src/engine/ability-icon.js')
 describe('getAbilityIconEntry', () => {
   const scene = {} as Phaser.Scene;
   const stubEntry = { textureKey: 'stub' } as GeneratedSpriteEntry;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('uses the ability-icon-<id> canonical id plus the presentation briefId when present', () => {
     getAbilityPresentation.mockReturnValueOnce({

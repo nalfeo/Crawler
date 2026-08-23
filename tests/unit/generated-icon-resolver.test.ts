@@ -131,9 +131,9 @@ describe('resolveGeneratedIconEntry', () => {
   });
 
   it('ties on textureKey when two candidates share the same variantIndex', () => {
-    const a = makeEntry({ briefId: 'brief-a', textureKey: 'tex-b', variantIndex: 0 });
-    const b = makeEntry({ briefId: 'brief-b', textureKey: 'tex-a', variantIndex: 0 });
-    const registry = makeRegistry([a, b]);
+    const entryTexB = makeEntry({ briefId: 'brief-a', textureKey: 'tex-b', variantIndex: 0 });
+    const entryTexA = makeEntry({ briefId: 'brief-b', textureKey: 'tex-a', variantIndex: 0 });
+    const registry = makeRegistry([entryTexB, entryTexA]);
     const scene = makeScene(registry, new Set(['tex-a', 'tex-b']));
     const result = resolveGeneratedIconEntry(scene, {
       briefIds: [],
@@ -141,7 +141,7 @@ describe('resolveGeneratedIconEntry', () => {
       seed: 1,
     });
     // Same variantIndex → tie-break by textureKey localeCompare, so 'tex-a' wins.
-    expect(result).toEqual(b);
+    expect(result).toEqual(entryTexA);
   });
 
   it('reuses the cached texture index across repeated calls for the same registry', () => {
