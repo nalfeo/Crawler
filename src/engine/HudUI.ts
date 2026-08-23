@@ -79,6 +79,7 @@ export function createHudUI(scene: Phaser.Scene): {
   getMinimapBounds(): ScreenBounds | null;
   getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
   getMinimapOverlayWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
+  getMinimapOverlayWaypointDotIds(): readonly string[];
   getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
   getMinimapRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   getBottomCenterBounds(): ScreenBounds;
@@ -299,6 +300,7 @@ export function createHudUI(scene: Phaser.Scene): {
     getMinimapBounds: minimap.getDockedBounds,
     getMinimapOverlayWaypointArrowBounds: minimap.getOverlayWaypointArrowBounds,
     getMinimapOverlayWaypointArrowStates: minimap.getOverlayWaypointArrowStates,
+    getMinimapOverlayWaypointDotIds: minimap.getOverlayWaypointDotIds,
     getMinimapRadarWaypointArrowBounds: minimap.getRadarWaypointArrowBounds,
     getMinimapRadarWaypointArrowStates: minimap.getRadarWaypointArrowStates,
     getBottomCenterBounds: () => {

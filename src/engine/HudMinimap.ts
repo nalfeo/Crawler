@@ -188,6 +188,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
   getOverlayWaypointArrowBounds(): ScreenBounds | null;
   getOverlayWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   /**
+   * Quest ids drawn as in-view overlay waypoint dots on the most recent
+   * frame (the overlay-open complement of `getOverlayWaypointArrowStates` —
+   * a waypoint inside the overlay viewport is a dot, one outside is an edge
+   * arrow, never both). Empty while the overlay is closed.
+   */
+  getOverlayWaypointDotIds(): readonly string[];
+  /**
    * Screen-space bounds of the docked radar dial when visible, or null when it
    * is hidden (e.g. suppressed by an open character panel). Lets deterministic
    * e2e assert the minimap does not punch through a full-screen panel.
@@ -386,6 +393,17 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastRadarWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
   let lastTrackedOverlayWaypointArrowBounds: ScreenBounds | null = null;
   let lastTrackedRadarWaypointArrowBounds: ScreenBounds | null = null;
+  /**
+   * Quest ids whose waypoint fell inside the overlay viewport on the most
+   * recent `drawOverlayArrows` pass — i.e. ids rendered as an in-view
+   * `drawDots` waypoint marker instead of an edge arrow. Computed from the
+   * same screen-space projection/`isInsideViewport` check that decides
+   * whether to draw an edge arrow, so it can never disagree with
+   * `lastOverlayWaypointArrowBounds`. Tracked separately so tests can assert
+   * the in-view-dot path directly instead of only inferring it from
+   * edge-arrow absence.
+   */
+  let lastOverlayWaypointDotIds: string[] = [];
 
   function triangleBounds(
     ax: number,
@@ -770,6 +788,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     overlayArrowGraphics.clear();
     lastOverlayWaypointArrowBounds = [];
     lastTrackedOverlayWaypointArrowBounds = null;
+    lastOverlayWaypointDotIds = [];
     if (!viewState) {
       return;
     }
@@ -780,6 +799,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
       const wpScreenY = viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
       if (isInsideViewport(wpScreenX, wpScreenY, viewport)) {
+        lastOverlayWaypointDotIds.push(waypoint.questId);
         continue; // waypoint dot is already visible on the overlay map
       }
       // Compute direction from viewport center to waypoint screen position.
@@ -1469,6 +1489,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       overlayOpen && !masterHidden ? lastTrackedOverlayWaypointArrowBounds : null,
     getOverlayWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
       overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : [],
+    getOverlayWaypointDotIds: (): readonly string[] =>
+      overlayOpen && !masterHidden ? lastOverlayWaypointDotIds : [],
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
       const dial = hudMapBg.getBounds();

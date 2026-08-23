@@ -172,6 +172,8 @@ interface MainSceneInternals {
     getBottomCenterBounds?(): ScreenBounds;
     getMinimapBounds?(): ScreenBounds | null;
     getMinimapRadarWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
+    getMinimapOverlayWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
+    getMinimapOverlayWaypointDotIds?(): readonly string[];
     getNavigationBounds?(): {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
@@ -844,6 +846,21 @@ export interface MainSceneProbeApi {
   primeMerchantAndSpellBrokerQuestArrows(): void;
   /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
   getMinimapRadarWaypointArrowIds(): string[];
+  /**
+   * Full-screen minimap overlay waypoint-edge arrow quest ids on the real
+   * MainGameScene HUD. Empty while a waypoint is inside the overlay's current
+   * viewport (rendered as an in-view dot by `drawDots` instead of an edge
+   * arrow) or while the overlay is closed.
+   */
+  getMinimapOverlayWaypointArrowIds(): string[];
+  /**
+   * Quest ids rendered as full-screen minimap overlay in-view waypoint dots
+   * on the real MainGameScene HUD — the overlay-open complement of
+   * `getMinimapOverlayWaypointArrowIds` (a waypoint is a dot when inside the
+   * overlay viewport, an edge arrow when outside it, never both). Empty
+   * while the overlay is closed.
+   */
+  getMinimapOverlayWaypointDotIds(): string[];
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -1713,6 +1730,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()
         ?.hudUi?.getMinimapRadarWaypointArrowStates?.()
         .map(({ questId }) => questId) ?? [],
+
+    getMinimapOverlayWaypointArrowIds: (): string[] =>
+      getScene()
+        ?.hudUi?.getMinimapOverlayWaypointArrowStates?.()
+        .map(({ questId }) => questId) ?? [],
+
+    getMinimapOverlayWaypointDotIds: (): string[] => [
+      ...(getScene()?.hudUi?.getMinimapOverlayWaypointDotIds?.() ?? []),
+    ],
 
     requestAchievementsToggle: () => {
       getScene()?.requestAchievementsToggle?.();
