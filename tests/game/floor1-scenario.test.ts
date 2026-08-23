@@ -1338,6 +1338,46 @@ describe('floor1Scenario', () => {
   });
 
   describe('shopkeeper errand questline', () => {
+    it('keeps the Gear panel locked on Floor 1 until the merchant charm is bought', () => {
+      // Regression (issue #3310): `selectFloor1StarterWeapon` routes the
+      // starter through `equip()`, so the player has a non-null `mainHand`
+      // from frame one. The Gear reveal used to be keyed on a gate that only
+      // applied once the merchant errand was already in the quest log — which
+      // only happens after the shopkeeper conversation — so the starter
+      // weapon (or any earlier chest/enemy drop) opened Gear on the very first
+      // simulated frame, ahead of the merchant beat.
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+
+      // Unrelated equippable loot picked up before the errand exists must not
+      // reveal Gear either.
+      addItem(world.inventories.get(player)!, 'throwing-knife', 1);
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
+
+      // Buying the charm is the intended reveal, and it still works.
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
+      meetShopkeeper(world);
+      questSystem(world);
+      addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      questSystem(world);
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(true);
+    });
+
     it('starts the player on the find-welcome quest and gates NPC quests', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);

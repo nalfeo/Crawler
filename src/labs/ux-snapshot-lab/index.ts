@@ -533,6 +533,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       // Unlock inventory and equipment so both panels are accessible.
       world.featureUnlocks.inventory = true;
       world.featureUnlocks.equipment = true;
+      world.featureUnlocks.equipmentPanel = true;
       // Mark the player as being in a safe room so the panels can be opened
       // (this mirrors the safe-room guard in MainGameScene).
       world.playerInSafeRoom = true;
