@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d8cdaa69943ba34e643591c0743708abc9d36c56",
+    "commitDate": "2026-08-23T06:49:31Z",
+    "commitSubject": "Hold the Floor 1 stair objective during the post-boss farm window on the live goal-graph path (#3354)",
+    "capturedAt": "2026-08-23T07:54:12.099Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32624114684",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/d8cdaa69943ba34e643591c0743708abc9d36c56.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.86,
+        "totalWins": 129,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.88,
+        "totalWins": 132,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.27,
+      "gatePass": false,
+      "path": "by-sha/d8cdaa69943ba34e643591c0743708abc9d36c56.fun-report.json"
+    }
+  },
+  {
     "commit": "3f7f8271409b26b4a78eb2ff8ed256a5904fef1f",
     "commitDate": "2026-08-23T05:38:56Z",
     "commitSubject": "fix(ai): give the AI runner Floor-2 collapse-deadline awareness so unlocked exits actually get used (#3327)",
