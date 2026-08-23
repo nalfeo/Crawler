@@ -7507,11 +7507,37 @@ export class BehaviorTreeAI implements AIInputProvider {
     // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
+    const spellBrokerIntent = getSpellBrokerIntent(world);
+    const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
+    const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+
+    if (
+      world.featureUnlocks.spells &&
+      spellBrokerIntent.purchaseCount > 0 &&
+      spellBrokerIntent.purchaseStatus === 'returning' &&
+      slimeRatBossDefeated &&
+      staircaseBossDefeated
+    ) {
+      const reason = 'Returning to the Spell Broker to purchase the offered spell';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          playerX,
+          playerY,
+          reason,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
+        ),
+      );
+    }
 
     const settlementReturnIntent = getSettlementReturnIntent(world);
     if (
       tutorialAccepted &&
-      world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID)?.status === 'complete' &&
+      slimeRatBossDefeated &&
+      staircaseBossDefeated &&
       !progressSuppressed &&
       (settlementReturnIntent.status === 'armed' || settlementReturnIntent.status === 'traveling')
     ) {
@@ -7600,28 +7626,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     // middle chain. The legacy code below remains responsible only for phases
     // outside that graph (startup before a floor map exists, and post-chain
     // stair interaction).
-    const spellBrokerIntent = getSpellBrokerIntent(world);
-    if (
-      world.featureUnlocks.spells &&
-      spellBrokerIntent.purchaseCount > 0 &&
-      spellBrokerIntent.purchaseStatus === 'returning' &&
-      objective.bossBattles.get('slime-rat')!.defeated &&
-      objective.bossBattles.get('staircase')!.defeated
-    ) {
-      const reason = 'Returning to the Spell Broker to purchase the offered spell';
-      if (progressSuppressed)
-        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
-      return maybeDetourToQuestGiver(
-        this.createProgressTarget(
-          objective.spellQuestGiverPos.x,
-          objective.spellQuestGiverPos.y,
-          playerX,
-          playerY,
-          reason,
-          floorScenario.spellQuestGiverNpcEid ?? -1,
-        ),
-      );
-    }
     const middleChainTarget = this.resolveFloor1MiddleChainObjective(
       world,
       playerEid,
