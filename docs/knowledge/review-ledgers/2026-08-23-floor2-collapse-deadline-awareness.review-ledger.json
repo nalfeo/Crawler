@@ -23,6 +23,14 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "code-review agent on the full working-tree diff (resolver correctness/edge cases, Floor-1 byte-identity, pre-unlock Floor-2 panic side effects, layer boundaries, determinism, regression-cover genuineness). Verdict: no significant issues; both call sites independently resolving the same manifest state judged the right pattern."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Cross-family second round on the committed diff (base 0c8cbb0) by a model from a different family than the implementer, primed with the round-1 result and asked to look harder at the restructured refreshPlayerToStairsTravelEstimate, non-manifest-timer floors, and pre-unlock Floor-2 panic side effects. Verdict: no significant issues."
         }
       ]
     },
