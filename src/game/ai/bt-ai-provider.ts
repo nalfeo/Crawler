@@ -7423,6 +7423,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const settlementReturnIntent = getSettlementReturnIntent(world);
     if (
+      tutorialAccepted &&
+      world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID)?.status === 'complete' &&
       !progressSuppressed &&
       (settlementReturnIntent.status === 'armed' || settlementReturnIntent.status === 'traveling')
     ) {
