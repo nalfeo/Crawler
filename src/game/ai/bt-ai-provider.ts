@@ -7543,7 +7543,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       spellBrokerIntent.purchaseCount > 0 &&
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
-      staircaseBossDefeated
+      staircaseBossDefeated &&
+      !panicProfile.beeline
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
       if (spellQuestGiverNpcEid == null) return null;
