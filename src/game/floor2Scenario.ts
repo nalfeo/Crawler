@@ -1006,6 +1006,7 @@ export function initializeFloor2Scenario(
   // Players arrive here having already unlocked these features on Floor 1.
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
+  world.featureUnlocks.equipmentPanel = true;
   world.featureUnlocks.spells = true;
   // Floor 2 runtime owns the generated-equipment reward economy; enable the
   // full dependency closure so Floor 2 achievement equipment rewards, the

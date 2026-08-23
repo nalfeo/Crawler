@@ -103,6 +103,7 @@ function createSafeRoomLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   world.floorMap = buildMap();
   world.state = 'playing';
   world.featureUnlocks.equipment = true;
+  world.featureUnlocks.equipmentPanel = true;
 
   // Spawn player at centre of safe room
   const startFt = {
