@@ -30,6 +30,7 @@ import { GATE_MAX_FRAMES, GATE_SEEDS } from '../../scripts/agent/perf/floor1-gat
 
 /** A seed from the gated Floor-1 prefix, so Floor 1 is expected to clear. */
 const PROGRESSION_SEED = GATE_SEEDS[1] ?? 2;
+const BLOCKED_FAMILY_REPRO_SEED = 27;
 
 const HOOK_TIMEOUT_MS = 6 * 180_000;
 
@@ -110,6 +111,28 @@ describe('multi-floor progression', () => {
       // Gold is a second, independent carried value: it is never reset by the
       // Floor-2 boot, so the run cannot end below what Floor 1 handed over.
       expect(floor2Leg.stats.totalGold).toBeGreaterThanOrEqual(captured!.playerGold);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    'seed 27 clears the chained Floor 2 family hunt',
+    async () => {
+      const progression = await runProgression(
+        (_floorId, legIndex) => new BehaviorTreeAI({ seed: BLOCKED_FAMILY_REPRO_SEED + legIndex }),
+        {
+          seed: BLOCKED_FAMILY_REPRO_SEED,
+          startFloorId: 'floor1',
+        },
+      );
+
+      expect(progression.reachedFinalVictory).toBe(true);
+      expect(progression.clearedFloorIds).toEqual(['floor1', 'floor2']);
+      const families = Object.values(
+        progression.legs.at(-1)?.stats.floor2Progression?.families ?? {},
+      );
+      expect(families).toHaveLength(4);
+      expect(families.every((family) => family.encounterDefeated)).toBe(true);
     },
     HOOK_TIMEOUT_MS,
   );
