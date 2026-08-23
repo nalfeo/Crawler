@@ -25,6 +25,26 @@ async function tapTouch(page: Page, point: { x: number; y: number }): Promise<vo
   }
 }
 
+async function withHeldTouch(
+  page: Page,
+  run: (session: CdpSession) => Promise<void>,
+): Promise<void> {
+  const context = page.context() as BrowserContext & {
+    newCDPSession(page: Page): Promise<CdpSession>;
+  };
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: 200, y: 300, id: 1 }],
+    });
+    await run(session);
+  } finally {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await session.detach();
+  }
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -282,6 +302,123 @@ describe('MainGameScene UI exclusivity', () => {
         `${interaction} input inside the abilities loadout must not start NPC dialogue after close`,
       ).toBe(false);
     }
+  });
+
+  it('suppresses held touch input while inventory and equipment surfaces transition', async () => {
+    for (const surface of [
+      {
+        label: 'inventory',
+        isOpen: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => state.inventoryOpen,
+        toggle: mainSceneProbe.requestInventoryToggle,
+      },
+      {
+        label: 'equipment',
+        isOpen: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => state.equipmentOpen,
+        toggle: mainSceneProbe.requestEquipToggle,
+      },
+    ]) {
+      await bootPlayingSafeScene(touchPage);
+      await mainSceneProbe.setSimulationPaused(touchPage, false);
+      const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(touchPage);
+      expect(npcTarget, 'probe should expose an NPC interaction target').not.toBeNull();
+
+      await surface.toggle(touchPage);
+      const opened = await waitForState(touchPage, surface.isOpen, {
+        label: `${surface.label} opened before held-touch check`,
+      });
+      expect(opened.conversationOpen).toBe(false);
+
+      await withHeldTouch(touchPage, async (session) => {
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: 800, y: 700, id: 1 }],
+        });
+        await touchPage.waitForTimeout(100);
+        const whileOpen = await mainSceneProbe.getState(touchPage);
+
+        expect(whileOpen.playerFeet).toEqual(opened.playerFeet);
+        expect(whileOpen.conversationOpen).toBe(false);
+
+        await surface.toggle(touchPage);
+        await waitForState(touchPage, (state) => !surface.isOpen(state), {
+          label: `${surface.label} closed while touch remains held`,
+        });
+        await touchPage.waitForTimeout(100);
+      });
+
+      const afterClose = await mainSceneProbe.getState(touchPage);
+      expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+      expect(afterClose.conversationOpen).toBe(false);
+    }
+  });
+
+  it('clears held touch input after dialogue closes', async () => {
+    await bootPlayingSafeScene(touchPage);
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(touchPage);
+    expect(npcTarget, 'probe should expose an NPC interaction target').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(touchPage);
+    const opened = await waitForState(touchPage, (state) => state.conversationOpen, {
+      label: 'dialogue opened before held-touch close check',
+    });
+
+    await withHeldTouch(touchPage, async (session) => {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 800, y: 700, id: 1 }],
+      });
+      for (let line = 0; line < 4; line += 1) {
+        await mainSceneProbe.queueInteraction(touchPage);
+        await touchPage.waitForTimeout(100);
+        if (!(await mainSceneProbe.getState(touchPage)).conversationOpen) {
+          break;
+        }
+      }
+      await waitForState(touchPage, (state) => !state.conversationOpen, {
+        label: 'dialogue closed while touch remains held',
+      });
+      await touchPage.waitForTimeout(100);
+    });
+
+    const afterClose = await mainSceneProbe.getState(touchPage);
+    expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+    expect(afterClose.conversationOpen).toBe(false);
+  });
+
+  it('suppresses held touch input while the quartermaster surface closes', async () => {
+    await loadMainSceneProbeLab(touchPage, { floor: 'floor2' });
+    await mainSceneProbe.resolveLoadout(touchPage);
+    await mainSceneProbe.unlockSafeRoomSurfaces(touchPage);
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    const quartermaster = (await mainSceneProbe.getNpcRenderInfo(touchPage)).find(
+      (npc) => npc.defId === 'shop-the-quartermaster',
+    );
+    expect(quartermaster, 'Floor 2 should expose a quartermaster NPC').toBeDefined();
+
+    await mainSceneProbe.setPlayerFeet(touchPage, quartermaster!.feet.x, quartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(touchPage, 1);
+    await mainSceneProbe.queueInteraction(touchPage);
+    const opened = await waitForState(touchPage, (state) => state.quartermasterOpen, {
+      label: 'quartermaster panel opened before held-touch check',
+    });
+
+    await withHeldTouch(touchPage, async (session) => {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 800, y: 700, id: 1 }],
+      });
+      await touchPage.waitForTimeout(100);
+      await mainSceneProbe.requestQuartermasterToggle(touchPage);
+      await waitForState(touchPage, (state) => !state.quartermasterOpen, {
+        label: 'quartermaster panel closed while touch remains held',
+      });
+      await touchPage.waitForTimeout(100);
+    });
+
+    const afterClose = await mainSceneProbe.getState(touchPage);
+    expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+    expect(afterClose.conversationOpen).toBe(false);
   });
 
   it('keeps the Skills dismiss shortcut visible above the abilities loadout and closes on tap', async () => {
