@@ -18,6 +18,7 @@ import {
 } from '../../src/game/floorScenario.js';
 import { confirmFloor2StairDescend } from '../../src/game/floor2Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
+import { FLOOR3_TIMEOUT_GOAL_ID } from '../../src/game/floor3Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -33,6 +34,14 @@ describe('scenario definitions', () => {
     expect(typeof scenario.configureWorld).toBe('function');
     expect(scenario.selectLoadoutOption).toBeUndefined();
     expect(scenario.director.victory).toContain('Floor 2');
+  });
+
+  it('returns floor3 scenario with the biome-overworld director copy', () => {
+    const scenario = getScenarioDefinition('floor3');
+    expect(typeof scenario.configureWorld).toBe('function');
+    expect(scenario.selectLoadoutOption).toBeUndefined();
+    expect(scenario.director.intro).toContain('wilds');
+    expect(scenario.isTerminalRunVictory).toBe(false);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {
@@ -139,6 +148,20 @@ describe('scenario definitions', () => {
 
       world.floorExtendedState.familyState!.staircaseDiscovered = true;
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+    });
+
+    it('floor3 reports its timer marker as a timeout outcome', () => {
+      const scenario = getScenarioDefinition('floor3');
+      const world = createTestWorld({ seed: 42, floor: 3 });
+
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, true);
+      expect(scenario.getRunOutcome(world)).toBe('failed_timeout');
+      expect(scenario.getCompletionCopy('failed_timeout')).toEqual({
+        title: 'Game Over',
+        subtitle: 'Floor 3 failed',
+        body: 'The Companion League timer expired.\nRally your party and reach the objective faster.',
+      });
     });
   });
 

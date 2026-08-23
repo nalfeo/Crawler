@@ -11,6 +11,7 @@ import {
   familyFeudSystem,
   floor1EnemyDirectorSystem,
   floor1PlayerStatSystem,
+  floor3WildDirectorSystem,
   initializeFloor1Scenario,
   spawnerArenaSystem,
   spawnerSystem,
@@ -42,6 +43,19 @@ describe('createFloor1MainSceneOptions', () => {
       beforeEnemyAISystems: [companionAISystem, familyFeudSystem],
       afterSpawnerSystems: [],
       foreignSystems: [floor1PlayerStatSystem, floor1EnemyDirectorSystem],
+    },
+    {
+      floorId: 'floor3',
+      beforeWeaponSystems: [],
+      beforeEnemyAISystems: [companionAISystem],
+      afterSpawnerSystems: [floor3WildDirectorSystem],
+      foreignSystems: [
+        floor1PlayerStatSystem,
+        floor1EnemyDirectorSystem,
+        floor2VictorySystem,
+        emergentEventSystem,
+        familyFeudSystem,
+      ],
     },
   ])(
     'assembles only $floorId scenario systems at their canonical slots',
@@ -194,7 +208,7 @@ describe('createFloor1MainSceneOptions', () => {
     // Regression guard: the contract shipped once as an injected-but-unread
     // field, which left the engine's Floor 1/Floor 2 branches alive. Every
     // surface the scene renders must be reachable from these options.
-    for (const floorId of ['floor1', 'floor2'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3'] as const) {
       const options = createFloorMainSceneOptions(floorId);
       const scenario = getScenarioDefinition(floorId);
       const presentation = options.scenarioPresentation;
