@@ -315,7 +315,12 @@ describe('player floor carryover', () => {
       appliedPassiveAbilityIds: new Set(),
     });
     source.frameCount = 1000;
-    source.featureUnlocks = { inventory: true, equipment: true, spells: true };
+    source.featureUnlocks = {
+      inventory: true,
+      equipment: true,
+      equipmentPanel: true,
+      spells: true,
+    };
     source.achievements.unlockedIds.add('first-blood');
     source.achievements.pendingUnlockIds.push('first-blood');
     source.achievements.carriedRunFacts = {

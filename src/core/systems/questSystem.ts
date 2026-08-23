@@ -309,13 +309,28 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   // Equipment unlocks once the player holds anything equippable. Floor 1 is
   // intentionally stricter: Gear unlocks only from the merchant charm so
   // unrelated loot (e.g. boss chest drops) cannot unlock Gear early.
+  const holdsEquippable =
+    listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
+    Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null);
   if (
     !world.featureUnlocks.equipment &&
     (!floor1NeedsMerchantCharmGate || hasMerchantCharm) &&
-    (listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
-      Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null))
+    holdsEquippable
   ) {
     world.featureUnlocks.equipment = true;
+  }
+  // The Gear *panel* reveal is gated for the whole of Floor 1 — including
+  // before the merchant errand has even been accepted. The quest is only added
+  // to the log once the player has talked to the shopkeeper, so keying the
+  // reveal on the quest let any earlier equippable pickup (the starter weapon
+  // at spawn, a chest or enemy drop) open Gear ahead of the merchant beat
+  // (issue #3310).
+  if (
+    !world.featureUnlocks.equipmentPanel &&
+    (world.floorId !== 'floor1' || hasMerchantCharm) &&
+    holdsEquippable
+  ) {
+    world.featureUnlocks.equipmentPanel = true;
   }
 }
 

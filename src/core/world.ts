@@ -777,6 +777,19 @@ export interface GameWorld {
     inventory: boolean;
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
+    /**
+     * The **Gear panel/HUD affordance** — the only surface a human can equip
+     * through — becomes visible.
+     *
+     * Deliberately separate from {@link equipment}: that flag is the equipment
+     * *capability* latch (it also drives generated-equipment equip permission
+     * and the `equipmentUnlocked` achievement fact), whereas this one is the
+     * player-facing reveal. Floor 1 reveals Gear as part of the merchant beat,
+     * so it stays locked for the whole floor until the merchant's charm is
+     * actually acquired/equipped — unrelated early loot (a chest or enemy drop)
+     * must not open Gear before the shopkeeper errand (issue #3310).
+     */
+    equipmentPanel: boolean;
     /** Ability system and spells become usable once unlocked (Floor 1: after boss quest). */
     spells: boolean;
   };
@@ -1056,6 +1069,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     featureUnlocks: {
       inventory: false,
       equipment: false,
+      equipmentPanel: false,
       spells: false,
     },
     achievements: {
