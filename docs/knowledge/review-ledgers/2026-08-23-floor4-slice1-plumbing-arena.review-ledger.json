@@ -30,8 +30,18 @@
     },
     "multi_model_review": {
       "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "adjudicator_model": "gemini-3.1-pro-preview",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra", "claude-opus-4.7"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Adjudicator (gemini-3.1-pro-preview) upheld 3 concerns not raised by either reviewer: (1) the floor4 superRefine omits the tunnel-mouth vs east-feed-gate collision check it claims to cover, so a bad manifest passes load validation and throws at generation; (2) no unit coverage for initializeFloor4Scenario (hideFloorTimer, spawn, stat modifiers) or floor4ObjectiveTick (stall backstop); (3) no unit coverage asserting the new superRefine rules actually reject invalid geometry. UNRESOLVED — session hit its time limit before round 2. Next session must fix all three, run round 2, then the independent grade."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
