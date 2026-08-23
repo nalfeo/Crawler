@@ -9,6 +9,7 @@ import {
 } from '../../src/engine/lighting/light-field.js';
 import {
   areLightingRectsEqual,
+  canFileLiveIssue,
   formatAbilityTrigger,
   getLightingViewRect,
   LIGHTING_VIEW_BUFFER_PX,
@@ -48,6 +49,75 @@ const rectArb = fc.record({
   minY: fc.integer({ min: -50, max: 50 }),
   maxX: fc.integer({ min: -50, max: 50 }),
   maxY: fc.integer({ min: -50, max: 50 }),
+});
+
+describe('canFileLiveIssue', () => {
+  it('allows reporting during a live run regardless of which UX is open', () => {
+    const world = freshFloor1World();
+    world.state = 'playing';
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('blocks reporting while the picker is open or a submission is in flight', () => {
+    const world = freshFloor1World();
+    world.state = 'playing';
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: true,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: true,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('blocks reporting once the player is dead', () => {
+    const world = freshFloor1World();
+    world.state = 'game_over';
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('blocks reporting for the whole terminal/transition screen, not just the pending frame', () => {
+    // The scene clears `floorCompletionMessagePending` as soon as it SHOWS the
+    // completion or floor-transition screen, so the gate must key off the
+    // scenario's durable terminal outcome: it stays blocked across the ~1.45s
+    // restart timer of both the transition and terminal completion screens.
+    for (const outcome of ['cleared_floor', 'failed_timeout'] as const) {
+      const world = freshFloor1World();
+      world.state = 'playing';
+      world.floorScenario!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
+      expect(
+        canFileLiveIssue({
+          world,
+          issueOpen: false,
+          issueSubmitting: false,
+          hasTerminalRunOutcome: true,
+        }),
+      ).toBe(false);
+    }
+  });
 });
 
 describe('areLightingRectsEqual', () => {
