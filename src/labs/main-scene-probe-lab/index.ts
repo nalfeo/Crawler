@@ -50,6 +50,7 @@ import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
+  getQuestDef,
 } from '../../shared/quest-types.js';
 import {
   createBloodPoolSurface,
@@ -1639,8 +1640,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
       const merchantQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
       const spellBrokerBossBattleQuest = acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
-      if (spellBrokerBossBattleQuest) {
-        spellBrokerBossBattleQuest.progress['kill-slime-rat'] = 1;
+      const spellBrokerCombatObjective = getQuestDef(FLOOR1_BOSS_BATTLE_QUEST_ID)?.objectives.find(
+        (objectiveDef) => objectiveDef.kind === 'counter',
+      );
+      if (spellBrokerBossBattleQuest && spellBrokerCombatObjective) {
+        spellBrokerBossBattleQuest.progress[spellBrokerCombatObjective.id] =
+          spellBrokerCombatObjective.target ?? 1;
       }
       setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
       const px = world.stores.position.x[eid] ?? 0;
