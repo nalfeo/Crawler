@@ -45,7 +45,7 @@ import {
 } from '../../core/systems/bossChestRewards.js';
 import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
-import { acceptQuest } from '../../core/systems/questSystem.js';
+import { acceptQuest, setTrackedQuest } from '../../core/systems/questSystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -169,6 +169,10 @@ interface MainSceneInternals {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
     getMinimapBounds?(): ScreenBounds | null;
+    getMinimapRadarWaypointArrowStates?(): ReadonlyArray<{
+      readonly questId: string;
+      readonly bounds: ScreenBounds;
+    }>;
     getNavigationBounds?(): {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
@@ -837,6 +841,10 @@ export interface MainSceneProbeApi {
     readonly y: number;
     readonly rotation: number;
   }>;
+  /** Seed merchant + Spell Broker NPC-return quest arrows through the real scene's live world. */
+  primeMerchantAndSpellBrokerQuestArrows(): void;
+  /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
+  getMinimapRadarWaypointArrowIds(): string[];
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -1612,6 +1620,50 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
+    primeMerchantAndSpellBrokerQuestArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      const welcomeQuest = world.questLog.get(FLOOR1_FIND_WELCOME_QUEST_ID);
+      if (welcomeQuest) {
+        welcomeQuest.status = 'complete';
+      }
+      const merchantQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      const spellBrokerQuest = acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      if (spellBrokerQuest) {
+        spellBrokerQuest.progress['kill-slime-rat'] = 1;
+      }
+      setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.shopRoomPos.x = px + 100;
+      objective.shopRoomPos.y = py + 30;
+      objective.spellQuestGiverPos.x = px - 100;
+      objective.spellQuestGiverPos.y = py + 30;
+      const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
+      const spellQuestGiverEid = world.floorScenario?.spellQuestGiverNpcEid;
+      if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
+        world.stores.position.x[shopkeeperEid] = objective.shopRoomPos.x;
+        world.stores.position.y[shopkeeperEid] = objective.shopRoomPos.y;
+      }
+      if (spellQuestGiverEid !== null && spellQuestGiverEid !== undefined) {
+        world.stores.position.x[spellQuestGiverEid] = objective.spellQuestGiverPos.x;
+        world.stores.position.y[spellQuestGiverEid] = objective.spellQuestGiverPos.y;
+      }
+      if (merchantQuest) {
+        merchantQuest.done['meet-merchant'] = false;
+      }
+    },
+
     getVisibleQuestArrowIds: (): string[] => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) {
@@ -1650,6 +1702,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         ];
       });
     },
+
+    getMinimapRadarWaypointArrowIds: (): string[] =>
+      getScene()
+        ?.hudUi?.getMinimapRadarWaypointArrowStates?.()
+        .map(({ questId }) => questId) ?? [],
 
     requestAchievementsToggle: () => {
       getScene()?.requestAchievementsToggle?.();

@@ -55,4 +55,15 @@ describe('quest waypoint arrows deterministic guard', () => {
       }
     }
   });
+
+  it('shows merchant and Spell Broker quest arrows on both the main screen and minimap radar', async () => {
+    await mainSceneProbe.primeMerchantAndSpellBrokerQuestArrows(page);
+
+    await expect
+      .poll(() => mainSceneProbe.getVisibleQuestArrowIds(page).then((ids) => ids.sort()))
+      .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_SHOP_QUEST_ID]);
+    await expect
+      .poll(() => mainSceneProbe.getMinimapRadarWaypointArrowIds(page).then((ids) => ids.sort()))
+      .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_SHOP_QUEST_ID]);
+  });
 });
