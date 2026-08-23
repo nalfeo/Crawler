@@ -233,11 +233,12 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     presentFamilyCount > 0 && familyBossEncounterCount === presentFamilyCount;
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   // Deliberately NOT `isInSafeContext`: this is a fact about visiting the
-  // floor-2 safe room, not a customization gate. `isInSafeContext` also admits
-  // cleared boss arenas (ADR-0092), which are not safe rooms and must not
-  // satisfy a "visited the safe room" feat.
+  // authored floor-2 safe room, not a customization gate. Cleared boss arenas
+  // also become safe rooms (ADR-0092), but they must not satisfy a "visited the
+  // safe room" feat for the authored settlement/breather room.
   const floor2SafeRoomVisited =
-    world.floor === 2 && (world.playerInSafeRoom || world.state === 'safe_room');
+    world.floor === 2 &&
+    ((world.playerInSafeRoom && !world.playerInClearedArena) || world.state === 'safe_room');
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
 
   return {

@@ -743,7 +743,7 @@ describe('achievementSystem', () => {
       expect(fromAchievementSystem).toBe(fromScenario);
     });
 
-    it('reports floor2SafeRoomVisited only while on Floor 2 and in a safe context', () => {
+    it('reports floor2SafeRoomVisited only while on Floor 2 and in an authored safe room', () => {
       const world = createTestWorld({ seed: 42, floor: 2 });
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
         false,
@@ -762,11 +762,11 @@ describe('achievementSystem', () => {
       );
     });
 
-    it('does not report floor2SafeRoomVisited from a stale cleared-arena flag alone', () => {
-      // `safeRoomSystem` promotes cleared arenas into `playerInSafeRoom`.
-      // Achievement facts should still read the safe-room location fact rather
-      // than the discriminator flag directly.
+    it('does not report floor2SafeRoomVisited from a converted boss-room safe room', () => {
+      // `safeRoomSystem` promotes cleared arenas into `playerInSafeRoom`, but
+      // this achievement fact is about the authored settlement/breather room.
       const world = createTestWorld({ seed: 42, floor: 2 });
+      world.playerInSafeRoom = true;
       world.playerInClearedArena = true;
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
         false,
