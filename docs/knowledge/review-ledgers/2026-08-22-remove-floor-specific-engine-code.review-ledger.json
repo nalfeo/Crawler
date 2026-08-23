@@ -1,0 +1,77 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "remove-floor-specific-engine-code",
+  "task_title": "Remove floor-specific engine behavior with scenario contracts",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "minor",
+      "notes": "Approved with refinements. Rejected manifest-only DSL, bootstrap floorId switch, unified state rewrite, parallel presentation registry, monolithic ScenarioUiSnapshot, and event-stream rewrite. Adopted one normalized contract, typed bootstrap seam, generic transition callback, canonical terminal outcome, behavior matrix, synthetic third scenario, lifecycle/reset/timeout/rejection coverage, both-floor real observation, and a new ADR extending ADR 0086."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Round 1: the 'Descend' hint could be shown while the interact press was silently swallowed when the contract supplied getStairMarkerState without stairConfirmation. Fixed by requiring stairConfirmation for the whole affordance in MainGameScene."
+        },
+        {
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 2: fix verified (short-circuit first term of nearStairs); no remaining correctness, determinism, layer-boundary, wiring, or coverage findings."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.6",
+      "rounds": [
+        {
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Round 1: gpt-5.4 clean. gemini raised per-frame allocation in getFloorNStairMarkerState, and claimed labs lose stair interaction / get a death screen on timeout when no contract is injected. Adjudication: the lab claims are inapplicable - both MainGameScene construction sites (src/bootstrap/floor-game-config.ts, src/labs/bt-viz-lab/index.ts) inject the contract via createFloor*MainSceneOptions. Allocation declined: two small literals per frame, and a mutated module-scoped singleton would add aliasing hazards for no measured win."
+        },
+        {
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 2: both models confirmed the lab-wiring judgment. Remaining concerns adjudicated as pre-existing, not regressions, and verified byte-for-byte against base 8fdda66: (a) Floor 2 timeout classifies as a death because floor2Scenario sets world.floorScenario = null and the old getFloorRunOutcome read timeouts from floorScenario.runSummary; (b) FLOOR_2_DIRECTOR.isTimeoutReached uses world.state === 'game_over', exactly the old engine condition; (c) commentary burst overwrite - the old loop had the same one-beat-per-frame structure with no hide-time guard. All three are recorded as follow-ups in the handoff; changing them here would alter gameplay/telemetry in a behavior-preserving refactor."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "4acca0e9988896c84ea2115ef1f1506ac0f00b28",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff moves the four targeted floor-specific presentation decisions behind a shared scenario contract without introducing validated correctness, determinism, layer-boundary, or wiring regressions. The implementation preserves current Floor 1/Floor 2 semantics for reachable paths, adds focused unit coverage for the new contract and variant selection, and keeps the engine dependent only on shared types. Coverage is good but not perfect because several MainGameScene consumption paths are indirectly characterized rather than directly asserted in the changed tests."
+    }
+  }
+}

@@ -499,12 +499,22 @@ export interface GameWorld {
    * Floor 3 Companion League: cumulative damage each Companion (attacker eid)
    * has dealt to each still-alive Enemy target (target eid), written by
    * `applyDamage`. `companionProgressionSystem` (invoked from
-   * `runCoreSimulationStep` after `dropSystem`) reads this to split combat XP
-   * damage-weighted across contributing Companions once the target's health
-   * reaches 0, then deletes the target's entry. See
+   * `runCoreSimulationStep` before `companionKOSystem`/`dropSystem`) reads
+   * this to split combat XP damage-weighted across contributing Companions
+   * once the target's health reaches 0, then deletes the target's entry. See
    * `.specify/specs/floor3-companion-league.md` R7 / slice 5.
    */
   companionDamageContribution: Map<number, Map<number, number>>;
+  /**
+   * Floor 3 Companion League: the frame each Team started an uninterrupted
+   * idle window (no rival Companion within engagement range of any of its
+   * living Companions), keyed by team id. `companionKOSystem` (slice 6)
+   * revives every knocked-out Companion on a team once its idle window has
+   * lasted `tuning.floor3Companion.engagementEndFrames`, then clears the
+   * entry. Cleared immediately whenever the team re-engages. See
+   * `.specify/specs/floor3-companion-league.md` R5/R11.
+   */
+  companionEngagementIdleSince: Map<number, number>;
   /**
    * Durable record of the most recent damaging hit that landed on the player,
    * written at the `applyDamage` choke point. Unlike {@link combatEvents} —
@@ -997,6 +1007,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     combatEvents: [],
     lethalDamageSourceByTarget: new Map(),
     companionDamageContribution: new Map(),
+    companionEngagementIdleSince: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     floaterEvents: [],
