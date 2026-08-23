@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "shared-room-quest-arrows",
+  "task_title": "Align quest arrows for objectives in the same room",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged one blocking semantic leak: sharing dirX/dirY for angle also silently shared off-screen culling and displayed distance. Fixed by keeping culling+distance derived from the precise x/y target and only the angle from dirX/dirY; added a regression test asserting an off-screen precise target with an on-screen shared anchor still renders correctly. Non-blocking suggestions (doorway/roomId=-1 targets, moving-NPC room instability, very large/disjoint rooms, alternate roomId+angle-only API shape) were considered; current behavior already skips grouping when getRoomAt returns -1 (no regression), and the other suggestions are pre-existing room-graph/anchor-picker properties out of scope for this surgical arrow-direction fix."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Round 1: reviewer flagged the ledger itself as incomplete (this process step) and an unrelated pre-existing naming inconsistency in MainGameScene.ts not part of this PR diff."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review"],
+          "concerns_count": 3,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 2: all three findings (MainGameScene.ts quartermasterOpen naming; companionKOSystem.ts per-frame Set allocation x2) are confirmed via `git diff origin/main..HEAD --stat` to be pre-existing code untouched by this PR (only questWaypoints.ts, HudDirectionArrows.ts, and their tests changed). No actionable findings within this PR's own diff; treated as clean for this change."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

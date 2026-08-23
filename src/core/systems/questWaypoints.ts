@@ -22,9 +22,24 @@ export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
 export interface QuestWaypoint {
   /** Stable identity used to retain one HUD arrow per active quest. */
   readonly questId: string;
-  /** Target position in feet (world space). */
+  /**
+   * Precise target position in feet (world space) — the objective's actual
+   * NPC/item/tile location. Always exact; never adjusted for shared rooms.
+   * Consumers that show a single tracked marker (e.g. the minimap) should
+   * read this field.
+   */
   readonly x: number;
   readonly y: number;
+  /**
+   * Direction used to compute off-screen arrow angle/distance. Equal to
+   * `x`/`y` unless another active quest shares this quest's room with a
+   * different precise target, in which case both are normalized to the
+   * room's deterministic anchor so co-located quests don't point in
+   * conflicting directions. Multi-arrow HUDs (e.g. `HudDirectionArrows`)
+   * should use these fields instead of `x`/`y`.
+   */
+  readonly dirX: number;
+  readonly dirY: number;
   /** Human-readable label, mirrors the active objective's label. */
   readonly label: string;
   readonly kind: QuestWaypointKind;
@@ -178,7 +193,10 @@ function normalizeSharedRoomTargets(
     };
     const anchor = floorMap.tileToWorld(anchorTile.x, anchorTile.y);
     for (const index of indices) {
-      normalized[index] = { ...waypoints[index]!, ...anchor };
+      // Only the direction fields move to the shared anchor; `x`/`y` stay
+      // precise so single-target consumers (e.g. the minimap tracked dot)
+      // still point at the objective's actual tile.
+      normalized[index] = { ...waypoints[index]!, dirX: anchor.x, dirY: anchor.y };
     }
   }
   return normalized;
@@ -244,6 +262,8 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
       questId: quest.questId,
       x: target.pos.x,
       y: target.pos.y,
+      dirX: target.pos.x,
+      dirY: target.pos.y,
       label: objDef.label,
       kind: target.kind,
     });

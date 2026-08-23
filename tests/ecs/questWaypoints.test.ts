@@ -228,8 +228,13 @@ describe('getQuestWaypoints', () => {
     const wps = getQuestWaypoints(world);
 
     expect(wps).toHaveLength(2);
+    // Precise positions are preserved (e.g. for the minimap tracked dot)...
     expect(wps[0]).toMatchObject({ x: 46, y: 46 });
-    expect(wps[1]).toMatchObject({ x: 46, y: 46 });
+    expect(wps[1]).toMatchObject({ x: 50, y: 46 });
+    // ...while the direction fields used by the multi-arrow HUD are
+    // normalized to a shared room anchor so the arrows agree.
+    expect(wps[0]!.dirX).toBe(wps[1]!.dirX);
+    expect(wps[0]!.dirY).toBe(wps[1]!.dirY);
   });
 
   it('returns one waypoint for every active quest that has a directional target', () => {
