@@ -1,5 +1,39 @@
 [
   {
+    "commit": "801e3dcd1f7dbbd76026170b74d3575363b99e5a",
+    "commitDate": "2026-08-23T11:00:19Z",
+    "commitSubject": "Harden CI-recovery review-marker template to survive GitHub rendering (#3386)",
+    "capturedAt": "2026-08-23T12:41:25.681Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32636923860",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/801e3dcd1f7dbbd76026170b74d3575363b99e5a.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.8933333333333333,
+        "totalWins": 134,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.8333333333333334,
+        "totalWins": 125,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.35,
+      "gatePass": false,
+      "path": "by-sha/801e3dcd1f7dbbd76026170b74d3575363b99e5a.fun-report.json"
+    }
+  },
+  {
     "commit": "a9fa7e80957d74561ca025b98ef034c527577244",
     "commitDate": "2026-08-23T10:28:34Z",
     "commitSubject": "Fix Floor-2 AI stalling on the last family's kill quota, dropping report-only sweep legs below 90% (#3383)",
