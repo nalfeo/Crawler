@@ -111,7 +111,7 @@
     "floor1": {
       "_note": "Floor 1 gold sinks, tuned against measured Floor 1 income (~800g earned per completed run: enemy/chest drops plus achievement loot boxes). The sum of everything buyable on Floor 1 (charm + up to two post-quest weapons + up to two spells) is deliberately close to that income so a run must choose rather than buy the whole board and still bank a fortune for Floor 2. The broker rack steps DOWN from the headline spell (spellBrokerCost * spellBrokerRepeatCostMultiplier^n): a second spell is the sink for a run that declined the merchant's weapon-class switch, and at Floor 1 income a repeat priced above the headline is never reachable (measured: at 1.4x nothing buys it and the gate fails). Gate: median unspent gold at Floor 1 exit <= 35% of gold earned, at >= 90% Floor 1 win rate. merchantsCharm is pinned to the agreed band's floor (60, not 100): unlike the weapon/spell purchases, the charm is a REQUIRED shop-quest step gating the boss-stair-room door (see floor1-goal-graph.ts's `farm-shop-gold`), so its price extends every run's mandatory completion time, not just an optional detour — 100 pushed the bow-seed-35 retreat regression past the official time budget (tests/headless/floor1-retreat-objective-bias-regressions.test.ts).",
       "merchantsCharm": 60,
-      "spellBrokerCost": 350,
+      "spellBrokerCost": 400,
       "spellBrokerRepeatCostMultiplier": 0.65,
       "spellBrokerMaxPurchases": 2,
       "postQuestWeaponDefaultCost": 165,

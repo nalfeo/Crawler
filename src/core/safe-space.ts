@@ -51,7 +51,7 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
  * callers that need to distinguish authored SAFE rooms from boss rooms that
  * converted after combat.
  */
-export function isPointInClearedArena(world: GameWorld, x: number, y: number): boolean {
+function isPointInClearedArena(world: GameWorld, x: number, y: number): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) return false;
   if (world.clearedSafeRoomIds.size === 0 || world.clearedSafeRoomMap !== floorMap) {

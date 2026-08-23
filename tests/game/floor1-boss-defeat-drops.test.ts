@@ -25,12 +25,7 @@ import {
   selectFloor1StarterWeapon,
 } from '../../src/game/floorScenario.js';
 import { questSystem } from '../../src/core/systems/questSystem.js';
-import {
-  isInSafeContext,
-  isPointInClearedArena,
-  isPointInSafeSpace,
-  safeRoomSystem,
-} from '../../src/core/safe-space.js';
+import { isInSafeContext, isPointInSafeSpace, safeRoomSystem } from '../../src/core/safe-space.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -118,18 +113,18 @@ describe('floor1 cleared boss arena becomes a safe room', () => {
     const { world, player } = startedSlimeRatWorld(123);
     const objective = world.floorScenario!.objective;
     const { x, y } = objective.slimeRatRoomPos;
-    expect(isPointInClearedArena(world, x, y)).toBe(false);
+    world.stores.position.x[player] = x;
+    world.stores.position.y[player] = y;
+    world.state = 'playing';
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(false);
     expect(isPointInSafeSpace(world, x, y)).toBe(false);
 
     removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
-    expect(isPointInClearedArena(world, x, y)).toBe(true);
 
     // Standing in it opens the customization panels...
-    world.stores.position.x[player] = x;
-    world.stores.position.y[player] = y;
-    world.state = 'playing';
     safeRoomSystem(world);
     expect(world.playerInClearedArena).toBe(true);
     expect(isInSafeContext(world)).toBe(true);

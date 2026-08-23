@@ -5,7 +5,6 @@ import {
   safeRoomSystem,
   isInSafeContext,
   isPointInSafeSpace,
-  isPointInClearedArena,
   isEntityInSafeSpace,
 } from '../../src/core/safe-space.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -98,10 +97,10 @@ describe('isPointInSafeSpace', () => {
 });
 
 // ---------------------------------------------------------------------------
-// isPointInClearedArena
+// playerInClearedArena
 // ---------------------------------------------------------------------------
 
-describe('isPointInClearedArena', () => {
+describe('playerInClearedArena', () => {
   let world: GameWorld;
 
   beforeEach(() => {
@@ -110,32 +109,45 @@ describe('isPointInClearedArena', () => {
   });
 
   it('reports a cleared boss room (issue #3275 item 5)', () => {
-    expect(isPointInClearedArena(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    spawnPlayer(world, NORMAL_FT.x, NORMAL_FT.y);
+    world.state = 'playing';
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(false);
     world.clearedSafeRoomIds.add(1);
     world.clearedSafeRoomMap = world.floorMap;
-    expect(isPointInClearedArena(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(true);
   });
 
   it('ignores cleared room ids recorded against a different floor', () => {
+    spawnPlayer(world, NORMAL_FT.x, NORMAL_FT.y);
+    world.state = 'playing';
     // Room ids are unique only within one generated floor: a cleared Floor 1
     // arena must never make the same-numbered room on the next floor count.
     world.clearedSafeRoomIds.add(1);
     world.clearedSafeRoomMap = null;
-    expect(isPointInClearedArena(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(false);
   });
 
   it('does not cover the rest of the floor when a boss room is cleared', () => {
+    spawnPlayer(world, 8 * 32 + 16, 8 * 32 + 16);
+    world.state = 'playing';
     world.clearedSafeRoomIds.add(1);
     world.clearedSafeRoomMap = world.floorMap;
     // A corridor tile outside every room stays hostile.
-    expect(isPointInClearedArena(world, 8 * 32 + 16, 8 * 32 + 16)).toBe(false);
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(false);
   });
 
   it('returns false when the world has no floorMap', () => {
+    spawnPlayer(world, NORMAL_FT.x, NORMAL_FT.y);
+    world.state = 'playing';
     world.clearedSafeRoomIds.add(1);
     world.clearedSafeRoomMap = null;
     world.floorMap = null;
-    expect(isPointInClearedArena(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(false);
   });
 
   it('reports a cleared boss room while leaving its generated role intact', () => {
@@ -148,9 +160,12 @@ describe('isPointInClearedArena', () => {
     );
     const tileMap = new TileMap(20, 20);
     world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 2, y: 2 });
+    spawnPlayer(world, NORMAL_FT.x, NORMAL_FT.y);
+    world.state = 'playing';
     world.clearedSafeRoomIds.add(bossRoomId);
     world.clearedSafeRoomMap = world.floorMap;
-    expect(isPointInClearedArena(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(true);
     // The cleared room keeps its generated role, so the stairs/minimap
     // consumers that resolve the boss room BY ROLE still find it.
     expect(world.floorMap.bossStairRoom?.id).toBe(bossRoomId);
