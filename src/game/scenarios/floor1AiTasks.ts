@@ -537,6 +537,9 @@ export const FLOOR1_AI_TASK_CONFIG: ScenarioAiTaskConfig<
     'staircase',
   ],
   npcIds: ['shopkeeper', 'spellQuestGiver'],
+  phaseTagVocabulary: ['shop', 'spell-broker', 'staircase', 'post-stairs'],
+  interactionActionVocabulary: Object.values(AINpcInteractionAction),
+  farmStrategyVocabulary: ['shop-charm', 'merchant-weapon', 'spell-broker'],
   unlockEffectVocabulary: [
     'floor1-goon-quest-complete',
     'floor1-shop-quest-complete',

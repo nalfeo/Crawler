@@ -169,6 +169,26 @@ export interface ScenarioAiTaskConfig<S, P> {
   readonly npcIds: readonly string[];
   /** Closed vocabulary of unlock-effect tags any task may emit. */
   readonly unlockEffectVocabulary: readonly string[];
+  /**
+   * Closed vocabulary of `phaseTag` values a `move_to`/`interact_npc`/`engage`
+   * operation may declare. Interpreters (e.g. `bt-ai-provider.ts`) cast this
+   * string onto `RunPlanSegmentPhase`, so a typo must fail load-time
+   * validation rather than misroute at runtime.
+   */
+  readonly phaseTagVocabulary: readonly string[];
+  /**
+   * Closed vocabulary of `action` values an `interact_npc` operation may
+   * declare. Interpreters cast this string onto their NPC-interaction-action
+   * type, so a typo must fail load-time validation rather than misroute at
+   * runtime.
+   */
+  readonly interactionActionVocabulary: readonly string[];
+  /**
+   * Closed vocabulary of `strategy` values a `farm` operation may declare.
+   * Interpreters switch on this string to resolve a farm cost, so a typo must
+   * fail load-time validation rather than throw at runtime.
+   */
+  readonly farmStrategyVocabulary: readonly string[];
   /** Builds the location→point map for the snapshot (scenario geometry). */
   readonly buildLocations: (snapshot: S) => ReadonlyMap<LocationId, RunPlannerPoint>;
 }
@@ -211,6 +231,9 @@ export type ScenarioAiTaskConfigErrorCode =
   | 'unknown-location-ref'
   | 'unknown-npc-ref'
   | 'unknown-unlock-effect'
+  | 'unknown-phase-tag'
+  | 'unknown-interaction-action'
+  | 'unknown-farm-strategy'
   | 'required-depends-on-optional'
   | 'unknown-quest-ref'
   | 'unknown-objective-ref';
@@ -311,6 +334,9 @@ export function validateScenarioAiTaskConfig<S, P>(
   const locationIds = new Set<LocationId>(config.locationIds);
   const npcIds = new Set<string>(config.npcIds);
   const effectVocab = new Set<string>(config.unlockEffectVocabulary);
+  const phaseTagVocab = new Set<string>(config.phaseTagVocabulary);
+  const interactionActionVocab = new Set<string>(config.interactionActionVocabulary);
+  const farmStrategyVocab = new Set<string>(config.farmStrategyVocabulary);
   const reverseInteractionActions = new Set<string>();
 
   for (const task of config.tasks) {
@@ -363,6 +389,39 @@ export function validateScenarioAiTaskConfig<S, P>(
       }
     }
 
+    // phaseTag is later cast onto `RunPlanSegmentPhase` by interpreters; keep
+    // it inside the declared vocabulary so a typo fails here, not at runtime.
+    if (op.kind === 'move_to' || op.kind === 'interact_npc' || op.kind === 'engage') {
+      if (!phaseTagVocab.has(op.phaseTag)) {
+        throw new ScenarioAiTaskConfigError(
+          'unknown-phase-tag',
+          `Task "${task.id}" operation uses unknown phase tag "${op.phaseTag}".`,
+        );
+      }
+    }
+
+    // `interact_npc.action` is later cast onto the interpreter's NPC
+    // interaction-action type; validate it against the declared vocabulary.
+    if (op.kind === 'interact_npc') {
+      if (!interactionActionVocab.has(op.action)) {
+        throw new ScenarioAiTaskConfigError(
+          'unknown-interaction-action',
+          `Task "${task.id}" operation uses unknown interaction action "${op.action}".`,
+        );
+      }
+    }
+
+    // `farm.strategy` is later switched on by interpreters to resolve a farm
+    // cost; validate it against the declared vocabulary.
+    if (op.kind === 'farm') {
+      if (!farmStrategyVocab.has(op.strategy)) {
+        throw new ScenarioAiTaskConfigError(
+          'unknown-farm-strategy',
+          `Task "${task.id}" operation uses unknown farm strategy "${op.strategy}".`,
+        );
+      }
+    }
+
     // Canonical quest/objective references, when a lookup is provided.
     if (questLookup && task.questRef) {
       if (!questLookup.hasQuest(task.questRef.questId)) {
@@ -409,6 +468,27 @@ export function validateScenarioAiTaskConfig<S, P>(
           `Required chain "${chain.id}" anchors on chain "${anchorId}" which contains optional tasks.`,
         );
       }
+    }
+  }
+
+  // Within a single chain, a required task may not have an optional
+  // predecessor: `buildScenarioGoalGraph` wires each task's prerequisite to
+  // the nearest earlier task in the same chain regardless of `required`, so
+  // an optional-then-required ordering would make the required goal depend on
+  // a goal the planner's required-only mask is free to drop, leaving it
+  // permanently unreachable.
+  for (const chain of config.chains) {
+    let sawOptional = false;
+    for (const taskId of chain.taskIds) {
+      const task = taskById.get(taskId)!;
+      if (task.required && sawOptional) {
+        throw new ScenarioAiTaskConfigError(
+          'required-depends-on-optional',
+          `Chain "${chain.id}" has required task "${taskId}" preceded by an optional task; ` +
+            `a required goal cannot depend on an optional one.`,
+        );
+      }
+      if (!task.required) sawOptional = true;
     }
   }
 }

@@ -16,13 +16,32 @@
       "notes": "Adopted the quest-derived graph plus scenario adapter alternative. Quest pack IDs/objectives remain canonical and a validated Floor 1 AI overlay supplies only runtime dependencies/effects, generic operations, eligibility/completion, work estimation, and execution. Rejected a duplicated full-chain config due to drift; rejected registry-local callbacks due to scenarioDefinitions bloat; rejected Floor-1-shaped target kinds in favor of generic move/interact/engage/farm/ambient operations. Revised plan includes explicit negative door effects, deterministic snapshot/revision keys, committed-task reverse mapping, load-time graph validation, and migration of auto-progression consumers."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "GitHub Copilot automated PR review on commit bb1e90fa2122 opened 4 threads against src/game/ai/scenario-ai-tasks.ts and this ledger (r3839460327 unvalidated farm.strategy/interact_npc.action/phaseTag operands; r3839460312 missing in-chain optional-before-required rejection; r3839460290 duplicate chain-id/task-membership handling, partially pre-fixed by bb1e90f; r3839460321 this ledger incomplete for a declared 5🍎 change). Dispositioned by the ci-review-validator persona using a genuinely separate model (gemini-3.1-pro-preview) plus an adjudicating third model (gpt-5.5): r3839460327 and r3839460312 valid, fixed with declared operand vocabularies (phaseTagVocabulary/interactionActionVocabulary/farmStrategyVocabulary) and an in-chain required-after-optional check, both covered by new regression tests proven to fail without the fix; r3839460290 deterministically-inapplicable (the validator half was already fixed by bb1e90f, and buildScenarioGoalGraph's only production call site always receives the module-load-validated FLOOR1_AI_TASK_CONFIG, so it can never see unvalidated duplicate data); r3839460321 addressed by completing this ledger."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.5"],
+          "concerns_count": 4,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "gemini-3.1-pro-preview independently re-derived all 4 GitHub-review findings from the current code (not from the reviewer's prose): r3839460327 and r3839460312 valid; r3839460290 deterministically-inapplicable given bb1e90f already closed the validator half and buildScenarioGoalGraph's single production call site (floor1-goal-graph.ts) only ever receives the module-load-validated FLOOR1_AI_TASK_CONFIG. Adjudicator gpt-5.5 then reviewed the actual fix diff for r3839460327/r3839460312, confirmed the new phaseTag/action/farm-strategy vocab covers every value floor1AiTasks.ts declares, confirmed the in-chain optional-before-required check is correct, and found 1 concern: the new in-chain regression test was shadowed by the pre-existing cross-chain anchor check and did not actually exercise the new code path. Concern resolved by re-scoping the test's chain fixture (removed the chainB->chainA anchor) and proving (temporarily reverting the source check) that the test now fails without the fix before restoring it. Re-review after the fix: 0 remaining concerns."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

@@ -76,6 +76,9 @@ function baseConfig(): TestConfig {
     locationIds: ['home', 'east', 'west'],
     npcIds: [],
     unlockEffectVocabulary: ['eff-a1', 'eff-a2'],
+    phaseTagVocabulary: ['other'],
+    interactionActionVocabulary: [],
+    farmStrategyVocabulary: [],
     buildLocations: () => POINTS,
   };
 }
@@ -407,6 +410,82 @@ describe('scenario-ai-tasks generic interpreter — validation fails loudly', ()
     );
   });
 
+  it('rejects an operation using an out-of-vocabulary phase tag', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        tasks: [
+          task({
+            id: 'a1',
+            chainId: 'chainA',
+            unlockEffects: ['eff-a1'],
+            operation: {
+              kind: 'move_to',
+              location: 'east',
+              reason: 'r',
+              phaseTag: 'not-a-real-phase',
+            },
+            location: () => 'east',
+          }),
+          task({ id: 'a2', chainId: 'chainA', unlockEffects: ['eff-a2'] }),
+          task({ id: 'b1', chainId: 'chainB' }),
+          task({ id: 'b2', chainId: 'chainB' }),
+        ],
+      },
+      'unknown-phase-tag',
+    );
+  });
+
+  it('rejects an interact_npc operation using an out-of-vocabulary action', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        npcIds: ['friend'],
+        tasks: [
+          task({
+            id: 'a1',
+            chainId: 'chainA',
+            unlockEffects: ['eff-a1'],
+            operation: {
+              kind: 'interact_npc',
+              npc: 'friend',
+              action: 'not-a-real-action',
+              reason: 'r',
+              phaseTag: 'other',
+            },
+          }),
+          task({ id: 'a2', chainId: 'chainA', unlockEffects: ['eff-a2'] }),
+          task({ id: 'b1', chainId: 'chainB' }),
+          task({ id: 'b2', chainId: 'chainB' }),
+        ],
+      },
+      'unknown-interaction-action',
+    );
+  });
+
+  it('rejects a farm operation using an out-of-vocabulary strategy', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        tasks: [
+          task({
+            id: 'a1',
+            chainId: 'chainA',
+            unlockEffects: ['eff-a1'],
+            operation: { kind: 'farm', strategy: 'not-a-real-strategy', label: 'grind' },
+          }),
+          task({ id: 'a2', chainId: 'chainA', unlockEffects: ['eff-a2'] }),
+          task({ id: 'b1', chainId: 'chainB' }),
+          task({ id: 'b2', chainId: 'chainB' }),
+        ],
+      },
+      'unknown-farm-strategy',
+    );
+  });
+
   it('rejects a task that emits an out-of-vocabulary unlock effect', () => {
     const config = baseConfig();
     expectError(
@@ -443,6 +522,36 @@ describe('scenario-ai-tasks generic interpreter — validation fails loudly', ()
             required: false,
             optionalBundleId: 'opt',
           }),
+          task({ id: 'b1', chainId: 'chainB' }),
+          task({ id: 'b2', chainId: 'chainB' }),
+        ],
+      },
+      'required-depends-on-optional',
+    );
+  });
+
+  it('rejects a required task preceded by an optional task in the same chain', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        // Anchor chainB on nothing (rather than baseConfig's chainA) so the
+        // only possible `required-depends-on-optional` trigger is the
+        // in-chain check under test, not the pre-existing cross-chain
+        // (anchor) check.
+        chains: [
+          { id: 'chainA', taskIds: ['a1', 'a2'], anchorChainIds: [] },
+          { id: 'chainB', taskIds: ['b1', 'b2'], anchorChainIds: [] },
+        ],
+        tasks: [
+          task({
+            id: 'a1',
+            chainId: 'chainA',
+            unlockEffects: ['eff-a1'],
+            required: false,
+            optionalBundleId: 'opt',
+          }),
+          task({ id: 'a2', chainId: 'chainA', unlockEffects: ['eff-a2'], required: true }),
           task({ id: 'b1', chainId: 'chainB' }),
           task({ id: 'b2', chainId: 'chainB' }),
         ],
