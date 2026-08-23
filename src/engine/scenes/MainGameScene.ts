@@ -496,6 +496,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private inputCapture?: ReturnType<typeof createInputCapture>;
 
+  private blockingSurfaceWasOpen = false;
+
   private playerEid = -1;
 
   private world!: GameWorld;
@@ -1522,26 +1524,22 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   public requestInventoryToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedInventoryToggle = true;
   }
 
   public requestEquipAction(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedEquip = true;
   }
 
   public requestAchievementsToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedAchievementsToggle = true;
   }
 
   public requestQuartermasterToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedQuartermasterToggle = true;
   }
 
@@ -1867,6 +1865,11 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    const blockingSurfaceOpen = this.isBlockingSurfaceOpen();
+    if (blockingSurfaceOpen !== this.blockingSurfaceWasOpen) {
+      this.blockingSurfaceWasOpen = blockingSurfaceOpen;
+      this.clearPendingInteractionInput();
+    }
     // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
     // as the last completed step left it; only the fixed-step path below has a
     // partially-elapsed step to interpolate.
@@ -1989,7 +1992,18 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
-    if (this.achievementsUI?.isOpen()) {
+    // Freeze movement/action input whenever any blocking HUD surface (equipment,
+    // inventory, abilities, achievements, quartermaster, map overlay, etc.) is
+    // open. These panels have no dedicated close button — they're dismissed by
+    // re-tapping their corner button — so on touch devices the raw canvas touch
+    // listener in InputCapture (which classifies touches purely by screen-half
+    // position, unaware of any Phaser UI drawn on top) would otherwise keep
+    // driving the player around the still-running simulation while the player
+    // is just trying to browse the panel, letting them drift into an NPC and
+    // accidentally start a conversation. Previously only AchievementsUI froze
+    // input here; broadened to the shared isBlockingSurfaceOpen() predicate
+    // already used elsewhere to gate NPC interaction for the same reason.
+    if (this.isBlockingSurfaceOpen()) {
       this.inputState.moveX = 0;
       this.inputState.moveY = 0;
       this.inputState.action = false;
@@ -2592,19 +2606,19 @@ export class MainGameScene extends Phaser.Scene {
         .on('pointerdown', onTap);
     const cornerButtonTop = (): number => MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).top;
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
-      this.queuedInventoryToggle = true;
+      this.requestInventoryToggle();
     });
     this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
-      this.queuedEquip = true;
+      this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
-      this.queuedAchievementsToggle = true;
+      this.requestAchievementsToggle();
     });
     this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
-      this.queuedQuartermasterToggle = true;
+      this.requestQuartermasterToggle();
     });
     this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
       this.openIssueReport();
