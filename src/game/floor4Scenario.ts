@@ -25,6 +25,10 @@
 import { addComponent, hasComponent, setComponent, set } from 'bitecs';
 import { BroadcastScore, Health, Position, type GameWorld } from '../core/index.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
+import {
+  computeShowcaseArenaLayout,
+  showcaseArenaOptionsFromConfig,
+} from '../core/map/generators/ShowcaseArenaGenerator.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
@@ -55,7 +59,7 @@ function getFloor4Manifest() {
 }
 
 /** Build the authored-venue map config from the manifest's `floor4` geometry block. */
-export function buildFloor4MapConfig(): MapConfig {
+function buildFloor4MapConfig(): MapConfig {
   const manifest = getFloor4Manifest();
   const geometry = manifest.floor4;
   return {
@@ -91,7 +95,7 @@ export function buildFloor4MapConfig(): MapConfig {
  * case plus untimed Green Room visits; reaching it is a bug or an abandoned
  * run, never ordinary play.
  */
-export function floor4ObjectiveTick(world: GameWorld): void {
+function floor4ObjectiveTick(world: GameWorld): void {
   const manifest = getFloorManifest('floor4');
   if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
     world.goalFlags.set(FLOOR4_STALL_BACKSTOP_GOAL_ID, true);
@@ -114,6 +118,12 @@ export function initializeFloor4Scenario(
 ): void {
   const manifest = getFloor4Manifest();
   const mapConfig = buildFloor4MapConfig();
+  const layout = computeShowcaseArenaLayout(showcaseArenaOptionsFromConfig(mapConfig));
+  if (mapConfig.widthTiles < layout.widthTiles || mapConfig.heightTiles < layout.heightTiles) {
+    throw new Error(
+      `Floor 4 map config is smaller than authored venue: got ${mapConfig.widthTiles}×${mapConfig.heightTiles}, needs at least ${layout.widthTiles}×${layout.heightTiles}`,
+    );
+  }
   // Deliberately NOT `world.rng`: the venue is authored, so Floor 4 must not
   // consume a draw from the shared combat stream just to build its map.
   const floorMap = getGenerator(mapConfig.biome).generate(

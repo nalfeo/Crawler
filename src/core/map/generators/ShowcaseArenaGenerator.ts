@@ -52,7 +52,7 @@ export interface ShowcaseArenaOptions {
  * sits, so they live in one place and the floor manifest overrides them
  * explicitly rather than each caller inventing its own.
  */
-export const DEFAULT_SHOWCASE_ARENA_OPTIONS: ShowcaseArenaOptions = {
+const DEFAULT_SHOWCASE_ARENA_OPTIONS: ShowcaseArenaOptions = {
   arenaWidthTiles: 48,
   arenaHeightTiles: 40,
   greenRoomWidthTiles: 20,
@@ -135,6 +135,12 @@ export function computeShowcaseArenaLayout(
     width: opts.greenRoomWidthTiles,
     height: opts.greenRoomHeightTiles,
   };
+
+  if (opts.tunnelWidthTiles > opts.greenRoomHeightTiles) {
+    throw new Error(
+      'ShowcaseArenaGenerator: curtain tunnel is wider than the Green Room it opens into',
+    );
+  }
 
   if (greenRoom.y < border) {
     throw new Error(

@@ -7,7 +7,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_SHOWCASE_ARENA_OPTIONS,
   ShowcaseArenaGenerator,
   computeShowcaseArenaLayout,
 } from '../../src/core/map/generators/ShowcaseArenaGenerator';
@@ -17,10 +16,35 @@ import { BiomeType, type MapConfig, type RoomBounds } from '../../src/shared/map
 import { SeededRandom } from '../../src/shared/random';
 import { getFloorManifest, getImplementedFloorIds } from '../../src/shared/floor-registry';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions';
-import { buildFloor4MapConfig } from '../../src/game/floor4Scenario';
+import { floor4Manifest } from '../../src/shared/floor-manifest.js';
 
 function floor4Config(overrides: Partial<MapConfig> = {}): MapConfig {
-  return { ...buildFloor4MapConfig(), ...overrides };
+  const geometry = floor4Manifest.floor4;
+  return {
+    widthTiles: floor4Manifest.map.widthTiles,
+    heightTiles: floor4Manifest.map.heightTiles,
+    tileSizeFt: floor4Manifest.map.tileSizeFt,
+    biome: floor4Manifest.map.biome ?? BiomeType.SHOWCASE_ARENA,
+    seed: floor4Manifest.map.seed,
+    roomWidthRange: floor4Manifest.map.roomWidthRange,
+    roomHeightRange: floor4Manifest.map.roomHeightRange,
+    maxRooms: floor4Manifest.map.maxRooms,
+    floorDensity: floor4Manifest.map.floorDensity,
+    showcaseArena: geometry
+      ? {
+          arenaWidthTiles: geometry.arena.widthTiles,
+          arenaHeightTiles: geometry.arena.heightTiles,
+          greenRoomWidthTiles: geometry.greenRoom.widthTiles,
+          greenRoomHeightTiles: geometry.greenRoom.heightTiles,
+          tunnelLengthTiles: geometry.tunnel.lengthTiles,
+          tunnelWidthTiles: geometry.tunnel.widthTiles,
+          pillarSizeTiles: geometry.arena.pillarSizeTiles,
+          pillarInsetTiles: geometry.arena.pillarInsetTiles,
+          borderThicknessTiles: geometry.arena.borderThicknessTiles,
+        }
+      : undefined,
+    ...overrides,
+  };
 }
 
 // Passability is asserted through `tileMap.isPassable` (tile coords); the
@@ -93,6 +117,12 @@ describe('computeShowcaseArenaLayout', () => {
     expect(() => computeShowcaseArenaLayout({ greenRoomHeightTiles: 80 })).toThrow(/does not fit/);
   });
 
+  it('throws when the curtain tunnel is wider than the Green Room it opens into', () => {
+    expect(() =>
+      computeShowcaseArenaLayout({ tunnelWidthTiles: 15, greenRoomHeightTiles: 6 }),
+    ).toThrow(/wider than the Green Room/);
+  });
+
   it('rejects non-integer and non-positive geometry', () => {
     expect(() => computeShowcaseArenaLayout({ tunnelLengthTiles: 0 })).toThrow(/positive integer/);
     expect(() => computeShowcaseArenaLayout({ arenaWidthTiles: 33.5 })).toThrow(/positive integer/);
@@ -119,9 +149,7 @@ describe('ShowcaseArenaGenerator', () => {
 
   it('carves a passable arena, tunnel and Green Room and solid pit fixtures', () => {
     const map = generate();
-    const layout = computeShowcaseArenaLayout(
-      buildFloor4MapConfig().showcaseArena as Partial<typeof DEFAULT_SHOWCASE_ARENA_OPTIONS>,
-    );
+    const layout = computeShowcaseArenaLayout(floor4Config().showcaseArena);
     for (const rect of [layout.arena, layout.tunnel, layout.greenRoom]) {
       const solid: string[] = [];
       for (let y = rect.y; y < rect.y + rect.height; y += 1) {
@@ -149,9 +177,7 @@ describe('ShowcaseArenaGenerator', () => {
     // Slice 1's acceptance criterion. The tunnel is intentionally OPEN here;
     // FR9.4 sealing is the slice-5 intermission transaction.
     const map = generate();
-    const layout = computeShowcaseArenaLayout(
-      buildFloor4MapConfig().showcaseArena as Partial<typeof DEFAULT_SHOWCASE_ARENA_OPTIONS>,
-    );
+    const layout = computeShowcaseArenaLayout(floor4Config().showcaseArena);
     const target = {
       x: layout.greenRoom.x + Math.floor(layout.greenRoom.width / 2),
       y: layout.greenRoom.y + Math.floor(layout.greenRoom.height / 2),
@@ -188,9 +214,7 @@ describe('ShowcaseArenaGenerator', () => {
     // A one-exit pocket in an arena floor is a stuck-player trap, and Floor 4's
     // whole combat premise is movement (spec FR4).
     const map = generate();
-    const layout = computeShowcaseArenaLayout(
-      buildFloor4MapConfig().showcaseArena as Partial<typeof DEFAULT_SHOWCASE_ARENA_OPTIONS>,
-    );
+    const layout = computeShowcaseArenaLayout(floor4Config().showcaseArena);
     const deadEnds: string[] = [];
     for (let y = layout.arena.y; y < layout.arena.y + layout.arena.height; y += 1) {
       for (let x = layout.arena.x; x < layout.arena.x + layout.arena.width; x += 1) {
@@ -256,10 +280,8 @@ describe('floor4 plumbing', () => {
   });
 
   it('builds a map config big enough for the manifest geometry', () => {
-    const config = buildFloor4MapConfig();
-    const layout = computeShowcaseArenaLayout(
-      config.showcaseArena as Partial<typeof DEFAULT_SHOWCASE_ARENA_OPTIONS>,
-    );
+    const config = floor4Config();
+    const layout = computeShowcaseArenaLayout(config.showcaseArena);
     expect(config.widthTiles).toBeGreaterThanOrEqual(layout.widthTiles);
     expect(config.heightTiles).toBeGreaterThanOrEqual(layout.heightTiles);
   });

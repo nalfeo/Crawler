@@ -316,6 +316,17 @@ export const floorManifestDefSchema = z
             message: 'Green Room is taller than the arena, so it would overflow the venue border',
           });
         }
+        const border = arena.borderThicknessTiles;
+        const arenaMidY = border + Math.floor(arena.heightTiles / 2);
+        const tunnelY =
+          border + Math.floor((arena.heightTiles * 3) / 4) - Math.floor(tunnel.widthTiles / 2);
+        if (arenaMidY >= tunnelY && arenaMidY < tunnelY + tunnel.widthTiles) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['tunnel', 'widthTiles'],
+            message: 'curtain tunnel mouth collides with the east feed gate',
+          });
+        }
       })
       .optional(),
     /**

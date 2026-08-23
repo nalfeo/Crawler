@@ -1,8 +1,7 @@
 # Spec: Floor 4 — The Main Event (Arena)
 
-> **Status:** **Proposed — design only, no code.** Nothing in this spec is implemented; no
-> Floor 4 manifest, scenario, systems, data, or sprites exist yet. Everything below is the
-> **plan** that implementation sessions build against, sliced in §Epic decomposition.
+> **Status:** **In implementation.** Slice 1 (floor plumbing + authored arena venue) is
+> implemented in code; slices 2–8 in §Epic decomposition remain planned.
 > **Authored:** 2026-08-22.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — a new floor archetype spanning the
 > floor-manifest/registry/scenario stack, a new phase-driven arena director, deterministic
@@ -25,9 +24,10 @@
 > **Test suites (planned):** `tests/unit/floor4-arena-*.test.ts`,
 > `tests/integration/floor4-arena.integration.test.ts`,
 > `tests/headless/floor4-arena-completion.test.ts`.
-> **Known gaps (by design, this session):** no code; final tuning numbers are deliberately
-> unfixed and are set by the balance slice against the win-rate gate (project rule #12); the
-> paid shop re-roll and audience-vote mutators are explicitly out of scope.
+> **Known gaps (by design):** acts/waves/Headliners/Green Room transaction/HUD are not yet
+> implemented; final tuning numbers are deliberately unfixed and are set by the balance slice
+> against the win-rate gate (project rule #12); the paid shop re-roll and audience-vote
+> mutators are explicitly out of scope.
 
 ## Context
 

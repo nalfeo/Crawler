@@ -6,7 +6,6 @@ export { CaveSystemGenerator, type CaveSystemOptions } from './cave-system';
 export {
   ShowcaseArenaGenerator,
   computeShowcaseArenaLayout,
-  DEFAULT_SHOWCASE_ARENA_OPTIONS,
   type ShowcaseArenaLayout,
   type ShowcaseArenaOptions,
 } from './ShowcaseArenaGenerator';
