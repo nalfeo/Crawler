@@ -11,7 +11,7 @@
  * rendering imports — consumed by the engine HUD layer.
  */
 import type { GameWorld } from '../world.js';
-import { getActiveQuests, getQuestObjectiveViews, getTrackedQuest } from './questSystem.js';
+import { getActiveQuests, getQuestObjectiveViews } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
 import { pickRoomAnchorCell, resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
@@ -25,8 +25,7 @@ export interface QuestWaypoint {
   /**
    * Precise target position in feet (world space) — the objective's actual
    * NPC/item/tile location. Always exact; never adjusted for shared rooms.
-   * Consumers that show a single tracked marker (e.g. the minimap) should
-   * read this field.
+   * Consumers that need the objective's exact location should read this field.
    */
   readonly x: number;
   readonly y: number;
@@ -35,8 +34,8 @@ export interface QuestWaypoint {
    * `x`/`y` unless another active quest shares this quest's room with a
    * different precise target, in which case both are normalized to the
    * room's deterministic anchor so co-located quests don't point in
-   * conflicting directions. Multi-arrow HUDs (e.g. `HudDirectionArrows`)
-   * should use these fields instead of `x`/`y`.
+   * conflicting directions. Direction-arrow HUDs should use these fields
+   * instead of `x`/`y`.
    */
   readonly dirX: number;
   readonly dirY: number;
@@ -269,18 +268,4 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
     });
   }
   return normalizeSharedRoomTargets(world, waypoints);
-}
-
-/** The tracked quest's fixed waypoint, or undefined when its objective has no location. */
-export function getTrackedQuestWaypoint(
-  world: GameWorld,
-  playerEid?: number,
-): QuestWaypoint | undefined {
-  const trackedQuest = getTrackedQuest(world);
-  if (!trackedQuest) {
-    return undefined;
-  }
-  return getQuestWaypoints(world, playerEid).find(
-    (waypoint) => waypoint.questId === trackedQuest.questId,
-  );
 }
