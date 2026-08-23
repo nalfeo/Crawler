@@ -170,7 +170,10 @@ export interface PlayerCarryoverSnapshot {
   readonly playerSkills: readonly (readonly [string, SkillStateSnapshot])[];
   readonly abilityState?: AbilityStateSnapshot;
   readonly persistentStatModifiers: readonly StatModifierSnapshot[];
-  readonly featureUnlocks: Readonly<GameWorld['featureUnlocks']>;
+  readonly featureUnlocks: Readonly<Omit<GameWorld['featureUnlocks'], 'equipmentPanel'>> & {
+    /** Optional: absent on snapshots written before the Gear-panel reveal split. */
+    readonly equipmentPanel?: boolean;
+  };
   readonly achievements: {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
@@ -2107,6 +2110,10 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   world.featureUnlocks = {
     inventory: world.featureUnlocks.inventory || snapshot.featureUnlocks.inventory,
     equipment: world.featureUnlocks.equipment || snapshot.featureUnlocks.equipment,
+    // Absent on snapshots created before this field existed → default to false
+    // and let the current floor's own latch decide.
+    equipmentPanel:
+      world.featureUnlocks.equipmentPanel || (snapshot.featureUnlocks.equipmentPanel ?? false),
     spells: world.featureUnlocks.spells || snapshot.featureUnlocks.spells,
   };
   world.achievements = {
