@@ -1518,8 +1518,10 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.x[player] = 14;
     world.stores.position.y[player] = 10;
     world.playerInSafeRoom = true;
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
 
-    const farThreat = spawnEnemy(world, 84, 10, 20);
+    const farThreat = spawnEnemy(world, 18, 10, 20);
 
     const ai = new BehaviorTreeAI({ seed: 31 });
     const input = createInputState();
