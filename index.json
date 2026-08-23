@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b837caafffe7155333cdb7e941b5ea580678ac68",
+    "commitDate": "2026-08-22T23:30:41Z",
+    "commitSubject": "Move Floor 2 win-rate floor from nightly balance issue into the release workflow (#3294)",
+    "capturedAt": "2026-08-23T01:11:16.615Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32606970849",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b837caafffe7155333cdb7e941b5ea580678ac68.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.56,
+        "totalWins": 84,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36,
+      "gatePass": false,
+      "path": "by-sha/b837caafffe7155333cdb7e941b5ea580678ac68.fun-report.json"
+    }
+  },
+  {
     "commit": "caec7771b4d08df2a521c970e191f696d6f04660",
     "commitDate": "2026-08-22T22:03:14Z",
     "commitSubject": "Restore enemyAISystem coverage gate with Floor 2 den-boss and line-of-sight aggro tests (#3284)",
