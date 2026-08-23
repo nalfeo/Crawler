@@ -14,8 +14,15 @@
       "notes": "Round 1 rejected the incorrect ai:headless --chain path and optional chain regression; revised to use ai:winrate-sweep/runProgression and mandatory chain coverage. Round 2 added exact check:wired-systems naming and mandatory standalone Floor 2 coverage. All concerns incorporated; no architectural fork."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["copilot-pull-request-reviewer", "gpt-5.5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "PR #3398 GitHub review threads (copilot-pull-request-reviewer): (1) PRRT_kwDOSvo2Ms6bfUGc flagged this ledger as incomplete for its declared 3-apple tier (code_review had no rounds, independent_grade was unfinished) -- resolved by completing this stage and the independent_grade stage below via a CI-review-validator pass. (2) PRRT_kwDOSvo2Ms6bfUGl flagged that bt-ai-provider.ts updateFloor2HuntProgress released the ENTIRE floor2HuntAbandonedEnemyEids quarantine set on any same-family kill-count increase, including kills unrelated to the quarantined enemy, allowing premature re-engagement before patrol arrival and recreating the engage/give-up loop. Independently validated with gpt-5.5 (second model, separate context) plus a deterministic reproduction test proving the premature release; confirmed VALID. Fixed by replacing the blanket releaseFloor2HuntEnemies() call at that site with a new pruneDefeatedFloor2HuntEnemies() that only unquarantines entities that have actually died, leaving still-alive abandoned enemies quarantined until patrol arrival / family transition / reset (existing releaseFloor2HuntEnemies() call sites unchanged). Regression test added: tests/game/behavior-tree-ai.test.ts \"keeps an abandoned Floor 2 family target quarantined through an unrelated same-family kill\"."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

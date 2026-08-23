@@ -6292,6 +6292,33 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntAbandonedEnemyEids.clear();
   }
 
+  /**
+   * Unquarantine only the abandoned enemies that have actually died, instead
+   * of releasing the whole abandoned set. `updateFloor2HuntProgress` used to
+   * call `releaseFloor2HuntEnemies()` (a full clear) whenever the family's
+   * trash-kill counter went up at all — including from a kill of an unrelated
+   * same-family enemy (e.g. one the player is fighting elsewhere, or an
+   * in-flight projectile landing after the AI already gave up and relocated).
+   * That made the still-alive, still-unreachable blocked target eligible for
+   * re-selection again before the patrol anchor was ever reached, recreating
+   * the engage/give-up loop `abandonFloor2HuntEnemy` exists to prevent (see
+   * the `ignoredEnemyUntilFrame` comment in `findNearestFloor2HuntEnemy`).
+   * Scoping the release to entities that are actually gone keeps "progress"
+   * meaningful — a specific quarantined target is only freed once it is truly
+   * resolved — while patrol arrival / family transition / reset still perform
+   * the full clear via `releaseFloor2HuntEnemies()`.
+   */
+  private pruneDefeatedFloor2HuntEnemies(world: GameWorld): void {
+    for (const eid of this.floor2HuntAbandonedEnemyEids) {
+      const stillAlive =
+        entityExists(world.ecs, eid) && (world.stores.health.current[eid] ?? 0) > 0;
+      if (!stillAlive) {
+        this.floor2HuntAbandonedEnemyEids.delete(eid);
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
+    }
+  }
+
   private resolveFloor2HuntPatrolTarget(
     world: GameWorld,
     familyId: FamilyId,
@@ -6433,7 +6460,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (killCount > this.floor2HuntLastKillCount) {
       this.floor2HuntLastKillCount = killCount;
       this.floor2HuntLastProgressFrame = world.frameCount;
-      this.releaseFloor2HuntEnemies();
+      this.pruneDefeatedFloor2HuntEnemies(world);
     }
     if (
       world.frameCount < this.progressGoalSuppressedUntilFrame &&
