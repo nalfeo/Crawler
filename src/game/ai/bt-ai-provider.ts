@@ -1165,6 +1165,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private floor2HuntLastProgressFrame: number = 0;
   private floor2HuntCadenceStartFrame: number = 0;
   private floor2HuntHandledSuppressionUntilFrame: number = 0;
+  private readonly floor2HuntAbandonedEnemyEids = new Set<number>();
   private readonly floor2HuntPatrolTiles = new Map<string, TilePoint[]>();
   /**
    * Schmitt-trigger membership state for {@link resolveFloor2HuntTerritoryMembership}
@@ -3461,6 +3462,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames++;
     if (this.engageNoProgressFrames > ENGAGE_GIVEUP_FRAMES) {
       this.ignoredEnemyUntilFrame.set(eid, world.frameCount + ENEMY_IGNORE_FRAMES);
+      this.abandonFloor2HuntEnemy(world, eid);
       this.decision.targetEid = null;
       this.decision.targetX = null;
       this.decision.targetY = null;
@@ -3949,6 +3951,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
     this.floor2HuntPatrolTiles.clear();
     this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;
@@ -5611,10 +5614,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           // to a different, actually-reachable enemy (or fall through to
           // EXPLORE) instead of re-selecting the same unreachable eid.
           if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
-            this.ignoredEnemyUntilFrame.set(
-              this.decision.targetEid,
-              world.frameCount + ENEMY_IGNORE_FRAMES,
-            );
+            const targetEid = this.decision.targetEid;
+            this.ignoredEnemyUntilFrame.set(targetEid, world.frameCount + ENEMY_IGNORE_FRAMES);
+            this.abandonFloor2HuntEnemy(world, targetEid);
             this.decision.targetEid = null;
             this.decision.targetX = null;
             this.decision.targetY = null;
@@ -5955,6 +5957,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (const eid of enemies) {
       if (eid === undefined) continue;
       if (eid === excludeEid) continue;
+      if (this.floor2HuntAbandonedEnemyEids.has(eid)) continue;
       if (!isEnemyCombatEligible(world, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -6255,6 +6258,32 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntPatrolTarget = null;
   }
 
+  private abandonFloor2HuntEnemy(world: GameWorld, eid: number): void {
+    const floor2State = world.floorExtendedState?.familyState;
+    const huntFamilyIndex = this.floor2HuntFamilyId
+      ? (floor2State?.presentFamilies.indexOf(this.floor2HuntFamilyId) ?? -1)
+      : -1;
+    if (
+      huntFamilyIndex < 0 ||
+      !hasComponent(world.ecs, eid, FamilyMembership) ||
+      (world.stores.familyMembership.familyId[eid] ?? -1) !== huntFamilyIndex ||
+      (world.stores.familyMembership.isBoss[eid] ?? 0) !== 0 ||
+      this.floor2HuntAbandonedEnemyEids.has(eid)
+    ) {
+      return;
+    }
+    this.floor2HuntAbandonedEnemyEids.add(eid);
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.advanceFloor2HuntPatrol();
+  }
+
+  private releaseFloor2HuntEnemies(): void {
+    for (const eid of this.floor2HuntAbandonedEnemyEids) {
+      this.ignoredEnemyUntilFrame.delete(eid);
+    }
+    this.floor2HuntAbandonedEnemyEids.clear();
+  }
+
   private resolveFloor2HuntPatrolTarget(
     world: GameWorld,
     familyId: FamilyId,
@@ -6279,6 +6308,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         Math.hypot(currentWorld.x - playerX, currentWorld.y - playerY) <=
         FLOOR2_HUNT_PATROL_ARRIVE_FT
       ) {
+        this.releaseFloor2HuntEnemies();
         this.advanceFloor2HuntPatrol();
       }
     }
@@ -6324,6 +6354,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
   }
 
   private isFloor2HuntRecoveryWindow(world: GameWorld): boolean {
@@ -6344,6 +6375,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resetFloor2HuntStateForMap(world);
     const floor2State = world.floorExtendedState?.familyState;
     if (!floor2State || floor2State.presentFamilies.length === 0) {
+      this.releaseFloor2HuntEnemies();
       return null;
     }
     const isResolved = (familyId: FamilyId): boolean =>
@@ -6381,6 +6413,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       )[0]?.familyId;
     if (!nextFamily) {
       this.floor2HuntFamilyId = null;
+      this.releaseFloor2HuntEnemies();
       return null;
     }
     this.commitFloor2HuntFamily(world, nextFamily);
@@ -6392,6 +6425,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (killCount > this.floor2HuntLastKillCount) {
       this.floor2HuntLastKillCount = killCount;
       this.floor2HuntLastProgressFrame = world.frameCount;
+      this.releaseFloor2HuntEnemies();
     }
     if (
       world.frameCount < this.progressGoalSuppressedUntilFrame &&
@@ -6452,6 +6486,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           return null;
         }
         this.ignoredEnemyUntilFrame.delete(eid);
+      }
+      if (this.floor2HuntAbandonedEnemyEids.has(eid)) {
+        return null;
       }
       if (
         familyId !== null &&
@@ -6837,6 +6874,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryTarget = territoryZone
       ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
       : null;
+    if (this.floor2HuntAbandonedEnemyEids.size > 0) {
+      if (territoryTarget) {
+        return {
+          ...territoryTarget,
+          reason: `Relocating within the ${familyId} territory after a blocked engagement`,
+        };
+      }
+      return null;
+    }
     if (!progressSuppressed && territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
       return {
         ...territoryTarget,
@@ -9631,6 +9677,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = 0;
     this.floor2HuntCadenceStartFrame = 0;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
     this.floor2HuntPatrolTiles.clear();
     this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;

@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "report-only-release-sweep-legs",
+  "task_title": "Fix report-only release sweep progression losses",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Round 1 rejected the incorrect ai:headless --chain path and optional chain regression; revised to use ai:winrate-sweep/runProgression and mandatory chain coverage. Round 2 added exact check:wired-systems naming and mandatory standalone Floor 2 coverage. All concerns incorporated; no architectural fork."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
