@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ead76b6aad783cb87b2cf51c36678fdf1200c6b1",
+    "commitDate": "2026-08-23T03:19:32Z",
+    "commitSubject": "Align quest arrows for objectives in the same room (#3316)",
+    "capturedAt": "2026-08-23T04:48:08.434Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32616323050",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/ead76b6aad783cb87b2cf51c36678fdf1200c6b1.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.5133333333333333,
+        "totalWins": 77,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.6,
+      "gatePass": false,
+      "path": "by-sha/ead76b6aad783cb87b2cf51c36678fdf1200c6b1.fun-report.json"
+    }
+  },
+  {
     "commit": "d143f15afbb5bb50a2d751b9a7aa464fde474b31",
     "commitDate": "2026-08-23T02:26:22Z",
     "commitSubject": "Fix Floor 1 AI: merchant round-trips, farming behavior, boss chest drop spot, and cleared-arena safe room (#3276)",
