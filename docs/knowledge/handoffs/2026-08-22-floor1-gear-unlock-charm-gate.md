@@ -61,6 +61,37 @@ arrives only after the charm purchase, so the same run reaches the broker withou
 gold (`spellPurchases: 0`, `unspentAtExit: 685`, `unspentSpendableFraction: 0.78`) and
 enters the staircase weaker.
 
+**Second-pass evidence (2026-08-23): the drop is one seed's trajectory, not a floor-wide
+readiness regression.** A/B over the same 10 sword seeds (`runHeadless`, legacy
+pathing/decision modes, 19,800-frame budget), pre-fix vs post-fix staircase entry health:
+
+| Seed | Pre-fix |  Post-fix | Pre spendable / spells | Post spendable / spells |
+| ---: | ------: | --------: | ---------------------: | ----------------------: |
+|    2 |   0.815 |     1.000 |                821 / 1 |                 588 / 1 |
+|    6 |   0.581 |     0.620 |                600 / 2 |                 781 / 2 |
+|   25 |   0.724 |     0.724 |                238 / 0 |                 238 / 0 |
+|   29 |   1.000 |     0.852 |                846 / 2 |                 439 / 1 |
+|   34 |   1.000 |     0.992 |                423 / 1 |                 261 / 0 |
+|   35 |   0.633 |     0.695 |                766 / 2 |                 424 / 0 |
+|   44 |   0.695 | **0.461** |                446 / 1 |                 270 / 0 |
+|   67 |   0.902 |     1.000 |                431 / 1 |                 588 / 2 |
+|   81 |   0.959 |     1.000 |                628 / 1 |                 265 / 0 |
+|   84 |   0.756 |     0.698 |                612 / 1 |                 590 / 2 |
+
+10/10 official victories both before and after; 9/10 post-fix seeds still enter the
+staircase at or above the `0.5` readiness bar. The systematic part of the change is
+income timing (median spendable income falls ~29% on this panel, broker-spell
+purchases 12 → 8),
+which the official `floor1-economy-gate.test.ts` still passes; seed 44 is the only
+readiness casualty. Seed 25 is byte-identical pre/post, confirming the divergence is
+reward-timing driven rather than a blanket nerf.
+
+Also relevant to option 1: when `sword seed 44` was originally accepted into this panel
+(`docs/knowledge/handoffs/2026-07-16-legacy-floor1-deaths.md`) the accepted run's
+**minimum HP was 35.0%**. This run's post-fix minimum is 34.4% — i.e. the case is
+behaving as it did when it was adopted; the `0.5` boss-entry bar was added later, under
+the (buggy) inflated economy.
+
 Every remaining path to green either weakens the maintainer's explicit requirement in
 issue #3310 or relaxes/cherry-picks the readiness gate, both of which rules #11/#12
 forbid without a human decision. Options for the human:
@@ -71,6 +102,12 @@ forbid without a human decision. Options for the human:
    provide arrives earlier by legitimate means.
 3. Teach the Floor 1 AI to convert late gold into power (it now ends the floor holding
    78% of its spendable income).
+
+Recommendation: option 1, scoped to a re-derivation of the `sword seed 44` entry
+expectation with this A/B recorded next to it — _not_ a lower global
+`BOSS_ENTRY_MIN_HEALTH_FRACTION` and _not_ dropping the seed from the panel. That still
+needs an explicit human "yes", because any of the three edits touches a gate this
+session does not own (rule #11).
 
 ## Retrospective
 
