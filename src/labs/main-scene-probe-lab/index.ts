@@ -739,6 +739,12 @@ export interface MainSceneProbeApi {
   setSafeContext(enabled: boolean): void;
   /** Unlock inventory/equipment/abilities and seed one achievement for testing. */
   unlockSafeRoomSurfaces(): void;
+  /**
+   * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
+   * independently of the equipment *capability* latch, so a test can observe
+   * the shipped scene with Gear still locked behind the Floor 1 merchant charm.
+   */
+  setEquipmentPanelUnlocked(unlocked: boolean): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
   /** Activate the Floor 2 reputation HUD through the shipped broker callback. */
@@ -1406,6 +1412,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.playerInSafeRoom = true;
       world.featureUnlocks.inventory = true;
       world.featureUnlocks.equipment = true;
+      world.featureUnlocks.equipmentPanel = true;
       world.featureUnlocks.spells = true;
       world.achievements.unlockedIds.add('first-bonk');
       if (eid >= 0) {
@@ -1415,6 +1422,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         }
         world.abilityStatesByEntity.set(eid, state);
       }
+    },
+
+    setEquipmentPanelUnlocked: (unlocked: boolean) => {
+      const world = getScene()?.world;
+      if (!world) {
+        return;
+      }
+      world.featureUnlocks.equipmentPanel = unlocked;
     },
 
     resolveLoadout: () => {

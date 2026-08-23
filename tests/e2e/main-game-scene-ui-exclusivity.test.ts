@@ -379,6 +379,29 @@ describe('MainGameScene UI exclusivity', () => {
     }
   });
 
+  it('hides the Gear shortcut and refuses [G] while the Gear panel reveal is still locked', async () => {
+    // Issue #3310: Gear must stay hidden on Floor 1 until the merchant's charm
+    // is in hand, even though the equipment *capability* latch is already set
+    // by the starter weapon the player spawns holding.
+    await bootPlayingSafeScene();
+    await mainSceneProbe.setEquipmentPanelUnlocked(page, false);
+    await waitForState(page, (s) => !s.equipButtonVisible, { label: 'gear shortcut hidden' });
+
+    await mainSceneProbe.requestEquipToggle(page);
+    await page.waitForTimeout(250);
+
+    const locked = await mainSceneProbe.getState(page);
+    expect(locked.equipButtonVisible, 'Gear shortcut must stay hidden pre-charm').toBe(false);
+    expect(locked.equipmentOpen, '[G] must not open Gear pre-charm').toBe(false);
+    expect(locked.inventoryButtonVisible, 'the Bag shortcut is a separate unlock').toBe(true);
+
+    // Acquiring the charm reveals it, and [G] works again.
+    await mainSceneProbe.setEquipmentPanelUnlocked(page, true);
+    await waitForState(page, (s) => s.equipButtonVisible, { label: 'gear shortcut revealed' });
+    await mainSceneProbe.requestEquipToggle(page);
+    await waitForState(page, (s) => s.equipmentOpen, { label: 'gear panel opened after charm' });
+  });
+
   it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {
     await bootPlayingSafeScene();
 

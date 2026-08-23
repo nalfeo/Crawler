@@ -35,7 +35,6 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
-import { achievementSystem } from '../../src/game/systems/achievementSystem.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
   acceptQuest,
@@ -1339,25 +1338,30 @@ describe('floor1Scenario', () => {
   });
 
   describe('shopkeeper errand questline', () => {
-    it('keeps Gear and the gear-purchase achievement locked while only the starter weapon is equipped', () => {
+    it('keeps the Gear panel locked on Floor 1 until the merchant charm is bought', () => {
       // Regression (issue #3310): `selectFloor1StarterWeapon` routes the
       // starter through `equip()`, so the player has a non-null `mainHand`
-      // from frame one. `latchFeatureUnlocks` used to treat that as "the
-      // player owns equipment" whenever the merchant errand was not yet in
-      // the quest log, so Gear — and the "Buy your first piece of gear"
-      // achievement that reads `equipmentUnlocked` — unlocked on the very
-      // first simulated frame, before the player had bought anything.
+      // from frame one. The Gear reveal used to be keyed on a gate that only
+      // applied once the merchant errand was already in the quest log — which
+      // only happens after the shopkeeper conversation — so the starter
+      // weapon (or any earlier chest/enemy drop) opened Gear on the very first
+      // simulated frame, ahead of the merchant beat.
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
 
       questSystem(world);
-      achievementSystem(world);
-      expect(world.featureUnlocks.equipment).toBe(false);
-      expect(world.achievements.unlockedIds.has('merchant-customer')).toBe(false);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
 
-      // Buying the charm is the intended unlock, and it still works.
+      // Unrelated equippable loot picked up before the errand exists must not
+      // reveal Gear either.
+      addItem(world.inventories.get(player)!, 'throwing-knife', 1);
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
+
+      // Buying the charm is the intended reveal, and it still works.
       world.playerLevel.level = 2;
       world.goalFlags.set('floor1-leveling-quest-complete', true);
       world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
@@ -1367,12 +1371,11 @@ describe('floor1Scenario', () => {
       questSystem(world);
       expect(returnShopkeeperPrize(world, player)).toBe(true);
       questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
       expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
 
       questSystem(world);
-      achievementSystem(world);
-      expect(world.featureUnlocks.equipment).toBe(true);
-      expect(world.achievements.unlockedIds.has('merchant-customer')).toBe(true);
+      expect(world.featureUnlocks.equipmentPanel).toBe(true);
     });
 
     it('starts the player on the find-welcome quest and gates NPC quests', () => {
