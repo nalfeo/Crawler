@@ -16,13 +16,39 @@
       "notes": "Alt A: dedicated audioEvents/presentationEvents queue — rejected as unnecessary new core plumbing given two of three sources already had an authoritative queue. Alt B: single feedback presenter fanning out to VFX+audio — rejected, would require touching EffectsVfx/CombatVfx internals for a marginal ordering-safety gain over comment-documented + integration-tested ordering. Alt C (adopted, hybrid): combatEvents for weapon/damage/dodge/blocked/death (authoritative), world.abilityActivations for spells/abilities (authoritative, NOT vfxEvents abilityActivateFlash/spell-VFX kinds as originally planned), vfxEvents pickupSparkle ONLY for loot pickups as a single generic cue (no color-based type inference, since bossChestPickupSystem/harvestSystem use ad hoc tints outside the known palette). Also replaced naive per-kind-cooldown-only throttling with a priority-ranked per-frame budget (MAX_CUES_PER_FRAME=4) so a bursty mixed-kind frame keeps the highest-salience cues (damage taken > death > crit > spell/ability > blocked/dodge > hit > miss/pickup) instead of first-in-queue-order. Added tests/integration/combat-audio-pipeline.test.ts locking the read-before-drain ordering contract with a real GameWorld. divergence=major_fork: the original vfxEvents-heavy trigger architecture was replaced by the hybrid authoritative-source design."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (gpt-5.3-codex, gemini-3.1-pro-preview, gpt-5.4 security): (1) incomplete ledger mid-flight -- not a code concern, resolved by completing ledger before finalizing; (2) unbounded combatAudioCueLog growth -- valid, fixed by adding COMBAT_AUDIO_CUE_LOG_CAP=64 drop-oldest cap in MainGameScene.ts; (3) same-frame same-kind intensity masking (first-wins instead of highest-intensity-wins) -- valid, fixed in combat-audio.ts eligibleByKind loop to keep highest-intensity candidate per kind. Security review: clean, no findings. Round 2 re-review of the fixed diff: clean."
     },
     "independent_grade": {
       "completed": false,

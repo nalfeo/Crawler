@@ -168,6 +168,14 @@ import { openShopModal } from '../shop/shop-modal-presenter.js';
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
 /**
+ * Cap on `combatAudioCueLog`'s retained entries (drop-oldest, mirrors
+ * `VFX_EVENT_CAP`/`ABILITY_ACTIVATION_EVENT_CAP`). Test/automation
+ * observability only, but combat cues fire far more often than the rare
+ * reward-opening cues `rewardAudioCueLog` logs, so this needs an explicit
+ * bound to avoid unbounded growth over a floor's lifetime.
+ */
+const COMBAT_AUDIO_CUE_LOG_CAP = 64;
+/**
  * Render frames the level-up modal is held open before an `autoLevelUpAllocator`
  * (AI driver) auto-confirms it. ~0.4s at 60fps — long enough for a viewer to see
  * the screen, short enough not to stall the AI playthrough. Counts render frames
@@ -1792,6 +1800,17 @@ export class MainGameScene extends Phaser.Scene {
           durationMs: spec.durationMs,
           gain: spec.gain,
         });
+        // Combat cues fire far more often than reward-opening cues (many
+        // times per second during a fight), so — unlike `rewardAudioCueLog`,
+        // whose source events are rare — this log needs an explicit cap to
+        // avoid unbounded growth over a floor's lifetime. Mirrors the
+        // drop-oldest pattern used by `VFX_EVENT_CAP`/`ABILITY_ACTIVATION_EVENT_CAP`.
+        if (this.combatAudioCueLog.length > COMBAT_AUDIO_CUE_LOG_CAP) {
+          this.combatAudioCueLog.splice(
+            0,
+            this.combatAudioCueLog.length - COMBAT_AUDIO_CUE_LOG_CAP,
+          );
+        }
         engine.play(spec);
       },
       stopAll: () => engine.stopAll(),

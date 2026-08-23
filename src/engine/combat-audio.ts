@@ -256,10 +256,16 @@ export function createCombatAudio(engine: AudioCueEngine): CombatAudioController
       if (candidates.length === 0) return;
 
       // Per-kind cooldown first: only the FIRST candidate per kind this
-      // frame is even eligible, and only if its cooldown has elapsed.
+      // frame is even eligible, and only if its cooldown has elapsed. When
+      // multiple same-kind candidates land in the same frame (e.g. an AoE
+      // hit landing on several enemies), keep the highest-intensity one
+      // rather than whichever happened to iterate first — otherwise a
+      // low-intensity graze appearing earlier in `world.combatEvents` could
+      // silently mask a much harder hit later in the same frame.
       const eligibleByKind = new Map<CombatAudioCueKind, CombatAudioCue>();
       for (const cue of candidates) {
-        if (eligibleByKind.has(cue.kind)) continue;
+        const existing = eligibleByKind.get(cue.kind);
+        if (existing && existing.intensity >= cue.intensity) continue;
         const last = lastPlayedMs.get(cue.kind) ?? -Infinity;
         if (renderElapsedMs - last < MIN_GAP_MS_BY_KIND[cue.kind]) continue;
         eligibleByKind.set(cue.kind, cue);
