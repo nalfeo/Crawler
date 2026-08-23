@@ -7531,7 +7531,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&
-      spellBrokerIntent.purchaseStatus === 'returning'
+      spellBrokerIntent.purchaseStatus === 'returning' &&
+      objective.bossBattles.get('slime-rat')!.defeated &&
+      objective.bossBattles.get('staircase')!.defeated
     ) {
       const reason = 'Returning to the Spell Broker to purchase the offered spell';
       if (progressSuppressed)
