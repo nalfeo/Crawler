@@ -1,5 +1,39 @@
 [
   {
+    "commit": "de115109b17066d6bcafba4d2bee93e9ee653020",
+    "commitDate": "2026-08-23T08:08:08Z",
+    "commitSubject": "Show all active quest arrows on minimap (#3329)",
+    "capturedAt": "2026-08-23T09:39:31.553Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32628598246",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/de115109b17066d6bcafba4d2bee93e9ee653020.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.86,
+        "totalWins": 129,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.88,
+        "totalWins": 132,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.27,
+      "gatePass": false,
+      "path": "by-sha/de115109b17066d6bcafba4d2bee93e9ee653020.fun-report.json"
+    }
+  },
+  {
     "commit": "3291d5cdf5abdb575a8628b7e4fbd6b0ad44e4c8",
     "commitDate": "2026-08-23T07:18:37Z",
     "commitSubject": "Document report-only Floor 2 sweep regression diagnosis (#3369)",
