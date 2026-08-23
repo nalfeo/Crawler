@@ -20,18 +20,27 @@
           "models": ["copilot-pull-request-reviewer", "gpt-5.5"],
           "concerns_count": 2,
           "resolved_count": 2,
-          "notes": "PR #3398 GitHub review threads (copilot-pull-request-reviewer): (1) PRRT_kwDOSvo2Ms6bfUGc flagged this ledger as incomplete for its declared 3-apple tier (code_review had no rounds, independent_grade was unfinished) -- resolved by completing this stage and the independent_grade stage below via a CI-review-validator pass. (2) PRRT_kwDOSvo2Ms6bfUGl flagged that bt-ai-provider.ts updateFloor2HuntProgress released the ENTIRE floor2HuntAbandonedEnemyEids quarantine set on any same-family kill-count increase, including kills unrelated to the quarantined enemy, allowing premature re-engagement before patrol arrival and recreating the engage/give-up loop. Independently validated with gpt-5.5 (second model, separate context) plus a deterministic reproduction test proving the premature release; confirmed VALID. Fixed by replacing the blanket releaseFloor2HuntEnemies() call at that site with a new pruneDefeatedFloor2HuntEnemies() that only unquarantines entities that have actually died, leaving still-alive abandoned enemies quarantined until patrol arrival / family transition / reset (existing releaseFloor2HuntEnemies() call sites unchanged). Regression test added: tests/game/behavior-tree-ai.test.ts \"keeps an abandoned Floor 2 family target quarantined through an unrelated same-family kill\"."
+          "notes": "PR #3398 GitHub review threads (copilot-pull-request-reviewer): (1) PRRT_kwDOSvo2Ms6bfUGc flagged this ledger as incomplete for its declared 3-apple tier (code_review had no rounds, independent_grade was unfinished) -- resolved by completing this stage and the independent_grade stage below via a CI-review-validator pass. (2) PRRT_kwDOSvo2Ms6bfUGl flagged that bt-ai-provider.ts updateFloor2HuntProgress released the ENTIRE floor2HuntAbandonedEnemyEids quarantine set on any same-family kill-count increase, including kills unrelated to the quarantined enemy, allowing premature re-engagement before patrol arrival and recreating the engage/give-up loop. Independently validated with gpt-5.5 (second model, separate context) plus a deterministic reproduction test proving the premature release; confirmed VALID. Fixed by replacing the blanket releaseFloor2HuntEnemies() call at that site with a new pruneDefeatedFloor2HuntEnemies() that only unquarantines entities that have actually died, leaving still-alive abandoned enemies quarantined until patrol arrival / family transition / reset (existing releaseFloor2HuntEnemies() call sites unchanged). Regression test added: tests/game/behavior-tree-ai.test.ts \"keeps an abandoned Floor 2 family target quarantined through an unrelated same-family kill\".",
+          "clean": true
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "a13bf9c6089e39e09ebff747c80f4fdad5feec4f",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff correctly and surgically implements the fix by independently tracking abandoned targets and pruning them only when they are verifiably defeated, preventing the engage/give-up loop. It includes robust unit and headless regression test coverage, provides excellent JSDoc context, and adheres strictly to all repository policies."
     }
   }
 }
