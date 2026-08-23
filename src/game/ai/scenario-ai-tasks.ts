@@ -173,6 +173,15 @@ export interface ScenarioAiTaskConfig<S, P> {
   readonly buildLocations: (snapshot: S) => ReadonlyMap<LocationId, RunPlannerPoint>;
 }
 
+/**
+ * A scenario AI task config with its snapshot/params types erased. Because `S`
+ * and `P` appear only in input (contravariant) positions, every concrete
+ * `ScenarioAiTaskConfig<S, P>` is assignable to this alias — so a shared
+ * contract such as `ScenarioDefinition` can hold a reference to a scenario's
+ * overlay without committing to that scenario's planner snapshot types.
+ */
+export type ErasedScenarioAiTaskConfig = ScenarioAiTaskConfig<never, never>;
+
 // -----------------------------------------------------------------------------
 // Interpreter output
 // -----------------------------------------------------------------------------

@@ -47,6 +47,8 @@ import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import type { ErasedScenarioAiTaskConfig } from './ai/scenario-ai-tasks.js';
+import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
@@ -143,6 +145,14 @@ export interface ScenarioDefinition {
   readonly getStairMarkerState?: (world: GameWorld) => ScenarioStairMarkerState | null;
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /**
+   * Scenario-owned AI task overlay driving the headless/BT run planner. When
+   * present, ALL Floor-specific task construction, ordering, prerequisite,
+   * unlock-effect, and runtime-eligibility policy lives here as validated
+   * config rather than in `src/game/ai/`. Optional so labs/harnesses and
+   * floors without an authored AI route stay valid without one.
+   */
+  readonly aiTaskConfig?: ErasedScenarioAiTaskConfig;
 }
 
 /** Extracts the normalized presentation contract from a full scenario definition. */
@@ -394,6 +404,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor1CompletionCopy,
       getStairMarkerState: getFloor1StairMarkerState,
       stairConfirmation: FLOOR_1_STAIR_CONFIRMATION,
+      aiTaskConfig: FLOOR1_AI_TASK_CONFIG,
     },
   ],
   [
