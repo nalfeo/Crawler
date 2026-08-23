@@ -215,11 +215,14 @@ export function updateSpellBrokerIntent(
     return intent;
   }
 
-  // Planner explicitly dropped the bundle → abandon.
+  // Planner explicitly dropped the bundle → abandon unless an already-funded
+  // repeat spell only needs a trip back to the broker.
   if (runPlan?.droppedOptionalBundleIds.includes('spell-broker-purchase')) {
-    intent = { ...intent, purchaseStatus: 'abandoned' };
-    intents.set(world, intent);
-    return intent;
+    if (!(intent.purchaseCount > 0 && deficit === 0)) {
+      intent = { ...intent, purchaseStatus: 'abandoned' };
+      intents.set(world, intent);
+      return intent;
+    }
   }
 
   // Planner explicitly included it → stay farming or switch to returning.

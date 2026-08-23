@@ -7513,6 +7513,26 @@ export class BehaviorTreeAI implements AIInputProvider {
     // middle chain. The legacy code below remains responsible only for phases
     // outside that graph (startup before a floor map exists, and post-chain
     // stair interaction).
+    const spellBrokerIntent = getSpellBrokerIntent(world);
+    if (
+      world.featureUnlocks.spells &&
+      spellBrokerIntent.purchaseCount > 0 &&
+      spellBrokerIntent.purchaseStatus === 'returning'
+    ) {
+      const reason = 'Returning to the Spell Broker to purchase the offered spell';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          playerX,
+          playerY,
+          reason,
+          floorScenario.spellQuestGiverNpcEid ?? -1,
+        ),
+      );
+    }
     const middleChainTarget = this.resolveFloor1MiddleChainObjective(
       world,
       playerEid,
