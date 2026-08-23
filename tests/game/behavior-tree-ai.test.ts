@@ -2003,10 +2003,107 @@ describe('BehaviorTreeAI', () => {
       expect(pollAt(31, 20)?.eid).toBe(familyEnemy); // tile dist 11
     }
 
-    // Now push well past the hysteresis band (tile dist 20, past radius +
-    // HYSTERESIS = 13) — the selected target must actually change once the
-    // player is genuinely outside.
-    expect(pollAt(40, 20)?.eid).not.toBe(familyEnemy);
+    // Push well past the hysteresis band (tile dist 20, past radius +
+    // HYSTERESIS = 13) but still within FLOOR2_HUNT_CHASE_RADIUS_FT (120ft =
+    // 30 tiles at this floor's 4ft tiles). `playerInTerritory` is genuinely
+    // false here, yet the family enemy must still be the selected target:
+    // gating `familyEnemy` on zone membership was itself the bug (2026-08-23
+    // floor2-last-family-hunt-pacing) — a committed family member sitting
+    // just outside the authored territory circle would otherwise be dropped
+    // and re-acquired every ~60 frames as the zone latch flipped, producing
+    // a stable chase-out/patrol-in oscillation that made no net progress on
+    // the den-unlock kill quota.
+    expect(pollAt(40, 20)?.eid).toBe(familyEnemy);
+
+    // Only once the player is genuinely beyond the chase radius (tile dist
+    // 35 = 140ft > 120ft) should the objective target actually change.
+    expect(pollAt(55, 20)?.eid).not.toBe(familyEnemy);
+  });
+
+  it('does not drop the last family member sitting outside its own territory zone (2026-08-23 last-family-hunt-pacing fix)', () => {
+    // Regression: release-sweep floor2/floor1-chain timeouts on the LAST
+    // remaining family were caused by a self-defeating feedback loop, not by
+    // slow combat. `familyEnemy` (the den-unlock kill-quota target) used to
+    // be gated on `playerInTerritory && territoryZone`, unlike `territoryEnemy`
+    // (the in-zone patrol/clear target). On maps where a live family member
+    // roams outside the authored territory circle, chasing it pulled the
+    // player out of the zone, which flipped the Schmitt-trigger zone latch to
+    // false, which dropped `familyEnemy` on the very next poll and fell back
+    // to the in-zone patrol point — pulling the player back inside, re-
+    // latching true, and re-acquiring the same distant enemy. That produced a
+    // stable ~1s two-state oscillation (confirmed via frame-exact telemetry
+    // on release-sweep seed 1: distance to target dropping for ~58 frames,
+    // then jumping back up over the next ~60) that made zero net progress on
+    // the den-unlock quota and could burn the remainder of Floor 2's collapse
+    // timer without ever unlocking the last den. The fix un-gates the
+    // `familyEnemy` search from zone membership (kept bounded only by
+    // FLOOR2_HUNT_CHASE_RADIUS_FT, same as before) since the trash-kill quota
+    // itself is not territory-scoped (`floor2Scenario.ts` counts a kill
+    // anywhere on the map).
+    const world = createTestWorld({ seed: 1, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(60, 40);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 20, centerY: 20, radius: 6 }];
+    // Place the sole remaining family member well outside the territory
+    // circle (tile dist ~19 from center vs. radius 6 + hysteresis 3 = 9), but
+    // still within FLOOR2_HUNT_CHASE_RADIUS_FT (120ft = 30 tiles).
+    const enemyPos = world.floorMap.tileToWorld(39, 20);
+    const familyEnemy = spawnEnemy(world, enemyPos.x, enemyPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const ai = new BehaviorTreeAI({ seed: 1 }) as unknown as {
+      findFloor2QuestProgressTarget(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        activeQuest: NonNullable<typeof quest>,
+        progressSuppressed: boolean,
+      ): { eid: number } | null;
+    };
+    const floorMap = world.floorMap;
+    const pollAt = (tx: number, ty: number): { eid: number } | null => {
+      const pos = floorMap.tileToWorld(tx, ty);
+      return ai.findFloor2QuestProgressTarget(world, player, pos.x, pos.y, quest!, true);
+    };
+
+    // Simulate the old feedback loop's two poles: the player oscillating
+    // between "inside the zone, chasing back toward it" (tile 20,20, the
+    // in-zone patrol point the old code fell back to) and "closing the
+    // distance on the actual family target" (progressively closer to tile
+    // 39,20, mirroring the real chase). At every single one of these polls —
+    // including every "inside the zone" pole — the family enemy must remain
+    // the selected target; it must never be dropped in favor of a null/patrol
+    // fallback just because the player is momentarily back inside the zone.
+    const playerTrack: Array<[number, number]> = [
+      [20, 20], // deep inside zone (old code's patrol-fallback pole)
+      [30, 20], // outside zone, closing on the enemy
+      [20, 20], // pulled back inside zone (old latch would flip true here)
+      [34, 20], // outside zone again, closer still
+      [20, 20],
+      [38, 20], // nearly on top of the enemy
+    ];
+    for (const [tx, ty] of playerTrack) {
+      expect(pollAt(tx, ty)?.eid).toBe(familyEnemy);
+    }
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
