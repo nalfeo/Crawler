@@ -635,7 +635,10 @@ function multiplyTint(left: number, right: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
-export function createPhaserBridge(scene: Phaser.Scene): {
+export function createPhaserBridge(
+  scene: Phaser.Scene,
+  options?: { combatAudioEngine?: ReturnType<typeof createAudioCueEngine> },
+): {
   sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
   destroy(): void;
 } {
@@ -692,7 +695,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
-  const combatAudio = createCombatAudio(createAudioCueEngine());
+  const combatAudio = createCombatAudio(options?.combatAudioEngine ?? createAudioCueEngine());
   const mobAbilityVfx = createMobAbilityVfx(scene);
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();

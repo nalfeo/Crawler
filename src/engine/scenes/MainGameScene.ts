@@ -742,6 +742,15 @@ export class MainGameScene extends Phaser.Scene {
    * code.
    */
   private rewardAudioCueLog: RewardAudioCueLogEntry[] = [];
+  /**
+   * Test/automation observability only: every `SynthCueSpec` actually
+   * dispatched by `PhaserBridge`'s `combatAudio` controller to the real
+   * `AudioCueEngine`, in dispatch order. Populated by a thin logging wrapper
+   * around the engine instance injected into `createPhaserBridge`, so e2e
+   * coverage can assert weapon/spell/ability/damage/pickup cues fire against
+   * the REAL scene+bridge wiring — never read by gameplay code.
+   */
+  private combatAudioCueLog: RewardAudioCueLogEntry[] = [];
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
@@ -1015,7 +1024,9 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('[session-recorder] Player session recording started');
     }
 
-    this.bridge = createPhaserBridge(this);
+    this.bridge = createPhaserBridge(this, {
+      combatAudioEngine: this.createCombatAudioCueLoggingEngine(createAudioCueEngine()),
+    });
     this.modalPicker = createModalPickerUI(this);
     this.issueReportPicker = createModalPickerUI(this, ISSUE_REPORT_PICKER_DEPTH);
     this.abilityLoadoutUI = createAbilityLoadoutUI(this);
@@ -1753,6 +1764,29 @@ export class MainGameScene extends Phaser.Scene {
       isAvailable: () => engine.isAvailable(),
       play: (spec: SynthCueSpec) => {
         this.rewardAudioCueLog.push({
+          label: spec.label,
+          frequencyHz: spec.frequencyHz,
+          durationMs: spec.durationMs,
+          gain: spec.gain,
+        });
+        engine.play(spec);
+      },
+      stopAll: () => engine.stopAll(),
+      dispose: () => engine.dispose(),
+    };
+  }
+
+  /**
+   * Same wrapping as `createRewardAudioCueLoggingEngine`, but backing
+   * `combatAudioCueLog` — the log for cues dispatched by `PhaserBridge`'s
+   * `combatAudio` controller (weapon/spell/ability/damage/pickup SFX).
+   * Test/automation observability only — playback behavior is untouched.
+   */
+  private createCombatAudioCueLoggingEngine(engine: AudioCueEngine): AudioCueEngine {
+    return {
+      isAvailable: () => engine.isAvailable(),
+      play: (spec: SynthCueSpec) => {
+        this.combatAudioCueLog.push({
           label: spec.label,
           frequencyHz: spec.frequencyHz,
           durationMs: spec.durationMs,
