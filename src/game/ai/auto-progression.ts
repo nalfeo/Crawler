@@ -79,6 +79,7 @@ export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
  * driver confirms the descend exactly as before.
  */
 export const MAX_STAIR_DESCEND_DEFER_FRAMES = 1800;
+const FLOOR1_URGENT_STAIR_CONFIRM_RADIUS_FT = 24;
 
 /**
  * Per-world, per-floor deferral budget consumed so far. A `WeakMap` keyed on the
@@ -372,9 +373,22 @@ export function autoFloor1ProgressionSystem(
 
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
+  const floor1PanicDeadlineMs =
+    aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
+    resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs);
+  const collapseProfile = computeCollapsePanicProfile({
+    elapsedMs: world.elapsedMs,
+    deadlineMs: floor1PanicDeadlineMs,
+    staircaseUnlocked: objective.staircaseUnlocked,
+    staircaseDiscovered: objective.staircaseDiscovered,
+    playerToStairsTravelMs: null,
+  });
+  const stairConfirmRadiusFt = collapseProfile.beeline
+    ? Math.max(objective.markerRadiusFt, FLOOR1_URGENT_STAIR_CONFIRM_RADIUS_FT)
+    : objective.markerRadiusFt;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
-  if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
+  if (Math.hypot(dx, dy) > stairConfirmRadiusFt) {
     return;
   }
   // The provider may be deliberately holding the floor open to farm its
@@ -383,14 +397,7 @@ export function autoFloor1ProgressionSystem(
   if (aiProvider?.isFarmingPostBossFloorTime?.(world, objective.deadlineMs) === true) {
     return;
   }
-  if (
-    shouldDeferStairDescend(
-      world,
-      'floor1',
-      aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
-        resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
-    )
-  ) {
+  if (shouldDeferStairDescend(world, 'floor1', floor1PanicDeadlineMs)) {
     return;
   }
   confirmFloor1StairDescend(world, playerEid);
