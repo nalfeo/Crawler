@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted — the cleared-arena bullet below is amended by
+[ADR-0092](0092-cleared-arena-is-not-a-safe-space.md)
 
 ## Date
 
@@ -46,6 +47,10 @@ between headless planning and runtime execution.
   later floor.
 - Preserve boss room roles instead of rewriting them to `SAFE`; safe-space
   helpers consult the cleared-room set when resolving retreat/equip anchors.
+  (Amended by ADR-0092: retreat/equip only. The implementation also made
+  `isPointInSafeSpace` itself true for cleared arenas, which suppressed combat
+  and paused the collapse clock at Floor 1's staircase and stalled four release
+  sweep runs; ADR-0092 splits that into `isPointInClearedArena`.)
 
 ## Consequences
 
@@ -55,8 +60,8 @@ between headless planning and runtime execution.
 - The headless AI gains deterministic farming windows without weakening the
   promoted default sweep configuration.
 - Reward chests appear where the boss died while remaining reachable.
-- Cleared boss arenas become usable safe spaces without breaking boss-room
-  identity, staircase lookup, minimap semantics, or spawn suppression.
+- Cleared boss arenas become usable retreat/equip spaces without breaking
+  boss-room identity, staircase lookup, minimap semantics, or spawn suppression.
 - Cross-floor safe-room state is scoped to the floor that owns the room ids.
 
 ### Negative
