@@ -746,6 +746,10 @@ export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
+// Require the NPC-approach threat gate to stay empty briefly before clearing the
+// no-progress bypass. This absorbs one-frame ranged-orbit radius flicker without
+// leaving a stale bypass latched after the threat has actually left.
+export const NPC_APPROACH_THREAT_RESET_GRACE_FRAMES = 5;
 // Stop re-entering threat-clear ENGAGE when it has failed to reduce the distance
 // to the same NPC for this many consecutive polls. The bypass stays latched until
 // the gate exits, so one small improvement cannot restart the same livelock.

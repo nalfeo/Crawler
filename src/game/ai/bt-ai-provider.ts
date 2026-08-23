@@ -263,6 +263,7 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  NPC_APPROACH_THREAT_RESET_GRACE_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   ARENA_LOCKIN_DEFENSIVE_HP_FRACTION,
@@ -1132,6 +1133,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private npcApproachThreatBestDistance: number = Number.POSITIVE_INFINITY;
   /** Consecutive polls with no improvement toward the tracked NPC. */
   private npcApproachThreatNoProgressFrames: number = 0;
+  /** Consecutive Progress polls with no threat inside the NPC-approach threat
+   * radius. A short grace window preserves ranged-orbit radius flicker without
+   * leaving stale bypass state latched after threats truly leave. */
+  private npcApproachThreatNoThreatFrames: number = 0;
   /** Entity id of the NPC for which the no-progress bypass has latched. While
    * this matches {@link npcApproachThreatNpcEid}, threat-clear ENGAGE is
    * bypassed until the nearby-threat gate exits and resets tracking. `null`
@@ -2224,6 +2229,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
+            this.npcApproachThreatNoThreatFrames = 0;
             if (projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
@@ -2238,21 +2244,18 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
+          } else {
+            // Do not reset on a single empty-threat frame: a ranged-orbit
+            // standoff naturally hovers around the 8ft gate, and resetting every
+            // flicker prevented the seed-38 escape valve from ever latching.
+            // Once the gate stays empty beyond this short grace window, clear
+            // the bypass so a later returning threat does not inherit stale
+            // no-progress state.
+            this.npcApproachThreatNoThreatFrames += 1;
+            if (this.npcApproachThreatNoThreatFrames > NPC_APPROACH_THREAT_RESET_GRACE_FRAMES) {
+              this.resetNpcApproachThreatTracking();
+            }
           }
-          // Deliberately NOT resetting the no-progress tracking here when no
-          // threat is currently within `npcThreatRadius`. A ranged-orbit
-          // standoff distance naturally hovers right at the radius boundary
-          // (e.g. a pistol's ~8-11ft kite loop straddling the 8ft
-          // NPC_APPROACH_THREAT_RADIUS_FT gate), so "no threat this exact
-          // frame" flips every other poll. Wiping `npcApproachThreatNpcEid`/
-          // `npcApproachThreatBestDistance` on every such flicker prevented
-          // `npcApproachThreatNoProgressFrames` from ever accumulating past
-          // 0-2, so the escape valve could never latch — an infinite
-          // ENGAGE/EXPLORE livelock (issue #3353, seed 38 pistol). Tracking
-          // now only resets when the NPC target changes, is reached, or the
-          // scenario no longer applies (handled by `shouldClearThreatBeforeNpc`
-          // and the surrounding branches below), so a returning threat resumes
-          // the same no-progress count instead of restarting from zero.
         } else {
           this.resetNpcApproachThreatTracking();
         }
@@ -2296,6 +2299,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.npcApproachThreatNpcEid = target.eid;
       this.npcApproachThreatBestDistance = target.distance;
       this.npcApproachThreatNoProgressFrames = 0;
+      this.npcApproachThreatNoThreatFrames = 0;
       this.npcApproachThreatBypassEid = null;
       return true;
     }
@@ -2324,6 +2328,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.npcApproachThreatNpcEid = null;
     this.npcApproachThreatBestDistance = Number.POSITIVE_INFINITY;
     this.npcApproachThreatNoProgressFrames = 0;
+    this.npcApproachThreatNoThreatFrames = 0;
     this.npcApproachThreatBypassEid = null;
   }
 

@@ -76,6 +76,7 @@ import {
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
   FLOOR2_HUNT_RECOVERY_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
+  NPC_APPROACH_THREAT_RESET_GRACE_FRAMES,
   RETREAT_DAMAGE_WINDOW_FRAMES,
   RETREAT_DAMAGE_WINDOW_MIN_DAMAGE,
   RETREAT_HYSTERESIS_MULT,
@@ -2654,7 +2655,7 @@ describe('BehaviorTreeAI', () => {
     expect(internals.engageBaselinesByEid.get(freshEnemy)?.bestDistance).toBeCloseTo(30, 5);
   });
 
-  it('resets NPC threat-clear progress when the nearby-threat gate exits', () => {
+  it('resets NPC threat-clear progress when the nearby-threat gate stays empty past grace', () => {
     const { world, enemies } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
 
@@ -2664,6 +2665,37 @@ describe('BehaviorTreeAI', () => {
       ai.poll(createInputState(), world);
     }
     expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+
+    for (const enemy of enemies) {
+      world.stores.position.x[enemy] = 100;
+    }
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_RESET_GRACE_FRAMES + 1; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+
+    const originalEnemyX = [22, 21];
+    enemies.forEach((enemy, index) => {
+      const x = originalEnemyX[index];
+      expect(x).toBeDefined();
+      world.stores.position.x[enemy] = x!;
+    });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('keeps NPC threat-clear bypass latched through one-frame radius flicker', () => {
+    const { world, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
 
     for (const enemy of enemies) {
       world.stores.position.x[enemy] = 100;
@@ -2678,8 +2710,10 @@ describe('BehaviorTreeAI', () => {
     });
     ai.poll(createInputState(), world);
 
-    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
-    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
   });
 
   it('clears NPC threat-clear bypass after higher-priority Progress preemption', () => {
