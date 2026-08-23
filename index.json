@@ -1,5 +1,39 @@
 [
   {
+    "commit": "80e7ea91b0e57d5773937d8a791b1a18c9b427f3",
+    "commitDate": "2026-08-23T16:48:55Z",
+    "commitSubject": "Restore Floor 1 release-sweep win for pistol seed 5 by fixing Progress priority (#3407)",
+    "capturedAt": "2026-08-23T18:22:39.778Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32654363169",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/80e7ea91b0e57d5773937d8a791b1a18c9b427f3.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.8933333333333333,
+        "totalWins": 134,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.78,
+      "gatePass": false,
+      "path": "by-sha/80e7ea91b0e57d5773937d8a791b1a18c9b427f3.fun-report.json"
+    }
+  },
+  {
     "commit": "85577830ac994956abde86e7fc6fb668827fb928",
     "commitDate": "2026-08-23T14:35:00Z",
     "commitSubject": "Relocate Floor 2 AI after blocked family engagements (#3398)",
