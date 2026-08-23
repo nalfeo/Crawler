@@ -3836,6 +3836,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     `${TASK_COMMENT_MARKER} fingerprint=${fingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
     `Branch head at dispatch: \`${headSha}\` (context only${hasReviewThreadBlockers ? '; do not use it in an addressed marker after pushing a repair' : ''}).`,
+    `Repository: \`${owner}/${repo}\` (use this exact slug for GitHub API/CLI calls; do not infer from local remotes).`,
     '',
     ...(pendingHumanApproval
       ? [
@@ -3872,6 +3873,8 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       : []),
     ...(hasReviewThreadBlockers
       ? [
+          `**GitHub auth/repo guardrail:** For any \`gh\` command, set \`GH_TOKEN="$CRAWLER_CI_PAT"\` and pass \`--repo ${owner}/${repo}\`.`,
+          '',
           `**Review-thread protocol:** Validate every listed thread with a different model and fix applicable findings. Use \`✅ Not applicable: [one-line reason]\` only for deterministic non-applicability; leave substantive disagreements unresolved for escalation.`,
           '',
           ...(hasReviewLedgerThreadBlocker

@@ -7003,6 +7003,14 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
     'task comment should retain the concrete dispatch SHA as context',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Repository: \`${OWNER}/${REPO}\``),
+    'task comment should include the canonical owner/repo slug for GitHub API calls',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`pass \`--repo ${OWNER}/${REPO}\``),
+    'review-thread task comment should force explicit --repo usage for gh commands',
+  );
   assert.equal(
     taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
     false,
