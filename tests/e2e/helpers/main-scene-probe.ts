@@ -105,6 +105,36 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.dismissBossIntro()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
+  getModalPickerContent: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
+  primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
+    page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
+  primeShopkeeperPostQuestStock: (
+    page: Page,
+    gold: number,
+    ownFirstOffer = false,
+  ): Promise<{
+    readonly position: ProbePoint;
+    readonly firstItemId: string | null;
+    readonly stockCount: number;
+  } | null> =>
+    page.evaluate(
+      ({ value, own }) => window.__mainSceneProbe!.primeShopkeeperPostQuestStock(value, own),
+      { value: gold, own: ownFirstOffer },
+    ),
+  primeSpellBrokerStock: (
+    page: Page,
+    gold: number,
+    learnFirstOffer = false,
+  ): Promise<{
+    readonly position: ProbePoint;
+    readonly firstSpellId: string | null;
+    readonly offerCount: number;
+  } | null> =>
+    page.evaluate(
+      ({ value, learn }) => window.__mainSceneProbe!.primeSpellBrokerStock(value, learn),
+      { value: gold, learn: learnFirstOffer },
+    ),
   getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
     page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
