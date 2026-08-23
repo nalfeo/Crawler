@@ -9,6 +9,7 @@ import {
 } from '../../src/engine/lighting/light-field.js';
 import {
   areLightingRectsEqual,
+  canFileLiveIssue,
   getFloorCompletionPresentation,
   formatAbilityTrigger,
   getFloorRunOutcome,
@@ -109,6 +110,43 @@ describe('getFloorRunOutcome', () => {
       },
     };
     expect(getFloorRunOutcome(world)).toBeNull();
+  });
+});
+
+describe('canFileLiveIssue', () => {
+  it('allows reporting during a live run regardless of which UX is open', () => {
+    const world = freshFloor1World();
+    world.state = 'playing';
+    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(true);
+  });
+
+  it('blocks reporting while the picker is open or a submission is in flight', () => {
+    const world = freshFloor1World();
+    world.state = 'playing';
+    expect(canFileLiveIssue({ world, issueOpen: true, issueSubmitting: false })).toBe(false);
+    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: true })).toBe(false);
+  });
+
+  it('blocks reporting once the player is dead', () => {
+    const world = freshFloor1World();
+    world.state = 'game_over';
+    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(false);
+  });
+
+  it('blocks reporting for the whole terminal/transition screen, not just the pending frame', () => {
+    // The scene clears `floorCompletionMessagePending` as soon as it SHOWS the
+    // completion or floor-transition screen, so the gate must key off the
+    // durable run outcome: it stays blocked across the ~1.45s restart timer.
+    for (const outcome of ['cleared_floor', 'failed_timeout'] as const) {
+      const world = freshFloor1World();
+      world.state = 'playing';
+      world.floorScenario!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
+      expect(getFloorRunOutcome(world)).toBe(outcome);
+      expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(false);
+      // Both completion presentations (transition + terminal) stay blocked.
+      expect(getFloorCompletionPresentation(world, true)).not.toBeNull();
+      expect(getFloorCompletionPresentation(world, false)).not.toBeNull();
+    }
   });
 });
 

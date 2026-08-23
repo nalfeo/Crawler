@@ -67,6 +67,7 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  canFileLiveIssue,
   extrapolateRenderPosition,
   findNearestNearbyNpc,
   formatAbilityTrigger,
@@ -4305,20 +4306,15 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
-   * Shows the death screen when the player was slain (world.state === 'game_over'
-   * and no floor-completion screen is handling the transition).
-   *
-   * Floor completion outcomes (cleared_floor, failed_timeout) take precedence:
-   * those cases are already handled by showFloorCompletionScreenIfNeeded() and
-   * should not additionally trigger the death screen.
+   * Whether the live issue flow may be opened right now. Delegates to the pure
+   * {@link canFileLiveIssue} helper so the terminal-state gate is unit-testable.
    */
   private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
-    return (
-      !issueOpen &&
-      !this.issueReportSubmitting &&
-      this.world.state !== 'game_over' &&
-      !this.floorCompletionMessagePending
-    );
+    return canFileLiveIssue({
+      world: this.world,
+      issueOpen,
+      issueSubmitting: this.issueReportSubmitting,
+    });
   }
 
   private nextIssueReportRunId(): string {
@@ -4330,6 +4326,14 @@ export class MainGameScene extends Phaser.Scene {
     return `issue-${this.world.seed}-${this.world.frameCount}-${this.issueReportAttemptCounter}`;
   }
 
+  /**
+   * Shows the death screen when the player was slain (world.state === 'game_over'
+   * and no floor-completion screen is handling the transition).
+   *
+   * Floor completion outcomes (cleared_floor, failed_timeout) take precedence:
+   * those cases are already handled by showFloorCompletionScreenIfNeeded() and
+   * should not additionally trigger the death screen.
+   */
   private showDeathScreenIfNeeded(): void {
     if (
       this.world.state !== 'game_over' ||

@@ -70,8 +70,11 @@ describe('MainGameScene simulation pause / step accounting', () => {
 
   it('keeps issue reporting independent of active UX while excluding terminal states', () => {
     expect(source).not.toMatch(/canFileIssue[\s\S]{0,300}isBlockingSurfaceOpen/);
-    expect(source).toContain("this.world.state !== 'game_over'");
-    expect(source).toContain('!this.floorCompletionMessagePending');
+    // The terminal gate must read the durable run outcome (see
+    // `canFileLiveIssue`), not the transient `floorCompletionMessagePending`
+    // flag the scene clears the moment a completion/transition screen shows.
+    expect(source).toContain('return canFileLiveIssue({');
+    expect(source).not.toMatch(/canFileIssue[\s\S]{0,300}floorCompletionMessagePending/);
   });
 
   it('reuses the same prepared issue payload across retry attempts', () => {

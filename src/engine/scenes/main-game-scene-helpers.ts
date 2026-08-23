@@ -85,6 +85,29 @@ export function getFloorCompletionPresentation(
   return 'terminal_complete';
 }
 
+/**
+ * Whether the dev-build live issue flow may be opened right now.
+ *
+ * Terminal run states are excluded because their restart timers and
+ * outcome-specific run bundles need separate handling. The terminal check reads
+ * the durable {@link getFloorRunOutcome} state rather than the scene's transient
+ * "completion message pending" flag, which the scene clears as soon as it shows
+ * a completion or floor-transition screen — that flag would leave the reporter
+ * live over the floor-transition restart screen.
+ */
+export function canFileLiveIssue(params: {
+  readonly world: GameWorld;
+  readonly issueOpen: boolean;
+  readonly issueSubmitting: boolean;
+}): boolean {
+  return (
+    !params.issueOpen &&
+    !params.issueSubmitting &&
+    params.world.state !== 'game_over' &&
+    getFloorRunOutcome(params.world) === null
+  );
+}
+
 /** Exact-equality of two light-field dirty rects (component-wise). */
 export function areLightingRectsEqual(a: LightFieldDirtyRect, b: LightFieldDirtyRect): boolean {
   return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
