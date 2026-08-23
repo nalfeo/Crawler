@@ -2207,6 +2207,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (
           targetIsNpc &&
           tutorialAccepted &&
+          !ctx.world.playerInSafeRoom &&
           !this.isFloor2IntroductionPending(ctx.world) &&
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {

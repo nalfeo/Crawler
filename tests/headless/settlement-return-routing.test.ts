@@ -305,6 +305,32 @@ describe('settlement return routing (headless integration)', () => {
     expect(settlementReturnTelemetry(events)).toHaveLength(0);
   }, 30_000);
 
+  it('keeps Floor 1 settlement-return routing default-off when the option is omitted', async () => {
+    const events: SimEvent[] = [];
+    let seeded = false;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 5 }), {
+      seed: 5,
+      floorId: 'floor1',
+      maxFrames: 1500,
+      questStallFrames: 0,
+      forceWeaponId: 'sword',
+      recordEvent: (event) => events.push(event),
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (!seeded) {
+              seeded = true;
+              armEligibleOpportunity(world);
+            }
+          },
+        ],
+      },
+    });
+
+    expect(settlementReturnTelemetry(events)).toHaveLength(0);
+  }, 30_000);
+
   it('aborts as unreachable when the shared progress-suppression signal fires mid-travel, then recovers via cooldown', async () => {
     const seed = 92;
     const ai = new BehaviorTreeAI({ seed });
