@@ -375,16 +375,6 @@ export function autoFloor1ProgressionSystem(
   const floor1PanicDeadlineMs =
     aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
     resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs);
-  const collapseProfile = computeCollapsePanicProfile({
-    elapsedMs: world.elapsedMs,
-    deadlineMs: floor1PanicDeadlineMs,
-    staircaseUnlocked: objective.staircaseUnlocked,
-    staircaseDiscovered: objective.staircaseDiscovered,
-    // The auto-confirm gate only needs the binary "collapse urgency active"
-    // signal; it does not own steering. Leave travel as null so urgency here
-    // stays aligned with the baseline panic threshold used by descend-defer.
-    playerToStairsTravelMs: null,
-  });
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
   if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
