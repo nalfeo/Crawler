@@ -1385,7 +1385,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           isProjectileWeaponType(activeWeapon.weaponType) &&
           ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
           !criticallyLow;
-        if (ctx.world.playerInSafeRoom) {
+        if (ctx.world.playerInSafeRoom && !criticallyLow) {
           this.endRetreat(ctx.world);
           return false;
         }
