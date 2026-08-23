@@ -39,8 +39,13 @@ export interface PersistedDamageMeta {
   readonly fromActiveAbility?: boolean;
 }
 
+/** Damage metadata after decoding from stores; all optional input fields are normalized. */
+export interface DecodedDamageMeta extends PersistedDamageMeta {
+  readonly fromActiveAbility: boolean;
+}
+
 /** Fail-closed defaults — never scales, never crits, environment-sourced. */
-export const FAIL_CLOSED_DAMAGE_META: PersistedDamageMeta = {
+export const FAIL_CLOSED_DAMAGE_META: DecodedDamageMeta = {
   origin: 'environment',
   affinity: 'unscaled',
   scaleWithPrimary: false,
@@ -79,7 +84,7 @@ export function tagDamageMeta(world: GameWorld, eid: number, meta: PersistedDama
  * fail closed (never scale/crit) since every field decodes safely from a zero
  * typed-array slot.
  */
-export function readDamageMeta(world: GameWorld, eid: number): PersistedDamageMeta {
+export function readDamageMeta(world: GameWorld, eid: number): DecodedDamageMeta {
   const { damageMeta } = world.stores;
   return {
     origin: ORIGIN_FROM_CODE[damageMeta.origin[eid] ?? 0] ?? 'environment',

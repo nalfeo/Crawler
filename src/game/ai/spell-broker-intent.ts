@@ -1,6 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
 import { FLOOR1_SPELL_BROKER_MAX_PURCHASES } from '../../shared/constants.js';
 import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
+import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
 import type { Floor1RunPlan } from './run-planner.js';
 
 /**
@@ -153,6 +154,19 @@ function nextBrokerOffer(
  * whether spells are unlocked, whether the player has enough gold, and whether
  * the run-planner kept or dropped the `spell-broker-purchase` optional bundle.
  */
+/**
+ * Gold the broker purchase is allowed to see.
+ *
+ * Gold the run still owes the **required** shopkeeper charm is not spendable on
+ * an optional spell (see {@link requiredShopPurchaseReserve}). Netting it out
+ * here — not just at the point of sale — is what keeps the lifecycle honest: a
+ * `returning` intent that the executor then refuses to fund would walk the AI
+ * back to the broker every tick without ever buying anything.
+ */
+function spendableGold(world: GameWorld): number {
+  return Math.max(0, world.playerGold - requiredShopPurchaseReserve(world));
+}
+
 export function updateSpellBrokerIntent(
   world: GameWorld,
   runPlan: Floor1RunPlan | null,
@@ -171,7 +185,7 @@ export function updateSpellBrokerIntent(
   // this recovery a run that abandoned early banks its whole income and buys
   // nothing, even while sitting on several times the asking price.
   if (intent.purchaseStatus === 'abandoned') {
-    if (!world.featureUnlocks.spells || world.playerGold < intent.cost) {
+    if (!world.featureUnlocks.spells || spendableGold(world) < intent.cost) {
       return intent;
     }
     intent = { ...intent, purchaseStatus: 'returning' };
@@ -184,7 +198,7 @@ export function updateSpellBrokerIntent(
     return intent; // stay idle until then
   }
 
-  const deficit = Math.max(0, intent.cost - world.playerGold);
+  const deficit = Math.max(0, intent.cost - spendableGold(world));
 
   // A repeat purchase (purchaseCount > 0) is the run's lowest-priority sink:
   // it exists to absorb gold that would otherwise sit unspent, not to justify
