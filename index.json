@@ -1,5 +1,39 @@
 [
   {
+    "commit": "423370b8ea7c11c452225ca40449b4de2e2916a0",
+    "commitDate": "2026-08-23T01:22:57Z",
+    "commitSubject": "[WIP] Remove floor specific code from the engine (#3280)",
+    "capturedAt": "2026-08-23T03:00:06.844Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32611190723",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/423370b8ea7c11c452225ca40449b4de2e2916a0.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.56,
+        "totalWins": 84,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36,
+      "gatePass": false,
+      "path": "by-sha/423370b8ea7c11c452225ca40449b4de2e2916a0.fun-report.json"
+    }
+  },
+  {
     "commit": "0c8cbb081f2100e28e360ed2a211966be3118a65",
     "commitDate": "2026-08-23T00:38:39Z",
     "commitSubject": "Unify merchant shop UIs on a shared offer model and modal presenter (#3278)",
