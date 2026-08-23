@@ -362,6 +362,7 @@ const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
 const FLOOR1_STAIR_CLOSE_APPROACH_RADIUS_MULTIPLIER = 3;
+const TARGET_POSITION_EPSILON_FT = 0.01;
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
 // The fused heading scorer samples candidate directions fanned around the
@@ -5519,7 +5520,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.hypot(
         targetX - floor1Objective.staircasePos.x,
         targetY - floor1Objective.staircasePos.y,
-      ) <= TRAVEL_HEADING_EPSILON;
+      ) <= TARGET_POSITION_EPSILON_FT;
     const directApproachFt = floor1UnlockedStairTarget
       ? Math.max(
           CLOSE_APPROACH_DIRECT_FT,
