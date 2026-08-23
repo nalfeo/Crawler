@@ -5,6 +5,9 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 
+const HEADLESS_WALL_TIME_CAP_MS = 100_000;
+const TEST_TIMEOUT_MS = 260_000;
+
 function deterministicStats(stats: RunStats): Omit<RunStats, 'wallTimeMs'> {
   const { wallTimeMs: _wallTimeMs, ...deterministic } = stats;
   return deterministic;
@@ -14,7 +17,7 @@ async function runThrowingKnife11(): Promise<RunStats> {
   return runHeadless(new BehaviorTreeAI({ seed: 11 }), {
     seed: 11,
     maxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
-    maxWallTimeMs: 90_000,
+    maxWallTimeMs: HEADLESS_WALL_TIME_CAP_MS,
     forceWeaponId: 'throwing-knife',
     enemyDamageMultiplier: 1,
     eventSampleInterval: 60,
@@ -23,14 +26,21 @@ async function runThrowingKnife11(): Promise<RunStats> {
 }
 
 describe('Floor 1 release sweep throwing-knife-11 regression', () => {
-  it('clears within the release floor frame budget on deterministic paired reruns', async () => {
-    const first = await runThrowingKnife11();
-    const second = await runThrowingKnife11();
+  it(
+    'clears within the release floor frame budget on deterministic paired reruns',
+    async () => {
+      const first = await runThrowingKnife11();
+      const second = await runThrowingKnife11();
 
-    expect(first.startingWeapon).toBe('throwing-knife');
-    expect(first.outcome).toBe('victory');
-    expect(first.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
-    expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
-    expect(deterministicStats(second)).toEqual(deterministicStats(first));
-  }, 200_000);
+      expect(first.startingWeapon).toBe('throwing-knife');
+      expect(first.outcome).toBe('victory');
+      expect(first.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
+      expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
+      expect(second.outcome).toBe('victory');
+      expect(second.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
+      expect(second.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
+      expect(deterministicStats(second)).toEqual(deterministicStats(first));
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

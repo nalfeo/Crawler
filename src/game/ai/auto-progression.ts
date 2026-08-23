@@ -79,6 +79,8 @@ export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
  * driver confirms the descend exactly as before.
  */
 export const MAX_STAIR_DESCEND_DEFER_FRAMES = 1800;
+// Floor 1's staircase marker radius is 8ft. Under collapse beeline urgency, allow
+// a bounded 3× wider confirm window so near-stairs stalls still commit the exit.
 const FLOOR1_URGENT_STAIR_CONFIRM_RADIUS_FT = 24;
 
 /**
@@ -381,10 +383,13 @@ export function autoFloor1ProgressionSystem(
     deadlineMs: floor1PanicDeadlineMs,
     staircaseUnlocked: objective.staircaseUnlocked,
     staircaseDiscovered: objective.staircaseDiscovered,
+    // The auto-confirm gate only needs the binary "collapse urgency active"
+    // signal; it does not own steering. Leave travel as null so urgency here
+    // stays aligned with the baseline panic threshold used by descend-defer.
     playerToStairsTravelMs: null,
   });
   const stairConfirmRadiusFt = collapseProfile.beeline
-    ? Math.max(objective.markerRadiusFt, FLOOR1_URGENT_STAIR_CONFIRM_RADIUS_FT)
+    ? FLOOR1_URGENT_STAIR_CONFIRM_RADIUS_FT
     : objective.markerRadiusFt;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
