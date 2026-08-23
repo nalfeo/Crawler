@@ -6,18 +6,27 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial plan review before any code. 4 alternatives enumerated and argued against (generic ArenaGenerator reuse, hand-authored tile JSON, deferring the Green Room to slice 5, generating the venue from RNG like other floors). 4 BLOCKER + 5 MAJOR + 2 MINOR. Design forked on: slice-1 done-when vs FR9.4 (ship the tunnel open + amend the spec), generator config path (new MapConfig.showcaseArena block), feed-gate ownership (publish ordered FloorMap.feedGates instead of re-deriving in slice 3), FR8.4 backstop is not a countdown (hideFloorTimer + own goal flag), and dropping the planned placeholder enemy pack in favour of an optional enemyPackId."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Exhaustive pass over the branch diff. Zero code findings (correctness, determinism, layer boundaries, runtime wiring, security and regression coverage all reported clean). The single finding was process-level: this ledger was still unfilled at review time, which is resolved by recording these stages."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,
