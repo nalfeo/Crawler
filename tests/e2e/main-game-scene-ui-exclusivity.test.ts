@@ -117,6 +117,7 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (s) => s.issueReportOpen && s.inventoryOpen, {
       label: 'issue picker opened above inventory',
     });
+
     await page.keyboard.press('Escape');
     const restored = await waitForState(
       page,
@@ -129,6 +130,45 @@ describe('MainGameScene UI exclusivity', () => {
       restored.issueButtonVisible,
       'Issue button should return after cancelling a report',
     ).toBe(true);
+  });
+
+  it('gives the issue picker exclusive keyboard ownership over loadout and Skills UX', async () => {
+    await loadMainSceneProbeLab(page);
+    await waitForState(page, (s) => s.worldState === 'loadout' && s.issueButtonVisible, {
+      label: 'starter loadout opened with Issue available',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.issueReportOpen, {
+      label: 'issue picker opened above starter loadout',
+    });
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await page.keyboard.press('Enter');
+    const loadoutState = await waitForState(
+      page,
+      (s) => s.issueReportOpen && s.worldState === 'loadout',
+      {
+        label: 'Enter handled only by issue picker',
+      },
+    );
+    expect(loadoutState.modalOpen, 'starter picker should remain open behind Issue').toBe(true);
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.issueReportOpen && s.modalOpen, {
+      label: 'starter picker restored after issue cancellation',
+    });
+
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    await waitForState(page, (s) => s.abilityLoadoutOpen && s.issueButtonVisible, {
+      label: 'Skills opened with Issue available',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.issueReportOpen && s.abilityLoadoutOpen, {
+      label: 'issue picker opened above Skills',
+    });
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.issueReportOpen && s.abilityLoadoutOpen, {
+      label: 'Escape closed only Issue and preserved Skills',
+    });
   });
 
   it('dismisses the issue picker by tapping its backdrop', async () => {

@@ -116,6 +116,7 @@ export function createModalPickerUI(
   depth = 5000,
 ): {
   open<TId extends string>(config: ModalPickerConfig<TId>, hooks?: ModalPickerOpenHooks<TId>): void;
+  handleKeyDown(event: KeyboardEvent): void;
   close(): void;
   isOpen(): boolean;
   getKind(): string | null;
@@ -524,6 +525,7 @@ export function createModalPickerUI(
       hooks = nextHooks as ModalPickerOpenHooks<string> | undefined;
       rerender();
     },
+    handleKeyDown: onKeyDown,
     close,
     isOpen(): boolean {
       return state !== null && state.status === 'open';

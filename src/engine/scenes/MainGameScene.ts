@@ -1500,6 +1500,12 @@ export class MainGameScene extends Phaser.Scene {
     if (this.isTextEntryTarget(event)) {
       return;
     }
+    if (this.issueReportPausedState !== undefined) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.issueReportPicker?.handleKeyDown(event);
+      return;
+    }
     if (event.code === 'F8' && !event.repeat) {
       event.preventDefault();
       this.openIssueReport();
