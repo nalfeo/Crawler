@@ -199,6 +199,9 @@ export interface ScenarioGoalGraph {
 
 export type ScenarioAiTaskConfigErrorCode =
   | 'duplicate-task-id'
+  | 'duplicate-chain-id'
+  | 'task-in-multiple-chains'
+  | 'duplicate-task-in-chain'
   | 'duplicate-reverse-interaction-action'
   | 'task-not-in-chain'
   | 'chain-references-unknown-task'
@@ -250,12 +253,32 @@ export function validateScenarioAiTaskConfig<S, P>(
   const chainById = new Map<string, ScenarioAiTaskChain>();
   const chainIdByTask = new Map<GoalId, string>();
   for (const chain of config.chains) {
+    if (chainById.has(chain.id)) {
+      throw new ScenarioAiTaskConfigError(
+        'duplicate-chain-id',
+        `Duplicate scenario AI task chain id "${chain.id}".`,
+      );
+    }
     chainById.set(chain.id, chain);
+    const seenInChain = new Set<GoalId>();
     for (const taskId of chain.taskIds) {
       if (!taskById.has(taskId)) {
         throw new ScenarioAiTaskConfigError(
           'chain-references-unknown-task',
           `Chain "${chain.id}" references unknown task "${taskId}".`,
+        );
+      }
+      if (seenInChain.has(taskId)) {
+        throw new ScenarioAiTaskConfigError(
+          'duplicate-task-in-chain',
+          `Chain "${chain.id}" lists task "${taskId}" more than once.`,
+        );
+      }
+      seenInChain.add(taskId);
+      if (chainIdByTask.has(taskId)) {
+        throw new ScenarioAiTaskConfigError(
+          'task-in-multiple-chains',
+          `Task "${taskId}" appears in both chain "${chainIdByTask.get(taskId)}" and chain "${chain.id}".`,
         );
       }
       chainIdByTask.set(taskId, chain.id);

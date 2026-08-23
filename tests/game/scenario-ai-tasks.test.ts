@@ -474,6 +474,54 @@ describe('scenario-ai-tasks generic interpreter — validation fails loudly', ()
     );
   });
 
+  it('rejects duplicate chain ids', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        chains: [
+          { id: 'chainA', taskIds: ['a1', 'a2'], anchorChainIds: [] },
+          { id: 'chainA', taskIds: ['b1', 'b2'], anchorChainIds: [] },
+        ],
+      },
+      'duplicate-chain-id',
+    );
+  });
+
+  it('rejects a task id appearing in two distinct chains', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        tasks: [
+          task({ id: 'a1', chainId: 'chainA', unlockEffects: ['eff-a1'], location: () => 'east' }),
+          task({ id: 'a2', chainId: 'chainA', unlockEffects: ['eff-a2'] }),
+          task({ id: 'b1', chainId: 'chainB', location: () => 'west' }),
+          task({ id: 'b2', chainId: 'chainB' }),
+        ],
+        chains: [
+          { id: 'chainA', taskIds: ['a1', 'a2'], anchorChainIds: [] },
+          { id: 'chainB', taskIds: ['a1', 'b1', 'b2'], anchorChainIds: [] },
+        ],
+      },
+      'task-in-multiple-chains',
+    );
+  });
+
+  it('rejects a task id duplicated within the same chain', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        chains: [
+          { id: 'chainA', taskIds: ['a1', 'a1', 'a2'], anchorChainIds: [] },
+          { id: 'chainB', taskIds: ['b1', 'b2'], anchorChainIds: ['chainA'] },
+        ],
+      },
+      'duplicate-task-in-chain',
+    );
+  });
+
   it('rejects a questRef whose objective the lookup does not know', () => {
     const config = baseConfig();
     const lookup: ScenarioQuestLookup = {
