@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "config-driven-floor1-ai-tasks",
+  "task_title": "Make Floor 1 AI tasks scenario-config driven",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adopted the quest-derived graph plus scenario adapter alternative. Quest pack IDs/objectives remain canonical and a validated Floor 1 AI overlay supplies only runtime dependencies/effects, generic operations, eligibility/completion, work estimation, and execution. Rejected a duplicated full-chain config due to drift; rejected registry-local callbacks due to scenarioDefinitions bloat; rejected Floor-1-shaped target kinds in favor of generic move/interact/engage/farm/ambient operations. Revised plan includes explicit negative door effects, deterministic snapshot/revision keys, committed-task reverse mapping, load-time graph validation, and migration of auto-progression consumers."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
