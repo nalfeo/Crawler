@@ -23,6 +23,7 @@ Fixed the Floor 1 release sweep regression from run `32614037237` (`project:swee
 - Retained Floor 1's default-on settlement-return routing so parity-gated equipment has a legitimate safe-room return path. The safe-room routing fixes below resolve the release losses without disabling that path.
 - Prevented NPC objective routing from switching to the nearby-threat-clear ENGAGE branch while the player is inside a safe room. Weapons are disabled there and watchdogs reset there, which caused pistol seed 38 to livelock after the boss arena instead of returning the merchant prize.
 - Made the higher-priority Retreat branch yield inside safe rooms as well. A low-health projectile user cannot resolve threats there; it must interact with the NPC or take the existing egress route. This fixed the Headless Floor 1 Gate's seed 7 RETREAT livelock.
+- Deferred optional repeat-spell returns until both Floor 1 boss battles complete. This fixed the gate's seed 5 death by preserving required boss progression ahead of a funded repeat spell purchase.
 
 ## Files touched
 
@@ -37,6 +38,7 @@ Fixed the Floor 1 release sweep regression from run `32614037237` (`project:swee
 - `npx vitest run --project headless tests/headless/settlement-return-routing.test.ts --reporter=verbose` — passed, 8/8.
 - `npm run verify:fast` — passed, 144 files / 2368 tests plus integrity checks.
 - CI-recovery follow-up: seed 7 now reaches victory at frame 32,407 after previously timing out at frame 39,600; release-loss regressions remained 4/4 green; `npm run verify:fast` passed.
+- CI-recovery follow-up: seed 5 now reaches victory at frame 16,165 (269.4s); the 4-case release-loss panel and full 25-seed Headless Floor 1 gate both passed.
 
 A full local 300-run Floor 1 release leg was started but stopped under the human time constraint before completion.
 
