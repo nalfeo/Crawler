@@ -17,6 +17,7 @@ import type { GameWorld } from '../world.js';
 import { getItemCount, hasItem, listStaticInventorySlots } from '../../shared/inventory.js';
 import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
 import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
+import { getWorldFloorBehavior } from '../floor-behavior.js';
 import {
   FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
@@ -302,32 +303,36 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
       return inst?.def.id === SHOPKEEPER_EQUIPMENT_ITEM_ID;
     });
   const hasMerchantCharm = hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID) || hasMerchantCharmEquipped;
-  // Floor 1 gate applies only once the merchant errand exists in the quest log,
-  // and remains until the merchant charm is actually acquired/equipped.
-  const floor1NeedsMerchantCharmGate =
-    world.floorId === 'floor1' && world.questLog.has(FLOOR1_SHOP_QUEST_ID);
-  // Equipment unlocks once the player holds anything equippable. Floor 1 is
-  // intentionally stricter: Gear unlocks only from the merchant charm so
-  // unrelated loot (e.g. boss chest drops) cannot unlock Gear early.
+  // Floors opt into the merchant-charm gate via the `merchantCharmGatesEquipment`
+  // behavior flag (see shared/floor-behavior.ts) instead of a hardcoded floor id.
+  // When enabled, the gate applies only once the merchant errand exists in the
+  // quest log, and remains until the merchant charm is actually acquired/equipped.
+  const merchantCharmGatesEquipment = getWorldFloorBehavior(world).merchantCharmGatesEquipment;
+  const needsMerchantCharmGate =
+    merchantCharmGatesEquipment && world.questLog.has(FLOOR1_SHOP_QUEST_ID);
+  // Equipment unlocks once the player holds anything equippable. Floors that
+  // opt into the merchant-charm gate are intentionally stricter: Gear unlocks
+  // only from the merchant charm so unrelated loot (e.g. boss chest drops)
+  // cannot unlock Gear early.
   const holdsEquippable =
     listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId)) ||
     Object.values(equipmentState?.equipped ?? {}).some((instanceId) => instanceId !== null);
   if (
     !world.featureUnlocks.equipment &&
-    (!floor1NeedsMerchantCharmGate || hasMerchantCharm) &&
+    (!needsMerchantCharmGate || hasMerchantCharm) &&
     holdsEquippable
   ) {
     world.featureUnlocks.equipment = true;
   }
-  // The Gear *panel* reveal is gated for the whole of Floor 1 — including
-  // before the merchant errand has even been accepted. The quest is only added
-  // to the log once the player has talked to the shopkeeper, so keying the
-  // reveal on the quest let any earlier equippable pickup (the starter weapon
-  // at spawn, a chest or enemy drop) open Gear ahead of the merchant beat
-  // (issue #3310).
+  // The Gear *panel* reveal is gated for the whole of a merchant-charm-gated
+  // floor — including before the merchant errand has even been accepted. The
+  // quest is only added to the log once the player has talked to the
+  // shopkeeper, so keying the reveal on the quest let any earlier equippable
+  // pickup (the starter weapon at spawn, a chest or enemy drop) open Gear
+  // ahead of the merchant beat (issue #3310).
   if (
     !world.featureUnlocks.equipmentPanel &&
-    (world.floorId !== 'floor1' || hasMerchantCharm) &&
+    (!merchantCharmGatesEquipment || hasMerchantCharm) &&
     holdsEquippable
   ) {
     world.featureUnlocks.equipmentPanel = true;

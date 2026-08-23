@@ -14,6 +14,8 @@ describe('floor behavior config', () => {
       equipmentEconomy: true,
       carriedMainHandWeapon: false,
       bossChests: true,
+      merchantCharmGatesEquipment: true,
+      settlementEquipmentEconomy: false,
     });
   });
 
@@ -26,6 +28,8 @@ describe('floor behavior config', () => {
       equipmentEconomy: true,
       carriedMainHandWeapon: false,
       bossChests: true,
+      merchantCharmGatesEquipment: false,
+      settlementEquipmentEconomy: true,
     });
   });
 
@@ -38,6 +42,8 @@ describe('floor behavior config', () => {
       equipmentEconomy: true,
       carriedMainHandWeapon: false,
       bossChests: false,
+      merchantCharmGatesEquipment: false,
+      settlementEquipmentEconomy: false,
     });
   });
 
@@ -50,6 +56,8 @@ describe('floor behavior config', () => {
       equipmentEconomy: false,
       carriedMainHandWeapon: false,
       bossChests: false,
+      merchantCharmGatesEquipment: false,
+      settlementEquipmentEconomy: false,
     });
   });
 

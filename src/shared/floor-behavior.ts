@@ -48,6 +48,22 @@ export const floorBehaviorSchema = z
     carriedMainHandWeapon: z.boolean().default(false),
     /** Enable boss-defeat reward chests on this floor. */
     bossChests: z.boolean().default(false),
+    /**
+     * Gate the Gear panel reveal and the `equipment` feature unlock behind the
+     * merchant charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`) once the merchant errand
+     * exists in the quest log, so unrelated equippable loot (e.g. boss chest
+     * drops) cannot unlock Gear early. Floor 1's shopkeeper-errand pacing beat.
+     */
+    merchantCharmGatesEquipment: z.boolean().default(false),
+    /**
+     * Enable the Quartermaster/settlement generated-equipment economy (stock
+     * generation, purchasing) and achievement equipment reward bundles on
+     * this floor. Distinct from `equipmentEconomy`, which only gates the
+     * boss-chest-drop economy slice and may be enabled on floors (e.g. Floor
+     * 1) that want boss-chest equipment rewards without a Quartermaster shop
+     * or reward-bundle system.
+     */
+    settlementEquipmentEconomy: z.boolean().default(false),
   })
   .strict();
 
