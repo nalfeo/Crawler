@@ -42,12 +42,12 @@ minimap/radar arrow states so deterministic coverage can assert both quest IDs.
 - `src/engine/HudUI.ts` — re-exported minimap all-arrow state accessors through
   the HUD facade.
 - `src/labs/main-scene-probe-lab/index.ts` — added a real MainGameScene probe to
-  activate merchant + Spell Broker quests together and read radar arrow IDs.
+  activate merchant + Spell Broker quests together and read radar/overlay IDs.
 - `tests/e2e/helpers/main-scene-probe.ts` — added typed wrappers for the new
   probe methods.
 - `tests/e2e/quest-waypoint-arrows.deterministic.test.ts` — added regression
   coverage that merchant and Spell Broker arrows appear on both the main game
-  screen and minimap radar.
+  screen and minimap radar, plus as overlay dots and edge arrows.
 
 ## Validation
 
@@ -60,7 +60,8 @@ minimap/radar arrow states so deterministic coverage can assert both quest IDs.
 The regression test exercises the real `MainGameScene` artifact via the
 main-scene probe lab: before the fix, the radar path was wired to only the
 tracked quest; after the fix, the probe observes both merchant and Spell Broker
-quest IDs in the main-screen arrows and the minimap radar arrows.
+quest IDs in the main-screen arrows, minimap radar arrows, overlay in-view dots,
+and zoomed overlay edge arrows.
 
 ## Notes
 
