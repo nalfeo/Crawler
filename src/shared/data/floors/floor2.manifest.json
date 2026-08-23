@@ -47,7 +47,8 @@
     "safeRoomDoorsAutoClose": false,
     "lineOfSightAggro": true,
     "equipmentEconomy": true,
-    "bossChests": true
+    "bossChests": true,
+    "settlementEquipmentEconomy": true
   },
   "lighting": {
     "ambient": 0.1
