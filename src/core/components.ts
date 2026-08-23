@@ -177,6 +177,13 @@ export const Companion = {};
 export const PartySlot = {};
 
 /**
+ * Floor 3 world-object tag: a safe node where knocked-out party Companions
+ * instantly recover (spec R5/R11, slice 6). Pure position-based proximity
+ * trigger (`companionKOSystem`) — no per-entity data needed.
+ */
+export const RallyPoint = {};
+
+/**
  * Marks an entity as a physical boss chest world-object. Proximity-opened by
  * `bossChestPickupSystem` when the player walks within BOSS_CHEST_RANGE_FT.
  * The chest's lifecycle record is keyed by `chestId` in `world.bossChests`
@@ -359,7 +366,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       /** Target entity id to steer toward once active. Only meaningful while
        * the target still exists and has Health > 0 — checked every frame by
        * `homingSystem` rather than relying on a sentinel "no target" value. */
-      targetEid: new Uint16Array(maxEntities),
+      targetEid: new Uint32Array(maxEntities),
       /** Constant travel speed (ft/frame) maintained while steering. */
       speed: new Float32Array(maxEntities),
       /** Maximum heading change per frame, in radians, once active. */

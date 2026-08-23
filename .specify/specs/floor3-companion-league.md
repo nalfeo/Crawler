@@ -1,13 +1,16 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **In progress — slices 1–5 landed (2026-08-22).** Slice 1 (affinity matrix +
+> **Status:** **In progress — slices 1–6 landed (2026-08-22).** Slice 1 (affinity matrix +
 > species/style data) is implemented in `src/shared/data/floor3/`; slice 2 (the
 > `AFFINITY_MATRIX` damage-multiplier hook) is implemented in `src/core/apply-damage.ts`;
 > slice 3 (`Companion`/`PartySlot` + ally AI prepass) is implemented in the ECS/game AI
 > pipeline; slice 4 adds the `GUARDIAN` and `SUPPORT` movement personas; slice 5 adds
 > combat-XP attribution, leveling, form evolution, and ability unlocks via
-> `src/core/systems/companionProgressionSystem.ts`. No Floor 3 manifests or sprites exist
-> yet. The remaining schemas, wiring, and slices below are the **plan** the implementation
+> `src/core/systems/companionProgressionSystem.ts`; slice 6 adds starter/poach recruiting
+> (`src/game/floor3Recruiting.ts`), `PartySlot` party-cap locking, and the KO/recovery +
+> Rally Point + party-wipe predicate state machine (`src/core/systems/companionKOSystem.ts`).
+> No Floor 3 manifests or sprites exist yet. The remaining schemas, wiring, and slices below
+> are the **plan** the implementation
 > sessions build against.
 > **Authored:** 2026-07-24.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — spans core ECS, game systems, content,
