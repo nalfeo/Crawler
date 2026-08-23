@@ -5,7 +5,6 @@ import {
   buildScenarioGoalGraph,
   resolveScenarioTaskOperation,
   validateScenarioAiTaskConfig,
-  ScenarioAiTaskConfigError,
   type ScenarioAiTaskConfig,
   type ScenarioQuestLookup,
 } from '../../src/game/ai/scenario-ai-tasks.js';
@@ -247,8 +246,12 @@ describe('scenario-ai-tasks generic interpreter — validation fails loudly', ()
       validateScenarioAiTaskConfig(config, lookup);
       throw new Error(`expected validation to throw ${code}`);
     } catch (err) {
-      expect(err).toBeInstanceOf(ScenarioAiTaskConfigError);
-      expect((err as ScenarioAiTaskConfigError).code).toBe(code);
+      // The thrown error class is module-private (production code has no
+      // caller for it beyond this module's own `throw` sites), so assert on
+      // its observable structure rather than importing the class.
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).name).toBe('ScenarioAiTaskConfigError');
+      expect((err as Error & { code?: string }).code).toBe(code);
     }
   }
 

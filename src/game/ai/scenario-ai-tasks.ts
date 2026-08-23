@@ -43,7 +43,7 @@ import type { RunPlannerPoint, RunPlanSegment, RunPlanSegmentPhase } from './run
  * - `ambient`    — no navigation target of its own (handled ambiently, or an
  *                  active battle already in progress).
  */
-export const SCENARIO_AI_OPERATION_KINDS = [
+const SCENARIO_AI_OPERATION_KINDS = [
   'move_to',
   'interact_npc',
   'engage',
@@ -238,7 +238,7 @@ export type ScenarioAiTaskConfigErrorCode =
   | 'unknown-quest-ref'
   | 'unknown-objective-ref';
 
-export class ScenarioAiTaskConfigError extends Error {
+class ScenarioAiTaskConfigError extends Error {
   readonly code: ScenarioAiTaskConfigErrorCode;
   constructor(code: ScenarioAiTaskConfigErrorCode, message: string) {
     super(message);
