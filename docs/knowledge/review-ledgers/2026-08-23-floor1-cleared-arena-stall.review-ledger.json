@@ -2,17 +2,16 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-23",
   "session_slug": "floor1-cleared-arena-stall",
-  "task_title": "Floor 1 cleared-arena stall: cleared arenas are customization spaces, not safe spaces",
+  "task_title": "Floor 1 cleared-arena stall: cleared boss rooms become safe rooms with purge",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.4",
       "concerns_count": 2,
       "resolved_count": 2,
       "plan_divergence": "minor",
-      "notes": "rubber-duck/gpt-5.4 approved_with_changes. (1) headless regression test timeout 120s < two full runs (~163s observed) - raised to 420s with per-run maxWallTimeMs 180s. (2) widening isInSafeContext also widened achievementSystem floor2SafeRoomVisited, a location fact - carved back out to playerInSafeRoom || state===safe_room with a new regression test. Core predicate-split design approved as-is.",
-      "model": "gpt-5.4"
+      "notes": "rubber-duck/gpt-5.4 approved_with_changes. (1) headless regression test timeout 120s < two full runs (~163s observed) - raised to 420s with per-run maxWallTimeMs 180s. (2) widening safe-room context also widened achievementSystem floor2SafeRoomVisited, a location fact - carved back out so converted boss arenas do not satisfy the authored Floor 2 safe-room feat. Final maintainer-directed design preserves boss-room safe conversion with occupant purge/no loot/XP."
     },
     "code_review": {
       "clean": true,
@@ -34,13 +33,31 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.6-terra",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "b2900776030afa32e64db296381928e92b9bc819",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "src/engine/PhaserBridge.ts; src/shared/render-depths.ts",
+          "detail": "The PLAYER_DEPTH/set-piece depth-clamping and carried/melee weapon rendering changes are unrelated to the cleared-arena stall and have no dependency on its safe-room, purge, or farm-window fixes. They add a separate rendering behavior change and tests to a declared 3-apple AI/scenario fix, increasing regression surface and obscuring causal review. Remove these rendering changes from this diff and submit them as a separately scoped change."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 2,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "fail",
+      "findings_count": 1,
+      "notes": "The safe-room discriminator now correctly excludes converted arenas from the Floor 2 authored-safe-room fact, and the purge, bounded farm window, deterministic headless regression, and targeted unit coverage substantiate the stated stall fix. However, the independent player/weapon render-depth feature makes the diff non-surgical for the declared task, so scope discipline is below the passing threshold.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: scope_discipline",
+        "unresolved_findings": 1
+      }
     }
   }
 }
