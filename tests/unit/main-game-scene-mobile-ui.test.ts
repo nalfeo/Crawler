@@ -46,7 +46,9 @@ describe('HUD panel UX consistency', () => {
       'unlocks.inventory && safeCtx && !isUiLockOpen() && inventoryToggleRequested',
     );
     // Equipment
-    expect(source).toContain('unlocks.equipment && safeCtx && !isUiLockOpen() && equipRequested');
+    expect(source).toContain(
+      'unlocks.equipmentPanel && safeCtx && !isUiLockOpen() && equipRequested',
+    );
     // Abilities — must now also require safeCtx
     expect(source).toContain(
       'unlocks.spells && safeCtx && !isUiLockOpen() && abilitiesToggleRequested',

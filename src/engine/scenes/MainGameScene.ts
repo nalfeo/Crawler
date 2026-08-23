@@ -2209,7 +2209,7 @@ export class MainGameScene extends Phaser.Scene {
     // Each button shows when its own panel is open (to allow touch dismiss) OR
     // when nothing is blocking (to allow opening a panel).
     this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && (inventoryOpen || canOpenNew));
-    this.equipButton?.setVisible(unlocks.equipment && safeCtx && (equipOpen || canOpenNew));
+    this.equipButton?.setVisible(unlocks.equipmentPanel && safeCtx && (equipOpen || canOpenNew));
     this.achievementsButton?.setVisible(
       safeCtx && this.world.achievements.unlockedIds.size > 0 && (achievementsOpen || canOpenNew),
     );
@@ -2224,7 +2224,7 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryUnlockNotified = true;
       this.flashHint('Inventory unlocked! Press [I] or tap Bag in a safe room to open your pack.');
     }
-    if (unlocks.equipment && !this.equipmentUnlockNotified) {
+    if (unlocks.equipmentPanel && !this.equipmentUnlockNotified) {
       this.equipmentUnlockNotified = true;
       this.flashHint('Equipment unlocked! Press [G] or tap Gear in a safe room to equip new gear.');
     }
@@ -2258,7 +2258,7 @@ export class MainGameScene extends Phaser.Scene {
     const equipRequested =
       this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
     this.queuedEquip = false;
-    if (unlocks.equipment && safeCtx && !isUiLockOpen() && equipRequested) {
+    if (unlocks.equipmentPanel && safeCtx && !isUiLockOpen() && equipRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels({ keepEquipment: true });
       // [G] toggles the equipment panel only. The bag is now integrated into the

@@ -47,7 +47,12 @@ describe('Floor 1 to Floor 2 production transition', () => {
     floor1.stores.health.current[floor1Player] = 137;
     floor1.stores.health.max[floor1Player] = 260;
     addItem(floor1.inventories.get(floor1Player)!, 'throwing-knife', 3);
-    floor1.featureUnlocks = { inventory: true, equipment: true, spells: true };
+    floor1.featureUnlocks = {
+      inventory: true,
+      equipment: true,
+      equipmentPanel: true,
+      spells: true,
+    };
 
     const objective = floor1.floorScenario!.objective;
     objective.staircaseSpawned = true;
@@ -101,7 +106,12 @@ describe('Floor 1 to Floor 2 production transition', () => {
     floor1Options.selectLoadoutOption?.(floor1, 0);
 
     // Player reached the stairs without ever triggering the progressive unlocks.
-    floor1.featureUnlocks = { inventory: false, equipment: false, spells: false };
+    floor1.featureUnlocks = {
+      inventory: false,
+      equipment: false,
+      equipmentPanel: false,
+      spells: false,
+    };
 
     const objective = floor1.floorScenario!.objective;
     objective.staircaseSpawned = true;
