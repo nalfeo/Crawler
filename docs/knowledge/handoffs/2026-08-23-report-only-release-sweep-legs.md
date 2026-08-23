@@ -14,8 +14,8 @@ ai-behavior-tree, ai-pathfinding
 
 ## Apples
 
-3🍎 estimated / 2🍎 actual (diagnosis + validation only; no new code was needed on
-this branch)
+3🍎 estimated / 2🍎 actual → 📈 Over (diagnosis + validation only; no new code
+was needed on this branch)
 
 ## What Was Done
 
@@ -103,8 +103,12 @@ No source code was modified before these attempts.
 
 ## What's Next
 
-No blocker remains for this issue branch. If the next release sweep still shows
-low report-only Floor-2 progression rates, inspect the smaller residual bucket:
-runs that never defeat all four dens before collapse (for example the
-`lt4_defeated_timeout` category), which is a different pacing/target-selection
-problem than unlocked-exit refusal.
+Issue #3368 still needs the required detailed plan comment from an identity that
+can post to issues in this repo. Local session attempts remain blocked in this
+sandbox (`gh`/REST issue-comment POST returned HTTP 403 / proxy-blocked), so
+that publication blocker is still open for this branch.
+
+If the next release sweep still shows low report-only Floor-2 progression rates,
+inspect the smaller residual bucket: runs that never defeat all four dens
+before collapse (for example the `lt4_defeated_timeout` category), which is a
+different pacing/target-selection problem than unlocked-exit refusal.
