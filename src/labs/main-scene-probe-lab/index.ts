@@ -1664,8 +1664,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         world.stores.position.x[spellQuestGiverEid] = objective.spellQuestGiverPos.x;
         world.stores.position.y[spellQuestGiverEid] = objective.spellQuestGiverPos.y;
       }
-      if (merchantQuest) {
-        merchantQuest.done['meet-merchant'] = false;
+      const merchantTalkObjective = getQuestDef(FLOOR1_SHOP_QUEST_ID)?.objectives.find(
+        (objectiveDef) => objectiveDef.kind === 'talk',
+      );
+      if (merchantQuest && merchantTalkObjective) {
+        merchantQuest.done[merchantTalkObjective.id] = false;
       }
     },
 
