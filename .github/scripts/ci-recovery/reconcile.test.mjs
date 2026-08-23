@@ -7014,7 +7014,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'ordinary thread tasks should omit prior-recovery-only PR-body instructions',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    taskCommentCall.body.body.includes('`✅ Not applicable: [one-line reason]`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
   );
   assert.ok(
@@ -12834,7 +12834,7 @@ test('review-ledger thread blockers separate validator evidence from policy disa
   );
   assert.match(
     taskCommentCall.body.body,
-    /✅ Not applicable: <one-line reason>/i,
+    /✅ Not applicable: \[one-line reason\]/i,
     'task body should keep marker guidance only for deterministically inapplicable findings',
   );
 });
