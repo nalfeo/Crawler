@@ -45,17 +45,19 @@ import {
 } from '../../core/systems/bossChestRewards.js';
 import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
-import { acceptQuest } from '../../core/systems/questSystem.js';
+import { acceptQuest, setTrackedQuest } from '../../core/systems/questSystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
+  getQuestDef,
 } from '../../shared/quest-types.js';
 import {
   createBloodPoolSurface,
   isBloodyFootprintSourceActive,
 } from '../../shared/blood-surfaces.js';
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
+import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
@@ -169,6 +171,9 @@ interface MainSceneInternals {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
     getMinimapBounds?(): ScreenBounds | null;
+    getMinimapRadarWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
+    getMinimapOverlayWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
+    getMinimapOverlayWaypointDotIds?(): readonly string[];
     getNavigationBounds?(): {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
@@ -848,6 +853,25 @@ export interface MainSceneProbeApi {
     readonly y: number;
     readonly rotation: number;
   }>;
+  /** Seed all active merchant + Spell Broker NPC-return arrows through the real scene's world. */
+  primeMerchantAndSpellBrokerQuestArrows(): void;
+  /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
+  getMinimapRadarWaypointArrowIds(): string[];
+  /**
+   * Full-screen minimap overlay waypoint-edge arrow quest ids on the real
+   * MainGameScene HUD. Empty while a waypoint is inside the overlay's current
+   * viewport (rendered as an in-view dot by `drawDots` instead of an edge
+   * arrow) or while the overlay is closed.
+   */
+  getMinimapOverlayWaypointArrowIds(): string[];
+  /**
+   * Quest ids rendered as full-screen minimap overlay in-view waypoint dots
+   * on the real MainGameScene HUD — the overlay-open complement of
+   * `getMinimapOverlayWaypointArrowIds` (a waypoint is a dot when inside the
+   * overlay viewport, an edge arrow when outside it, never both). Empty
+   * while the overlay is closed.
+   */
+  getMinimapOverlayWaypointDotIds(): string[];
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -1658,6 +1682,57 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
+    primeMerchantAndSpellBrokerQuestArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      const welcomeQuest = world.questLog.get(FLOOR1_FIND_WELCOME_QUEST_ID);
+      if (welcomeQuest) {
+        welcomeQuest.status = 'complete';
+      }
+      const merchantQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      const spellBrokerBossBattleQuest = acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const spellBrokerCombatObjective = getQuestDef(FLOOR1_BOSS_BATTLE_QUEST_ID)?.objectives.find(
+        (objectiveDef) => objectiveDef.kind === 'counter',
+      );
+      if (spellBrokerBossBattleQuest && spellBrokerCombatObjective) {
+        spellBrokerBossBattleQuest.progress[spellBrokerCombatObjective.id] =
+          spellBrokerCombatObjective.target ?? 1;
+      }
+      setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.shopRoomPos.x = px + 100;
+      objective.shopRoomPos.y = py + 30;
+      objective.spellQuestGiverPos.x = px - 100;
+      objective.spellQuestGiverPos.y = py + 30;
+      const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
+      const spellQuestGiverEid = world.floorScenario?.spellQuestGiverNpcEid;
+      if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
+        world.stores.position.x[shopkeeperEid] = objective.shopRoomPos.x;
+        world.stores.position.y[shopkeeperEid] = objective.shopRoomPos.y;
+      }
+      if (spellQuestGiverEid !== null && spellQuestGiverEid !== undefined) {
+        world.stores.position.x[spellQuestGiverEid] = objective.spellQuestGiverPos.x;
+        world.stores.position.y[spellQuestGiverEid] = objective.spellQuestGiverPos.y;
+      }
+      const merchantTalkObjective = getQuestDef(FLOOR1_SHOP_QUEST_ID)?.objectives.find(
+        (objectiveDef) => objectiveDef.kind === 'talk',
+      );
+      if (merchantQuest && merchantTalkObjective) {
+        merchantQuest.done[merchantTalkObjective.id] = false;
+      }
+    },
+
     getVisibleQuestArrowIds: (): string[] => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) {
@@ -1696,6 +1771,20 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         ];
       });
     },
+
+    getMinimapRadarWaypointArrowIds: (): string[] =>
+      getScene()
+        ?.hudUi?.getMinimapRadarWaypointArrowStates?.()
+        .map(({ questId }) => questId) ?? [],
+
+    getMinimapOverlayWaypointArrowIds: (): string[] =>
+      getScene()
+        ?.hudUi?.getMinimapOverlayWaypointArrowStates?.()
+        .map(({ questId }) => questId) ?? [],
+
+    getMinimapOverlayWaypointDotIds: (): string[] => [
+      ...(getScene()?.hudUi?.getMinimapOverlayWaypointDotIds?.() ?? []),
+    ],
 
     requestAchievementsToggle: () => {
       getScene()?.requestAchievementsToggle?.();

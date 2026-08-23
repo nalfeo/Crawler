@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { hasComponent, query } from 'bitecs';
 import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { getTrackedQuestWaypoint } from '../core/systems/questWaypoints.js';
+import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
+import { getTrackedQuest } from '../core/systems/questSystem.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
@@ -72,6 +73,11 @@ const RADAR_EDGE_ARROW_INSET = 10;
 const OVERLAY_EDGE_ARROW_SIZE = 6;
 /** Inset (screen pixels) from the viewport boundary for the overlay edge arrow. */
 const OVERLAY_EDGE_ARROW_INSET = 10;
+
+export interface MinimapWaypointArrowBounds {
+  readonly questId: string;
+  readonly bounds: ScreenBounds;
+}
 
 /** Terrain colour palette for minimap (same hues as main terrain, darker). */
 const MINI_COLORS: Readonly<Record<number, number>> = {
@@ -180,6 +186,14 @@ export function createHudMinimap(scene: Phaser.Scene): {
   getOverlayCloseBounds(): ScreenBounds | null;
   /** Screen-space bounds of the overlay waypoint edge arrow when drawn. */
   getOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getOverlayWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
+  /**
+   * Quest ids drawn as in-view overlay waypoint dots on the most recent
+   * frame (the overlay-open complement of `getOverlayWaypointArrowStates` —
+   * a waypoint inside the overlay viewport is a dot, one outside is an edge
+   * arrow, never both). Empty while the overlay is closed.
+   */
+  getOverlayWaypointDotIds(): readonly string[];
   /**
    * Screen-space bounds of the docked radar dial when visible, or null when it
    * is hidden (e.g. suppressed by an open character panel). Lets deterministic
@@ -188,6 +202,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   getDockedBounds(): ScreenBounds | null;
   /** Screen-space bounds of the docked radar waypoint edge arrow when drawn. */
   getRadarWaypointArrowBounds(): ScreenBounds | null;
+  getRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -374,8 +389,21 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastPinchDist = 0;
   let lastTerritoryPaletteSignature = '';
   let hudRadarScale = 1;
-  let lastOverlayWaypointArrowBounds: ScreenBounds | null = null;
-  let lastRadarWaypointArrowBounds: ScreenBounds | null = null;
+  let lastOverlayWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
+  let lastRadarWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
+  let lastTrackedOverlayWaypointArrowBounds: ScreenBounds | null = null;
+  let lastTrackedRadarWaypointArrowBounds: ScreenBounds | null = null;
+  /**
+   * Quest ids whose waypoint fell inside the overlay viewport on the most
+   * recent `drawOverlayArrows` pass — i.e. ids rendered as an in-view
+   * `drawDots` waypoint marker instead of an edge arrow. Computed from the
+   * same screen-space projection/`isInsideViewport` check that decides
+   * whether to draw an edge arrow, so it can never disagree with
+   * `lastOverlayWaypointArrowBounds`. Tracked separately so tests can assert
+   * the in-view-dot path directly instead of only inferring it from
+   * edge-arrow absence.
+   */
+  let lastOverlayWaypointDotIds: string[] = [];
 
   function triangleBounds(
     ax: number,
@@ -688,11 +716,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
       }
     }
 
-    // Quest waypoint — the tracked objective marker. Drawn even in unexplored
+    // Quest waypoints — active objective markers. Drawn even in unexplored
     // tiles so it actively guides the player to the next goal on a big floor.
-    const overlayWaypoint = getTrackedQuestWaypoint(world, playerEid);
-    if (overlayWaypoint) {
-      const wpTile = floorMap.worldToTile(overlayWaypoint.x, overlayWaypoint.y);
+    for (const waypoint of getQuestWaypoints(world, playerEid)) {
+      const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       if (
         wpTile.x >= 0 &&
         wpTile.y >= 0 &&
@@ -759,65 +786,74 @@ export function createHudMinimap(scene: Phaser.Scene): {
    */
   function drawOverlayArrows(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
     overlayArrowGraphics.clear();
-    lastOverlayWaypointArrowBounds = null;
+    lastOverlayWaypointArrowBounds = [];
+    lastTrackedOverlayWaypointArrowBounds = null;
+    lastOverlayWaypointDotIds = [];
     if (!viewState) {
       return;
     }
-    const waypoint = getTrackedQuestWaypoint(world, playerEid);
-    if (!waypoint) {
-      return;
-    }
-    const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
     const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
-    const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
-    const wpScreenY = viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
-    if (isInsideViewport(wpScreenX, wpScreenY, viewport)) {
-      return; // waypoint dot is already visible on the overlay map
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
+    for (const waypoint of getQuestWaypoints(world, playerEid)) {
+      const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
+      const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
+      const wpScreenY = viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
+      if (isInsideViewport(wpScreenX, wpScreenY, viewport)) {
+        lastOverlayWaypointDotIds.push(waypoint.questId);
+        continue; // waypoint dot is already visible on the overlay map
+      }
+      // Compute direction from viewport center to waypoint screen position.
+      const dx = wpScreenX - viewport.centerX;
+      const dy = wpScreenY - viewport.centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist === 0) {
+        continue;
+      }
+      const nx = dx / dist;
+      const ny = dy / dist;
+      // Rectangle-edge intersection: inset the half-extents so the tip sits a
+      // fixed perpendicular distance from whichever edge it hits, regardless of
+      // the approach angle (subtracting from t would shift along the ray, giving
+      // inconsistent inset near corners).
+      const vRX = viewport.width / 2 - OVERLAY_EDGE_ARROW_INSET;
+      const vRY = viewport.height / 2 - OVERLAY_EDGE_ARROW_INSET;
+      if (vRX <= 0 || vRY <= 0) {
+        continue;
+      }
+      const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
+      const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
+      const t = Math.min(tH, tV);
+      const tipX = viewport.centerX + nx * t;
+      const tipY = viewport.centerY + ny * t;
+      const perpX = -ny * OVERLAY_EDGE_ARROW_SIZE;
+      const perpY = nx * OVERLAY_EDGE_ARROW_SIZE;
+      const backX = tipX - nx * OVERLAY_EDGE_ARROW_SIZE * 2;
+      const backY = tipY - ny * OVERLAY_EDGE_ARROW_SIZE * 2;
+      overlayArrowGraphics.fillStyle(DOT_WAYPOINT, 0.92);
+      overlayArrowGraphics.beginPath();
+      overlayArrowGraphics.moveTo(tipX, tipY);
+      overlayArrowGraphics.lineTo(backX - perpX, backY - perpY);
+      overlayArrowGraphics.lineTo(backX + perpX, backY + perpY);
+      overlayArrowGraphics.closePath();
+      overlayArrowGraphics.fillPath();
+      overlayArrowGraphics.lineStyle(1, 0x020617, 0.7);
+      overlayArrowGraphics.strokePath();
+      const bounds = triangleBounds(
+        tipX,
+        tipY,
+        backX - perpX,
+        backY - perpY,
+        backX + perpX,
+        backY + perpY,
+      );
+      lastOverlayWaypointArrowBounds.push({
+        questId: waypoint.questId,
+        bounds,
+      });
+      if (waypoint.questId === trackedQuestId) {
+        lastTrackedOverlayWaypointArrowBounds = bounds;
+      }
     }
-    // Compute direction from viewport center to waypoint screen position.
-    const dx = wpScreenX - viewport.centerX;
-    const dy = wpScreenY - viewport.centerY;
-    const dist = Math.hypot(dx, dy);
-    if (dist === 0) {
-      return;
-    }
-    const nx = dx / dist;
-    const ny = dy / dist;
-    // Rectangle-edge intersection: inset the half-extents so the tip sits a
-    // fixed perpendicular distance from whichever edge it hits, regardless of
-    // the approach angle (subtracting from t would shift along the ray, giving
-    // inconsistent inset near corners).
-    const vRX = viewport.width / 2 - OVERLAY_EDGE_ARROW_INSET;
-    const vRY = viewport.height / 2 - OVERLAY_EDGE_ARROW_INSET;
-    if (vRX <= 0 || vRY <= 0) {
-      return;
-    }
-    const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
-    const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
-    const t = Math.min(tH, tV);
-    const tipX = viewport.centerX + nx * t;
-    const tipY = viewport.centerY + ny * t;
-    const perpX = -ny * OVERLAY_EDGE_ARROW_SIZE;
-    const perpY = nx * OVERLAY_EDGE_ARROW_SIZE;
-    const backX = tipX - nx * OVERLAY_EDGE_ARROW_SIZE * 2;
-    const backY = tipY - ny * OVERLAY_EDGE_ARROW_SIZE * 2;
-    overlayArrowGraphics.fillStyle(DOT_WAYPOINT, 0.92);
-    overlayArrowGraphics.beginPath();
-    overlayArrowGraphics.moveTo(tipX, tipY);
-    overlayArrowGraphics.lineTo(backX - perpX, backY - perpY);
-    overlayArrowGraphics.lineTo(backX + perpX, backY + perpY);
-    overlayArrowGraphics.closePath();
-    overlayArrowGraphics.fillPath();
-    overlayArrowGraphics.lineStyle(1, 0x020617, 0.7);
-    overlayArrowGraphics.strokePath();
-    lastOverlayWaypointArrowBounds = triangleBounds(
-      tipX,
-      tipY,
-      backX - perpX,
-      backY - perpY,
-      backX + perpX,
-      backY + perpY,
-    );
   }
 
   /**
@@ -831,7 +867,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     floorMap: FloorMap,
     visited: Uint8Array,
   ): void {
-    lastRadarWaypointArrowBounds = null;
+    lastRadarWaypointArrowBounds = [];
+    lastTrackedRadarWaypointArrowBounds = null;
     const tileFt = floorMap.config.tileSizeFt;
     let ptx = lastPlayerWorldX / tileFt;
     let pty = lastPlayerWorldY / tileFt;
@@ -966,11 +1003,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
       }
     }
 
-    // Quest waypoint blip — primary tracked objective, always shown.
-    // If the waypoint is outside the radar dial, a small edge arrow points toward it.
-    const radarWaypoint = getTrackedQuestWaypoint(world, playerEid);
-    if (radarWaypoint) {
-      const wpTile = floorMap.worldToTile(radarWaypoint.x, radarWaypoint.y);
+    // Quest waypoint blips — active objectives, always shown.
+    // If a waypoint is outside the radar dial, a small edge arrow points toward it.
+    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
+    for (const waypoint of getQuestWaypoints(world, playerEid)) {
+      const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       const wx = localX(wpTile.x + 0.5);
       const wy = localY(wpTile.y + 0.5);
       if (inDial(wx, wy)) {
@@ -1009,12 +1046,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
           );
           const radarOriginX = hudRadarCenterX - HUD_RADAR_RADIUS * hudRadarScale;
           const radarOriginY = hudRadarCenterY - HUD_RADAR_RADIUS * hudRadarScale;
-          lastRadarWaypointArrowBounds = {
+          const bounds = {
             x: radarOriginX + localBounds.x * hudRadarScale,
             y: radarOriginY + localBounds.y * hudRadarScale,
             width: localBounds.width * hudRadarScale,
             height: localBounds.height * hudRadarScale,
           };
+          lastRadarWaypointArrowBounds.push({
+            questId: waypoint.questId,
+            bounds,
+          });
+          if (waypoint.questId === trackedQuestId) {
+            lastTrackedRadarWaypointArrowBounds = bounds;
+          }
         }
       }
     }
@@ -1442,7 +1486,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
     getOverlayWaypointArrowBounds: (): ScreenBounds | null =>
-      overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : null,
+      overlayOpen && !masterHidden ? lastTrackedOverlayWaypointArrowBounds : null,
+    getOverlayWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
+      overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : [],
+    getOverlayWaypointDotIds: (): readonly string[] =>
+      overlayOpen && !masterHidden ? lastOverlayWaypointDotIds : [],
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
       const dial = hudMapBg.getBounds();
@@ -1454,7 +1502,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return { x, y, width: right - x, height: bottom - y };
     },
     getRadarWaypointArrowBounds: (): ScreenBounds | null =>
-      !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : null,
+      !masterHidden && hudMapBg.visible ? lastTrackedRadarWaypointArrowBounds : null,
+    getRadarWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
+      !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : [],
     destroy,
   };
 }
