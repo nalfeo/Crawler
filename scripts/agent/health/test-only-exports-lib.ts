@@ -727,6 +727,62 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Floor 3 slice 6: KO/recovery world-object; no Floor 3 map generator exists yet (wild-spawn/overworld placement lands in slice 7), so only the KO-system unit tests spawn one until that placement path lands.',
     expiresOn: '2026-11-29',
   },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'FLOOR3_STAIRS_POPPED_GOAL_ID',
+    reason:
+      'Floor 3 slice 8 objective-observability goal flag written by popFloor3ExitStairs to mirror floor2 flag telemetry; the production win path currently reads the parallel floor3Studios.staircaseSpawned boolean, so only the victory-system tests import the id until a HUD/headless reader lands.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'FLOOR3_STAIRS_DISCOVERED_GOAL_ID',
+    reason:
+      'Floor 3 slice 8 objective-observability goal flag written by confirmFloor3StairDescend; production run-outcome reads the parallel floor3Studios.staircaseDiscovered boolean, so only the victory-system tests import the id until a HUD/headless reader lands.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID',
+    reason:
+      'Floor 3 slice 8 gate flag set by floor3ObjectiveTick when all Studios fall; the tick itself is the only production reader (via the same-file goalFlags map), so external importers are the victory-system tests until a HUD/headless progress reader lands.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'floor3StudioDefeatGoalId',
+    reason:
+      'Floor 3 slice 8 per-Studio defeat goal-flag id builder used inside floor3ObjectiveTick to latch progress; only the victory-system tests import it directly until a HUD/headless objective-progress reader consumes the per-Studio flags.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FLOOR3_STUDIO_SELECT_COUNT',
+    reason:
+      'Floor 3 slice 8 Studio selection size (6) consumed only as the default arg of selectFloor3Studios in the same file; exported so the studios unit tests assert the pick size symbolically rather than hard-coding 6.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FLOOR3_FINAL_FOUR_SELECT_COUNT',
+    reason:
+      'Floor 3 slice 8 Final Four selection size (4) consumed only as the default arg of selectFloor3FinalFour in the same file; exported so the studios unit tests assert the pick size symbolically rather than hard-coding 4.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'STUDIO_CANDIDATES',
+    reason:
+      'Floor 3 slice 8 Studio candidate roster pool consumed within the same file by selectSeeded and the known-species assertion; exported so the studios unit tests validate roster content and pool size until the recruiting/HUD layer reads it directly.',
+    expiresOn: '2026-11-23',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FINAL_FOUR_CANDIDATES',
+    reason:
+      'Floor 3 slice 8 Final Four candidate handler pool consumed within the same file by selectSeeded and the known-species assertion; exported so the studios unit tests validate roster content and pool size until the recruiting/HUD layer reads it directly.',
+    expiresOn: '2026-11-23',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {

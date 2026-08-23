@@ -720,13 +720,27 @@ function despawnFloor3EncounterRoster(world: GameWorld, teamIds: readonly number
 }
 
 export function floor3ObjectiveTick(world: GameWorld): void {
+  // Stop ticking a non-playing world first: after a victory descent
+  // (`'safe_room'`) or any loss (`'game_over'`) the objective tick must not run
+  // again and re-transition state.
+  if (world.state !== 'playing') return;
+
+  // Timeout loss — suppressed once victory is latched. `latchFloor3Victory`
+  // sets `FLOOR3_VICTORY_GOAL_ID` while the world is still `'playing'` (the
+  // player must still walk to and confirm the exit stairs). A timer expiry in
+  // that window must not overwrite the latched win with `'game_over'`, which
+  // would permanently block `confirmFloor3StairDescend` (it requires
+  // `world.state === 'playing'`).
   const manifest = getFloorManifest('floor3');
-  if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+  if (
+    world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true &&
+    manifest?.timer &&
+    world.elapsedMs >= manifest.timer.durationMs
+  ) {
     world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
     return;
   }
-  if (world.state !== 'playing') return;
 
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (!studiosState) return;

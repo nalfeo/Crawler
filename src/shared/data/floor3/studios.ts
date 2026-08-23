@@ -359,6 +359,12 @@ for (const handler of FINAL_FOUR_CANDIDATES) {
  * (spec R8).
  */
 function selectSeeded<T>(rng: SeededRandom, candidates: readonly T[], count: number): readonly T[] {
+  // Fixed-size selection contract: reject any count that is not a non-negative
+  // integer (negative, fractional, NaN, or Infinity) before it can reach
+  // `slice`, where e.g. `-1` would silently return "all but one" candidate.
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error(`selectSeeded: requested count=${count} must be a non-negative integer`);
+  }
   if (count > candidates.length) {
     throw new Error(
       `selectSeeded: requested count=${count} exceeds candidate pool size=${candidates.length}`,
