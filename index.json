@@ -1,5 +1,39 @@
 [
   {
+    "commit": "05241b79486faf4e44878344ce439ec225399c47",
+    "commitDate": "2026-08-23T21:18:00Z",
+    "commitSubject": "Fix welcome room touch: freeze movement while equipment/inventory/quartermaster UI is open (#3254)",
+    "capturedAt": "2026-08-23T23:11:56.169Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32668902118",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/05241b79486faf4e44878344ce439ec225399c47.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.75,
+      "gatePass": false,
+      "path": "by-sha/05241b79486faf4e44878344ce439ec225399c47.fun-report.json"
+    }
+  },
+  {
     "commit": "a2c749aa10195a63f17a25f8ae38d056b6c35cf6",
     "commitDate": "2026-08-23T20:16:12Z",
     "commitSubject": "Fix Floor 2 sealed-den softlock behind the sub-90% floor1-chain release leg (#3417)",
