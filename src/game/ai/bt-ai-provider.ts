@@ -1365,6 +1365,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
+        // Weapons cannot resolve a threat while the player is in a safe room.
+        // Yield to NPC interaction or the safe-room egress branch instead of
+        // repeatedly selecting an unreachable retreat target inside the room.
+        if (ctx.world.playerInSafeRoom) {
+          this.endRetreat(ctx.world);
+          return false;
+        }
         const activeWeapon = getActiveWeapon(ctx.world);
         // Critically low = the fixed HP floor OR a measured incoming-damage rate
         // that kills before the runner could plausibly disengage. Rate matters as
