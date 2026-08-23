@@ -2893,13 +2893,19 @@ function roomAtPosition(world: GameWorld, pos: { x: number; y: number }): RoomDa
 }
 
 /**
- * Turn a cleared boss arena into a safe room.
+ * Register a cleared boss arena as a run-time customization/retreat space.
  *
- * The design's floor loop is "Floor Combat → Boss → Commercial Break (safe
- * room)": once the boss is dead its arena is the player's breather — the
- * collapse timer pauses there and the customization panels open, exactly like
- * an authored SAFE room. Registering the room *id* rather than rewriting its
- * {@link RoomRole} is deliberate: `FloorMap.bossStairRoom` (and the stair,
+ * The design's floor loop is "Floor Combat → Boss → Commercial Break": once the
+ * boss is dead its arena is the player's breather, so the customization panels
+ * open there (`isInSafeContext`) and retreat routing may aim for it
+ * (`resolveNearestSafeAnchor`). It is deliberately NOT promoted to a real safe
+ * *space*: `isPointInSafeSpace` also disables the weapon, keeps enemies out,
+ * pauses the collapse deadline and flips the AI into leave-the-safe-room mode,
+ * which must never apply to the arena that owns the floor's staircase — see
+ * `isPointInClearedArena`.
+ *
+ * Registering the room *id* rather than rewriting its {@link RoomRole} is
+ * likewise deliberate: `FloorMap.bossStairRoom` (and the stair,
  * spawn-suppression and minimap consumers behind it) resolves the boss room by
  * role, so a role rewrite would make the boss room vanish from under its own
  * staircase.

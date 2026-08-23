@@ -30,7 +30,11 @@ interface PostBossFarmWindowParams {
    * sits earlier than the raw objective deadline. Farming never runs past it.
    */
   readonly planningDeadlineMs: number;
-  /** Total floor time budget the reserve fraction is measured against. */
+  /**
+   * Total floor time budget the reserve fraction is measured against. Also the
+   * hard ceiling applied to {@link planningDeadlineMs} — see
+   * {@link resolvePostBossFarmWindow}.
+   */
   readonly floorBudgetMs: number;
   /** True once the final boss is dead and the staircase is unlocked. */
   readonly staircaseUnlocked: boolean;
@@ -56,6 +60,17 @@ const CLOSED: PostBossFarmWindow = { farming: false, remainingMs: 0 };
  * reserve is what keeps this from trading wins for loot (rule #12): the AI
  * still leaves with `reserveFraction` of the floor budget in hand, and the
  * collapse-panic beeline underneath is untouched.
+ *
+ * The planning deadline is clamped to {@link PostBossFarmWindowParams.floorBudgetMs}
+ * so the window is measured against the floor's authored budget and NOT against
+ * a deadline the player inflated by standing in a safe room. Floor 1 pauses the
+ * collapse deadline inside safe rooms, and a cleared boss arena *becomes* a safe
+ * room — the arena that holds the staircase. Without this clamp the deadline and
+ * `elapsedMs` advance in lockstep while the AI waits by the stairs, the
+ * remaining budget never falls to the reserve, and the window (plus the descend
+ * the auto-progression driver defers to it) stays open forever: the run
+ * livelocks and stalls out instead of taking the unlocked stairs. Clamping keeps
+ * `remainingMs` strictly decreasing in `elapsedMs`, so the window always closes.
  */
 export function resolvePostBossFarmWindow(params: PostBossFarmWindowParams): PostBossFarmWindow {
   const {
@@ -76,6 +91,6 @@ export function resolvePostBossFarmWindow(params: PostBossFarmWindowParams): Pos
     return CLOSED;
   }
   const reserveMs = floorBudgetMs * reserveFraction;
-  const remainingMs = planningDeadlineMs - elapsedMs - reserveMs;
+  const remainingMs = Math.min(planningDeadlineMs, floorBudgetMs) - elapsedMs - reserveMs;
   return remainingMs > 0 ? { farming: true, remainingMs } : CLOSED;
 }

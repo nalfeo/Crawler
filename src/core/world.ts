@@ -809,17 +809,28 @@ export interface GameWorld {
    */
   playerInSafeRoom: boolean;
   /**
-   * Room ids that have become safe rooms *during* the run rather than at
-   * generation time.
+   * True when the player entity's current position is inside a boss arena this
+   * run already cleared (see {@link clearedSafeRoomIds}). Updated each tick by
+   * `safeRoomSystem`. Opens the customization panels via `isInSafeContext`, and
+   * nothing else — a cleared arena is deliberately NOT a safe *space*.
+   */
+  playerInClearedArena: boolean;
+  /**
+   * Room ids of boss arenas cleared *during* the run.
    *
    * A boss arena stops being dangerous the moment its boss dies — the design's
    * "Boss → Commercial Break" beat — so the floor scenario registers the
-   * cleared arena here and `isPointInSafeSpace` treats it like any authored
-   * SAFE room (timer pause, customization panels). The room's generated
-   * {@link RoomRole} deliberately stays `BOSS_STAIR`: `FloorMap.bossStairRoom`
-   * and every stair/spawn/minimap consumer resolve that room *by role*, so
-   * rewriting the role would make the boss room disappear from under the
-   * staircase it owns.
+   * cleared arena here. It then counts as a retreat anchor
+   * (`resolveNearestSafeAnchor`) and opens the customization panels
+   * (`isInSafeContext`), but it is deliberately NOT part of
+   * `isPointInSafeSpace`: that predicate disables the player's weapon, keeps
+   * enemies out, pauses the collapse deadline and switches the AI into its
+   * leave-the-safe-room regime, none of which may apply to the arena that owns
+   * the floor's staircase (see `isPointInClearedArena` for the full rationale).
+   * The room's generated {@link RoomRole} likewise stays `BOSS_STAIR`:
+   * `FloorMap.bossStairRoom` and every stair/spawn/minimap consumer resolve
+   * that room *by role*, so rewriting the role would make the boss room
+   * disappear from under the staircase it owns.
    *
    * Room ids are only unique *within* one generated floor, so the set is
    * scoped to the map that produced it via {@link clearedSafeRoomMap}: a stale
@@ -1060,6 +1071,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
+    playerInClearedArena: false,
     clearedSafeRoomIds: new Set<number>(),
     clearedSafeRoomMap: null,
     floor2EquipmentFlags: {
