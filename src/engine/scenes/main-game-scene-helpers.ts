@@ -33,78 +33,26 @@ import {
 export const LIGHTING_VIEW_BUFFER_PX = 64;
 
 /**
- * The floor-run terminal outcome, if the run has reached one. Handles both
- * Floor 1 (runSummary) and Floor 2 (staircaseDiscovered) terminal states.
- * Only `cleared_floor` and `failed_timeout` are treated as terminal; anything
- * else is `null`.
- */
-export function getFloorRunOutcome(world: GameWorld): 'cleared_floor' | 'failed_timeout' | null {
-  // Floor 2: player confirmed exit descent → victory
-  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
-    return 'cleared_floor';
-  }
-  // Floor 1
-  const outcome = world.floorScenario?.runSummary?.outcome;
-  if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
-    return outcome;
-  }
-  return null;
-}
-
-export type FloorCompletionPresentation =
-  | 'failed_timeout'
-  | 'transition_to_next_floor'
-  | 'terminal_victory'
-  | 'terminal_complete';
-
-/**
- * Chooses which completion-screen branch the scene should present once
- * {@link getFloorRunOutcome} reports a terminal state.
- *
- * Transition callbacks take precedence over the Floor 2 terminal-victory branch
- * so scenarios that clear via `familyState.staircaseDiscovered` can still route
- * onward to another authored floor.
- */
-export function getFloorCompletionPresentation(
-  world: GameWorld,
-  hasFloorTransition: boolean,
-): FloorCompletionPresentation | null {
-  const outcome = getFloorRunOutcome(world);
-  if (!outcome) {
-    return null;
-  }
-  if (outcome === 'failed_timeout') {
-    return 'failed_timeout';
-  }
-  if (hasFloorTransition) {
-    return 'transition_to_next_floor';
-  }
-  if (world.floorExtendedState?.familyState?.staircaseDiscovered === true) {
-    return 'terminal_victory';
-  }
-  return 'terminal_complete';
-}
-
-/**
  * Whether the dev-build live issue flow may be opened right now.
  *
  * Terminal run states are excluded because their restart timers and
- * outcome-specific run bundles need separate handling. The terminal check reads
- * the durable {@link getFloorRunOutcome} state rather than the scene's transient
- * "completion message pending" flag, which the scene clears as soon as it shows
- * a completion or floor-transition screen — that flag would leave the reporter
- * live over the floor-transition restart screen.
+ * outcome-specific run bundles need separate handling. `hasTerminalRunOutcome`
+ * is the scenario contract's durable terminal-outcome signal rather than the
+ * scene's transient "completion message pending" flag, which the scene clears
+ * as soon as it shows a completion or floor-transition screen — that flag would
+ * leave the reporter live over the floor-transition restart screen.
  */
 export function canFileLiveIssue(params: {
   readonly world: GameWorld;
   readonly issueOpen: boolean;
   readonly issueSubmitting: boolean;
+  readonly hasTerminalRunOutcome: boolean;
 }): boolean {
   return (
     !params.issueOpen &&
     !params.issueSubmitting &&
-    params.world.state !== 'game_over' &&
-    getFloorRunOutcome(params.world) === null
+    !params.hasTerminalRunOutcome &&
+    params.world.state !== 'game_over'
   );
 }
 

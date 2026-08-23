@@ -173,7 +173,7 @@ describe('MainGameScene terminal run bundle emission', () => {
 
   it('emits terminal bundle before scene restart on floor transition', () => {
     expect(source).toMatch(
-      /this\.emitRunBundle\(completionPresentation === 'failed_timeout' \? 'timeout' : 'victory'\);[\s\S]*this\.scene\.restart\(\{ mainGameSceneOptions: composedNextOptions \}\);/,
+      /this\.emitRunBundle\(completionVariant === 'failed_timeout' \? 'timeout' : 'victory'\);[\s\S]*this\.scene\.restart\(\{ mainGameSceneOptions: composedNextOptions \}\);/,
     );
   });
 

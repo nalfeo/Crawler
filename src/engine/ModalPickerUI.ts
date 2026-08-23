@@ -39,6 +39,20 @@ export interface ModalPickerOpenHooks<TId extends string = string> {
   readonly onSelectionChange?: (event: ModalPickerSelectionChangeEvent<TId>) => void;
 }
 
+/** Read-only view of the text a modal is currently presenting. */
+export interface ModalPickerContentSnapshot {
+  readonly kind: string | null;
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly body: string | null;
+  readonly options: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly description: string | null;
+    readonly disabled: boolean;
+  }>;
+}
+
 export interface ModalPickerLayoutSnapshot {
   readonly panel: ScreenBounds;
   readonly title: ScreenBounds;
@@ -120,6 +134,8 @@ export function createModalPickerUI(
   close(): void;
   isOpen(): boolean;
   getKind(): string | null;
+  /** Content currently rendered by the real modal (automation/e2e read-only). */
+  getContentSnapshot(): ModalPickerContentSnapshot | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
   destroy(): void;
 } {
@@ -532,6 +548,21 @@ export function createModalPickerUI(
     },
     getKind(): string | null {
       return kind;
+    },
+    getContentSnapshot(): ModalPickerContentSnapshot | null {
+      if (!state) return null;
+      return {
+        kind: state.kind ?? null,
+        title: state.title,
+        subtitle: state.subtitle ?? null,
+        body: state.body ?? null,
+        options: state.options.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description ?? null,
+          disabled: option.disabled === true,
+        })),
+      };
     },
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null {
       if (!state || !titleNode || !footerNode) {

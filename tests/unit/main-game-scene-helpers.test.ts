@@ -10,9 +10,7 @@ import {
 import {
   areLightingRectsEqual,
   canFileLiveIssue,
-  getFloorCompletionPresentation,
   formatAbilityTrigger,
-  getFloorRunOutcome,
   getLightingViewRect,
   LIGHTING_VIEW_BUFFER_PX,
   resolveDialogueLines,
@@ -53,145 +51,72 @@ const rectArb = fc.record({
   maxY: fc.integer({ min: -50, max: 50 }),
 });
 
-describe('getFloorRunOutcome', () => {
-  it('returns null when there is no Floor 1 scenario', () => {
-    const world = createTestWorld();
-    expect(world.floorScenario).toBeNull();
-    expect(getFloorRunOutcome(world)).toBeNull();
-  });
-
-  it('returns null while the run has no terminal summary', () => {
-    const world = freshFloor1World();
-    expect(world.floorScenario?.runSummary).toBeNull();
-    expect(getFloorRunOutcome(world)).toBeNull();
-  });
-
-  it('passes through the cleared_floor and failed_timeout outcomes', () => {
-    for (const outcome of ['cleared_floor', 'failed_timeout'] as const) {
-      const world = freshFloor1World();
-      world.floorScenario!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
-      expect(getFloorRunOutcome(world)).toBe(outcome);
-    }
-  });
-
-  it('returns cleared_floor for Floor 2 when staircaseDiscovered is true', () => {
-    const world = createTestWorld();
-    world.floorExtendedState = {
-      familyState: {
-        presentFamilies: [],
-        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-        betrayerFlag: false,
-        staircaseDiscovered: true,
-      },
-    };
-    expect(getFloorRunOutcome(world)).toBe('cleared_floor');
-  });
-
-  it('returns null for Floor 2 when staircaseDiscovered is false', () => {
-    const world = createTestWorld();
-    world.floorExtendedState = {
-      familyState: {
-        presentFamilies: [],
-        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-        betrayerFlag: false,
-        staircaseDiscovered: false,
-      },
-    };
-    expect(getFloorRunOutcome(world)).toBeNull();
-  });
-
-  it('returns null for Floor 2 when staircaseDiscovered is absent', () => {
-    const world = createTestWorld();
-    world.floorExtendedState = {
-      familyState: {
-        presentFamilies: [],
-        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-        betrayerFlag: false,
-      },
-    };
-    expect(getFloorRunOutcome(world)).toBeNull();
-  });
-});
-
 describe('canFileLiveIssue', () => {
   it('allows reporting during a live run regardless of which UX is open', () => {
     const world = freshFloor1World();
     world.state = 'playing';
-    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(true);
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(true);
   });
 
   it('blocks reporting while the picker is open or a submission is in flight', () => {
     const world = freshFloor1World();
     world.state = 'playing';
-    expect(canFileLiveIssue({ world, issueOpen: true, issueSubmitting: false })).toBe(false);
-    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: true })).toBe(false);
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: true,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: true,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
   });
 
   it('blocks reporting once the player is dead', () => {
     const world = freshFloor1World();
     world.state = 'game_over';
-    expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(false);
+    expect(
+      canFileLiveIssue({
+        world,
+        issueOpen: false,
+        issueSubmitting: false,
+        hasTerminalRunOutcome: false,
+      }),
+    ).toBe(false);
   });
 
   it('blocks reporting for the whole terminal/transition screen, not just the pending frame', () => {
     // The scene clears `floorCompletionMessagePending` as soon as it SHOWS the
     // completion or floor-transition screen, so the gate must key off the
-    // durable run outcome: it stays blocked across the ~1.45s restart timer.
+    // scenario's durable terminal outcome: it stays blocked across the ~1.45s
+    // restart timer of both the transition and terminal completion screens.
     for (const outcome of ['cleared_floor', 'failed_timeout'] as const) {
       const world = freshFloor1World();
       world.state = 'playing';
       world.floorScenario!.runSummary = { outcome, viewsEarned: 0, fansEarned: 0 };
-      expect(getFloorRunOutcome(world)).toBe(outcome);
-      expect(canFileLiveIssue({ world, issueOpen: false, issueSubmitting: false })).toBe(false);
-      // Both completion presentations (transition + terminal) stay blocked.
-      expect(getFloorCompletionPresentation(world, true)).not.toBeNull();
-      expect(getFloorCompletionPresentation(world, false)).not.toBeNull();
+      expect(
+        canFileLiveIssue({
+          world,
+          issueOpen: false,
+          issueSubmitting: false,
+          hasTerminalRunOutcome: true,
+        }),
+      ).toBe(false);
     }
-  });
-});
-
-describe('getFloorCompletionPresentation', () => {
-  it('returns null when the run has no terminal outcome yet', () => {
-    const world = freshFloor1World();
-    expect(getFloorCompletionPresentation(world, false)).toBeNull();
-  });
-
-  it('prioritizes timeout over every other completion presentation', () => {
-    const world = freshFloor1World();
-    world.floorScenario!.runSummary = { outcome: 'failed_timeout', viewsEarned: 0, fansEarned: 0 };
-    expect(getFloorCompletionPresentation(world, true)).toBe('failed_timeout');
-  });
-
-  it('prioritizes a configured floor transition over terminal staircase victory', () => {
-    const world = createTestWorld();
-    world.floorExtendedState = {
-      familyState: {
-        presentFamilies: [],
-        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-        betrayerFlag: false,
-        staircaseDiscovered: true,
-      },
-    };
-    expect(getFloorCompletionPresentation(world, true)).toBe('transition_to_next_floor');
-  });
-
-  it('falls back to terminal staircase victory when no next-floor callback is configured', () => {
-    const world = createTestWorld();
-    world.floorExtendedState = {
-      familyState: {
-        presentFamilies: [],
-        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
-        betrayerFlag: false,
-        staircaseDiscovered: true,
-      },
-    };
-    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_victory');
-  });
-
-  it('keeps non-family clear outcomes on the legacy terminal-complete branch without a transition', () => {
-    const world = freshFloor1World();
-    world.floorScenario!.runSummary = { outcome: 'cleared_floor', viewsEarned: 0, fansEarned: 0 };
-    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_complete');
   });
 });
 

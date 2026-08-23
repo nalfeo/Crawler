@@ -1,24 +1,30 @@
 /**
- * Floor 3 Companion Lab — slices 3–5.
+ * Floor 3 Companion Lab — slices 3–6.
  *
  * Text-mode sandbox for:
  * - rival targeting (different team id), player follow/idle leash,
  * - Guardian / Support persona movement through the real AI → movement pipeline (slice 4),
  * - combat-XP attribution, evolution, and ability unlocks via the real
- *   `applyDamage` → `companionProgressionSystem` pipeline (slice 5).
+ *   `applyDamage` → `companionProgressionSystem` pipeline (slice 5),
+ * - the real KO/recovery state machine, Rally Point instant recovery, and the
+ *   party-wipe predicate via `companionKOSystem` (slice 6).
  */
 import GUI from 'lil-gui';
 import { addComponent, set } from 'bitecs';
 import {
   Companion,
+  PartySlot,
   Team,
   applyDamage,
+  companionKOSystem,
   companionLearnedAbilityIds,
   companionProgressionSystem,
   createGameWorld,
+  _isPartyWiped,
   movementSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
+  spawnRallyPoint,
   type GameWorld,
 } from '../../core/index.js';
 import {
@@ -97,6 +103,11 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
         knockedOut: state.companionKnockedOut ? 1 : 0,
       }),
     );
+    // The wipe predicate (`_isPartyWiped`) only counts recruited party members,
+    // i.e. Companions carrying a `PartySlot` (see `recruitPartyCompanion`).
+    // Attach one here so the lab's "party wiped" panel actually reflects the
+    // predicate instead of reading a permanent `false`.
+    addComponent(world.ecs, companionEid, set(PartySlot, { slot: 0, locked: 0 }));
     if (state.spawnRival) {
       rivalEid = spawnBehaviorEnemy(
         world,
@@ -147,6 +158,32 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     render();
   }
 
+  function koCompanionNow(): void {
+    if (companionEid < 0) return;
+    world.stores.health.current[companionEid] = 0;
+    companionKOSystem(world);
+    render();
+  }
+
+  function advanceFrames(count: number): void {
+    for (let i = 0; i < count; i++) {
+      world.frameCount += 1;
+      companionKOSystem(world);
+    }
+    render();
+  }
+
+  function placeRallyPoint(): void {
+    if (playerEid < 0) return;
+    spawnRallyPoint(
+      world,
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    companionKOSystem(world);
+    render();
+  }
+
   function render(): void {
     const beforeX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
     const beforeY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
@@ -192,6 +229,17 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(`slice 5 — companion progression (ember-charger):`);
       lines.push(`  level=${level} xp=${xp.toFixed(1)} form=${form} (${formName})`);
       lines.push(`  abilities learned: ${abilities.join(', ')}`);
+      lines.push('');
+      const knockedOut = (world.stores.companion.knockedOut[companionEid] ?? 0) === 1;
+      const idleSince = world.companionEngagementIdleSince.get(TeamId.PLAYER);
+      lines.push(`slice 6 — KO/recovery (frame=${world.frameCount}):`);
+      lines.push(
+        `  companion hp=${(world.stores.health.current[companionEid] ?? 0).toFixed(0)}/${(world.stores.health.max[companionEid] ?? 0).toFixed(0)} knockedOut=${knockedOut}`,
+      );
+      lines.push(
+        `  idleSinceFrame=${idleSince ?? '-'} engagementEndFrames=${tuning.floor3Companion.engagementEndFrames}`,
+      );
+      lines.push(`  party wiped (_isPartyWiped)=${_isPartyWiped(world, TeamId.PLAYER)}`);
     }
     panel.textContent = lines.join('\n');
   }
@@ -238,6 +286,9 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     .onChange(() => applyState());
   gui.add(state, 'attackDamage', 1, 100, 1).name('Attack damage');
   gui.add({ attack: () => attackRival() }, 'attack').name('⚔ Companion attacks rival');
+  gui.add({ koNow: () => koCompanionNow() }, 'koNow').name('💥 KO companion now');
+  gui.add({ advance60: () => advanceFrames(60) }, 'advance60').name('⏱ Advance 60 frames (~1s)');
+  gui.add({ rally: () => placeRallyPoint() }, 'rally').name('🏳 Place Rally Point at player');
   gui.add({ reseed: () => reseed() }, 'reseed').name('↻ Reseed');
 
   reseed();
@@ -250,6 +301,6 @@ registerLab('floor3-companion-lab', {
   category: 'Entities' as LabCategory,
   name: 'Floor 3 Companion Lab',
   description:
-    'Floor 3 — inspect companion targeting, Guardian/Support persona movement, and slice-5 combat-XP/evolution/ability progression.',
+    'Floor 3 — inspect companion targeting, Guardian/Support persona movement, slice-5 combat-XP/evolution/ability progression, and slice-6 KO/recovery + Rally Point.',
   create: createFloor3CompanionLab,
 });
