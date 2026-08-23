@@ -18,10 +18,6 @@ const FLOOR2_EQUIPMENT_REWARDS_INVALID_MESSAGE =
 const FLOOR2_EQUIPMENT_REWARDS_WRONG_FLOOR_MESSAGE =
   'Floor 2 equipment rewards are only available on Floor 2';
 
-function isFloor2World(world: GameWorld): boolean {
-  return world.floorId ? world.floorId === 'floor2' : world.floor === 2;
-}
-
 /**
  * Shared generated-equipment economy dependency gate. Floor-specific consumers
  * remain responsible for checking whether their floor exposes the economy.
@@ -49,11 +45,14 @@ export function getEquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEcon
 
 /**
  * Quartermaster generation and purchasing may proceed only when the economy
- * slice is explicitly enabled with its full dependency closure on Floor 2.
- * Fail closed on any other floor regardless of flag values.
+ * slice is explicitly enabled with its full dependency closure on a floor
+ * that opts into `settlementEquipmentEconomy` (see shared/floor-behavior.ts)
+ * — a manifest-driven gate rather than a hardcoded floor id, though only
+ * Floor 2 currently opts in. Fail closed on any floor that doesn't, regardless
+ * of the per-world flag values.
  */
 export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
-  if (!isFloor2World(world)) {
+  if (!getWorldFloorBehavior(world).settlementEquipmentEconomy) {
     return {
       kind: 'disabled',
       message: FLOOR2_EQUIPMENT_ECONOMY_WRONG_FLOOR_MESSAGE,
@@ -66,13 +65,15 @@ export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2Equipme
  * Achievement equipment reward RESOLUTION (resolving an unlocked achievement's
  * reward into an immutable generated bundle) may proceed only when the dedicated
  * `floor2EquipmentRewards` flag is enabled with its full dependency closure
- * (registry + catalog) on Floor 2. This is intentionally distinct from the
- * Quartermaster/boss-chest economy gate: reward bundles are a separate feature
- * flag. Fail closed on any other floor regardless of flag values, which keeps
- * Floor 1 equipment-free.
+ * (registry + catalog) on a floor that opts into `settlementEquipmentEconomy`.
+ * This is intentionally distinct from the Quartermaster/boss-chest economy
+ * gate: reward bundles are a separate feature flag. Fail closed on any floor
+ * that doesn't opt in, regardless of the per-world flag values — which keeps
+ * Floor 1 free of achievement reward bundles even though it separately opts
+ * into `equipmentEconomy` for boss-chest drops.
  */
 export function getFloor2EquipmentRewardsAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
-  if (!isFloor2World(world)) {
+  if (!getWorldFloorBehavior(world).settlementEquipmentEconomy) {
     return {
       kind: 'disabled',
       message: FLOOR2_EQUIPMENT_REWARDS_WRONG_FLOOR_MESSAGE,
