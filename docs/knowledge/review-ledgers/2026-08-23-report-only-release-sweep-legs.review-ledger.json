@@ -29,7 +29,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "copilot-swe-agent",
-      "head_sha": "cb3e6c99",
+      "head_sha": "c6bc3dc3",
       "findings": [],
       "criteria": {
         "correctness": 5,
