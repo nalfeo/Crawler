@@ -14,7 +14,7 @@ import type { GameWorld } from '../world.js';
 import { getActiveQuests, getQuestObjectiveViews } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
-import { resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
+import { pickRoomAnchorCell, resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
 
 /** Coarse classification used by the HUD to colour the marker/arrow. */
 export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
@@ -22,9 +22,24 @@ export type QuestWaypointKind = 'npc' | 'item' | 'combat' | 'stairs';
 export interface QuestWaypoint {
   /** Stable identity used to retain one HUD arrow per active quest. */
   readonly questId: string;
-  /** Target position in feet (world space). */
+  /**
+   * Precise target position in feet (world space) — the objective's actual
+   * NPC/item/tile location. Always exact; never adjusted for shared rooms.
+   * Consumers that show a single tracked marker (e.g. the minimap) should
+   * read this field.
+   */
   readonly x: number;
   readonly y: number;
+  /**
+   * Direction used to compute off-screen arrow angle/distance. Equal to
+   * `x`/`y` unless another active quest shares this quest's room with a
+   * different precise target, in which case both are normalized to the
+   * room's deterministic anchor so co-located quests don't point in
+   * conflicting directions. Multi-arrow HUDs (e.g. `HudDirectionArrows`)
+   * should use these fields instead of `x`/`y`.
+   */
+  readonly dirX: number;
+  readonly dirY: number;
   /** Human-readable label, mirrors the active objective's label. */
   readonly label: string;
   readonly kind: QuestWaypointKind;
@@ -135,6 +150,58 @@ function objectiveTarget(
   }
 }
 
+function normalizeSharedRoomTargets(
+  world: GameWorld,
+  waypoints: readonly QuestWaypoint[],
+): QuestWaypoint[] {
+  const floorMap = world.floorMap;
+  if (!floorMap || waypoints.length < 2) {
+    return [...waypoints];
+  }
+
+  const indicesByRoom = new Map<number, number[]>();
+  for (const [index, waypoint] of waypoints.entries()) {
+    const tile = floorMap.worldToTile(waypoint.x, waypoint.y);
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    if (roomId < 0) {
+      continue;
+    }
+    const indices = indicesByRoom.get(roomId) ?? [];
+    indices.push(index);
+    indicesByRoom.set(roomId, indices);
+  }
+
+  const normalized = [...waypoints];
+  for (const [roomId, indices] of indicesByRoom) {
+    const first = waypoints[indices[0]!]!;
+    if (
+      indices.length < 2 ||
+      indices.every((index) => {
+        const waypoint = waypoints[index]!;
+        return waypoint.x === first.x && waypoint.y === first.y;
+      })
+    ) {
+      continue;
+    }
+    const room = floorMap.roomGraph.get(roomId);
+    if (!room) {
+      continue;
+    }
+    const anchorTile = pickRoomAnchorCell(room) ?? {
+      x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+      y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+    };
+    const anchor = floorMap.tileToWorld(anchorTile.x, anchorTile.y);
+    for (const index of indices) {
+      // Only the direction fields move to the shared anchor; `x`/`y` stay
+      // precise so single-target consumers (e.g. the minimap tracked dot)
+      // still point at the objective's actual tile.
+      normalized[index] = { ...waypoints[index]!, dirX: anchor.x, dirY: anchor.y };
+    }
+  }
+  return normalized;
+}
+
 /**
  * Waypoints for every visible active quest's current step, in quest-log insertion
  * order. Quests without a fixed location (for example, grind-anywhere objectives)
@@ -195,9 +262,11 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
       questId: quest.questId,
       x: target.pos.x,
       y: target.pos.y,
+      dirX: target.pos.x,
+      dirY: target.pos.y,
       label: objDef.label,
       kind: target.kind,
     });
   }
-  return waypoints;
+  return normalizeSharedRoomTargets(world, waypoints);
 }
