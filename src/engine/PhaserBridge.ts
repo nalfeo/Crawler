@@ -62,6 +62,7 @@ import { MINI_SLIME_SPAWN_ANIM_MS } from '../shared/spawn-anim.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
 import {
   ENTITY_DEPTH,
+  PLAYER_DEPTH,
   PROP_DEPTH,
   TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
@@ -1034,8 +1035,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         img.setVisible(true);
         if (typeof img.setDepth === 'function') {
           // Just above the entity plane so the weapon reads as held in front of
-          // the body without escaping the world-space camera.
-          img.setDepth(ENTITY_DEPTH + 0.002);
+          // the player body without escaping the world-space camera.
+          img.setDepth(PLAYER_DEPTH + 0.002);
         }
       };
 
@@ -1347,6 +1348,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             arcGraphics.set(eid, ag);
             arcSpawnMs.set(eid, renderElapsedMs);
           }
+          // The swing replaces the (hidden) carried weapon, so it must read in
+          // front of the player body and the set-piece foreground props the
+          // player walks past. The arc trail sits just under the weapon sprite.
+          if (typeof ag.setDepth === 'function') {
+            ag.setDepth(PLAYER_DEPTH + 0.001);
+          }
           ag.clear();
 
           const bladeLen = ftToPx(meleeSwing.bladeLength[eid] ?? 0);
@@ -1548,6 +1555,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setPosition(handX, handY);
             // +π/2 aligns local-up (blade tip) with tipAngle (away from player)
             img.setRotation(tipAngle + Math.PI / 2);
+            if (typeof img.setDepth === 'function') {
+              // Matches the carried-weapon depth: in front of the player body
+              // (and of foreground props) while staying in world space.
+              img.setDepth(PLAYER_DEPTH + 0.002);
+            }
           }
           continue;
         }
@@ -1845,6 +1857,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                 arcGraphics.set(eid, ag);
                 arcSpawnMs.set(eid, renderElapsedMs);
               }
+              // Explicit reset: a recycled eid may carry a melee-swing arc that
+              // was raised above the player plane.
+              if (typeof ag.setDepth === 'function') {
+                ag.setDepth(ENTITY_DEPTH);
+              }
               ag.clear();
 
               // Calculate sweep progress (0→1 over the swing duration)
@@ -2048,6 +2065,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             }
             break;
+        }
+
+        if (entityType === 'player' && typeof img.setDepth === 'function') {
+          img.setDepth(PLAYER_DEPTH);
         }
 
         if (entityType === 'npc') {
