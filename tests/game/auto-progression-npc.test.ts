@@ -482,6 +482,31 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
   });
 
+  it('does not use collapse urgency to descend outside the marker radius', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 120;
+    world.stores.position.y[player] = 100;
+    world.elapsedMs = 599_999;
+    world.state = 'playing';
+    world.floorScenario = makeFloor1({
+      deadlineMs: 600_000,
+      markerRadiusFt: 4,
+      staircaseUnlocked: true,
+      staircaseDiscovered: false,
+      staircaseSpawned: true,
+      staircasePos: { x: 100, y: 100 },
+    });
+
+    autoFloor1ProgressionSystem(world, player, {
+      ...fakeProvider(decision({ state: AIState.EXPLORE })),
+      resolveFloor1PlanningDeadlineMs: () => world.elapsedMs,
+    });
+
+    expect(world.floorScenario.objective.staircaseDiscovered).toBe(false);
+    expect(world.state).toBe('playing');
+  });
+
   describe('post-boss farm-window stair-descend deferral (issue #3275 items 2 and 4)', () => {
     function stairWorld(): { world: GameWorld; player: number } {
       const world = createTestWorld();

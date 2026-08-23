@@ -372,6 +372,9 @@ export function autoFloor1ProgressionSystem(
 
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
+  const floor1PanicDeadlineMs =
+    aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
+    resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs);
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
   if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
@@ -383,14 +386,7 @@ export function autoFloor1ProgressionSystem(
   if (aiProvider?.isFarmingPostBossFloorTime?.(world, objective.deadlineMs) === true) {
     return;
   }
-  if (
-    shouldDeferStairDescend(
-      world,
-      'floor1',
-      aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
-        resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
-    )
-  ) {
+  if (shouldDeferStairDescend(world, 'floor1', floor1PanicDeadlineMs)) {
     return;
   }
   confirmFloor1StairDescend(world, playerEid);

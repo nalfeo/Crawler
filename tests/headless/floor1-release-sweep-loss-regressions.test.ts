@@ -26,6 +26,7 @@ describe('Floor 1 release sweep loss regressions', () => {
           maxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
           maxWallTimeMs: MAX_WALL_TIME_MS,
           forceWeaponId: weapon,
+          floorId: 'floor1',
         });
 
         expect(stats.startingWeapon).toBe(weapon);
