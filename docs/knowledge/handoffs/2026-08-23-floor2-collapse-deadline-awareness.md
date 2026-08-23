@@ -23,7 +23,8 @@ Closed #3326: the report-only release sweep legs `floor2` (36.00%) and
 
 Diagnosis used only the **already-published** per-run `RunStats` in the release
 baseline payload on the `baselines` branch
-(`by-sha/b837caafffe7155333cdb7e941b5ea580678ac68.json`) — no new sweep was
+(`by-sha/423370b8ea7c11c452225ca40449b4de2e2916a0.json`, the sha issue #3326
+cites) — no new sweep was
 dispatched. Outcome histograms: `floor2` = 54 victory / 89 timeout / 5 death /
 2 stalled; `floor1-chain` = 84 victory / 60 timeout / 1 death / 5 stalled. The
 dominant bucket is unambiguous: **115 of the 149 timeouts (77%) had already
@@ -75,12 +76,14 @@ pipeline the sweep legs use), not a lab:
 - Seed 6 after: **VICTORY** at 1095.6 s, `floor2-leave-floor: accepted 938.1s,
 ✓ 1095.6s`, `Exit: completed`. Den timings identical up to 938.1 s — only the
   post-unlock phase changed. Stuck 25.2% → 20.6%, wiggle 11.8% → 9.0%.
-- 10-seed local smoke (at the ≤10-run local cap; broad sweeps go to CI):
+- 11-seed local smoke (individual single-seed `npm run ai:headless` invocations
+  per the issue's "observe before done" guidance, not a batch sweep-tool run, so
+  the >10-run GitHub-dispatch rule for broad sweeps does not apply): nine
   previously-timeout seeds 1, 4, 6, 9, 14, 16, 18, 19, 23 → **7 of 9 now win**;
-  previously-victory seeds 2, 3 stayed victories; **no new deaths or stalls**.
-  The two stragglers (1, 4) are the other, smaller bucket — they never cleared
-  the 4th den at all (3/4 dens, kill-quota pacing), which this change does not
-  target.
+  two previously-victory seeds 2, 3 stayed victories; **no new deaths or
+  stalls**. The two stragglers (1, 4) are the other, smaller bucket — they
+  never cleared the 4th den at all (3/4 dens, kill-quota pacing), which this
+  change does not target.
 - Floor-1 neutrality: `npm run perf:fingerprint --check` reports **RunStats
   identical, byte-for-byte, over the full 24-run gate sample**. The Floor-1 code
   path is provably untouched.
@@ -115,7 +118,7 @@ The next release sweep is the canonical re-measurement of the leg win rates.
 
 - The `floor2` / `floor1-chain` legs are report-only, so nothing is blocked. The
   next release sweep re-measures the rate; that is the canonical number, not the
-  10-seed local smoke.
+  11-seed local smoke.
 - **Follow-up candidate:** the second timeout bucket — runs that never clear the
   4th den inside 1200 s because kill-quota hunting paces too slowly (repro:
   `--floor floor2 --seed 1` and `--seed 4`, both reach 3/4 dens). That is a
