@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { acceptQuest, setTrackedQuest } from '../../src/core/systems/questSystem.js';
-import {
-  getQuestWaypoints,
-  getTrackedQuestWaypoint,
-} from '../../src/core/systems/questWaypoints.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -243,20 +240,6 @@ describe('getQuestWaypoints', () => {
       FLOOR1_SHOP_QUEST_ID,
       FLOOR1_BOSS_BATTLE_QUEST_ID,
     ]);
-    expect(getTrackedQuestWaypoint(world)?.questId).toBe(FLOOR1_BOSS_BATTLE_QUEST_ID);
-  });
-
-  it('returns no tracked waypoint when the tracked objective has no fixed target', () => {
-    const world = withFloor1(createTestWorld());
-    spawnPlayer(world, 0, 0);
-    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
-    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-
-    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([
-      FLOOR1_FIND_WELCOME_QUEST_ID,
-    ]);
-    expect(getTrackedQuestWaypoint(world)).toBeUndefined();
   });
 
   it('does not return waypoints for completed quests', () => {

@@ -11,7 +11,7 @@
  * rendering imports — consumed by the engine HUD layer.
  */
 import type { GameWorld } from '../world.js';
-import { getActiveQuests, getQuestObjectiveViews, getTrackedQuest } from './questSystem.js';
+import { getActiveQuests, getQuestObjectiveViews } from './questSystem.js';
 import { getQuestDef } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
 import { resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
@@ -200,18 +200,4 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
     });
   }
   return waypoints;
-}
-
-/** The tracked quest's fixed waypoint, or undefined when its objective has no location. */
-export function getTrackedQuestWaypoint(
-  world: GameWorld,
-  playerEid?: number,
-): QuestWaypoint | undefined {
-  const trackedQuest = getTrackedQuest(world);
-  if (!trackedQuest) {
-    return undefined;
-  }
-  return getQuestWaypoints(world, playerEid).find(
-    (waypoint) => waypoint.questId === trackedQuest.questId,
-  );
 }
