@@ -525,6 +525,11 @@ jobs:
       #   floor1-chain 150 seeds, chained F1 → F2      (report-only; the ONLY
       #                leg that exercises the floor transition)
       #
+      # "Report-only" means a slip never fails this job — but it is NOT
+      # unwatched: both report-only legs are held to a 90% win-rate target and a
+      # breach files a Copilot-assigned investigation issue below, the same
+      # release-time treatment Floor 1's 100% invariant already gets.
+      #
       # Total run count is unchanged from the previous Floor-1-only 100-seed ×
       # 6-weapon baseline, so release wall time stays roughly neutral.
       #
@@ -831,6 +836,12 @@ jobs:
           BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
           BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
           BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+          # Second, independent verdict from the same baseline: the report-only
+          # legs (floor2, floor1-chain) held to their 90% win-rate target. Kept
+          # separate from the aggregate decision above so a Floor 1 loss — which
+          # short-circuits that decision — can never mask a Floor 2 breach in the
+          # same release (nalfeo/Crawler#3293).
+          LEG_WIN_RATE_FLOOR_RESULT: ${{ runner.temp }}/leg-win-rate-floor.json
         run: npx tsx scripts/agent/perf/baseline-regression-check.ts
 
       - name: File regression issue and assign Copilot
@@ -839,6 +850,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: node .github/scripts/baseline-regression-issue.mjs
+
+      # Report-only legs never fail the release; they file (or refresh) a single
+      # long-lived investigation issue, which is the release-workflow equivalent
+      # of the Floor 1 "must be 100%" check above.
+      - name: File report-only leg win-rate issue and assign Copilot
+        if: steps.baseline-regression.outputs.legWinRateFloorBreach == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/leg-win-rate-floor.json
         run: node .github/scripts/baseline-regression-issue.mjs
 
       - name: Upload baseline as artifact
