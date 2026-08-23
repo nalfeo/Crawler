@@ -14,6 +14,11 @@
  * `clearEntityStores` (see `src/core/spawners/entity-core.ts`), which every
  * removal/creation path already calls.
  *
+ * Runs BEFORE `companionKOSystem`/`dropSystem` in `runCoreSimulationStep`: a
+ * killed Companion target still reads `Health.current === 0` here, before
+ * `companionKOSystem` clamps it back to 1 for the KO/recovery state machine
+ * (slice 6) — this system must see the real 0 to detect the kill at all.
+ *
  * Multi-team credit: if two independent Companion teams both damage the same
  * third-party target before it dies, each team is scored from its own
  * perspective (its own damage total is its own 100% pool) rather than
@@ -80,11 +85,10 @@ function awardTeamXp(
     (eid) =>
       (world.stores.team.id[eid] ?? -1) === teamId &&
       (world.stores.companion.knockedOut[eid] ?? 0) === 0 &&
-      // Excludes teammates lingering in `DeathTimer` corpse state: their
-      // `Health.current` is already 0 but `dropSystem` has not yet removed
-      // them from the ECS, so they would otherwise still count as "living"
-      // for the assist-floor split (slice 6's KO/recovery state machine has
-      // not landed yet, so `knockedOut` alone cannot detect this case).
+      // Excludes a teammate that reached 0 HP this same frame: this system
+      // runs BEFORE `companionKOSystem`, so its `knockedOut` flag isn't set
+      // yet even though it just went down — this direct health check is what
+      // actually excludes it from the assist-floor split.
       (world.stores.health.current[eid] ?? 0) > 0,
   );
 
