@@ -14,6 +14,7 @@ import { createHudBossBar } from './HudBossBar.js';
 import { createHudAnnouncementBanner } from './HudAnnouncementBanner.js';
 import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
+import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
@@ -77,7 +78,10 @@ export function createHudUI(scene: Phaser.Scene): {
   getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
   getMinimapBounds(): ScreenBounds | null;
   getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
+  getMinimapOverlayWaypointDotIds(): readonly string[];
   getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   getBottomCenterBounds(): ScreenBounds;
   destroy(): void;
 } {
@@ -295,7 +299,10 @@ export function createHudUI(scene: Phaser.Scene): {
     getFamilyRelationshipsLayout: familyRelationships.getLayout,
     getMinimapBounds: minimap.getDockedBounds,
     getMinimapOverlayWaypointArrowBounds: minimap.getOverlayWaypointArrowBounds,
+    getMinimapOverlayWaypointArrowStates: minimap.getOverlayWaypointArrowStates,
+    getMinimapOverlayWaypointDotIds: minimap.getOverlayWaypointDotIds,
     getMinimapRadarWaypointArrowBounds: minimap.getRadarWaypointArrowBounds,
+    getMinimapRadarWaypointArrowStates: minimap.getRadarWaypointArrowStates,
     getBottomCenterBounds: () => {
       const b = bottomCenter.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
