@@ -6,16 +6,32 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
+      "completed": true,
       "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "rubber-duck/gpt-5.4 approved_with_changes. (1) headless regression test timeout 120s < two full runs (~163s observed) - raised to 420s with per-run maxWallTimeMs 180s. (2) widening isInSafeContext also widened achievementSystem floor2SafeRoomVisited, a location fact - carved back out to playerInSafeRoom || state===safe_room with a new regression test. Core predicate-split design approved as-is.",
+      "model": "gpt-5.4"
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
