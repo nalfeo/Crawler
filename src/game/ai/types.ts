@@ -185,6 +185,31 @@ export interface AIConfig {
    */
   farmPullWeight?: number;
   /**
+   * Fraction of the floor's total time budget this cohort keeps in reserve for
+   * the exit once the final boss is already dead.
+   *
+   * The floor deadline is a *budget*, not a target: with the boss down and the
+   * stairs unlocked there is nothing left that can fail except the clock, so a
+   * confident player spends the leftover time farming the floor for loot and XP
+   * instead of walking straight out. `1` opts a cohort out entirely (leave as
+   * soon as the stairs are open); `0.2` means "farm until only 20% of the floor
+   * budget is left, then go". Never farm past the reserve — see
+   * {@link resolvePostBossFarmWindow}.
+   */
+  postBossFarmReserveFraction?: number;
+  /**
+   * Multiplier applied to {@link collectPullWeight} and {@link farmPullWeight}
+   * while the collapse clock is *not* yet applying any pressure.
+   *
+   * The panic profile already scales both pulls **down** as the deadline
+   * approaches. The reverse was missing: with the whole floor budget still
+   * ahead, a confident player detours for loot and XP on the way to an
+   * objective rather than walking the shortest line to it. `1` = no boost
+   * (behavior identical to before this knob existed). Only ever applies at
+   * `panic === 0`, so it can never trade exit safety for loot.
+   */
+  calmFarmPullBoost?: number;
+  /**
    * A/B axis 1: how a Track A goal becomes a heading. Defaults to
    * {@link AIPathingMode.RISK_REWARD_FUSED} — the 2026-07-21 AI Sweep winner
    * (294/300 vs 286/300).
@@ -218,6 +243,16 @@ export interface AIInputProvider {
    * headless auto-progression driver to share the provider's exact budget.
    */
   resolveFloor1PlanningDeadlineMs?(objectiveDeadlineMs: number): number;
+
+  /**
+   * Whether the provider is deliberately holding the Floor 1 descend open so
+   * the run can farm its leftover floor budget (see
+   * `resolvePostBossFarmWindow`). The headless auto-progression driver asks
+   * before confirming a descend so it cannot exit the floor underneath a
+   * provider that is still farming. Providers without a farm window may omit
+   * this capability (treated as "not farming").
+   */
+  isFarmingPostBossFloorTime?(world: GameWorld, objectiveDeadlineMs: number): boolean;
 
   /**
    * Generate input for the current frame based on world state.

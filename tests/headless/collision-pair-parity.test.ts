@@ -280,6 +280,14 @@ interface CollisionFingerprint {
 //   seed  13: 3/183.00/5/0  →  3/141.60/5/0
 //   seed  42: 3/199.30/10/2 →  3/192.45/5/6
 //   seed 137: 3/152.72/5/0  →  2/113.68/0/0
+//
+// 2026-08-23 CI recovery — calm-clock farm pull boost default neutralized.
+// Issue #3275 item 2 remains as an opt-in persona/sweep axis, but the
+// production `BehaviorTreeAI` default is back to `calmFarmPullBoost: 1` until a
+// broad sweep promotes a non-neutral value. With the boost neutral, the
+// post-boss farm window cannot affect this first-1500-frame slice, so the guard
+// returns to the prior RISK_REWARD_FUSED fingerprint family. Verified stable
+// across two back-to-back invocations by the determinism assertion below.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
