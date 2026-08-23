@@ -13,6 +13,8 @@
  *     committed".
  *  5. Nonsense inputs fail closed (leave the floor) rather than farming
  *     forever.
+ *  6. The window is bounded even when the planning deadline is inflated by a
+ *     paused collapse clock — it must always close as `elapsedMs` grows.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -115,5 +117,38 @@ describe('post-boss farm window — fails closed', () => {
 
   it('does not farm on a negative reserve fraction', () => {
     expect(resolvePostBossFarmWindow(params({ reserveFraction: -0.5 })).farming).toBe(false);
+  });
+});
+
+describe('post-boss farm window — bounded against a paused collapse clock', () => {
+  // Floor 1 pauses the collapse deadline while the player stands in a safe
+  // room, so `planningDeadlineMs` can advance in lockstep with `elapsedMs`.
+  // Measuring the reserve against that inflated deadline made `remainingMs`
+  // constant and the window unclosable, which is one half of the seed-1
+  // stall beside the staircase. The clamp to `floorBudgetMs` restores
+  // strict monotonicity.
+  it('closes once the floor budget is spent even while the deadline keeps growing', () => {
+    const elapsedMs = 900_000;
+    expect(
+      resolvePostBossFarmWindow(params({ elapsedMs, planningDeadlineMs: elapsedMs + 200_000 }))
+        .farming,
+    ).toBe(false);
+  });
+
+  it('keeps remainingMs strictly decreasing in elapsedMs under a paused clock', () => {
+    const earlier = resolvePostBossFarmWindow(
+      params({ elapsedMs: 100_000, planningDeadlineMs: 100_000 + 500_000 }),
+    );
+    const later = resolvePostBossFarmWindow(
+      params({ elapsedMs: 200_000, planningDeadlineMs: 200_000 + 500_000 }),
+    );
+    expect(earlier.farming).toBe(true);
+    expect(later.remainingMs).toBeLessThan(earlier.remainingMs);
+  });
+
+  it('still honours a planning deadline tighter than the floor budget', () => {
+    expect(
+      resolvePostBossFarmWindow(params({ elapsedMs: 0, planningDeadlineMs: 100_000 })).farming,
+    ).toBe(false);
   });
 });

@@ -6,8 +6,16 @@
  * boss chased into a corner still dropped its chest in the centre of the arena.
  *
  * Item 5: "boss room turning to safe room after boss defeat doesn't seem to be
- * working." A cleared arena is the design's Commercial Break: it must read as a
- * safe space (collapse timer paused, customization open) once the boss is dead.
+ * working." A cleared arena is the design's Commercial Break: once the boss is
+ * dead the room must open the customization panels and be routable as a retreat
+ * anchor.
+ *
+ * It must NOT become an `isPointInSafeSpace` member, though: that predicate is
+ * the engine's combat-suppression contract (weapon disabled, enemies excluded,
+ * collapse deadline paused, AI switched into leave-the-safe-room mode with its
+ * anti-wedge watchdogs suspended). Floor 1's final arena owns the staircase, so
+ * promoting it stalled `seed=1 --weapon throwing-knife` beside the stairs and
+ * cost four Floor-1 wins in the release sweep (issue #3352).
  */
 
 import { removeEntity } from 'bitecs';
@@ -22,7 +30,12 @@ import {
   selectFloor1StarterWeapon,
 } from '../../src/game/floorScenario.js';
 import { questSystem } from '../../src/core/systems/questSystem.js';
-import { isPointInSafeSpace } from '../../src/core/safe-space.js';
+import {
+  isInSafeContext,
+  isPointInClearedArena,
+  isPointInSafeSpace,
+  safeRoomSystem,
+} from '../../src/core/safe-space.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -105,16 +118,30 @@ describe('floor1 boss chest drops at the death spot', () => {
   });
 });
 
-describe('floor1 cleared boss arena becomes a safe room', () => {
-  it('is hostile ground while the boss lives and safe once it is defeated', () => {
-    const { world } = startedSlimeRatWorld(123);
+describe('floor1 cleared boss arena becomes a customization space', () => {
+  it('is hostile ground while the boss lives and a cleared arena once it is defeated', () => {
+    const { world, player } = startedSlimeRatWorld(123);
     const objective = world.floorScenario!.objective;
     const { x, y } = objective.slimeRatRoomPos;
+    expect(isPointInClearedArena(world, x, y)).toBe(false);
     expect(isPointInSafeSpace(world, x, y)).toBe(false);
 
     removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
-    expect(isPointInSafeSpace(world, x, y)).toBe(true);
+    expect(isPointInClearedArena(world, x, y)).toBe(true);
+
+    // Standing in it opens the customization panels...
+    world.stores.position.x[player] = x;
+    world.stores.position.y[player] = y;
+    world.state = 'playing';
+    safeRoomSystem(world);
+    expect(world.playerInClearedArena).toBe(true);
+    expect(isInSafeContext(world)).toBe(true);
+
+    // ...but the arena is never a safe space, so the weapon stays live, enemies
+    // may still walk in, and the floor-collapse clock keeps running.
+    expect(isPointInSafeSpace(world, x, y)).toBe(false);
+    expect(world.playerInSafeRoom).toBe(false);
   });
 });
