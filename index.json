@@ -1,5 +1,39 @@
 [
   {
+    "commit": "0c8cbb081f2100e28e360ed2a211966be3118a65",
+    "commitDate": "2026-08-23T00:38:39Z",
+    "commitSubject": "Unify merchant shop UIs on a shared offer model and modal presenter (#3278)",
+    "capturedAt": "2026-08-23T02:03:22.613Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32609473014",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0c8cbb081f2100e28e360ed2a211966be3118a65.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.56,
+        "totalWins": 84,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36,
+      "gatePass": false,
+      "path": "by-sha/0c8cbb081f2100e28e360ed2a211966be3118a65.fun-report.json"
+    }
+  },
+  {
     "commit": "b837caafffe7155333cdb7e941b5ea580678ac68",
     "commitDate": "2026-08-22T23:30:41Z",
     "commitSubject": "Move Floor 2 win-rate floor from nightly balance issue into the release workflow (#3294)",
