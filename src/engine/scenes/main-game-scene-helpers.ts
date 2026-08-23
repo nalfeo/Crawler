@@ -32,6 +32,30 @@ import {
 /** Render-pixel padding added around the camera view when rebuilding light. */
 export const LIGHTING_VIEW_BUFFER_PX = 64;
 
+/**
+ * Whether the dev-build live issue flow may be opened right now.
+ *
+ * Terminal run states are excluded because their restart timers and
+ * outcome-specific run bundles need separate handling. `hasTerminalRunOutcome`
+ * is the scenario contract's durable terminal-outcome signal rather than the
+ * scene's transient "completion message pending" flag, which the scene clears
+ * as soon as it shows a completion or floor-transition screen — that flag would
+ * leave the reporter live over the floor-transition restart screen.
+ */
+export function canFileLiveIssue(params: {
+  readonly world: GameWorld;
+  readonly issueOpen: boolean;
+  readonly issueSubmitting: boolean;
+  readonly hasTerminalRunOutcome: boolean;
+}): boolean {
+  return (
+    !params.issueOpen &&
+    !params.issueSubmitting &&
+    !params.hasTerminalRunOutcome &&
+    params.world.state !== 'game_over'
+  );
+}
+
 /** Exact-equality of two light-field dirty rects (component-wise). */
 export function areLightingRectsEqual(a: LightFieldDirtyRect, b: LightFieldDirtyRect): boolean {
   return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;

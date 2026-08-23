@@ -29,8 +29,8 @@ describe('quest waypoint arrows deterministic guard', () => {
       .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID]);
   });
 
-  it('keeps crowded down-right arrows separated on the lower half of the rendered right edge', async () => {
-    await mainSceneProbe.primeCrowdedDownRightQuestWaypointArrows(page);
+  it('keeps same-room arrows separated with one shared direction in MainGameScene', async () => {
+    await mainSceneProbe.primeSameRoomQuestWaypointArrows(page);
     await expect
       .poll(() =>
         mainSceneProbe
@@ -38,19 +38,15 @@ describe('quest waypoint arrows deterministic guard', () => {
           .then((arrows) => arrows.map(({ questId }) => questId).sort()),
       )
       .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_FIND_WELCOME_QUEST_ID, FLOOR1_SHOP_QUEST_ID]);
-
     const arrows = await mainSceneProbe.getVisibleQuestArrowStates(page);
-    const targetOffsets = new Map([
-      [FLOOR1_FIND_WELCOME_QUEST_ID, { x: 100, y: 30 }],
-      [FLOOR1_SHOP_QUEST_ID, { x: 101, y: 30 }],
-      [FLOOR1_BOSS_BATTLE_QUEST_ID, { x: 102, y: 30 }],
-    ]);
-    for (const [index, arrow] of arrows.entries()) {
-      const target = targetOffsets.get(arrow.questId)!;
+    const sameRoomArrows = arrows.filter(
+      ({ questId }) => questId === FLOOR1_FIND_WELCOME_QUEST_ID || questId === FLOOR1_SHOP_QUEST_ID,
+    );
+    expect(sameRoomArrows).toHaveLength(2);
+    expect(sameRoomArrows[0]!.rotation).toBeCloseTo(sameRoomArrows[1]!.rotation);
+    for (const [index, arrow] of sameRoomArrows.entries()) {
       expect(arrow.x).toBeCloseTo(1184, 0);
-      expect(arrow.y).toBeGreaterThanOrEqual(360);
-      expect(arrow.rotation).toBeCloseTo(Math.atan2(target.y, target.x) + Math.PI / 2);
-      for (const other of arrows.slice(index + 1)) {
+      for (const other of sameRoomArrows.slice(index + 1)) {
         expect(Math.hypot(arrow.x - other.x, arrow.y - other.y)).toBeGreaterThanOrEqual(48);
       }
     }

@@ -16,6 +16,7 @@ import {
 } from '../../src/shared/quest-types.js';
 import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import type { GameWorld } from '../../src/core/world.js';
 
 const POS = {
@@ -211,6 +212,29 @@ describe('getQuestWaypoints', () => {
 
     const wps = getQuestWaypoints(world);
     expect(wps[0]).toMatchObject({ x: 64, y: 48, kind: 'npc' });
+  });
+
+  it('uses one room anchor for active quest NPCs in the same room', () => {
+    const world = withFloor1(createTestWorld());
+    world.floorMap = makeMapWithSafeRoom({ tileSizeFt: 4, withNormalRoom: true });
+    spawnPlayer(world, 0, 0);
+    const guide = spawnPlayer(world, 46, 46);
+    const shopkeeper = spawnPlayer(world, 50, 46);
+    world.floorScenario!.guideNpcEid = guide;
+    world.floorScenario!.shopkeeperNpcEid = shopkeeper;
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+
+    const wps = getQuestWaypoints(world);
+
+    expect(wps).toHaveLength(2);
+    // Precise positions are preserved (e.g. for the minimap tracked dot)...
+    expect(wps[0]).toMatchObject({ x: 46, y: 46 });
+    expect(wps[1]).toMatchObject({ x: 50, y: 46 });
+    // ...while the direction fields used by the multi-arrow HUD are
+    // normalized to a shared room anchor so the arrows agree.
+    expect(wps[0]!.dirX).toBe(wps[1]!.dirX);
+    expect(wps[0]!.dirY).toBe(wps[1]!.dirY);
   });
 
   it('returns one waypoint for every active quest that has a directional target', () => {
