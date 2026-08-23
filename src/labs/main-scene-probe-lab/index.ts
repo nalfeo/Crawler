@@ -1638,9 +1638,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         welcomeQuest.status = 'complete';
       }
       const merchantQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
-      const spellBrokerQuest = acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
-      if (spellBrokerQuest) {
-        spellBrokerQuest.progress['kill-slime-rat'] = 1;
+      const spellBrokerBossBattleQuest = acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      if (spellBrokerBossBattleQuest) {
+        spellBrokerBossBattleQuest.progress['kill-slime-rat'] = 1;
       }
       setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
       const px = world.stores.position.x[eid] ?? 0;

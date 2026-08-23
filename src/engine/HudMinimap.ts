@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { hasComponent, query } from 'bitecs';
 import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
+import { getQuestWaypoints, getTrackedQuestWaypoint } from '../core/systems/questWaypoints.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
@@ -383,6 +383,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let hudRadarScale = 1;
   let lastOverlayWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
   let lastRadarWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
+  let lastTrackedOverlayWaypointArrowBounds: ScreenBounds | null = null;
+  let lastTrackedRadarWaypointArrowBounds: ScreenBounds | null = null;
 
   function triangleBounds(
     ax: number,
@@ -766,10 +768,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
   function drawOverlayArrows(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
     overlayArrowGraphics.clear();
     lastOverlayWaypointArrowBounds = [];
+    lastTrackedOverlayWaypointArrowBounds = null;
     if (!viewState) {
       return;
     }
     const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
+    const trackedWaypointId = getTrackedQuestWaypoint(world, playerEid)?.questId ?? null;
     for (const waypoint of getQuestWaypoints(world, playerEid)) {
       const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
@@ -813,17 +817,21 @@ export function createHudMinimap(scene: Phaser.Scene): {
       overlayArrowGraphics.fillPath();
       overlayArrowGraphics.lineStyle(1, 0x020617, 0.7);
       overlayArrowGraphics.strokePath();
+      const bounds = triangleBounds(
+        tipX,
+        tipY,
+        backX - perpX,
+        backY - perpY,
+        backX + perpX,
+        backY + perpY,
+      );
       lastOverlayWaypointArrowBounds.push({
         questId: waypoint.questId,
-        bounds: triangleBounds(
-          tipX,
-          tipY,
-          backX - perpX,
-          backY - perpY,
-          backX + perpX,
-          backY + perpY,
-        ),
+        bounds,
       });
+      if (waypoint.questId === trackedWaypointId) {
+        lastTrackedOverlayWaypointArrowBounds = bounds;
+      }
     }
   }
 
@@ -839,6 +847,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     visited: Uint8Array,
   ): void {
     lastRadarWaypointArrowBounds = [];
+    lastTrackedRadarWaypointArrowBounds = null;
     const tileFt = floorMap.config.tileSizeFt;
     let ptx = lastPlayerWorldX / tileFt;
     let pty = lastPlayerWorldY / tileFt;
@@ -975,6 +984,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     // Quest waypoint blips — active objectives, always shown.
     // If a waypoint is outside the radar dial, a small edge arrow points toward it.
+    const trackedWaypointId = getTrackedQuestWaypoint(world, playerEid)?.questId ?? null;
     for (const waypoint of getQuestWaypoints(world, playerEid)) {
       const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
       const wx = localX(wpTile.x + 0.5);
@@ -1015,15 +1025,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
           );
           const radarOriginX = hudRadarCenterX - HUD_RADAR_RADIUS * hudRadarScale;
           const radarOriginY = hudRadarCenterY - HUD_RADAR_RADIUS * hudRadarScale;
+          const bounds = {
+            x: radarOriginX + localBounds.x * hudRadarScale,
+            y: radarOriginY + localBounds.y * hudRadarScale,
+            width: localBounds.width * hudRadarScale,
+            height: localBounds.height * hudRadarScale,
+          };
           lastRadarWaypointArrowBounds.push({
             questId: waypoint.questId,
-            bounds: {
-              x: radarOriginX + localBounds.x * hudRadarScale,
-              y: radarOriginY + localBounds.y * hudRadarScale,
-              width: localBounds.width * hudRadarScale,
-              height: localBounds.height * hudRadarScale,
-            },
+            bounds,
           });
+          if (waypoint.questId === trackedWaypointId) {
+            lastTrackedRadarWaypointArrowBounds = bounds;
+          }
         }
       }
     }
@@ -1451,7 +1465,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
     getOverlayWaypointArrowBounds: (): ScreenBounds | null =>
-      overlayOpen && !masterHidden ? (lastOverlayWaypointArrowBounds[0]?.bounds ?? null) : null,
+      overlayOpen && !masterHidden ? lastTrackedOverlayWaypointArrowBounds : null,
     getOverlayWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
       overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : [],
     getDockedBounds: (): ScreenBounds | null => {
@@ -1465,7 +1479,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return { x, y, width: right - x, height: bottom - y };
     },
     getRadarWaypointArrowBounds: (): ScreenBounds | null =>
-      !masterHidden && hudMapBg.visible ? (lastRadarWaypointArrowBounds[0]?.bounds ?? null) : null,
+      !masterHidden && hudMapBg.visible ? lastTrackedRadarWaypointArrowBounds : null,
     getRadarWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
       !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : [],
     destroy,
