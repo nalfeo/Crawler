@@ -6787,17 +6787,31 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerInTerritory =
       territoryZone !== null &&
       this.resolveFloor2HuntTerritoryMembership(world, familyId, territoryZone, playerX, playerY);
-    const familyEnemy =
-      playerInTerritory && territoryZone
-        ? this.findNearestFloor2HuntEnemy(
-            world,
-            familyId,
-            playerX,
-            playerY,
-            FLOOR2_HUNT_CHASE_RADIUS_FT,
-            false,
-          )
-        : null;
+    // Deliberately NOT gated on `playerInTerritory`/`territoryZone`, unlike
+    // `territoryEnemy` below. A committed family member can (and, on some
+    // generated maps, routinely does) sit just outside the authored
+    // territory circle — `findNearestFloor2HuntEnemy` here has no zone bound
+    // of its own, only the chase radius. Gating this on `playerInTerritory`
+    // creates a self-defeating feedback loop: chasing that enemy pulls the
+    // player outside the zone, `resolveFloor2HuntTerritoryMembership` latches
+    // false, the *next* poll drops the chase (this becomes `null`) and falls
+    // back to the in-zone patrol target, which pulls the player back inside
+    // the zone, re-latching true and re-acquiring the same enemy — a stable
+    // ~1s oscillation that never closes the last 50-90ft to the target and
+    // can burn the rest of Floor 2's collapse timer never finishing the den
+    // (see 2026-08-23 floor2-last-family-hunt-pacing handoff, repro seed 1).
+    // The trash-kill quota is not territory-scoped either (`floor2Scenario.ts`
+    // counts a kill anywhere on the map), so there is no correctness reason
+    // to require zone membership before pursuing a known family target that
+    // is already within chase range.
+    const familyEnemy = this.findNearestFloor2HuntEnemy(
+      world,
+      familyId,
+      playerX,
+      playerY,
+      FLOOR2_HUNT_CHASE_RADIUS_FT,
+      false,
+    );
     const territoryEnemy =
       playerInTerritory && territoryZone
         ? this.findNearestFloor2HuntEnemy(
