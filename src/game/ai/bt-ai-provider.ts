@@ -7559,9 +7559,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&
       spellBrokerIntent.purchaseStatus === 'returning' &&
-      objective.bossBattles.get('slime-rat')!.defeated &&
-      objective.bossBattles.get('staircase')!.defeated
+      objective.bossBattles.get('slime-rat')?.defeated === true &&
+      objective.bossBattles.get('staircase')?.defeated === true
     ) {
+      const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
+      if (spellQuestGiverNpcEid == null) return null;
       const reason = 'Returning to the Spell Broker to purchase the offered spell';
       if (progressSuppressed)
         return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
@@ -7572,7 +7574,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerX,
           playerY,
           reason,
-          floorScenario.spellQuestGiverNpcEid ?? -1,
+          spellQuestGiverNpcEid,
         ),
       );
     }
