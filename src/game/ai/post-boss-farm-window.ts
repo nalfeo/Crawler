@@ -63,14 +63,12 @@ const CLOSED: PostBossFarmWindow = { farming: false, remainingMs: 0 };
  *
  * The planning deadline is clamped to {@link PostBossFarmWindowParams.floorBudgetMs}
  * so the window is measured against the floor's authored budget and NOT against
- * a deadline the player inflated by standing in a safe room. Floor 1 pauses the
- * collapse deadline inside safe rooms, and a cleared boss arena *becomes* a safe
- * room — the arena that holds the staircase. Without this clamp the deadline and
- * `elapsedMs` advance in lockstep while the AI waits by the stairs, the
- * remaining budget never falls to the reserve, and the window (plus the descend
- * the auto-progression driver defers to it) stays open forever: the run
- * livelocks and stalls out instead of taking the unlocked stairs. Clamping keeps
- * `remainingMs` strictly decreasing in `elapsedMs`, so the window always closes.
+ * a deadline the player inflated by standing in a safe room. This also guards
+ * against any future deadline drift at the staircase: if the deadline ever
+ * stopped falling while `elapsedMs` advanced, the remaining budget would never
+ * reach the reserve and the window (plus the descend the auto-progression driver
+ * defers to it) would stay open forever. Clamping keeps `remainingMs` strictly
+ * decreasing in `elapsedMs`, so the window always closes.
  */
 export function resolvePostBossFarmWindow(params: PostBossFarmWindowParams): PostBossFarmWindow {
   const {
