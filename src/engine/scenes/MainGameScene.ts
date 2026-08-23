@@ -4313,7 +4313,12 @@ export class MainGameScene extends Phaser.Scene {
    * should not additionally trigger the death screen.
    */
   private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
-    return !issueOpen && !this.issueReportSubmitting;
+    return (
+      !issueOpen &&
+      !this.issueReportSubmitting &&
+      this.world.state !== 'game_over' &&
+      !this.floorCompletionMessagePending
+    );
   }
 
   private nextIssueReportRunId(): string {

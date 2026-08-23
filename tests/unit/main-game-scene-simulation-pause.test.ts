@@ -68,9 +68,10 @@ describe('MainGameScene simulation pause / step accounting', () => {
     expect(source).toContain('!this.issueReportSubmitting &&');
   });
 
-  it('keeps issue reporting available independently of world and overlay state', () => {
-    expect(source).toContain('return !issueOpen && !this.issueReportSubmitting;');
+  it('keeps issue reporting independent of active UX while excluding terminal states', () => {
     expect(source).not.toMatch(/canFileIssue[\s\S]{0,300}isBlockingSurfaceOpen/);
+    expect(source).toContain("this.world.state !== 'game_over'");
+    expect(source).toContain('!this.floorCompletionMessagePending');
   });
 
   it('reuses the same prepared issue payload across retry attempts', () => {
