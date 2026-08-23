@@ -87,7 +87,7 @@ import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createBossIntroUI } from '../BossIntroUI.js';
 import { resolvePendingBossIntro } from '../boss-intro-state.js';
-import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createShopPanelUI } from '../shop/ShopPanelUI.js';
 import { createRunSurveyUI } from '../RunSurveyUI.js';
 import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
 import { submitRunSurvey } from '../run-bundle-upload.js';
@@ -159,7 +159,13 @@ import {
   purchaseSettlementShopOffer,
   type SettlementShopOfferView,
 } from '../../core/settlement-shop-purchase.js';
-import type { ShopPanelOfferView } from '../QuartermasterUI.js';
+import type { ShopPanelOfferView } from '../shop/ShopPanelUI.js';
+import {
+  blockReasonFromGold,
+  describeShopPurchaseFailure,
+  type ShopOffer,
+} from '../shop/shop-offer-model.js';
+import { openShopModal } from '../shop/shop-modal-presenter.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -722,7 +728,7 @@ export class MainGameScene extends Phaser.Scene {
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
-  private quartermasterUI?: ReturnType<typeof createQuartermasterUI>;
+  private shopPanelUI?: ReturnType<typeof createShopPanelUI>;
   /** Procedural WebAudio synth backing the reward-opening audio cues; safe no-op if unavailable. */
   private rewardAudioEngine?: ReturnType<typeof createAudioCueEngine>;
   private rewardAudioController?: ReturnType<typeof createRewardOpeningAudioController>;
@@ -1102,7 +1108,7 @@ export class MainGameScene extends Phaser.Scene {
         this.resumePendingRewardPresentations();
       },
     });
-    this.quartermasterUI = createQuartermasterUI(this, {
+    this.shopPanelUI = createShopPanelUI(this, {
       getPlayerEid: () => (this.playerEid >= 0 ? this.playerEid : undefined),
       getTitle: (world) => this.resolveSettlementShopPanelTitle(world),
       getOffers: (world, playerEid) => this.getSettlementShopPanelOffers(world, playerEid),
@@ -1113,13 +1119,7 @@ export class MainGameScene extends Phaser.Scene {
           this.hudUi?.sync(this.world, this.playerEid);
           this.inventoryUI?.refresh(this.world);
         } else {
-          this.flashHint(
-            result.reason === 'inventory-capacity'
-              ? 'Purchase failed — inventory is full.'
-              : result.reason === 'insufficient-funds'
-                ? 'Purchase failed — not enough gold.'
-                : 'Purchase failed — shop stock changed.',
-          );
+          this.flashHint(describeShopPurchaseFailure(result.reason));
         }
       },
       onPanelClosed: () => {
@@ -1313,8 +1313,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsUI = undefined;
       this.rewardOpeningUI?.destroy();
       this.rewardOpeningUI = undefined;
-      this.quartermasterUI?.destroy();
-      this.quartermasterUI = undefined;
+      this.shopPanelUI?.destroy();
+      this.shopPanelUI = undefined;
       this.rewardAudioEngine?.dispose();
       this.rewardAudioEngine = undefined;
       this.achievementsButton?.destroy();
@@ -1665,7 +1665,7 @@ export class MainGameScene extends Phaser.Scene {
       return { ok: false, reason: 'none-purchasable' };
     }
     const result = this.purchaseSettlementShopPanelOffer(this.world, this.playerEid, offer);
-    this.quartermasterUI?.refresh(this.world);
+    this.shopPanelUI?.refresh(this.world);
     if (!result.ok) {
       return result;
     }
@@ -1686,10 +1686,10 @@ export class MainGameScene extends Phaser.Scene {
     this.activeSettlementShopNpcEid = npcEid;
     this.closeMapOverlayIfOpen();
     this.closeCharacterPanels({ keepQuartermaster: true });
-    if (this.quartermasterUI?.isOpen()) {
-      this.quartermasterUI.refresh(this.world);
+    if (this.shopPanelUI?.isOpen()) {
+      this.shopPanelUI.refresh(this.world);
     } else {
-      this.quartermasterUI?.toggle(this.world);
+      this.shopPanelUI?.toggle(this.world);
     }
   }
 
@@ -1817,8 +1817,8 @@ export class MainGameScene extends Phaser.Scene {
     if (!keepAchievements && this.achievementsUI?.isOpen()) {
       this.achievementsUI.toggle(this.world);
     }
-    if (!keepQuartermaster && this.quartermasterUI?.isOpen()) {
-      this.quartermasterUI.toggle(this.world);
+    if (!keepQuartermaster && this.shopPanelUI?.isOpen()) {
+      this.shopPanelUI.toggle(this.world);
     }
     if (!keepEquipment && this.equipmentUI?.isOpen()) {
       this.equipmentUI.toggle(this.world);
@@ -1839,7 +1839,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
-      (this.quartermasterUI?.isOpen() ?? false) ||
+      (this.shopPanelUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
   }
@@ -2171,7 +2171,7 @@ export class MainGameScene extends Phaser.Scene {
     const inventoryOpen = this.inventoryUI?.isOpen() ?? false;
     const equipOpen = this.equipmentUI?.isOpen() ?? false;
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
-    const quartermasterOpen = this.quartermasterUI?.isOpen() ?? false;
+    const quartermasterOpen = this.shopPanelUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
@@ -2317,14 +2317,14 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedQuartermasterToggle = false;
     this.queuedSettlementShopNpcEid = null;
     if (quartermasterOpen && quartermasterToggleRequested) {
-      this.quartermasterUI?.toggle(this.world);
+      this.shopPanelUI?.toggle(this.world);
     } else if (settlementShopNpcEidRequested !== null && safeCtx && !isUiLockOpen()) {
       this.openSettlementShopPanel(settlementShopNpcEidRequested);
-    } else if (this.quartermasterUI?.isOpen()) {
+    } else if (this.shopPanelUI?.isOpen()) {
       if (safeCtx) {
-        this.quartermasterUI.refresh(this.world);
+        this.shopPanelUI.refresh(this.world);
       } else {
-        this.quartermasterUI.toggle(this.world);
+        this.shopPanelUI.toggle(this.world);
       }
     }
 
@@ -4033,14 +4033,14 @@ export class MainGameScene extends Phaser.Scene {
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
-      (this.quartermasterUI?.isOpen() ?? false) ||
+      (this.shopPanelUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.bossIntroUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
-    const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
+    const quartermasterOpen2 = this.shopPanelUI?.isOpen() ?? false;
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -5008,35 +5008,30 @@ export class MainGameScene extends Phaser.Scene {
         return true;
       }
       const affordable = this.world.playerGold >= shop.equipmentCost;
-      const shortfall = Math.max(0, shop.equipmentCost - this.world.playerGold);
-      this.modalPicker.open(
+      const offer: ShopOffer = {
+        id: 'buy-equipment',
+        name: shop.equipmentName,
+        priceGold: shop.equipmentCost,
+        detail: 'A faintly damp, weirdly lucky charm.',
+        purchasable: affordable,
+        blockedReason: 'insufficient-funds',
+      };
+      openShopModal(
+        this.modalPicker,
         {
           title: "The Merchant's Wares",
-          subtitle: `Gold: ${this.world.playerGold}`,
           body: affordable
             ? `Buy the ${shop.equipmentName} for ${shop.equipmentCost} gold?`
             : `The ${shop.equipmentName} costs ${shop.equipmentCost} gold. You can't afford it yet.`,
-          options: affordable
-            ? [
-                {
-                  id: 'buy-equipment',
-                  label: `Buy ${shop.equipmentName} (${shop.equipmentCost}g)`,
-                  description: 'A faintly damp, weirdly lucky charm.',
-                },
-              ]
-            : [
-                {
-                  id: 'need-more-gold',
-                  label: `Need ${shortfall} more gold`,
-                  description: 'Leave and come back after looting a little more.',
-                },
-              ],
-          allowCancel: true,
-          initialSelectedId: affordable ? 'buy-equipment' : 'need-more-gold',
+          gold: this.world.playerGold,
+          offers: [offer],
+          // The quest merchant always shows its ware, even unaffordably, so the
+          // player learns what to save for instead of falling through to chat.
+          whenNothingPurchasable: 'open-disabled',
         },
         {
-          onConfirm: () => {
-            if (affordable && shop.purchase(this.world, this.playerEid)) {
+          onPurchase: () => {
+            if (shop.purchase(this.world, this.playerEid)) {
               this.flashHint('Purchased! Press [I] then [G] to equip your gear.');
               this.inventoryUI?.refresh(this.world);
             }
@@ -5059,9 +5054,9 @@ export class MainGameScene extends Phaser.Scene {
       if (stock.length <= 0) {
         return false;
       }
-      const optionRows = stock.map((entry) => {
+      const bag = this.world.inventories.get(this.playerEid);
+      const offers: ShopOffer[] = stock.map((entry) => {
         const item = getItemById(entry.itemId);
-        const bag = this.world.inventories.get(this.playerEid);
         const owned =
           item !== undefined &&
           bag !== undefined &&
@@ -5069,37 +5064,38 @@ export class MainGameScene extends Phaser.Scene {
         const affordable = this.world.playerGold >= entry.cost;
         return {
           id: `shop-stock:${entry.itemId}`,
-          label: item ? `${item.name} (${entry.cost}g)` : `${entry.itemId} (${entry.cost}g)`,
-          description: owned ? 'Already owned.' : (item?.description ?? 'Unknown item.'),
-          disabled: owned || !affordable,
+          name: item?.name ?? entry.itemId,
+          priceGold: entry.cost,
+          detail: item?.description ?? 'Unknown item.',
+          owned,
+          purchasable: !owned && affordable,
+          blockedReason: owned ? 'owned' : 'insufficient-funds',
         };
       });
-      const firstEnabled = optionRows.find((row) => !row.disabled);
-      if (!firstEnabled) {
-        this.flashHint('No affordable merchant stock right now.');
-        return false;
-      }
-      this.modalPicker.open(
+      return openShopModal(
+        this.modalPicker,
         {
           title: "The Merchant's Extra Wares",
-          subtitle: `Gold: ${this.world.playerGold}`,
           body: 'Fresh basics for the next rounds: weapons.',
-          options: optionRows,
-          allowCancel: true,
-          initialSelectedId: firstEnabled?.id ?? optionRows[0]?.id,
+          gold: this.world.playerGold,
+          offers,
         },
         {
-          onConfirm: ({ option }) => {
-            const itemId = option.id.replace(/^shop-stock:/, '');
+          onPurchase: (purchased) => {
+            const itemId = purchased.id.replace(/^shop-stock:/, '');
             if (shop.purchasePostQuestItem?.(this.world, this.playerEid, itemId)) {
               this.flashHint('Purchased and added to your bag.');
               this.inventoryUI?.refresh(this.world);
             }
             this.updateOverlayText();
           },
+          onDeclined: (reason) => {
+            if (reason === 'nothing-purchasable') {
+              this.flashHint('No affordable merchant stock right now.');
+            }
+          },
         },
       );
-      return true;
     }
     return false;
   }
@@ -5118,39 +5114,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     if (this.world.featureUnlocks.spells !== true) return false;
     broker.meet(this.world);
-    const offers = broker.getSpellBrokerOffers(this.world);
-    const options = offers.map((offer) => ({
+    const brokerOffers = broker.getSpellBrokerOffers(this.world);
+    const offers: ShopOffer[] = brokerOffers.map((offer) => ({
       id: offer.spellId,
-      label: `${getAbilityPresentation(offer.spellId)?.name ?? offer.spellId} (${offer.cost}g)`,
-      description: offer.purchased
-        ? 'Already purchased this run.'
-        : 'A permanent spell for this run. One purchase per offer.',
-      disabled:
-        offer.purchased || !broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+      name: getAbilityPresentation(offer.spellId)?.name ?? offer.spellId,
+      priceGold: offer.cost,
+      detail: 'A permanent spell for this run. One purchase per offer.',
+      owned: offer.purchased,
+      purchasable:
+        !offer.purchased && broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+      // The Broker refuses spells for reasons beyond price (already learned this
+      // run, no free ability slot), so only claim a gold shortfall when gold is
+      // actually short.
+      blockedReason: offer.purchased
+        ? 'owned'
+        : blockReasonFromGold(offer.cost, this.world.playerGold),
     }));
-    if (options.length === 0 || options.every((option) => option.disabled)) {
-      return false;
-    }
-    if (this.modalPicker.isOpen()) return true;
-    this.modalPicker.open(
+    return openShopModal(
+      this.modalPicker,
       {
         kind: 'spell-broker',
         title: 'The Spell Broker',
-        subtitle: `Gold: ${this.world.playerGold}`,
         body: 'Choose one expensive spell from the Broker’s rotating stock.',
-        options,
-        allowCancel: true,
-        initialSelectedId: options.find((option) => !option.disabled)?.id,
+        gold: this.world.playerGold,
+        offers,
       },
       {
-        onConfirm: ({ option }) => {
-          if (broker.purchaseSpell!(this.world, this.playerEid, option.id)) {
+        onPurchase: (purchased) => {
+          if (broker.purchaseSpell!(this.world, this.playerEid, purchased.id)) {
             this.flashHint('Spell purchased and memorized!');
             this.updateOverlayText();
           }
         },
       },
     );
-    return true;
   }
 }
