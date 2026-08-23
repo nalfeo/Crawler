@@ -1,6 +1,8 @@
-import { addComponent, hasComponent, query, set, setComponent } from 'bitecs';
+import { addComponent, hasComponent, query, removeEntity, set, setComponent } from 'bitecs';
 import {
   BroadcastScore,
+  Companion,
+  Enemy,
   Health,
   Player,
   Position,
@@ -371,33 +373,44 @@ function pickFloor3RosterSpawnTile(room: RoomData, index: number): { x: number; 
 }
 
 /**
- * Nearest passable tile to the map centre — the Final Four's "arena" point.
- * The floor3-biomes map generator (`cave-system.ts`) does not carve a
- * dedicated `RESOURCE_HEART` chamber the way the floor2-families layout does
- * (that physical set piece is spec slice 9's deliverable); this outward
- * spiral scan finds a guaranteed-passable rally point without requiring
- * generator changes in this slice.
+ * Up to `count` distinct passable tiles near the map centre, collected via an
+ * outward spiral scan — the Final Four's "arena" spawn points. The
+ * floor3-biomes map generator (`cave-system.ts`) does not carve a dedicated
+ * `RESOURCE_HEART` chamber the way the floor2-families layout does (that
+ * physical set piece is spec slice 9's deliverable); this scan finds
+ * guaranteed-passable points without requiring generator changes in this
+ * slice. Fanning the roster across several tiles (rather than stacking every
+ * Companion on one point) avoids overlapping spawns and gives the encounter
+ * some spatial spread (plan-review finding, slice 8). Falls back to
+ * repeating the last found tile (or the map centre) if fewer than `count`
+ * passable tiles exist.
  */
-function findFloor3ArenaTile(floorMap: NonNullable<GameWorld['floorMap']>): {
-  x: number;
-  y: number;
-} {
+function findFloor3ArenaTiles(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  count: number,
+  avoidTileFn?: (x: number, y: number) => boolean,
+): { x: number; y: number }[] {
   const cx = Math.floor(floorMap.width / 2);
   const cy = Math.floor(floorMap.height / 2);
-  if (floorMap.tileMap.isPassable(cx, cy)) return { x: cx, y: cy };
+  const isUsable = (x: number, y: number): boolean =>
+    floorMap.tileMap.isPassable(x, y) && (avoidTileFn === undefined || !avoidTileFn(x, y));
+  const found: { x: number; y: number }[] = [];
+  if (isUsable(cx, cy)) found.push({ x: cx, y: cy });
   const maxRadius = Math.max(floorMap.width, floorMap.height);
-  for (let radius = 1; radius <= maxRadius; radius += 1) {
-    for (let dy = -radius; dy <= radius; dy += 1) {
-      for (let dx = -radius; dx <= radius; dx += 1) {
+  for (let radius = 1; radius <= maxRadius && found.length < count; radius += 1) {
+    for (let dy = -radius; dy <= radius && found.length < count; dy += 1) {
+      for (let dx = -radius; dx <= radius && found.length < count; dx += 1) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
         const x = cx + dx;
         const y = cy + dy;
         if (!floorMap.tileMap.inBounds(x, y)) continue;
-        if (floorMap.tileMap.isPassable(x, y)) return { x, y };
+        if (isUsable(x, y)) found.push({ x, y });
       }
     }
   }
-  return { x: cx, y: cy };
+  if (found.length === 0) found.push({ x: cx, y: cy });
+  while (found.length < count) found.push(found[found.length - 1]!);
+  return found;
 }
 
 /**
@@ -425,18 +438,18 @@ function initializeFloor3Studios(
   selectedStudios.forEach((studio, studioIndex) => {
     const room =
       territoryRooms.length > 0 ? territoryRooms[studioIndex % territoryRooms.length] : undefined;
-    const teamIds: number[] = [];
+    // One team id shared by every Trainer's Companions in this Studio (not
+    // one per Trainer) — see the `teamIds` doc comment on `Floor3EncounterState`.
+    const teamId = nextStudioTeamId;
+    nextStudioTeamId += 1;
     let cellIndex = 0;
     for (const trainer of studio.trainers) {
-      const teamId = nextStudioTeamId;
-      nextStudioTeamId += 1;
-      teamIds.push(teamId);
       for (const companion of trainer.companions) {
         if (!room) continue;
         const tile = pickFloor3RosterSpawnTile(room, cellIndex);
         cellIndex += 1;
         const spawnPos = floorMap.tileToWorld(tile.x, tile.y);
-        spawnFloor3RosterCompanion(
+        const eid = spawnFloor3RosterCompanion(
           world,
           spawnPos.x,
           spawnPos.y,
@@ -444,27 +457,33 @@ function initializeFloor3Studios(
           companion.level,
           teamId,
         );
+        if (eid === undefined) {
+          throw new Error(
+            `floor3: Studio "${studio.studioId}" failed to spawn Companion "${companion.speciesId}" ` +
+              '(no wild archetype resolvable for its fighting style) — the Studio would be ' +
+              'permanently unwinnable. Fix the data before shipping.',
+          );
+        }
       }
     }
     studios.push({
       id: studio.studioId,
       name: studio.name,
-      teamIds,
+      teamIds: [teamId],
       roomId: room ? room.id : -1,
       defeated: false,
     });
   });
 
-  const finalFourTeamIds: number[] = [];
+  // One team id shared by every Handler's Companions in the Final Four.
+  const finalFourTeamId = FLOOR3_FINAL_FOUR_TEAM_BASE;
   const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
-  selectedFinalFour.forEach((handler, handlerIndex) => {
-    const teamId = FLOOR3_FINAL_FOUR_TEAM_BASE + handlerIndex;
-    finalFourTeamIds.push(teamId);
+  selectedFinalFour.forEach((handler) => {
     for (const companion of handler.companions) {
       finalFourPendingSpawns.push({
         speciesId: companion.speciesId,
         level: companion.level,
-        teamId,
+        teamId: finalFourTeamId,
       });
     }
   });
@@ -482,7 +501,7 @@ function initializeFloor3Studios(
     finalFour: {
       id: 'final-four',
       name: 'The Final Four',
-      teamIds: finalFourTeamIds,
+      teamIds: [finalFourTeamId],
       roomId: -1,
       defeated: false,
     },
@@ -491,14 +510,35 @@ function initializeFloor3Studios(
   };
 }
 
-/** Spawns the deferred Final Four roster at the arena tile and clears the pending list. */
+/** Spawns the deferred Final Four roster fanned across arena tiles and clears the pending list. */
 function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3StudiosState): void {
   const floorMap = world.floorMap;
   if (!floorMap || studiosState.finalFourPendingSpawns.length === 0) return;
-  const arenaTile = findFloor3ArenaTile(floorMap);
-  const arenaPos = floorMap.tileToWorld(arenaTile.x, arenaTile.y);
-  for (const pending of studiosState.finalFourPendingSpawns) {
-    spawnFloor3RosterCompanion(
+  // Avoid spawning directly on top of the player — the Final Four arena is
+  // an unlabeled point found by spiral-scanning the map centre (no dedicated
+  // room geometry exists yet, spec slice 9), so it could otherwise coincide
+  // with wherever the player happens to be standing when the gate unlocks
+  // (plan-review finding, slice 8).
+  const player = query(world.ecs, [Player, Position])[0];
+  const avoidPlayerTile =
+    player === undefined
+      ? undefined
+      : (() => {
+          const playerTile = floorMap.worldToTile(
+            world.stores.position.x[player] ?? 0,
+            world.stores.position.y[player] ?? 0,
+          );
+          return (x: number, y: number): boolean => x === playerTile.x && y === playerTile.y;
+        })();
+  const arenaTiles = findFloor3ArenaTiles(
+    floorMap,
+    studiosState.finalFourPendingSpawns.length,
+    avoidPlayerTile,
+  );
+  studiosState.finalFourPendingSpawns.forEach((pending, index) => {
+    const tile = arenaTiles[index % arenaTiles.length]!;
+    const arenaPos = floorMap.tileToWorld(tile.x, tile.y);
+    const eid = spawnFloor3RosterCompanion(
       world,
       arenaPos.x,
       arenaPos.y,
@@ -506,7 +546,14 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
       pending.level,
       pending.teamId,
     );
-  }
+    if (eid === undefined) {
+      throw new Error(
+        `floor3: Final Four failed to spawn Companion "${pending.speciesId}" ` +
+          '(no wild archetype resolvable for its fighting style) — the floor would be ' +
+          'permanently unwinnable. Fix the data before shipping.',
+      );
+    }
+  });
   studiosState.finalFourPendingSpawns = [];
 }
 
@@ -656,6 +703,22 @@ export function floor3WildDirectorSystem(world: GameWorld): void {
   state.lastSpawnMs = world.elapsedMs;
 }
 
+/**
+ * Permanently removes every ECS Companion entity on `teamIds` once an
+ * encounter (a Studio or the Final Four) is latched `defeated`. Without this,
+ * `companionKOSystem`'s generic per-team engagement-end revival (spec R11) —
+ * which is not scoped to the player's party — would resurrect a "defeated"
+ * roster to full health once the player walks away, contradicting the
+ * permanent latch (plan-review finding, slice 8).
+ */
+function despawnFloor3EncounterRoster(world: GameWorld, teamIds: readonly number[]): void {
+  const companions = query(world.ecs, [Enemy, Companion, Team]);
+  for (const eid of companions) {
+    if (!teamIds.includes(world.stores.team.id[eid] ?? -1)) continue;
+    removeEntity(world.ecs, eid);
+  }
+}
+
 export function floor3ObjectiveTick(world: GameWorld): void {
   const manifest = getFloorManifest('floor3');
   if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
@@ -675,6 +738,7 @@ export function floor3ObjectiveTick(world: GameWorld): void {
       studio.defeated = true;
       studiosState.studiosDefeatedCount += 1;
       setGoalFlag(world, floor3StudioDefeatGoalId(studio.id), true);
+      despawnFloor3EncounterRoster(world, studio.teamIds);
     }
 
     if (
@@ -693,6 +757,7 @@ export function floor3ObjectiveTick(world: GameWorld): void {
       _isEncounterTeamsWiped(world, studiosState.finalFour.teamIds)
     ) {
       studiosState.finalFour.defeated = true;
+      despawnFloor3EncounterRoster(world, studiosState.finalFour.teamIds);
       latchFloor3Victory(world);
     }
 

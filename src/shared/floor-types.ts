@@ -241,7 +241,16 @@ export interface Floor2SettlementSnapshot {
 export interface Floor3EncounterState {
   readonly id: string;
   readonly name: string;
-  /** One team id per Trainer (Studio) / Handler (Final Four). */
+  /**
+   * One shared team id for every Trainer's Companions in a Studio (or every
+   * Handler's Companions in the Final Four) — a single-element array kept for
+   * shape-compatibility with `_isEncounterTeamsWiped`'s multi-team signature.
+   * All of an encounter's Companions MUST share one team id: `companionAISystem`
+   * treats any different-`Team.id` Companion as a rival, so per-Trainer team
+   * ids would make Trainers within the same Studio (or Handlers within the
+   * Final Four) fight each other before the player ever engages (plan-review
+   * finding, slice 8).
+   */
   readonly teamIds: readonly number[];
   /**
    * Room id the roster spawned in (a `TERRITORY` biome zone for a Studio).

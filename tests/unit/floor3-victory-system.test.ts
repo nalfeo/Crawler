@@ -184,4 +184,50 @@ describe('floor3 studios + final four objective tick', () => {
 
     expect(world.state).toBe('playing');
   });
+
+  it('shares a single team id per Studio and per Final Four (no friendly fire between trainers/handlers)', () => {
+    const { world } = createFloor3World(707);
+    const state = world.floorExtendedState!.floor3Studios!;
+    // Real Studios/Final-Four have >1 Trainer/Handler contributing Companions.
+    // companionAISystem treats any different-Team.id Companion as a rival, so
+    // every Companion within one encounter MUST share one team id or trainers
+    // within the same Studio would fight each other (plan-review finding).
+    for (const studio of state.studios) {
+      expect(studio.teamIds).toHaveLength(1);
+    }
+    expect(state.finalFour.teamIds).toHaveLength(1);
+    const allTeamIds = [...state.studios.map((s) => s.teamIds[0]), state.finalFour.teamIds[0]];
+    expect(new Set(allTeamIds).size).toBe(allTeamIds.length);
+  });
+
+  it('despawns a Studio roster once defeated so the generic engagement-end revival cannot resurrect it', () => {
+    const { world } = createFloor3World(808);
+    const state = world.floorExtendedState!.floor3Studios!;
+    const [firstStudio] = state.studios;
+    expect(firstStudio).toBeDefined();
+    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);
+
+    knockOutTeams(world, firstStudio!.teamIds);
+    floor3ObjectiveTick(world);
+
+    expect(firstStudio!.defeated).toBe(true);
+    // Companions are removed from the ECS entirely, not merely left KO'd —
+    // companionKOSystem's per-team engagement-end revival would otherwise
+    // revive them to full health once no rival lingers nearby.
+    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBe(0);
+  });
+
+  it('despawns the Final Four roster once victory latches', () => {
+    const { world } = createFloor3World(909);
+    const state = world.floorExtendedState!.floor3Studios!;
+    for (const studio of state.studios) {
+      knockOutTeams(world, studio.teamIds);
+    }
+    floor3ObjectiveTick(world);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+
+    expect(state.finalFour.defeated).toBe(true);
+    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+  });
 });
