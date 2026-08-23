@@ -19,7 +19,6 @@ import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDe
 import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
 import { getWorldFloorBehavior } from '../floor-behavior.js';
 import {
-  FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
   objectiveTarget,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -304,12 +303,13 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
     });
   const hasMerchantCharm = hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID) || hasMerchantCharmEquipped;
   // Floors opt into the merchant-charm gate via the `merchantCharmGatesEquipment`
-  // behavior flag (see shared/floor-behavior.ts) instead of a hardcoded floor id.
-  // When enabled, the gate applies only once the merchant errand exists in the
-  // quest log, and remains until the merchant charm is actually acquired/equipped.
+  // behavior config (see shared/floor-behavior.ts) instead of a hardcoded floor id.
+  // When enabled, the gate applies only once the configured prerequisite quest
+  // exists in the quest log, and remains until the merchant charm is acquired/equipped.
   const merchantCharmGatesEquipment = getWorldFloorBehavior(world).merchantCharmGatesEquipment;
   const needsMerchantCharmGate =
-    merchantCharmGatesEquipment && world.questLog.has(FLOOR1_SHOP_QUEST_ID);
+    merchantCharmGatesEquipment !== null &&
+    world.questLog.has(merchantCharmGatesEquipment.prerequisiteQuestId);
   // Equipment unlocks once the player holds anything equippable. Floors that
   // opt into the merchant-charm gate are intentionally stricter: Gear unlocks
   // only from the merchant charm so unrelated loot (e.g. boss chest drops)
@@ -332,7 +332,7 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   // ahead of the merchant beat (issue #3310).
   if (
     !world.featureUnlocks.equipmentPanel &&
-    (!merchantCharmGatesEquipment || hasMerchantCharm) &&
+    (merchantCharmGatesEquipment === null || hasMerchantCharm) &&
     holdsEquippable
   ) {
     world.featureUnlocks.equipmentPanel = true;

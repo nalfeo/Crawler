@@ -69,8 +69,8 @@ export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2Equipme
  * This is intentionally distinct from the Quartermaster/boss-chest economy
  * gate: reward bundles are a separate feature flag. Fail closed on any floor
  * that doesn't opt in, regardless of the per-world flag values — which keeps
- * Floor 1 equipment-free even though it separately opts into `equipmentEconomy`
- * for boss-chest drops.
+ * Floor 1 free of achievement reward bundles even though it separately opts
+ * into `equipmentEconomy` for boss-chest drops.
  */
 export function getFloor2EquipmentRewardsAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
   if (!getWorldFloorBehavior(world).settlementEquipmentEconomy) {

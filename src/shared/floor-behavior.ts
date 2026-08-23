@@ -37,8 +37,10 @@ export const floorBehaviorSchema = z
      */
     lineOfSightAggro: z.boolean().default(false),
     /**
-     * Enable the generated-equipment economy (Quartermaster stock, purchases,
-     * achievement reward bundles) on this floor.
+     * Master switch for the generated-equipment dependency closure on this floor.
+     * Consumers may add narrower behavior gates (for example settlement shops or
+     * reward bundles), but generated equipment remains unavailable unless this is
+     * enabled.
      */
     equipmentEconomy: z.boolean().default(false),
     /**
@@ -50,18 +52,24 @@ export const floorBehaviorSchema = z
     bossChests: z.boolean().default(false),
     /**
      * Gate the Gear panel reveal and the `equipment` feature unlock behind the
-     * merchant charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`) once the merchant errand
-     * exists in the quest log, so unrelated equippable loot (e.g. boss chest
-     * drops) cannot unlock Gear early. Floor 1's shopkeeper-errand pacing beat.
+     * merchant charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`). When configured, the
+     * feature unlock gate starts once this prerequisite quest exists in the quest
+     * log, so unrelated equippable loot (e.g. boss chest drops) cannot unlock Gear
+     * early. `null` disables the gate.
      */
-    merchantCharmGatesEquipment: z.boolean().default(false),
+    merchantCharmGatesEquipment: z
+      .object({
+        prerequisiteQuestId: z.string().min(1),
+      })
+      .nullable()
+      .default(null),
     /**
      * Enable the Quartermaster/settlement generated-equipment economy (stock
-     * generation, purchasing) and achievement equipment reward bundles on
-     * this floor. Distinct from `equipmentEconomy`, which only gates the
-     * boss-chest-drop economy slice and may be enabled on floors (e.g. Floor
-     * 1) that want boss-chest equipment rewards without a Quartermaster shop
-     * or reward-bundle system.
+     * generation, purchasing) and achievement equipment reward bundles on this
+     * floor. This is a narrower gate layered on top of the `equipmentEconomy`
+     * master switch and may stay disabled on floors (e.g. Floor 1) that want
+     * boss-chest equipment rewards without a Quartermaster shop or reward-bundle
+     * system.
      */
     settlementEquipmentEconomy: z.boolean().default(false),
   })
