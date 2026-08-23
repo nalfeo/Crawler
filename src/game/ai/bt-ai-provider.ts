@@ -361,6 +361,7 @@ const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+const FLOOR1_STAIR_CLOSE_APPROACH_RADIUS_MULTIPLIER = 3;
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
 // The fused heading scorer samples candidate directions fanned around the
@@ -5510,6 +5511,22 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    const floor1Objective = world.floorScenario?.objective;
+    const floor1UnlockedStairTarget =
+      floor1Objective !== undefined &&
+      floor1Objective.staircaseUnlocked &&
+      !floor1Objective.staircaseDiscovered &&
+      Math.hypot(
+        targetX - floor1Objective.staircasePos.x,
+        targetY - floor1Objective.staircasePos.y,
+      ) <= TRAVEL_HEADING_EPSILON;
+    const directApproachFt = floor1UnlockedStairTarget
+      ? Math.max(
+          CLOSE_APPROACH_DIRECT_FT,
+          floor1Objective.markerRadiusFt * FLOOR1_STAIR_CLOSE_APPROACH_RADIUS_MULTIPLIER,
+        )
+      : CLOSE_APPROACH_DIRECT_FT;
+
     // Close-range direct approach. Tile-granular A* targets tile centers and
     // cannot step the 24px player body onto a small (8px) pickup; worse,
     // resolveReachableGoalTile diverts to an ADJACENT tile whenever the target
@@ -5518,9 +5535,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // "wiggling on pickups" bug). When the target is within ~1.5 tiles and a
     // straight corridor is clear, skip A* and slide straight at the exact world point
     // with obstacle-aware local navigation so the body physically overlaps the
-    // pickup and collision collects it.
+    // pickup and collision collects it. Reuse the same close-range handoff for
+    // the unlocked Floor 1 stairs at a slightly wider movement-only range: the
+    // descend action itself remains gated by the shared marker radius.
     if (
-      distance <= CLOSE_APPROACH_DIRECT_FT &&
+      distance <= directApproachFt &&
       hasClearLineOfSight(world.floorMap, playerX, playerY, targetX, targetY)
     ) {
       this.pathWaypoints = [];
@@ -7385,7 +7404,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         return null;
       case 'take-stairs': {
         const reason = 'Heading to the stairs to clear the floor';
-        if (progressSuppressed)
+        // The final unlocked staircase is a terminal target, not a recoverable
+        // prerequisite. Keep reacquiring it instead of exploring away until the
+        // player physically reaches the normal marker radius.
+        if (progressSuppressed && !objective.staircaseUnlocked)
           return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
         return maybeDetourToQuestGiver(
           this.createProgressTarget(
@@ -7762,21 +7784,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return null;
       }
       const reason = 'Heading to the stairs to clear the floor';
-      // F2 (SLACK_AWARE exit-commitment tail) — NARROWED after plan review.
-      // The original design forced the staircase Progress target under urgency by
-      // BYPASSING `progressGoalSuppressed`. Review flagged that as a monotonicity
-      // hazard: the quest-progress dwell watchdog sets that suppression window
-      // precisely to unstick a wedge (swarm pinning the player against an
-      // unreachable fixed goal) by letting Hunt/Explore relocate. Bypassing it
-      // while F1 simultaneously suppresses Collect/Hunt/Explore could livelock the
-      // agent on a wedged target and flip a previously-winning run into a loss.
-      // So F2's suppression override is DROPPED — the exit-commitment is delivered
-      // entirely by F1 (optional-goal suppression makes the agent commit to
-      // whatever Progress returns, which in this final leg is the staircase when
-      // not suppressed). This honors the legacy wedge-recovery escape hatch and is
-      // strictly more conservative, guaranteeing monotonicity. No-op in LEGACY.
-      if (progressSuppressed)
-        return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
