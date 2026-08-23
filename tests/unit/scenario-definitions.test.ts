@@ -35,6 +35,14 @@ describe('scenario definitions', () => {
     expect(scenario.director.victory).toContain('Floor 2');
   });
 
+  it('returns floor3 scenario with the biome-overworld director copy', () => {
+    const scenario = getScenarioDefinition('floor3');
+    expect(typeof scenario.configureWorld).toBe('function');
+    expect(scenario.selectLoadoutOption).toBeUndefined();
+    expect(scenario.director.intro).toContain('wilds');
+    expect(scenario.isTerminalRunVictory).toBe(false);
+  });
+
   it('throws when a manifest exists but no scenario is registered', () => {
     const realGetFloorManifest = floorRegistry.getFloorManifest;
     const floor2Manifest = realGetFloorManifest('floor2');

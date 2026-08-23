@@ -42,6 +42,7 @@ import {
   initializeFloor2Scenario,
   meetBroker,
 } from './floor2Scenario.js';
+import { floor3WildDirectorSystem, initializeFloor3Scenario } from './floor3Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -50,6 +51,14 @@ import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+}
+
+function getFloor3CompletionCopy(_variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  return {
+    title: 'Floor 3 In Progress',
+    subtitle: 'Biome overworld slice',
+    body: 'The Floor 3 overworld and wild-spawn slice is wired, but the floor has no terminal objective yet.',
+  };
 }
 
 /**
@@ -177,6 +186,10 @@ function getFloor2RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
   return world.floorExtendedState?.familyState?.staircaseDiscovered === true
     ? 'cleared_floor'
     : null;
+}
+
+function getFloor3RunOutcome(_world: GameWorld): ScenarioRunOutcome | null {
+  return null;
 }
 
 /** Floor 1's stair marker, reusing the live `objective` position (no copy). */
@@ -343,6 +356,15 @@ const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   isTimeoutReached: (world: GameWorld) => world.state === 'game_over',
 };
 
+const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: 'Floor 3 opens: the Companion League wilds are live across seven biome territories.',
+  victory: 'Floor 3 is not fully winnable yet; this slice only wires the overworld wilds.',
+  timeout: 'The cameras keep rolling, but Floor 3 has no terminal objective wiring yet.',
+  milestones: [],
+  isVictoryReached: () => false,
+  isTimeoutReached: (world: GameWorld) => world.state === 'game_over',
+};
+
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
   shopkeeper: {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
@@ -411,6 +433,19 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor2CompletionCopy,
       getStairMarkerState: getFloor2StairMarkerState,
       stairConfirmation: FLOOR_2_STAIR_CONFIRMATION,
+    },
+  ],
+  [
+    'floor3',
+    {
+      floorId: 'floor3',
+      configureWorld: initializeFloor3Scenario,
+      beforeEnemyAISystems: [companionAISystem],
+      afterSpawnerSystems: [floor3WildDirectorSystem],
+      director: FLOOR_3_DIRECTOR,
+      getRunOutcome: getFloor3RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor3CompletionCopy,
     },
   ],
 ]);

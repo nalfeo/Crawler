@@ -77,6 +77,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'floor2-settlement-lab': '/src/labs/floor2-settlement-lab/index.ts',
   'family-feud-lab': '/src/labs/family-feud-lab/index.ts',
   'floor3-companion-lab': '/src/labs/floor3-companion-lab/index.ts',
+  'floor3-overworld-lab': '/src/labs/floor3-overworld-lab/index.ts',
   'hud-family-relationships-lab': '/src/labs/hud-family-relationships-lab/index.ts',
   'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
   'bosschestrewards-lab': '/src/labs/bosschestrewards-lab/index.ts',

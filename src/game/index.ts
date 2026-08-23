@@ -48,6 +48,16 @@ export {
   FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
 } from './floor2Scenario.js';
 export {
+  initializeFloor3Scenario,
+  floor3WildDirectorSystem,
+  floor3ObjectiveTick,
+  resolveFloor3WildSpawnWeights,
+  FLOOR3_BIOME_MATCH_SPAWN_SHARE,
+  FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE,
+  FLOOR3_WILD_TEAM_ID,
+  FLOOR3_TIMEOUT_GOAL_ID,
+} from './floor3Scenario.js';
+export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,
   getBossRewardSpellOptions,

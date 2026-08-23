@@ -65,6 +65,8 @@ export enum BiomeType {
   BASIC_UNDERGROUND = 'basic_underground',
   /** Floor 2 — open cavern network with family territories, boss dens, settlement, resource heart. */
   CAVE_SYSTEM = 'cave_system',
+  /** Floor 3 — open cavern overworld partitioned into biome territories, no Floor-2 special rooms. */
+  CAVE_SYSTEM_BIOMES = 'cave_system_biomes',
 }
 
 // --- Map Configuration ---
@@ -88,10 +90,12 @@ export interface MapConfig {
   readonly maxRooms: number;
   /** Target percentage of floor tiles (for cellular automata generators). */
   readonly floorDensity: number;
-  /** Optional biome-specific cave-system knobs (Floor 2). */
+  /** Optional biome-specific cave-system knobs (Floor 2 / Floor 3 overworld). */
   readonly caveSystem?: {
-    /** Number of family territories to stamp (3–4). */
+    /** Number of territory regions to stamp (Floor 2 families / Floor 3 biomes). */
     readonly presentCount?: number;
+    /** Generator finishing path. Defaults to `'floor2'`. */
+    readonly layout?: 'floor2' | 'floor3-biomes';
     /** Cellular initial fill ratio (higher = more open caverns). */
     readonly initialFill?: number;
     /** Cellular smoothing passes. */
@@ -229,15 +233,19 @@ export interface RoomData {
   readonly interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
 }
 
-// --- Territory Zones (Floor 2 spawn-weighting metadata) ---
+// --- Territory Zones (Floor 2 / Floor 3 spawn-weighting metadata) ---
 
 /**
- * A circular spawn-influence zone attached to a boss den. Used by spawn systems
- * to weight mob placement toward a family's territory. NOT a room — this is purely
- * metadata about where a family's influence extends on the map.
+ * A circular spawn-influence zone attached to a region center. Used by spawn
+ * systems to weight mob placement toward a territory. NOT a room — this is purely
+ * metadata about where a region's influence extends on the map.
  */
 export interface TerritoryZone {
-  /** Index into the present-families roster (matches TERRITORY / BOSS_DEN familyIndex). */
+  /**
+   * Numeric region index. On Floor 2 this matches the present-families roster
+   * (`TERRITORY` / `BOSS_DEN` `familyIndex`). On Floor 3 the same numeric slot
+   * is interpreted as an index into the fixed biome-affinity order.
+   */
   readonly familyIndex: number;
   /** Center tile X of the zone (boss den center). */
   readonly centerX: number;
@@ -262,6 +270,6 @@ export interface FloorMapData {
   readonly visible: Uint8Array;
   /** Player spawn tile position. */
   readonly playerSpawn: { readonly x: number; readonly y: number };
-  /** Floor 2 family spawn-influence zones (empty on other floors). */
+  /** Floor 2 family / Floor 3 biome spawn-influence zones (empty on other floors). */
   readonly territoryZones?: ReadonlyArray<TerritoryZone>;
 }

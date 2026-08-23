@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "floor3-overworld-biomes",
+  "task_title": "Floor 3 Slice 7 — overworld biomes + wild spawns",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Resolved reviewer concerns before coding: kept TerritoryZone legacy familyIndex contract intact (Floor 3 will interpret the numeric zone index in scenario code rather than optionalizing the type), kept AI_TYPE numeric mapping in src/game rather than leaking it into shared, will use a dedicated Floor 3 biome-overworld generator path/helper instead of a giant in-place CaveSystem mode branch, defined neutral wilds strictly as multiplier===1 and affinity!=biome affinity, and added negative/wiring tests for no Floor-2-only room state plus canonical createFloorMainSceneOptions(\"floor3\") pipeline wiring."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
