@@ -1385,6 +1385,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           isProjectileWeaponType(activeWeapon.weaponType) &&
           ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
           !criticallyLow;
+        // Safe-room weapons are disabled, so non-critical ranged-emergency spacing
+        // cannot clear a threat here. Preserve true critical retreat below rather
+        // than forcing a near-death player to path toward objectives through contact.
         if (ctx.world.playerInSafeRoom && !criticallyLow) {
           this.endRetreat(ctx.world);
           return false;
