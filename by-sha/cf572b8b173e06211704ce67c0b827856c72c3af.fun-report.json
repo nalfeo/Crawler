@@ -1,0 +1,122 @@
+{
+  "meta": {
+    "commit": "cf572b8b173e06211704ce67c0b827856c72c3af",
+    "commitDate": "2026-08-23T12:53:48Z",
+    "commitSubject": "Restore Floor 1 release sweep victories (#3358)",
+    "capturedAt": "2026-08-23T14:27:26.244Z",
+    "runId": "32642094156",
+    "runNumber": 1650,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32642094156",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 568,
+      "death": 8,
+      "timeout": 23,
+      "stalled": 1,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 38.08,
+    "dimensions": {
+      "engagement": 58.17,
+      "challenge_balance": 3.45,
+      "excitement": 29.33,
+      "pacing": 34.74,
+      "competence_growth": 37.8,
+      "choice_depth": 88.18,
+      "run_distinctness": 34.92
+    },
+    "sameness_grade": 65.08,
+    "objective_score": 38.08,
+    "subjective_score": null,
+    "confidence": 0.84,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 38.32,
+      "pass": false,
+      "failing_dimensions": [
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 3.45,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 29.33,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 34.74,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.14,
+        "target": 0.14,
+        "status": "needs_attention",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 34.92,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": null,
+        "target": 90,
+        "status": "unmeasured",
+        "reason": "Timestamped reward events are absent or malformed in at least one run (legacy/mixed input)."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "0/299 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.43,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "161/372 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      },
+      "early_death_rate": {
+        "observed": 0.01,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "Fraction of runs that ended in death on Floor 2 or earlier. Tutorial-phase deaths are un-fun; healthy is <= 10%."
+      }
+    },
+    "persona_scores": {}
+  }
+}

@@ -1,5 +1,39 @@
 [
   {
+    "commit": "cf572b8b173e06211704ce67c0b827856c72c3af",
+    "commitDate": "2026-08-23T12:53:48Z",
+    "commitSubject": "Restore Floor 1 release sweep victories (#3358)",
+    "capturedAt": "2026-08-23T14:27:26.244Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32642094156",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/cf572b8b173e06211704ce67c0b827856c72c3af.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.8933333333333333,
+        "totalWins": 134,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9,
+        "totalWins": 135,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 38.08,
+      "gatePass": false,
+      "path": "by-sha/cf572b8b173e06211704ce67c0b827856c72c3af.fun-report.json"
+    }
+  },
+  {
     "commit": "801e3dcd1f7dbbd76026170b74d3575363b99e5a",
     "commitDate": "2026-08-23T11:00:19Z",
     "commitSubject": "Harden CI-recovery review-marker template to survive GitHub rendering (#3386)",
