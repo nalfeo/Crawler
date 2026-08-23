@@ -5,6 +5,7 @@ import { spawnEnemy } from '../../src/core/helpers.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
 import {
   getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
   type SettlementReturnStatus,
 } from '../../src/game/ai/settlement-return-router.js';
 import { getLastSettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-planner.js';
@@ -303,6 +304,36 @@ describe('settlement return routing (headless integration)', () => {
     });
 
     expect(settlementReturnTelemetry(events)).toHaveLength(0);
+  }, 30_000);
+
+  it('enables Floor 1 settlement-return routing when the option is omitted', async () => {
+    const events: SimEvent[] = [];
+    let seeded = false;
+    const enabledStates: boolean[] = [];
+
+    await runHeadless(new BehaviorTreeAI({ seed: 5 }), {
+      seed: 5,
+      floorId: 'floor1',
+      maxFrames: 1500,
+      questStallFrames: 0,
+      forceWeaponId: 'sword',
+      recordEvent: (event) => events.push(event),
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            enabledStates.push(isSettlementReturnRoutingEnabled(world));
+            if (!seeded) {
+              seeded = true;
+              armEligibleOpportunity(world);
+            }
+          },
+        ],
+      },
+    });
+
+    expect(enabledStates).toContain(true);
+    expect(enabledStates).not.toContain(false);
+    expect(settlementReturnTelemetry(events)).not.toHaveLength(0);
   }, 30_000);
 
   it('aborts as unreachable when the shared progress-suppression signal fires mid-travel, then recovers via cooldown', async () => {

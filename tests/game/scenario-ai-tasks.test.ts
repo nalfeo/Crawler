@@ -264,6 +264,21 @@ describe('scenario-ai-tasks generic interpreter — validation fails loudly', ()
     );
   });
 
+  it('rejects duplicate reverse interaction actions', () => {
+    const config = baseConfig();
+    expectError(
+      {
+        ...config,
+        tasks: config.tasks.map((candidate) =>
+          candidate.id === 'a1' || candidate.id === 'b1'
+            ? { ...candidate, reverseInteractionAction: 'do-action' }
+            : candidate,
+        ),
+      },
+      'duplicate-reverse-interaction-action',
+    );
+  });
+
   it('rejects a chain that references an unknown task', () => {
     const config = baseConfig();
     expectError(

@@ -42,8 +42,10 @@ import { FloorMap, DEFAULT_FOV_SUB_FACTOR } from '../FloorMap';
 import type { MapGenerator } from './types';
 
 export interface CaveSystemOptions {
-  /** Number of families present on this floor (3 or 4). Default: 4. */
+  /** Number of territory regions present on this floor. Default: 4. */
   presentCount?: number;
+  /** Which finishing layout to apply over the shared open-cavern base. */
+  layout?: 'floor2' | 'floor3-biomes';
   /** Cellular initial fill ratio. Default: 0.5. */
   initialFill?: number;
   /** Cellular smoothing passes. Default: 4. */
@@ -99,6 +101,7 @@ export interface CaveSystemOptions {
 
 export const DEFAULT_OPTIONS: Required<CaveSystemOptions> = {
   presentCount: 4,
+  layout: 'floor2',
   initialFill: 0.5,
   smoothingPasses: 4,
   bossDenSize: 5,
@@ -158,6 +161,10 @@ export class CaveSystemGenerator implements MapGenerator {
     return this.options.presentCount;
   }
 
+  private resolveLayout(config: MapConfig): Required<CaveSystemOptions>['layout'] {
+    return config.caveSystem?.layout ?? this.options.layout;
+  }
+
   private resolvePresentCount(config: MapConfig): number {
     const fromConfig = config.caveSystem?.presentCount;
     if (fromConfig === undefined) {
@@ -166,6 +173,10 @@ export class CaveSystemGenerator implements MapGenerator {
     const normalized = Math.floor(fromConfig);
     if (!Number.isFinite(normalized)) {
       return this.options.presentCount;
+    }
+    const layout = this.resolveLayout(config);
+    if (layout === 'floor3-biomes') {
+      return Math.max(1, normalized);
     }
     return Math.max(1, Math.min(this.options.presentCount, normalized));
   }
@@ -206,6 +217,7 @@ export class CaveSystemGenerator implements MapGenerator {
     );
     return {
       presentCount: this.resolvePresentCount(config),
+      layout: this.resolveLayout(config),
       initialFill: Math.max(
         0.25,
         Math.min(0.75, valueOr(cave?.initialFill, this.options.initialFill)),
@@ -357,6 +369,7 @@ export class CaveSystemGenerator implements MapGenerator {
     const { widthTiles: w, heightTiles: h } = config;
     const total = w * h;
     const presentCount = options.presentCount;
+    const layout = options.layout;
 
     RNG.setSeed(subSeed);
 
@@ -439,6 +452,18 @@ export class CaveSystemGenerator implements MapGenerator {
       }))
       .filter((s) => s.i !== heartIdx)
       .sort((a, b) => a.d - b.d);
+
+    if (layout === 'floor3-biomes') {
+      return this.tryGenerateFloor3BiomeOverworld(
+        config,
+        tileMap,
+        roomGraph,
+        terrain,
+        w,
+        h,
+        options,
+      );
+    }
 
     // --- 6. Register RESOURCE_HEART (sealed circular room) + SETTLEMENT -
     const resourceHeart = this.carveSealedResourceHeartRoom(
@@ -844,6 +869,166 @@ export class CaveSystemGenerator implements MapGenerator {
     }
     // Settlement/den carving can wall off residual cave pockets; trim any
     // disconnected passable islands so the final map remains single-component.
+    this.cullDisconnectedPassable(tileMap, terrain, reached, w, h);
+
+    return new FloorMap(
+      config,
+      tileMap,
+      roomGraph,
+      terrain,
+      playerSpawn,
+      DEFAULT_FOV_SUB_FACTOR,
+      territoryZones,
+    );
+  }
+
+  private tryGenerateFloor3BiomeOverworld(
+    config: MapConfig,
+    tileMap: TileMap,
+    roomGraph: RoomGraph,
+    terrain: Uint8Array,
+    w: number,
+    h: number,
+    options: Required<CaveSystemOptions>,
+  ): FloorMap {
+    const minDim = Math.min(w, h);
+    const territoryDiameterTiles = Math.max(
+      6,
+      Math.min(minDim - 4, Math.round(minDim * options.territoryRadiusFraction)),
+    );
+    const territoryZoneRadius = Math.max(3, Math.floor(territoryDiameterTiles / 2));
+    const territoryRoomRadius = Math.max(12, Math.round(Math.min(w * 0.1, h * 0.1)));
+    const centerX = Math.floor(w / 2);
+    const centerY = Math.floor(h / 2);
+    const targets = this.placeAngularDenTargets(
+      centerX,
+      centerY,
+      w,
+      h,
+      options.presentCount,
+      tileMap,
+      options.denTargetRadiusMinFraction,
+      options.denTargetRadiusMaxFraction,
+      options.denTargetMinSeparationTiles,
+      options.denStartAngleJitterFraction,
+      options.denDistanceJitterFraction,
+    );
+
+    const claimedCells = new Set<number>();
+    const territoryZones: TerritoryZone[] = [];
+    const regionCenters: Array<{ x: number; y: number }> = [];
+
+    for (let regionIndex = 0; regionIndex < options.presentCount; regionIndex += 1) {
+      const target = targets[regionIndex]!;
+      const synthRegion = this.collectCircularRegion(
+        tileMap,
+        w,
+        h,
+        target.x,
+        target.y,
+        territoryRoomRadius,
+        regionIndex,
+        claimedCells,
+      );
+      if (synthRegion.cells.length === 0) {
+        throw new Error(`no passable cells for floor3 territory[${regionIndex}]`);
+      }
+      for (const cell of synthRegion.cells) claimedCells.add(cell);
+      this.addRegionAsRoom(roomGraph, synthRegion, RoomRole.TERRITORY, w, regionIndex);
+      territoryZones.push({
+        familyIndex: regionIndex,
+        centerX: synthRegion.centroidX,
+        centerY: synthRegion.centroidY,
+        radius: territoryZoneRadius,
+      });
+      regionCenters.push({ x: synthRegion.centroidX, y: synthRegion.centroidY });
+    }
+
+    const spacingCap = Math.max(0, Math.floor(Math.min(w, h) * 0.2));
+    const spawnMinDistanceFromCenterTiles = Math.min(
+      options.spawnMinDistanceFromResourceHeartTiles,
+      spacingCap,
+    );
+    const spawnMinDistanceFromRegionTiles = Math.min(
+      options.spawnMinDistanceFromDenTiles,
+      spacingCap,
+    );
+    const spawnRelaxationFactors = [1, 0.75, 0.5, 0.25, 0] as const;
+    const spawnSizeCandidates = [6, 5, 4] as const;
+    let farthestFromCenter: { x: number; y: number } | null = null;
+    let spawnRoomSize = 6;
+
+    for (const roomSize of spawnSizeCandidates) {
+      for (const relaxFactor of spawnRelaxationFactors) {
+        farthestFromCenter = this.findFarthestPassableFrom(
+          tileMap,
+          w,
+          h,
+          centerX,
+          centerY,
+          (x, y) => {
+            const spawnBounds = this.computeSmallRoomBounds(x, y, w, h, roomSize);
+            const relaxedFromCenter = Math.floor(spawnMinDistanceFromCenterTiles * relaxFactor);
+            const relaxedFromRegion = Math.floor(spawnMinDistanceFromRegionTiles * relaxFactor);
+            return (
+              this.distanceAtLeast(x, y, centerX, centerY, relaxedFromCenter) &&
+              regionCenters.every((region) =>
+                this.distanceAtLeast(x, y, region.x, region.y, relaxedFromRegion),
+              ) &&
+              !territoryZones.some((zone) =>
+                this.boundsOverlap(
+                  spawnBounds,
+                  this.computeSmallRoomBounds(zone.centerX, zone.centerY, w, h, roomSize),
+                ),
+              )
+            );
+          },
+        );
+        if (farthestFromCenter) {
+          spawnRoomSize = roomSize;
+          break;
+        }
+      }
+      if (farthestFromCenter) break;
+    }
+
+    if (!farthestFromCenter) {
+      farthestFromCenter = this.findFarthestPassableFrom(tileMap, w, h, centerX, centerY);
+      if (!farthestFromCenter) {
+        throw new Error('no passable tile available for floor3 spawn placement');
+      }
+      spawnRoomSize = 4;
+    }
+
+    const spawnRoom = this.carveSmallRoom(
+      tileMap,
+      terrain,
+      farthestFromCenter.x,
+      farthestFromCenter.y,
+      w,
+      h,
+      spawnRoomSize,
+    );
+    const playerSpawn = spawnRoom.spawn;
+    roomGraph.add(
+      spawnRoom.bounds,
+      spawnRoom.doors,
+      [],
+      RoomRole.SPAWN,
+      'spawn_room',
+      undefined,
+      spawnRoom.interiorCells,
+    );
+
+    const reached = this.floodPassable(tileMap, w, h, playerSpawn.x, playerSpawn.y);
+    for (const zone of territoryZones) {
+      const near = this.findReachableWithin(reached, w, h, zone.centerX, zone.centerY, 3);
+      if (!near) {
+        throw new Error(
+          `unreachable floor3 territory[${zone.familyIndex}] at (${zone.centerX},${zone.centerY})`,
+        );
+      }
+    }
     this.cullDisconnectedPassable(tileMap, terrain, reached, w, h);
 
     return new FloorMap(

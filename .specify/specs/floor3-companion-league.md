@@ -1,6 +1,6 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **In progress — slices 1–6 landed (2026-08-22).** Slice 1 (affinity matrix +
+> **Status:** **In progress — slices 1–6 landed; Slice 7 is under review (2026-08-23).** Slice 1 (affinity matrix +
 > species/style data) is implemented in `src/shared/data/floor3/`; slice 2 (the
 > `AFFINITY_MATRIX` damage-multiplier hook) is implemented in `src/core/apply-damage.ts`;
 > slice 3 (`Companion`/`PartySlot` + ally AI prepass) is implemented in the ECS/game AI
@@ -8,8 +8,11 @@
 > combat-XP attribution, leveling, form evolution, and ability unlocks via
 > `src/core/systems/companionProgressionSystem.ts`; slice 6 adds starter/poach recruiting
 > (`src/game/floor3Recruiting.ts`), `PartySlot` party-cap locking, and the KO/recovery +
-> Rally Point + party-wipe predicate state machine (`src/core/systems/companionKOSystem.ts`).
-> No Floor 3 manifests or sprites exist yet. The remaining schemas, wiring, and slices below
+> Rally Point + party-wipe predicate state machine (`src/core/systems/companionKOSystem.ts`);
+> slice 7 adds the biome-overworld map generator, Floor 3 manifest, and affinity-weighted wild
+> spawns (`src/game/floor3Scenario.ts`, `src/shared/data/floors/floor3.manifest.json`,
+> `src/shared/data/enemies.floor3.json`). Sprites do not exist yet. The remaining schemas,
+> wiring, and slices below
 > are the **plan** the implementation
 > sessions build against.
 > **Authored:** 2026-07-24.
@@ -218,8 +221,8 @@ Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices
 | 3     | **Companion entity + ally AI generalization** ✅ _landed 2026-08-21_       | 🍎🍎🍎      | `Companion`/`PartySlot` components, team-tagged ally AI from Floor 2 follow-AI, companion lab                                                                                                                                       | after 1   |
 | 4     | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`) ✅ _landed 2026-08-21_ | 🍎🍎🍎      | `AI_TYPE` additions + deterministic Guardian/Support movement behavior in `enemyAISystem.ts`, companion lab pipeline observation                                                                                                    | after 3   |
 | 5     | **Per-creature leveling + evolution + abilities** ✅ _landed 2026-08-22_   | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
-| 6     | **Recruiting, party-lock, KO/recovery, lose**                              | 🍎🍎🍎      | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab                                                                                                                                           | after 3   |
-| 7     | **Overworld + biomes + wild spawns**                                       | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
+| 6     | **Recruiting, party-lock, KO/recovery, lose** ✅ _landed 2026-08-22_       | 🍎🍎🍎      | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab                                                                                                                                           | after 3   |
+| 7     | **Overworld + biomes + wild spawns** 🔄 _under review_                     | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
 | 8     | **Studios + Final Four + seeded variety + objective tick**                 | 🍎🍎🍎🍎    | `TrainerDef`/`StudioDef`/`FinalFourDef`, candidate pools, `SeededRandom` selection, `floor3ObjectiveTick`, sealed dens, determinism test                                                                                            | after 6,7 |
 | 9     | **Set-pieces** (6 Studio dens + Final Four arena)                          | 🍎🍎        | `set-pieces.json` entries, set-piece-lab validation                                                                                                                                                                                 | after 7   |
 | 10    | **Persistent player track wiring**                                         | 🍎🍎        | route gems/gold/loot → `world.playerLevel`/gold/inventory on Floor 3                                                                                                                                                                | after 3   |

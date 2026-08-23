@@ -199,6 +199,7 @@ export interface ScenarioGoalGraph {
 
 export type ScenarioAiTaskConfigErrorCode =
   | 'duplicate-task-id'
+  | 'duplicate-reverse-interaction-action'
   | 'task-not-in-chain'
   | 'chain-references-unknown-task'
   | 'unknown-anchor-chain'
@@ -287,8 +288,22 @@ export function validateScenarioAiTaskConfig<S, P>(
   const locationIds = new Set<LocationId>(config.locationIds);
   const npcIds = new Set<string>(config.npcIds);
   const effectVocab = new Set<string>(config.unlockEffectVocabulary);
+  const reverseInteractionActions = new Set<string>();
 
   for (const task of config.tasks) {
+    if (
+      task.reverseInteractionAction !== undefined &&
+      reverseInteractionActions.has(task.reverseInteractionAction)
+    ) {
+      throw new ScenarioAiTaskConfigError(
+        'duplicate-reverse-interaction-action',
+        `Multiple scenario AI tasks declare reverse interaction action "${task.reverseInteractionAction}".`,
+      );
+    }
+    if (task.reverseInteractionAction !== undefined) {
+      reverseInteractionActions.add(task.reverseInteractionAction);
+    }
+
     // Unlock effects must be in the declared vocabulary.
     for (const effect of task.unlockEffects ?? []) {
       if (!effectVocab.has(effect)) {

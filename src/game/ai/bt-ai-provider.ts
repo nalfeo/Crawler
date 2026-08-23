@@ -367,6 +367,7 @@ const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
 const TRAVEL_HEADING_EPSILON = 1e-6;
+const TARGET_POSITION_EPSILON_FT = 0.01;
 
 // --- RISK_REWARD_FUSED pathing (AIPathingMode.RISK_REWARD_FUSED) -------------
 // The fused heading scorer samples candidate directions fanned around the
@@ -1163,6 +1164,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private floor2HuntLastProgressFrame: number = 0;
   private floor2HuntCadenceStartFrame: number = 0;
   private floor2HuntHandledSuppressionUntilFrame: number = 0;
+  private readonly floor2HuntAbandonedEnemyEids = new Set<number>();
   private readonly floor2HuntPatrolTiles = new Map<string, TilePoint[]>();
   /**
    * Schmitt-trigger membership state for {@link resolveFloor2HuntTerritoryMembership}
@@ -1363,6 +1365,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
+        // Weapons cannot resolve a threat while the player is in a safe room.
+        // Yield to NPC interaction or the safe-room egress branch instead of
+        // repeatedly selecting an unreachable retreat target inside the room.
+        if (ctx.world.playerInSafeRoom) {
+          this.endRetreat(ctx.world);
+          return false;
+        }
         const activeWeapon = getActiveWeapon(ctx.world);
         // Critically low = the fixed HP floor OR a measured incoming-damage rate
         // that kills before the runner could plausibly disengage. Rate matters as
@@ -1375,6 +1384,13 @@ export class BehaviorTreeAI implements AIInputProvider {
           isProjectileWeaponType(activeWeapon.weaponType) &&
           ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
           !criticallyLow;
+        // Safe-room weapons are disabled, so non-critical ranged-emergency spacing
+        // cannot clear a threat here. Preserve true critical retreat below rather
+        // than forcing a near-death player to path toward objectives through contact.
+        if (ctx.world.playerInSafeRoom && !criticallyLow) {
+          this.endRetreat(ctx.world);
+          return false;
+        }
         if (!criticallyLow && !rangedEmergency) {
           this.endRetreat(ctx.world);
           return false;
@@ -2209,6 +2225,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (
           targetIsNpc &&
           tutorialAccepted &&
+          !ctx.world.playerInSafeRoom &&
           !this.isFloor2IntroductionPending(ctx.world) &&
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
@@ -2226,10 +2243,11 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (projectileWeapon && !woundedProjectile) {
+            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below.
+              // direct-approach path below. Inside safe rooms, weapons are disabled,
+              // so threat-clearing cannot make progress until movement exits first.
               this.resetNpcApproachThreatTracking();
             } else if (this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
@@ -3459,6 +3477,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames++;
     if (this.engageNoProgressFrames > ENGAGE_GIVEUP_FRAMES) {
       this.ignoredEnemyUntilFrame.set(eid, world.frameCount + ENEMY_IGNORE_FRAMES);
+      this.abandonFloor2HuntEnemy(world, eid);
       this.decision.targetEid = null;
       this.decision.targetX = null;
       this.decision.targetY = null;
@@ -3947,6 +3966,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
     this.floor2HuntPatrolTiles.clear();
     this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;
@@ -5500,6 +5520,19 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    const floor1Objective = world.floorScenario?.objective;
+    const floor1UnlockedStairTarget =
+      floor1Objective !== undefined &&
+      floor1Objective.staircaseUnlocked &&
+      !floor1Objective.staircaseDiscovered &&
+      Math.hypot(
+        targetX - floor1Objective.staircasePos.x,
+        targetY - floor1Objective.staircasePos.y,
+      ) <= TARGET_POSITION_EPSILON_FT;
+    const directApproachFt = floor1UnlockedStairTarget
+      ? Math.max(CLOSE_APPROACH_DIRECT_FT, floor1Objective.markerRadiusFt)
+      : CLOSE_APPROACH_DIRECT_FT;
+
     // Close-range direct approach. Tile-granular A* targets tile centers and
     // cannot step the 24px player body onto a small (8px) pickup; worse,
     // resolveReachableGoalTile diverts to an ADJACENT tile whenever the target
@@ -5508,9 +5541,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // "wiggling on pickups" bug). When the target is within ~1.5 tiles and a
     // straight corridor is clear, skip A* and slide straight at the exact world point
     // with obstacle-aware local navigation so the body physically overlaps the
-    // pickup and collision collects it.
+    // pickup and collision collects it. Reuse the same close-range handoff for
+    // the unlocked Floor 1 stairs at a slightly wider movement-only range: the
+    // descend action itself remains gated by the shared marker radius.
     if (
-      distance <= CLOSE_APPROACH_DIRECT_FT &&
+      distance <= directApproachFt &&
       hasClearLineOfSight(world.floorMap, playerX, playerY, targetX, targetY)
     ) {
       this.pathWaypoints = [];
@@ -5609,10 +5644,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           // to a different, actually-reachable enemy (or fall through to
           // EXPLORE) instead of re-selecting the same unreachable eid.
           if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
-            this.ignoredEnemyUntilFrame.set(
-              this.decision.targetEid,
-              world.frameCount + ENEMY_IGNORE_FRAMES,
-            );
+            const targetEid = this.decision.targetEid;
+            this.ignoredEnemyUntilFrame.set(targetEid, world.frameCount + ENEMY_IGNORE_FRAMES);
+            this.abandonFloor2HuntEnemy(world, targetEid);
             this.decision.targetEid = null;
             this.decision.targetX = null;
             this.decision.targetY = null;
@@ -5953,6 +5987,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (const eid of enemies) {
       if (eid === undefined) continue;
       if (eid === excludeEid) continue;
+      if (this.floor2HuntAbandonedEnemyEids.has(eid)) continue;
       if (!isEnemyCombatEligible(world, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -6253,6 +6288,59 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntPatrolTarget = null;
   }
 
+  private abandonFloor2HuntEnemy(world: GameWorld, eid: number): void {
+    const floor2State = world.floorExtendedState?.familyState;
+    const huntFamilyIndex = this.floor2HuntFamilyId
+      ? (floor2State?.presentFamilies.indexOf(this.floor2HuntFamilyId) ?? -1)
+      : -1;
+    if (
+      huntFamilyIndex < 0 ||
+      !hasComponent(world.ecs, eid, FamilyMembership) ||
+      (world.stores.familyMembership.familyId[eid] ?? -1) !== huntFamilyIndex ||
+      (world.stores.familyMembership.isBoss[eid] ?? 0) !== 0 ||
+      this.floor2HuntAbandonedEnemyEids.has(eid)
+    ) {
+      return;
+    }
+    this.floor2HuntAbandonedEnemyEids.add(eid);
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.advanceFloor2HuntPatrol();
+  }
+
+  private releaseFloor2HuntEnemies(): void {
+    for (const eid of this.floor2HuntAbandonedEnemyEids) {
+      this.ignoredEnemyUntilFrame.delete(eid);
+    }
+    this.floor2HuntAbandonedEnemyEids.clear();
+  }
+
+  /**
+   * Unquarantine only the abandoned enemies that have actually died, instead
+   * of releasing the whole abandoned set. `updateFloor2HuntProgress` used to
+   * call `releaseFloor2HuntEnemies()` (a full clear) whenever the family's
+   * trash-kill counter went up at all — including from a kill of an unrelated
+   * same-family enemy (e.g. one the player is fighting elsewhere, or an
+   * in-flight projectile landing after the AI already gave up and relocated).
+   * That made the still-alive, still-unreachable blocked target eligible for
+   * re-selection again before the patrol anchor was ever reached, recreating
+   * the engage/give-up loop `abandonFloor2HuntEnemy` exists to prevent (see
+   * the `ignoredEnemyUntilFrame` comment in `findNearestFloor2HuntEnemy`).
+   * Scoping the release to entities that are actually gone keeps "progress"
+   * meaningful — a specific quarantined target is only freed once it is truly
+   * resolved — while patrol arrival / family transition / reset still perform
+   * the full clear via `releaseFloor2HuntEnemies()`.
+   */
+  private pruneDefeatedFloor2HuntEnemies(world: GameWorld): void {
+    for (const eid of this.floor2HuntAbandonedEnemyEids) {
+      const stillAlive =
+        entityExists(world.ecs, eid) && (world.stores.health.current[eid] ?? 0) > 0;
+      if (!stillAlive) {
+        this.floor2HuntAbandonedEnemyEids.delete(eid);
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
+    }
+  }
+
   private resolveFloor2HuntPatrolTarget(
     world: GameWorld,
     familyId: FamilyId,
@@ -6277,6 +6365,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         Math.hypot(currentWorld.x - playerX, currentWorld.y - playerY) <=
         FLOOR2_HUNT_PATROL_ARRIVE_FT
       ) {
+        this.releaseFloor2HuntEnemies();
         this.advanceFloor2HuntPatrol();
       }
     }
@@ -6322,6 +6411,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
   }
 
   private isFloor2HuntRecoveryWindow(world: GameWorld): boolean {
@@ -6342,6 +6432,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resetFloor2HuntStateForMap(world);
     const floor2State = world.floorExtendedState?.familyState;
     if (!floor2State || floor2State.presentFamilies.length === 0) {
+      this.releaseFloor2HuntEnemies();
       return null;
     }
     const isResolved = (familyId: FamilyId): boolean =>
@@ -6379,6 +6470,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       )[0]?.familyId;
     if (!nextFamily) {
       this.floor2HuntFamilyId = null;
+      this.releaseFloor2HuntEnemies();
       return null;
     }
     this.commitFloor2HuntFamily(world, nextFamily);
@@ -6390,6 +6482,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (killCount > this.floor2HuntLastKillCount) {
       this.floor2HuntLastKillCount = killCount;
       this.floor2HuntLastProgressFrame = world.frameCount;
+      this.pruneDefeatedFloor2HuntEnemies(world);
     }
     if (
       world.frameCount < this.progressGoalSuppressedUntilFrame &&
@@ -6450,6 +6543,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           return null;
         }
         this.ignoredEnemyUntilFrame.delete(eid);
+      }
+      if (this.floor2HuntAbandonedEnemyEids.has(eid)) {
+        return null;
       }
       if (
         familyId !== null &&
@@ -6785,17 +6881,31 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerInTerritory =
       territoryZone !== null &&
       this.resolveFloor2HuntTerritoryMembership(world, familyId, territoryZone, playerX, playerY);
-    const familyEnemy =
-      playerInTerritory && territoryZone
-        ? this.findNearestFloor2HuntEnemy(
-            world,
-            familyId,
-            playerX,
-            playerY,
-            FLOOR2_HUNT_CHASE_RADIUS_FT,
-            false,
-          )
-        : null;
+    // Deliberately NOT gated on `playerInTerritory`/`territoryZone`, unlike
+    // `territoryEnemy` below. A committed family member can (and, on some
+    // generated maps, routinely does) sit just outside the authored
+    // territory circle — `findNearestFloor2HuntEnemy` here has no zone bound
+    // of its own, only the chase radius. Gating this on `playerInTerritory`
+    // creates a self-defeating feedback loop: chasing that enemy pulls the
+    // player outside the zone, `resolveFloor2HuntTerritoryMembership` latches
+    // false, the *next* poll drops the chase (this becomes `null`) and falls
+    // back to the in-zone patrol target, which pulls the player back inside
+    // the zone, re-latching true and re-acquiring the same enemy — a stable
+    // ~1s oscillation that never closes the last 50-90ft to the target and
+    // can burn the rest of Floor 2's collapse timer never finishing the den
+    // (see 2026-08-23 floor2-last-family-hunt-pacing handoff, repro seed 1).
+    // The trash-kill quota is not territory-scoped either (`floor2Scenario.ts`
+    // counts a kill anywhere on the map), so there is no correctness reason
+    // to require zone membership before pursuing a known family target that
+    // is already within chase range.
+    const familyEnemy = this.findNearestFloor2HuntEnemy(
+      world,
+      familyId,
+      playerX,
+      playerY,
+      FLOOR2_HUNT_CHASE_RADIUS_FT,
+      false,
+    );
     const territoryEnemy =
       playerInTerritory && territoryZone
         ? this.findNearestFloor2HuntEnemy(
@@ -6821,6 +6931,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryTarget = territoryZone
       ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
       : null;
+    if (this.floor2HuntAbandonedEnemyEids.size > 0) {
+      if (territoryTarget) {
+        return {
+          ...territoryTarget,
+          reason: `Relocating within the ${familyId} territory after a blocked engagement`,
+        };
+      }
+      return null;
+    }
     if (!progressSuppressed && territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
       return {
         ...territoryTarget,
@@ -7215,7 +7334,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
       case 'move_to':
       case 'engage': {
-        if (progressSuppressed) {
+        // The final unlocked staircase is a terminal target, not a recoverable
+        // prerequisite. Keep reacquiring it instead of exploring away until the
+        // player physically reaches the normal marker radius.
+        const keepUnlockedStairTarget =
+          operation.phaseTag === 'post-stairs' && objective.staircaseUnlocked;
+        if (progressSuppressed && !keepUnlockedStairTarget) {
           return this.recordSuppressedProgressNavigation(
             world,
             operation.reason,
@@ -7355,9 +7479,39 @@ export class BehaviorTreeAI implements AIInputProvider {
     // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
+    const spellBrokerIntent = getSpellBrokerIntent(world);
+    const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
+    const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+
+    if (
+      world.featureUnlocks.spells &&
+      spellBrokerIntent.purchaseCount > 0 &&
+      spellBrokerIntent.purchaseStatus === 'returning' &&
+      slimeRatBossDefeated &&
+      staircaseBossDefeated
+    ) {
+      const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
+      if (spellQuestGiverNpcEid == null) return null;
+      const reason = 'Returning to the Spell Broker to purchase the offered spell';
+      if (progressSuppressed)
+        return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          playerX,
+          playerY,
+          reason,
+          spellQuestGiverNpcEid,
+        ),
+      );
+    }
 
     const settlementReturnIntent = getSettlementReturnIntent(world);
     if (
+      tutorialAccepted &&
+      slimeRatBossDefeated &&
+      staircaseBossDefeated &&
       !progressSuppressed &&
       (settlementReturnIntent.status === 'armed' || settlementReturnIntent.status === 'traveling')
     ) {
@@ -7659,21 +7813,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return null;
       }
       const reason = 'Heading to the stairs to clear the floor';
-      // F2 (SLACK_AWARE exit-commitment tail) — NARROWED after plan review.
-      // The original design forced the staircase Progress target under urgency by
-      // BYPASSING `progressGoalSuppressed`. Review flagged that as a monotonicity
-      // hazard: the quest-progress dwell watchdog sets that suppression window
-      // precisely to unstick a wedge (swarm pinning the player against an
-      // unreachable fixed goal) by letting Hunt/Explore relocate. Bypassing it
-      // while F1 simultaneously suppresses Collect/Hunt/Explore could livelock the
-      // agent on a wedged target and flip a previously-winning run into a loss.
-      // So F2's suppression override is DROPPED — the exit-commitment is delivered
-      // entirely by F1 (optional-goal suppression makes the agent commit to
-      // whatever Progress returns, which in this final leg is the staircase when
-      // not suppressed). This honors the legacy wedge-recovery escape hatch and is
-      // strictly more conservative, guaranteeing monotonicity. No-op in LEGACY.
-      if (progressSuppressed)
-        return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
           objective.staircasePos.x,
@@ -9560,6 +9699,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = 0;
     this.floor2HuntCadenceStartFrame = 0;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.releaseFloor2HuntEnemies();
     this.floor2HuntPatrolTiles.clear();
     this.floor2HuntTerritoryInsideByFamily.clear();
     this.globalDwellActive = false;

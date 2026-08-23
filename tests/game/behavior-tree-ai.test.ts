@@ -71,6 +71,7 @@ import {
   CONTACT_RETREAT_PROGRESS_FRAMES,
   CONTACT_RETREAT_PROGRESS_FT,
   CONTACT_SAFE_ORBIT_FT,
+  ENEMY_IGNORE_FRAMES,
   ENGAGE_GIVEUP_FRAMES,
   FLOOR2_HUNT_ENGAGE_FRAMES,
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
@@ -1517,8 +1518,10 @@ describe('BehaviorTreeAI', () => {
     world.stores.position.x[player] = 14;
     world.stores.position.y[player] = 10;
     world.playerInSafeRoom = true;
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
 
-    const farThreat = spawnEnemy(world, 84, 10, 20);
+    const farThreat = spawnEnemy(world, 18, 10, 20);
 
     const ai = new BehaviorTreeAI({ seed: 31 });
     const input = createInputState();
@@ -1963,14 +1966,11 @@ describe('BehaviorTreeAI', () => {
         }>;
       }
     ).territoryZones = [{ familyIndex, centerX: 20, centerY: 20, radius: 10 }];
-    // The family enemy sits at the territory center, so it stays trivially
-    // reachable (well within FLOOR2_HUNT_CHASE_RADIUS_FT) from every player
-    // position exercised below.
+    // A non-family enemy sits at the territory center. It is found only by the
+    // territory-scoped clearing branch, so this test continues to exercise the
+    // membership latch independently from the family-target chase behavior.
     const centerPos = world.floorMap.tileToWorld(20, 20);
-    const familyEnemy = spawnEnemy(world, centerPos.x, centerPos.y, 20);
-    addComponent(world.ecs, familyEnemy, FamilyMembership);
-    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
-    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const territoryEnemy = spawnEnemy(world, centerPos.x, centerPos.y, 20);
     const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
     expect(quest?.status).toBe('active');
 
@@ -1991,7 +1991,7 @@ describe('BehaviorTreeAI', () => {
     };
 
     // Latch inside first (well within the plain radius).
-    expect(pollAt(20, 20)?.eid).toBe(familyEnemy);
+    expect(pollAt(20, 20)?.eid).toBe(territoryEnemy);
 
     // Alternate between tile distance 9 (just inside the OLD plain radius of
     // 10) and tile distance 11 (just outside it, but still within the
@@ -1999,14 +1999,275 @@ describe('BehaviorTreeAI', () => {
     // Under the OLD plain-circle check this alternation would flip
     // `playerInTerritory` — and therefore the selected target — every poll.
     for (let i = 0; i < 5; i += 1) {
-      expect(pollAt(29, 20)?.eid).toBe(familyEnemy); // tile dist 9
-      expect(pollAt(31, 20)?.eid).toBe(familyEnemy); // tile dist 11
+      expect(pollAt(29, 20)?.eid).toBe(territoryEnemy); // tile dist 9
+      expect(pollAt(31, 20)?.eid).toBe(territoryEnemy); // tile dist 11
     }
 
-    // Now push well past the hysteresis band (tile dist 20, past radius +
-    // HYSTERESIS = 13) — the selected target must actually change once the
-    // player is genuinely outside.
-    expect(pollAt(40, 20)?.eid).not.toBe(familyEnemy);
+    // Push well past the hysteresis band (tile dist 20, past radius +
+    // HYSTERESIS = 13). Membership is now genuinely false, so the
+    // territory-scoped clearing target disappears. Because progress is
+    // suppressed, patrol fallback is also intentionally unavailable.
+    expect(pollAt(40, 20)).toBeNull();
+  });
+
+  it('does not drop the last family member sitting outside its own territory zone (2026-08-23 last-family-hunt-pacing fix)', () => {
+    // Regression: release-sweep floor2/floor1-chain timeouts on the LAST
+    // remaining family were caused by a self-defeating feedback loop, not by
+    // slow combat. `familyEnemy` (the den-unlock kill-quota target) used to
+    // be gated on `playerInTerritory && territoryZone`, unlike `territoryEnemy`
+    // (the in-zone patrol/clear target). On maps where a live family member
+    // roams outside the authored territory circle, chasing it pulled the
+    // player out of the zone, which flipped the Schmitt-trigger zone latch to
+    // false, which dropped `familyEnemy` on the very next poll and fell back
+    // to the in-zone patrol point — pulling the player back inside, re-
+    // latching true, and re-acquiring the same distant enemy. That produced a
+    // stable ~1s two-state oscillation (confirmed via frame-exact telemetry
+    // on release-sweep seed 1: distance to target dropping for ~58 frames,
+    // then jumping back up over the next ~60) that made zero net progress on
+    // the den-unlock quota and could burn the remainder of Floor 2's collapse
+    // timer without ever unlocking the last den. The fix un-gates the
+    // `familyEnemy` search from zone membership (kept bounded only by
+    // FLOOR2_HUNT_CHASE_RADIUS_FT, same as before) since the trash-kill quota
+    // itself is not territory-scoped (`floor2Scenario.ts` counts a kill
+    // anywhere on the map).
+    const world = createTestWorld({ seed: 1, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(60, 40);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 20, centerY: 20, radius: 6 }];
+    // Place the sole remaining family member well outside the territory
+    // circle (tile dist ~19 from center vs. radius 6 + hysteresis 3 = 9), but
+    // still within FLOOR2_HUNT_CHASE_RADIUS_FT (120ft = 30 tiles).
+    const enemyPos = world.floorMap.tileToWorld(39, 20);
+    const familyEnemy = spawnEnemy(world, enemyPos.x, enemyPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const ai = new BehaviorTreeAI({ seed: 1 }) as unknown as {
+      findFloor2QuestProgressTarget(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        activeQuest: NonNullable<typeof quest>,
+        progressSuppressed: boolean,
+      ): { eid: number } | null;
+    };
+    const floorMap = world.floorMap;
+    const pollAt = (tx: number, ty: number): { eid: number } | null => {
+      const pos = floorMap.tileToWorld(tx, ty);
+      return ai.findFloor2QuestProgressTarget(world, player, pos.x, pos.y, quest!, true);
+    };
+
+    // Simulate the old feedback loop's two poles: the player oscillating
+    // between "inside the zone, chasing back toward it" (tile 20,20, the
+    // in-zone patrol point the old code fell back to) and "closing the
+    // distance on the actual family target" (progressively closer to tile
+    // 39,20, mirroring the real chase). At every single one of these polls —
+    // including every "inside the zone" pole — the family enemy must remain
+    // the selected target; it must never be dropped in favor of a null/patrol
+    // fallback just because the player is momentarily back inside the zone.
+    const playerTrack: Array<[number, number]> = [
+      [20, 20], // deep inside zone (old code's patrol-fallback pole)
+      [30, 20], // outside zone, closing on the enemy
+      [20, 20], // pulled back inside zone (old latch would flip true here)
+      [34, 20], // outside zone again, closer still
+      [20, 20],
+      [38, 20], // nearly on top of the enemy
+    ];
+    for (const [tx, ty] of playerTrack) {
+      expect(pollAt(tx, ty)?.eid).toBe(familyEnemy);
+    }
+  });
+
+  it('relocates before retrying a blocked Floor 2 family target', () => {
+    const world = createTestWorld({ seed: 107, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    world.floorMap = makeOpenRoom(60, 40);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex: 0, centerX: 20, centerY: 20, radius: 10 }];
+    const playerPos = world.floorMap.tileToWorld(20, 20);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const enemyPos = world.floorMap.tileToWorld(24, 20);
+    const familyEnemy = spawnEnemy(world, enemyPos.x, enemyPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = 0;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`)!;
+
+    const ai = new BehaviorTreeAI({ seed: 107 });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().targetEid).toBe(familyEnemy);
+
+    const harness = ai as unknown as {
+      updateEngageWatchdog(world: GameWorld, playerX: number, playerY: number): void;
+      findFloor2QuestProgressTarget(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        activeQuest: NonNullable<typeof quest>,
+        progressSuppressed: boolean,
+      ): { eid: number; x: number; y: number; reason: string } | null;
+      abandonFloor2HuntEnemy(world: GameWorld, eid: number): void;
+      floor2HuntAbandonedEnemyEids: Set<number>;
+      floor2HuntPatrolIndex: number;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    for (let i = 0; i <= ENGAGE_GIVEUP_FRAMES + 1; i += 1) {
+      harness.updateEngageWatchdog(world, playerPos.x, playerPos.y);
+    }
+    const patrolIndexAfterAbandonment = harness.floor2HuntPatrolIndex;
+    harness.abandonFloor2HuntEnemy(world, familyEnemy);
+    expect(harness.floor2HuntPatrolIndex).toBe(patrolIndexAfterAbandonment);
+    expect(harness.floor2HuntAbandonedEnemyEids).toContain(familyEnemy);
+
+    world.frameCount += ENEMY_IGNORE_FRAMES + 1;
+    const relocation = harness.findFloor2QuestProgressTarget(
+      world,
+      player,
+      playerPos.x,
+      playerPos.y,
+      quest,
+      false,
+    );
+    expect(relocation).toMatchObject({
+      eid: -1,
+      reason: `Relocating within the ${familyId} territory after a blocked engagement`,
+    });
+    expect(harness.floor2HuntAbandonedEnemyEids).toContain(familyEnemy);
+
+    harness.findFloor2QuestProgressTarget(
+      world,
+      player,
+      relocation!.x,
+      relocation!.y,
+      quest,
+      false,
+    );
+    expect(harness.floor2HuntAbandonedEnemyEids).not.toContain(familyEnemy);
+    expect(harness.ignoredEnemyUntilFrame.has(familyEnemy)).toBe(false);
+    expect(
+      harness.findFloor2QuestProgressTarget(
+        world,
+        player,
+        relocation!.x,
+        relocation!.y,
+        quest,
+        false,
+      )?.eid,
+    ).toBe(familyEnemy);
+  });
+
+  it('keeps an abandoned Floor 2 family target quarantined through an unrelated same-family kill', () => {
+    const world = createTestWorld({ seed: 107, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    world.floorMap = makeOpenRoom(60, 40);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex: 0, centerX: 20, centerY: 20, radius: 10 }];
+    const playerPos = world.floorMap.tileToWorld(20, 20);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const enemyPos = world.floorMap.tileToWorld(24, 20);
+    const familyEnemy = spawnEnemy(world, enemyPos.x, enemyPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = 0;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`)!;
+
+    const ai = new BehaviorTreeAI({ seed: 107 });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().targetEid).toBe(familyEnemy);
+
+    const harness = ai as unknown as {
+      updateEngageWatchdog(world: GameWorld, playerX: number, playerY: number): void;
+      findFloor2QuestProgressTarget(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        activeQuest: NonNullable<typeof quest>,
+        progressSuppressed: boolean,
+      ): { eid: number; x: number; y: number; reason: string } | null;
+      abandonFloor2HuntEnemy(world: GameWorld, eid: number): void;
+      floor2HuntAbandonedEnemyEids: Set<number>;
+      floor2HuntPatrolIndex: number;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    for (let i = 0; i <= ENGAGE_GIVEUP_FRAMES + 1; i += 1) {
+      harness.updateEngageWatchdog(world, playerPos.x, playerPos.y);
+    }
+    harness.abandonFloor2HuntEnemy(world, familyEnemy);
+    expect(harness.floor2HuntAbandonedEnemyEids).toContain(familyEnemy);
+    world.frameCount += ENEMY_IGNORE_FRAMES + 1;
+
+    // An unrelated same-family kill (e.g. the player fighting a different
+    // family member, or a lingering projectile) bumps the family kill
+    // counter without the abandoned enemy dying and without the player ever
+    // reaching the patrol/relocation anchor. That must NOT reinstate the
+    // abandoned target as eligible -- see abandonFloor2HuntEnemy /
+    // pruneDefeatedFloor2HuntEnemies.
+    world.floorExtendedState!.familyState!.trashKillsByFamily!.set(familyId, 1);
+
+    const result = harness.findFloor2QuestProgressTarget(
+      world,
+      player,
+      playerPos.x,
+      playerPos.y,
+      quest,
+      false,
+    );
+    expect(harness.floor2HuntAbandonedEnemyEids).toContain(familyEnemy);
+    expect(result?.eid).not.toBe(familyEnemy);
+
+    // Once the abandoned enemy itself is actually defeated, it should be
+    // pruned from quarantine (progress that resolves the specific blocked
+    // target still counts).
+    world.stores.health.current[familyEnemy] = 0;
+    world.floorExtendedState!.familyState!.trashKillsByFamily!.set(familyId, 2);
+    harness.findFloor2QuestProgressTarget(world, player, playerPos.x, playerPos.y, quest, false);
+    expect(harness.floor2HuntAbandonedEnemyEids).not.toContain(familyEnemy);
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {

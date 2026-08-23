@@ -70,3 +70,7 @@ registerGenerator(BiomeType.TOWN, arenaGen); // placeholder
 // the manifest; today the generator defaults to 4.
 // TODO(floor2-slice-8): wire presentCount + family roster from manifest.
 registerGenerator(BiomeType.CAVE_SYSTEM, new CaveSystemGenerator());
+registerGenerator(
+  BiomeType.CAVE_SYSTEM_BIOMES,
+  new CaveSystemGenerator({ layout: 'floor3-biomes' }),
+);
