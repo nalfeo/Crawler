@@ -16,6 +16,8 @@ import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
+import { createAudioCueEngine } from './audio/audio-cue-engine.js';
+import { createCombatAudio } from './combat-audio.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
@@ -690,6 +692,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
+  const combatAudio = createCombatAudio(createAudioCueEngine());
   const mobAbilityVfx = createMobAbilityVfx(scene);
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
@@ -2704,6 +2707,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           for (const opts of pendingShatter) corpseShatterVfx.explode(opts);
         }
       }
+      // Combat/loot SFX. Reads combatEvents, abilityActivations, AND
+      // vfxEvents BEFORE effectsVfx/combatVfx drain them (must run first).
+      combatAudio.update(world, renderElapsedMs);
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
@@ -2717,6 +2723,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     },
 
     destroy(): void {
+      combatAudio.destroy();
       for (const visual of visuals.values()) {
         visual.obj.destroy();
       }
