@@ -1963,14 +1963,11 @@ describe('BehaviorTreeAI', () => {
         }>;
       }
     ).territoryZones = [{ familyIndex, centerX: 20, centerY: 20, radius: 10 }];
-    // The family enemy sits at the territory center, so it stays trivially
-    // reachable (well within FLOOR2_HUNT_CHASE_RADIUS_FT) from every player
-    // position exercised below.
+    // A non-family enemy sits at the territory center. It is found only by the
+    // territory-scoped clearing branch, so this test continues to exercise the
+    // membership latch independently from the family-target chase behavior.
     const centerPos = world.floorMap.tileToWorld(20, 20);
-    const familyEnemy = spawnEnemy(world, centerPos.x, centerPos.y, 20);
-    addComponent(world.ecs, familyEnemy, FamilyMembership);
-    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
-    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const territoryEnemy = spawnEnemy(world, centerPos.x, centerPos.y, 20);
     const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
     expect(quest?.status).toBe('active');
 
@@ -1991,7 +1988,7 @@ describe('BehaviorTreeAI', () => {
     };
 
     // Latch inside first (well within the plain radius).
-    expect(pollAt(20, 20)?.eid).toBe(familyEnemy);
+    expect(pollAt(20, 20)?.eid).toBe(territoryEnemy);
 
     // Alternate between tile distance 9 (just inside the OLD plain radius of
     // 10) and tile distance 11 (just outside it, but still within the
@@ -1999,25 +1996,15 @@ describe('BehaviorTreeAI', () => {
     // Under the OLD plain-circle check this alternation would flip
     // `playerInTerritory` — and therefore the selected target — every poll.
     for (let i = 0; i < 5; i += 1) {
-      expect(pollAt(29, 20)?.eid).toBe(familyEnemy); // tile dist 9
-      expect(pollAt(31, 20)?.eid).toBe(familyEnemy); // tile dist 11
+      expect(pollAt(29, 20)?.eid).toBe(territoryEnemy); // tile dist 9
+      expect(pollAt(31, 20)?.eid).toBe(territoryEnemy); // tile dist 11
     }
 
     // Push well past the hysteresis band (tile dist 20, past radius +
-    // HYSTERESIS = 13) but still within FLOOR2_HUNT_CHASE_RADIUS_FT (120ft =
-    // 30 tiles at this floor's 4ft tiles). `playerInTerritory` is genuinely
-    // false here, yet the family enemy must still be the selected target:
-    // gating `familyEnemy` on zone membership was itself the bug (2026-08-23
-    // floor2-last-family-hunt-pacing) — a committed family member sitting
-    // just outside the authored territory circle would otherwise be dropped
-    // and re-acquired every ~60 frames as the zone latch flipped, producing
-    // a stable chase-out/patrol-in oscillation that made no net progress on
-    // the den-unlock kill quota.
-    expect(pollAt(40, 20)?.eid).toBe(familyEnemy);
-
-    // Only once the player is genuinely beyond the chase radius (tile dist
-    // 35 = 140ft > 120ft) should the objective target actually change.
-    expect(pollAt(55, 20)?.eid).not.toBe(familyEnemy);
+    // HYSTERESIS = 13). Membership is now genuinely false, so the
+    // territory-scoped clearing target disappears. Because progress is
+    // suppressed, patrol fallback is also intentionally unavailable.
+    expect(pollAt(40, 20)).toBeNull();
   });
 
   it('does not drop the last family member sitting outside its own territory zone (2026-08-23 last-family-hunt-pacing fix)', () => {

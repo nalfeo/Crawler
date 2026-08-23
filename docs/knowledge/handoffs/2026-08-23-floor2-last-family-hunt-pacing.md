@@ -21,7 +21,8 @@ ai-behavior-tree, ai-pathfinding
 Closes #3378: the report-only release sweep legs `floor2` (86.00%, 129/150)
 and `floor1-chain` (88.00%, 132/150) were below the repo's 90% win-rate target
 for commit `3291d5cdf5abdb575a8628b7e4fbd6b0ad44e4c8`
-(run https://github.com/nalfeo/Crawler/actions/runs/32625255085).
+(`project:sweep-results-viewer runId=32625255085`; run
+https://github.com/nalfeo/Crawler/actions/runs/32625255085).
 
 This is explicitly the **next** bucket flagged by the two prior handoffs
 (`2026-08-23-floor2-collapse-deadline-awareness.md`,
