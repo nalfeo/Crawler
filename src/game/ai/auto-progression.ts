@@ -38,6 +38,7 @@ import {
   resolveFloor1AiCollapsePanicDeadlineMs,
 } from './bt-ai-provider.js';
 import { LOOT_SWEEP_PANIC_THRESHOLD } from './bt-ai-tuning.js';
+import { resolveManifestFloorCollapseState } from './collapse-deadline.js';
 import { Gold, XpGem } from '../../core/components.js';
 import {
   confirmFloor1StairDescend,
@@ -397,8 +398,9 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
     return;
   }
 
-  // Floor 2 has no collapse deadline, so the sweep window is time-unbounded —
-  // only the frame budget bounds the hold.
+  // Floor 2's collapse deadline lives on its manifest timer rather than on a
+  // Floor-1 objective, so resolve it explicitly: the descend-defer hold must
+  // surrender under collapse pressure here exactly as it does on Floor 1.
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - floor2State.staircasePos.x;
@@ -406,7 +408,13 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
   if (Math.hypot(dx, dy) > FLOOR2_STAIR_MARKER_RADIUS_FT) {
     return;
   }
-  if (shouldDeferStairDescend(world, 'floor2', null)) {
+  if (
+    shouldDeferStairDescend(
+      world,
+      'floor2',
+      resolveManifestFloorCollapseState(world)?.deadlineMs ?? null,
+    )
+  ) {
     return;
   }
   confirmFloor2StairDescend(world, playerEid);

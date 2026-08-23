@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "floor2-collapse-deadline-awareness",
+  "task_title": "Give the AI runner Floor-2 collapse-deadline awareness",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (gpt-5.4) verdict approved_with_changes. (1) BLOCKING: single-seed validation violates rule #12 - resolved by categorizing the whole published release baseline (149 timeouts, 115 with all 4 dens dead) and running a 10-seed local smoke rather than gating on one seed; the next release sweep is the canonical rate re-measurement. (2) stale plan wording about a module that already existed - non-blocking, plan text corrected. (3) reuse the exact stair-availability guard from autoFloor2ProgressionSystem and cover timer-without-spawned-stairs / missing staircasePos - implemented in resolveManifestFloorCollapseState and covered in tests/unit/ai-floor-collapse-deadline.test.ts. (4) blast radius wider than stated: Floor-2 panic now also feeds Collect, opportunistic collect/farm, dynamic weights, run-plan urgency, quest-giver detour and travel spacing - accepted deliberately (that is the same coupling Floor 1 already has) and watched via the smoke seed mix for new deaths/stalls. (5) ship the smaller travel-aware fix first before any explicit exit-priority override - followed; no priority-order change was made."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code-review agent on the full working-tree diff (resolver correctness/edge cases, Floor-1 byte-identity, pre-unlock Floor-2 panic side effects, layer boundaries, determinism, regression-cover genuineness). Verdict: no significant issues; both call sites independently resolving the same manifest state judged the right pattern."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

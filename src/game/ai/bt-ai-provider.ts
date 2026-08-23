@@ -292,6 +292,8 @@ import {
   LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
 import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
+// Collapse deadline for floors whose timer lives on the floor manifest (Floor 2).
+import { resolveManifestFloorCollapseState } from './collapse-deadline.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
@@ -577,7 +579,8 @@ interface CollapsePanicInput {
   staircaseDiscovered: boolean;
   /**
    * Deterministic AI estimate of the current travel time (ms) from the player
-   * to the Floor 1 staircase entry marker. When provided and the run is in the
+   * to the active floor's staircase entry marker. When provided and the run is
+   * in the
    * post-unlock/pre-discovery phase, the beeline threshold escalates to at
    * least {@link CollapsePanicInput.playerToStairsTravelMs} +
    * {@link PANIC_STAIRS_TRAVEL_SAFETY_MS} so that the AI drops optional
@@ -788,8 +791,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Cached deterministic player→stairs travel-time estimate (ms), refreshed
    * every {@link OBJECTIVE_TRAVEL_ASTAR_REFRESH_TICKS} BT polls (or when the
    * player crosses a tile) via {@link refreshPlayerToStairsTravelEstimate}.
-   * Null when Floor-1 objective state is unavailable, when the staircase is
-   * still locked, or when the discovery marker has already been reached (in
+   * Null when the active floor's staircase state is unavailable, when the
+   * staircase is still locked, or when the discovery marker has already been
+   * reached (in
    * which case downstream code short-circuits to the legacy fixed-threshold
    * beeline). Used by {@link getCollapsePanicProfile} to phase-gate the panic
    * beeline threshold on the AI's perfect-world travel-time knowledge.
@@ -4437,12 +4441,28 @@ export class BehaviorTreeAI implements AIInputProvider {
   ): void {
     const objective = world.floorScenario?.objective;
     const floorMap = world.floorMap;
-    if (!objective || !floorMap) {
+    if (!floorMap) {
       this.lastPlayerToStairsTravelMs = null;
       return;
     }
-    // Phase-gate: only run in the post-unlock, pre-discovery window.
-    if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
+    // Resolve the staircase + phase gate from whichever floor model is active.
+    // Floor 2 keeps its staircase on `floorExtendedState.familyState` and its
+    // deadline on the manifest, so without this branch the travel-aware beeline
+    // threshold — the mechanism that makes the AI drop optional detours in time
+    // to physically reach the stairs — was Floor-1-only.
+    let stairs: { x: number; y: number } | null = null;
+    if (objective) {
+      // Phase-gate: only run in the post-unlock, pre-discovery window.
+      if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
+        stairs = objective.staircasePos;
+      }
+    } else {
+      const collapse = resolveManifestFloorCollapseState(world);
+      if (collapse?.staircaseUnlocked && !collapse.staircaseDiscovered) {
+        stairs = collapse.staircasePos;
+      }
+    }
+    if (!stairs) {
       this.lastPlayerToStairsTravelMs = null;
       return;
     }
@@ -4459,7 +4479,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       return; // still fresh
     }
 
-    const stairs = objective.staircasePos;
     const adapters: ObjectiveTravelAdapters = {
       worldToTile: (x, y) => floorMap.worldToTile(x, y),
       findTilePath: (start, goal) => findTilePath(floorMap, start, goal, this.groundPathOptions()),
@@ -4484,7 +4503,22 @@ export class BehaviorTreeAI implements AIInputProvider {
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
     const objective = world.floorScenario?.objective;
     if (!objective) {
-      return computeCollapsePanicProfile(null);
+      // Floors without a Floor-1 objective can still collapse: Floor 2's timer
+      // lives on its manifest and `floor2ObjectiveTick` ends the run at it.
+      // Treating that as "no deadline" left the pre-exit loot sweep unable to
+      // ever surrender, so runs that had already unlocked the exit swept until
+      // the floor collapsed.
+      const collapse = resolveManifestFloorCollapseState(world);
+      if (!collapse) {
+        return computeCollapsePanicProfile(null);
+      }
+      return computeCollapsePanicProfile({
+        elapsedMs: world.elapsedMs,
+        deadlineMs: collapse.deadlineMs,
+        staircaseUnlocked: collapse.staircaseUnlocked,
+        staircaseDiscovered: collapse.staircaseDiscovered,
+        playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
+      });
     }
     return computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
