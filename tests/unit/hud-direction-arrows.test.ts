@@ -12,7 +12,17 @@ function waypoint(
   y: number,
   kind: QuestWaypoint['kind'] = 'npc',
 ): QuestWaypoint {
-  return { questId, x, y, kind, label: questId };
+  return { questId, x, y, dirX: x, dirY: y, kind, label: questId };
+}
+
+function sharedDirectionWaypoint(
+  questId: string,
+  x: number,
+  y: number,
+  dirX: number,
+  dirY: number,
+): QuestWaypoint {
+  return { questId, x, y, dirX, dirY, kind: 'npc', label: questId };
 }
 
 function distance(a: DirectionArrowState, b: DirectionArrowState): number {
@@ -101,6 +111,19 @@ describe('resolveDirectionArrowStates', () => {
       0,
       1,
     );
+
+    expect(states.map((state) => state.questId)).toEqual(['far']);
+  });
+
+  it('uses the precise target (not the shared room anchor) for visibility and distance', () => {
+    // Two same-room quests share a `dirX/dirY` anchor for angle, but their
+    // precise `x/y` targets differ: one is on-screen, the other isn't. Only
+    // the off-screen one should render, and its label distance must reflect
+    // its own precise position, not the shared anchor.
+    const onScreenPrecise = sharedDirectionWaypoint('near', 1, 1, 100, 0);
+    const offScreenPrecise = sharedDirectionWaypoint('far', 100, 0, 100, 0);
+
+    const states = resolveDirectionArrowStates([onScreenPrecise, offScreenPrecise], 0, 0, 1);
 
     expect(states.map((state) => state.questId)).toEqual(['far']);
   });

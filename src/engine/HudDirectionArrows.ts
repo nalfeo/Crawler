@@ -253,6 +253,10 @@ export function resolveDirectionArrowStates(
   const states: DirectionArrowState[] = [];
 
   for (const waypoint of waypoints) {
+    // Off-screen culling and the displayed distance always use the precise
+    // target so they stay accurate per-quest; only the angle is normalized
+    // to the shared room anchor (`dirX`/`dirY`) so co-located arrows agree
+    // on direction without misreporting visibility or range.
     const dx = waypoint.x - playerX;
     const dy = waypoint.y - playerY;
     const targetScreenX = CX + dx * scale;
@@ -266,7 +270,9 @@ export function resolveDirectionArrowStates(
       continue;
     }
 
-    const targetAngle = Math.atan2(dy, dx);
+    const angleDx = waypoint.dirX - playerX;
+    const angleDy = waypoint.dirY - playerY;
+    const targetAngle = Math.atan2(angleDy, angleDx);
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
     const edgePoint = rectEdgePt(targetAngle);
