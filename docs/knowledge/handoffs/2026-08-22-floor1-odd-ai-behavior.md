@@ -47,6 +47,8 @@ level 9, score 171, **454 gold (43.1%) unspent**, **9 vendor visits**.
    the way _to_ its objectives. New `calmFarmPullBoost` knob, applied via the
    pure `resolveCalmFarmPullBoost()` only while `panic === 0` and no exit
    beeline is active, so it is structurally incapable of eating the exit margin.
+   CI recovery later kept the knob but reset the production default to neutral
+   (`1`) after the 1.35 candidate regressed established headless gates.
 3. **+ item 4. Post-boss farm window.** New `postBossFarmReserveFraction` AIConfig
    knob and the pure `resolvePostBossFarmWindow()` module, surfaced as the
    optional `AIInputProvider.isFarmingPostBossFloorTime()`. Once the staircase is
@@ -94,11 +96,14 @@ score 358, 7 vendor visits, zero `unaffordable`.** The blocking 25-seed /
   under its own staircase and break `isFullyInsideBossRoom`, the minimap and
   spawn suppression. `pickSpawnRoom` already excludes SAFE/BOSS_STAIR rooms, so
   no spawn change was needed.
-- **New knob only; `DEFAULT_CONFIG` values untouched.** `experienced_player` _is_
-  the production baseline (`PRODUCTION_TUNING_DEFAULTS` derives from
-  `DEFAULT_CONFIG`), which is a promoted AI-Sweep winner carrying an explicit "do
-  NOT weaken these values" comment. Items 2 and 4 were delivered by _adding_
-  `postBossFarmReserveFraction`, never by retuning an existing knob.
+- **New knobs only; existing promoted AI-Sweep values untouched.**
+  `experienced_player` _is_ the production baseline
+  (`PRODUCTION_TUNING_DEFAULTS` derives from `DEFAULT_CONFIG`), which is a
+  promoted AI-Sweep winner carrying an explicit "do NOT weaken these values"
+  comment. Items 2 and 4 were delivered by _adding_
+  `postBossFarmReserveFraction` and `calmFarmPullBoost`, never by retuning an
+  existing knob; after CI recovery, the calm boost remains available but defaults
+  to neutral until a sweep promotes it.
 - **The calm boost is cliff-edged at `panic === 0`, not a smooth ramp.** A
   smooth "more time → more farming" curve would interact with the panic ramp in
   both directions and could trade exit safety for loot at the margin. Gating on
@@ -122,10 +127,12 @@ score 358, 7 vendor visits, zero `unaffordable`.** The blocking 25-seed /
   budget. Always validate Floor 1 AI changes with `--max-frames 39600`.
 - Only Floor 1 arenas convert today. Floor 2+ boss rooms are a natural follow-up
   and would reuse `markBossRoomCleared` unchanged.
-- `postBossFarmReserveFraction` (0.2) and `calmFarmPullBoost` (1.35) were set by
-  reasoning plus a seed-42 measurement and the 25-seed gate, not by an AI Sweep.
-  A sweep over both axes (and over the `min_max_cheeser`/`explorer` values) is
-  the obvious way to turn them into measured winners.
+- `postBossFarmReserveFraction` (0.2) was set by reasoning plus a seed-42
+  measurement and the 25-seed gate, not by an AI Sweep. `calmFarmPullBoost` is
+  now neutral for production after the 1.35 candidate regressed established
+  headless gates; a sweep over both axes (and over the
+  `min_max_cheeser`/`explorer` values) is the obvious way to turn non-neutral
+  values into measured winners.
 
 ## Retrospective
 

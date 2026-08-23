@@ -58,14 +58,11 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // remaining time drops to it, and the existing collapse-panic beeline is
   // untouched underneath.
   postBossFarmReserveFraction: 0.2,
-  // Issue #3275 item 2: the same cohort was reading as a speed-runner on the
-  // way TO its objectives, not just after them. While the collapse clock is
-  // applying no pressure at all (`panic === 0`), lean a little harder into the
-  // loot/enemy pull so the run sweeps what is already near its path. Bounded
-  // and one-sided: the panic ramp still scales both pulls down to zero as the
-  // deadline approaches, and this multiplier is inactive the instant panic
-  // starts, so it can never cost the run its exit.
-  calmFarmPullBoost: 1.35,
+  // Issue #3275 item 2 introduced this as an opt-in persona/sweep axis for
+  // calmer en-route farming, but the production default stays neutral until a
+  // broad sweep promotes a non-1 value. The initial 1.35 candidate regressed
+  // existing headless gates after the branch rebased onto main.
+  calmFarmPullBoost: 1,
   // A/B axis 1: RISK_REWARD_FUSED is the 2026-07-21 AI Sweep winner (294/300).
   // A/B axis 2: LEGACY — fixed-priority Track A ladder.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
