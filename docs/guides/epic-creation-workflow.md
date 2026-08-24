@@ -8,20 +8,24 @@ that layout instead of hand-writing issues. Once the file lands on `main`, the
 into real GitHub issues.
 
 **Every epic always starts with a human-review issue.** No slice/node issue is
-ever created until a human closes that review issue **as completed** — this
+ever created until a human user closes that review issue **as completed** — this
 is the gate that guarantees the plan is reviewed before implementation
 begins. (A `state_reason` of anything other than `completed` — including a
 `null` reason, which is what GitHub records for an issue auto-closed via a
 PR's `Closes #N` keyword — does **not** count as approval.) Closing it as
 **"not planned"** instead is treated as an explicit rejection of that plan
-revision: no node issue is ever created for it. Each review issue is itself
-scoped to a content hash of the reviewed `title`+`nodes`: if the `.epic.json`
-file changes (title or nodes) after a review issue is filed or closed —
+revision while the review issue remains closed; reopening it returns the exact
+revision to "waiting for review." Each review issue is itself scoped to a
+content hash of every reviewed/materialized field: if the `.epic.json`
+file changes (title, description, review prose, global labels, or nodes) after a review issue is filed or closed —
 whether it was approved or rejected — no existing issue matches the new
 revision, so the workflow files a **brand-new** review issue for it
 automatically. A human can never be asked to approve (or reject) revision A
 and have revision B materialize; the old review issue is left untouched as
-history, never edited or reused.
+history, never edited or reused. After any node issue has materialized, that
+epic id is frozen: post-materialization revisions are rejected instead of
+reusing or superseding already-created implementation issues. Author a new
+`epic_id` for follow-up issue graphs.
 
 ## Authoring a `*.epic.json` file
 
@@ -54,8 +58,8 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    triggers can't race each other into creating duplicate issues.
 2. If no review issue matching the current file's content hash exists yet, it
    creates **only** the human-review issue (labeled `epic`, `epic:<epic_id>`,
-   `epic-review`) and stops. The review issue body lists every planned node
-   and its dependencies so a human can review the whole plan in one place;
+   `epic-review`) and stops. The review issue body lists every planned node's
+   title, body, dependencies, and global/node labels so a human can review the whole plan in one place;
    the hash is embedded in a hidden marker in the issue body. Any label an
    epic needs (the `epic:<epic_id>` label, `epic-review`, or a custom label
    from the file) is created in the repo first if it doesn't already exist —
@@ -64,10 +68,12 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    never actually attach and the workflow could never find its issue again.
 3. On a later run, if that review issue is still open, nothing happens.
 4. If the review issue is closed **as "Not planned"**, this exact plan
-   revision is treated as rejected: no node issue is ever created for it.
-   Re-opening the review issue returns it to the "waiting for review" state.
+   revision is treated as rejected while the issue remains closed: no node issue
+   is created for it in that state. Re-opening the review issue returns it to
+   the "waiting for review" state.
 5. If the review issue is closed **as completed**, the workflow creates each
-   node's issue in dependency order. Every node issue body includes
+   node's issue in dependency order, but only when GitHub reports the closer as
+   a human user; bot/API closures fail closed. Every node issue body includes
    `Blocked by #N` for the review issue itself plus every declared
    dependency, so the dependency graph is visible directly on GitHub.
    (`Blocked by` is plain text, not a native GitHub blocking relationship —

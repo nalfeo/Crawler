@@ -137,6 +137,24 @@ export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 
 export const STALE_BASE_RETARGET_MARKER = '<!-- crawler-ci-stale-base-retarget:v1';
 
 // ---------------------------------------------------------------------------
+// Epic-create issue markers
+// ---------------------------------------------------------------------------
+
+/** Leading prefix for epic-create human-review issues. */
+export const EPIC_REVIEW_MARKER_PREFIX = '<!-- crawler-epic-review:';
+
+/** Leading prefix for epic-create materialized node issues. */
+export const EPIC_NODE_MARKER_PREFIX = '<!-- crawler-epic-node:';
+
+export function epicReviewMarker(epicId, hash) {
+  return `${EPIC_REVIEW_MARKER_PREFIX}${epicId}:${hash} -->`;
+}
+
+export function epicNodeMarker(epicId, hash, nodeId) {
+  return `${EPIC_NODE_MARKER_PREFIX}${epicId}:${hash}:${nodeId} -->`;
+}
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -179,4 +197,6 @@ export const MANAGED_COMMENT_MARKERS = [
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,
   STALE_BASE_RETARGET_MARKER,
+  EPIC_REVIEW_MARKER_PREFIX,
+  EPIC_NODE_MARKER_PREFIX,
 ];

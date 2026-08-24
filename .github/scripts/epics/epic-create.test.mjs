@@ -28,12 +28,17 @@ function exampleEpic(overrides = {}) {
   };
 }
 
-function reviewIssueFor(epic, { number = 1, state = 'open', stateReason = null } = {}) {
+function reviewIssueFor(
+  epic,
+  { number = 1, state = 'open', stateReason = null, closedBy = undefined } = {},
+) {
   return {
     number,
     node_id: `ISSUE_${number}`,
     state,
     state_reason: stateReason,
+    closed_by:
+      closedBy === undefined && state === 'closed' ? { login: 'nalfeo', type: 'User' } : closedBy,
     body: reviewMarker(epic.epic_id, epicContentHash(epic)),
   };
 }
@@ -134,6 +139,16 @@ test('topoSortNodes throws on a dependency cycle', () => {
   assert.throws(() => topoSortNodes(nodes), /cycle/);
 });
 
+test('validateEpicFile rejects dependency cycles before GitHub mutations can happen', () => {
+  const epic = exampleEpic({
+    nodes: [
+      { id: 'a', title: 'A', depends_on: ['b'] },
+      { id: 'b', title: 'B', depends_on: ['a'] },
+    ],
+  });
+  assert.ok(validateEpicFile(epic).some((e) => e.includes('cycle')));
+});
+
 test('first run creates only the human-review issue, no node issues', async () => {
   const h = harness();
   const result = await planAndCreateEpic({
@@ -154,8 +169,18 @@ test('first run creates only the human-review issue, no node issues', async () =
     options.body.body.includes(reviewMarker('example-epic', epicContentHash(exampleEpic()))),
   );
   assert.deepEqual(options.body.labels, [EPIC_LABEL, epicLabel('example-epic'), EPIC_REVIEW_LABEL]);
+  assert.match(options.body.body, /## Global labels/);
+  assert.match(options.body.body, /`epic:example-epic`/);
+  assert.match(options.body.body, /### `slice-1`: Slice 1/);
+  assert.match(options.body.body, /Do the first thing\./);
   assert.equal(result.outcomes.length, 1);
   assert.equal(result.outcomes[0].action, 'created');
+});
+
+test('epicContentHash includes global labels that are applied to materialized nodes', () => {
+  const base = exampleEpic();
+  const labeled = exampleEpic({ labels: ['needs-triage'] });
+  assert.notEqual(epicContentHash(base), epicContentHash(labeled));
 });
 
 test('re-running while the review issue is still open creates nothing new', async () => {
@@ -256,6 +281,7 @@ test('a revised epic (different content hash) after approval also gets a brand-n
 
 test('once the review issue is closed as completed, node issues are created in dependency order with Blocked-by text', async () => {
   const epic = exampleEpic();
+  const hash = epicContentHash(epic);
   const h = harness([reviewIssueFor(epic, { state: 'closed', stateReason: 'completed' })]);
   const result = await planAndCreateEpic({
     requestFn: h.requestFn,
@@ -272,12 +298,12 @@ test('once the review issue is closed as completed, node issues are created in d
 
   const [, , , slice1Options] = posts[0];
   assert.equal(slice1Options.body.title, 'Slice 1');
-  assert.ok(slice1Options.body.body.includes(nodeMarker('example-epic', 'slice-1')));
+  assert.ok(slice1Options.body.body.includes(nodeMarker('example-epic', hash, 'slice-1')));
   assert.ok(slice1Options.body.body.includes('Blocked by #1'));
 
   const [, , , slice2Options] = posts[1];
   assert.equal(slice2Options.body.title, 'Slice 2');
-  assert.ok(slice2Options.body.body.includes(nodeMarker('example-epic', 'slice-2')));
+  assert.ok(slice2Options.body.body.includes(nodeMarker('example-epic', hash, 'slice-2')));
   // slice-2 depends on the review issue AND on slice-1's freshly created number.
   const slice1IssueNumber = result.outcomes.find((o) => o.nodeId === 'slice-1').issueNumber;
   assert.ok(slice2Options.body.body.includes(`Blocked by #1, #${slice1IssueNumber}`));
@@ -285,18 +311,19 @@ test('once the review issue is closed as completed, node issues are created in d
 
 test('is idempotent: re-running after all issues exist creates nothing new', async () => {
   const epic = exampleEpic();
+  const hash = epicContentHash(epic);
   const reviewIssue = reviewIssueFor(epic, { state: 'closed', stateReason: 'completed' });
   const slice1Issue = {
     number: 2,
     node_id: 'ISSUE_2',
     state: 'open',
-    body: `${nodeMarker('example-epic', 'slice-1')}\nBlocked by #1`,
+    body: `${nodeMarker('example-epic', hash, 'slice-1')}\nBlocked by #1`,
   };
   const slice2Issue = {
     number: 3,
     node_id: 'ISSUE_3',
     state: 'open',
-    body: `${nodeMarker('example-epic', 'slice-2')}\nBlocked by #1, #2`,
+    body: `${nodeMarker('example-epic', hash, 'slice-2')}\nBlocked by #1, #2`,
   };
   const h = harness([reviewIssue, slice1Issue, slice2Issue]);
   const result = await planAndCreateEpic({
@@ -311,6 +338,60 @@ test('is idempotent: re-running after all issues exist creates nothing new', asy
   assert.equal(result.reviewApproved, true);
   assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
   assert.ok(result.outcomes.every((o) => o.action === 'exists'));
+});
+
+test('post-materialization revisions are rejected instead of reusing stale node issues', async () => {
+  const originalEpic = exampleEpic();
+  const originalHash = epicContentHash(originalEpic);
+  const revisedEpic = exampleEpic({ labels: ['new-global-label'] });
+  const h = harness([
+    reviewIssueFor(originalEpic, { state: 'closed', stateReason: 'completed' }),
+    {
+      number: 2,
+      node_id: 'ISSUE_2',
+      state: 'open',
+      body: `${nodeMarker('example-epic', originalHash, 'slice-1')}\nBlocked by #1`,
+    },
+  ]);
+  await assert.rejects(
+    planAndCreateEpic({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epic: revisedEpic,
+    }),
+    /post-materialization revisions are not supported/,
+  );
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
+});
+
+test('approved revised review cannot materialize over stale node issues from an older revision', async () => {
+  const originalEpic = exampleEpic();
+  const originalHash = epicContentHash(originalEpic);
+  const revisedEpic = exampleEpic({ labels: ['new-global-label'] });
+  const h = harness([
+    reviewIssueFor(revisedEpic, { state: 'closed', stateReason: 'completed' }),
+    {
+      number: 2,
+      node_id: 'ISSUE_2',
+      state: 'open',
+      body: `${nodeMarker('example-epic', originalHash, 'slice-1')}\nBlocked by #1`,
+    },
+  ]);
+  await assert.rejects(
+    planAndCreateEpic({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epic: revisedEpic,
+    }),
+    /post-materialization revisions are not supported/,
+  );
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
 });
 
 test('assertUniqueEpicIds rejects two files claiming the same epic_id', () => {
@@ -345,6 +426,27 @@ test('planAndCreateEpic throws for an invalid epic file instead of writing anyth
   assert.equal(h.calls.length, 0);
 });
 
+test('planAndCreateEpic throws for cyclic dependencies before writing labels or issues', async () => {
+  const h = harness();
+  await assert.rejects(
+    planAndCreateEpic({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epic: exampleEpic({
+        nodes: [
+          { id: 'a', title: 'A', depends_on: ['b'] },
+          { id: 'b', title: 'B', depends_on: ['a'] },
+        ],
+      }),
+    }),
+    /cycle/,
+  );
+  assert.equal(h.calls.length, 0);
+});
+
 test('ensureLabelsExist creates only labels that do not already exist', async () => {
   const h = harness([], [{ name: 'epic' }]);
   await ensureLabelsExist({
@@ -375,6 +477,9 @@ test('ensureLabelsExist tolerates a 422 from a label created concurrently betwee
     if (options.method === 'POST' && url.endsWith('/labels')) {
       const error = new Error('already exists');
       error.status = 422;
+      error.data = {
+        errors: [{ resource: 'Label', field: 'name', code: 'already_exists' }],
+      };
       throw error;
     }
     throw new Error(`unexpected request: ${url}`);
@@ -389,6 +494,55 @@ test('ensureLabelsExist tolerates a 422 from a label created concurrently betwee
       labelNames: ['epic'],
     }),
   );
+});
+
+test('ensureLabelsExist re-throws a 422 label validation failure', async () => {
+  const h = harness();
+  h.requestFn = async (token, url, options) => {
+    h.calls.push(['request', token, url, options]);
+    if (options.method === 'POST' && url.endsWith('/labels')) {
+      const error = new Error('Validation Failed');
+      error.status = 422;
+      error.data = {
+        errors: [{ resource: 'Label', field: 'name', code: 'invalid' }],
+      };
+      throw error;
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  await assert.rejects(
+    ensureLabelsExist({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      labelNames: ['bad label'],
+    }),
+    /Validation Failed/,
+  );
+});
+
+test('a completed review issue closed by a bot is not treated as human approval', async () => {
+  const epic = exampleEpic();
+  const h = harness([
+    reviewIssueFor(epic, {
+      state: 'closed',
+      stateReason: 'completed',
+      closedBy: { login: 'github-actions[bot]', type: 'Bot' },
+    }),
+  ]);
+  const result = await planAndCreateEpic({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+  });
+
+  assert.equal(result.reviewApproved, false);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
 });
 
 test('ensureLabelsExist re-throws a non-422 failure from label creation', async () => {

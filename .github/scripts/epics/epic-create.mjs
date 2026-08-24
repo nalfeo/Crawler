@@ -14,19 +14,21 @@
  *     No slice/node issue is ever created while the review issue is missing
  *     or still open — this is the "plan is human reviewed before
  *     implementation begins" gate from the epic-creation-workflow request.
- *   - The review issue must be closed with reason "completed" to count as
- *     approval. Closing it as "not planned" is treated as a rejection: no
- *     node issues are ever created for that epic (it is not a no-op that a
- *     later push can silently retry into existence).
+ *   - The review issue must be closed with reason "completed" by a human user
+ *     to count as approval. Closing it as "not planned" is treated as a
+ *     rejection while that issue remains closed; reopening it returns the exact
+ *     revision to "waiting for review".
  *   - The review issue is itself scoped to a content hash of the reviewed
- *     `title`+`nodes`, embedded directly in its marker. If the `.epic.json`
- *     file changes (title or nodes) after the review issue is filed or
+ *     reviewed/materialized fields, embedded directly in its marker. If the
+ *     `.epic.json` file changes after the review issue is filed or
  *     closed, no existing issue matches the new hash, so the workflow files
  *     a brand-new review issue for the new revision instead of silently
  *     materializing node issues nobody reviewed against this content — a
  *     human cannot be asked to approve (or reject) revision A and have
  *     revision B materialize. The old review issue is left untouched as
- *     history; it is never edited, reused, or auto-closed.
+ *     history; it is never edited, reused, or auto-closed. After node issues
+ *     materialize, post-materialization revisions are rejected; use a new
+ *     `epic_id` for a follow-up issue graph.
  *   - Once approved, node issues are created in dependency order. Every node
  *     issue body lists "Blocked by #N" for the review issue itself plus every
  *     declared `depends_on` entry, so the dependency graph is visible
@@ -49,21 +51,23 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { request, paginate } from '../ci-recovery/github.mjs';
+import {
+  EPIC_NODE_MARKER_PREFIX,
+  epicNodeMarker as nodeMarker,
+  epicReviewMarker as reviewMarker,
+} from '../ci-recovery/markers.mjs';
+
+export { nodeMarker, reviewMarker };
 
 export const EPIC_LABEL = 'epic';
 export const EPIC_REVIEW_LABEL = 'epic-review';
-
-export function nodeMarker(epicId, nodeId) {
-  return `<!-- crawler-epic-node:${epicId}:${nodeId} -->`;
-}
 
 export function epicLabel(epicId) {
   return `epic:${epicId}`;
 }
 
 /**
- * Content hash of the reviewable surface of an epic (title + nodes, not the
- * free-form description/review prose). Embedded directly in the review
+ * Content hash of the reviewable surface of an epic. Embedded directly in the review
  * marker (below) so a review issue only ever matches the exact plan
  * revision it reviewed: if the file changes after a review issue is filed
  * or closed, no existing issue matches the new hash, and a fresh review
@@ -71,7 +75,14 @@ export function epicLabel(epicId) {
  * materializing node issues nobody actually reviewed against this content.
  */
 export function epicContentHash(epic) {
-  const canonical = JSON.stringify({ title: epic.title, nodes: epic.nodes });
+  const canonical = JSON.stringify({
+    epic_id: epic.epic_id,
+    title: epic.title,
+    description: epic.description ?? null,
+    review: epic.review ?? null,
+    labels: epic.labels ?? [],
+    nodes: epic.nodes,
+  });
   return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
 }
 
@@ -80,10 +91,6 @@ export function epicContentHash(epic) {
  * the reviewed revision, so distinct revisions of the same epic never
  * collide on the same marker (and thus the same review issue).
  */
-export function reviewMarker(epicId, hash) {
-  return `<!-- crawler-epic-review:${epicId}:${hash} -->`;
-}
-
 const NODE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 /**
@@ -128,20 +135,25 @@ export function validateEpicFile(epic) {
   }
 
   const seenIds = new Set();
+  let graphCanValidate = true;
   for (const [index, node] of epic.nodes.entries()) {
     const where = `nodes[${index}]`;
     if (!node || typeof node !== 'object' || Array.isArray(node)) {
       errors.push(`${where} must be an object`);
+      graphCanValidate = false;
       continue;
     }
     if (typeof node.id !== 'string' || node.id.trim().length === 0) {
       errors.push(`${where}.id must be a non-empty string`);
+      graphCanValidate = false;
     } else if (!NODE_ID_PATTERN.test(node.id)) {
       errors.push(
         `${where}.id "${node.id}" must be lowercase kebab-case (matches ${NODE_ID_PATTERN})`,
       );
+      graphCanValidate = false;
     } else if (seenIds.has(node.id)) {
       errors.push(`duplicate node id "${node.id}"`);
+      graphCanValidate = false;
     } else {
       seenIds.add(node.id);
     }
@@ -159,6 +171,7 @@ export function validateEpicFile(epic) {
     if (node.depends_on !== undefined) {
       if (!Array.isArray(node.depends_on) || node.depends_on.some((d) => typeof d !== 'string')) {
         errors.push(`${where}.depends_on must be an array of strings when present`);
+        graphCanValidate = false;
       }
     }
   }
@@ -167,7 +180,15 @@ export function validateEpicFile(epic) {
     for (const dep of node?.depends_on || []) {
       if (!seenIds.has(dep)) {
         errors.push(`node "${node.id}" depends_on unknown node "${dep}"`);
+        graphCanValidate = false;
       }
+    }
+  }
+  if (graphCanValidate) {
+    try {
+      topoSortNodes(epic.nodes);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -211,8 +232,10 @@ function reviewIssueTitle(epic) {
 }
 
 function buildReviewIssueBody(epic) {
+  const contentHash = epicContentHash(epic);
+  const globalLabels = [EPIC_LABEL, epicLabel(epic.epic_id), ...(epic.labels || [])];
   const lines = [
-    reviewMarker(epic.epic_id, epicContentHash(epic)),
+    reviewMarker(epic.epic_id, contentHash),
     '',
     `This issue gates the **${epic.title}** epic. No implementation-slice issue`,
     'will be created until this issue is closed (as **completed**, not "not',
@@ -222,10 +245,23 @@ function buildReviewIssueBody(epic) {
   if (epic.description) {
     lines.push(epic.description, '');
   }
+  lines.push('## Global labels', '', globalLabels.map((label) => `\`${label}\``).join(', '), '');
   lines.push('## Planned issues', '');
   for (const node of epic.nodes) {
-    const deps = node.depends_on?.length ? ` (depends on: ${node.depends_on.join(', ')})` : '';
-    lines.push(`- \`${node.id}\`: ${node.title}${deps}`);
+    const labels = [...globalLabels, ...(node.labels || [])];
+    lines.push(
+      `### \`${node.id}\`: ${node.title}`,
+      '',
+      `- **Issue title:** ${node.title}`,
+      `- **Labels:** ${labels.map((label) => `\`${label}\``).join(', ') || '_none_'}`,
+      `- **Depends on:** ${node.depends_on?.length ? node.depends_on.map((dep) => `\`${dep}\``).join(', ') : '_none_'}`,
+      '- **Issue body:**',
+      '',
+      '```md',
+      node.body || '',
+      '```',
+      '',
+    );
   }
   lines.push(
     '',
@@ -233,10 +269,13 @@ function buildReviewIssueBody(epic) {
     '`epic-create` workflow materialize the remaining issues. Close it as',
     '**not planned** to reject the plan. This issue reviews one specific',
     'revision of `docs/knowledge/epics/**/*.epic.json`: if the file changes',
-    '(title or nodes) after this issue is filed or closed, this issue no',
+    '(title, description, labels, review prose, or nodes) after this issue is filed or closed, this issue no',
     'longer matches the new revision and the workflow files a fresh review',
     'issue for it automatically — this issue itself is never edited or',
-    'reused for a different revision.',
+    'reused for a different revision. After any node issue has materialized,',
+    'post-materialization revisions are rejected instead of reusing or',
+    'silently superseding already-created implementation issues; author a new',
+    '`epic_id` for a follow-up issue graph.',
   );
   if (epic.review?.body) {
     lines.push('', epic.review.body);
@@ -249,7 +288,7 @@ function buildNodeIssueBody(epic, node, reviewIssueNumber, issueNumberByNodeId) 
     reviewIssueNumber,
     ...(node.depends_on || []).map((dep) => issueNumberByNodeId.get(dep)),
   ];
-  const lines = [nodeMarker(epic.epic_id, node.id), ''];
+  const lines = [nodeMarker(epic.epic_id, epicContentHash(epic), node.id), ''];
   if (node.body) {
     lines.push(node.body, '');
   }
@@ -261,6 +300,34 @@ function buildNodeIssueBody(epic, node, reviewIssueNumber, issueNumberByNodeId) 
 
 function findManagedIssue(issues, marker) {
   return issues.find((issue) => String(issue.body || '').includes(marker));
+}
+
+function hasManagedNodeIssueForAnyRevision(issues, epicId) {
+  const prefix = `${EPIC_NODE_MARKER_PREFIX}${epicId}:`;
+  return issues.some((issue) => String(issue.body || '').includes(prefix));
+}
+
+function hasManagedNodeIssueOutsideRevision(issues, epicId, hash) {
+  const anyRevisionPrefix = `${EPIC_NODE_MARKER_PREFIX}${epicId}:`;
+  const currentRevisionPrefix = `${EPIC_NODE_MARKER_PREFIX}${epicId}:${hash}:`;
+  return issues.some((issue) => {
+    const body = String(issue.body || '');
+    return body.includes(anyRevisionPrefix) && !body.includes(currentRevisionPrefix);
+  });
+}
+
+function isLabelAlreadyExistsError(error) {
+  if (error?.status !== 422) {
+    return false;
+  }
+  return (error.data?.errors || []).some(
+    (entry) =>
+      entry?.resource === 'Label' && entry?.field === 'name' && entry?.code === 'already_exists',
+  );
+}
+
+function isHumanUser(user) {
+  return user?.type === 'User' && typeof user.login === 'string' && user.login.length > 0;
 }
 
 /**
@@ -299,9 +366,10 @@ export async function ensureLabelsExist({ requestFn, paginateFn, token, owner, r
         body: { name },
       });
     } catch (error) {
-      // 422 means the label already exists (e.g. created by a concurrent
-      // run between our list and our create) — safe to ignore.
-      if (error?.status !== 422) {
+      // Only the structured already_exists response means a concurrent run
+      // created the label between our list and create. Other 422s are
+      // validation failures (e.g. invalid/overlong names) and must surface.
+      if (!isLabelAlreadyExistsError(error)) {
         throw error;
       }
     }
@@ -325,7 +393,6 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
     EPIC_REVIEW_LABEL,
     ...epic.nodes.flatMap((node) => node.labels || []),
   ];
-  await ensureLabelsExist({ requestFn, paginateFn, token, owner, repo, labelNames: allLabelNames });
 
   const existingIssues = await fetchEpicIssues({
     paginateFn,
@@ -337,11 +404,22 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
 
   const outcomes = [];
 
-  let reviewIssue = findManagedIssue(
-    existingIssues,
-    reviewMarker(epic.epic_id, epicContentHash(epic)),
-  );
+  const contentHash = epicContentHash(epic);
+  let reviewIssue = findManagedIssue(existingIssues, reviewMarker(epic.epic_id, contentHash));
   if (!reviewIssue) {
+    if (hasManagedNodeIssueForAnyRevision(existingIssues, epic.epic_id)) {
+      throw new Error(
+        `epic "${epic.epic_id}" already has materialized node issues; post-materialization revisions are not supported (use a new epic_id for follow-up work)`,
+      );
+    }
+    await ensureLabelsExist({
+      requestFn,
+      paginateFn,
+      token,
+      owner,
+      repo,
+      labelNames: allLabelNames,
+    });
     const response = await requestFn(token, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
       body: {
@@ -401,10 +479,32 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
     };
   }
 
+  if (!isHumanUser(reviewIssue.closed_by)) {
+    outcomes.push({
+      kind: 'review',
+      action: 'closed-by-non-human',
+      issueNumber: reviewIssue.number,
+    });
+    return {
+      epicId: epic.epic_id,
+      reviewIssueNumber: reviewIssue.number,
+      reviewApproved: false,
+      outcomes,
+    };
+  }
+
+  if (hasManagedNodeIssueOutsideRevision(existingIssues, epic.epic_id, contentHash)) {
+    throw new Error(
+      `epic "${epic.epic_id}" already has materialized node issues for another revision; post-materialization revisions are not supported (use a new epic_id for follow-up work)`,
+    );
+  }
+
+  await ensureLabelsExist({ requestFn, paginateFn, token, owner, repo, labelNames: allLabelNames });
+
   const issueNumberByNodeId = new Map();
   for (const issue of existingIssues) {
     for (const node of epic.nodes) {
-      if (String(issue.body || '').includes(nodeMarker(epic.epic_id, node.id))) {
+      if (String(issue.body || '').includes(nodeMarker(epic.epic_id, contentHash, node.id))) {
         issueNumberByNodeId.set(node.id, issue.number);
       }
     }
@@ -499,7 +599,7 @@ async function main() {
       process.stdout.write(`${path}:\n${JSON.stringify(result, null, 2)}\n`);
       if (result.reviewRejected) {
         process.stdout.write(
-          `epic-create: review issue #${result.reviewIssueNumber} was closed as "not planned"; this exact epic revision will never materialize node issues (edit the file to file a new review).\n`,
+          `epic-create: review issue #${result.reviewIssueNumber} was closed as "not planned"; this exact epic revision will not materialize node issues while the review issue remains closed (reopen it to return to waiting, or edit the file to file a new review).\n`,
         );
       } else if (!result.reviewApproved) {
         process.stdout.write(

@@ -26,9 +26,9 @@ on:
       - 'docs/knowledge/epics/**/*.epic.json'
       - '.github/scripts/epics/**'
       - '.github/workflows/epic-create.yml'
-  # Materialize node issues as soon as a human approves (closes) or rejects
-  # (reopens after a "not planned" close) the review issue — do not wait for
-  # an unrelated future push to `main`.
+  # Materialize node issues as soon as a human approves (closes) the review issue,
+  # detect rejection on "not planned" closes, and return reopened reviews to the
+  # waiting state — do not wait for an unrelated future push to `main`.
   issues:
     types: [closed, reopened]
   workflow_dispatch:
