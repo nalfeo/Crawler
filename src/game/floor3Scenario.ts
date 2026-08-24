@@ -115,7 +115,7 @@ export function floor3StudioDefeatGoalId(studioId: string): string {
 }
 
 /** Per-Studio goal flag latched true once that Studio's unlock threshold is met and its roster has spawned. */
-export function floor3StudioUnlockGoalId(studioId: string): string {
+function floor3StudioUnlockGoalId(studioId: string): string {
   return `floor3-studio-${studioId}-unlocked`;
 }
 
@@ -387,15 +387,48 @@ function spawnFloor3RosterCompanion(
   return eid;
 }
 
-/** Deterministic interior spawn tile inside a room, spreading multiple spawns across cells. */
-function pickFloor3RosterSpawnTile(room: RoomData, index: number): { x: number; y: number } {
-  if (room.interiorCells && room.interiorCells.length > 0) {
-    return room.interiorCells[index % room.interiorCells.length]!;
-  }
-  return {
-    x: room.bounds.x + Math.floor(room.bounds.width / 2),
-    y: room.bounds.y + Math.floor(room.bounds.height / 2),
+/**
+ * Deterministic, distinct interior spawn tiles inside a room.
+ *
+ * A successful `carveSetPieceRoom` deliberately drops the room's
+ * `interiorCells` mask (the carved prefab is a plain rectangle), so a
+ * cells-only lookup would collapse to the room centre and stack every
+ * Companion of that Studio on one tile. Fall back to a bounds-inset scan of
+ * passable tiles so carved rooms still fan their roster out; only a room with
+ * no passable interior at all degrades to the centre tile.
+ */
+function collectFloor3RosterSpawnTiles(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  room: RoomData,
+): { x: number; y: number }[] {
+  const tiles: { x: number; y: number }[] = [];
+  const seen = new Set<string>();
+  const push = (x: number, y: number): void => {
+    const key = `${x},${y}`;
+    if (seen.has(key)) return;
+    if (!floorMap.tileMap.isPassable(x, y)) return;
+    seen.add(key);
+    tiles.push({ x, y });
   };
+  if (room.interiorCells) {
+    for (const cell of room.interiorCells) push(cell.x, cell.y);
+  }
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  for (let ty = by + 1; ty <= by + bh - 2; ty += 1) {
+    for (let tx = bx + 1; tx <= bx + bw - 2; tx += 1) push(tx, ty);
+  }
+  if (tiles.length === 0) {
+    tiles.push({ x: bx + Math.floor(bw / 2), y: by + Math.floor(bh / 2) });
+  }
+  return tiles;
+}
+
+/** Deterministic interior spawn tile inside a room, spreading multiple spawns across cells. */
+function pickFloor3RosterSpawnTile(
+  tiles: readonly { x: number; y: number }[],
+  index: number,
+): { x: number; y: number } {
+  return tiles[index % tiles.length]!;
 }
 
 function stampFloor3EncounterSetPiece(
@@ -494,6 +527,7 @@ function initializeFloor3Studios(
     const setPieceId = floor3SetPieceIdForStudio(studio);
     const placement = room ? stampFloor3EncounterSetPiece(world, room, setPieceId) : undefined;
     const placedRoom = placement?.room ?? room;
+    const spawnTiles = placedRoom ? collectFloor3RosterSpawnTiles(floorMap, placedRoom) : undefined;
     // One team id shared by every Trainer's Companions in this Studio (not
     // one per Trainer) — see the `teamIds` doc comment on `Floor3EncounterState`.
     const teamId = nextStudioTeamId;
@@ -502,8 +536,8 @@ function initializeFloor3Studios(
     const pendingSpawns: Floor3PendingRosterSpawn[] = [];
     for (const trainer of studio.trainers) {
       for (const companion of trainer.companions) {
-        if (!room) continue;
-        const tile = pickFloor3RosterSpawnTile(placedRoom ?? room, cellIndex);
+        if (!room || !spawnTiles) continue;
+        const tile = pickFloor3RosterSpawnTile(spawnTiles, cellIndex);
         cellIndex += 1;
         const spawnPos = floorMap.tileToWorld(tile.x, tile.y);
         pendingSpawns.push({
@@ -540,10 +574,13 @@ function initializeFloor3Studios(
     ? stampFloor3EncounterSetPiece(world, finalFourRoom, FLOOR3_FINAL_FOUR_SET_PIECE_ID)
     : undefined;
   let finalFourCellIndex = 0;
+  const finalFourSpawnTiles = finalFourPlacement
+    ? collectFloor3RosterSpawnTiles(floorMap, finalFourPlacement.room)
+    : undefined;
   selectedFinalFour.forEach((handler) => {
     for (const companion of handler.companions) {
-      const tile = finalFourPlacement
-        ? pickFloor3RosterSpawnTile(finalFourPlacement.room, finalFourCellIndex)
+      const tile = finalFourSpawnTiles
+        ? pickFloor3RosterSpawnTile(finalFourSpawnTiles, finalFourCellIndex)
         : undefined;
       finalFourCellIndex += 1;
       const spawnPos = tile ? floorMap.tileToWorld(tile.x, tile.y) : undefined;

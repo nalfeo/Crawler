@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { RoomBounds } from '../../src/shared/map-types.js';
 import {
   FLOOR3_FINAL_FOUR_SET_PIECE_ID,
-  FLOOR3_STUDIO_SET_PIECE_BY_AFFINITY,
   floor3SetPieceIdForStudio,
 } from '../../src/shared/data/floor3/set-pieces.js';
 import { STUDIO_CANDIDATES } from '../../src/shared/data/floor3/studios.js';
@@ -20,8 +19,8 @@ const ROOM_BOUNDS: RoomBounds = { x: 10, y: 20, width: 14, height: 12 };
 
 describe('Floor 3 set-piece slice', () => {
   it('defines one authored Studio motif per affinity plus the Final Four arena', () => {
-    const studioSetPieceIds = AFFINITY_RING.map(
-      (affinity) => FLOOR3_STUDIO_SET_PIECE_BY_AFFINITY[affinity],
+    const studioSetPieceIds = AFFINITY_RING.map((affinity) =>
+      floor3SetPieceIdForStudio({ affinity }),
     );
     expect(new Set(studioSetPieceIds).size).toBe(AFFINITY_RING.length);
     expect(studioSetPieceIds).toHaveLength(7);
@@ -46,7 +45,7 @@ describe('Floor 3 set-piece slice', () => {
 
   it('stamps each authored Floor 3 set piece with non-structural dressing props', () => {
     for (const id of [
-      ...AFFINITY_RING.map((affinity) => FLOOR3_STUDIO_SET_PIECE_BY_AFFINITY[affinity]),
+      ...AFFINITY_RING.map((affinity) => floor3SetPieceIdForStudio({ affinity })),
       FLOOR3_FINAL_FOUR_SET_PIECE_ID,
     ]) {
       const def = getSetPieceDef(id)!;
@@ -77,9 +76,7 @@ describe('Floor 3 set-piece slice', () => {
   });
 
   it('keeps Studio set pieces suitable for territory rooms', () => {
-    for (const id of AFFINITY_RING.map(
-      (affinity) => FLOOR3_STUDIO_SET_PIECE_BY_AFFINITY[affinity],
-    )) {
+    for (const id of AFFINITY_RING.map((affinity) => floor3SetPieceIdForStudio({ affinity }))) {
       expect(getSetPieceDef(id)?.tags).toContain('studio-den');
     }
   });

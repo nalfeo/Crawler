@@ -125,6 +125,11 @@ function defeatAllStudios(
   floor3ObjectiveTick(world);
 }
 
+/** Distinct `x,y` keys across a pending-spawn list. */
+function distinctSpawnPositions(pendings: readonly { x?: number; y?: number }[]): number {
+  return new Set(pendings.map((pending) => `${pending.x},${pending.y}`)).size;
+}
+
 describe('floor3 studios + final four objective tick', () => {
   it('is deterministic: same seed produces the same Studio/Final-Four assignment', () => {
     const { world: worldA } = createFloor3World(4242);
@@ -177,6 +182,10 @@ describe('floor3 studios + final four objective tick', () => {
         expect(pending.x).toBeDefined();
         expect(pending.y).toBeDefined();
       }
+      // A carved room drops its `interiorCells` mask, so the roster must be
+      // fanned across bounds-inset passable tiles rather than stacked on the
+      // room centre.
+      expect(distinctSpawnPositions(studio.pendingSpawns)).toBe(studio.pendingSpawns.length);
     }
     expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
     expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
@@ -185,6 +194,9 @@ describe('floor3 studios + final four objective tick', () => {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();
     }
+    expect(distinctSpawnPositions(state.finalFourPendingSpawns)).toBe(
+      state.finalFourPendingSpawns.length,
+    );
   });
 
   it('keeps authored set-piece ids and spawn positions when territory rooms are too small to carve', () => {
