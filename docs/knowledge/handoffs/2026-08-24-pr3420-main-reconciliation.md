@@ -22,9 +22,10 @@ The branch's obsolete duplicate spec note, handoff, apple record, and incomplete
 review ledger were removed; the resulting source and canonical spec match main.
 
 The R6 review thread was marked addressed by merge commit `266b0ae4`. The
-Companion-vs-Companion damage thread remains unresolved: main retains the
-party-wipe predicate but does not add a team-aware damage path, and the existing
-independent-validator reply correctly escalates that gameplay scope decision.
+Companion-vs-Companion damage thread became outdated after reconciliation and
+automation resolved it; main still retains the party-wipe predicate without a
+team-aware damage path, so the underlying gameplay scope decision remains a
+future product concern rather than a blocker on this superseded PR.
 
 ## Verification
 
@@ -38,6 +39,6 @@ independent-validator reply correctly escalates that gameplay scope decision.
 
 ## Recommended next steps
 
-- Keep the Companion-vs-Companion combat thread unresolved until a human or
-  Producer decides whether to implement combat now or formally defer it.
+- Track Companion-vs-Companion combat separately if a human or Producer decides
+  to implement it rather than leave it for the planned balance/combat slice.
 - Let CI Recovery and the merge train process the synchronized branch.
