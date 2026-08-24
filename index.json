@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ccc75bb2ba35f65acdfc7b442593678f5dc975c1",
+    "commitDate": "2026-08-24T03:35:57Z",
+    "commitSubject": "ci-recovery: don't ask investigators to assume a bug when a PR is already escalated to a human (#3458)",
+    "capturedAt": "2026-08-24T05:11:45.217Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32688747890",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/ccc75bb2ba35f65acdfc7b442593678f5dc975c1.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.75,
+      "gatePass": false,
+      "path": "by-sha/ccc75bb2ba35f65acdfc7b442593678f5dc975c1.fun-report.json"
+    }
+  },
+  {
     "commit": "f9cfcb85855f773466e876077541b85a7ce2a9de",
     "commitDate": "2026-08-23T23:53:38Z",
     "commitSubject": "Add procedural sound effects for combat, abilities, and loot pickups (#3425)",
