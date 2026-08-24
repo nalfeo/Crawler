@@ -30,7 +30,7 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": false,
-          "notes": "Diagnostic promised a fresh review issue could be filed for a revised plan but no mechanism existed to create one (marker was epic-scoped, not hash-scoped); resolved by refactoring reviewMarker to embed the content hash directly so a revision automatically gets its own new review issue."
+          "notes": "Diagnostic promised a fresh review issue could be filed for a revised plan but no mechanism existed to create one; resolved by refactoring reviewMarker to embed the content hash directly."
         },
         {
           "round": 3,
@@ -38,7 +38,7 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": false,
-          "notes": "fetchEpicIssues embedded a redundant per_page=100 query param that paginate() also appends unconditionally; removed from the caller. A second, low-severity note (issues:closed firing for every repo issue close, filtered only via job-level if:) was accepted as a known limitation given low expected volume and the 10-minute job timeout."
+          "notes": "fetchEpicIssues embedded a redundant per_page=100 query param; removed. Accepted low-severity concurrency-queue note."
         },
         {
           "round": 4,
@@ -46,7 +46,15 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,
-          "notes": "Confirmation round: no remaining validated findings across all review categories."
+          "notes": "Confirmation round: no remaining validated findings."
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed the ensureLabelsExist fix (added after independent_grade round 1 found a blocker: GitHub silently drops unknown labels on issue creation, so a brand-new epic label would never attach and fetchEpicIssues label filter would never find the issue again, causing duplicate review issues every run). Confirmed correct placement (before fetchEpicIssues/any issue POST), correct 422-tolerance for cross-epic label races under the serialized concurrency group, and adequate test coverage. Clean."
         }
       ]
     },
