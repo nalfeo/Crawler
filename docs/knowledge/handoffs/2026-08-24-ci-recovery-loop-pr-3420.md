@@ -50,10 +50,12 @@ hand.
 ## Fix
 
 `loop-incident-lib.mjs`: `buildLoopIncidentBody` now detects when **every**
-blocker is a `review-thread` whose summary already starts with the
-`[Prior recovery reply (no marker posted` hint prefix (a deterministic,
-already-computed signal — no new heuristics or GitHub calls). When true, the
-issue body:
+blocker is a `review-thread` whose trusted prior-recovery hint contains the
+explicit controlled phrase `substantive disagreement — escalating to a human`
+(a deterministic, already-computed signal — no new GitHub calls). Generic prior
+replies such as `Blocked outside this branch` keep the default investigation
+prompt because they may still be agent-recoverable. When the explicit
+human-escalation signal is present, the issue body:
 
 - States the stall looks like a pending human decision, not an automation
   defect.
@@ -63,15 +65,16 @@ issue body:
   writing a speculative "fix" PR.
 - Still allows a real PR if a genuine CI-recovery automation defect is found.
 
-When any blocker lacks the hint (e.g. a bare `ci-failure`, or an
-untouched/fresh review-thread blocker), the original "investigate a defect"
-prompt is unchanged — this only narrows the false-positive case where
-automation already engaged and correctly escalated.
+When any blocker lacks the explicit human-escalation hint (e.g. a bare
+`ci-failure`, an untouched/fresh review-thread blocker, or a generic prior
+diagnostic reply), the original "investigate a defect" prompt is unchanged —
+this only narrows the false-positive case where automation already engaged and
+correctly escalated.
 
 Untrusted blocker summary text (e.g. the actual "Escalating to a human"
 sentence) is still never embedded in the issue body — only the trusted
-`[Prior recovery reply...]` **prefix** (added by `reconcile.mjs` itself, not
-sourced from an untrusted comment body) is inspected structurally.
+`[Prior recovery reply...]` hint (added by `reconcile.mjs` itself for trusted
+recovery replies) is inspected structurally.
 
 ## Regression tests
 
@@ -79,14 +82,18 @@ Added to `loop-incident-lib.test.mjs`:
 
 - Default "investigate a defect" prompt is used when a blocker has no prior
   recovery reply.
-- Human-decision prompt is used when every review-thread blocker already
-  carries the prior-recovery-reply hint.
+- Default "investigate a defect" prompt is preserved for generic prior recovery
+  replies such as `Blocked outside this branch`.
+- Human-decision prompt is used when every review-thread blocker carries an
+  explicit substantive-disagreement escalation reply.
 - Default prompt is preserved when a non-review-thread blocker (e.g.
   `ci-failure`) is also present.
+- Default prompt no longer instructs agents to arm squash auto-merge; merge
+  remains owned by the merge train.
 
 ## Validation
 
-- `node --test .github/scripts/ci-recovery/loop-incident-lib.test.mjs` (21/21 pass)
+- `node --test .github/scripts/ci-recovery/loop-incident-lib.test.mjs` (22/22 pass)
 - `node --test .github/scripts/ci-recovery/reconcile.test.mjs` (181/181 pass)
 - `npm run test:guards` — 44 pre-existing failures, all in unrelated sprite-editor
   suites (NPC depth/hit-testing, OpenCV worker, undo/redo history); none touch

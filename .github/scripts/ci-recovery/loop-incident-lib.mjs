@@ -105,7 +105,7 @@ export function buildLoopIncidentBody({
     `${LOOP_INCIDENT_FINGERPRINT_PREFIX}${fingerprint} -->`,
     '',
     awaitingHumanDecision
-      ? `Every remaining blocker on **PR #${prNumber}** already carries a prior reply from a trusted recovery agent, so the stall looks like a pending human decision rather than a CI recovery automation defect.`
+      ? `Every remaining blocker on **PR #${prNumber}** already carries an explicit prior human-escalation reply from a trusted recovery agent, so the stall looks like a pending human decision rather than a CI recovery automation defect.`
       : `The automated CI recovery pipeline made no progress on **PR #${prNumber}** after repeated attempts. An investigation agent has been assigned to diagnose the root cause.`,
     '',
     '## Incident details',
@@ -150,7 +150,7 @@ export function buildLoopIncidentBody({
           '2. Is there a deterministic defect in the marker parser, permission grant, thread-resolution path, or mutation sequence?',
           '3. What is the smallest correct fix, and does it need a regression test?',
           '',
-          "Implement the fix on a branch from `main`, run the repository's required verification, open a non-draft PR, and arm squash auto-merge.",
+          "Implement the fix on a branch from `main`, run the repository's required verification, and open a non-draft PR.",
           'Do not weaken any gate or explicit requirement.',
         ]),
   ].join('\n');
@@ -175,17 +175,35 @@ function parseExistingLoopIncidentIssue(existing, fallbackLastSeenAt) {
  * the reconciler's blocker-construction internals.
  */
 const PRIOR_RECOVERY_REPLY_HINT_PREFIX = '[Prior recovery reply (no marker posted';
+const PRIOR_RECOVERY_REPLY_HINT_RE =
+  /^\[Prior recovery reply \(no marker posted[^:]*:\s*([^\]]*)\]/;
+const HUMAN_ESCALATION_PRIOR_REPLY_PREFIX = 'substantive disagreement - escalating to a human';
+
+function normalizedPriorReply(reply) {
+  return String(reply || '')
+    .replace(/[—–]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function priorRecoveryReplyText(summary) {
+  const match = String(summary || '').match(PRIOR_RECOVERY_REPLY_HINT_RE);
+  return match ? match[1].trim() : '';
+}
+
+function hasHumanEscalationPriorReply(summary) {
+  return normalizedPriorReply(priorRecoveryReplyText(summary)).startsWith(
+    HUMAN_ESCALATION_PRIOR_REPLY_PREFIX,
+  );
+}
 
 /**
- * True when every blocker is a review-thread that a trusted recovery agent
- * already replied to in a prior dispatch (see PRIOR_RECOVERY_REPLY_HINT_PREFIX).
- * That combination means recovery already engaged with each remaining
- * blocker and left context — most often a substantive-disagreement escalation
- * per the review-harness policy — rather than an untouched blocker that
- * automation failed to act on. It is a strong, deterministic signal that the
- * stall is not a CI-recovery automation defect, so the issue prompt should
- * ask for a human decision instead of asking an agent to hunt for a
- * marker-parser/permission/mutation-sequence bug that does not exist.
+ * True when every blocker is a review-thread whose trusted prior recovery
+ * reply explicitly used the controlled human-escalation phrase. Generic
+ * non-marker replies (for example "Blocked outside this branch") use the same
+ * prior-reply hint prefix, but still need the normal defect/fix investigation
+ * prompt because they may be recoverable by an agent.
  */
 function isAwaitingHumanDecision(blockers) {
   const list = blockers || [];
@@ -193,7 +211,8 @@ function isAwaitingHumanDecision(blockers) {
   return list.every(
     (blocker) =>
       blocker?.kind === 'review-thread' &&
-      String(blocker?.summary || '').startsWith(PRIOR_RECOVERY_REPLY_HINT_PREFIX),
+      String(blocker?.summary || '').startsWith(PRIOR_RECOVERY_REPLY_HINT_PREFIX) &&
+      hasHumanEscalationPriorReply(blocker?.summary),
   );
 }
 
