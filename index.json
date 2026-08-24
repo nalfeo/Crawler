@@ -1,5 +1,39 @@
 [
   {
+    "commit": "2469f4294aad90f2d98d3c7d8143922e073b0722",
+    "commitDate": "2026-08-24T22:27:58Z",
+    "commitSubject": "Fix: wire mid-run loot sweep into AI behavior tree (AI leaves XP on ground) (#3494)",
+    "capturedAt": "2026-08-24T23:48:33.925Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32787161346",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/2469f4294aad90f2d98d3c7d8143922e073b0722.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.63,
+      "gatePass": false,
+      "path": "by-sha/2469f4294aad90f2d98d3c7d8143922e073b0722.fun-report.json"
+    }
+  },
+  {
     "commit": "838ca5a138e1c33f4bed4b4c1e91b99067910dcc",
     "commitDate": "2026-08-24T21:06:16Z",
     "commitSubject": "Implement Floor 4 arena director rehearsal (#3495)",
