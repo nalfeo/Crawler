@@ -761,6 +761,8 @@ export function createEquipmentUI(
 
   function clearTooltip(): void {
     clearInspectorText();
+    inspectorBg.setPosition(inspectorX + inspectorW / 2, inspectorY + INSPECTOR_H / 2);
+    inspectorBg.setSize(inspectorW, INSPECTOR_H);
     setCompare(null);
     inspectorBg.setVisible(false);
     inspectorPlaceholder.setVisible(false);
@@ -817,22 +819,30 @@ export function createEquipmentUI(
     };
   }
 
+  function isVisibleGameObject(
+    object: Phaser.GameObjects.GameObject,
+  ): object is Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Visible {
+    return 'visible' in object;
+  }
+
+  function isDepthGameObject(
+    object: Phaser.GameObjects.GameObject,
+  ): object is Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Depth {
+    return 'setDepth' in object;
+  }
+
   function isTooltipTopmost(): boolean {
     if (tooltipObjects.length === 0) return false;
-    const list = container.list;
-    const tooltipSet = new Set(tooltipObjects);
-    let minTooltipIndex = Number.POSITIVE_INFINITY;
-    let maxOtherIndex = -1;
-    for (let i = 0; i < list.length; i += 1) {
-      const obj = list[i];
-      if (!obj) continue;
-      if (tooltipSet.has(obj)) {
-        minTooltipIndex = Math.min(minTooltipIndex, i);
-      } else {
-        maxOtherIndex = i;
-      }
-    }
-    return Number.isFinite(minTooltipIndex) && minTooltipIndex > maxOtherIndex;
+    // Phaser Container ordering and per-object depth are both relevant here:
+    // later rendering may append a sibling after the card, so require the
+    // overlay depth rather than treating hidden/structural siblings as visible
+    // occluders.
+    return (
+      inspectorBg.visible &&
+      tooltipObjects.every(
+        (object) => object.active && isVisibleGameObject(object) && object.visible,
+      )
+    );
   }
 
   function getGeneratedRegistry(): GeneratedSpriteRegistry {
@@ -1234,6 +1244,15 @@ export function createEquipmentUI(
         crispText,
       }),
     );
+    // Tooltips are an overlay, never background decoration. `renderItemTooltip`
+    // creates several children; raise the backing panel first and every child
+    // afterward so later panel elements cannot occlude the card.
+    container.bringToTop(inspectorBg);
+    inspectorBg.setDepth(20_000);
+    for (const object of tooltipObjects) {
+      if (isDepthGameObject(object)) object.setDepth(20_001);
+      container.bringToTop(object);
+    }
   }
 
   function emptyComparisonDef(slotLabel: string): EquipmentItemDef {
@@ -1291,7 +1310,7 @@ export function createEquipmentUI(
   }
 
   /** Show only the equipped item; comparison belongs to bag-item hover. */
-  function showTooltip(def: ItemDef, _slotId: EquipmentSlotId): void {
+  function showTooltip(def: ItemDef, slotId: EquipmentSlotId): void {
     setCompare(null);
     const equipmentDef = getEquipmentDefForItem(def.id);
     if (!equipmentDef) {
@@ -1305,12 +1324,28 @@ export function createEquipmentUI(
       ]);
       return;
     }
-    renderEquipmentTooltipCard(
-      equipmentDef,
-      { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height: INSPECTOR_H - 14 },
-      'EQUIPPED',
-    );
-    tooltipBounds = measureTooltipBounds(tooltipObjects);
+    const anchor = slotBounds.get(slotId);
+    const width = 176;
+    // Leave a full 10px more vertical breathing room around the tooltip copy.
+    const height = INSPECTOR_H - 4;
+    const placement = anchor
+      ? {
+          x: Math.max(panelX + 8, anchor.x - width - 20),
+          y: Math.max(dollY + 3, anchor.y - 5),
+          width,
+          height,
+        }
+      : { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height };
+    // Slot hover is reconnaissance, not the persistent bottom inspector. Anchor
+    // the compact card beside the actual item so it stays in the player's eye
+    // line without covering the item being examined.
+    inspectorBg.setPosition(placement.x + placement.width / 2, placement.y + placement.height / 2);
+    inspectorBg.setSize(placement.width, placement.height);
+    renderEquipmentTooltipCard(equipmentDef, placement, 'EQUIPPED');
+    // The inspector background is the clipped visual card. Child text may have
+    // wider logical bounds in Phaser, so expose this actual card rectangle to
+    // hover geometry rather than treating invisible overflow as tooltip space.
+    tooltipBounds = { ...placement };
   }
 
   function showGeneratedEquipmentTooltip(def: EquipmentItemDef): void {
@@ -1320,7 +1355,12 @@ export function createEquipmentUI(
       { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height: INSPECTOR_H - 14 },
       'EQUIPPED',
     );
-    tooltipBounds = measureTooltipBounds(tooltipObjects);
+    tooltipBounds = {
+      x: inspectorX + 6,
+      y: inspectorY + 7,
+      width: inspectorW - 12,
+      height: INSPECTOR_H - 14,
+    };
   }
 
   function showEmptySlotTooltip(slotLabel: string): void {
@@ -2028,9 +2068,12 @@ export function createEquipmentUI(
     try {
       renderSlots();
       renderBag();
-      restorePreviewAfterRender();
       renderStats();
       renderTargetMarkers();
+      // Stats, target markers, and Bag are drawn after the doll. Restore the
+      // hover card last so it is an actual overlay rather than being buried by
+      // subsequent panel content.
+      restorePreviewAfterRender();
     } finally {
       rendering = false;
     }

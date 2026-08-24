@@ -580,6 +580,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
 - Do NOT introduce brand-new positional nitpicks below a 3px threshold; sub-3px "misalignment" on 60px-in-64px icons is intended centering inset, not a defect.
 - End "overall.summary" with an explicit sentence: "FINAL VERDICT: <pass|needs-work|fail> — <count> findings withdrawn, <count> upheld with pixel evidence."`
       : '';
+  const hasDeclaredHoverTarget = context.regionIds.some((id) => id.startsWith('hover-target:'));
   // UNIVERSAL readability/affordance rules are always asserted; three CONDITIONAL
   // rules are injected only when the surface opts in via `expect.*`. Legacy equipment
   // sets all three true, so this reproduces today's prompt byte-for-byte.
@@ -594,6 +595,11 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     ...(context.expect.tooltipAfterHover
       ? [
           '- Empty slots must expose slot identity/help affordance (in this capture an empty-slot tooltip should be visible).',
+        ]
+      : []),
+    ...(hasDeclaredHoverTarget
+      ? [
+          '- This is an item-hover capture. The declared hover target must contain real equipment, have a visible emphasis outline, and retain a nearby tooltip that does not cover it.',
         ]
       : []),
     '- Slot tiles should be roughly square or portrait; very short/wide slot boxes are a defect.',
@@ -621,6 +627,12 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     ...(context.expect.tooltipAfterHover
       ? [
           '- If empty-slot tooltip affordance is missing/unclear in the capture, include it in blocking_findings.',
+        ]
+      : []),
+    ...(hasDeclaredHoverTarget
+      ? [
+          '- If the declared hover target is empty, lacks visible emphasis, has no tooltip, or the tooltip covers it, include it in blocking_findings.',
+          '- A tooltip behind any panel or item is a hard failure: include it in blocking_findings even if its text is otherwise readable.',
         ]
       : []),
     '- If slot aspect ratio or icon occupancy harms item readability, include it in blocking_findings.',

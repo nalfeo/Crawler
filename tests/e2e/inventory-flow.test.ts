@@ -970,8 +970,26 @@ describe('equipment decision gate (e2e)', () => {
       const equippedSlot = 'head';
       const emptySlot = 'feet';
 
+      // The visual-review equipped-hover scenario uses the real equipped item
+      // path: target emphasis remains visible while its adjacent card is shown.
+      expect(await probe.selectEquipmentSlot(hoverPage, equippedSlot)).toBe(true);
+      expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(equippedSlot);
       expect(await probe.previewEquipmentSlot(hoverPage, equippedSlot)).toBe(true);
       expect(await probe.isEquipmentTooltipVisible(hoverPage)).toBe(true);
+      const [equippedBounds, equippedTooltip] = await Promise.all([
+        probe.getEquipmentSlotBounds(hoverPage, equippedSlot),
+        probe.getEquipmentTooltipBounds(hoverPage),
+      ]);
+      expect(equippedBounds).not.toBeNull();
+      expect(equippedTooltip).not.toBeNull();
+      expect(
+        overlaps(equippedBounds!, equippedTooltip!),
+        `the equipped-item tooltip must not occlude the hovered target: target=${JSON.stringify(equippedBounds)} tooltip=${JSON.stringify(equippedTooltip)}`,
+      ).toBe(false);
+      expect(
+        await probe.isEquipmentTooltipTopmost(hoverPage),
+        'the equipped-item tooltip must render above every equipment-panel element',
+      ).toBe(true);
       await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-tooltip-equipped'));
 
       expect(await probe.previewEquipmentSlot(hoverPage, emptySlot)).toBe(true);

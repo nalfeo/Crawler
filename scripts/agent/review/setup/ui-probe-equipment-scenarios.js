@@ -10,7 +10,10 @@
 
   if (scenario === 'equipment-hover-equipped') {
     probe?.equipInventoryItem?.('iron-helm');
-    window.__forceEquipmentTooltipSlot = 'head';
+    // Drive the same public preview seam used by the real slot hover handler.
+    // Forcing a raw slot id bypassed the equipped-item lookup and produced an
+    // empty-slot screenshot rather than a truthful hover state.
+    probe?.selectEquipmentSlot?.('head');
   } else if (scenario === 'equipment-hover-duplicate') {
     probe?.equipInventoryItem?.('iron-helm');
     probe?.seedAllGear?.();
@@ -46,6 +49,12 @@
 
   window.dispatchEvent(new Event('resize'));
   await new Promise((resolve) => setTimeout(resolve, 500));
+  if (scenario === 'equipment-hover-equipped') {
+    // Resize causes EquipmentUI to rebuild its pooled slot objects, which clears
+    // transient hover content. Invoke the real preview seam only after that final
+    // layout pass so this capture represents an actual equipped-item hover.
+    probe?.previewEquipmentSlot?.('head');
+  }
   const slotIds = [
     'head',
     'neck',
@@ -90,7 +99,20 @@
   }
   if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
   const tooltip = probe?.getEquipmentTooltipBounds?.();
-  if (tooltip) regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip' });
+  const hoveredSlotId = scenario === 'equipment-hover-equipped' ? 'head' : null;
+  const hoveredSlot = hoveredSlotId ? probe?.getEquipmentSlotBounds?.(hoveredSlotId) : null;
+  if (hoveredSlot) {
+    // The hover target and tooltip share a parent so the deterministic reviewer
+    // hard-fails any overlap instead of leaving occlusion to the LLM.
+    regions.push({
+      id: `hover-target:${hoveredSlotId}`,
+      box: hoveredSlot,
+      kind: 'slot',
+      parentId: 'hover-context',
+    });
+  }
+  if (tooltip)
+    regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip', parentId: 'hover-context' });
   const doll = probe?.getEquipmentDollBounds?.();
   if (doll) regions.push({ id: 'paper-doll', box: doll, kind: 'panel' });
   const stats = probe?.getEquipmentStatsBounds?.();
@@ -106,10 +128,15 @@
     const id = headerIds.get(run.text);
     if (id) regions.push({ id, box: run.bounds, kind: 'header' });
   }
+  const flags = [];
+  if (hoveredSlotId && !probe?.isEquipmentTooltipTopmost?.()) {
+    flags.push('Tooltip is behind another equipment-panel element.');
+  }
   window.__visualReview = {
     surface: 'equipment panel',
     regions,
     expect: { tooltipAfterHover: true },
+    flags,
   };
   window.__visualReviewHoverPoint = null;
 })();

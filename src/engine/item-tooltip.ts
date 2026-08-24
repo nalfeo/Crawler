@@ -182,6 +182,12 @@ export function renderItemTooltip(
     color: '#9ca3af',
     wordWrap: { width: tooltipWidth - 16 },
   });
+  // Phaser's wrapped-text bounds can remain unconstrained even when its glyphs
+  // are visually clipped. Give the description a real text box so both pixels
+  // and probe geometry stay inside the tooltip card.
+  if ('setFixedSize' in descText) {
+    descText.setFixedSize(tooltipWidth - 16, Math.max(0, tooltipHeight - (bodyY - ty) - 10));
+  }
 
   const showMeta = placement === undefined;
   const metaText = showMeta
