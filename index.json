@@ -1,5 +1,39 @@
 [
   {
+    "commit": "73a0e355d34001d62a5a38efb13d4c0877b9be91",
+    "commitDate": "2026-08-24T04:20:32Z",
+    "commitSubject": "Fix Floor 1 post-boss stair-descend deadlock: anchor the loot deferral window and delete the half-wired farm window (#3450)",
+    "capturedAt": "2026-08-24T05:56:14.103Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32691501930",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/73a0e355d34001d62a5a38efb13d4c0877b9be91.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.79,
+      "gatePass": false,
+      "path": "by-sha/73a0e355d34001d62a5a38efb13d4c0877b9be91.fun-report.json"
+    }
+  },
+  {
     "commit": "ccc75bb2ba35f65acdfc7b442593678f5dc975c1",
     "commitDate": "2026-08-24T03:35:57Z",
     "commitSubject": "ci-recovery: don't ask investigators to assume a bug when a PR is already escalated to a human (#3458)",
