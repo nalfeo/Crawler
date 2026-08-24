@@ -41,8 +41,9 @@ link back to this section instead of restating it.
 - **Plan-first.** Before writing any code, output your **full plan** in the
   session — the complete, ordered implementation plan, not a one-line summary.
   Plans go in the session response and, for cloud/coding-agent sessions, the
-  PR description — never a posted comment, since cloud sessions cannot
-  reliably post plan comments. Do not hide plans in repo files unless the
+  progress summary and PR description — never a posted issue/PR comment, since
+  cloud sessions have no comment credentials. Never block a session waiting for
+  comment access. Do not hide plans in repo files unless the
   human explicitly asks for a file artifact.
 - **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
   actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).

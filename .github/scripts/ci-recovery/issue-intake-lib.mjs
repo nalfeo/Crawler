@@ -144,13 +144,13 @@ export const ISSUE_INTAKE_BODY = [
   '- Keep all required verification/review-harness/ledger steps for code-touching work.',
   '- Do not weaken gates, policy checks, or explicit human requirements to get green.',
   '',
-  '**Before writing any code**, post a detailed plan comment on this issue that covers:',
+  '**Before writing any code**, publish a detailed plan that covers:',
   '- High-level design and approach for the work.',
   '- Key decisions made (e.g. which systems, skills, or libraries are involved; alternatives considered).',
   '- A checklist of the concrete steps you will take.',
   '',
-  'Post this plan comment on the issue itself so the maintainer can review it before you open a PR.',
-  'Then, when you open the PR, include the same high-level summary in the PR description.',
+  'Publish that plan with your progress-report tool (the session progress summary / PR description) — do NOT try to post it as an issue or PR comment.',
+  'Cloud sessions have no issue-comment credentials, so never block on comment access: the progress summary and the PR description are the plan of record, and CI recovery mirrors them back onto this issue for you.',
 ].join('\n');
 
 export function isTelemetryIssue(issue) {
