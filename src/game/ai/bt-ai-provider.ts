@@ -1252,19 +1252,20 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Loot sweep — collect XP/gold that's already on the ground
-        // instead of leaving it behind while chasing the next objective/enemy.
-        // Two mutually-exclusive windows share this slot (the window guard inside
-        // `buildLootSweepBehavior` means only one of the two ever fires per frame):
-        //  - mid-run: a bounded post-combat cleanup (`LOOT_SWEEP_RADIUS_FT`) so the
-        //    drops from the fight that just ended aren't left behind while Engage/
-        //    Hunt (lower priority) moves on to the next enemy.
-        //  - pre-exit: unbounded once the staircase is unlocked but not yet
-        //    discovered, because the floor transition destroys every uncollected
-        //    pickup.
-        this.buildLootSweepBehavior('mid-run'),
+        // Priority 2.5: Pre-exit loot sweep — unbounded once the staircase is
+        // unlocked but not yet discovered, because the floor transition destroys
+        // every uncollected pickup.
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
+        // Priority 2.7: Mid-run loot sweep — a bounded post-combat cleanup
+        // (`LOOT_SWEEP_RADIUS_FT`) so the drops from the fight that just ended
+        // aren't left behind while Engage/Hunt (lower priority) moves on to the
+        // next enemy. It sits BELOW LocalThreatRecovery on purpose: recovery owns
+        // resolving the exact enemy that triggered a retreat before the AI
+        // resumes progression, and a nearby gem must never preempt that at
+        // critical health. The window guard inside `buildLootSweepBehavior` makes
+        // the two windows mutually exclusive, so only one ever fires per frame.
+        this.buildLootSweepBehavior('mid-run'),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
         // equipment, so it is treated as a quest objective rather than as loot
         // (loot sits at Priority 5, below Engage, which would let a gold coin
@@ -8219,10 +8220,20 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.lootSweepTargetEid = null;
           return false;
         }
-        // Safety gate: don't sweep when an enemy is within engage range —
-        // combat always pre-empts the sweep.
-        const engageRadius = this.getEngageRadius(ctx.world);
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius, true)) {
+        // Safety gate: don't sweep while an enemy is close enough to matter.
+        // Pre-exit uses the engage radius (the floor is cleared, so a straggler
+        // must not cancel the last-chance sweep). The mid-run window uses the
+        // full `scanRadius` instead, for two reasons:
+        //  1. It keeps the sweep strictly post-combat. With the narrower engage
+        //     radius the gate flickers as an enemy drifts in and out of range,
+        //     which made the AI oscillate between COLLECT and Engage/Progress
+        //     (measured: travel efficiency 0.94 -> 0.54 on seed 6 · sword).
+        //  2. LocalThreatRecovery only latches an enemy inside `scanRadius`, so
+        //     requiring an empty scan radius means the mid-run sweep can never
+        //     preempt a live recovery target, even at critical health.
+        const safetyRadius =
+          window === 'pre-exit' ? this.getEngageRadius(ctx.world) : this.config.scanRadius;
+        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, safetyRadius, true)) {
           this.lootSweepTargetEid = null;
           return false;
         }

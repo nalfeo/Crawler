@@ -16,7 +16,9 @@
  *     staircase guards;
  *   - the sweep does NOT fire with nothing on the ground;
  *   - the sweep does NOT fire when an enemy is within engage range, including
- *     enemies currently ignored for target selection.
+ *     enemies currently ignored for target selection;
+ *   - the mid-run window additionally stands down for any enemy inside the scan
+ *     radius, so it never preempts post-retreat local threat recovery.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -132,6 +134,20 @@ describe('BT — loot sweep (Priority 2.5)', () => {
 
       const decision = pollDecision(world);
       expect(decision.state).not.toBe(AIState.COLLECT);
+    });
+
+    it('does NOT sweep while an enemy sits inside the scan radius but outside engage range', () => {
+      const { world, x, y } = makeFloor1World();
+
+      spawnXpGem(world, x + 5, y, 10);
+      // 32 ft: well outside the 20 ft melee engage radius, well inside the 50 ft
+      // scan radius. The mid-run window deliberately uses the full scan radius so
+      // it stays strictly post-combat and can never preempt LocalThreatRecovery,
+      // which only ever latches a threat inside the scan radius.
+      spawnEnemy(world, x + 32, y, 20);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
   });
 

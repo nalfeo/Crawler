@@ -2682,6 +2682,40 @@ describe('BehaviorTreeAI', () => {
     });
   });
 
+  it('does not let a mid-run loot sweep preempt post-retreat local threat recovery', () => {
+    const { world, player, enemies } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    const retreatThreatEid = (ai as unknown as { retreatThreatEid: number | null })
+      .retreatThreatEid;
+    expect(retreatThreatEid).not.toBeNull();
+
+    // Retreat ends with the threat still inside `scanRadius` but outside the
+    // engage radius, and free XP is lying right next to the critically wounded
+    // player. Recovery owns resolving that enemy first; the mid-run sweep must
+    // not divert to the gem.
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    spawnXpGem(world, px + 3, py, 10);
+
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+    expect(decision).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+    expect(decision.reason).toContain('Resolving retreat threat before progression');
+  });
+
   it('does not let the engage watchdog preempt post-retreat local threat recovery', () => {
     const { world, player, enemies } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 8;
