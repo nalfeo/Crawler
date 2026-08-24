@@ -981,7 +981,25 @@ export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: numb
   if (!offer || offer.length === 0) return;
 
   const speciesId = offer[optionIndex] ?? offer[0];
-  const species = speciesId !== undefined ? getPetSpecies(speciesId) : undefined;
+  let species = speciesId !== undefined ? getPetSpecies(speciesId) : undefined;
+  if (species === undefined) {
+    // Loud, structured degradation signal (plan-review finding): an unknown
+    // speciesId in the offer should never happen (the offer is built from
+    // `getPetSpecies` results in the first place), but if it does, fall back
+    // to scanning the rest of the offer for a resolvable species rather than
+    // silently starting Floor 3 with no Companion at all.
+    console.warn(
+      `[floor3:starter-degraded] offer entry ${speciesId ?? 'undefined'} did not resolve to a ` +
+        `known species; scanning the rest of the offer for a valid fallback.`,
+    );
+    species = offer.map((id) => getPetSpecies(id)).find((resolved) => resolved !== undefined);
+    if (species === undefined) {
+      console.warn(
+        '[floor3:starter-degraded] no offer entry resolved to a known species; ' +
+          'resuming play with no starter Companion.',
+      );
+    }
+  }
   if (species !== undefined) {
     const playerEid = query(world.ecs, [Player])[0];
     const playerX = playerEid !== undefined ? (world.stores.position.x[playerEid] ?? 0) : 0;

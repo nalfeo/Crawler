@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor3-starter-companion-pick",
+  "task_title": "Wire Floor 3 starter-Companion pick and enlarge cavern spawn room",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Concerns: (1) silent no-starter fallback on species-resolution failure — fixed by adding a loud console.warn degradation signal + offer-scan fallback in selectFloor3StarterCompanion; (2) loadout presentation hard-coded to floorId rather than scenario-driven — accepted as out-of-scope architectural refactor for this bug-fix PR, noted for future work; (3) enlarged spawn room needs multi-seed invariant coverage — added a new 5-seed test in cave-system-generator.test.ts asserting spawn room size + reachability."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

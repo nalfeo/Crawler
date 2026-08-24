@@ -161,6 +161,33 @@ describe('CaveSystemGenerator', () => {
     expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
   });
 
+  it('enlarges the floor3 spawn/entrance room (issue: too small for the starter-pick UX) while staying reachable', () => {
+    // Regression coverage for the entrance-room-size complaint: bumping
+    // `spawnSizeCandidates` from [6,5,4] to [12,10,8] must hold across seeds
+    // without breaking reachability or the room-role invariants the floor3
+    // biome-overworld layout otherwise guarantees.
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    for (const seed of [4321, 91, 1, 555, 9999]) {
+      const config = smallFloor3Config(seed);
+      const floor = generator.generate(config, new SeededRandom(seed));
+      const spawnRoom = floor.roomGraph.getAll().find((room) => room.role === RoomRole.SPAWN);
+      expect(spawnRoom, `seed=${seed} missing spawn room`).toBeDefined();
+      expect(
+        spawnRoom!.bounds.width,
+        `seed=${seed} spawn room too small (width)`,
+      ).toBeGreaterThanOrEqual(8);
+      expect(
+        spawnRoom!.bounds.height,
+        `seed=${seed} spawn room too small (height)`,
+      ).toBeGreaterThanOrEqual(8);
+
+      const w = floor.config.widthTiles;
+      const h = floor.config.heightTiles;
+      const reached = bfsReachable(floor, floor.playerSpawn.x, floor.playerSpawn.y, w, h);
+      expect(reached[floor.playerSpawn.y * w + floor.playerSpawn.x], `seed=${seed}`).toBe(1);
+    }
+  });
+
   it('produces exactly the required role counts for presentCount=4', () => {
     const floor = generateWithPresent(7, 4);
     const rooms = floor.roomGraph.getAll();
