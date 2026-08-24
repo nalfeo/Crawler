@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f69875afbac79717f904ab1a8d91c07eceaa1ea2",
+    "commitDate": "2026-08-24T07:59:03Z",
+    "commitSubject": "Floor 3 Slice 8: Studios + Final Four objective tick, with plan-review bug fixes (#3420)",
+    "capturedAt": "2026-08-24T09:04:16.157Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32704170469",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/f69875afbac79717f904ab1a8d91c07eceaa1ea2.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.79,
+      "gatePass": false,
+      "path": "by-sha/f69875afbac79717f904ab1a8d91c07eceaa1ea2.fun-report.json"
+    }
+  },
+  {
     "commit": "4fa71a950c0ce0a859b82a82baac242ddf6e8588",
     "commitDate": "2026-08-24T05:23:25Z",
     "commitSubject": "Hook Floor 3 up to the real game, headless runner, and AI runner lab (#3448)",
