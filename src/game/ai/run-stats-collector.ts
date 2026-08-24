@@ -3,6 +3,7 @@ import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import type { SessionRecorderStats } from '../../shared/session-recorder-types.js';
 import type { RunStats } from './types.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
+import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 
 /**
  * Builds the common RunStats shape for a human run. World-specific harvesters
@@ -57,6 +58,7 @@ export function collectHumanRunStats(
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
     totalGold: world.playerGold,
+    floor4Arena: getFloor4ArenaRunStats(world),
     startingWeapon:
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
     vendors: computeVendorInteractions(world),

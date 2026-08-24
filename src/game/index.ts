@@ -53,6 +53,7 @@ export {
   floor3ObjectiveTick,
   FLOOR3_TIMEOUT_GOAL_ID,
 } from './floor3Scenario.js';
+export { arenaDirectorSystem, initializeFloor4Scenario } from './floor4Scenario.js';
 export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,

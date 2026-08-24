@@ -21,6 +21,10 @@
  *   non-terminating bug or an abandoned run, which is why it sets its own
  *   {@link FLOOR4_STALL_BACKSTOP_GOAL_ID} flag instead of reusing a floor
  *   "timeout" that a player could legitimately hit.
+ * - **Slice-2 rehearsal intermissions auto-advance.** The Green Room
+ *   transaction, stairs, Headliners and shops are later slices, so this slice's
+ *   director proves the empty-arena phase timeline without spawning those
+ *   systems prematurely.
  */
 import { addComponent, hasComponent, setComponent, set } from 'bitecs';
 import { BroadcastScore, Health, Position, type GameWorld } from '../core/index.js';
@@ -38,6 +42,12 @@ import { initializePlayerWeaponSkills } from './floorScenario.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
+import type {
+  Floor4ActIndex,
+  Floor4ArenaPhase,
+  Floor4ArenaRunStats,
+  Floor4ArenaState,
+} from '../shared/floor-types.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 
 /**
@@ -49,6 +59,7 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 export const FLOOR4_STALL_BACKSTOP_GOAL_ID = 'floor4-stall-backstop';
 
 const FLOOR4_PLAYER_STAT_SOURCE_ID = 'floor4-manifest-player';
+const FLOOR4_ACTS: readonly Floor4ActIndex[] = [1, 2, 3, 4, 5];
 
 function getFloor4Manifest() {
   const manifest = getFloorManifest('floor4');
@@ -56,6 +67,14 @@ function getFloor4Manifest() {
     throw new Error('Missing floor4 manifest');
   }
   return manifest;
+}
+
+function getFloor4Config() {
+  const floor4 = getFloor4Manifest().floor4;
+  if (!floor4) {
+    throw new Error('Missing floor4 geometry/phase config');
+  }
+  return floor4;
 }
 
 /** Build the authored-venue map config from the manifest's `floor4` geometry block. */
@@ -103,12 +122,162 @@ function floor4ObjectiveTick(world: GameWorld): void {
   }
 }
 
+function cloneFloor4Phase(phase: Floor4ArenaPhase): Floor4ArenaPhase {
+  return { ...phase };
+}
+
+function recordFloor4PhaseTransition(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  phase: Floor4ArenaPhase,
+  reason: string,
+): void {
+  state.phase = cloneFloor4Phase(phase);
+  state.phaseElapsedMs = 0;
+  state.timeline.push({
+    frame: world.frameCount,
+    worldElapsedMs: world.elapsedMs,
+    arenaElapsedMs: state.arenaElapsedMs,
+    phase: cloneFloor4Phase(phase),
+    reason,
+  });
+}
+
+function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
+  const state: Floor4ArenaState = {
+    phase: { kind: 'COUNTDOWN' },
+    arenaElapsedMs: 0,
+    phaseElapsedMs: 0,
+    lastWorldElapsedMs: world.elapsedMs,
+    timeline: [],
+  };
+  recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
+  return state;
+}
+
+function floor4ArenaState(world: GameWorld): Floor4ArenaState | undefined {
+  return world.floorExtendedState?.floor4Arena;
+}
+
+function nextFloor4Act(act: Floor4ActIndex): Floor4ActIndex | null {
+  const next = FLOOR4_ACTS[FLOOR4_ACTS.indexOf(act) + 1];
+  return next ?? null;
+}
+
+function floor4ActEndMs(act: Floor4ActIndex): number {
+  return getFloor4Config().phase.actDurationMs * act;
+}
+
+function floor4WaveEndMs(act: Floor4ActIndex): number {
+  const phase = getFloor4Config().phase;
+  return phase.actDurationMs * (act - 1) + phase.waveWindowMs;
+}
+
+export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | undefined {
+  const state = floor4ArenaState(world);
+  if (!state) {
+    return undefined;
+  }
+  return {
+    arenaElapsedMs: state.arenaElapsedMs,
+    phase: cloneFloor4Phase(state.phase),
+    timeline: state.timeline.map((entry) => ({
+      ...entry,
+      phase: cloneFloor4Phase(entry.phase),
+    })),
+  };
+}
+
+export function isFloor4ArenaVictory(world: GameWorld): boolean {
+  return floor4ArenaState(world)?.phase.kind === 'VICTORY';
+}
+
+/**
+ * Floor 4 slice 2 phase authority. It advances only the arena clock and phase
+ * timeline; waves, Headliners, Green Room shops and HUD are later slices.
+ */
+export function arenaDirectorSystem(world: GameWorld): void {
+  if (world.floorId !== 'floor4' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor4ArenaState(world);
+  if (!state) {
+    return;
+  }
+
+  const elapsedDeltaMs = Math.max(0, world.elapsedMs - state.lastWorldElapsedMs);
+  state.lastWorldElapsedMs = world.elapsedMs;
+  if (elapsedDeltaMs === 0 || state.phase.kind === 'VICTORY' || state.phase.kind === 'DEFEAT') {
+    return;
+  }
+
+  const phaseConfig = getFloor4Config().phase;
+  state.phaseElapsedMs += elapsedDeltaMs;
+
+  switch (state.phase.kind) {
+    case 'COUNTDOWN':
+      if (state.phaseElapsedMs >= phaseConfig.countdownMs) {
+        recordFloor4PhaseTransition(world, state, { kind: 'WAVES', act: 1 }, 'countdown-complete');
+      }
+      break;
+    case 'WAVES':
+      state.arenaElapsedMs += elapsedDeltaMs;
+      if (state.arenaElapsedMs >= floor4WaveEndMs(state.phase.act)) {
+        state.arenaElapsedMs = floor4WaveEndMs(state.phase.act);
+        recordFloor4PhaseTransition(
+          world,
+          state,
+          { kind: 'HEADLINE', act: state.phase.act, cleared: true },
+          'slice2-empty-headline',
+        );
+      }
+      break;
+    case 'HEADLINE':
+      state.arenaElapsedMs += elapsedDeltaMs;
+      if (state.arenaElapsedMs >= floor4ActEndMs(state.phase.act)) {
+        state.arenaElapsedMs = floor4ActEndMs(state.phase.act);
+        recordFloor4PhaseTransition(
+          world,
+          state,
+          { kind: 'INTERMISSION', act: state.phase.act },
+          'act-mark-reached',
+        );
+      }
+      break;
+    case 'INTERMISSION': {
+      if (state.phaseElapsedMs < phaseConfig.intermissionMs) {
+        break;
+      }
+      const nextAct = nextFloor4Act(state.phase.act);
+      if (nextAct) {
+        recordFloor4PhaseTransition(
+          world,
+          state,
+          { kind: 'WAVES', act: nextAct },
+          'slice2-auto-green-room-exit',
+        );
+      } else {
+        recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'slice2-auto-stairs');
+      }
+      break;
+    }
+    case 'OVERTIME':
+      if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {
+        recordFloor4PhaseTransition(world, state, { kind: 'DEFEAT' }, 'overtime-cap');
+        world.state = 'game_over';
+      }
+      break;
+  }
+}
+
 /**
  * Floor 4's stairs are gated on `INTERMISSION(5)` (FR8.3). That phase arrives
- * with slice 5, so descent is refused until then.
+ * with the final Green Room transaction. Slice 2 exposes the phase check even
+ * though its rehearsal director auto-takes those stairs after a short hold.
  */
-export function confirmFloor4StairDescend(): boolean {
-  return false;
+export function confirmFloor4StairDescend(world?: GameWorld): boolean {
+  const phase = world ? floor4ArenaState(world)?.phase : undefined;
+  return phase?.kind === 'INTERMISSION' && phase.act === 5;
 }
 
 export function initializeFloor4Scenario(
@@ -135,10 +304,9 @@ export function initializeFloor4Scenario(
   world.floor = 4;
   world.floorId = 'floor4';
   world.floorScenario = null;
-  world.floorExtendedState = {};
-  // FR5.6/FR8.4 — the act clock is the only clock Floor 4 ever shows, and it
-  // does not exist until slice 2. The generic readout would otherwise surface
-  // the stall backstop as a countdown.
+  world.floorExtendedState = { floor4Arena: createFloor4ArenaState(world) };
+  // FR5.6/FR8.4 — the act clock is the only clock Floor 4 ever shows. The
+  // generic readout would otherwise surface the stall backstop as a countdown.
   world.hideFloorTimer = true;
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);

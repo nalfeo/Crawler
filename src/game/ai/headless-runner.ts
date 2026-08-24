@@ -28,6 +28,7 @@ import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../sha
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
+import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -1466,8 +1467,16 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      if (world.floorScenario?.runSummary?.outcome === 'cleared_floor') {
+      const scenarioOutcome = scenario.getRunOutcome(world);
+      if (
+        scenarioOutcome === 'cleared_floor' ||
+        world.floorScenario?.runSummary?.outcome === 'cleared_floor'
+      ) {
         outcome = 'victory';
+        break;
+      }
+      if (scenarioOutcome === 'failed_timeout') {
+        outcome = 'timeout';
         break;
       }
       if (world.floorId === 'floor2' && hasFloor2ExitCompleted(world)) {
@@ -1639,6 +1648,7 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      floor4Arena: getFloor4ArenaRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -1746,6 +1756,7 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    floor4Arena: getFloor4ArenaRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),

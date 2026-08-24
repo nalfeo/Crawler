@@ -401,6 +401,20 @@ countdown (FR5.6), and `timer.durationMs` is only the FR8.4 stall backstop, so t
 generic floor-timer HUD is suppressed and the backstop raises its own
 `floor4-stall-backstop` flag rather than an ordinary floor timeout.
 
+### Slice-2 deviation: empty broadcast rehearsal
+
+Slice 2 proves the **single-authority phase machine** and arena clock before the
+systems that make those phases physical exist. It therefore runs as an empty
+broadcast rehearsal: headline windows are marked cleared immediately, and each
+intermission auto-advances after a short deterministic hold. This is deliberately
+non-conformant with the final FR2.2 triggers where the player takes the Green
+Room exit and final stairs; slice 5 replaces this rehearsal hand-off with the
+real Green Room transaction.
+
+The arena clock still obeys FR1.2/FR1.3 during the rehearsal: it advances only in
+`WAVES`/`HEADLINE`, holds during `COUNTDOWN` and `INTERMISSION`, and reaches
+exactly 600,000 ms at `VICTORY`.
+
 ## Test Plan
 
 | Level            | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |

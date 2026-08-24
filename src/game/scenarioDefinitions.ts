@@ -52,8 +52,10 @@ import {
 } from './floor3Scenario.js';
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
+  arenaDirectorSystem,
   confirmFloor4StairDescend,
   initializeFloor4Scenario,
+  isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -106,7 +108,10 @@ function getFloor4CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
 }
 
 function getFloor4RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
-  return world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true ? 'failed_timeout' : null;
+  if (world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true) {
+    return 'failed_timeout';
+  }
+  return isFloor4ArenaVictory(world) ? 'cleared_floor' : null;
 }
 
 /**
@@ -565,6 +570,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
       onStairDescend: confirmFloor4StairDescend,
+      afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,

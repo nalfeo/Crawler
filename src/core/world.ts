@@ -99,6 +99,7 @@ import type {
   FloorScenarioState,
   Floor2SettlementSnapshot,
   Floor3StudiosState,
+  Floor4ArenaState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -141,6 +142,8 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /** Floor 4 arena clock + phase-machine state. */
+  floor4Arena?: Floor4ArenaState;
 }
 
 /**
