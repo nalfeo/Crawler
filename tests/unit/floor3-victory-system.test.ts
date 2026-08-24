@@ -17,6 +17,7 @@ import {
   floor3WildDirectorSystem,
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
+  selectFloor3StarterCompanion,
 } from '../../src/game/floor3Scenario.js';
 import {
   BiomeType,
@@ -47,6 +48,10 @@ function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
   const playerEid = spawnPlayer(world, 0, 0);
   initializeFloor3Scenario(world, playerEid);
+  // Confirm the starter-Companion pick (spec R5 §6.1) so the world lands in
+  // 'playing' the way a real run does — `initializeFloor3Scenario` now pauses
+  // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
+  selectFloor3StarterCompanion(world, 0);
   return { world, playerEid };
 }
 
@@ -398,7 +403,10 @@ describe('floor3 studios + final four objective tick', () => {
       ownerTeam: TeamId.PLAYER,
     });
     expect(partyEid).toBeDefined();
-    world.stores.companion.knockedOut[partyEid!] = 1;
+    // Also KOs the starter Companion (spec R5 §6.1, already on the party from
+    // `createFloor3World`) — a genuine wipe requires every party member down,
+    // not just the one recruited in this test.
+    knockOutTeams(world, [TeamId.PLAYER]);
 
     floor3ObjectiveTick(world);
 

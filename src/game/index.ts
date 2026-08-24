@@ -51,6 +51,7 @@ export {
   initializeFloor3Scenario,
   floor3WildDirectorSystem,
   floor3ObjectiveTick,
+  selectFloor3StarterCompanion,
   FLOOR3_TIMEOUT_GOAL_ID,
 } from './floor3Scenario.js';
 export {
