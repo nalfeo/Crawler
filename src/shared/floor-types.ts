@@ -253,12 +253,14 @@ export interface Floor3EncounterState {
    */
   readonly teamIds: readonly number[];
   /**
-   * Room id the roster spawned in (a `TERRITORY` biome zone for a Studio).
-   * `-1` for the Final Four, which has no dedicated room yet — its physical
-   * arena/set-piece is spec slice 9's deliverable; slice 8 only wires the
-   * logical gate + roster.
+   * Room id the roster spawns in. Studios use carved `TERRITORY` biome rooms;
+   * the Final Four uses a carved championship arena room (slice 9).
    */
   readonly roomId: number;
+  /** Authored set-piece stamped into `roomId` for this encounter. */
+  readonly setPieceId: string;
+  /** True when the set-piece prefab became authoritative room geometry. */
+  readonly setPieceCarved: boolean;
   /** Latched true once every teamId's Companions are simultaneously KO'd. */
   defeated: boolean;
   /**

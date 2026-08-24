@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor3-set-pieces",
+  "task_title": "Implement Floor 3 set-piece slice",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Plan review rejected the data-only 6+1 proposal. Resolved by changing scope to 7 affinity Studio motifs plus 1 Final Four arena; adding minimal runtime glue in floor3Scenario so selected Studio/Final Four rooms use the authored set-piece IDs; adding shared typed mapping data near floor3 studios; and strengthening tests to cover mapping, schema, door slots, and stamp/carve/runtime assignment rather than just ID existence."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "PR review round on efccb56: carved Studio/Final-Four rooms stacked every roster Companion on the room centre (carveSetPieceRoom drops interiorCells); the eight new layouts shipped without setpiece:score evidence; this ledger was incomplete. All three addressed - roster spawns now fan across distinct passable tiles with a uniqueness assertion, setpiece:score reports 8/8 layouts passing 12/12 checks (recorded in the PR description), and the harness stages are recorded here."
+        },
+        {
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Separate-model review of the fixed diff: the new bounds-inset spawn scan could leak roster spawns onto passable tiles inside an irregular cave room bounding box that belong to a neighbouring room. Fixed by running the bounds scan only when the interiorCells mask yields no usable tile, plus a regression test proven failing before the fix."
+        },
+        {
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verification round on the repaired tree: no validated findings remain; correctness, determinism, runtime wiring, contracts, security and regression coverage all clean."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "3c1579c0688f207da872f3c381d5610b66edc7d0",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly implements the Floor 3 set-piece generation by accurately routing authored set pieces to their studios and handling roster spawn placement logic. The changes maintain strict ECS layer boundaries and correctly employ deterministic logic for map placement. Substantial unit test coverage has been added to verify that set pieces fall back safely when not carved, accurately retain interior roster positions, and ensure progression logic remains deterministic."
+    }
+  }
+}

@@ -4,6 +4,9 @@ import { recruitPartyCompanion, spawnPlayer } from '../../src/core/helpers.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { Companion, Team } from '../../src/core/index.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
 import {
   FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID,
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
@@ -16,8 +19,30 @@ import {
   initializeFloor3Scenario,
   selectFloor3StarterCompanion,
 } from '../../src/game/floor3Scenario.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/index.js';
+
+const TINY_FLOOR3_MAP_WIDTH = 6;
+const TINY_FLOOR3_MAP_HEIGHT = 6;
+
+const TINY_FLOOR3_MAP_CONFIG: MapConfig = {
+  widthTiles: TINY_FLOOR3_MAP_WIDTH,
+  heightTiles: TINY_FLOOR3_MAP_HEIGHT,
+  tileSizeFt: 32,
+  biome: BiomeType.CAVE_SYSTEM_BIOMES,
+  seed: 910,
+  roomWidthRange: [4, 4],
+  roomHeightRange: [4, 4],
+  maxRooms: 8,
+  floorDensity: 0.5,
+};
 
 function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
@@ -28,6 +53,43 @@ function createFloor3World(seed: number) {
   // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
   selectFloor3StarterCompanion(world, 0);
   return { world, playerEid };
+}
+
+function createTinyFloor3Map(): FloorMap {
+  const flags = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT);
+  const terrain = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT).fill(
+    TerrainType.STONE_WALL,
+  );
+  const roomGraph = new RoomGraph();
+  const setFloor = (x: number, y: number): void => {
+    const idx = y * TINY_FLOOR3_MAP_WIDTH + x;
+    flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+
+  for (let i = 0; i < 8; i += 1) {
+    const x = 1;
+    const y = 1;
+    for (let ty = y + 1; ty <= y + 2; ty += 1) {
+      for (let tx = x + 1; tx <= x + 2; tx += 1) {
+        setFloor(tx, ty);
+      }
+    }
+    roomGraph.add({ x, y, width: 4, height: 4 }, [], [], RoomRole.TERRITORY, undefined, undefined, [
+      { x: x + 1, y: y + 1 },
+      { x: x + 2, y: y + 1 },
+      { x: x + 1, y: y + 2 },
+      { x: x + 2, y: y + 2 },
+    ]);
+  }
+
+  return new FloorMap(
+    TINY_FLOOR3_MAP_CONFIG,
+    new TileMap(TINY_FLOOR3_MAP_WIDTH, TINY_FLOOR3_MAP_HEIGHT, flags),
+    roomGraph,
+    terrain,
+    { x: 3, y: 3 },
+  );
 }
 
 /** Knocks out every Companion belonging to any of `teamIds`. */
@@ -68,6 +130,57 @@ function defeatAllStudios(
   floor3ObjectiveTick(world);
 }
 
+const MASK_ROOM_CELLS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 1, y: 1 },
+  { x: 2, y: 1 },
+];
+
+/**
+ * A 6x6 map whose single territory room carries an irregular `interiorCells`
+ * mask, plus extra passable tiles inside the same bounding box that do NOT
+ * belong to the room (they stand in for a neighbouring room/corridor). Roster
+ * spawns must stay on the mask.
+ */
+function createMaskedFloor3Map(): FloorMap {
+  const flags = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT);
+  const terrain = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT).fill(
+    TerrainType.STONE_WALL,
+  );
+  const setFloor = (x: number, y: number): void => {
+    const idx = y * TINY_FLOOR3_MAP_WIDTH + x;
+    flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+  for (const cell of MASK_ROOM_CELLS) setFloor(cell.x, cell.y);
+  // Passable, but outside the masked room's own cells.
+  setFloor(3, 3);
+  setFloor(4, 3);
+
+  const roomGraph = new RoomGraph();
+  roomGraph.add(
+    { x: 0, y: 0, width: 6, height: 6 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    undefined,
+    undefined,
+    MASK_ROOM_CELLS.map((cell) => ({ ...cell })),
+  );
+
+  return new FloorMap(
+    TINY_FLOOR3_MAP_CONFIG,
+    new TileMap(TINY_FLOOR3_MAP_WIDTH, TINY_FLOOR3_MAP_HEIGHT, flags),
+    roomGraph,
+    terrain,
+    { x: 1, y: 1 },
+  );
+}
+
+/** Distinct `x,y` keys across a pending-spawn list. */
+function distinctSpawnPositions(pendings: readonly { x?: number; y?: number }[]): number {
+  return new Set(pendings.map((pending) => `${pending.x},${pending.y}`)).size;
+}
+
 describe('floor3 studios + final four objective tick', () => {
   it('is deterministic: same seed produces the same Studio/Final-Four assignment', () => {
     const { world: worldA } = createFloor3World(4242);
@@ -80,6 +193,8 @@ describe('floor3 studios + final four objective tick', () => {
       stateA!.studios.map((s) => ({
         id: s.id,
         roomId: s.roomId,
+        setPieceId: s.setPieceId,
+        setPieceCarved: s.setPieceCarved,
         teamIds: s.teamIds,
         unlockLevel: s.unlockLevel,
       })),
@@ -87,11 +202,97 @@ describe('floor3 studios + final four objective tick', () => {
       stateB!.studios.map((s) => ({
         id: s.id,
         roomId: s.roomId,
+        setPieceId: s.setPieceId,
+        setPieceCarved: s.setPieceCarved,
         teamIds: s.teamIds,
         unlockLevel: s.unlockLevel,
       })),
     );
+    expect({
+      roomId: stateA!.finalFour.roomId,
+      setPieceId: stateA!.finalFour.setPieceId,
+      setPieceCarved: stateA!.finalFour.setPieceCarved,
+    }).toEqual({
+      roomId: stateB!.finalFour.roomId,
+      setPieceId: stateB!.finalFour.setPieceId,
+      setPieceCarved: stateB!.finalFour.setPieceCarved,
+    });
     expect(stateA!.finalFourPendingSpawns).toEqual(stateB!.finalFourPendingSpawns);
+  });
+
+  it('assigns authored set-piece rooms to every selected Studio and the Final Four', () => {
+    const { world } = createFloor3World(909);
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    expect(world.setPieceProps.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.roomId).toBeGreaterThanOrEqual(0);
+      expect(studio.setPieceId).toMatch(/^floor3-studio-/);
+      expect(studio.setPieceCarved).toBe(true);
+      for (const pending of studio.pendingSpawns) {
+        expect(pending.x).toBeDefined();
+        expect(pending.y).toBeDefined();
+      }
+      // A carved room drops its `interiorCells` mask, so the roster must be
+      // fanned across bounds-inset passable tiles rather than stacked on the
+      // room centre.
+      expect(distinctSpawnPositions(studio.pendingSpawns)).toBe(studio.pendingSpawns.length);
+    }
+    expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
+    expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
+    expect(state.finalFour.setPieceCarved).toBe(true);
+    for (const pending of state.finalFourPendingSpawns) {
+      expect(pending.x).toBeDefined();
+      expect(pending.y).toBeDefined();
+    }
+    expect(distinctSpawnPositions(state.finalFourPendingSpawns)).toBe(
+      state.finalFourPendingSpawns.length,
+    );
+  });
+
+  it('keeps authored set-piece ids and spawn positions when territory rooms are too small to carve', () => {
+    const world = createTestWorld({ seed: 910, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid, { floorMapOverride: createTinyFloor3Map() });
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    expect(world.setPieceProps.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.roomId).toBeGreaterThanOrEqual(0);
+      expect(studio.setPieceId).toMatch(/^floor3-studio-/);
+      expect(studio.setPieceCarved).toBe(false);
+      expect(studio.pendingSpawns.length).toBeGreaterThan(0);
+      for (const pending of studio.pendingSpawns) {
+        expect(pending.x).toBeDefined();
+        expect(pending.y).toBeDefined();
+      }
+    }
+    expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
+    expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
+    expect(state.finalFour.setPieceCarved).toBe(false);
+    for (const pending of state.finalFourPendingSpawns) {
+      expect(pending.x).toBeDefined();
+      expect(pending.y).toBeDefined();
+    }
+  });
+
+  it('keeps roster spawns on an irregular room mask instead of leaking into its bounding box', () => {
+    const world = createTestWorld({ seed: 911, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    const floorMap = createMaskedFloor3Map();
+    initializeFloor3Scenario(world, playerEid, { floorMapOverride: floorMap });
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    const maskKeys = new Set(MASK_ROOM_CELLS.map((cell) => `${cell.x},${cell.y}`));
+    const pendings = state.studios.flatMap((studio) => studio.pendingSpawns);
+    expect(pendings.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.setPieceCarved).toBe(false);
+    }
+    for (const pending of pendings) {
+      const tile = floorMap.worldToTile(pending.x!, pending.y!);
+      expect(maskKeys.has(`${tile.x},${tile.y}`)).toBe(true);
+    }
   });
 
   it('gates each Studio roster spawn behind its own seeded unlock level (spec R6 soft-gate)', () => {
