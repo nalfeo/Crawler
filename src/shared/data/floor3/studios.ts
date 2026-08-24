@@ -13,6 +13,7 @@
  * never on these numbers directly.
  */
 import type { SeededRandom } from '../../random.js';
+import type { Affinity } from './affinity.js';
 import { getPetSpecies } from './species.js';
 
 export interface TrainerCompanionDef {
@@ -29,6 +30,7 @@ export interface TrainerDef {
 export interface StudioDef {
   readonly studioId: string;
   readonly name: string;
+  readonly affinity: Affinity;
   readonly trainers: readonly TrainerDef[];
 }
 
@@ -48,6 +50,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'emberforge',
     name: 'Emberforge Studio',
+    affinity: 'ember',
     trainers: [
       {
         trainerId: 'emberforge-kess',
@@ -70,6 +73,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'bloomhollow',
     name: 'Bloomhollow Studio',
+    affinity: 'bloom',
     trainers: [
       {
         trainerId: 'bloomhollow-wisp',
@@ -92,6 +96,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'stoneward',
     name: 'Stoneward Studio',
+    affinity: 'stone',
     trainers: [
       {
         trainerId: 'stoneward-grix',
@@ -114,6 +119,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'galeloft',
     name: 'Galeloft Studio',
+    affinity: 'gale',
     trainers: [
       {
         trainerId: 'galeloft-yara',
@@ -136,6 +142,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'tidereach',
     name: 'Tidereach Studio',
+    affinity: 'tide',
     trainers: [
       {
         trainerId: 'tidereach-marlo',
@@ -158,6 +165,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'gloomvale',
     name: 'Gloomvale Studio',
+    affinity: 'gloom',
     trainers: [
       {
         trainerId: 'gloomvale-ashen',
@@ -180,6 +188,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'lumenspire',
     name: 'Lumenspire Studio',
+    affinity: 'lumen',
     trainers: [
       {
         trainerId: 'lumenspire-iris',
@@ -202,6 +211,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'cinderveil',
     name: 'Cinderveil Studio',
+    affinity: 'ember',
     trainers: [
       {
         trainerId: 'cinderveil-rask',
@@ -224,6 +234,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'verdant-tide',
     name: 'Verdant Tide Studio',
+    affinity: 'bloom',
     trainers: [
       {
         trainerId: 'verdant-tide-sable',
@@ -246,6 +257,7 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {
     studioId: 'skyroot',
     name: 'Skyroot Studio',
+    affinity: 'gale',
     trainers: [
       {
         trainerId: 'skyroot-pike',
