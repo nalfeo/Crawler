@@ -67,7 +67,9 @@ describe('scenario definitions', () => {
   it('returns floor3 scenario with the biome-overworld director copy', () => {
     const scenario = getScenarioDefinition('floor3');
     expect(typeof scenario.configureWorld).toBe('function');
-    expect(scenario.selectLoadoutOption).toBeUndefined();
+    // Floor 3 now pauses on a starter-Companion pick (spec R5 §6.1), mirroring
+    // Floor 1's weapon loadout, so it must expose a loadout selector too.
+    expect(typeof scenario.selectLoadoutOption).toBe('function');
     expect(scenario.director.intro).toContain('wilds');
     expect(scenario.director.victory).toContain('Final Four');
     expect(scenario.isTerminalRunVictory).toBe(true);

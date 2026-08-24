@@ -49,6 +49,7 @@ import {
   FLOOR3_VICTORY_GOAL_ID,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
+  selectFloor3StarterCompanion,
 } from './floor3Scenario.js';
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
@@ -546,6 +547,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor3',
       configureWorld: initializeFloor3Scenario,
+      selectLoadoutOption: selectFloor3StarterCompanion,
       onStairDescend: confirmFloor3StairDescend,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor3WildDirectorSystem],

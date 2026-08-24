@@ -68,7 +68,7 @@ import {
   type SpawnZoneWeights,
   type SpawnZoneMix,
 } from './spawn-zones.js';
-import { _aiTypeForSpecies } from './floor3Recruiting.js';
+import { _aiTypeForSpecies, _generateStarterOffer, _recruitCompanion } from './floor3Recruiting.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { AI_TYPE } from './enemyAISystem.js';
@@ -79,6 +79,8 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
 const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
 const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
+/** World-unit offset (one map tile) so the starter Companion doesn't spawn stacked on the player. */
+const FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES = 1;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
@@ -872,10 +874,17 @@ export function initializeFloor3Scenario(
   world.floor = 3;
   world.floorId = 'floor3';
   world.floorScenario = null;
+  // Starter offer (spec R5 §6.1): 4 seeded species, distinct from the map/prop
+  // seeds so re-rolling the map layout can never change who's on offer (and
+  // vice versa). `initializeFloor3Scenario` never re-enters mid-run, so a
+  // fresh offer here always means a fresh floor entry.
+  const starterOfferRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor3-starter`));
+  const starterOffer = _generateStarterOffer(starterOfferRng).map((species) => species.speciesId);
   world.floorExtendedState = {
     floor3BiomeAffinities: AFFINITY_RING.slice(),
     ambientEnemyArchetypes: new Map<number, string>(),
     floor3Studios: initializeFloor3Studios(world, floorMap),
+    floor3StarterOffer: starterOffer,
   };
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
@@ -945,7 +954,97 @@ export function initializeFloor3Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
-  world.state = 'playing';
+  // Pause on the starter-Companion pick (spec R5 §6.1) until
+  // `selectFloor3StarterCompanion` resumes play, mirroring Floor 1's
+  // weapon-loadout pause. Falls through to 'playing' only if the offer is
+  // somehow empty (species roster misconfiguration), so a broken offer can
+  // never permanently strand the player on an un-resumable pause.
+  world.state = starterOffer.length > 0 ? 'loadout' : 'playing';
   world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, false);
   world.floorObjectiveTick = floor3ObjectiveTick;
+}
+
+/**
+ * Confirms the player's Floor 3 starter-Companion pick (spec R5 §6.1),
+ * resolving the picked species' base combat stats the same way every other
+ * roster Companion is resolved (`findFloor3ArchetypeForSpecies` +
+ * `formForLevel`'s level-1 scale) so the starter is never a bespoke balance
+ * number. Mirrors `selectFloor1StarterWeapon`: a no-op outside `'loadout'`,
+ * and always resumes play on `'playing'` even if the pick itself failed (an
+ * out-of-range index, an unknown species, or an already-locked party — none
+ * of which should be reachable from the real offer/UI, but must never strand
+ * the player on an un-resumable pause).
+ */
+export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
+  if (world.state !== 'loadout') return;
+  const offer = world.floorExtendedState?.floor3StarterOffer;
+  if (!offer || offer.length === 0) return;
+
+  const speciesId = offer[optionIndex] ?? offer[0];
+  let species = speciesId !== undefined ? getPetSpecies(speciesId) : undefined;
+  if (species === undefined) {
+    // Loud, structured degradation signal (plan-review finding): an unknown
+    // speciesId in the offer should never happen (the offer is built from
+    // `getPetSpecies` results in the first place), but if it does, fall back
+    // to scanning the rest of the offer for a resolvable species rather than
+    // silently starting Floor 3 with no Companion at all.
+    console.warn(
+      `[floor3:starter-degraded] offer entry ${speciesId ?? 'undefined'} did not resolve to a ` +
+        `known species; scanning the rest of the offer for a valid fallback.`,
+    );
+    species = offer.map((id) => getPetSpecies(id)).find((resolved) => resolved !== undefined);
+    if (species === undefined) {
+      console.warn(
+        '[floor3:starter-degraded] no offer entry resolved to a known species; ' +
+          'resuming play with no starter Companion.',
+      );
+    }
+  }
+  if (species !== undefined) {
+    const playerEid = query(world.ecs, [Player])[0];
+    const playerX = playerEid !== undefined ? (world.stores.position.x[playerEid] ?? 0) : 0;
+    const playerY = playerEid !== undefined ? (world.stores.position.y[playerEid] ?? 0) : 0;
+    const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+    const spawnOffset = tileSizeFt * FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES;
+
+    const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
+    const form = formForLevel(species, 1);
+    const hp = archetype ? Math.max(1, Math.round(archetype.hp * form.statScale)) : 1;
+    const attackRange =
+      archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
+        ? archetype.detectRange * 0.65
+        : 0;
+
+    const starterEid = _recruitCompanion(world, species.speciesId, {
+      x: playerX + spawnOffset,
+      y: playerY,
+      hp,
+      speed: archetype?.speed ?? 0.1,
+      aggroRange: archetype?.detectRange ?? 200,
+      attackRange,
+      level: 1,
+      ownerTeam: TeamId.PLAYER,
+    });
+    if (starterEid !== undefined && archetype) {
+      setComponent(world.ecs, starterEid, Sprite, {
+        textureId: archetype.spriteTexture,
+        width: archetype.spriteWidth,
+        height: archetype.spriteHeight,
+      });
+      setComponent(world.ecs, starterEid, Size, {
+        radius:
+          archetype.collisionRadius ??
+          Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+        halfWidth: 0,
+        halfHeight: 0,
+        shape: SHAPE_CIRCLE,
+      });
+      setEnemyAppearanceKey(world, starterEid, archetype.id);
+    }
+  }
+
+  if (world.floorExtendedState) {
+    world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
+  }
+  world.state = 'playing';
 }

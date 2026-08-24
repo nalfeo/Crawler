@@ -954,9 +954,14 @@ export class CaveSystemGenerator implements MapGenerator {
       spacingCap,
     );
     const spawnRelaxationFactors = [1, 0.75, 0.5, 0.25, 0] as const;
-    const spawnSizeCandidates = [6, 5, 4] as const;
+    // Floor 3's spawn room doubles as the intro + starter-Companion-pick
+    // location (issue: entrance room was too small to read as a proper
+    // "welcome" beat once the starter pick landed there), so it gets a
+    // larger candidate ladder than Floor 2's plain cavern spawn (unchanged,
+    // see the sibling `spawnSizeCandidates` above in the floor2 branch).
+    const spawnSizeCandidates = [12, 10, 8] as const;
     let farthestFromCenter: { x: number; y: number } | null = null;
-    let spawnRoomSize = 6;
+    let spawnRoomSize = 12;
 
     for (const roomSize of spawnSizeCandidates) {
       for (const relaxFactor of spawnRelaxationFactors) {
