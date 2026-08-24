@@ -1,5 +1,39 @@
 [
   {
+    "commit": "35f6bf1f3e42a7699a3b1ef1f30dddd460b8f45d",
+    "commitDate": "2026-08-23T22:29:43Z",
+    "commitSubject": "Harden CI-recovery review-thread task instructions with explicit repo/auth guardrails (#3432)",
+    "capturedAt": "2026-08-24T00:28:52.651Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32672752013",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/35f6bf1f3e42a7699a3b1ef1f30dddd460b8f45d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.75,
+      "gatePass": false,
+      "path": "by-sha/35f6bf1f3e42a7699a3b1ef1f30dddd460b8f45d.fun-report.json"
+    }
+  },
+  {
     "commit": "05241b79486faf4e44878344ce439ec225399c47",
     "commitDate": "2026-08-23T21:18:00Z",
     "commitSubject": "Fix welcome room touch: freeze movement while equipment/inventory/quartermaster UI is open (#3254)",
