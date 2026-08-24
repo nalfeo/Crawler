@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor1-post-boss-stair-descend-deadlock",
+  "task_title": "Fix post-boss stair-descend deadlock (#3449)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Reviewer (gpt-5.5, rubber-duck) returned approved_with_changes with 6 concerns; all adopted. (1) BLOCKING: do not delete the whole legacy unlocked-stairs branch in findProgressObjective — resolveFloor1MiddleChainObjective returns undefined when no floorMap/boss entries exist, so the legacy branch is still the startup/synthetic fallback; remove only the farm-window guard inside it. (2) BLOCKING: regression test shape — extend tests/headless/floor1-throwing-knife11-release-regression.test.ts (already runs the exact repro seed/weapon, zero extra run cost) with a post-boss-to-exit latency assertion from RunStats (floor1BossProgression.encounters.staircase.encounterDefeatedMs -> quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]) instead of raising the park-watchdog frame cap (slow, and its stuck detector excludes suppressedProgressNav) or a driver-only unit test (would not cover the live provider/planner split). (3) Keep the full API/config removal; reject the alternative of gating the driver on AIInputProvider.getDecision() because getDecision is a debug/visualization contract and the headless loop polls AI before the sim and auto-progression after it, so the decision would be stale. (4) Downstream cleanup list adopted: types.ts, bt-ai-tuning.ts, personas.ts, bt-ai-provider.ts, auto-progression.ts, both test files, the stale comment in tests/headless/collision-pair-parity.test.ts, and a superseding note for ADR 0091 (history is not rewritten). (5) Add npm run typecheck / verify:fast (and lint:dead-code) before the headless gate reruns, since deleting an exported interface field can break consumers the gameplay gates never load. (6) Economy gate risk is real (34.0% measured vs 35% ceiling) — run it, and if it regresses treat it as a genuine balance regression rather than loosening MAX_MEDIAN_UNSPENT_SPENDABLE_FRACTION or reinstating the parked hold. Alternatives weighed: (a) make the farm window live in the goal graph — rejected, already measured as a blocking win-rate regression 25/25 -> 23/25; (b) leave postBossFarmReserveFraction as an inert knob — rejected as cruft; (c) driver defers only while the provider is not targeting the stairs — rejected per concern 3. divergence=minor: the chosen design (delete the half-wired feature) stood, but the review pruned the over-broad legacy-branch deletion and re-shaped the regression test."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

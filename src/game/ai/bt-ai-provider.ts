@@ -291,11 +291,7 @@ import {
   LOOT_SWEEP_PANIC_THRESHOLD,
   LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
-import {
-  FLOOR1_ACTIVE_TIME_BUDGET_MS,
-  resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs,
-} from './floor1-run-budget.js';
-import { resolvePostBossFarmWindow } from './post-boss-farm-window.js';
+import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
 // Collapse deadline for floors whose timer lives on the floor manifest (Floor 2).
 import { resolveManifestFloorCollapseState } from './collapse-deadline.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
@@ -1222,30 +1218,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveDeadlineMs,
       this.runnerPlanningDeadlineMs,
     );
-  }
-
-  /**
-   * True while the run should keep farming Floor 1 instead of taking the
-   * unlocked stairs (see {@link resolvePostBossFarmWindow}).
-   *
-   * Single source of truth for the hold: the Progress objective below uses it
-   * to stop routing to the staircase, and the headless auto-progression driver
-   * calls it through {@link AIInputProvider.isFarmingPostBossFloorTime} so the
-   * two can never disagree about when the floor is done.
-   */
-  isFarmingPostBossFloorTime(world: GameWorld, objectiveDeadlineMs: number): boolean {
-    const objective = world.floorScenario?.objective;
-    if (!objective) {
-      return false;
-    }
-    return resolvePostBossFarmWindow({
-      reserveFraction: this.config.postBossFarmReserveFraction,
-      elapsedMs: world.elapsedMs,
-      planningDeadlineMs: this.resolveFloor1PlanningDeadlineMs(objectiveDeadlineMs),
-      floorBudgetMs: FLOOR1_ACTIVE_TIME_BUDGET_MS,
-      staircaseUnlocked: objective.staircaseUnlocked,
-      staircaseDiscovered: objective.staircaseDiscovered,
-    }).farming;
   }
 
   /**
@@ -7857,16 +7829,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
-      // Post-boss farm window: the floor's remaining time is spare budget once
-      // the boss is dead, so cohorts with a farm appetite keep working the
-      // floor for loot/XP instead of walking out early. Yielding `null` here
-      // (rather than steering somewhere) hands the frame to the normal
-      // Engage/Collect/Explore ladder — i.e. exactly the "farm the floor"
-      // behavior — and the window closes on its own once only the cohort's exit
-      // reserve is left, restoring this staircase target.
-      if (this.isFarmingPostBossFloorTime(world, objective.deadlineMs)) {
-        return null;
-      }
       const reason = 'Heading to the stairs to clear the floor';
       return maybeDetourToQuestGiver(
         this.createProgressTarget(
