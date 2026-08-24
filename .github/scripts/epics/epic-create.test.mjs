@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   EPIC_LABEL,
@@ -15,6 +18,8 @@ import {
   validateEpicFile,
 } from './epic-create.mjs';
 
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
 function exampleEpic(overrides = {}) {
   return {
     epic_id: 'example-epic',
@@ -26,6 +31,16 @@ function exampleEpic(overrides = {}) {
     ],
     ...overrides,
   };
+}
+
+function findEpicFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return findEpicFiles(path);
+    }
+    return entry.isFile() && entry.name.endsWith('.epic.json') ? [path] : [];
+  });
 }
 
 function reviewIssueFor(
@@ -84,6 +99,20 @@ function harness(existingIssues = [], existingLabels = []) {
 
 test('validateEpicFile accepts a well-formed epic', () => {
   assert.deepEqual(validateEpicFile(exampleEpic()), []);
+});
+
+test('committed epic json files are valid and use unique epic ids', () => {
+  const epicFiles = findEpicFiles(join(REPO_ROOT, 'docs/knowledge/epics')).sort();
+  assert.ok(epicFiles.length > 0, 'expected at least one committed *.epic.json file');
+
+  const epics = epicFiles.map((path) => ({
+    path,
+    epic: JSON.parse(readFileSync(path, 'utf8')),
+  }));
+  for (const { path, epic } of epics) {
+    assert.deepEqual(validateEpicFile(epic), [], path);
+  }
+  assert.doesNotThrow(() => assertUniqueEpicIds(epics));
 });
 
 test('validateEpicFile rejects missing epic_id, empty nodes, and unknown deps', () => {
