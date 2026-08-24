@@ -42,26 +42,30 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gpt-5.5",
+      "grader_model": "gpt-5.6-terra",
       "implementer_model": "claude-sonnet-4.6",
-      "head_sha": "579391388b47d1e63ff690d3accdb7ea792fa9f0",
+      "head_sha": "a843902d642184b8f85a577aad30afc068806503",
       "findings": [
         {
           "severity": "major",
-          "file": ".github/scripts/epics/epic-create.mjs",
-          "detail": "ensureLabelsExist treats every 422 from create-label as an already-exists race. GitHub also returns 422 for validation failures such as invalid or too-long label names, so a bad epic_id/custom label can be silently ignored and the workflow then creates issues without the required label, reintroducing the duplicate-review/idempotency failure. Inspect the 422 error payload for an already_exists code/message or validate label names/length and rethrow other 422s."
+          "file": "src/game/floor3Scenario.ts",
+          "detail": "The graded diff includes an unrelated Floor 3 starter-Companion feature and associated engine, map-generation, headless-runner, and test changes, despite the stated task being only the .epic.json-to-GitHub-issues workflow. Split the unrelated Floor 3 changes into their own reviewable change set."
         }
       ],
       "criteria": {
         "correctness": 4,
-        "scope_discipline": 5,
+        "scope_discipline": 1,
         "test_coverage": 4,
         "policy_compliance": 4,
         "maintainability": 4
       },
-      "verdict": "pass",
+      "verdict": "fail",
       "findings_count": 1,
-      "notes": "The workflow is otherwise narrowly scoped, well documented, and has strong coverage for review gating, idempotency, dependency ordering, and the intended label-creation ordering/race path. The main residual correctness/test gap is overbroad 422 handling for label creation; it is actionable but not blocker severity for the core happy path."
+      "notes": "The epic workflow implementation and its focused tests are substantially complete, but the diff is not scoped to the declared task: it bundles a separate gameplay feature and its supporting changes. This warrants human review under the grading rules.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: scope_discipline",
+        "unresolved_findings": 1
+      }
     }
   }
 }
