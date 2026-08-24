@@ -1,0 +1,63 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "epic-creation-workflow",
+  "task_title": "Epic creation workflow: .epic.json -> GitHub issues",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adversarial-style rubber-duck review of the stateless, marker-based, review-gated design. 4 blocking concerns: (1) no auto-trigger on review-issue close -> added issues:[closed,reopened] trigger + concurrency group; (2) any closed state treated as approval -> gated on state_reason==completed vs not_planned rejection; (3) no pin to reviewed file revision -> added epicContentHash + reviewHashMarker drift detection; (4) no concurrency control -> added concurrency group (group: epic-create). 3 non-blocking concerns addressed: node.id charset validation, description/review field type validation, duplicate epic_id across a multi-file batch (assertUniqueEpicIds). One non-blocking suggestion (CODEOWNERS entry for docs/knowledge/epics/**) consciously deferred as a separate governance change out of this tasks scope; noted in the PR/handoff. All fixes were refinements to the same core design (stateless marker-based issues, no control-plane file) rather than a different architecture, so plan_divergence=minor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Shell injection via workflow_dispatch epic_path interpolated into run: blocks; state_reason:null on a closed issue treated as approval; a stale not_planned rejection permanently blocking a revised (different-hash) plan."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Diagnostic promised a fresh review issue could be filed for a revised plan but no mechanism existed to create one (marker was epic-scoped, not hash-scoped); resolved by refactoring reviewMarker to embed the content hash directly so a revision automatically gets its own new review issue."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "fetchEpicIssues embedded a redundant per_page=100 query param that paginate() also appends unconditionally; removed from the caller. A second, low-severity note (issues:closed firing for every repo issue close, filtered only via job-level if:) was accepted as a known limitation given low expected volume and the 10-minute job timeout."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirmation round: no remaining validated findings across all review categories."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
