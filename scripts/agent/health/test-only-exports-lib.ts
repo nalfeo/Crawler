@@ -727,6 +727,55 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Floor 3 slice 6: KO/recovery world-object; no Floor 3 map generator exists yet (wild-spawn/overworld placement lands in slice 7), so only the KO-system unit tests spawn one until that placement path lands.',
     expiresOn: '2026-11-29',
   },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'FLOOR3_STAIRS_POPPED_GOAL_ID',
+    reason:
+      'Floor 3 slice 8: stairs-spawn goal flag id read/written only inside floor3ObjectiveTick in the same file; exported so victory-system tests can assert the stairs-pop transition without hard-coding the flag string.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID',
+    reason:
+      'Floor 3 slice 8: Final Four unlock goal flag id set only inside floor3ObjectiveTick in the same file; exported so victory-system tests can assert the unlock transition without hard-coding the flag string.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor3Scenario.ts',
+    name: 'floor3StudioDefeatGoalId',
+    reason:
+      'Floor 3 slice 8: per-Studio defeat goal flag id builder called only inside floor3ObjectiveTick in the same file; exported so victory-system tests can assert per-Studio latching without duplicating the id format.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FLOOR3_STUDIO_SELECT_COUNT',
+    reason:
+      'Floor 3 slice 8: seeded Studio roster size consumed only by selectFloor3Studios in the same file; exported so roster-determinism tests assert the 6-of-10 selection count symbolically.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FLOOR3_FINAL_FOUR_SELECT_COUNT',
+    reason:
+      'Floor 3 slice 8: seeded Final Four roster size consumed only by selectFloor3FinalFour in the same file; exported so roster-determinism tests assert the 4-of-7 selection count symbolically.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'STUDIO_CANDIDATES',
+    reason:
+      'Floor 3 slice 8: authored Studio candidate pool read only by selectFloor3Studios in the same file; exported so roster-authoring tests validate the full pool shape and id uniqueness.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/shared/data/floor3/studios.ts',
+    name: 'FINAL_FOUR_CANDIDATES',
+    reason:
+      'Floor 3 slice 8: authored Final Four candidate pool read only by selectFloor3FinalFour in the same file; exported so roster-authoring tests validate the full pool shape and id uniqueness.',
+    expiresOn: '2026-11-22',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {
