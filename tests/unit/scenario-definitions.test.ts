@@ -20,7 +20,10 @@ import {
 } from '../../src/game/floorScenario.js';
 import { confirmFloor2StairDescend } from '../../src/game/floor2Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
-import { FLOOR3_TIMEOUT_GOAL_ID } from '../../src/game/floor3Scenario.js';
+import {
+  FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
+  FLOOR3_TIMEOUT_GOAL_ID,
+} from '../../src/game/floor3Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -66,7 +69,8 @@ describe('scenario definitions', () => {
     expect(typeof scenario.configureWorld).toBe('function');
     expect(scenario.selectLoadoutOption).toBeUndefined();
     expect(scenario.director.intro).toContain('wilds');
-    expect(scenario.isTerminalRunVictory).toBe(false);
+    expect(scenario.director.victory).toContain('Final Four');
+    expect(scenario.isTerminalRunVictory).toBe(true);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {
@@ -187,6 +191,14 @@ describe('scenario definitions', () => {
         subtitle: 'Floor 3 failed',
         body: 'The Companion League timer expired.\nRally your party and reach the objective faster.',
       });
+    });
+
+    it('floor3 reports cleared_floor once staircase discovery latches', () => {
+      const scenario = getScenarioDefinition('floor3');
+      const world = createTestWorld({ seed: 43, floor: 3 });
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      world.goalFlags.set(FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
+      expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
     });
   });
 
