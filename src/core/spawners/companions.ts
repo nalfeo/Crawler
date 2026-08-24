@@ -100,6 +100,8 @@ export interface SpawnRosterCompanionOptions {
   speciesToken: number;
   level: number;
   ownerTeam: number;
+  /** 0 = baby, 1 = adolescent, 2 = adult (spec R3 form thresholds). */
+  form: number;
 }
 
 /**
@@ -132,7 +134,7 @@ export function spawnRosterCompanion(
     eid,
     set(Companion, {
       speciesToken: options.speciesToken,
-      form: 0,
+      form: options.form,
       level: options.level,
       xp: 0,
       ownerTeam: options.ownerTeam,
