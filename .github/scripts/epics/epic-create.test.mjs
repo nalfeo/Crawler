@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   EPIC_LABEL,
@@ -16,6 +17,8 @@ import {
   topoSortNodes,
   validateEpicFile,
 } from './epic-create.mjs';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function exampleEpic(overrides = {}) {
   return {
@@ -99,7 +102,7 @@ test('validateEpicFile accepts a well-formed epic', () => {
 });
 
 test('committed epic json files are valid and use unique epic ids', () => {
-  const epicFiles = findEpicFiles('docs/knowledge/epics').sort();
+  const epicFiles = findEpicFiles(join(REPO_ROOT, 'docs/knowledge/epics')).sort();
   assert.ok(epicFiles.length > 0, 'expected at least one committed *.epic.json file');
 
   const epics = epicFiles.map((path) => ({
