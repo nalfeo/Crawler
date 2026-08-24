@@ -38,6 +38,8 @@ import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import { spawnEnemy } from '../../core/spawners/combatants.js';
+import type { CombatEvent } from '../../shared/combat-events.js';
+import type { VfxEvent } from '../../shared/vfx-events.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -132,10 +134,9 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' {
-  return new URLSearchParams(window.location.search).get('floor') === 'floor2'
-    ? 'floor2'
-    : 'floor1';
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
+  const raw = new URLSearchParams(window.location.search).get('floor');
+  return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
 }
 
 /**
@@ -244,6 +245,14 @@ interface MainSceneInternals {
    * by the probe so each e2e scenario starts clean.
    */
   rewardAudioCueLog?: RewardAudioCueLogEntryProbe[];
+  /**
+   * Test/automation observability only (see `MainGameScene.combatAudioCueLog`):
+   * the ordered array of every combat/loot audio cue actually synthesized by
+   * the real `AudioCueEngine` injected into `PhaserBridge`'s `combatAudio`
+   * controller. Mutable — cleared directly (`.length = 0`) by the probe so
+   * each e2e scenario starts clean.
+   */
+  combatAudioCueLog?: RewardAudioCueLogEntryProbe[];
   abilityLoadoutUI?: {
     isOpen(): boolean;
     close(): void;
@@ -508,6 +517,8 @@ export interface MainSceneState {
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
   readonly cameraCenter: ProbePoint | null;
+  /** Live scenario floor id (`'floor1' | 'floor2' | 'floor3'`), or null before boot. */
+  readonly floorId: string | null;
   /** Floor 2 settlement room count, or zero before/non-Floor-2 initialization. */
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
@@ -775,6 +786,13 @@ export interface MainSceneProbeApi {
    * `onStairDescend`, floor-completion screen, and scene restart.
    */
   primeFloor1StairTransition(): void;
+  /**
+   * Arrange the live Floor-2 world at its unlocked exit stairs, the Floor-2
+   * mirror of {@link MainSceneProbeApi.primeFloor1StairTransition}. The test
+   * still drives the real interaction modal, `onStairDescend`, the
+   * floor-completion screen, and the in-process restart into Floor 3.
+   */
+  primeFloor2StairTransition(): void;
   /** Live boss-intro sheet state plus the world clock (frozen while open). */
   getBossIntroState(): BossIntroProbeState;
   /** Scroll the boss-intro flavour copy by `delta` lines. */
@@ -1087,6 +1105,31 @@ export interface MainSceneProbeApi {
   getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
   /** Reset the reward-opening audio cue log so a scenario starts from empty. */
   clearRewardAudioCueLog(): void;
+  /**
+   * Ordered log of every combat/loot audio cue actually dispatched to the
+   * REAL `AudioCueEngine` (as `SynthCueSpec`s) by `PhaserBridge`'s
+   * `combatAudio` controller, since the last `clearCombatAudioCueLog()`. Used
+   * to prove — against the real scene+bridge wiring, not the pure
+   * cue-decision functions in isolation — that weapon/spell/ability/damage/
+   * pickup cues actually fire.
+   */
+  getCombatAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
+  /** Reset the combat audio cue log so a scenario starts from empty. */
+  clearCombatAudioCueLog(): void;
+  /**
+   * Pushes a synthetic `CombatEvent` directly onto the REAL running world's
+   * `world.combatEvents` queue (the same queue the real damage/weapon systems
+   * push onto), so the next real render frame's `combatAudio.update()` reads
+   * it exactly as it would a genuine combat event. Arrangement affordance
+   * only — the assertion is always on `getCombatAudioCueLog()`, never on this
+   * call directly.
+   */
+  pushTestCombatEvent(event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>): void;
+  /**
+   * Pushes a synthetic `VfxEvent` directly onto the REAL running world's
+   * `world.vfxEvents` queue (see `pushTestCombatEvent`).
+   */
+  pushTestVfxEvent(event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>): void;
   /** Visible floating world-text objects, optionally filtered by a text prefix. */
   getVisibleFloatingTexts(prefix?: string): readonly FloatingTextProbe[];
 }
@@ -1286,6 +1329,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayObjectCount: phaserScene?.children.list.length ?? 0,
         playerFeet,
         cameraCenter: cameraCenter(),
+        floorId: world?.floorId ?? null,
         settlementRoomCount: world?.floorExtendedState?.settlement?.settlementRoomIds.length ?? 0,
         settlementShopArchetypeIds: [
           ...(world?.floorExtendedState?.settlement?.quartermasterShop
@@ -1369,6 +1413,30 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.staircaseDiscovered = false;
       world.stores.position.x[playerEid] = objective.staircasePos.x;
       world.stores.position.y[playerEid] = objective.staircasePos.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+    },
+
+    primeFloor2StairTransition: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const familyState = world?.floorExtendedState?.familyState;
+      if (!scene || !world || playerEid < 0 || !familyState) {
+        throw new Error('Floor 2 transition path is not ready');
+      }
+      world.state = 'playing';
+      // Put the exit exactly where the player already stands so the real
+      // proximity/interaction path fires without teleporting into unwalkable
+      // terrain on a generated map.
+      familyState.staircasePos = {
+        x: world.stores.position.x[playerEid] ?? 0,
+        y: world.stores.position.y[playerEid] ?? 0,
+      };
+      familyState.staircaseSpawned = true;
+      familyState.staircaseUnlocked = true;
+      familyState.staircaseDiscovered = false;
       world.stores.velocity.x[playerEid] = 0;
       world.stores.velocity.y[playerEid] = 0;
       scene.setSimulationPaused(true);
@@ -2544,6 +2612,33 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene?.rewardAudioCueLog) {
         scene.rewardAudioCueLog.length = 0;
       }
+    },
+    getCombatAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
+      return getScene()?.combatAudioCueLog ?? [];
+    },
+
+    clearCombatAudioCueLog: (): void => {
+      const scene = getScene();
+      if (scene?.combatAudioCueLog) {
+        scene.combatAudioCueLog.length = 0;
+      }
+    },
+    pushTestCombatEvent: (event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>): void => {
+      const world = getScene()?.world;
+      if (!world) return;
+      world.combatEvents.push({
+        x: 0,
+        y: 0,
+        amount: 0,
+        targetType: 'enemy',
+        timestamp: world.elapsedMs,
+        ...event,
+      });
+    },
+    pushTestVfxEvent: (event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>): void => {
+      const world = getScene()?.world;
+      if (!world) return;
+      world.vfxEvents.push({ x: 0, y: 0, ...event });
     },
     getVisibleFloatingTexts: (prefix = ''): readonly FloatingTextProbe[] => {
       const phaserScene = getPhaserScene();

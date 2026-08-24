@@ -267,60 +267,72 @@ export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   },
 ];
 
-/** ~7-candidate Final Four pool (spec R8: "4-of-~7 Final Four pick"). */
+/**
+ * ~7-candidate Final Four pool (spec R8: "4-of-~7 Final Four pick"). Each
+ * finalist fields **4 adult-form Companions** at level 25+ (game-design
+ * §12.2: "4-5 adult-form Companions at the floor's top level band" — adult
+ * form starts at {@link FORM_MIN_LEVELS}`[2]` = 25, so every level here must
+ * be >= 25, enforced by `tests/unit/floor3-studios.test.ts`).
+ */
 export const FINAL_FOUR_CANDIDATES: readonly FinalFourDef[] = [
   {
     handlerId: 'final-four-draven',
     name: 'Draven the Unbound',
     companions: [
-      { speciesId: 'ember-warden', level: 22 },
-      { speciesId: 'gloom-bruiser', level: 23 },
-      { speciesId: 'lumen-slinger', level: 22 },
+      { speciesId: 'ember-warden', level: 25 },
+      { speciesId: 'gloom-bruiser', level: 25 },
+      { speciesId: 'lumen-slinger', level: 25 },
+      { speciesId: 'stone-kindler', level: 25 },
     ],
   },
   {
     handlerId: 'final-four-sela',
     name: 'Sela Windrider',
     companions: [
-      { speciesId: 'gale-burster', level: 22 },
-      { speciesId: 'tide-warden', level: 23 },
-      { speciesId: 'stone-charger', level: 22 },
+      { speciesId: 'gale-burster', level: 25 },
+      { speciesId: 'tide-warden', level: 25 },
+      { speciesId: 'stone-charger', level: 25 },
+      { speciesId: 'lumen-pouncer', level: 25 },
     ],
   },
   {
     handlerId: 'final-four-moss',
     name: 'Moss Query',
     companions: [
-      { speciesId: 'bloom-kindler', level: 22 },
-      { speciesId: 'stone-pouncer', level: 23 },
-      { speciesId: 'ember-slinger', level: 22 },
+      { speciesId: 'bloom-kindler', level: 25 },
+      { speciesId: 'stone-pouncer', level: 25 },
+      { speciesId: 'ember-slinger', level: 25 },
+      { speciesId: 'gale-warden', level: 25 },
     ],
   },
   {
     handlerId: 'final-four-ferrous',
     name: 'Ferrous Vale',
     companions: [
-      { speciesId: 'stone-bruiser', level: 23 },
-      { speciesId: 'gale-pouncer', level: 22 },
-      { speciesId: 'lumen-charger', level: 22 },
+      { speciesId: 'stone-bruiser', level: 25 },
+      { speciesId: 'gale-pouncer', level: 25 },
+      { speciesId: 'lumen-charger', level: 25 },
+      { speciesId: 'tide-kindler', level: 25 },
     ],
   },
   {
     handlerId: 'final-four-nyx',
     name: 'Nyx Halcyon',
     companions: [
-      { speciesId: 'gloom-warden', level: 23 },
-      { speciesId: 'lumen-burster', level: 22 },
-      { speciesId: 'tide-slinger', level: 22 },
+      { speciesId: 'gloom-warden', level: 25 },
+      { speciesId: 'lumen-burster', level: 25 },
+      { speciesId: 'tide-slinger', level: 25 },
+      { speciesId: 'ember-pouncer', level: 25 },
     ],
   },
   {
     handlerId: 'final-four-coda',
     name: 'Coda Brightwater',
     companions: [
-      { speciesId: 'tide-bruiser', level: 23 },
-      { speciesId: 'bloom-burster', level: 22 },
-      { speciesId: 'gale-charger', level: 22 },
+      { speciesId: 'tide-bruiser', level: 25 },
+      { speciesId: 'bloom-burster', level: 25 },
+      { speciesId: 'gale-charger', level: 25 },
+      { speciesId: 'gloom-slinger', level: 25 },
     ],
   },
   {
@@ -330,6 +342,7 @@ export const FINAL_FOUR_CANDIDATES: readonly FinalFourDef[] = [
       { speciesId: 'signature-volcanix', level: 25 },
       { speciesId: 'signature-tempestryn', level: 25 },
       { speciesId: 'signature-eclipsewyrm', level: 25 },
+      { speciesId: 'stone-warden', level: 25 },
     ],
   },
 ];

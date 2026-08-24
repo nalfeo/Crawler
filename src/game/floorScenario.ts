@@ -259,6 +259,14 @@ function getWorldAmbientEnemyPack(world: GameWorld): EnemyPackDef {
   if (!manifest) {
     return floor1EnemyPack;
   }
+  if (manifest.enemyPackId === undefined) {
+    // A floor that reaches the ambient director without declaring a pack is a
+    // wiring bug (e.g. an authored-schedule floor accidentally running the
+    // ambient path), so fail loudly instead of spawning Floor 1's rats.
+    throw new Error(
+      `Floor manifest "${manifest.id}" declares no enemyPackId but ran the ambient enemy director.`,
+    );
+  }
   const pack = getFloorEnemyPack(manifest.enemyPackId);
   if (!pack) {
     throw new Error(`Unknown enemy pack "${manifest.enemyPackId}" in floor manifest.`);

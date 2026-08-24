@@ -7,7 +7,7 @@ import {
   selectFloor3FinalFour,
   selectFloor3Studios,
 } from '../../src/shared/data/floor3/studios.js';
-import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
+import { formForLevel, getPetSpecies } from '../../src/shared/data/floor3/species.js';
 import { SeededRandom, hashStringToSeed } from '../../src/shared/random.js';
 
 describe('Floor 3 Studio + Final Four candidate data', () => {
@@ -42,6 +42,18 @@ describe('Floor 3 Studio + Final Four candidate data', () => {
     expect(trainerIds.size).toBe(STUDIO_CANDIDATES.reduce((n, s) => n + s.trainers.length, 0));
     const handlerIds = new Set(FINAL_FOUR_CANDIDATES.map((h) => h.handlerId));
     expect(handlerIds.size).toBe(FINAL_FOUR_CANDIDATES.length);
+  });
+
+  it('fields at least 4 adult-form Companions per Final Four handler (game-design §12.2)', () => {
+    for (const handler of FINAL_FOUR_CANDIDATES) {
+      expect(handler.companions.length).toBeGreaterThanOrEqual(4);
+      for (const companion of handler.companions) {
+        const species = getPetSpecies(companion.speciesId);
+        expect(species).toBeDefined();
+        const form = formForLevel(species!, companion.level);
+        expect(form.form, `${handler.handlerId}/${companion.speciesId} must be adult form`).toBe(2);
+      }
+    }
   });
 });
 

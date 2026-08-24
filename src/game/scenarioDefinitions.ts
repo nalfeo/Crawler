@@ -44,16 +44,24 @@ import {
 } from './floor2Scenario.js';
 import {
   confirmFloor3StairDescend,
+  FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
   FLOOR3_VICTORY_GOAL_ID,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
 } from './floor3Scenario.js';
+import {
+  FLOOR4_STALL_BACKSTOP_GOAL_ID,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from './floor4Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import type { ErasedScenarioAiTaskConfig } from './ai/scenario-ai-tasks.js';
+import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
@@ -72,6 +80,33 @@ function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     subtitle: 'Floor 3 complete!',
     body: 'The Final Four are down — you are the Companion League champion!\nMore floors coming soon...',
   };
+}
+
+/**
+ * Floor 4 completion copy.
+ *
+ * `failed_timeout` here is NOT "the player ran out of time" — Floor 4 shows no
+ * countdown (FR5.6). It is the raw stall backstop (FR8.4), which only fires on
+ * an abandoned or non-terminating broadcast, so the copy names that instead of
+ * blaming the player for being slow.
+ */
+function getFloor4CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Broadcast Abandoned',
+      subtitle: 'Floor 4 went dark',
+      body: 'The Main Event ran past its broadcast window with no result.\nThe Director cut the feed and called the run.',
+    };
+  }
+  return {
+    title: 'Floor 4 In Progress',
+    subtitle: 'Venue slice',
+    body: 'The Main Event venue is wired, but the acts, waves and Headliners have not been staged yet.',
+  };
+}
+
+function getFloor4RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
+  return world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true ? 'failed_timeout' : null;
 }
 
 /**
@@ -165,6 +200,14 @@ export interface ScenarioDefinition {
   readonly getStairMarkerState?: (world: GameWorld) => ScenarioStairMarkerState | null;
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /**
+   * Scenario-owned AI task overlay driving the headless/BT run planner. When
+   * present, ALL Floor-specific task construction, ordering, prerequisite,
+   * unlock-effect, and runtime-eligibility policy lives here as validated
+   * config rather than in `src/game/ai/`. Optional so labs/harnesses and
+   * floors without an authored AI route stay valid without one.
+   */
+  readonly aiTaskConfig?: ErasedScenarioAiTaskConfig;
 }
 
 /** Extracts the normalized presentation contract from a full scenario definition. */
@@ -202,7 +245,7 @@ function getFloor2RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
 }
 
 function getFloor3RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
-  if (world.floorExtendedState?.floor3Studios?.staircaseDiscovered === true) {
+  if (world.goalFlags.get(FLOOR3_STAIRS_DISCOVERED_GOAL_ID) === true) {
     return 'cleared_floor';
   }
   return world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true ? 'failed_timeout' : null;
@@ -296,13 +339,14 @@ function getFloor1CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
 }
 
 /**
- * Exact copy of the completion-screen variant Floor 2 actually reaches
- * (`terminal_victory` — Floor 2 has no `nextFloorId` and is the authored
- * final floor), matching `MainGameScene.showFloorCompletionScreenIfNeeded`
- * verbatim. `failed_timeout` is unreachable for Floor 2 today (no wired
- * timeout path at this layer); it is given sensible copy consistent with
- * Floor 2's own identity rather than reusing Floor 1's wording, since nothing
- * observable depends on it yet.
+ * Floor 2's completion-screen copy. Floor 2 now declares
+ * `nextFloorId: 'floor3'`, so the variant it actually reaches is
+ * `transition_to_next_floor` — clearing Floor 2 hands the player to the
+ * Companion League wilds instead of ending the run. `failed_timeout` is
+ * unreachable for Floor 2 today (no wired timeout path at this layer), and the
+ * two terminal variants are only reachable when Floor 2 is booted WITHOUT a
+ * floor-transition callback (labs/harnesses); both keep copy consistent with
+ * Floor 2's own identity.
  */
 function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
   switch (variant) {
@@ -312,13 +356,18 @@ function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
         subtitle: 'Floor 2 failed',
         body: 'The floor collapsed before the exit was secured.\nTry again and rally the families faster.',
       };
-    case 'terminal_victory':
     case 'transition_to_next_floor':
+      return {
+        title: 'Floor 2 Complete!',
+        subtitle: 'Heading to Floor 3...',
+        body: 'The Companion League wilds are waiting below!',
+      };
+    case 'terminal_victory':
     case 'terminal_complete':
       return {
-        title: 'Victory!',
+        title: 'Floor 2 Complete!',
         subtitle: 'Floor 2 complete!',
-        body: 'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+        body: 'You secured the tunnel network.\nMore floors coming soon...',
       };
   }
 }
@@ -332,11 +381,11 @@ const FLOOR_1_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
 };
 
 const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
-  title: 'Victory! Ready to exit?',
+  title: 'Proceed to the next floor?',
   subtitle: 'You are at the exit.',
-  body: 'Floor 2 is cleared. Are you ready to exit the dungeon?',
-  confirmLabel: 'Yes, exit now',
-  confirmDescription: 'You win!',
+  body: 'Floor 2 is cleared. Are you ready to descend to Floor 3?',
+  confirmLabel: 'Yes, descend now',
+  confirmDescription: 'Start Floor 3.',
 };
 
 const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
@@ -406,6 +455,16 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   isTimeoutReached: (world: GameWorld) => world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true,
 };
 
+const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
+  victory: 'Floor 4 is not winnable yet; this slice only builds the venue.',
+  timeout: 'The Main Event never started. The Director cuts the feed.',
+  milestones: [],
+  isVictoryReached: () => false,
+  isTimeoutReached: (world: GameWorld) =>
+    world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
+};
+
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
   shopkeeper: {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
@@ -457,6 +516,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor1CompletionCopy,
       getStairMarkerState: getFloor1StairMarkerState,
       stairConfirmation: FLOOR_1_STAIR_CONFIRMATION,
+      aiTaskConfig: FLOOR1_AI_TASK_CONFIG,
     },
   ],
   [
@@ -465,12 +525,17 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       floorId: 'floor2',
       configureWorld: initializeFloor2Scenario,
       onStairDescend: confirmFloor2StairDescend,
+      nextFloorId: 'floor3',
       npcs: FLOOR_2_NPCS,
       beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
       beforeEnemyAISystems: [companionAISystem, familyFeudSystem],
       director: FLOOR_2_DIRECTOR,
       getRunOutcome: getFloor2RunOutcome,
-      isTerminalRunVictory: true,
+      // Clearing Floor 2 now descends into Floor 3 rather than ending the run,
+      // so a Floor 2 clear is a transition, not a terminal run victory. The
+      // flag still matters for hosts that boot Floor 2 without a transition
+      // callback (labs), where the run genuinely ends there.
+      isTerminalRunVictory: false,
       getCompletionCopy: getFloor2CompletionCopy,
       getStairMarkerState: getFloor2StairMarkerState,
       stairConfirmation: FLOOR_2_STAIR_CONFIRMATION,
@@ -492,6 +557,20 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       stairConfirmation: FLOOR_3_STAIR_CONFIRMATION,
     },
   ],
+  [
+    'floor4',
+    {
+      floorId: 'floor4',
+      configureWorld: initializeFloor4Scenario,
+      // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
+      // stairs are barred until the slice-5 intermission exists anyway.
+      onStairDescend: confirmFloor4StairDescend,
+      director: FLOOR_4_DIRECTOR,
+      getRunOutcome: getFloor4RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor4CompletionCopy,
+    },
+  ],
 ]);
 
 export function getScenarioDefinition(floorId: string): ScenarioDefinition {
@@ -506,4 +585,19 @@ export function getScenarioDefinition(floorId: string): ScenarioDefinition {
     );
   }
   throw new Error(`No scenario definition found for floor: ${floorId}`);
+}
+
+/**
+ * True when `floorId` can actually be booted: it has both a registered floor
+ * manifest and a scenario definition.
+ *
+ * This is deliberately weaker than `isFloorImplemented` (manifest
+ * `implemented.mvp`), which additionally means "has an attainable victory".
+ * A floor can be fully playable — generated, spawning, timed — while its
+ * terminal objective is still unbuilt (Floor 3 today). Callers that chain
+ * floors for PLAY use this; callers that decide what counts as a WIN must keep
+ * using `isFloorImplemented`.
+ */
+export function isFloorPlayable(floorId: string): boolean {
+  return SCENARIOS.has(floorId) && getFloorManifest(floorId) !== undefined;
 }

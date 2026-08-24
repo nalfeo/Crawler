@@ -261,13 +261,34 @@ export interface Floor3EncounterState {
   readonly roomId: number;
   /** Latched true once every teamId's Companions are simultaneously KO'd. */
   defeated: boolean;
+  /**
+   * Player level required to unlock this Studio (spec R6: "any-order
+   * soft-gated ... requires the player's party to meet a floor-level
+   * threshold, not a fixed sequence"). Assigned per Studio from the seeded
+   * selection order, so unlock difficulty varies by seed. Unused (`0`) by
+   * the Final Four, which gates on `studiosDefeatedCount` instead.
+   */
+  unlockLevel: number;
+  /** True once `unlockLevel` has been met and this encounter's roster has spawned. */
+  unlocked: boolean;
+  /**
+   * This Studio's Companions, deferred at floor init until `unlockLevel` is
+   * met (spec R6 soft-gate) — mirrors `Floor3StudiosState.finalFourPendingSpawns`.
+   * `floor3ObjectiveTick` spawns these once `unlocked` latches true and clears
+   * the array so a re-tick never double-spawns. Unused by the Final Four,
+   * which has its own `finalFourPendingSpawns` field.
+   */
+  pendingSpawns: readonly Floor3PendingRosterSpawn[];
 }
 
-/** A single Companion the Final Four gate spawns once it unlocks (deferred, spec R6 soft-gate). */
+/** A single Companion an encounter gate spawns once it unlocks (deferred, spec R6 soft-gate). */
 export interface Floor3PendingRosterSpawn {
   readonly speciesId: string;
   readonly level: number;
   readonly teamId: number;
+  /** Pre-resolved world-space (ft) spawn position, when known at gate-creation time. */
+  readonly x?: number;
+  readonly y?: number;
 }
 
 /**

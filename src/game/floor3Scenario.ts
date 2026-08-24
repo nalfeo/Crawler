@@ -88,10 +88,26 @@ export const FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID = 'floor3-final-four-unlock';
 const FLOOR3_STUDIO_TEAM_BASE = 10;
 /** First Team id used by Final Four handlers — one per handler. */
 const FLOOR3_FINAL_FOUR_TEAM_BASE = 30;
+/**
+ * Per-Studio unlock thresholds (`world.playerLevel.level`), one per selected
+ * Studio slot in seeded-selection order (spec R6: "any-order soft-gated ...
+ * requires the player's party to meet a floor-level threshold, not a fixed
+ * sequence"). Since Studio selection order is already seed-shuffled
+ * (`selectFloor3Studios`), assigning ascending thresholds by slot gives each
+ * seed a different unlock-difficulty ordering without hard-coding which
+ * Studio identity is "first" — the earliest-unlocked Studio is always
+ * reachable at floor start (threshold 0).
+ */
+const FLOOR3_STUDIO_UNLOCK_LEVELS: readonly number[] = [0, 2, 4, 6, 8, 10];
 
 /** Per-Studio goal flag latched true once that Studio's rosters are wiped. */
 export function floor3StudioDefeatGoalId(studioId: string): string {
   return `floor3-studio-${studioId}-defeated`;
+}
+
+/** Per-Studio goal flag latched true once that Studio's unlock threshold is met and its roster has spawned. */
+export function floor3StudioUnlockGoalId(studioId: string): string {
+  return `floor3-studio-${studioId}-unlocked`;
 }
 
 function getFloor3WildPack(): EnemyPackDef {
@@ -344,6 +360,7 @@ function spawnFloor3RosterCompanion(
     speciesToken: speciesTokenForId(speciesId),
     level,
     ownerTeam: teamId,
+    form: form.form,
   });
   setComponent(world.ecs, eid, Sprite, {
     textureId: archetype.spriteTexture,
@@ -415,11 +432,12 @@ function findFloor3ArenaTiles(
 
 /**
  * Seeded Studio + Final Four selection and world placement (spec R6/R8,
- * slice 8). Studios spawn immediately, one per `TERRITORY` biome zone
- * (deterministically shuffled so which zone hosts which Studio varies by
- * seed). The Final Four roster is deferred (`finalFourPendingSpawns`) —
- * `floor3ObjectiveTick` spawns it once the Studios-defeated counter opens the
- * gate (R6's "soft-gated" Final Four), never at floor init.
+ * slice 8). Each Studio's roster spawn is deferred (`pendingSpawns`) behind
+ * its own per-Studio unlock threshold (`unlockLevel`) — spec R6's "any-order
+ * soft-gated" contract — and only physically spawns once
+ * `floor3ObjectiveTick` observes `world.playerLevel.level >= unlockLevel`.
+ * The Final Four roster is deferred (`finalFourPendingSpawns`) the same way,
+ * gated on the Studios-defeated counter instead of a level threshold.
  */
 function initializeFloor3Studios(
   world: GameWorld,
@@ -443,27 +461,20 @@ function initializeFloor3Studios(
     const teamId = nextStudioTeamId;
     nextStudioTeamId += 1;
     let cellIndex = 0;
+    const pendingSpawns: Floor3PendingRosterSpawn[] = [];
     for (const trainer of studio.trainers) {
       for (const companion of trainer.companions) {
         if (!room) continue;
         const tile = pickFloor3RosterSpawnTile(room, cellIndex);
         cellIndex += 1;
         const spawnPos = floorMap.tileToWorld(tile.x, tile.y);
-        const eid = spawnFloor3RosterCompanion(
-          world,
-          spawnPos.x,
-          spawnPos.y,
-          companion.speciesId,
-          companion.level,
+        pendingSpawns.push({
+          speciesId: companion.speciesId,
+          level: companion.level,
           teamId,
-        );
-        if (eid === undefined) {
-          throw new Error(
-            `floor3: Studio "${studio.studioId}" failed to spawn Companion "${companion.speciesId}" ` +
-              '(no wild archetype resolvable for its fighting style) — the Studio would be ' +
-              'permanently unwinnable. Fix the data before shipping.',
-          );
-        }
+          x: spawnPos.x,
+          y: spawnPos.y,
+        });
       }
     }
     studios.push({
@@ -472,6 +483,10 @@ function initializeFloor3Studios(
       teamIds: [teamId],
       roomId: room ? room.id : -1,
       defeated: false,
+      unlockLevel:
+        FLOOR3_STUDIO_UNLOCK_LEVELS[studioIndex % FLOOR3_STUDIO_UNLOCK_LEVELS.length] ?? 0,
+      unlocked: false,
+      pendingSpawns,
     });
   });
 
@@ -490,6 +505,7 @@ function initializeFloor3Studios(
 
   for (const studio of studios) {
     setGoalFlag(world, floor3StudioDefeatGoalId(studio.id), false);
+    setGoalFlag(world, floor3StudioUnlockGoalId(studio.id), false);
   }
   setGoalFlag(world, FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID, false);
   setGoalFlag(world, FLOOR3_VICTORY_GOAL_ID, false);
@@ -504,6 +520,9 @@ function initializeFloor3Studios(
       teamIds: [finalFourTeamId],
       roomId: -1,
       defeated: false,
+      unlockLevel: 0,
+      unlocked: false,
+      pendingSpawns: [],
     },
     finalFourPendingSpawns,
     studiosDefeatedCount: 0,
@@ -555,6 +574,33 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
     }
   });
   studiosState.finalFourPendingSpawns = [];
+}
+
+/**
+ * Spawns a Studio's deferred roster at its pre-resolved den tiles and clears
+ * its `pendingSpawns` list. Called once `floor3ObjectiveTick` observes
+ * `world.playerLevel.level >= studio.unlockLevel` (spec R6 soft-gate).
+ */
+function spawnFloor3StudioRoster(world: GameWorld, studio: Floor3EncounterState): void {
+  if (studio.pendingSpawns.length === 0) return;
+  for (const pending of studio.pendingSpawns) {
+    const eid = spawnFloor3RosterCompanion(
+      world,
+      pending.x ?? 0,
+      pending.y ?? 0,
+      pending.speciesId,
+      pending.level,
+      pending.teamId,
+    );
+    if (eid === undefined) {
+      throw new Error(
+        `floor3: Studio "${studio.id}" failed to spawn Companion "${pending.speciesId}" ` +
+          '(no wild archetype resolvable for its fighting style) — the Studio would be ' +
+          'permanently unwinnable. Fix the data before shipping.',
+      );
+    }
+  }
+  studio.pendingSpawns = [];
 }
 
 /** Pops the exit staircase at the player's spawn point (spec R6 win path). */
@@ -669,6 +715,7 @@ function resolveFloor3AmbientSpawnPoint(
 
 export function floor3WildDirectorSystem(world: GameWorld): void {
   if (world.state !== 'playing') return;
+  if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) === true) return;
   const player = query(world.ecs, [Player, Position])[0];
   if (player === undefined) return;
 
@@ -748,6 +795,12 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) {
     for (const studio of studiosState.studios) {
       if (studio.defeated) continue;
+      if (!studio.unlocked) {
+        if (world.playerLevel.level < studio.unlockLevel) continue;
+        studio.unlocked = true;
+        setGoalFlag(world, floor3StudioUnlockGoalId(studio.id), true);
+        spawnFloor3StudioRoster(world, studio);
+      }
       if (!_isEncounterTeamsWiped(world, studio.teamIds)) continue;
       studio.defeated = true;
       studiosState.studiosDefeatedCount += 1;

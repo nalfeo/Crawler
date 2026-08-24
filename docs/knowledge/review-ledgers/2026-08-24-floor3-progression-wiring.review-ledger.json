@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor3-progression-wiring",
+  "task_title": "Hook Floor 3 up to the AI runner lab, headless runner, and the real game",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review before any code. 2 blocking: (1) required real-scene E2E proof of the Floor 2 to Floor 3 restart, not lab-only; (2) progression accounting must split winnable vs attempted chains so Floor 3 cannot poison budgetMs/officialWin. 3 non-blocking: lab test coverage for floor3 labelling + automatic recomposition, no CLI opt-in needed, and bound the Floor 3 leg against the quest-stall watchdog. All 5 folded into the implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "claude-opus-4.8",
+      "head_sha": "43784a37c3d9f736c5be729706739a8dfd177e1c",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff is a surgical, policy-compliant wiring change: Floor 2 now transitions into Floor 3 in the shipped scene, the headless progression runner can optionally append a playable-but-unwinnable exhibition tail without polluting the official win/budget chain, and the lab/debug surfaces stop hardcoding Floor 1/2 identity. The real-game restart, headless carryover into Floor 3, scenario contract, and bootstrap callback are all covered by targeted tests. Coverage is slightly short of perfect because the AI runner lab still relies partly on a source-canary test rather than a live runtime transition assertion, but the changed behavior itself is well exercised and I found no blocker-level issues."
+    }
+  }
+}

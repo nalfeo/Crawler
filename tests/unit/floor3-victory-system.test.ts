@@ -11,6 +11,7 @@ import {
   FLOOR3_VICTORY_GOAL_ID,
   confirmFloor3StairDescend,
   floor3ObjectiveTick,
+  floor3WildDirectorSystem,
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
 } from '../../src/game/floor3Scenario.js';
@@ -33,13 +34,33 @@ function knockOutTeams(world: GameWorld, teamIds: readonly number[]): void {
   }
 }
 
-function countLiveCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
+function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
   const companions = query(world.ecs, [Companion, Team]);
   let count = 0;
   for (const eid of companions) {
     if (teamIds.includes(world.stores.team.id[eid] ?? -1)) count += 1;
   }
   return count;
+}
+
+/**
+ * Levels the player past every Studio's unlock threshold and ticks once
+ * (spawning every still-locked Studio's roster), knocks out every Studio's
+ * roster, then ticks again so `floor3ObjectiveTick` latches each Studio as
+ * defeated. Used by tests that only care about the post-Studios state
+ * (Final Four unlock/victory), not the per-Studio unlock gate itself.
+ */
+function defeatAllStudios(
+  world: GameWorld,
+  state: NonNullable<GameWorld['floorExtendedState']>['floor3Studios'],
+): void {
+  const maxUnlockLevel = state!.studios.reduce((max, s) => Math.max(max, s.unlockLevel), 0);
+  world.playerLevel.level = Math.max(world.playerLevel.level, maxUnlockLevel);
+  floor3ObjectiveTick(world);
+  for (const studio of state!.studios) {
+    knockOutTeams(world, studio.teamIds);
+  }
+  floor3ObjectiveTick(world);
 }
 
 describe('floor3 studios + final four objective tick', () => {
@@ -51,20 +72,55 @@ describe('floor3 studios + final four objective tick', () => {
     expect(stateA).toBeDefined();
     expect(stateB).toBeDefined();
     expect(
-      stateA!.studios.map((s) => ({ id: s.id, roomId: s.roomId, teamIds: s.teamIds })),
-    ).toEqual(stateB!.studios.map((s) => ({ id: s.id, roomId: s.roomId, teamIds: s.teamIds })));
+      stateA!.studios.map((s) => ({
+        id: s.id,
+        roomId: s.roomId,
+        teamIds: s.teamIds,
+        unlockLevel: s.unlockLevel,
+      })),
+    ).toEqual(
+      stateB!.studios.map((s) => ({
+        id: s.id,
+        roomId: s.roomId,
+        teamIds: s.teamIds,
+        unlockLevel: s.unlockLevel,
+      })),
+    );
     expect(stateA!.finalFourPendingSpawns).toEqual(stateB!.finalFourPendingSpawns);
   });
 
-  it('spawns every Studio roster immediately but defers the Final Four roster', () => {
+  it('gates each Studio roster spawn behind its own seeded unlock level (spec R6 soft-gate)', () => {
     const { world } = createFloor3World(101);
     const state = world.floorExtendedState!.floor3Studios!;
     expect(state.studios.length).toBeGreaterThan(0);
+    // Nothing is spawned at floor init — every Studio (like the Final Four)
+    // is deferred behind its own gate until `floor3ObjectiveTick` unlocks it.
     for (const studio of state.studios) {
-      expect(countLiveCompanionsOnTeams(world, studio.teamIds)).toBeGreaterThan(0);
+      expect(studio.unlocked).toBe(false);
+      expect(countCompanionsOnTeams(world, studio.teamIds)).toBe(0);
     }
     expect(state.finalFourPendingSpawns.length).toBeGreaterThan(0);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+
+    // At floor-start player level, only the 0-threshold Studio(s) unlock.
+    floor3ObjectiveTick(world);
+    const unlockedAtStart = state.studios.filter((s) => s.unlocked);
+    expect(unlockedAtStart.length).toBeGreaterThan(0);
+    expect(unlockedAtStart.length).toBeLessThan(state.studios.length);
+    for (const studio of unlockedAtStart) {
+      expect(countCompanionsOnTeams(world, studio.teamIds)).toBeGreaterThan(0);
+    }
+    for (const studio of state.studios.filter((s) => !s.unlocked)) {
+      expect(countCompanionsOnTeams(world, studio.teamIds)).toBe(0);
+    }
+
+    // Leveling up past every threshold unlocks the rest, any order.
+    world.playerLevel.level = Math.max(...state.studios.map((s) => s.unlockLevel));
+    floor3ObjectiveTick(world);
+    for (const studio of state.studios) {
+      expect(studio.unlocked).toBe(true);
+      expect(countCompanionsOnTeams(world, studio.teamIds)).toBeGreaterThan(0);
+    }
   });
 
   it('increments studiosDefeatedCount and latches per-studio goal flags as each Studio is wiped', () => {
@@ -72,7 +128,9 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     const [firstStudio] = state.studios;
     expect(firstStudio).toBeDefined();
+    expect(firstStudio!.unlockLevel).toBe(0);
 
+    floor3ObjectiveTick(world); // unlocks + spawns the floor-start Studio
     knockOutTeams(world, firstStudio!.teamIds);
     floor3ObjectiveTick(world);
 
@@ -86,15 +144,12 @@ describe('floor3 studios + final four objective tick', () => {
     const { world } = createFloor3World(303);
     const state = world.floorExtendedState!.floor3Studios!;
 
-    for (const studio of state.studios) {
-      knockOutTeams(world, studio.teamIds);
-    }
-    floor3ObjectiveTick(world);
+    defeatAllStudios(world, state);
 
     expect(state.studiosDefeatedCount).toBe(state.studios.length);
     expect(world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID)).toBe(true);
     expect(state.finalFourPendingSpawns.length).toBe(0);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(false);
 
     knockOutTeams(world, state.finalFour.teamIds);
@@ -118,16 +173,13 @@ describe('floor3 studios + final four objective tick', () => {
   it('does not double-spawn the Final Four roster on repeated ticks after unlock', () => {
     const { world } = createFloor3World(404);
     const state = world.floorExtendedState!.floor3Studios!;
-    for (const studio of state.studios) {
-      knockOutTeams(world, studio.teamIds);
-    }
-    floor3ObjectiveTick(world);
-    const countAfterFirstTick = countLiveCompanionsOnTeams(world, state.finalFour.teamIds);
+    defeatAllStudios(world, state);
+    const countAfterFirstTick = countCompanionsOnTeams(world, state.finalFour.teamIds);
 
     floor3ObjectiveTick(world);
     floor3ObjectiveTick(world);
 
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(countAfterFirstTick);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(countAfterFirstTick);
   });
 
   it('triggers game_over on a party wipe before victory is latched', () => {
@@ -156,10 +208,7 @@ describe('floor3 studios + final four objective tick', () => {
   it('does not trigger game_over on a party wipe once victory has already latched', () => {
     const { world } = createFloor3World(606);
     const state = world.floorExtendedState!.floor3Studios!;
-    for (const studio of state.studios) {
-      knockOutTeams(world, studio.teamIds);
-    }
-    floor3ObjectiveTick(world);
+    defeatAllStudios(world, state);
     knockOutTeams(world, state.finalFour.teamIds);
     floor3ObjectiveTick(world);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
@@ -205,7 +254,10 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     const [firstStudio] = state.studios;
     expect(firstStudio).toBeDefined();
-    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);
+    expect(firstStudio!.unlockLevel).toBe(0);
+
+    floor3ObjectiveTick(world); // unlocks + spawns the floor-start Studio
+    expect(countCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);
 
     knockOutTeams(world, firstStudio!.teamIds);
     floor3ObjectiveTick(world);
@@ -214,20 +266,34 @@ describe('floor3 studios + final four objective tick', () => {
     // Companions are removed from the ECS entirely, not merely left KO'd —
     // companionKOSystem's per-team engagement-end revival would otherwise
     // revive them to full health once no rival lingers nearby.
-    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, firstStudio!.teamIds)).toBe(0);
   });
 
   it('despawns the Final Four roster once victory latches', () => {
     const { world } = createFloor3World(909);
     const state = world.floorExtendedState!.floor3Studios!;
-    for (const studio of state.studios) {
-      knockOutTeams(world, studio.teamIds);
-    }
-    floor3ObjectiveTick(world);
+    defeatAllStudios(world, state);
     knockOutTeams(world, state.finalFour.teamIds);
     floor3ObjectiveTick(world);
 
     expect(state.finalFour.defeated).toBe(true);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+  });
+
+  it('halts ambient wild spawning after victory latches', () => {
+    const { world } = createFloor3World(910);
+    const state = world.floorExtendedState!.floor3Studios!;
+    defeatAllStudios(world, state);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
+
+    const before = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
+    for (let i = 0; i < 5; i += 1) {
+      world.elapsedMs += 1_000;
+      floor3WildDirectorSystem(world);
+    }
+    const after = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
+    expect(after).toBe(before);
   });
 });
