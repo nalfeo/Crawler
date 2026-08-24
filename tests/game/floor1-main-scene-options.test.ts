@@ -201,8 +201,33 @@ describe('createFloor1MainSceneOptions', () => {
     expect(typeof options.onFloor1Cleared).toBe('function');
   });
 
-  it('does not wire onFloor1Cleared for floor2', () => {
+  it('wires the floor 2→3 transition and boots floor3 with the carried-over player', () => {
+    // The real-game hookup for "beating Floor 2 starts Floor 3": the bootstrap
+    // layer builds this callback purely from the scenario's `nextFloorId`, and
+    // its return value is what `MainGameScene` restarts into.
     const options = createFloorMainSceneOptions('floor2');
+    expect(typeof options.onFloor1Cleared).toBe('function');
+
+    const world = createTestWorld({ seed: 7 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    world.playerLevel.level = 9;
+    world.playerGold = 123;
+    const nextOptions = options.onFloor1Cleared!(world, playerEid);
+    expect(nextOptions?.floorId).toBe('floor3');
+    expect(nextOptions?.worldSeed).toBe(world.seed);
+
+    // Booting the returned options must produce a real Floor 3 world that
+    // starts from the captured carryover, not a cold level-1 player.
+    const nextWorld = createTestWorld({ seed: world.seed });
+    const nextPlayerEid = spawnPlayer(nextWorld, 0, 0);
+    nextOptions!.configureWorld!(nextWorld, nextPlayerEid);
+    expect(nextWorld.floorId).toBe('floor3');
+    expect(nextWorld.playerLevel.level).toBe(9);
+    expect(nextWorld.playerGold).toBe(123);
+  });
+
+  it('does not wire onFloor1Cleared for floor3 (last authored floor)', () => {
+    const options = createFloorMainSceneOptions('floor3');
     expect(options.onFloor1Cleared).toBeUndefined();
   });
 
