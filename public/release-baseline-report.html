@@ -160,6 +160,7 @@
             isRecord(current.meta) &&
             isRecord(previous.meta) &&
             isRecord(current.meta.sweep) &&
+            typeof current.meta.sweep.revision === 'number' &&
             current.meta.sweep.revision === previous.meta.sweep?.revision
           );
         }
