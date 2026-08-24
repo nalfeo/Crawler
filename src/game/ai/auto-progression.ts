@@ -74,22 +74,24 @@ export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
 
 /**
  * Frames the automated stair descend may be held back so the AI can sweep the
- * loot still lying on the floor. Bounded (1800 frames = 30 s at 60 fps) so an
- * unreachable pickup can never hold a run hostage: once the budget is spent the
+ * loot still lying on the floor, measured from the frame the run FIRST reached
+ * the unlocked staircase. Bounded (1800 frames = 30 s at 60 fps) so an
+ * unreachable pickup can never hold a run hostage: once the window closes the
  * driver confirms the descend exactly as before.
  */
 export const MAX_STAIR_DESCEND_DEFER_FRAMES = 1800;
 
 /**
- * Per-world, per-floor deferral budget consumed so far. A `WeakMap` keyed on the
- * world keeps the counter deterministic and per-run (a fresh world starts at 0)
- * with no module-level state leaking across runs — same pattern the headless
- * runner uses for its Quartermaster restock latch. The inner key is the floor,
- * because the headless runner reuses one `GameWorld` across the whole run: a
- * shared counter would let unreachable Floor 1 loot silently spend Floor 2's
- * budget, disabling the hold exactly where it was designed to help.
+ * Per-world, per-floor frame the run first stood on the unlocked staircase with
+ * loot outstanding — the anchor the deferral window is measured from. A
+ * `WeakMap` keyed on the world keeps it deterministic and per-run (a fresh world
+ * has no anchor) with no module-level state leaking across runs — same pattern
+ * the headless runner uses for its Quartermaster restock latch. The inner key is
+ * the floor, because the headless runner reuses one `GameWorld` across the whole
+ * run: a shared anchor would let unreachable Floor 1 loot silently consume
+ * Floor 2's window, disabling the hold exactly where it was designed to help.
  */
-const stairDescendDeferFrames = new WeakMap<GameWorld, Map<StairDescendFloor, number>>();
+const stairDescendDeferAnchorFrame = new WeakMap<GameWorld, Map<StairDescendFloor, number>>();
 
 /** Floors that own an independent stair-descend deferral budget. */
 type StairDescendFloor = 'floor1' | 'floor2';
@@ -114,10 +116,13 @@ function hasUncollectedLoot(world: GameWorld): boolean {
  * {@link MAX_STAIR_DESCEND_DEFER_FRAMES} so unreachable loot cannot stall a run.
  *
  * Callers MUST check stair proximity first and only call this when the descend
- * would otherwise be confirmed this frame. The budget is a "frames spent standing
- * on the staircase waiting for loot" budget, not a wall clock: charging it during
- * the (arbitrarily long) walk to the stairs would drain it before it ever
- * protects anything.
+ * would otherwise be confirmed this frame, so the (arbitrarily long) walk to the
+ * stairs never consumes the window. The window then runs on world frames from
+ * that first arrival rather than only on frames spent standing on the marker:
+ * the AI's own pre-exit loot sweep is unbounded in range, so it repeatedly walks
+ * back off the marker toward loot it may never reach. Charging only on-marker
+ * frames let that oscillation stretch a 30 s hold into minutes of bouncing at
+ * the exit (issue #3449: 285 s on seed 11 / throwing-knife).
  */
 function shouldDeferStairDescend(
   world: GameWorld,
@@ -139,17 +144,17 @@ function shouldDeferStairDescend(
       return false;
     }
   }
-  let budgets = stairDescendDeferFrames.get(world);
-  if (!budgets) {
-    budgets = new Map();
-    stairDescendDeferFrames.set(world, budgets);
+  let anchors = stairDescendDeferAnchorFrame.get(world);
+  if (!anchors) {
+    anchors = new Map();
+    stairDescendDeferAnchorFrame.set(world, anchors);
   }
-  const spent = budgets.get(floor) ?? 0;
-  if (spent >= MAX_STAIR_DESCEND_DEFER_FRAMES) {
-    return false;
+  const anchorFrame = anchors.get(floor);
+  if (anchorFrame === undefined) {
+    anchors.set(floor, world.frameCount);
+    return true;
   }
-  budgets.set(floor, spent + 1);
-  return true;
+  return world.frameCount - anchorFrame < MAX_STAIR_DESCEND_DEFER_FRAMES;
 }
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
@@ -378,12 +383,6 @@ export function autoFloor1ProgressionSystem(
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
   if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
-    return;
-  }
-  // The provider may be deliberately holding the floor open to farm its
-  // leftover budget (post-boss farm window). Confirming the descend here would
-  // end the run underneath it, so the driver defers to the provider's verdict.
-  if (aiProvider?.isFarmingPostBossFloorTime?.(world, objective.deadlineMs) === true) {
     return;
   }
   if (shouldDeferStairDescend(world, 'floor1', floor1PanicDeadlineMs)) {

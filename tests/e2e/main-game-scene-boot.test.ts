@@ -185,4 +185,44 @@ describe('MainGameScene characterization guards', () => {
       page.off('pageerror', onPageError);
     }
   });
+
+  it('restarts the real scene during a Floor 2 to Floor 3 transition', async () => {
+    // "Beating Floor 2 starts Floor 3" in the SHIPPED game: the real scene must
+    // take the exit, show the transition completion screen, and restart
+    // in-process on Floor 3 — reading the scenario contract only, with no
+    // floor-identity branch in the engine.
+    const pageErrors: string[] = [];
+    const onPageError = (error: Error): void => {
+      pageErrors.push(error.message);
+    };
+    page.on('pageerror', onPageError);
+
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor2' });
+      const floor2State = await waitForState(page, (s) => s.settlementRoomCount > 0, {
+        timeoutMs: 15_000,
+        label: 'Floor 2 scene boot',
+      });
+      expect(floor2State.floorId).toBe('floor2');
+
+      await mainSceneProbe.primeFloor2StairTransition(page);
+      await mainSceneProbe.queueInteraction(page);
+      await waitForState(page, (s) => s.modalOpen, {
+        label: 'Floor 2 exit confirmation modal',
+      });
+      await page.keyboard.press('Enter');
+
+      const floor3State = await waitForState(
+        page,
+        (s) => s.floorId === 'floor3' && s.displayObjectCount > 0,
+        { timeoutMs: 20_000, label: 'Floor 3 scene after restart' },
+      );
+
+      expect(new URL(page.url()).searchParams.get('floor')).toBe('floor3');
+      expect(floor3State.floorId).toBe('floor3');
+      expect(pageErrors).toEqual([]);
+    } finally {
+      page.off('pageerror', onPageError);
+    }
+  });
 });

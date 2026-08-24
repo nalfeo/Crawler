@@ -12,7 +12,7 @@ import Phaser from 'phaser';
 import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { getAvailableFloorIds } from '../../shared/floor-registry.js';
+import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import {
   AIState,
   AIDecisionMode,
@@ -591,7 +591,13 @@ export interface AiRunnerDebugSnapshot {
   conversationNpcEid: number | null;
   modalOpen: boolean;
   runOutcome: string | null;
-  effectiveFloor: 'floor1' | 'floor2' | 'unknown';
+  /**
+   * The floor the live world is actually on, or `'unknown'` before a world
+   * exists / when the world reports a floor with no registered manifest.
+   * Derived from the floor registry rather than a hardcoded union so a newly
+   * registered floor (Floor 3) is reported as itself instead of `'unknown'`.
+   */
+  effectiveFloor: string;
   scenarioPreset: AiRunnerScenarioPresetId;
   /** Player-persona preset currently driving the AI brain. */
   playerPersona: PlayerPersona;
@@ -2720,7 +2726,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       (reason) => typeof reason === 'string' && reason.length > 0,
     ).length;
     const effectiveFloor =
-      world?.floorId === 'floor1' || world?.floorId === 'floor2' ? world.floorId : 'unknown';
+      world?.floorId !== undefined && hasFloorManifest(world.floorId) ? world.floorId : 'unknown';
     return {
       frame: world?.frameCount ?? null,
       polls: pollCount,

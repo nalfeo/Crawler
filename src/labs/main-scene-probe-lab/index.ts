@@ -134,10 +134,9 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' {
-  return new URLSearchParams(window.location.search).get('floor') === 'floor2'
-    ? 'floor2'
-    : 'floor1';
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
+  const raw = new URLSearchParams(window.location.search).get('floor');
+  return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
 }
 
 /**
@@ -518,6 +517,8 @@ export interface MainSceneState {
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
   readonly cameraCenter: ProbePoint | null;
+  /** Live scenario floor id (`'floor1' | 'floor2' | 'floor3'`), or null before boot. */
+  readonly floorId: string | null;
   /** Floor 2 settlement room count, or zero before/non-Floor-2 initialization. */
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
@@ -785,6 +786,13 @@ export interface MainSceneProbeApi {
    * `onStairDescend`, floor-completion screen, and scene restart.
    */
   primeFloor1StairTransition(): void;
+  /**
+   * Arrange the live Floor-2 world at its unlocked exit stairs, the Floor-2
+   * mirror of {@link MainSceneProbeApi.primeFloor1StairTransition}. The test
+   * still drives the real interaction modal, `onStairDescend`, the
+   * floor-completion screen, and the in-process restart into Floor 3.
+   */
+  primeFloor2StairTransition(): void;
   /** Live boss-intro sheet state plus the world clock (frozen while open). */
   getBossIntroState(): BossIntroProbeState;
   /** Scroll the boss-intro flavour copy by `delta` lines. */
@@ -1321,6 +1329,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayObjectCount: phaserScene?.children.list.length ?? 0,
         playerFeet,
         cameraCenter: cameraCenter(),
+        floorId: world?.floorId ?? null,
         settlementRoomCount: world?.floorExtendedState?.settlement?.settlementRoomIds.length ?? 0,
         settlementShopArchetypeIds: [
           ...(world?.floorExtendedState?.settlement?.quartermasterShop
@@ -1404,6 +1413,30 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.staircaseDiscovered = false;
       world.stores.position.x[playerEid] = objective.staircasePos.x;
       world.stores.position.y[playerEid] = objective.staircasePos.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+    },
+
+    primeFloor2StairTransition: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const familyState = world?.floorExtendedState?.familyState;
+      if (!scene || !world || playerEid < 0 || !familyState) {
+        throw new Error('Floor 2 transition path is not ready');
+      }
+      world.state = 'playing';
+      // Put the exit exactly where the player already stands so the real
+      // proximity/interaction path fires without teleporting into unwalkable
+      // terrain on a generated map.
+      familyState.staircasePos = {
+        x: world.stores.position.x[playerEid] ?? 0,
+        y: world.stores.position.y[playerEid] ?? 0,
+      };
+      familyState.staircaseSpawned = true;
+      familyState.staircaseUnlocked = true;
+      familyState.staircaseDiscovered = false;
       world.stores.velocity.x[playerEid] = 0;
       world.stores.velocity.y[playerEid] = 0;
       scene.setSimulationPaused(true);

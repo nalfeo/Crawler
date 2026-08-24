@@ -195,6 +195,112 @@ test('buildLoopIncidentBody includes first/last seen timestamps, repetition coun
   assert.ok(body.includes('https://github.com/owner/repo/actions/runs/42'));
 });
 
+test('buildLoopIncidentBody uses the default "investigate a defect" prompt when a blocker has no prior recovery reply', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [{ kind: 'review-thread', id: 'RT_001', summary: 'reviewer: fix this' }],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('Please investigate why the CI recovery automation failed to converge'));
+  assert.ok(body.includes('open a non-draft PR.'));
+  assert.ok(!body.includes('arm squash auto-merge'));
+  assert.ok(!body.includes('pending human decision'));
+});
+
+test('buildLoopIncidentBody keeps the default prompt for generic prior recovery replies', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [
+      {
+        kind: 'review-thread',
+        id: 'RT_001',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Blocked outside this branch: issue #9999 still lacks the required plan comment.] reviewer: implement the plan gate',
+      },
+    ],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('Please investigate why the CI recovery automation failed to converge'));
+  assert.ok(!body.includes('pending human decision'));
+  // The prior-reply text itself is untrusted and must still never appear in the body.
+  assert.ok(!body.includes('Blocked outside this branch'));
+});
+
+test('buildLoopIncidentBody switches to a human-decision prompt when every review-thread blocker carries an explicit human-escalation reply', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [
+      {
+        kind: 'review-thread',
+        id: 'RT_001',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Substantive disagreement — escalating to a human: level gate scope needs owner decision.] reviewer: implement the level gate',
+      },
+      {
+        kind: 'review-thread',
+        id: 'RT_002',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Substantive disagreement — escalating to a human: companion combat reachability needs owner decision.] reviewer: wire team-aware damage',
+      },
+    ],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('pending human decision rather than a CI recovery automation defect'));
+  assert.ok(!body.includes('Please investigate why the CI recovery automation failed to converge'));
+  assert.ok(body.includes('Do not assume a CI recovery automation defect exists.'));
+  // The prior-reply text itself is untrusted and must still never appear in the body.
+  assert.ok(!body.includes('level gate scope needs owner decision'));
+});
+
+test('buildLoopIncidentBody keeps the default prompt when a non-review-thread blocker is also present', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [
+      {
+        kind: 'review-thread',
+        id: 'RT_001',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Substantive disagreement — escalating to a human: level gate scope needs owner decision.] reviewer: implement the level gate',
+      },
+      { kind: 'ci-failure', id: 'unit-tests', summary: 'unit tests failed' },
+    ],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('Please investigate why the CI recovery automation failed to converge'));
+});
+
 // ─── Mock-server integration tests ──────────────────────────────────────────
 
 function startMockServer(routes) {
