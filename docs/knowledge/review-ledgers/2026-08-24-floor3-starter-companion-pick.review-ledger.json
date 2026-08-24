@@ -1,0 +1,57 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor3-starter-companion-pick",
+  "task_title": "Wire Floor 3 starter-Companion pick and enlarge cavern spawn room",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Concerns: (1) silent no-starter fallback on species-resolution failure — fixed by adding a loud console.warn degradation signal + offer-scan fallback in selectFloor3StarterCompanion; (2) loadout presentation hard-coded to floorId rather than scenario-driven — accepted as out-of-scope architectural refactor for this bug-fix PR, noted for future work; (3) enlarged spawn room needs multi-seed invariant coverage — added a new 5-seed test in cave-system-generator.test.ts asserting spawn room size + reachability."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.6",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "b0fdd2f2ff3c290aa363cda0c677ac207fe0c6da",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/engine/scenes/MainGameScene.ts",
+          "detail": "openFloor3StarterModal's inline capitalize helper could be a shared util if reused elsewhere."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/floor3Scenario.ts",
+          "detail": "console.warn used for degradation signal; matches an existing repo precedent (floorScenario.ts) and is an intentional plan-review-driven addition."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The change correctly wires Floor 3's starter-Companion pick, handles edge cases (out-of-range index, empty offer, double-call no-op), respects layer boundaries, uses SeededRandom correctly, and has thorough new + updated test coverage. Scope is tight with no unrelated refactors."
+    }
+  }
+}

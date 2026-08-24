@@ -217,9 +217,33 @@ describe('MainGameScene characterization guards', () => {
         (s) => s.floorId === 'floor3' && s.displayObjectCount > 0,
         { timeoutMs: 20_000, label: 'Floor 3 scene after restart' },
       );
+      const floor3LoadoutState = await waitForState(
+        page,
+        (s) => s.floorId === 'floor3' && s.worldState === 'loadout' && s.modalOpen,
+        { timeoutMs: 10_000, label: 'Floor 3 starter-companion loadout modal open' },
+      );
+      const floor3LoadoutContent = await mainSceneProbe.getModalPickerContent(page);
 
       expect(new URL(page.url()).searchParams.get('floor')).toBe('floor3');
       expect(floor3State.floorId).toBe('floor3');
+      expect(floor3LoadoutState.worldState).toBe('loadout');
+      expect(floor3LoadoutContent?.title).toBe('Choose your starter Companion');
+      expect(floor3LoadoutContent?.options).toHaveLength(4);
+      expect(
+        floor3LoadoutContent?.options.every(
+          (option) =>
+            option.label.trim().length > 0 &&
+            (option.description ?? '').trim().length > 0 &&
+            option.disabled === false,
+        ),
+      ).toBe(true);
+
+      await page.keyboard.press('Enter');
+      await waitForState(
+        page,
+        (s) => s.floorId === 'floor3' && s.worldState === 'playing' && !s.modalOpen,
+        { timeoutMs: 10_000, label: 'Floor 3 starter-companion loadout confirmed' },
+      );
       expect(pageErrors).toEqual([]);
     } finally {
       page.off('pageerror', onPageError);

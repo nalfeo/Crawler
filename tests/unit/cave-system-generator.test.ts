@@ -161,6 +161,53 @@ describe('CaveSystemGenerator', () => {
     expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
   });
 
+  it('enlarges the floor3 spawn/entrance room (issue: too small for the starter-pick UX) while staying reachable', () => {
+    // Regression coverage for the entrance-room-size complaint: bumping
+    // `spawnSizeCandidates` from [6,5,4] to [12,10,8] must hold across seeds
+    // without breaking reachability or the room-role invariants the floor3
+    // biome-overworld layout otherwise guarantees.
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    for (const seed of [4321, 91, 1, 555, 9999]) {
+      const config = smallFloor3Config(seed);
+      const floor = generator.generate(config, new SeededRandom(seed));
+      const spawnRoom = floor.roomGraph.getAll().find((room) => room.role === RoomRole.SPAWN);
+      expect(spawnRoom, `seed=${seed} missing spawn room`).toBeDefined();
+      expect(
+        spawnRoom!.bounds.width,
+        `seed=${seed} spawn room too small (width)`,
+      ).toBeGreaterThanOrEqual(8);
+      expect(
+        spawnRoom!.bounds.height,
+        `seed=${seed} spawn room too small (height)`,
+      ).toBeGreaterThanOrEqual(8);
+
+      const w = floor.config.widthTiles;
+      const h = floor.config.heightTiles;
+      const reached = bfsReachable(floor, floor.playerSpawn.x, floor.playerSpawn.y, w, h);
+      expect(reached[floor.playerSpawn.y * w + floor.playerSpawn.x], `seed=${seed}`).toBe(1);
+      let outsidePassableTileFound = false;
+      for (let y = 0; y < h && !outsidePassableTileFound; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          const insideSpawnRoom =
+            x >= spawnRoom!.bounds.x &&
+            x < spawnRoom!.bounds.x + spawnRoom!.bounds.width &&
+            y >= spawnRoom!.bounds.y &&
+            y < spawnRoom!.bounds.y + spawnRoom!.bounds.height;
+          if (insideSpawnRoom || !floor.tileMap.isPassable(x, y)) continue;
+          outsidePassableTileFound = true;
+          expect(reached[y * w + x], `seed=${seed} unreachable passable tile at (${x},${y})`).toBe(
+            1,
+          );
+          break;
+        }
+      }
+      expect(
+        outsidePassableTileFound,
+        `seed=${seed} expected passable tiles outside spawn room`,
+      ).toBe(true);
+    }
+  });
+
   it('produces exactly the required role counts for presentCount=4', () => {
     const floor = generateWithPresent(7, 4);
     const rooms = floor.roomGraph.getAll();
