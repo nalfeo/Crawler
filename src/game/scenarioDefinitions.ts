@@ -47,6 +47,11 @@ import {
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
 } from './floor3Scenario.js';
+import {
+  FLOOR4_STALL_BACKSTOP_GOAL_ID,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from './floor4Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -72,6 +77,33 @@ function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     subtitle: 'Biome overworld slice',
     body: 'The Floor 3 overworld and wild-spawn slice is wired, but the floor has no terminal objective yet.',
   };
+}
+
+/**
+ * Floor 4 completion copy.
+ *
+ * `failed_timeout` here is NOT "the player ran out of time" — Floor 4 shows no
+ * countdown (FR5.6). It is the raw stall backstop (FR8.4), which only fires on
+ * an abandoned or non-terminating broadcast, so the copy names that instead of
+ * blaming the player for being slow.
+ */
+function getFloor4CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Broadcast Abandoned',
+      subtitle: 'Floor 4 went dark',
+      body: 'The Main Event ran past its broadcast window with no result.\nThe Director cut the feed and called the run.',
+    };
+  }
+  return {
+    title: 'Floor 4 In Progress',
+    subtitle: 'Venue slice',
+    body: 'The Main Event venue is wired, but the acts, waves and Headliners have not been staged yet.',
+  };
+}
+
+function getFloor4RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
+  return world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true ? 'failed_timeout' : null;
 }
 
 /**
@@ -386,6 +418,16 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   isTimeoutReached: (world: GameWorld) => world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true,
 };
 
+const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
+  victory: 'Floor 4 is not winnable yet; this slice only builds the venue.',
+  timeout: 'The Main Event never started. The Director cuts the feed.',
+  milestones: [],
+  isVictoryReached: () => false,
+  isTimeoutReached: (world: GameWorld) =>
+    world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
+};
+
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
   shopkeeper: {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
@@ -468,6 +510,20 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor3RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor3CompletionCopy,
+    },
+  ],
+  [
+    'floor4',
+    {
+      floorId: 'floor4',
+      configureWorld: initializeFloor4Scenario,
+      // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
+      // stairs are barred until the slice-5 intermission exists anyway.
+      onStairDescend: confirmFloor4StairDescend,
+      director: FLOOR_4_DIRECTOR,
+      getRunOutcome: getFloor4RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor4CompletionCopy,
     },
   ],
 ]);

@@ -26,6 +26,8 @@ import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('createFloor1MainSceneOptions', () => {
@@ -208,7 +210,7 @@ describe('createFloor1MainSceneOptions', () => {
     // Regression guard: the contract shipped once as an injected-but-unread
     // field, which left the engine's Floor 1/Floor 2 branches alive. Every
     // surface the scene renders must be reachable from these options.
-    for (const floorId of ['floor1', 'floor2', 'floor3'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4'] as const) {
       const options = createFloorMainSceneOptions(floorId);
       const scenario = getScenarioDefinition(floorId);
       const presentation = options.scenarioPresentation;
@@ -244,5 +246,37 @@ describe('createFloor1MainSceneOptions', () => {
     expect(typeof floor1.onStairDescend).toBe('function');
     expect(typeof floor2.onStairDescend).toBe('function');
     expect(floor1.onStairDescend).not.toBe(floor2.onStairDescend);
+  });
+
+  it('wires floor4 configureWorld through scene options with deterministic floor setup', () => {
+    const options = createFloorMainSceneOptions('floor4');
+    const manifest = getFloorManifest('floor4')!;
+    const world = createTestWorld({ seed: 42 });
+    const untouched = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+
+    options.configureWorld(world, player);
+
+    expect(world.floor).toBe(4);
+    expect(world.floorId).toBe('floor4');
+    expect(world.floorMap).toBeDefined();
+    const spawn = world.floorMap!.tileToWorld(
+      world.floorMap!.playerSpawn.x,
+      world.floorMap!.playerSpawn.y,
+    );
+    expect(world.stores.position.x[player]).toBe(spawn.x);
+    expect(world.stores.position.y[player]).toBe(spawn.y);
+    expect(world.hideFloorTimer).toBe(true);
+    expect(world.stores.health.max[player]).toBe(100 + manifest.player.hpBonus);
+    expect(getActiveWeaponDef(world)?.id).toBeTruthy();
+    expect(world.featureUnlocks.inventory).toBe(true);
+    expect(world.featureUnlocks.equipment).toBe(true);
+    expect(world.featureUnlocks.spells).toBe(true);
+    expect(world.rng.next()).toBe(untouched.rng.next());
+
+    world.elapsedMs = manifest.timer.durationMs;
+    world.floorObjectiveTick?.(world);
+    expect(world.goalFlags.get('floor4-stall-backstop')).toBe(true);
+    expect(world.state).toBe('game_over');
   });
 });
