@@ -43,7 +43,10 @@ import {
   meetBroker,
 } from './floor2Scenario.js';
 import {
+  confirmFloor3StairDescend,
+  FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
+  FLOOR3_VICTORY_GOAL_ID,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
 } from './floor3Scenario.js';
@@ -73,9 +76,9 @@ function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     };
   }
   return {
-    title: 'Floor 3 In Progress',
-    subtitle: 'Biome overworld slice',
-    body: 'The Floor 3 overworld and wild-spawn slice is wired, but the floor has no terminal objective yet.',
+    title: 'Victory!',
+    subtitle: 'Floor 3 complete!',
+    body: 'The Final Four are down — you are the Companion League champion!\nMore floors coming soon...',
   };
 }
 
@@ -242,6 +245,9 @@ function getFloor2RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
 }
 
 function getFloor3RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
+  if (world.goalFlags.get(FLOOR3_STAIRS_DISCOVERED_GOAL_ID) === true) {
+    return 'cleared_floor';
+  }
   return world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true ? 'failed_timeout' : null;
 }
 
@@ -278,6 +284,23 @@ function getFloor2StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     // Same rule as Floor 1: `confirmFloor2StairDescend` rejects unless
     // `staircaseUnlocked` is set, so the prompt must be withheld until then.
     locked: familyState.staircaseUnlocked !== true,
+    label: '▼ EXIT',
+  };
+}
+
+/** Floor 3's stair marker, reusing the live `floor3Studios` position (no copy). */
+function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState?.staircasePos) {
+    return null;
+  }
+  return {
+    positionFt: studiosState.staircasePos,
+    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    visible: studiosState.staircaseSpawned === true && studiosState.staircaseDiscovered !== true,
+    // Same rule as Floor 1/2: `confirmFloor3StairDescend` rejects unless
+    // `staircaseUnlocked` is set, so the prompt must be withheld until then.
+    locked: studiosState.staircaseUnlocked !== true,
     label: '▼ EXIT',
   };
 }
@@ -365,6 +388,14 @@ const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   confirmDescription: 'Start Floor 3.',
 };
 
+const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  title: 'Victory! Ready to exit?',
+  subtitle: 'You are at the extraction point.',
+  body: 'The Final Four are defeated. Are you ready to exit the Companion League?',
+  confirmLabel: 'Yes, exit now',
+  confirmDescription: 'You win!',
+};
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -417,10 +448,10 @@ const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 
 const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   intro: 'Floor 3 opens: the Companion League wilds are live across seven biome territories.',
-  victory: 'Floor 3 is not fully winnable yet; this slice only wires the overworld wilds.',
+  victory: 'The Final Four are down. The Companion League crowns its champion.',
   timeout: 'The Companion League timer expired. The Director calls the run.',
   milestones: [],
-  isVictoryReached: () => false,
+  isVictoryReached: (world: GameWorld) => world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) === true,
   isTimeoutReached: (world: GameWorld) => world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true,
 };
 
@@ -515,12 +546,15 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor3',
       configureWorld: initializeFloor3Scenario,
+      onStairDescend: confirmFloor3StairDescend,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       director: FLOOR_3_DIRECTOR,
       getRunOutcome: getFloor3RunOutcome,
-      isTerminalRunVictory: false,
+      isTerminalRunVictory: true,
       getCompletionCopy: getFloor3CompletionCopy,
+      getStairMarkerState: getFloor3StairMarkerState,
+      stairConfirmation: FLOOR_3_STAIR_CONFIRMATION,
     },
   ],
   [
