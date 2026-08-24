@@ -32,7 +32,6 @@ describe('Floor 4 empty-arena headless timeline', () => {
         floorId: 'floor4',
         seed: 404,
         maxFrames: Math.ceil(610_000 / GAME.DELTA_MS),
-        questStallFrames: 1_000_000,
       });
 
     const first = await run();

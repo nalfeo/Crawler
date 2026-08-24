@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor4-slice2-arena-director",
+  "task_title": "Floor 4 slice 2 arena director rehearsal",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "rubber-duck agent",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review before coding. It found one blocker: an internal Floor 4 VICTORY phase would not terminate headless runs unless the runner consumed a terminal scenario outcome; implemented by checking scenario.getRunOutcome(world) generically. It also flagged two non-blocking requirements: update lastWorldElapsedMs every tick so held intermission time cannot leak into arenaElapsedMs, and document the slice-2 auto-intermission deviation; both were implemented and covered by tests/spec/ADR."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code-review agent"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found default Floor 4 headless runs stalled at the 600s quest watchdog before the ~608s rehearsal victory because the test disabled questStallFrames. Fixed by making the headless progress score use floor4Arena arenaElapsedMs/timeline progress when present and by restoring the test to default watchdog settings."
+        },
+        {
+          "round": 2,
+          "models": ["code-review agent"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review verified the default Floor 4 headless path reaches victory with floor4Arena.phase=VICTORY and arenaElapsedMs=600000. Runtime correctness, determinism, wiring, and security were clean; only the in-progress ledger artifact remained to complete."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

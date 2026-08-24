@@ -125,6 +125,14 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
+function computeHeadlessFloorProgressScore(world: GameWorld): number {
+  const floor4Arena = world.floorExtendedState?.floor4Arena;
+  if (floor4Arena) {
+    return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
+  }
+  return computeFloorProgressScore(world.questLog.values(), world.playerGold);
+}
+
 function computeXpOnGroundAtEnd(world: GameWorld): number {
   let total = 0;
   for (const eid of query(world.ecs, [XpGem])) {
@@ -1501,12 +1509,7 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (
-        stallTracker.update(
-          computeFloorProgressScore(world.questLog.values(), world.playerGold),
-          frameCount,
-        )
-      ) {
+      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),
