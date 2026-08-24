@@ -1,0 +1,71 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "epic-creation-workflow",
+  "task_title": "Epic creation workflow: .epic.json -> GitHub issues",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adversarial-style rubber-duck review of the stateless, marker-based, review-gated design. 4 blocking concerns: (1) no auto-trigger on review-issue close -> added issues:[closed,reopened] trigger + concurrency group; (2) any closed state treated as approval -> gated on state_reason==completed vs not_planned rejection; (3) no pin to reviewed file revision -> added epicContentHash + reviewHashMarker drift detection; (4) no concurrency control -> added concurrency group (group: epic-create). 3 non-blocking concerns addressed: node.id charset validation, description/review field type validation, duplicate epic_id across a multi-file batch (assertUniqueEpicIds). One non-blocking suggestion (CODEOWNERS entry for docs/knowledge/epics/**) consciously deferred as a separate governance change out of this tasks scope; noted in the PR/handoff. All fixes were refinements to the same core design (stateless marker-based issues, no control-plane file) rather than a different architecture, so plan_divergence=minor."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Shell injection via workflow_dispatch epic_path interpolated into run: blocks; state_reason:null on a closed issue treated as approval; a stale not_planned rejection permanently blocking a revised (different-hash) plan."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Diagnostic promised a fresh review issue could be filed for a revised plan but no mechanism existed to create one; left unresolved at the two-round cap and escalated to the maintainer instead of continuing the automated loop."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "The second automated review round still had a validated unresolved concern, so the review loop hit the two-round cap and was escalated instead of continuing rounds 3-5.",
+        "unresolved_concerns": 1
+      },
+      "human_disposition": "Maintainer dispatched CI recovery on 2026-08-24 for the exact review-thread blockers. The follow-up recovery commit addresses the applicable findings rather than treating the over-cap clean rounds as policy evidence."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-terra",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "a843902d642184b8f85a577aad30afc068806503",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "src/game/floor3Scenario.ts",
+          "detail": "The graded diff includes an unrelated Floor 3 starter-Companion feature and associated engine, map-generation, headless-runner, and test changes, despite the stated task being only the .epic.json-to-GitHub-issues workflow. Split the unrelated Floor 3 changes into their own reviewable change set."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 1,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "fail",
+      "findings_count": 1,
+      "notes": "The epic workflow implementation and its focused tests are substantially complete, but the diff is not scoped to the declared task: it bundles a separate gameplay feature and its supporting changes. This warrants human review under the grading rules.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: scope_discipline",
+        "unresolved_findings": 1
+      }
+    }
+  }
+}

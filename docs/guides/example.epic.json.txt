@@ -1,0 +1,26 @@
+{
+  "epic_id": "example-epic",
+  "title": "Example Epic",
+  "description": "One-paragraph what/why for this epic. Shown on the human-review issue.",
+  "review": {
+    "title_prefix": "[Epic Review]",
+    "body": "Optional extra reviewer-facing context, appended after the generated plan summary."
+  },
+  "labels": ["floor-3"],
+  "nodes": [
+    {
+      "id": "slice-1",
+      "title": "Slice 1: foundational plumbing",
+      "body": "What this slice delivers and its acceptance contract.",
+      "labels": [],
+      "depends_on": []
+    },
+    {
+      "id": "slice-2",
+      "title": "Slice 2: builds on slice 1",
+      "body": "What this slice delivers and its acceptance contract.",
+      "labels": [],
+      "depends_on": ["slice-1"]
+    }
+  ]
+}
