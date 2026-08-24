@@ -232,6 +232,74 @@ export interface Floor2SettlementSnapshot {
   readonly shops: readonly Floor2ShopInstance[];
 }
 
+/**
+ * Floor 3 · Slice 8 — one Studio (or the Final Four roster) placed in the
+ * world: the team ids its Trainers'/Handlers' Companions were spawned under,
+ * and whether every one of those teams has been simultaneously KO'd (spec R6
+ * "all Studio's Trainers' Companions are KO'd").
+ */
+export interface Floor3EncounterState {
+  readonly id: string;
+  readonly name: string;
+  /**
+   * One shared team id for every Trainer's Companions in a Studio (or every
+   * Handler's Companions in the Final Four) — a single-element array kept for
+   * shape-compatibility with `_isEncounterTeamsWiped`'s multi-team signature.
+   * All of an encounter's Companions MUST share one team id: `companionAISystem`
+   * treats any different-`Team.id` Companion as a rival, so per-Trainer team
+   * ids would make Trainers within the same Studio (or Handlers within the
+   * Final Four) fight each other before the player ever engages (plan-review
+   * finding, slice 8).
+   */
+  readonly teamIds: readonly number[];
+  /**
+   * Room id the roster spawned in (a `TERRITORY` biome zone for a Studio).
+   * `-1` for the Final Four, which has no dedicated room yet — its physical
+   * arena/set-piece is spec slice 9's deliverable; slice 8 only wires the
+   * logical gate + roster.
+   */
+  readonly roomId: number;
+  /** Latched true once every teamId's Companions are simultaneously KO'd. */
+  defeated: boolean;
+}
+
+/** A single Companion the Final Four gate spawns once it unlocks (deferred, spec R6 soft-gate). */
+export interface Floor3PendingRosterSpawn {
+  readonly speciesId: string;
+  readonly level: number;
+  readonly teamId: number;
+}
+
+/**
+ * Floor 3 · Slice 8 — Studios + Final Four + objective-tick state written to
+ * `world.floorExtendedState.floor3Studios` by `initializeFloor3Scenario`.
+ * Mirrors Floor 2's `Floor2State` staircase fields (same win-path shape:
+ * spawn -> unlock -> discover) for the shared stair-descend contract.
+ */
+export interface Floor3StudiosState {
+  /** The 6 Studios selected for this run (spec R8: seeded, "6-of-~10"). */
+  readonly studios: Floor3EncounterState[];
+  /** The single Final Four roster (4 handlers) selected for this run. */
+  readonly finalFour: Floor3EncounterState;
+  /** Count of `studios` currently `defeated`. Convenience — always derivable from `studios`. */
+  studiosDefeatedCount: number;
+  /**
+   * The Final Four's Companions, deferred at floor init (spec R6: the Final
+   * Four is soft-gated behind the Studios-defeated counter, not present in
+   * the world until it unlocks). `floor3ObjectiveTick` spawns these once and
+   * clears the array so a re-tick never double-spawns.
+   */
+  finalFourPendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /** World-space (ft) position of the exit staircase. Set on victory. */
+  staircasePos?: { x: number; y: number };
+  /** True once the exit staircase tile has been spawned (Final Four defeated). */
+  staircaseSpawned?: boolean;
+  /** True once the staircase is accessible to the player. */
+  staircaseUnlocked?: boolean;
+  /** True once the player confirms descent — terminal run state. */
+  staircaseDiscovered?: boolean;
+}
+
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
 export type Floor1BossEncounterState = FloorBossEncounterState;
