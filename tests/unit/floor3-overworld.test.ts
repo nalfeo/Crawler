@@ -268,6 +268,19 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
   });
 
+  it('resumes play when loadout is active but the starter offer is missing', () => {
+    const world = createTestWorld({ seed: 1305, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+    world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
+    world.state = 'loadout';
+
+    selectFloor3StarterCompanion(world, 0);
+
+    expect(world.state).toBe('playing');
+    expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
+  });
+
   it('is a no-op once play has already resumed', () => {
     const world = createTestWorld({ seed: 1304, floor: 3 });
     const playerEid = spawnPlayer(world, 0, 0);

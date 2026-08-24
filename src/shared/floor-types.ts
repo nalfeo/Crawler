@@ -323,6 +323,39 @@ export interface Floor3StudiosState {
   staircaseDiscovered?: boolean;
 }
 
+export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;
+
+export type Floor4ArenaPhase =
+  | { readonly kind: 'COUNTDOWN' }
+  | { readonly kind: 'WAVES'; readonly act: Floor4ActIndex }
+  | { readonly kind: 'HEADLINE'; readonly act: Floor4ActIndex; readonly cleared: boolean }
+  | { readonly kind: 'OVERTIME'; readonly act: Floor4ActIndex }
+  | { readonly kind: 'INTERMISSION'; readonly act: Floor4ActIndex }
+  | { readonly kind: 'VICTORY' }
+  | { readonly kind: 'DEFEAT' };
+
+export interface Floor4ArenaPhaseTimelineEntry {
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly arenaElapsedMs: number;
+  readonly phase: Floor4ArenaPhase;
+  readonly reason: string;
+}
+
+export interface Floor4ArenaState {
+  phase: Floor4ArenaPhase;
+  arenaElapsedMs: number;
+  phaseElapsedMs: number;
+  lastWorldElapsedMs: number;
+  timeline: Floor4ArenaPhaseTimelineEntry[];
+}
+
+export interface Floor4ArenaRunStats {
+  readonly arenaElapsedMs: number;
+  readonly phase: Floor4ArenaPhase;
+  readonly timeline: readonly Floor4ArenaPhaseTimelineEntry[];
+}
+
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
 export type Floor1BossEncounterState = FloorBossEncounterState;

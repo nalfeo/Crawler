@@ -284,6 +284,17 @@ export const floorManifestDefSchema = z
             widthTiles: z.number().int().min(2),
           })
           .strict(),
+        phase: z
+          .object({
+            countdownMs: z.number().int().min(0),
+            actCount: z.literal(5),
+            actDurationMs: z.number().int().positive(),
+            waveWindowMs: z.number().int().positive(),
+            headlineWindowMs: z.number().int().positive(),
+            intermissionMs: z.number().int().min(0),
+            overtimeCapMs: z.number().int().positive(),
+          })
+          .strict(),
       })
       .strict()
       .superRefine((floor4, ctx) => {
@@ -325,6 +336,16 @@ export const floorManifestDefSchema = z
             code: z.ZodIssueCode.custom,
             path: ['tunnel', 'widthTiles'],
             message: 'curtain tunnel mouth collides with the east feed gate',
+          });
+        }
+        if (
+          floor4.phase.waveWindowMs + floor4.phase.headlineWindowMs !==
+          floor4.phase.actDurationMs
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['phase', 'actDurationMs'],
+            message: 'Floor 4 act duration must equal wave window plus headline window',
           });
         }
       })

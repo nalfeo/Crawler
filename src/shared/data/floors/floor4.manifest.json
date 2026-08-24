@@ -65,6 +65,15 @@
     "tunnel": {
       "lengthTiles": 8,
       "widthTiles": 4
+    },
+    "phase": {
+      "countdownMs": 3000,
+      "actCount": 5,
+      "actDurationMs": 120000,
+      "waveWindowMs": 90000,
+      "headlineWindowMs": 30000,
+      "intermissionMs": 1000,
+      "overtimeCapMs": 60000
     }
   }
 }
