@@ -16,6 +16,36 @@ function entry(day: number, winRate: number) {
   };
 }
 
+function funReport(score: number, pass: boolean) {
+  return {
+    report: {
+      runs: 2,
+      overall_fun_score: score,
+      dimensions: {
+        engagement: 70,
+        challenge_balance: 70,
+        excitement: 70,
+        pacing: 70,
+        competence_growth: 70,
+        choice_depth: 70,
+        run_distinctness: 70,
+      },
+      criteria: {
+        unsafe_combat_uptime: { observed: 0.7 },
+        survivability_variance: { observed: 0.3 },
+        run_variety: { observed: 70 },
+        dopamine_cadence: { observed: 60 },
+        snowball_frequency: { observed: 0.1 },
+        meta_progression: { observed: null },
+        item_viability: { observed: 0.1 },
+        early_death_rate: { observed: 0 },
+      },
+      persona_scores: {},
+      gate: { pass },
+    },
+  };
+}
+
 describe('formatBaselineComment', () => {
   it('renders short history in chronological order with percentage-point deltas', () => {
     const body = formatBaselineComment(
@@ -148,5 +178,73 @@ describe('formatBaselineComment', () => {
 
     expect(body).not.toContain('↳');
     expect(body).toContain('📊 Baseline win-rate for this release: **84%** (252/300)');
+  });
+
+  it('renders compatible loot, active-time DPS, fun, and Pages report details', () => {
+    const current = {
+      meta: { commit: 'a'.repeat(40), sweep: { revision: 2 } },
+      winRate: 1,
+      totalWins: 2,
+      totalRuns: 2,
+      runs: [
+        {
+          gameTimeMs: 60_000,
+          safeRoomMs: 10_000,
+          combat: { damageDealt: 500 },
+          lootEfficiency: {
+            xpSpawned: 100,
+            xpCollected: 80,
+            goldSpawned: 20,
+            goldCollected: 10,
+          },
+        },
+        {
+          gameTimeMs: 60_000,
+          safeRoomMs: 0,
+          combat: { damageDealt: 600 },
+          lootEfficiency: {
+            xpSpawned: 100,
+            xpCollected: 100,
+            goldSpawned: 20,
+            goldCollected: 20,
+          },
+        },
+      ],
+    };
+    const previous = {
+      ...current,
+      meta: { commit: 'b'.repeat(40), sweep: { revision: 2 } },
+      runs: current.runs.map((run) => ({
+        ...run,
+        combat: { damageDealt: 400 },
+        lootEfficiency: {
+          xpSpawned: 100,
+          xpCollected: 70,
+          goldSpawned: 20,
+          goldCollected: 10,
+        },
+      })),
+    };
+
+    const body = formatBaselineComment(current, [entry(10, 1), entry(9, 0.98)], {
+      ...options,
+      previousBaseline: previous,
+      funReport: funReport(75, true),
+      previousFunReport: funReport(72, true),
+      reportUrl:
+        'https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo',
+    });
+
+    expect(body).toContain('### Loot efficiency');
+    expect(body).toContain('XP **90.0%** (+20.0 pp)');
+    expect(body).toContain('gold **75.0%** (+25.0 pp)');
+    expect(body).toContain('combined **87.5%** (+20.8 pp)');
+    expect(body).toContain('### Damage rate');
+    expect(body).toContain('**600.0 damage / active min** (+163.6)');
+    expect(body).toContain('### Fun evaluation');
+    expect(body).toContain('**75.0/100** · gate **pass** · 2 runs · Δ +3.0 (improving)');
+    expect(body).toContain(
+      '[Release report](https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo)',
+    );
   });
 });

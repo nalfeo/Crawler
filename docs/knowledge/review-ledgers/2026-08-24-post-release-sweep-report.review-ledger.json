@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Resolved six plan-review concerns: use a first-party Pages shell at release-baseline-report.html?commit=<sha> rather than an HTML blob/artifact; load current/previous full baselines and optional fun reports; gate loot/DPS comparisons by matching sweep revision and top-level Floor-1 cohort; use compareFunReports for cohort-aware fun comparison; cover workflow wiring; retain existing idempotent comment semantics."
     },
     "code_review": {
       "clean": false,

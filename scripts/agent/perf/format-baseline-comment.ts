@@ -3,17 +3,37 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { compareFunReports, type FunScoreReport } from '../health/fun-score-lib.js';
+
+interface RunSummary {
+  gameTimeMs?: number;
+  safeRoomMs?: number;
+  combat?: { damageDealt?: number };
+  lootEfficiency?: {
+    xpSpawned?: number;
+    xpCollected?: number;
+    goldSpawned?: number;
+    goldCollected?: number;
+  };
+}
+
 interface Baseline {
   meta?: {
+    commit?: string;
     runUrl?: string;
+    sweep?: { revision?: number };
   };
+  floorId?: string;
+  legId?: string;
   winRate: number;
   totalWins?: number;
   totalRuns: number;
-  /** Outcome victories that exceeded the active-time budget (slow clears). Optional — present in baselines captured after issue #1146. */
+  /** Outcome victories that exceeded the active-time budget (slow clears). */
   totalSlowVictories?: number;
-  /** Non-victory runs (deaths, timeouts, stalls). Optional — present in baselines captured after issue #1146. */
+  /** Non-victory runs (deaths, timeouts, stalls). */
   totalTrueLosses?: number;
+  /** Complete RunStats are retained for the report's diagnostic metrics. */
+  runs?: RunSummary[];
   /** Per-leg results for the complete-floor release sweep. */
   legs?: Record<
     string,
@@ -32,9 +52,26 @@ interface BaselineIndexEntry {
   winRate: number;
 }
 
+interface BaselineMetrics {
+  loot: {
+    xpRatio: number;
+    goldRatio: number;
+    combinedRatio: number;
+  } | null;
+  damagePerActiveMinute: number | null;
+}
+
+interface ReleaseFunReport {
+  report: FunScoreReport;
+}
+
 export interface BaselineCommentOptions {
   baselineBlobUrl: string;
   fallbackRunUrl: string;
+  reportUrl?: string;
+  previousBaseline?: Baseline;
+  funReport?: unknown;
+  previousFunReport?: unknown;
 }
 
 function assertWinRate(winRate: number, context: string): void {
@@ -56,6 +93,12 @@ function formatDelta(current: number, previous: number | undefined): string {
   return `${sign}${delta.toFixed(1)} pp`;
 }
 
+function formatNumberDelta(current: number, previous: number | undefined, digits = 1): string {
+  if (previous === undefined) return '—';
+  const delta = current - previous;
+  return `${delta >= 0 ? '+' : ''}${delta.toFixed(digits)}`;
+}
+
 function recordedTimestamp(entry: BaselineIndexEntry): number | null {
   for (const recordedAt of [entry.commitDate, entry.capturedAt]) {
     if (!recordedAt) continue;
@@ -63,6 +106,156 @@ function recordedTimestamp(entry: BaselineIndexEntry): number | null {
     if (!Number.isNaN(timestamp)) return timestamp;
   }
   return null;
+}
+
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function summarizeMetrics(baseline: Baseline): BaselineMetrics {
+  let xpSpawned = 0;
+  let xpCollected = 0;
+  let goldSpawned = 0;
+  let goldCollected = 0;
+  let lootRuns = 0;
+  let damageDealt = 0;
+  let activeTimeMs = 0;
+  let damageRuns = 0;
+
+  for (const run of baseline.runs ?? []) {
+    const loot = run.lootEfficiency;
+    if (
+      loot &&
+      isFiniteNonNegative(loot.xpSpawned) &&
+      isFiniteNonNegative(loot.xpCollected) &&
+      isFiniteNonNegative(loot.goldSpawned) &&
+      isFiniteNonNegative(loot.goldCollected)
+    ) {
+      xpSpawned += loot.xpSpawned;
+      xpCollected += loot.xpCollected;
+      goldSpawned += loot.goldSpawned;
+      goldCollected += loot.goldCollected;
+      lootRuns += 1;
+    }
+
+    const damage = run.combat?.damageDealt;
+    if (
+      isFiniteNonNegative(damage) &&
+      isFiniteNonNegative(run.gameTimeMs) &&
+      isFiniteNonNegative(run.safeRoomMs) &&
+      run.safeRoomMs <= run.gameTimeMs
+    ) {
+      damageDealt += damage;
+      activeTimeMs += run.gameTimeMs - run.safeRoomMs;
+      damageRuns += 1;
+    }
+  }
+
+  return {
+    loot:
+      lootRuns > 0
+        ? {
+            xpRatio: xpSpawned === 0 ? 1 : xpCollected / xpSpawned,
+            goldRatio: goldSpawned === 0 ? 1 : goldCollected / goldSpawned,
+            combinedRatio:
+              xpSpawned + goldSpawned === 0
+                ? 1
+                : (xpCollected + goldCollected) / (xpSpawned + goldSpawned),
+          }
+        : null,
+    damagePerActiveMinute:
+      damageRuns > 0 && activeTimeMs > 0 ? damageDealt / (activeTimeMs / 60_000) : null,
+  };
+}
+
+function topLevelLegId(baseline: Baseline): string {
+  return baseline.legId ?? baseline.floorId ?? 'floor1';
+}
+
+function areCompatible(baseline: Baseline, previous: Baseline | undefined): previous is Baseline {
+  return Boolean(
+    previous &&
+    topLevelLegId(baseline) === 'floor1' &&
+    topLevelLegId(previous) === 'floor1' &&
+    baseline.totalRuns === previous.totalRuns &&
+    typeof baseline.meta?.sweep?.revision === 'number' &&
+    baseline.meta.sweep.revision === previous.meta?.sweep?.revision,
+  );
+}
+
+function isFunReport(value: unknown): value is ReleaseFunReport {
+  if (typeof value !== 'object' || value === null) return false;
+  const report = (value as { report?: unknown }).report;
+  if (typeof report !== 'object' || report === null) return false;
+  const candidate = report as Partial<FunScoreReport>;
+  return (
+    typeof candidate.runs === 'number' &&
+    Number.isFinite(candidate.runs) &&
+    typeof candidate.overall_fun_score === 'number' &&
+    Number.isFinite(candidate.overall_fun_score) &&
+    typeof candidate.gate?.pass === 'boolean' &&
+    typeof candidate.dimensions === 'object' &&
+    candidate.dimensions !== null &&
+    typeof candidate.criteria === 'object' &&
+    candidate.criteria !== null &&
+    typeof candidate.persona_scores === 'object' &&
+    candidate.persona_scores !== null
+  );
+}
+
+function formatFunSection(currentValue: unknown, previousValue: unknown): string[] {
+  if (!isFunReport(currentValue)) return [];
+  const current = currentValue.report;
+  const previous = isFunReport(previousValue) ? previousValue.report : undefined;
+  let delta = '—';
+  if (previous) {
+    try {
+      const comparison = compareFunReports(previous, current);
+      delta = comparison.cohort.matched
+        ? `${formatNumberDelta(current.overall_fun_score, previous.overall_fun_score)} (${comparison.overall_fun_score.status})`
+        : 'inconclusive (cohort changed)';
+    } catch {
+      // Historical diagnostic reports may predate a criterion; omit their delta.
+    }
+  }
+
+  return [
+    '',
+    '### Fun evaluation',
+    '',
+    `**${current.overall_fun_score.toFixed(1)}/100** · gate **${current.gate.pass ? 'pass' : 'attention'}** · ${current.runs} runs · Δ ${delta}`,
+  ];
+}
+
+function formatPerformanceSections(baseline: Baseline, previous: Baseline | undefined): string[] {
+  const current = summarizeMetrics(baseline);
+  const previousMetrics = previous ? summarizeMetrics(previous) : null;
+  const compatible = areCompatible(baseline, previous);
+  const lootDelta = (currentValue: number, previousValue: number | undefined): string =>
+    compatible ? formatDelta(currentValue, previousValue) : '—';
+  const dpsDelta = (currentValue: number, previousValue: number | undefined): string =>
+    compatible ? formatNumberDelta(currentValue, previousValue) : '—';
+  const sections: string[] = [];
+
+  if (current.loot) {
+    sections.push(
+      '',
+      '### Loot efficiency',
+      '',
+      `XP **${(current.loot.xpRatio * 100).toFixed(1)}%** (${lootDelta(current.loot.xpRatio, previousMetrics?.loot?.xpRatio)}) · ` +
+        `gold **${(current.loot.goldRatio * 100).toFixed(1)}%** (${lootDelta(current.loot.goldRatio, previousMetrics?.loot?.goldRatio)}) · ` +
+        `combined **${(current.loot.combinedRatio * 100).toFixed(1)}%** (${lootDelta(current.loot.combinedRatio, previousMetrics?.loot?.combinedRatio)})`,
+    );
+  }
+  if (current.damagePerActiveMinute !== null) {
+    sections.push(
+      '',
+      '### Damage rate',
+      '',
+      `**${current.damagePerActiveMinute.toFixed(1)} damage / active min** (${dpsDelta(current.damagePerActiveMinute, previousMetrics?.damagePerActiveMinute)})`,
+    );
+  }
+  return sections;
 }
 
 export function formatBaselineComment(
@@ -104,9 +297,6 @@ export function formatBaselineComment(
   const pct = Math.round(baseline.winRate * 100);
   const wins = Number.isFinite(baseline.totalWins) ? baseline.totalWins : '?';
   const runUrl = baseline.meta?.runUrl || options.fallbackRunUrl;
-
-  // Optional breakdown line — only shown when the baseline was captured with
-  // the slow-victory separation (introduced in issue #1146).
   const slowVictories = baseline.totalSlowVictories;
   const trueLosses = baseline.totalTrueLosses;
   const hasBreakdown = Number.isFinite(slowVictories) && Number.isFinite(trueLosses);
@@ -151,16 +341,19 @@ export function formatBaselineComment(
           ...legRows,
         ]
       : [];
+  const detailsLink = options.reportUrl ? ` · 🧭 [Release report](${options.reportUrl})` : '';
 
   return [
     `📊 Baseline win-rate for this release: **${pct}%** (${wins}/${baseline.totalRuns})`,
     ...(breakdownLine ? [breakdownLine] : []),
+    ...formatPerformanceSections(baseline, options.previousBaseline),
+    ...formatFunSection(options.funReport, options.previousFunReport),
     ...legSection,
     '',
     `📈 Last ${newestFive.length} recorded baseline${newestFive.length === 1 ? '' : 's'} (oldest → newest):`,
     ...trendLines,
     '',
-    `🏃 [Sweep run](${runUrl}) · 🗂️ [Recorded baseline](${options.baselineBlobUrl})`,
+    `🏃 [Sweep run](${runUrl}) · 🗂️ [Recorded baseline](${options.baselineBlobUrl})${detailsLink}`,
   ].join('\n');
 }
 
@@ -175,6 +368,50 @@ function readJson<T>(filePath: string, label: string): T {
   }
 }
 
+function readOptionalJson(filePath: string | undefined): unknown {
+  if (!filePath || !fs.existsSync(filePath)) return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function previousEntry(
+  baseline: Baseline,
+  index: BaselineIndexEntry[],
+): BaselineIndexEntry | undefined {
+  if (!baseline.meta?.commit) return undefined;
+  const history = [...index].sort((a, b) => {
+    const aTimestamp = recordedTimestamp(a);
+    const bTimestamp = recordedTimestamp(b);
+    if (aTimestamp === null) return bTimestamp === null ? 0 : 1;
+    if (bTimestamp === null) return -1;
+    return bTimestamp - aTimestamp;
+  });
+  const currentPosition = history.findIndex((entry) => entry.commit === baseline.meta?.commit);
+  return currentPosition === -1 ? undefined : history[currentPosition + 1];
+}
+
+function isSafeCommit(commit: string): boolean {
+  return /^[a-f0-9]{7,64}$/i.test(commit);
+}
+
+function reportUrl(
+  pagesUrl: string | undefined,
+  repo: string | undefined,
+  commit: string | undefined,
+): string {
+  if (!pagesUrl || !repo || !commit || !/^[\w.-]+\/[\w.-]+$/.test(repo) || !isSafeCommit(commit)) {
+    return '';
+  }
+  const base = pagesUrl.endsWith('/') ? pagesUrl : `${pagesUrl}/`;
+  const url = new URL('release-baseline-report.html', base);
+  url.searchParams.set('commit', commit);
+  url.searchParams.set('repo', repo);
+  return url.toString();
+}
+
 function main(): void {
   const baselinePath = process.env.BASELINE_JSON;
   const indexPath = process.env.BASELINE_INDEX_JSON;
@@ -184,10 +421,26 @@ function main(): void {
 
   const baseline = readJson<Baseline>(baselinePath, 'baseline.json');
   const index = readJson<BaselineIndexEntry[]>(indexPath, 'baseline index');
+  const previous = previousEntry(baseline, index);
+  const baselinesDir = process.env.BASELINES_DIR;
+  const previousPath =
+    previous && baselinesDir && isSafeCommit(previous.commit)
+      ? path.join(baselinesDir, 'by-sha', `${previous.commit}.json`)
+      : undefined;
+  const previousFunPath =
+    previous && baselinesDir && isSafeCommit(previous.commit)
+      ? path.join(baselinesDir, 'by-sha', `${previous.commit}.fun-report.json`)
+      : undefined;
   process.stdout.write(
     formatBaselineComment(baseline, index, {
       baselineBlobUrl: process.env.BASELINE_BLOB_URL ?? '',
       fallbackRunUrl: process.env.FALLBACK_RUN_URL ?? '',
+      reportUrl: reportUrl(process.env.PAGES_URL, process.env.BASELINE_REPO, baseline.meta?.commit),
+      previousBaseline: previousPath
+        ? (readOptionalJson(previousPath) as Baseline | undefined)
+        : undefined,
+      funReport: readOptionalJson(process.env.FUN_REPORT_JSON),
+      previousFunReport: readOptionalJson(previousFunPath),
     }),
   );
 }

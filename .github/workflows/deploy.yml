@@ -87,6 +87,7 @@ jobs:
       url: ${{ steps.deploy-url.outputs.page_url }}
     outputs:
       released_pr_numbers: ${{ steps.released-prs.outputs.pr_numbers }}
+      pages_url: ${{ steps.deploy-url.outputs.page_url }}
     steps:
       - name: Admin check (manual triggers only)
         if: github.event_name == 'workflow_dispatch'
@@ -893,6 +894,10 @@ jobs:
           BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
           FALLBACK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
+          BASELINES_DIR: ${{ runner.temp }}/baselines-wt
+          FUN_REPORT_JSON: ${{ github.workspace }}/.cache/baseline/fun-report.json
+          PAGES_URL: ${{ needs.deploy.outputs.pages_url }}
+          BASELINE_REPO: ${{ github.repository }}
           DEPLOY_PR_NUMBERS: ${{ needs.deploy.outputs.released_pr_numbers }}
         run: |
           # Post the freshly published baseline win-rate onto the PR whose

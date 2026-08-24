@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crawler release baseline report</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        background: #11151c;
+        color: #e8edf2;
+      }
+      body {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+      }
+      h1,
+      h2 {
+        color: #80d8ff;
+      }
+      .lede,
+      .muted {
+        color: #aab7c4;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+      }
+      .metric {
+        border: 1px solid #344454;
+        border-radius: 0.5rem;
+        background: #18212b;
+        padding: 0.85rem;
+      }
+      .metric dt {
+        color: #aab7c4;
+        font-size: 0.85rem;
+      }
+      .metric dd {
+        margin: 0.35rem 0 0;
+        font-size: 1.25rem;
+        font-weight: 700;
+      }
+      .positive {
+        color: #83e6a3;
+      }
+      .negative,
+      .error {
+        color: #ff9b9b;
+      }
+      .warning {
+        color: #ffd580;
+      }
+      a {
+        color: #80d8ff;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Release baseline report</h1>
+      <p id="status" class="lede">Loading baseline…</p>
+      <div id="report" hidden></div>
+    </main>
+    <script>
+      (() => {
+        'use strict';
+
+        const COMMIT_PATTERN = /^[a-f0-9]{7,64}$/i;
+        const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+        const report = document.getElementById('report');
+        const status = document.getElementById('status');
+        const params = new URLSearchParams(window.location.search);
+        const commit = (params.get('commit') || '').toLowerCase();
+        const repo = params.get('repo') || '';
+
+        function isRecord(value) {
+          return typeof value === 'object' && value !== null && !Array.isArray(value);
+        }
+
+        function finiteNonNegative(value) {
+          return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+        }
+
+        function text(element, value) {
+          element.textContent = value;
+          return element;
+        }
+
+        function element(name, className) {
+          const node = document.createElement(name);
+          if (className) node.className = className;
+          return node;
+        }
+
+        function appendMetric(container, label, value, delta) {
+          const card = element('dl', 'metric');
+          card.append(text(element('dt'), label));
+          const valueNode = text(element('dd'), value);
+          card.append(valueNode);
+          if (delta) {
+            const deltaNode = text(element('div'), delta.text);
+            deltaNode.className = delta.className;
+            card.append(deltaNode);
+          }
+          container.append(card);
+        }
+
+        function appendSection(title, description) {
+          const section = element('section');
+          section.append(text(element('h2'), title));
+          if (description) section.append(text(element('p', 'muted'), description));
+          const grid = element('div', 'grid');
+          section.append(grid);
+          report.append(section);
+          return grid;
+        }
+
+        function rawUrl(file) {
+          const [owner, name] = repo.split('/');
+          return (
+            'https://raw.githubusercontent.com/' +
+            encodeURIComponent(owner) +
+            '/' +
+            encodeURIComponent(name) +
+            '/baselines/' +
+            file
+          );
+        }
+
+        async function fetchJson(url, optional) {
+          const response = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (!response.ok) {
+            if (optional && response.status === 404) return null;
+            throw new Error(`${response.status} while loading ${url}`);
+          }
+          return response.json();
+        }
+
+        function topLevelLegId(baseline) {
+          return typeof baseline.legId === 'string'
+            ? baseline.legId
+            : typeof baseline.floorId === 'string'
+              ? baseline.floorId
+              : 'floor1';
+        }
+
+        function isCompatible(current, previous) {
+          return (
+            isRecord(previous) &&
+            topLevelLegId(current) === 'floor1' &&
+            topLevelLegId(previous) === 'floor1' &&
+            current.totalRuns === previous.totalRuns &&
+            isRecord(current.meta) &&
+            isRecord(previous.meta) &&
+            isRecord(current.meta.sweep) &&
+            current.meta.sweep.revision === previous.meta.sweep?.revision
+          );
+        }
+
+        function summarize(baseline) {
+          const result = { loot: null, dps: null };
+          if (!Array.isArray(baseline.runs)) return result;
+
+          let xpSpawned = 0;
+          let xpCollected = 0;
+          let goldSpawned = 0;
+          let goldCollected = 0;
+          let lootRuns = 0;
+          let damage = 0;
+          let activeMs = 0;
+          let damageRuns = 0;
+          for (const run of baseline.runs) {
+            if (!isRecord(run)) continue;
+            const loot = run.lootEfficiency;
+            if (
+              isRecord(loot) &&
+              finiteNonNegative(loot.xpSpawned) &&
+              finiteNonNegative(loot.xpCollected) &&
+              finiteNonNegative(loot.goldSpawned) &&
+              finiteNonNegative(loot.goldCollected)
+            ) {
+              xpSpawned += loot.xpSpawned;
+              xpCollected += loot.xpCollected;
+              goldSpawned += loot.goldSpawned;
+              goldCollected += loot.goldCollected;
+              lootRuns += 1;
+            }
+            const combat = run.combat;
+            if (
+              isRecord(combat) &&
+              finiteNonNegative(combat.damageDealt) &&
+              finiteNonNegative(run.gameTimeMs) &&
+              finiteNonNegative(run.safeRoomMs) &&
+              run.safeRoomMs <= run.gameTimeMs
+            ) {
+              damage += combat.damageDealt;
+              activeMs += run.gameTimeMs - run.safeRoomMs;
+              damageRuns += 1;
+            }
+          }
+          if (lootRuns > 0) {
+            result.loot = {
+              xp: xpSpawned === 0 ? 1 : xpCollected / xpSpawned,
+              gold: goldSpawned === 0 ? 1 : goldCollected / goldSpawned,
+              combined:
+                xpSpawned + goldSpawned === 0
+                  ? 1
+                  : (xpCollected + goldCollected) / (xpSpawned + goldSpawned),
+            };
+          }
+          if (damageRuns > 0 && activeMs > 0) result.dps = damage / (activeMs / 60_000);
+          return result;
+        }
+
+        function delta(current, previous, percent) {
+          if (typeof current !== 'number' || typeof previous !== 'number') return null;
+          const value = percent ? (current - previous) * 100 : current - previous;
+          const text = `Δ ${value >= 0 ? '+' : ''}${value.toFixed(1)}${percent ? ' pp' : ''}`;
+          return { text, className: value === 0 ? 'muted' : value > 0 ? 'positive' : 'negative' };
+        }
+
+        function funReport(value) {
+          return isRecord(value) && isRecord(value.report) ? value.report : null;
+        }
+
+        function recordedTimestamp(entry) {
+          if (!isRecord(entry)) return null;
+          for (const value of [entry.commitDate, entry.capturedAt]) {
+            if (typeof value !== 'string') continue;
+            const timestamp = Date.parse(value);
+            if (!Number.isNaN(timestamp)) return timestamp;
+          }
+          return null;
+        }
+
+        function sortBaselines(index) {
+          return [...index].sort((left, right) => {
+            const leftTimestamp = recordedTimestamp(left);
+            const rightTimestamp = recordedTimestamp(right);
+            if (leftTimestamp === null) return rightTimestamp === null ? 0 : 1;
+            if (rightTimestamp === null) return -1;
+            return rightTimestamp - leftTimestamp;
+          });
+        }
+
+        function sameFunCohort(current, previous) {
+          if (!current || !previous || current.runs !== previous.runs) return false;
+          const currentScores = isRecord(current.persona_scores) ? current.persona_scores : {};
+          const previousScores = isRecord(previous.persona_scores) ? previous.persona_scores : {};
+          const keys = new Set([...Object.keys(currentScores), ...Object.keys(previousScores)]);
+          for (const key of keys) {
+            const currentRuns = isRecord(currentScores[key]) ? currentScores[key].runs : 0;
+            const previousRuns = isRecord(previousScores[key]) ? previousScores[key].runs : 0;
+            if (currentRuns !== previousRuns) return false;
+          }
+          return true;
+        }
+
+        async function load() {
+          if (!COMMIT_PATTERN.test(commit) || !REPO_PATTERN.test(repo)) {
+            throw new Error(
+              'Provide a valid commit SHA and repository: ?commit=<sha>&repo=<owner/repo>.',
+            );
+          }
+          const currentPath = `by-sha/${encodeURIComponent(commit)}.json`;
+          const [current, index, currentFun] = await Promise.all([
+            fetchJson(rawUrl(currentPath), false),
+            fetchJson(rawUrl('index.json'), false),
+            fetchJson(rawUrl(`by-sha/${encodeURIComponent(commit)}.fun-report.json`), true),
+          ]);
+          if (!isRecord(current) || !Array.isArray(index))
+            throw new Error('Baseline data has an invalid shape.');
+          const history = sortBaselines(index);
+          const currentIndex = history.findIndex(
+            (entry) => isRecord(entry) && entry.commit === commit,
+          );
+          const previousEntry = currentIndex >= 0 ? history[currentIndex + 1] : null;
+          const previousCommit =
+            isRecord(previousEntry) && COMMIT_PATTERN.test(previousEntry.commit)
+              ? previousEntry.commit
+              : null;
+          const [previous, previousFun] = previousCommit
+            ? await Promise.all([
+                fetchJson(rawUrl(`by-sha/${encodeURIComponent(previousCommit)}.json`), true),
+                fetchJson(
+                  rawUrl(`by-sha/${encodeURIComponent(previousCommit)}.fun-report.json`),
+                  true,
+                ),
+              ])
+            : [null, null];
+          render(current, previous, currentFun, previousFun, previousCommit);
+        }
+
+        function render(current, previous, currentFunPayload, previousFunPayload, previousCommit) {
+          const currentMetrics = summarize(current);
+          const previousMetrics = isRecord(previous) ? summarize(previous) : null;
+          const compatible = isCompatible(current, previous);
+          const winRate = typeof current.winRate === 'number' ? current.winRate * 100 : null;
+          const wins = finiteNonNegative(current.totalWins) ? current.totalWins : '?';
+
+          status.textContent = `Repository ${repo} · commit ${commit.slice(0, 12)}${previousCommit ? ` · prior ${previousCommit.slice(0, 12)}` : ''}`;
+          report.hidden = false;
+
+          const overview = appendSection('Baseline', 'Current top-level release sweep.');
+          appendMetric(
+            overview,
+            'Win rate',
+            winRate === null
+              ? 'Unavailable'
+              : `${winRate.toFixed(1)}% (${wins}/${current.totalRuns})`,
+            compatible && typeof previous.winRate === 'number' && winRate !== null
+              ? delta(winRate, previous.winRate * 100, false)
+              : null,
+          );
+          appendMetric(
+            overview,
+            'Comparison cohort',
+            compatible ? 'Compatible prior baseline' : 'No compatible prior baseline',
+            null,
+          );
+
+          const loot = appendSection(
+            'Loot efficiency',
+            'Collected versus spawned XP/gold. Combined ratio is only compared on the same release cohort.',
+          );
+          if (currentMetrics.loot) {
+            appendMetric(
+              loot,
+              'XP collected',
+              `${(currentMetrics.loot.xp * 100).toFixed(1)}%`,
+              compatible ? delta(currentMetrics.loot.xp, previousMetrics?.loot?.xp, true) : null,
+            );
+            appendMetric(
+              loot,
+              'Gold collected',
+              `${(currentMetrics.loot.gold * 100).toFixed(1)}%`,
+              compatible
+                ? delta(currentMetrics.loot.gold, previousMetrics?.loot?.gold, true)
+                : null,
+            );
+            appendMetric(
+              loot,
+              'Combined collection',
+              `${(currentMetrics.loot.combined * 100).toFixed(1)}%`,
+              compatible
+                ? delta(currentMetrics.loot.combined, previousMetrics?.loot?.combined, true)
+                : null,
+            );
+          } else {
+            appendMetric(loot, 'Collection telemetry', 'Unavailable', null);
+          }
+
+          const damage = appendSection(
+            'Damage rate',
+            'Damage dealt divided by safe-room-adjusted active minutes.',
+          );
+          appendMetric(
+            damage,
+            'Damage / active min',
+            currentMetrics.dps === null ? 'Unavailable' : currentMetrics.dps.toFixed(1),
+            compatible ? delta(currentMetrics.dps, previousMetrics?.dps, false) : null,
+          );
+
+          const currentFun = funReport(currentFunPayload);
+          const previousFun = funReport(previousFunPayload);
+          const fun = appendSection('Fun evaluation', 'Deterministic evaluation; diagnostic only.');
+          if (currentFun && typeof currentFun.overall_fun_score === 'number') {
+            const funComparable = compatible && sameFunCohort(currentFun, previousFun);
+            appendMetric(
+              fun,
+              'Overall fun score',
+              `${currentFun.overall_fun_score.toFixed(1)} / 100`,
+              funComparable
+                ? delta(currentFun.overall_fun_score, previousFun.overall_fun_score, false)
+                : null,
+            );
+            appendMetric(
+              fun,
+              'Fun gate',
+              isRecord(currentFun.gate) && currentFun.gate.pass === true ? 'Pass' : 'Attention',
+              null,
+            );
+            appendMetric(fun, 'Evaluated runs', String(currentFun.runs ?? 'Unavailable'), null);
+            if (previousFun && !funComparable) {
+              const note = text(
+                element('p', 'warning'),
+                'Prior fun report exists but its cohort is not compatible.',
+              );
+              fun.parentElement.append(note);
+            }
+          } else {
+            appendMetric(fun, 'Fun report', 'Unavailable for this release', null);
+          }
+
+          const source = element('p', 'muted');
+          source.append('Data source: ');
+          const link = document.createElement('a');
+          link.href = rawUrl(currentPathForLink(current));
+          link.target = '_blank';
+          link.rel = 'noreferrer';
+          link.textContent = 'baselines branch JSON';
+          source.append(link);
+          report.append(source);
+        }
+
+        function currentPathForLink(current) {
+          const currentCommit =
+            isRecord(current.meta) && COMMIT_PATTERN.test(current.meta.commit)
+              ? current.meta.commit
+              : commit;
+          return `by-sha/${encodeURIComponent(currentCommit)}.json`;
+        }
+
+        load().catch((error) => {
+          status.className = 'error';
+          status.textContent = error instanceof Error ? error.message : String(error);
+        });
+      })();
+    </script>
+  </body>
+</html>
