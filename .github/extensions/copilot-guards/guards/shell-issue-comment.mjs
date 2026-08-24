@@ -17,7 +17,7 @@
 // What is NOT denied:
 //   * Reads: `gh issue view --comments`, `gh api repos/o/r/issues/1/comments`
 //     (GET is the `gh api` default).
-//   * PR *review thread* replies (`/pulls/<n>/comments`, `.../replies`) — those
+//   * PR *review thread* replies (`/pulls/<n>/comments/<id>/replies`) — those
 //     carry the `✅ Addressed in <sha>` markers the merge gate depends on.
 
 import { isGh, normalizeCommand, tokenize } from '../lib/shell.mjs';
@@ -27,57 +27,161 @@ const REMEDIATION =
   'that is the plan/status of record, and CI recovery mirrors it onto the issue. ' +
   'Never block a session waiting for issue-comment access.';
 
-const WRITE_METHODS = new Set(['post', 'patch', 'put']);
-const FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input']);
+const WRITE_METHODS = new Set(['post', 'patch', 'put', 'delete']);
+const GLOBAL_FLAGS_WITH_VALUE = new Set(['-r', '--repo', '--hostname']);
+const FIELD_FLAGS = new Set(['-f', '--field', '--raw-field', '--input']);
+const API_FLAGS_WITH_VALUE = new Set([
+  ...FIELD_FLAGS,
+  '-x',
+  '--method',
+  '-h',
+  '--header',
+  '-q',
+  '--jq',
+  '-t',
+  '--template',
+  '--cache',
+  '--hostname',
+]);
 
-function isWriteApiCall(tokens) {
+function hasAttachedValue(token, flag) {
+  const lower = token.toLowerCase();
+  if (flag.startsWith('--')) return lower.startsWith(`${flag}=`);
+  return lower.startsWith(flag) && lower.length > flag.length;
+}
+
+function consumesFlagValue(token, flagsWithValue) {
+  const lower = token.toLowerCase();
+  if (flagsWithValue.has(lower)) return true;
+  for (const flag of flagsWithValue) {
+    if (hasAttachedValue(token, flag)) return false;
+  }
+  return false;
+}
+
+function readCommandWord(tokens, startIndex, flagsWithValue) {
+  let i = startIndex;
+  while (i < tokens.length) {
+    const tok = tokens[i];
+    if (!tok.startsWith('-')) return { word: tok.toLowerCase(), index: i };
+    i += consumesFlagValue(tok, flagsWithValue) ? 2 : 1;
+  }
+  return { word: null, index: tokens.length };
+}
+
+function parseGhApi(tokens, startIndex) {
+  let endpoint = null;
   let method = null;
   let hasFields = false;
-  for (let i = 0; i < tokens.length; i++) {
+  let pendingFlag = null;
+
+  for (let i = startIndex; i < tokens.length; i++) {
     const tok = tokens[i];
-    if (FIELD_FLAGS.has(tok)) {
+    const lower = tok.toLowerCase();
+
+    if (pendingFlag) {
+      if (pendingFlag === '-x' || pendingFlag === '--method') method = lower;
+      if (pendingFlag === '-f' || pendingFlag === '--field' || pendingFlag === '--raw-field') {
+        hasFields = true;
+      }
+      if (pendingFlag === '--input') hasFields = true;
+      pendingFlag = null;
+      continue;
+    }
+
+    if (/^-X.+$/i.test(tok)) {
+      method = tok.slice(2).toLowerCase();
+      continue;
+    }
+    if (lower.startsWith('--method=')) {
+      method = lower.slice('--method='.length);
+      continue;
+    }
+    if (/^-[fF].+/.test(tok) || lower.startsWith('--field=') || lower.startsWith('--raw-field=')) {
       hasFields = true;
       continue;
     }
-    if (/^-[fF].+/.test(tok)) {
+    if (lower.startsWith('--input=')) {
       hasFields = true;
       continue;
     }
-    if (tok === '-X' || tok === '--method') {
-      method = String(tokens[i + 1] || '').toLowerCase();
+
+    if (API_FLAGS_WITH_VALUE.has(tok) || API_FLAGS_WITH_VALUE.has(lower)) {
+      pendingFlag = lower;
       continue;
     }
-    const attached = /^(?:--method=|-X)(.+)$/.exec(tok);
-    if (attached) method = attached[1].toLowerCase();
+
+    if (consumesFlagValue(tok, API_FLAGS_WITH_VALUE)) {
+      continue;
+    }
+
+    if (tok.startsWith('-')) continue;
+    if (!endpoint) endpoint = tok;
   }
-  if (method) return WRITE_METHODS.has(method);
-  // `gh api` implicitly switches to POST when any field is supplied.
-  return hasFields;
+
+  return { endpoint, method, hasFields };
+}
+
+function isWriteApiCall(api) {
+  if (api.method) return WRITE_METHODS.has(api.method);
+  // `gh api` implicitly switches to POST when any field/input is supplied.
+  return api.hasFields;
+}
+
+function isIssueCommentEndpoint(endpoint) {
+  const path = endpoint.split('?')[0];
+  return (
+    /(^|\/)issues\/[^/]+\/comments\/?$/i.test(path) ||
+    /(^|\/)issues\/comments\/[^/]+\/?$/i.test(path)
+  );
+}
+
+function isPullReviewCommentCreateEndpoint(endpoint) {
+  const path = endpoint.split('?')[0];
+  return /(^|\/)pulls\/[^/]+\/comments\/?$/i.test(path);
+}
+
+function isPullReviewReplyEndpoint(endpoint) {
+  const path = endpoint.split('?')[0];
+  return /(^|\/)pulls\/[^/]+\/comments\/[^/]+\/replies\/?$/i.test(path);
 }
 
 function segmentDeniesIssueComment(seg) {
   if (!isGh(seg)) return null;
   const tokens = tokenize(seg);
-  const args = tokens.slice(1).filter((tok) => !tok.startsWith('-'));
+  const first = readCommandWord(tokens, 1, GLOBAL_FLAGS_WITH_VALUE);
+  if (!first.word) return null;
 
-  if (args[0] === 'issue' && args[1] === 'comment') {
+  if (first.word === 'issue') {
+    const second = readCommandWord(tokens, first.index + 1, GLOBAL_FLAGS_WITH_VALUE);
+    if (second.word !== 'comment') return null;
     return `Refusing \`gh issue comment\`: this session has no issue-comment credentials. Segment: \`${seg}\`. ${REMEDIATION}`;
   }
-  if (args[0] === 'pr' && args[1] === 'comment') {
+  if (first.word === 'pr') {
+    const second = readCommandWord(tokens, first.index + 1, GLOBAL_FLAGS_WITH_VALUE);
+    if (second.word !== 'comment') return null;
     return `Refusing \`gh pr comment\`: this session has no PR-comment credentials. Segment: \`${seg}\`. ${REMEDIATION}`;
   }
-  if (args[0] !== 'api') return null;
+  if (first.word !== 'api') return null;
 
-  if (!isWriteApiCall(tokens)) return null;
+  const api = parseGhApi(tokens, first.index + 1);
+  if (!api.endpoint) return null;
+  const isWrite = isWriteApiCall(api);
 
-  if (args.some((arg) => /(^|\/)issues\/\d+\/comments\/?$/.test(arg.split('?')[0]))) {
-    return `Refusing a POST to an issue-comment API endpoint. Segment: \`${seg}\`. ${REMEDIATION}`;
+  if (api.endpoint === 'graphql') {
+    if (tokens.some((tok) => /\b(addComment|updateIssueComment)\b/.test(tok))) {
+      return `Refusing a GraphQL comment mutation. Segment: \`${seg}\`. ${REMEDIATION}`;
+    }
+    return null;
   }
-  if (
-    args.includes('graphql') &&
-    tokens.some((tok) => /\b(addComment|updateIssueComment)\b/.test(tok))
-  ) {
-    return `Refusing a GraphQL comment mutation. Segment: \`${seg}\`. ${REMEDIATION}`;
+
+  if (!isWrite) return null;
+  if (isIssueCommentEndpoint(api.endpoint)) {
+    return `Refusing a write to an issue-comment API endpoint. Segment: \`${seg}\`. ${REMEDIATION}`;
+  }
+  if (isPullReviewReplyEndpoint(api.endpoint)) return null;
+  if (isPullReviewCommentCreateEndpoint(api.endpoint)) {
+    return `Refusing a write to a PR review-comment create endpoint. Segment: \`${seg}\`. ${REMEDIATION}`;
   }
   return null;
 }
@@ -89,7 +193,7 @@ export default {
   matches(toolName, toolArgs) {
     if (toolName !== 'powershell' && toolName !== 'bash') return false;
     const cmd = String(toolArgs?.command || '');
-    if (!/\bgh\b/.test(cmd)) return false;
+    if (!/\bgh(?:\.exe)?\b/i.test(cmd)) return false;
     return /comment/i.test(cmd);
   },
   check(toolArgs) {
