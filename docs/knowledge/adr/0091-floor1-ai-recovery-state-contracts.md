@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Accepted (post-boss farm window amended out — see the amendment note below)
+
+> **Amendment 2026-08-24 (issue #3449).** The "post-boss farming" half of the
+> tuning-knob decision below was **removed**. It only ever reached the legacy
+> Progress branch and the headless auto-progression driver, never the live
+> goal-graph planner, so the planner steered to the unlocked staircase while the
+> driver refused to confirm the descend — the AI stood on the exit marker for
+> the whole window (330 s on seed 11 / throwing-knife). Making the window live
+> in the goal graph was measured as a Floor 1 win-rate regression (25/25 → 23/25)
+> and rejected, so `postBossFarmReserveFraction`,
+> `AIInputProvider.isFarmingPostBossFloorTime`, and `resolvePostBossFarmWindow`
+> are gone. Every other decision in this ADR stands; calm en-route farming
+> (`calmFarmPullBoost`) is untouched.
 
 ## Date
 
