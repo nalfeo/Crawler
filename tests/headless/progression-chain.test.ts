@@ -26,6 +26,7 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runProgression, resolveFloorChain } from '../../src/game/ai/progression-runner.js';
+import { activeTimeMs } from '../../src/game/ai/scoring.js';
 import { GATE_MAX_FRAMES, GATE_SEEDS } from '../../scripts/agent/perf/floor1-gate-sample.js';
 import { getFloorWinBudgetMs } from '../../src/shared/floor-registry.js';
 
@@ -134,12 +135,14 @@ describe('multi-floor progression', () => {
   );
 
   it(
-    'seed 27 descends from a cleared Floor 2 into Floor 3 with the carried-over player',
+    'seed 27 clears the chained Floor 2 family hunt and descends into Floor 3 with the carried-over player',
     async () => {
       // The real headless pipeline, not a lab: Floor 1 → Floor 2 → Floor 3 in
       // one run. The Floor 3 leg is an EXHIBITION leg (Floor 3 has no victory
       // yet), so it is stopped deterministically after a short slice rather
-      // than burning its 20-minute authored timer.
+      // than burning its 20-minute authored timer. This single run also
+      // exercises the chained Floor 2 family hunt so that expensive seed-27
+      // Floor 1→2 prefix is only simulated once for this suite.
       const FLOOR3_OBSERVATION_MS = 20_000;
       const progression = await runProgression(
         (_floorId, legIndex) => new BehaviorTreeAI({ seed: BLOCKED_FAMILY_REPRO_SEED + legIndex }),
@@ -153,13 +156,19 @@ describe('multi-floor progression', () => {
         },
       );
 
+      expect(progression.reachedFinalVictory).toBe(true);
       expect(progression.clearedFloorIds).toEqual(['floor1', 'floor2']);
       expect(progression.legs.map((leg) => leg.floorId)).toEqual(['floor1', 'floor2', 'floor3']);
       expect(progression.winnableFloorIds).toEqual(['floor1', 'floor2']);
       expect(progression.exhibitionFloorIds).toEqual(['floor3']);
 
-      // The handoff itself: Floor 3 STARTED from the snapshot Floor 2 captured.
+      // The chained Floor 2 family hunt itself completed.
       const floor2Leg = progression.legs.find((leg) => leg.floorId === 'floor2')!;
+      const families = Object.values(floor2Leg.stats.floor2Progression?.families ?? {});
+      expect(families).toHaveLength(4);
+      expect(families.every((family) => family.encounterDefeated)).toBe(true);
+
+      // The handoff itself: Floor 3 STARTED from the snapshot Floor 2 captured.
       const floor3Leg = progression.legs.find((leg) => leg.floorId === 'floor3')!;
       expect(floor2Leg.captured).toBeDefined();
       expect(floor3Leg.startedFrom).toBe(floor2Leg.captured);
@@ -175,42 +184,25 @@ describe('multi-floor progression', () => {
       // The exhibition leg must not touch the win verdict: Floor 3 can never be
       // cleared, yet the Floor 1+2 progression still reads as a full victory,
       // and Floor 3's missing budget must not null out the summed budget.
-      expect(progression.reachedFinalVictory).toBe(true);
-      expect(progression.officialWin).toBe(true);
-      // Budget is summed over the WINNABLE chain only. Floor 3 declares no
-      // budget, so consulting it would force `budgetMs` to null and silently
-      // degrade `officialWin` to raw victory for every chained run.
+      // Assert the winnable-leg FORMULA rather than a hardcoded `true`, so a
+      // balance change that pushes seed 27's Floor 1+2 active time over budget
+      // fails on the formula's own terms instead of an unrelated seed-specific
+      // pass/fail gate (AGENTS.md rule #12).
       expect(getFloorWinBudgetMs('floor3')).toBeNull();
       const winnableBudgets = progression.winnableFloorIds.map((floorId) =>
         getFloorWinBudgetMs(floorId),
       );
-      expect(progression.budgetMs).toBe(
-        winnableBudgets.some((budget) => budget === null)
-          ? null
-          : winnableBudgets.reduce((sum: number, budget) => sum + (budget ?? 0), 0),
+      const expectedBudgetMs = winnableBudgets.some((budget) => budget === null)
+        ? null
+        : winnableBudgets.reduce((sum: number, budget) => sum + (budget ?? 0), 0);
+      expect(progression.budgetMs).toBe(expectedBudgetMs);
+      const winnableActiveTimeMs = progression.legs
+        .filter((leg) => progression.winnableFloorIds.includes(leg.floorId))
+        .reduce((sum, leg) => sum + activeTimeMs(leg.stats), 0);
+      expect(progression.officialWin).toBe(
+        progression.reachedFinalVictory &&
+          (expectedBudgetMs === null || winnableActiveTimeMs < expectedBudgetMs),
       );
-    },
-    HOOK_TIMEOUT_MS,
-  );
-
-  it(
-    'seed 27 clears the chained Floor 2 family hunt',
-    async () => {
-      const progression = await runProgression(
-        (_floorId, legIndex) => new BehaviorTreeAI({ seed: BLOCKED_FAMILY_REPRO_SEED + legIndex }),
-        {
-          seed: BLOCKED_FAMILY_REPRO_SEED,
-          startFloorId: 'floor1',
-        },
-      );
-
-      expect(progression.reachedFinalVictory).toBe(true);
-      expect(progression.clearedFloorIds).toEqual(['floor1', 'floor2']);
-      const families = Object.values(
-        progression.legs.at(-1)?.stats.floor2Progression?.families ?? {},
-      );
-      expect(families).toHaveLength(4);
-      expect(families.every((family) => family.encounterDefeated)).toBe(true);
     },
     HOOK_TIMEOUT_MS,
   );
