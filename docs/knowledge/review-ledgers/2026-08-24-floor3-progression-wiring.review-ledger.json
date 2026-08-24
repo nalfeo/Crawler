@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "claude-opus-4.8",
+      "head_sha": "43784a37c3d9f736c5be729706739a8dfd177e1c",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff is a surgical, policy-compliant wiring change: Floor 2 now transitions into Floor 3 in the shipped scene, the headless progression runner can optionally append a playable-but-unwinnable exhibition tail without polluting the official win/budget chain, and the lab/debug surfaces stop hardcoding Floor 1/2 identity. The real-game restart, headless carryover into Floor 3, scenario contract, and bootstrap callback are all covered by targeted tests. Coverage is slightly short of perfect because the AI runner lab still relies partly on a source-canary test rather than a live runtime transition assertion, but the changed behavior itself is well exercised and I found no blocker-level issues."
     }
   }
 }

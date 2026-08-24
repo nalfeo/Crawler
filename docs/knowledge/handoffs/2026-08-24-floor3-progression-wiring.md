@@ -10,7 +10,7 @@ Systems Engineer
 
 ## Systems touched
 
-quests, boss-rooms, ai-combat-balance
+boss-rooms, ai-combat-balance, devtools
 
 ## Apples
 
