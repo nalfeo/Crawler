@@ -34,6 +34,8 @@ import type {
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
+import type { CombatEvent } from '../../../src/shared/combat-events.js';
+import type { VfxEvent } from '../../../src/shared/vfx-events.js';
 
 declare global {
   interface Window {
@@ -385,6 +387,18 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
+  getCombatAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCombatAudioCueLog()),
+  clearCombatAudioCueLog: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.clearCombatAudioCueLog()),
+  pushTestCombatEvent: (
+    page: Page,
+    event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>,
+  ): Promise<void> => page.evaluate((e) => window.__mainSceneProbe!.pushTestCombatEvent(e), event),
+  pushTestVfxEvent: (
+    page: Page,
+    event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>,
+  ): Promise<void> => page.evaluate((e) => window.__mainSceneProbe!.pushTestVfxEvent(e), event),
   getVisibleFloatingTexts: (page: Page, prefix = ''): Promise<readonly FloatingTextProbe[]> =>
     page.evaluate((value) => window.__mainSceneProbe!.getVisibleFloatingTexts(value), prefix),
 };

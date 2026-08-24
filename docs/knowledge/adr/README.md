@@ -170,6 +170,8 @@ hundreds of inbound references.
 - [Boss health bar as a scaled HUD component](0017-boss-health-bar-hud-component.md)
 - [HiDPI supersampling render scale for crisp text](0025-hidpi-supersampling-render-scale.md)
 - [Generic VFX effects pipeline](0025-vfx-effects-pipeline.md)
+- [Reward-opening audio as a reusable, deterministic cue layer](0071-reward-opening-audio-cues.md) — the first `AudioCueEngine`-based procedural synth cue layer.
+- [Combat/loot audio cues as a second reuse of the reward-opening cue pattern](2026-08-23-combat-loot-audio-cues.md) — weapon/spell/ability/damage/pickup SFX sourced from the existing `combatEvents`/`abilityActivations`/`vfxEvents` queues, no new core plumbing.
 
 ### Process, CI & telemetry
 

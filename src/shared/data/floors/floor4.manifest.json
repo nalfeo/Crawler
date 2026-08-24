@@ -1,0 +1,70 @@
+{
+  "id": "floor4",
+  "name": "Floor 4 - The Main Event",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": false,
+    "released": false,
+    "winBudgetMs": 900000
+  },
+  "timer": {
+    "durationMs": 3600000,
+    "stairSpawnCountdownMs": 0
+  },
+  "objectives": {
+    "requiredRats": 0,
+    "requiredSlimes": 0,
+    "requiredTotalKills": 0,
+    "requiredGold": 0,
+    "requiredJunk": 0,
+    "markerRadiusFt": 8.0
+  },
+  "map": {
+    "widthTiles": 80,
+    "heightTiles": 44,
+    "biome": "showcase_arena",
+    "seed": 404,
+    "roomWidthRange": [20, 48],
+    "roomHeightRange": [14, 40],
+    "maxRooms": 2,
+    "floorDensity": 1.0,
+    "tileSizeFt": 4.0
+  },
+  "player": {
+    "hpBonus": 60,
+    "moveSpeedBonus": 0.05,
+    "pickupRangeBonus": 2.5
+  },
+  "camera": {
+    "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomWeaponImmunity": true,
+    "safeRoomDoorsAutoClose": true,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": true
+  },
+  "lighting": {
+    "ambient": 0.45
+  },
+  "floor4": {
+    "arena": {
+      "widthTiles": 48,
+      "heightTiles": 40,
+      "pillarSizeTiles": 3,
+      "pillarInsetTiles": 10,
+      "borderThicknessTiles": 2
+    },
+    "greenRoom": {
+      "widthTiles": 20,
+      "heightTiles": 14
+    },
+    "tunnel": {
+      "lengthTiles": 8,
+      "widthTiles": 4
+    }
+  }
+}
