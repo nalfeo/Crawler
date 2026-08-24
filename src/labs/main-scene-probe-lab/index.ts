@@ -38,6 +38,8 @@ import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import { spawnEnemy } from '../../core/spawners/combatants.js';
+import type { CombatEvent } from '../../shared/combat-events.js';
+import type { VfxEvent } from '../../shared/vfx-events.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -244,6 +246,14 @@ interface MainSceneInternals {
    * by the probe so each e2e scenario starts clean.
    */
   rewardAudioCueLog?: RewardAudioCueLogEntryProbe[];
+  /**
+   * Test/automation observability only (see `MainGameScene.combatAudioCueLog`):
+   * the ordered array of every combat/loot audio cue actually synthesized by
+   * the real `AudioCueEngine` injected into `PhaserBridge`'s `combatAudio`
+   * controller. Mutable — cleared directly (`.length = 0`) by the probe so
+   * each e2e scenario starts clean.
+   */
+  combatAudioCueLog?: RewardAudioCueLogEntryProbe[];
   abilityLoadoutUI?: {
     isOpen(): boolean;
     close(): void;
@@ -1087,6 +1097,31 @@ export interface MainSceneProbeApi {
   getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
   /** Reset the reward-opening audio cue log so a scenario starts from empty. */
   clearRewardAudioCueLog(): void;
+  /**
+   * Ordered log of every combat/loot audio cue actually dispatched to the
+   * REAL `AudioCueEngine` (as `SynthCueSpec`s) by `PhaserBridge`'s
+   * `combatAudio` controller, since the last `clearCombatAudioCueLog()`. Used
+   * to prove — against the real scene+bridge wiring, not the pure
+   * cue-decision functions in isolation — that weapon/spell/ability/damage/
+   * pickup cues actually fire.
+   */
+  getCombatAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
+  /** Reset the combat audio cue log so a scenario starts from empty. */
+  clearCombatAudioCueLog(): void;
+  /**
+   * Pushes a synthetic `CombatEvent` directly onto the REAL running world's
+   * `world.combatEvents` queue (the same queue the real damage/weapon systems
+   * push onto), so the next real render frame's `combatAudio.update()` reads
+   * it exactly as it would a genuine combat event. Arrangement affordance
+   * only — the assertion is always on `getCombatAudioCueLog()`, never on this
+   * call directly.
+   */
+  pushTestCombatEvent(event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>): void;
+  /**
+   * Pushes a synthetic `VfxEvent` directly onto the REAL running world's
+   * `world.vfxEvents` queue (see `pushTestCombatEvent`).
+   */
+  pushTestVfxEvent(event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>): void;
   /** Visible floating world-text objects, optionally filtered by a text prefix. */
   getVisibleFloatingTexts(prefix?: string): readonly FloatingTextProbe[];
 }
@@ -2544,6 +2579,33 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene?.rewardAudioCueLog) {
         scene.rewardAudioCueLog.length = 0;
       }
+    },
+    getCombatAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
+      return getScene()?.combatAudioCueLog ?? [];
+    },
+
+    clearCombatAudioCueLog: (): void => {
+      const scene = getScene();
+      if (scene?.combatAudioCueLog) {
+        scene.combatAudioCueLog.length = 0;
+      }
+    },
+    pushTestCombatEvent: (event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>): void => {
+      const world = getScene()?.world;
+      if (!world) return;
+      world.combatEvents.push({
+        x: 0,
+        y: 0,
+        amount: 0,
+        targetType: 'enemy',
+        timestamp: world.elapsedMs,
+        ...event,
+      });
+    },
+    pushTestVfxEvent: (event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>): void => {
+      const world = getScene()?.world;
+      if (!world) return;
+      world.vfxEvents.push({ x: 0, y: 0, ...event });
     },
     getVisibleFloatingTexts: (prefix = ''): readonly FloatingTextProbe[] => {
       const phaserScene = getPhaserScene();
