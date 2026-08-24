@@ -1,0 +1,97 @@
+name: Epic Create
+
+# Turns a committed `*.epic.json` file into real GitHub issues.
+#
+# Cloud coding-agent sessions cannot create GitHub issues directly (no
+# issue-create permission), so when an agent plans a big feature and splits it
+# into dependency-ordered slices, it commits a declarative `*.epic.json` file
+# describing that layout instead. Once the file lands on `main`, this workflow
+# runs with a token that *can* create issues.
+#
+# Every epic always starts with a single human-review issue
+# (`.github/scripts/epics/epic-create.mjs`): no slice/node issue is ever
+# created until that review issue is closed **as completed** by a human (an
+# issue closed as "not planned" is a rejection, not an approval). Each review
+# issue is scoped to a content hash of the reviewed plan, so a later edit to
+# the `.epic.json` file gets its own brand-new review issue instead of
+# silently reusing an old approval/rejection. Re-running this workflow (every
+# push, on the review issue's closed/reopened events, or manually) is safe —
+# it is idempotent via marker comments embedded in each managed issue body
+# and never edits or duplicates an issue that already exists.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/knowledge/epics/**/*.epic.json'
+      - '.github/scripts/epics/**'
+      - '.github/workflows/epic-create.yml'
+  # Materialize node issues as soon as a human approves (closes) the review issue,
+  # detect rejection on "not planned" closes, and return reopened reviews to the
+  # waiting state — do not wait for an unrelated future push to `main`.
+  issues:
+    types: [closed, reopened]
+  workflow_dispatch:
+    inputs:
+      epic_path:
+        description: >
+          Path (relative to repo root) to a single *.epic.json file to
+          process. Leave empty to process every *.epic.json file in the repo.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+
+# Serialize runs so two overlapping triggers (e.g. a push and an issue close)
+# can never both observe "issue not yet created" and both create it.
+concurrency:
+  group: epic-create
+  cancel-in-progress: false
+
+jobs:
+  create:
+    name: Create epic issues
+    if: >-
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'epic-review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Discover epic files
+        id: discover
+        shell: bash
+        env:
+          EPIC_PATH: ${{ github.event.inputs.epic_path }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EPIC_PATH" ]; then
+            files="$EPIC_PATH"
+          else
+            files=$(find docs/knowledge/epics -type f -name '*.epic.json' | sort)
+          fi
+          if [ -z "$files" ]; then
+            echo "No *.epic.json files found; nothing to do."
+          fi
+          {
+            echo 'files<<EOF'
+            echo "$files"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Process epic files
+        if: steps.discover.outputs.files != ''
+        shell: bash
+        env:
+          FILES: ${{ steps.discover.outputs.files }}
+        run: |
+          set -euo pipefail
+          mapfile -t files <<< "$FILES"
+          node .github/scripts/epics/epic-create.mjs "${files[@]}"
