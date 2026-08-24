@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "floor3-set-pieces",
+  "task_title": "Implement Floor 3 set-piece slice",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Plan review rejected the data-only 6+1 proposal. Resolved by changing scope to 7 affinity Studio motifs plus 1 Final Four arena; adding minimal runtime glue in floor3Scenario so selected Studio/Final Four rooms use the authored set-piece IDs; adding shared typed mapping data near floor3 studios; and strengthening tests to cover mapping, schema, door slots, and stamp/carve/runtime assignment rather than just ID existence."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

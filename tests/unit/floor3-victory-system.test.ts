@@ -75,6 +75,8 @@ describe('floor3 studios + final four objective tick', () => {
       stateA!.studios.map((s) => ({
         id: s.id,
         roomId: s.roomId,
+        setPieceId: s.setPieceId,
+        setPieceCarved: s.setPieceCarved,
         teamIds: s.teamIds,
         unlockLevel: s.unlockLevel,
       })),
@@ -82,11 +84,45 @@ describe('floor3 studios + final four objective tick', () => {
       stateB!.studios.map((s) => ({
         id: s.id,
         roomId: s.roomId,
+        setPieceId: s.setPieceId,
+        setPieceCarved: s.setPieceCarved,
         teamIds: s.teamIds,
         unlockLevel: s.unlockLevel,
       })),
     );
+    expect({
+      roomId: stateA!.finalFour.roomId,
+      setPieceId: stateA!.finalFour.setPieceId,
+      setPieceCarved: stateA!.finalFour.setPieceCarved,
+    }).toEqual({
+      roomId: stateB!.finalFour.roomId,
+      setPieceId: stateB!.finalFour.setPieceId,
+      setPieceCarved: stateB!.finalFour.setPieceCarved,
+    });
     expect(stateA!.finalFourPendingSpawns).toEqual(stateB!.finalFourPendingSpawns);
+  });
+
+  it('assigns authored set-piece rooms to every selected Studio and the Final Four', () => {
+    const { world } = createFloor3World(909);
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    expect(world.setPieceProps.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.roomId).toBeGreaterThanOrEqual(0);
+      expect(studio.setPieceId).toMatch(/^floor3-studio-/);
+      expect(studio.setPieceCarved).toBe(true);
+      for (const pending of studio.pendingSpawns) {
+        expect(pending.x).toBeDefined();
+        expect(pending.y).toBeDefined();
+      }
+    }
+    expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
+    expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
+    expect(state.finalFour.setPieceCarved).toBe(true);
+    for (const pending of state.finalFourPendingSpawns) {
+      expect(pending.x).toBeDefined();
+      expect(pending.y).toBeDefined();
+    }
   });
 
   it('gates each Studio roster spawn behind its own seeded unlock level (spec R6 soft-gate)', () => {

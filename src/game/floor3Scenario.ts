@@ -12,9 +12,12 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
+import { carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { stampSetPiece } from '../core/map/stampSetPiece.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { spawnRosterCompanion } from '../core/spawners/companions.js';
+import { addSetPieceProp } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
@@ -35,7 +38,12 @@ import {
   speciesTokenForId,
   type PetSpeciesDef,
 } from '../shared/data/floor3/species.js';
+import {
+  FLOOR3_FINAL_FOUR_SET_PIECE_ID,
+  floor3SetPieceIdForStudio,
+} from '../shared/data/floor3/set-pieces.js';
 import { selectFloor3FinalFour, selectFloor3Studios } from '../shared/data/floor3/studios.js';
+import { getSetPieceDef, isStructuralSetPieceProp } from '../shared/set-piece-types.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import {
@@ -389,6 +397,32 @@ function pickFloor3RosterSpawnTile(room: RoomData, index: number): { x: number; 
   };
 }
 
+function stampFloor3EncounterSetPiece(
+  world: GameWorld,
+  room: RoomData,
+  setPieceId: string,
+): { room: RoomData; carved: boolean } {
+  const floorMap = world.floorMap;
+  const def = getSetPieceDef(setPieceId);
+  if (!floorMap || !def) return { room, carved: false };
+
+  const carve = carveSetPieceRoom(floorMap, room, def);
+  const stampedRoom = carve.fitted ? (floorMap.roomGraph.get(room.id) ?? room) : room;
+  const stamp = stampSetPiece(def, {
+    roomBounds: stampedRoom.bounds,
+    tileSizeFt: floorMap.config.tileSizeFt,
+    anchor: carve.fitted ? 'bounds-topleft' : 'interior-center',
+  });
+  const structuralPropIds = new Set(
+    def.props.filter(isStructuralSetPieceProp).map((prop) => prop.id),
+  );
+  for (const stampedProp of stamp.props) {
+    if (stampedProp.render.label && structuralPropIds.has(stampedProp.render.label)) continue;
+    addSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
+  }
+  return { room: stampedRoom, carved: carve.fitted };
+}
+
 /**
  * Up to `count` distinct passable tiles near the map centre, collected via an
  * outward spiral scan — the Final Four's "arena" spawn points. The
@@ -456,6 +490,9 @@ function initializeFloor3Studios(
   selectedStudios.forEach((studio, studioIndex) => {
     const room =
       territoryRooms.length > 0 ? territoryRooms[studioIndex % territoryRooms.length] : undefined;
+    const setPieceId = floor3SetPieceIdForStudio(studio);
+    const placement = room ? stampFloor3EncounterSetPiece(world, room, setPieceId) : undefined;
+    const placedRoom = placement?.room ?? room;
     // One team id shared by every Trainer's Companions in this Studio (not
     // one per Trainer) — see the `teamIds` doc comment on `Floor3EncounterState`.
     const teamId = nextStudioTeamId;
@@ -465,7 +502,7 @@ function initializeFloor3Studios(
     for (const trainer of studio.trainers) {
       for (const companion of trainer.companions) {
         if (!room) continue;
-        const tile = pickFloor3RosterSpawnTile(room, cellIndex);
+        const tile = pickFloor3RosterSpawnTile(placedRoom ?? room, cellIndex);
         cellIndex += 1;
         const spawnPos = floorMap.tileToWorld(tile.x, tile.y);
         pendingSpawns.push({
@@ -481,7 +518,9 @@ function initializeFloor3Studios(
       id: studio.studioId,
       name: studio.name,
       teamIds: [teamId],
-      roomId: room ? room.id : -1,
+      roomId: placedRoom ? placedRoom.id : -1,
+      setPieceId,
+      setPieceCarved: placement?.carved ?? false,
       defeated: false,
       unlockLevel:
         FLOOR3_STUDIO_UNLOCK_LEVELS[studioIndex % FLOOR3_STUDIO_UNLOCK_LEVELS.length] ?? 0,
@@ -493,12 +532,25 @@ function initializeFloor3Studios(
   // One team id shared by every Handler's Companions in the Final Four.
   const finalFourTeamId = FLOOR3_FINAL_FOUR_TEAM_BASE;
   const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
+  const finalFourRoom = territoryRooms.find(
+    (room) => !studios.some((studio) => studio.roomId === room.id),
+  );
+  const finalFourPlacement = finalFourRoom
+    ? stampFloor3EncounterSetPiece(world, finalFourRoom, FLOOR3_FINAL_FOUR_SET_PIECE_ID)
+    : undefined;
+  let finalFourCellIndex = 0;
   selectedFinalFour.forEach((handler) => {
     for (const companion of handler.companions) {
+      const tile = finalFourPlacement
+        ? pickFloor3RosterSpawnTile(finalFourPlacement.room, finalFourCellIndex)
+        : undefined;
+      finalFourCellIndex += 1;
+      const spawnPos = tile ? floorMap.tileToWorld(tile.x, tile.y) : undefined;
       finalFourPendingSpawns.push({
         speciesId: companion.speciesId,
         level: companion.level,
         teamId: finalFourTeamId,
+        ...(spawnPos ? { x: spawnPos.x, y: spawnPos.y } : {}),
       });
     }
   });
@@ -518,7 +570,9 @@ function initializeFloor3Studios(
       id: 'final-four',
       name: 'The Final Four',
       teamIds: [finalFourTeamId],
-      roomId: -1,
+      roomId: finalFourPlacement?.room.id ?? -1,
+      setPieceId: FLOOR3_FINAL_FOUR_SET_PIECE_ID,
+      setPieceCarved: finalFourPlacement?.carved ?? false,
       defeated: false,
       unlockLevel: 0,
       unlocked: false,
@@ -556,7 +610,10 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
   );
   studiosState.finalFourPendingSpawns.forEach((pending, index) => {
     const tile = arenaTiles[index % arenaTiles.length]!;
-    const arenaPos = floorMap.tileToWorld(tile.x, tile.y);
+    const arenaPos =
+      pending.x !== undefined && pending.y !== undefined
+        ? { x: pending.x, y: pending.y }
+        : floorMap.tileToWorld(tile.x, tile.y);
     const eid = spawnFloor3RosterCompanion(
       world,
       arenaPos.x,
@@ -868,6 +925,7 @@ export function initializeFloor3Scenario(
   };
   const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
   world.floorMap = floorMap;
+  world.setPieceProps.length = 0;
   attachBarriersToFloorMap(world);
   world.floor = 3;
   world.floorId = 'floor3';

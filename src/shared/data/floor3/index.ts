@@ -4,6 +4,7 @@
  * See `.specify/specs/floor3-companion-league.md` and ADR 0071.
  */
 export * from './affinity.js';
+export * from './set-pieces.js';
 export * from './styles.js';
 export {
   ABILITY_MILESTONE_LEVELS,
