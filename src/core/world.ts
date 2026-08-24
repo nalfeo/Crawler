@@ -142,6 +142,13 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /**
+   * Pending Floor 3 starter-Companion offer (spec R5 §6.1): the seeded 4
+   * `speciesId`s presented while `world.state === 'loadout'` at floor start.
+   * Cleared implicitly once `selectFloor3StarterCompanion` resumes play —
+   * consumers should treat a missing/empty offer as "no pick pending".
+   */
+  floor3StarterOffer?: readonly string[];
   /** Floor 4 arena clock + phase-machine state. */
   floor4Arena?: Floor4ArenaState;
 }

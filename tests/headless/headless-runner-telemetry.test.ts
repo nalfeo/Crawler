@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { InputState } from '../../src/shared/input.js';
@@ -203,6 +204,23 @@ describe('headless runner AI telemetry', () => {
     expect(stats.runStartXp).toBe(stats.totalXp);
     expect(stats.runStartXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
     expect(provider.planningDeadlineMs).toBeNull();
+  });
+
+  it('equips forceWeaponId before resolving Floor 3 starter-companion loadout', async () => {
+    let observedActiveWeaponId: string | null = null;
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      floorId: 'floor3',
+      maxFrames: 0,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'pistol',
+      onFinish: (world) => {
+        observedActiveWeaponId = getActiveWeaponDef(world)?.id ?? null;
+      },
+    });
+
+    expect(stats.startingWeapon).toBe('pistol');
+    expect(observedActiveWeaponId).toBe('pistol');
   });
 
   it('does not report configured starting levels as in-run level-ups', async () => {
