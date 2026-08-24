@@ -56,7 +56,12 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    creates **only** the human-review issue (labeled `epic`, `epic:<epic_id>`,
    `epic-review`) and stops. The review issue body lists every planned node
    and its dependencies so a human can review the whole plan in one place;
-   the hash is embedded in a hidden marker in the issue body.
+   the hash is embedded in a hidden marker in the issue body. Any label an
+   epic needs (the `epic:<epic_id>` label, `epic-review`, or a custom label
+   from the file) is created in the repo first if it doesn't already exist —
+   GitHub silently drops unknown label names from issue creation instead of
+   creating them, so without this step a brand-new epic's own label would
+   never actually attach and the workflow could never find its issue again.
 3. On a later run, if that review issue is still open, nothing happens.
 4. If the review issue is closed **as "Not planned"**, this exact plan
    revision is treated as rejected: no node issue is ever created for it.

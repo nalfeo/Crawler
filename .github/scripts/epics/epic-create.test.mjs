@@ -5,6 +5,7 @@ import {
   EPIC_LABEL,
   EPIC_REVIEW_LABEL,
   assertUniqueEpicIds,
+  ensureLabelsExist,
   epicContentHash,
   epicLabel,
   nodeMarker,
@@ -37,11 +38,15 @@ function reviewIssueFor(epic, { number = 1, state = 'open', stateReason = null }
   };
 }
 
-function harness(existingIssues = []) {
+function harness(existingIssues = [], existingLabels = []) {
   const calls = [];
   let nextIssueNumber = 100;
+  const labels = [...existingLabels];
   const paginateFn = async (token, url) => {
     calls.push(['paginate', token, url]);
+    if (url.endsWith('/labels')) {
+      return labels;
+    }
     return existingIssues;
   };
   const requestFn = async (token, url, options) => {
@@ -58,9 +63,18 @@ function harness(existingIssues = []) {
       existingIssues.push(issue);
       return { data: issue };
     }
+    if (options.method === 'POST' && url.endsWith('/labels')) {
+      if (labels.some((label) => label.name === options.body.name)) {
+        const error = new Error('label already exists');
+        error.status = 422;
+        throw error;
+      }
+      labels.push({ name: options.body.name });
+      return { data: { name: options.body.name } };
+    }
     throw new Error(`unexpected request: ${url}`);
   };
-  return { calls, paginateFn, requestFn };
+  return { calls, paginateFn, requestFn, labels };
 }
 
 test('validateEpicFile accepts a well-formed epic', () => {
@@ -132,7 +146,7 @@ test('first run creates only the human-review issue, no node issues', async () =
   });
 
   assert.equal(result.reviewApproved, false);
-  const posts = h.calls.filter((c) => c[0] === 'request');
+  const posts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues'));
   assert.equal(posts.length, 1);
   const [, , , options] = posts[0];
   assert.match(options.body.title, /^\[Epic Review\] Example Epic$/);
@@ -158,7 +172,7 @@ test('re-running while the review issue is still open creates nothing new', asyn
 
   assert.equal(result.reviewApproved, false);
   assert.equal(result.reviewIssueNumber, 1);
-  assert.equal(h.calls.filter((c) => c[0] === 'request').length, 0);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
 });
 
 test('a review issue closed with no state_reason (e.g. auto-closed via "Closes #N") is not treated as approval', async () => {
@@ -175,7 +189,7 @@ test('a review issue closed with no state_reason (e.g. auto-closed via "Closes #
 
   assert.equal(result.reviewApproved, false);
   assert.equal(result.reviewRejected, undefined);
-  assert.equal(h.calls.filter((c) => c[0] === 'request').length, 0);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
 });
 
 test('closing the review issue as "not planned" rejects that exact revision', async () => {
@@ -192,7 +206,7 @@ test('closing the review issue as "not planned" rejects that exact revision', as
 
   assert.equal(result.reviewApproved, false);
   assert.equal(result.reviewRejected, true);
-  assert.equal(h.calls.filter((c) => c[0] === 'request').length, 0);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
 });
 
 test('a revised epic (different content hash) after a rejection gets a brand-new review issue, not stuck forever', async () => {
@@ -213,7 +227,7 @@ test('a revised epic (different content hash) after a rejection gets a brand-new
   assert.equal(result.reviewApproved, false);
   assert.equal(result.reviewRejected, undefined);
   assert.notEqual(result.reviewIssueNumber, 1);
-  const posts = h.calls.filter((c) => c[0] === 'request');
+  const posts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues'));
   assert.equal(posts.length, 1);
   assert.ok(
     posts[0][3].body.body.includes(reviewMarker('example-epic', epicContentHash(revisedEpic))),
@@ -237,7 +251,7 @@ test('a revised epic (different content hash) after approval also gets a brand-n
 
   assert.equal(result.reviewApproved, false);
   assert.notEqual(result.reviewIssueNumber, 1);
-  assert.equal(h.calls.filter((c) => c[0] === 'request').length, 1);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 1);
 });
 
 test('once the review issue is closed as completed, node issues are created in dependency order with Blocked-by text', async () => {
@@ -253,7 +267,7 @@ test('once the review issue is closed as completed, node issues are created in d
   });
 
   assert.equal(result.reviewApproved, true);
-  const posts = h.calls.filter((c) => c[0] === 'request');
+  const posts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues'));
   assert.equal(posts.length, 2);
 
   const [, , , slice1Options] = posts[0];
@@ -295,7 +309,7 @@ test('is idempotent: re-running after all issues exist creates nothing new', asy
   });
 
   assert.equal(result.reviewApproved, true);
-  assert.equal(h.calls.filter((c) => c[0] === 'request').length, 0);
+  assert.equal(h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues')).length, 0);
   assert.ok(result.outcomes.every((o) => o.action === 'exists'));
 });
 
@@ -329,4 +343,120 @@ test('planAndCreateEpic throws for an invalid epic file instead of writing anyth
     /invalid epic file/,
   );
   assert.equal(h.calls.length, 0);
+});
+
+test('ensureLabelsExist creates only labels that do not already exist', async () => {
+  const h = harness([], [{ name: 'epic' }]);
+  await ensureLabelsExist({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    labelNames: ['epic', 'epic:example-epic', 'epic-review'],
+  });
+
+  const labelPosts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/labels'));
+  assert.deepEqual(labelPosts.map((c) => c[3].body.name).sort(), [
+    'epic-review',
+    'epic:example-epic',
+  ]);
+  assert.deepEqual(h.labels.map((l) => l.name).sort(), [
+    'epic',
+    'epic-review',
+    'epic:example-epic',
+  ]);
+});
+
+test('ensureLabelsExist tolerates a 422 from a label created concurrently between list and create', async () => {
+  const h = harness();
+  h.requestFn = async (token, url, options) => {
+    h.calls.push(['request', token, url, options]);
+    if (options.method === 'POST' && url.endsWith('/labels')) {
+      const error = new Error('already exists');
+      error.status = 422;
+      throw error;
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  await assert.doesNotReject(
+    ensureLabelsExist({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      labelNames: ['epic'],
+    }),
+  );
+});
+
+test('ensureLabelsExist re-throws a non-422 failure from label creation', async () => {
+  const h = harness();
+  h.requestFn = async (token, url, options) => {
+    h.calls.push(['request', token, url, options]);
+    if (options.method === 'POST' && url.endsWith('/labels')) {
+      const error = new Error('server error');
+      error.status = 500;
+      throw error;
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  await assert.rejects(
+    ensureLabelsExist({
+      requestFn: h.requestFn,
+      paginateFn: h.paginateFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      labelNames: ['epic'],
+    }),
+    /server error/,
+  );
+});
+
+test('planAndCreateEpic creates the epic and epic-review labels before filing the first review issue', async () => {
+  const h = harness();
+  const result = await planAndCreateEpic({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic: exampleEpic(),
+  });
+
+  assert.equal(result.reviewApproved, false);
+  assert.deepEqual(h.labels.map((l) => l.name).sort(), [
+    'epic',
+    'epic-review',
+    'epic:example-epic',
+  ]);
+  // Every label the review issue is created with must already exist by the
+  // time the POST /issues call happens, or GitHub silently drops it.
+  const issuePost = h.calls.find((c) => c[0] === 'request' && c[2].endsWith('/issues'));
+  const labelPostIndexes = h.calls
+    .map((c, i) => (c[0] === 'request' && c[2].endsWith('/labels') ? i : -1))
+    .filter((i) => i >= 0);
+  const issuePostIndex = h.calls.indexOf(issuePost);
+  assert.ok(labelPostIndexes.every((i) => i < issuePostIndex));
+});
+
+test('planAndCreateEpic does not try to recreate labels that already exist', async () => {
+  const epic = exampleEpic();
+  const h = harness(
+    [reviewIssueFor(epic, { state: 'closed', stateReason: 'completed' })],
+    [{ name: 'epic' }, { name: 'epic:example-epic' }, { name: 'epic-review' }],
+  );
+  await planAndCreateEpic({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+  });
+
+  const labelPosts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/labels'));
+  assert.equal(labelPosts.length, 0);
 });

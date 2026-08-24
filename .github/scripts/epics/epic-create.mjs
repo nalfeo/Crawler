@@ -278,6 +278,37 @@ async function fetchEpicIssues({ paginateFn, token, owner, repo, epicId }) {
 }
 
 /**
+ * Ensure every label this run is about to attach to an issue already exists
+ * in the repo. The GitHub issues API silently DROPS any label name that
+ * doesn't already exist (it neither errors nor auto-creates the label) —
+ * without this, a brand-new epic's dynamic `epic:<epic_id>` label would
+ * never actually attach to the review issue, so `fetchEpicIssues` (which
+ * filters by that exact label) would never find it again on a later run,
+ * and every run would create a duplicate review issue forever.
+ */
+export async function ensureLabelsExist({ requestFn, paginateFn, token, owner, repo, labelNames }) {
+  const existing = await paginateFn(token, `/repos/${owner}/${repo}/labels`);
+  const existingNames = new Set(existing.map((label) => label.name));
+  for (const name of new Set(labelNames)) {
+    if (existingNames.has(name)) {
+      continue;
+    }
+    try {
+      await requestFn(token, `/repos/${owner}/${repo}/labels`, {
+        method: 'POST',
+        body: { name },
+      });
+    } catch (error) {
+      // 422 means the label already exists (e.g. created by a concurrent
+      // run between our list and our create) — safe to ignore.
+      if (error?.status !== 422) {
+        throw error;
+      }
+    }
+  }
+}
+
+/**
  * Core orchestration: given a parsed+validated epic and injected GitHub
  * request/paginate functions, create whatever issues are safe to create on
  * this run and report the outcome. Never mutates existing issues.
@@ -289,6 +320,13 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
   }
 
   const sharedLabels = [EPIC_LABEL, epicLabel(epic.epic_id), ...(epic.labels || [])];
+  const allLabelNames = [
+    ...sharedLabels,
+    EPIC_REVIEW_LABEL,
+    ...epic.nodes.flatMap((node) => node.labels || []),
+  ];
+  await ensureLabelsExist({ requestFn, paginateFn, token, owner, repo, labelNames: allLabelNames });
+
   const existingIssues = await fetchEpicIssues({
     paginateFn,
     token,
