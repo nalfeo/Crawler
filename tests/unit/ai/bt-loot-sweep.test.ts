@@ -1,14 +1,19 @@
 /**
  * BT loot sweep tests (Priority 2.5).
  *
- * The sweep fires as a **pre-exit** window only: unbounded radius, active while
- * the floor staircase is unlocked and not yet discovered, because descending
- * destroys every uncollected pickup.
+ * Two mutually-exclusive windows share this node:
+ *   - **mid-run** (default, whenever the pre-exit window is not open): bounded
+ *     to `LOOT_SWEEP_RADIUS_FT`, a local post-combat cleanup so drops from the
+ *     fight that just ended aren't left behind while the AI moves on.
+ *   - **pre-exit**: unbounded radius, active while the floor staircase is
+ *     unlocked and not yet discovered, because descending destroys every
+ *     uncollected pickup.
  *
  * Verifies:
  *   - the window targets the nearest reachable XP gem (and gold);
- *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept in the pre-exit window,
- *     for both the Floor 1 and the distinct Floor 2 staircase guards;
+ *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept in the pre-exit window but
+ *     NOT in the mid-run window, for both the Floor 1 and the distinct Floor 2
+ *     staircase guards;
  *   - the sweep does NOT fire with nothing on the ground;
  *   - the sweep does NOT fire when an enemy is within engage range, including
  *     enemies currently ignored for target selection.
@@ -93,6 +98,37 @@ describe('BT — loot sweep (Priority 2.5)', () => {
       const { world } = makeFloor1World();
       openSweepWindow(world);
       // No loot spawned — sweep has nothing to target, Progress should win.
+
+      const decision = pollDecision(world);
+      expect(decision.state).not.toBe(AIState.COLLECT);
+    });
+  });
+
+  describe('mid-run (local) window', () => {
+    it('sweeps a nearby XP gem while no staircase sweep window is open', () => {
+      const { world, x, y } = makeFloor1World();
+      // No `openSweepWindow` call — the pre-exit window is closed, so any sweep
+      // that fires here must be the mid-run window.
+
+      const gemEid = spawnXpGem(world, x + 5, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.state).toBe(AIState.COLLECT);
+      expect(decision.targetEid).toBe(gemEid);
+      expect(decision.reason.toLowerCase()).toContain('sweep');
+    });
+
+    it('does NOT reach past LOOT_SWEEP_RADIUS_FT', () => {
+      const { world, x, y } = makeFloor1World();
+
+      spawnXpGem(world, x + BEYOND_LOCAL_WINDOW_FT, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
+    });
+
+    it('falls through when nothing is on the ground', () => {
+      const { world } = makeFloor1World();
 
       const decision = pollDecision(world);
       expect(decision.state).not.toBe(AIState.COLLECT);

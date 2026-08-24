@@ -1252,10 +1252,17 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Pre-exit loot sweep — collect XP/gold before descending,
-        // because the floor transition destroys every uncollected pickup. Only fires
-        // when the staircase is unlocked but not yet discovered, so it cannot
-        // interfere with any in-progress objective.
+        // Priority 2.5: Loot sweep — collect XP/gold that's already on the ground
+        // instead of leaving it behind while chasing the next objective/enemy.
+        // Two mutually-exclusive windows share this slot (the window guard inside
+        // `buildLootSweepBehavior` means only one of the two ever fires per frame):
+        //  - mid-run: a bounded post-combat cleanup (`LOOT_SWEEP_RADIUS_FT`) so the
+        //    drops from the fight that just ended aren't left behind while Engage/
+        //    Hunt (lower priority) moves on to the next enemy.
+        //  - pre-exit: unbounded once the staircase is unlocked but not yet
+        //    discovered, because the floor transition destroys every uncollected
+        //    pickup.
+        this.buildLootSweepBehavior('mid-run'),
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
