@@ -1,5 +1,39 @@
 [
   {
+    "commit": "838ca5a138e1c33f4bed4b4c1e91b99067910dcc",
+    "commitDate": "2026-08-24T21:06:16Z",
+    "commitSubject": "Implement Floor 4 arena director rehearsal (#3495)",
+    "capturedAt": "2026-08-24T22:28:14.584Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32780409118",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/838ca5a138e1c33f4bed4b4c1e91b99067910dcc.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.79,
+      "gatePass": false,
+      "path": "by-sha/838ca5a138e1c33f4bed4b4c1e91b99067910dcc.fun-report.json"
+    }
+  },
+  {
     "commit": "9f284aed75104ea9486292301861ef194563231d",
     "commitDate": "2026-08-24T19:56:15Z",
     "commitSubject": "Epic creation workflow: gate `.epic.json` → GitHub issues behind human review (#3501)",
