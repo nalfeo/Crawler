@@ -2,7 +2,7 @@ import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { Companion, Enemy, PartySlot, Prop } from '../../src/core/index.js';
+import { Companion, Enemy, PartySlot, Prop, Size, Sprite } from '../../src/core/index.js';
 import {
   FLOOR3_TIMEOUT_GOAL_ID,
   _resolveFloor3WildSpawnWeights,
@@ -234,8 +234,27 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     expect(world.floorExtendedState?.floor3StarterOffer ?? []).toEqual([]);
     const companions = query(world.ecs, [Companion, PartySlot]);
     expect(companions.length).toBe(1);
-    expect(world.stores.team.id[companions[0]!]).toBe(TeamId.PLAYER);
-    expect(getPetSpecies(offer[0]!)).toBeDefined();
+    const starterEid = companions[0]!;
+    expect(world.stores.team.id[starterEid]).toBe(TeamId.PLAYER);
+    const selectedSpecies = getPetSpecies(offer[0]!);
+    expect(selectedSpecies).toBeDefined();
+    const expectedArchetype = getFloorEnemyPack('floor3-wild')?.archetypes.find((archetype) => {
+      const species = archetype.speciesId ? getPetSpecies(archetype.speciesId) : undefined;
+      return (
+        species?.speciesId === selectedSpecies?.speciesId ||
+        archetype.id.endsWith(`-${selectedSpecies?.fightingStyle}`)
+      );
+    });
+    expect(expectedArchetype).toBeDefined();
+    expect(hasComponent(world.ecs, starterEid, Sprite)).toBe(true);
+    expect(hasComponent(world.ecs, starterEid, Size)).toBe(true);
+    expect(world.stores.sprite.textureId[starterEid]).toBe(expectedArchetype!.spriteTexture);
+    expect(world.stores.size.radius[starterEid]).toBeCloseTo(
+      expectedArchetype!.collisionRadius ??
+        Math.max(expectedArchetype!.spriteWidth, expectedArchetype!.spriteHeight) * 0.5,
+      6,
+    );
+    expect(world.enemyAppearanceKeys.get(starterEid)).toBe(expectedArchetype!.id);
   });
 
   it('falls back to the first offer option for an out-of-range index instead of stranding the pause', () => {

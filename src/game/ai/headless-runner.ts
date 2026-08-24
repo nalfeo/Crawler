@@ -678,26 +678,27 @@ export async function runHeadless(
   // Select starter weapon when the scenario exposes a loadout phase.
   let starterWeaponIndex = 0;
   const forceWeaponId = config.forceWeaponId;
+  const forceWeaponDef = forceWeaponId !== undefined ? getWeaponDef(forceWeaponId) : undefined;
+  if (forceWeaponId !== undefined && !forceWeaponDef) {
+    throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+  }
   if (scenario.selectLoadoutOption && world.state === 'loadout') {
-    if (forceWeaponId !== undefined && world.floorScenario) {
-      const idx = world.floorScenario.starterChoices.indexOf(forceWeaponId);
-      if (idx === -1) {
-        if (!getWeaponDef(forceWeaponId)) {
-          throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+    if (forceWeaponId !== undefined) {
+      if (world.floorScenario) {
+        const idx = world.floorScenario.starterChoices.indexOf(forceWeaponId);
+        if (idx === -1) {
+          world.floorScenario.starterChoices.push(forceWeaponId);
+          starterWeaponIndex = world.floorScenario.starterChoices.length - 1;
+        } else {
+          starterWeaponIndex = idx;
         }
-        world.floorScenario.starterChoices.push(forceWeaponId);
-        starterWeaponIndex = world.floorScenario.starterChoices.length - 1;
       } else {
-        starterWeaponIndex = idx;
+        equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
       }
     }
     scenario.selectLoadoutOption(world, starterWeaponIndex);
   } else if (forceWeaponId !== undefined) {
-    const weaponDef = getWeaponDef(forceWeaponId);
-    if (!weaponDef) {
-      throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
-    }
-    equipStarterOrFallback(world, forceWeaponId, weaponDef);
+    equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
   }
 
   const startingWeapon: string =

@@ -1015,7 +1015,7 @@ export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: numb
         ? archetype.detectRange * 0.65
         : 0;
 
-    _recruitCompanion(world, species.speciesId, {
+    const starterEid = _recruitCompanion(world, species.speciesId, {
       x: playerX + spawnOffset,
       y: playerY,
       hp,
@@ -1025,6 +1025,22 @@ export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: numb
       level: 1,
       ownerTeam: TeamId.PLAYER,
     });
+    if (starterEid !== undefined && archetype) {
+      setComponent(world.ecs, starterEid, Sprite, {
+        textureId: archetype.spriteTexture,
+        width: archetype.spriteWidth,
+        height: archetype.spriteHeight,
+      });
+      setComponent(world.ecs, starterEid, Size, {
+        radius:
+          archetype.collisionRadius ??
+          Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+        halfWidth: 0,
+        halfHeight: 0,
+        shape: SHAPE_CIRCLE,
+      });
+      setEnemyAppearanceKey(world, starterEid, archetype.id);
+    }
   }
 
   if (world.floorExtendedState) {

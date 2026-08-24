@@ -185,6 +185,26 @@ describe('CaveSystemGenerator', () => {
       const h = floor.config.heightTiles;
       const reached = bfsReachable(floor, floor.playerSpawn.x, floor.playerSpawn.y, w, h);
       expect(reached[floor.playerSpawn.y * w + floor.playerSpawn.x], `seed=${seed}`).toBe(1);
+      let outsidePassableTileFound = false;
+      for (let y = 0; y < h && !outsidePassableTileFound; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          const insideSpawnRoom =
+            x >= spawnRoom!.bounds.x &&
+            x < spawnRoom!.bounds.x + spawnRoom!.bounds.width &&
+            y >= spawnRoom!.bounds.y &&
+            y < spawnRoom!.bounds.y + spawnRoom!.bounds.height;
+          if (insideSpawnRoom || !floor.tileMap.isPassable(x, y)) continue;
+          outsidePassableTileFound = true;
+          expect(reached[y * w + x], `seed=${seed} unreachable passable tile at (${x},${y})`).toBe(
+            1,
+          );
+          break;
+        }
+      }
+      expect(
+        outsidePassableTileFound,
+        `seed=${seed} expected passable tiles outside spawn room`,
+      ).toBe(true);
     }
   });
 
