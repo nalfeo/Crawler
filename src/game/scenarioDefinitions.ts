@@ -274,13 +274,14 @@ function getFloor1CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
 }
 
 /**
- * Exact copy of the completion-screen variant Floor 2 actually reaches
- * (`terminal_victory` — Floor 2 has no `nextFloorId` and is the authored
- * final floor), matching `MainGameScene.showFloorCompletionScreenIfNeeded`
- * verbatim. `failed_timeout` is unreachable for Floor 2 today (no wired
- * timeout path at this layer); it is given sensible copy consistent with
- * Floor 2's own identity rather than reusing Floor 1's wording, since nothing
- * observable depends on it yet.
+ * Floor 2's completion-screen copy. Floor 2 now declares
+ * `nextFloorId: 'floor3'`, so the variant it actually reaches is
+ * `transition_to_next_floor` — clearing Floor 2 hands the player to the
+ * Companion League wilds instead of ending the run. `failed_timeout` is
+ * unreachable for Floor 2 today (no wired timeout path at this layer), and the
+ * two terminal variants are only reachable when Floor 2 is booted WITHOUT a
+ * floor-transition callback (labs/harnesses); both keep copy consistent with
+ * Floor 2's own identity.
  */
 function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
   switch (variant) {
@@ -290,13 +291,18 @@ function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
         subtitle: 'Floor 2 failed',
         body: 'The floor collapsed before the exit was secured.\nTry again and rally the families faster.',
       };
-    case 'terminal_victory':
     case 'transition_to_next_floor':
+      return {
+        title: 'Floor 2 Complete!',
+        subtitle: 'Heading to Floor 3...',
+        body: 'The Companion League wilds are waiting below!',
+      };
+    case 'terminal_victory':
     case 'terminal_complete':
       return {
-        title: 'Victory!',
+        title: 'Floor 2 Complete!',
         subtitle: 'Floor 2 complete!',
-        body: 'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+        body: 'You secured the tunnel network.\nMore floors coming soon...',
       };
   }
 }
@@ -310,11 +316,11 @@ const FLOOR_1_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
 };
 
 const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
-  title: 'Victory! Ready to exit?',
+  title: 'Proceed to the next floor?',
   subtitle: 'You are at the exit.',
-  body: 'Floor 2 is cleared. Are you ready to exit the dungeon?',
-  confirmLabel: 'Yes, exit now',
-  confirmDescription: 'You win!',
+  body: 'Floor 2 is cleared. Are you ready to descend to Floor 3?',
+  confirmLabel: 'Yes, descend now',
+  confirmDescription: 'Start Floor 3.',
 };
 
 /**
@@ -435,12 +441,17 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       floorId: 'floor2',
       configureWorld: initializeFloor2Scenario,
       onStairDescend: confirmFloor2StairDescend,
+      nextFloorId: 'floor3',
       npcs: FLOOR_2_NPCS,
       beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
       beforeEnemyAISystems: [companionAISystem, familyFeudSystem],
       director: FLOOR_2_DIRECTOR,
       getRunOutcome: getFloor2RunOutcome,
-      isTerminalRunVictory: true,
+      // Clearing Floor 2 now descends into Floor 3 rather than ending the run,
+      // so a Floor 2 clear is a transition, not a terminal run victory. The
+      // flag still matters for hosts that boot Floor 2 without a transition
+      // callback (labs), where the run genuinely ends there.
+      isTerminalRunVictory: false,
       getCompletionCopy: getFloor2CompletionCopy,
       getStairMarkerState: getFloor2StairMarkerState,
       stairConfirmation: FLOOR_2_STAIR_CONFIRMATION,
@@ -473,4 +484,19 @@ export function getScenarioDefinition(floorId: string): ScenarioDefinition {
     );
   }
   throw new Error(`No scenario definition found for floor: ${floorId}`);
+}
+
+/**
+ * True when `floorId` can actually be booted: it has both a registered floor
+ * manifest and a scenario definition.
+ *
+ * This is deliberately weaker than `isFloorImplemented` (manifest
+ * `implemented.mvp`), which additionally means "has an attainable victory".
+ * A floor can be fully playable — generated, spawning, timed — while its
+ * terminal objective is still unbuilt (Floor 3 today). Callers that chain
+ * floors for PLAY use this; callers that decide what counts as a WIN must keep
+ * using `isFloorImplemented`.
+ */
+export function isFloorPlayable(floorId: string): boolean {
+  return SCENARIOS.has(floorId) && getFloorManifest(floorId) !== undefined;
 }

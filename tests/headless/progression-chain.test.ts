@@ -27,6 +27,7 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runProgression, resolveFloorChain } from '../../src/game/ai/progression-runner.js';
 import { GATE_MAX_FRAMES, GATE_SEEDS } from '../../scripts/agent/perf/floor1-gate-sample.js';
+import { getFloorWinBudgetMs } from '../../src/shared/floor-registry.js';
 
 /** A seed from the gated Floor-1 prefix, so Floor 1 is expected to clear. */
 const PROGRESSION_SEED = GATE_SEEDS[1] ?? 2;
@@ -43,6 +44,23 @@ describe('multi-floor progression', () => {
 
   it('refuses to start a progression on an unimplemented floor', () => {
     expect(() => resolveFloorChain('floor3')).toThrow(/not an implemented floor/);
+    // Even the playable-tail opt-in may not START on a floor that cannot be
+    // won: a progression whose first floor is unwinnable measures nothing.
+    expect(() => resolveFloorChain('floor3', { includePlayableTail: true })).toThrow(
+      /not an implemented floor/,
+    );
+  });
+
+  it('chains into the playable-but-unwinnable Floor 3 only when asked', () => {
+    // Floor 3 is authored and playable (map, wilds, timer) but has no victory
+    // yet, so it must stay out of the default win chain every sweep and gate
+    // measures — and be reachable explicitly for a real chained playthrough.
+    expect(resolveFloorChain('floor1', { includePlayableTail: true })).toEqual([
+      'floor1',
+      'floor2',
+      'floor3',
+    ]);
+    expect(resolveFloorChain('floor1')).toEqual(['floor1', 'floor2']);
   });
 
   it(
@@ -111,6 +129,66 @@ describe('multi-floor progression', () => {
       // Gold is a second, independent carried value: it is never reset by the
       // Floor-2 boot, so the run cannot end below what Floor 1 handed over.
       expect(floor2Leg.stats.totalGold).toBeGreaterThanOrEqual(captured!.playerGold);
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    'seed 27 descends from a cleared Floor 2 into Floor 3 with the carried-over player',
+    async () => {
+      // The real headless pipeline, not a lab: Floor 1 → Floor 2 → Floor 3 in
+      // one run. The Floor 3 leg is an EXHIBITION leg (Floor 3 has no victory
+      // yet), so it is stopped deterministically after a short slice rather
+      // than burning its 20-minute authored timer.
+      const FLOOR3_OBSERVATION_MS = 20_000;
+      const progression = await runProgression(
+        (_floorId, legIndex) => new BehaviorTreeAI({ seed: BLOCKED_FAMILY_REPRO_SEED + legIndex }),
+        {
+          seed: BLOCKED_FAMILY_REPRO_SEED,
+          startFloorId: 'floor1',
+          includePlayableTail: true,
+          // Floor-scoped so the Floor 1 and Floor 2 legs play out in full.
+          stopWhen: (world) =>
+            world.floorId === 'floor3' && world.elapsedMs >= FLOOR3_OBSERVATION_MS,
+        },
+      );
+
+      expect(progression.clearedFloorIds).toEqual(['floor1', 'floor2']);
+      expect(progression.legs.map((leg) => leg.floorId)).toEqual(['floor1', 'floor2', 'floor3']);
+      expect(progression.winnableFloorIds).toEqual(['floor1', 'floor2']);
+      expect(progression.exhibitionFloorIds).toEqual(['floor3']);
+
+      // The handoff itself: Floor 3 STARTED from the snapshot Floor 2 captured.
+      const floor2Leg = progression.legs.find((leg) => leg.floorId === 'floor2')!;
+      const floor3Leg = progression.legs.find((leg) => leg.floorId === 'floor3')!;
+      expect(floor2Leg.captured).toBeDefined();
+      expect(floor3Leg.startedFrom).toBe(floor2Leg.captured);
+      // A carried player boots Floor 3 at the level Floor 2 handed over, not at
+      // a cold level 1 — the level ledger's first entry is the boot level.
+      const bootLevelUp = floor3Leg.stats.levelUps[0];
+      expect(bootLevelUp).toBeDefined();
+      expect(bootLevelUp!.frame).toBeLessThanOrEqual(1);
+      expect(bootLevelUp!.level).toBe(floor2Leg.captured!.playerLevel.level);
+      // Floor 3 actually simulated (the leg is a real run, not a zero-frame boot).
+      expect(floor3Leg.stats.totalFrames).toBeGreaterThan(0);
+
+      // The exhibition leg must not touch the win verdict: Floor 3 can never be
+      // cleared, yet the Floor 1+2 progression still reads as a full victory,
+      // and Floor 3's missing budget must not null out the summed budget.
+      expect(progression.reachedFinalVictory).toBe(true);
+      expect(progression.officialWin).toBe(true);
+      // Budget is summed over the WINNABLE chain only. Floor 3 declares no
+      // budget, so consulting it would force `budgetMs` to null and silently
+      // degrade `officialWin` to raw victory for every chained run.
+      expect(getFloorWinBudgetMs('floor3')).toBeNull();
+      const winnableBudgets = progression.winnableFloorIds.map((floorId) =>
+        getFloorWinBudgetMs(floorId),
+      );
+      expect(progression.budgetMs).toBe(
+        winnableBudgets.some((budget) => budget === null)
+          ? null
+          : winnableBudgets.reduce((sum: number, budget) => sum + (budget ?? 0), 0),
+      );
     },
     HOOK_TIMEOUT_MS,
   );
