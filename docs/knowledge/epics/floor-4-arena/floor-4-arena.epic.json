@@ -1,0 +1,61 @@
+{
+  "epic_id": "floor-4-arena",
+  "title": "Floor 4 The Main Event arena remaining slices",
+  "description": "Materialize the remaining implementation issues for Floor 4's Main Event arena epic from .specify/specs/floor4-arena.md. Slice 1 is already implemented, so this graph starts with slice 2 and preserves the planned implementation order.",
+  "review": {
+    "title_prefix": "[Epic Review]",
+    "body": "Source of truth: .specify/specs/floor4-arena.md, docs/knowledge/game-design/floor4-arena.md, and ADR 0090. Human review should confirm this file still matches the remaining slice plan before closing as completed."
+  },
+  "labels": ["floor-4", "arena"],
+  "nodes": [
+    {
+      "id": "slice-2-phase-machine",
+      "title": "Floor 4 Slice 2: phase machine, arena clock, and headless route",
+      "body": "Implement arenaDirectorSystem for the Floor 4 empty broadcast rehearsal: clock, phases, transitions, scenario-pipeline wiring into real sim/headless paths, RunStats phase timeline, and deterministic headless traversal. Prerequisite outside this epic file: slice 1 floor plumbing and arena map must be landed.",
+      "labels": ["gameplay", "floor-4"],
+      "depends_on": []
+    },
+    {
+      "id": "slice-3-waves",
+      "title": "Floor 4 Slice 3: deterministic waves, manifests, gates, cap, debt, and cut",
+      "body": "Implement Floor 4 waves from the spec: enemies.floor4.json, per-act rosters/threat costs, immutable seeded wave manifests, release cursor, concurrency cap, spawn debt, cut behavior, and gate telegraphs.",
+      "labels": ["gameplay", "floor-4"],
+      "depends_on": ["slice-2-phase-machine"]
+    },
+    {
+      "id": "slice-4-headliners",
+      "title": "Floor 4 Slice 4: Headliner card, encounters, rewards, and overtime",
+      "body": "Implement Headliner pool data and seeded draw, act-slot encounter identity, entry/announcement, boss chest plus appearance fee, overtime ramp/cap, and boss-abilities.floor4.json.",
+      "labels": ["bosses", "floor-4"],
+      "depends_on": ["slice-3-waves"]
+    },
+    {
+      "id": "slice-5-green-room",
+      "title": "Floor 4 Slice 5: Green Room intermission transaction and shops",
+      "body": "Implement the Green Room transaction from the spec: sealed safe room, shop tables, per-visit seeded stock roll and retirement, purchase/sell/equip surfaces, exit/stairs hand-off, and invariants that no hostile activity occurs during visits.",
+      "labels": ["gameplay", "floor-4"],
+      "depends_on": ["slice-4-headliners"]
+    },
+    {
+      "id": "slice-6-hud-feedback",
+      "title": "Floor 4 Slice 6: arena HUD and feedback surfaces",
+      "body": "Implement Floor 4 act clock, overtime state, wave pips, Headliner banner, cut notice, break summary, and Winner's Circle UX with deterministic visual checks.",
+      "labels": ["ux", "floor-4"],
+      "depends_on": ["slice-5-green-room"]
+    },
+    {
+      "id": "slice-7-economy-balance",
+      "title": "Floor 4 Slice 7: economy tuning, balance, win-rate gate, and achievements",
+      "body": "Implement per-act income budgets, price bands, Floor 4 tuning, tests/headless/floor4-arena-completion.test.ts win-rate gate, achievements/quests data, and seed-sweep evidence. Broad sweeps must use GitHub infrastructure by default.",
+      "labels": ["balance", "floor-4"],
+      "depends_on": ["slice-6-hud-feedback"]
+    },
+    {
+      "id": "slice-8-floor3-costar",
+      "title": "Floor 4 Slice 8: optional Floor 3 kept-companion co-star",
+      "body": "Consume the Floor 3 KeptCompanionContract as an optional additive ally for Floor 4. Runs without a carried companion must remain unchanged and balance must not depend on the co-star.",
+      "labels": ["gameplay", "floor-4"],
+      "depends_on": ["slice-5-green-room"]
+    }
+  ]
+}
