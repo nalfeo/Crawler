@@ -4,6 +4,9 @@ import { recruitPartyCompanion, spawnPlayer } from '../../src/core/helpers.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { Companion, Team } from '../../src/core/index.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
 import {
   FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID,
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
@@ -15,14 +18,73 @@ import {
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
 } from '../../src/game/floor3Scenario.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/index.js';
+
+const TINY_FLOOR3_MAP_WIDTH = 6;
+const TINY_FLOOR3_MAP_HEIGHT = 6;
+
+const TINY_FLOOR3_MAP_CONFIG: MapConfig = {
+  widthTiles: TINY_FLOOR3_MAP_WIDTH,
+  heightTiles: TINY_FLOOR3_MAP_HEIGHT,
+  tileSizeFt: 32,
+  biome: BiomeType.CAVE_SYSTEM_BIOMES,
+  seed: 910,
+  roomWidthRange: [4, 4],
+  roomHeightRange: [4, 4],
+  maxRooms: 8,
+  floorDensity: 0.5,
+};
 
 function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
   const playerEid = spawnPlayer(world, 0, 0);
   initializeFloor3Scenario(world, playerEid);
   return { world, playerEid };
+}
+
+function createTinyFloor3Map(): FloorMap {
+  const flags = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT);
+  const terrain = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT).fill(
+    TerrainType.STONE_WALL,
+  );
+  const roomGraph = new RoomGraph();
+  const setFloor = (x: number, y: number): void => {
+    const idx = y * TINY_FLOOR3_MAP_WIDTH + x;
+    flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+
+  for (let i = 0; i < 8; i += 1) {
+    const x = 1;
+    const y = 1;
+    for (let ty = y + 1; ty <= y + 2; ty += 1) {
+      for (let tx = x + 1; tx <= x + 2; tx += 1) {
+        setFloor(tx, ty);
+      }
+    }
+    roomGraph.add({ x, y, width: 4, height: 4 }, [], [], RoomRole.TERRITORY, undefined, undefined, [
+      { x: x + 1, y: y + 1 },
+      { x: x + 2, y: y + 1 },
+      { x: x + 1, y: y + 2 },
+      { x: x + 2, y: y + 2 },
+    ]);
+  }
+
+  return new FloorMap(
+    TINY_FLOOR3_MAP_CONFIG,
+    new TileMap(TINY_FLOOR3_MAP_WIDTH, TINY_FLOOR3_MAP_HEIGHT, flags),
+    roomGraph,
+    terrain,
+    { x: 3, y: 3 },
+  );
 }
 
 /** Knocks out every Companion belonging to any of `teamIds`. */
@@ -119,6 +181,32 @@ describe('floor3 studios + final four objective tick', () => {
     expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
     expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
     expect(state.finalFour.setPieceCarved).toBe(true);
+    for (const pending of state.finalFourPendingSpawns) {
+      expect(pending.x).toBeDefined();
+      expect(pending.y).toBeDefined();
+    }
+  });
+
+  it('keeps authored set-piece ids and spawn positions when territory rooms are too small to carve', () => {
+    const world = createTestWorld({ seed: 910, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid, { floorMapOverride: createTinyFloor3Map() });
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    expect(world.setPieceProps.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.roomId).toBeGreaterThanOrEqual(0);
+      expect(studio.setPieceId).toMatch(/^floor3-studio-/);
+      expect(studio.setPieceCarved).toBe(false);
+      expect(studio.pendingSpawns.length).toBeGreaterThan(0);
+      for (const pending of studio.pendingSpawns) {
+        expect(pending.x).toBeDefined();
+        expect(pending.y).toBeDefined();
+      }
+    }
+    expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
+    expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
+    expect(state.finalFour.setPieceCarved).toBe(false);
     for (const pending of state.finalFourPendingSpawns) {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();

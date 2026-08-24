@@ -13,6 +13,7 @@ import {
 } from '../core/index.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
+import type { FloorMap } from '../core/map/FloorMap.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { stampSetPiece } from '../core/map/stampSetPiece.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
@@ -895,7 +896,10 @@ export function floor3ObjectiveTick(world: GameWorld): void {
 export function initializeFloor3Scenario(
   world: GameWorld,
   playerEid: number,
-  options?: { readonly playerCarryover?: PlayerCarryoverSnapshot },
+  options?: {
+    readonly playerCarryover?: PlayerCarryoverSnapshot;
+    readonly floorMapOverride?: FloorMap;
+  },
 ): void {
   const manifest = getFloorManifest('floor3');
   if (!manifest) {
@@ -908,22 +912,27 @@ export function initializeFloor3Scenario(
     );
   }
 
-  const mapConfig: MapConfig = {
-    widthTiles: manifest.map.widthTiles,
-    heightTiles: manifest.map.heightTiles,
-    tileSizeFt: manifest.map.tileSizeFt,
-    biome: manifest.map.biome ?? BiomeType.CAVE_SYSTEM_BIOMES,
-    seed: world.rng.nextInt(1, 2_000_000),
-    roomWidthRange: manifest.map.roomWidthRange,
-    roomHeightRange: manifest.map.roomHeightRange,
-    maxRooms: manifest.map.maxRooms,
-    floorDensity: manifest.map.floorDensity,
-    caveSystem: {
-      presentCount: biomeRegionCount,
-      layout: 'floor3-biomes',
-    },
-  };
-  const floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
+  let floorMap: FloorMap;
+  if (options?.floorMapOverride) {
+    floorMap = options.floorMapOverride;
+  } else {
+    const mapConfig: MapConfig = {
+      widthTiles: manifest.map.widthTiles,
+      heightTiles: manifest.map.heightTiles,
+      tileSizeFt: manifest.map.tileSizeFt,
+      biome: manifest.map.biome ?? BiomeType.CAVE_SYSTEM_BIOMES,
+      seed: world.rng.nextInt(1, 2_000_000),
+      roomWidthRange: manifest.map.roomWidthRange,
+      roomHeightRange: manifest.map.roomHeightRange,
+      maxRooms: manifest.map.maxRooms,
+      floorDensity: manifest.map.floorDensity,
+      caveSystem: {
+        presentCount: biomeRegionCount,
+        layout: 'floor3-biomes',
+      },
+    };
+    floorMap = getGenerator(mapConfig.biome).generate(mapConfig, world.rng);
+  }
   world.floorMap = floorMap;
   world.setPieceProps.length = 0;
   attachBarriersToFloorMap(world);

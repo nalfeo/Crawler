@@ -32,6 +32,7 @@ describe('Floor 3 set-piece slice', () => {
       expect(def?.theme).toBe('floor3-companion-league');
       expect(def?.tags).toContain('floor3');
       expect(def?.tags).toContain('companion-league');
+      expect(new Set(def?.tags).size).toBe(def?.tags.length);
       expect(resolveSetPieceDoorSlots(def!)).toHaveLength(1);
     }
   });

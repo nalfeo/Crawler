@@ -16324,7 +16324,7 @@
       "width": 8,
       "height": 8,
       "description": "A sponsor den dressed as a televised forge stage, all hot lights, faux anvils, and liability-waiver tape.",
-      "tags": ["floor3", "companion-league", "studio-den", "ember", "ember", "forge", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "ember", "forge", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -17385,15 +17385,7 @@
       "width": 8,
       "height": 8,
       "description": "A glasshouse battle den where potted overgrowth crowds the camera marks but leaves the arena lane open.",
-      "tags": [
-        "floor3",
-        "companion-league",
-        "studio-den",
-        "bloom",
-        "bloom",
-        "greenhouse",
-        "studio"
-      ],
+      "tags": ["floor3", "companion-league", "studio-den", "bloom", "greenhouse", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -18454,7 +18446,7 @@
       "width": 8,
       "height": 8,
       "description": "A quarry-sponsor soundstage with prize plinths, rubble risers, and a single obvious challenger entrance.",
-      "tags": ["floor3", "companion-league", "studio-den", "stone", "stone", "quarry", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "stone", "quarry", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -19515,7 +19507,7 @@
       "width": 8,
       "height": 8,
       "description": "A wind-machine studio with fan banks and taped runway arrows for Companions making dramatic entrances.",
-      "tags": ["floor3", "companion-league", "studio-den", "gale", "gale", "updraft", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "gale", "updraft", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -20576,7 +20568,7 @@
       "width": 8,
       "height": 8,
       "description": "A briny sponsor tank dressed like a tidepool exhibit, with glossy floor marks around the safe fighting ring.",
-      "tags": ["floor3", "companion-league", "studio-den", "tide", "tide", "tidepool", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "tide", "tidepool", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -21637,7 +21629,7 @@
       "width": 8,
       "height": 8,
       "description": "A low-lit shadow-stage where blackout curtains and fungus props turn the den into prestige monster television.",
-      "tags": ["floor3", "companion-league", "studio-den", "gloom", "gloom", "shadow", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "gloom", "shadow", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
@@ -22698,7 +22690,7 @@
       "width": 8,
       "height": 8,
       "description": "A mirror-bright studio den packed with glare panels, sponsor reflectors, and one path through the sparkle.",
-      "tags": ["floor3", "companion-league", "studio-den", "lumen", "lumen", "mirror", "studio"],
+      "tags": ["floor3", "companion-league", "studio-den", "lumen", "mirror", "studio"],
       "placement": {
         "horizontalAlign": "center",
         "verticalAlign": "center"
