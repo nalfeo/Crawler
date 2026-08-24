@@ -432,12 +432,13 @@ test('kickoff comment body includes the required planning instructions', () => {
   assert.match(ISSUE_INTAKE_BODY, /A checklist of the concrete steps you will take\./);
   assert.match(
     ISSUE_INTAKE_BODY,
-    /Post this plan comment on the issue itself so the maintainer can review it before you open a PR\./,
+    /Publish that plan with your progress-report tool \(the session progress summary \/ PR description\) — do NOT try to post it as an issue or PR comment\./,
   );
   assert.match(
     ISSUE_INTAKE_BODY,
-    /Then, when you open the PR, include the same high-level summary in the PR description\./,
+    /never block on comment access: the progress summary and the PR description are the plan of record/,
   );
+  assert.doesNotMatch(ISSUE_INTAKE_BODY, /post a detailed plan comment on this issue/i);
 });
 
 test('posts kickoff comment before assigning Copilot and preserves existing assignees', async () => {
@@ -506,10 +507,7 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
     body: { body: ISSUE_INTAKE_BODY },
   });
   assert.match(calls[2][2].body.body, /\*\*Before writing any code\*\*/);
-  assert.match(
-    calls[2][2].body.body,
-    /Then, when you open the PR, include the same high-level summary in the PR description\./,
-  );
+  assert.match(calls[2][2].body.body, /do NOT try to post it as an issue or PR comment\./);
 });
 
 test('restart issue intake removes existing Copilot assignee before reassigning', async () => {
