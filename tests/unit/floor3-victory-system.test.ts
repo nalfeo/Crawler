@@ -11,6 +11,7 @@ import {
   FLOOR3_VICTORY_GOAL_ID,
   confirmFloor3StairDescend,
   floor3ObjectiveTick,
+  floor3WildDirectorSystem,
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
 } from '../../src/game/floor3Scenario.js';
@@ -33,7 +34,7 @@ function knockOutTeams(world: GameWorld, teamIds: readonly number[]): void {
   }
 }
 
-function countLiveCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
+function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
   const companions = query(world.ecs, [Companion, Team]);
   let count = 0;
   for (const eid of companions) {
@@ -61,10 +62,10 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     expect(state.studios.length).toBeGreaterThan(0);
     for (const studio of state.studios) {
-      expect(countLiveCompanionsOnTeams(world, studio.teamIds)).toBeGreaterThan(0);
+      expect(countCompanionsOnTeams(world, studio.teamIds)).toBeGreaterThan(0);
     }
     expect(state.finalFourPendingSpawns.length).toBeGreaterThan(0);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
   });
 
   it('increments studiosDefeatedCount and latches per-studio goal flags as each Studio is wiped', () => {
@@ -94,7 +95,7 @@ describe('floor3 studios + final four objective tick', () => {
     expect(state.studiosDefeatedCount).toBe(state.studios.length);
     expect(world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID)).toBe(true);
     expect(state.finalFourPendingSpawns.length).toBe(0);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(false);
 
     knockOutTeams(world, state.finalFour.teamIds);
@@ -122,12 +123,12 @@ describe('floor3 studios + final four objective tick', () => {
       knockOutTeams(world, studio.teamIds);
     }
     floor3ObjectiveTick(world);
-    const countAfterFirstTick = countLiveCompanionsOnTeams(world, state.finalFour.teamIds);
+    const countAfterFirstTick = countCompanionsOnTeams(world, state.finalFour.teamIds);
 
     floor3ObjectiveTick(world);
     floor3ObjectiveTick(world);
 
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(countAfterFirstTick);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(countAfterFirstTick);
   });
 
   it('triggers game_over on a party wipe before victory is latched', () => {
@@ -205,7 +206,7 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     const [firstStudio] = state.studios;
     expect(firstStudio).toBeDefined();
-    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);
+    expect(countCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);
 
     knockOutTeams(world, firstStudio!.teamIds);
     floor3ObjectiveTick(world);
@@ -214,7 +215,7 @@ describe('floor3 studios + final four objective tick', () => {
     // Companions are removed from the ECS entirely, not merely left KO'd —
     // companionKOSystem's per-team engagement-end revival would otherwise
     // revive them to full health once no rival lingers nearby.
-    expect(countLiveCompanionsOnTeams(world, firstStudio!.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, firstStudio!.teamIds)).toBe(0);
   });
 
   it('despawns the Final Four roster once victory latches', () => {
@@ -228,6 +229,26 @@ describe('floor3 studios + final four objective tick', () => {
     floor3ObjectiveTick(world);
 
     expect(state.finalFour.defeated).toBe(true);
-    expect(countLiveCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+    expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
+  });
+
+  it('halts ambient wild spawning after victory latches', () => {
+    const { world } = createFloor3World(910);
+    const state = world.floorExtendedState!.floor3Studios!;
+    for (const studio of state.studios) {
+      knockOutTeams(world, studio.teamIds);
+    }
+    floor3ObjectiveTick(world);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
+
+    const before = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
+    for (let i = 0; i < 5; i += 1) {
+      world.elapsedMs += 1_000;
+      floor3WildDirectorSystem(world);
+    }
+    const after = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
+    expect(after).toBe(before);
   });
 });

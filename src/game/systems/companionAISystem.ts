@@ -40,6 +40,8 @@ export function companionAISystem(world: GameWorld): void {
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const leash = tuning.factionRelations.friendlyLeashTiles;
+  const rivalRangeFt = tuning.factionRelations.feudEngagementRadiusTiles * 4;
+  const rivalRangeSq = rivalRangeFt * rivalRangeFt;
   const companions = query(world.ecs, [Enemy, Companion, Position]);
   const candidates = query(world.ecs, [Enemy, Position, Team]);
 
@@ -77,6 +79,7 @@ export function companionAISystem(world: GameWorld): void {
       const dx = ox - x;
       const dy = oy - y;
       const d2 = dx * dx + dy * dy;
+      if (d2 > rivalRangeSq) continue;
       if (
         nearestRival === null ||
         d2 < nearestRival.d2 ||

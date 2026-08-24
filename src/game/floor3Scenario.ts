@@ -669,6 +669,7 @@ function resolveFloor3AmbientSpawnPoint(
 
 export function floor3WildDirectorSystem(world: GameWorld): void {
   if (world.state !== 'playing') return;
+  if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) === true) return;
   const player = query(world.ecs, [Player, Position])[0];
   if (player === undefined) return;
 
