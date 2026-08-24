@@ -1,7 +1,7 @@
 {
   "epic_id": "floor-3-companion-league",
   "title": "Floor 3 Companion League remaining slices",
-  "description": "Materialize the remaining implementation issues for Floor 3's Companion League epic from the living spec in .specify/specs/floor3-companion-league.md. Slices 1-6 have landed and slice 7 is already under review, so this graph starts at the remaining planned work to avoid duplicating existing PR work.",
+  "description": "Materialize the remaining implementation issues for Floor 3's Companion League epic from the living spec in .specify/specs/floor3-companion-league.md. Slices 1-6 and 8 have landed and slice 7 is already under review, so this graph starts at the remaining planned work to avoid duplicating existing PR work.",
   "review": {
     "title_prefix": "[Epic Review]",
     "body": "Source of truth: .specify/specs/floor3-companion-league.md and the linked Floor 3 game-design/roster documents. Human review should confirm this file still matches the remaining slice plan before closing as completed."
@@ -9,16 +9,9 @@
   "labels": ["floor-3", "companion-league"],
   "nodes": [
     {
-      "id": "slice-8-objective-rosters",
-      "title": "Floor 3 Slice 8: Studios, Final Four, seeded rosters, and objective tick",
-      "body": "Implement the Floor 3 Studio and Final Four runtime slice from .specify/specs/floor3-companion-league.md: TrainerDef/StudioDef/FinalFourDef candidate pools, seeded selection/order/lineups, floor3ObjectiveTick, sealed dens, and deterministic coverage. Prerequisite outside this epic file: slices 6 and 7 must be landed.",
-      "labels": ["gameplay", "floor-3"],
-      "depends_on": []
-    },
-    {
       "id": "slice-9-set-pieces",
-      "title": "Floor 3 Slice 9: Studio dens and Final Four arena set-pieces",
-      "body": "Author the six Studio den set-pieces plus the Final Four arena from the Floor 3 spec and validate them with the set-piece lab. Prerequisite outside this epic file: slice 7 overworld/map work must be landed.",
+      "title": "Floor 3 Slice 9: Final Four arena chamber map generation",
+      "body": "Complete the remaining Floor 3 set-piece work by adding the dedicated Final Four arena chamber generation path from the Floor 3 spec and validate it with the set-piece lab. The affinity-specific Studio motifs and Final Four set-piece definition are already authored and wired; prerequisite outside this epic file: slice 7 overworld/map work must be landed.",
       "labels": ["set-piece", "floor-3"],
       "depends_on": []
     },
@@ -34,21 +27,21 @@
       "title": "Floor 3 Slice 11: kept-companion persistence producer contract",
       "body": "Add the Floor 3 producer side of KeptCompanionContract on the floor-transition carryover channel and the end-of-floor picker hook. Floor 4+ consumption remains a separate epic concern.",
       "labels": ["gameplay", "floor-3"],
-      "depends_on": ["slice-8-objective-rosters"]
+      "depends_on": []
     },
     {
       "id": "slice-12-ux-onboarding-recruiting",
       "title": "Floor 3 Slice 12: onboarding, starter, and poach UX surfaces",
       "body": "Implement the first Floor 3 UX group from the spec: intro/onboarding, starter choice, poach choice, and related deterministic UI/lab coverage using existing UI patterns.",
       "labels": ["ux", "floor-3"],
-      "depends_on": ["slice-8-objective-rosters"]
+      "depends_on": []
     },
     {
       "id": "slice-13-ux-party-combat",
       "title": "Floor 3 Slice 13: party HUD, roster, level-up, and combat command UX",
       "body": "Implement the second Floor 3 UX group from the spec: party HUD, roster/detail surfaces, level-up/evolution, ability command, and matchup indicator with deterministic coverage.",
       "labels": ["ux", "floor-3"],
-      "depends_on": ["slice-8-objective-rosters"]
+      "depends_on": []
     },
     {
       "id": "slice-14-ux-overworld-endgame",
@@ -74,7 +67,6 @@
       "body": "Run the Floor 3 balance and headless win-rate work from the spec, tuning against the required rate-based evidence without cherry-picking seeds. Broad sweeps must use GitHub infrastructure by default.",
       "labels": ["balance", "floor-3"],
       "depends_on": [
-        "slice-8-objective-rosters",
         "slice-9-set-pieces",
         "slice-10-persistent-track",
         "slice-11-kept-companion-producer",

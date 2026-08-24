@@ -1,7 +1,7 @@
 {
   "epic_id": "floor-4-arena",
   "title": "Floor 4 The Main Event arena remaining slices",
-  "description": "Materialize the remaining implementation issues for Floor 4's Main Event arena epic from .specify/specs/floor4-arena.md. Slice 1 is already implemented, so this graph starts with slice 2 and preserves the planned implementation order.",
+  "description": "Materialize the remaining implementation issues for Floor 4's Main Event arena epic from .specify/specs/floor4-arena.md. Slices 1 and 2 are already implemented, so this graph starts with slice 3 and preserves the planned implementation order.",
   "review": {
     "title_prefix": "[Epic Review]",
     "body": "Source of truth: .specify/specs/floor4-arena.md, docs/knowledge/game-design/floor4-arena.md, and ADR 0090. Human review should confirm this file still matches the remaining slice plan before closing as completed."
@@ -9,18 +9,11 @@
   "labels": ["floor-4", "arena"],
   "nodes": [
     {
-      "id": "slice-2-phase-machine",
-      "title": "Floor 4 Slice 2: phase machine, arena clock, and headless route",
-      "body": "Implement arenaDirectorSystem for the Floor 4 empty broadcast rehearsal: clock, phases, transitions, scenario-pipeline wiring into real sim/headless paths, RunStats phase timeline, and deterministic headless traversal. Prerequisite outside this epic file: slice 1 floor plumbing and arena map must be landed.",
-      "labels": ["gameplay", "floor-4"],
-      "depends_on": []
-    },
-    {
       "id": "slice-3-waves",
       "title": "Floor 4 Slice 3: deterministic waves, manifests, gates, cap, debt, and cut",
       "body": "Implement Floor 4 waves from the spec: enemies.floor4.json, per-act rosters/threat costs, immutable seeded wave manifests, release cursor, concurrency cap, spawn debt, cut behavior, and gate telegraphs.",
       "labels": ["gameplay", "floor-4"],
-      "depends_on": ["slice-2-phase-machine"]
+      "depends_on": []
     },
     {
       "id": "slice-4-headliners",
@@ -53,7 +46,7 @@
     {
       "id": "slice-8-floor3-costar",
       "title": "Floor 4 Slice 8: optional Floor 3 kept-companion co-star",
-      "body": "Consume the Floor 3 KeptCompanionContract as an optional additive ally for Floor 4. Runs without a carried companion must remain unchanged and balance must not depend on the co-star.",
+      "body": "Consume the Floor 3 KeptCompanionContract as an optional additive ally for Floor 4. Runs without a carried companion must remain unchanged and balance must not depend on the co-star. Prerequisite outside this epic file: Floor 3 slice 11 must produce the KeptCompanionContract before this consumer starts.",
       "labels": ["gameplay", "floor-4"],
       "depends_on": ["slice-5-green-room"]
     }
