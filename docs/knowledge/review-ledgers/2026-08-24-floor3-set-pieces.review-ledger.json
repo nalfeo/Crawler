@@ -40,13 +40,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "3c1579c0688f207da872f3c381d5610b66edc7d0",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly implements the Floor 3 set-piece generation by accurately routing authored set pieces to their studios and handling roster spawn placement logic. The changes maintain strict ECS layer boundaries and correctly employ deterministic logic for map placement. Substantial unit test coverage has been added to verify that set pieces fall back safely when not carved, accurately retain interior roster positions, and ensure progression logic remains deterministic."
     }
   }
 }
