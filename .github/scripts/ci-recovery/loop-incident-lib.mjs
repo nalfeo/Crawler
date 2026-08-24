@@ -98,11 +98,15 @@ export function buildLoopIncidentBody({
           return `${index + 1}. **${safeKind}** \`${safeId}\`${safeUrl ? `  \n   ${safeUrl}` : ''}`;
         });
 
+  const awaitingHumanDecision = isAwaitingHumanDecision(blockers);
+
   return [
     LOOP_INCIDENT_MARKER,
     `${LOOP_INCIDENT_FINGERPRINT_PREFIX}${fingerprint} -->`,
     '',
-    `The automated CI recovery pipeline made no progress on **PR #${prNumber}** after repeated attempts. An investigation agent has been assigned to diagnose the root cause.`,
+    awaitingHumanDecision
+      ? `Every remaining blocker on **PR #${prNumber}** already carries an explicit prior human-escalation reply from a trusted recovery agent, so the stall looks like a pending human decision rather than a CI recovery automation defect.`
+      : `The automated CI recovery pipeline made no progress on **PR #${prNumber}** after repeated attempts. An investigation agent has been assigned to diagnose the root cause.`,
     '',
     '## Incident details',
     '',
@@ -124,17 +128,31 @@ export function buildLoopIncidentBody({
     '',
     '## Investigation prompt',
     '',
-    `@copilot Please investigate why the CI recovery automation failed to converge on PR #${prNumber}.`,
-    '',
-    '**Fetch the linked blocker URLs above for the full evidence before investigating.**',
-    '',
-    'Specifically investigate:',
-    `1. Why did recovery make no progress after ${attempt} attempts on PR #${prNumber}?`,
-    '2. Is there a deterministic defect in the marker parser, permission grant, thread-resolution path, or mutation sequence?',
-    '3. What is the smallest correct fix, and does it need a regression test?',
-    '',
-    "Implement the fix on a branch from `main`, run the repository's required verification, open a non-draft PR, and arm squash auto-merge.",
-    'Do not weaken any gate or explicit requirement.',
+    ...(awaitingHumanDecision
+      ? [
+          `@copilot Every blocker listed above already carries a prior, non-marker reply from a trusted recovery agent on PR #${prNumber} — a previous recovery attempt already engaged with each one and left context. Do not assume a CI recovery automation defect exists.`,
+          '',
+          '**Fetch the linked blocker URLs above for the full evidence before responding.**',
+          '',
+          "1. Read each thread's full history (including the prior recovery reply) and confirm whether it is a genuine substantive disagreement or design decision, not a fixable bug.",
+          '2. Only reply `✅ Not applicable: <reason>` or push a fix when the current diff deterministically proves the finding addressed or inapplicable — never weaken the requirement to force a pass (see repo rule #11).',
+          '3. If the blocker(s) require a human/producer decision, summarize the open decision(s) as a comment on this issue for a human instead of opening a speculative fix PR.',
+          '',
+          'Only open a PR here if you find and fix a real, deterministic defect in the CI recovery automation itself (marker parser, permission grant, thread-resolution path, or mutation sequence). Do not weaken any gate or explicit requirement.',
+        ]
+      : [
+          `@copilot Please investigate why the CI recovery automation failed to converge on PR #${prNumber}.`,
+          '',
+          '**Fetch the linked blocker URLs above for the full evidence before investigating.**',
+          '',
+          'Specifically investigate:',
+          `1. Why did recovery make no progress after ${attempt} attempts on PR #${prNumber}?`,
+          '2. Is there a deterministic defect in the marker parser, permission grant, thread-resolution path, or mutation sequence?',
+          '3. What is the smallest correct fix, and does it need a regression test?',
+          '',
+          "Implement the fix on a branch from `main`, run the repository's required verification, and open a non-draft PR.",
+          'Do not weaken any gate or explicit requirement.',
+        ]),
   ].join('\n');
 }
 
@@ -145,6 +163,57 @@ function parseExistingLoopIncidentIssue(existing, fallbackLastSeenAt) {
   const repMatch = bodyStr.match(/\*\*Repetition count:\*\* (\d+)/);
   const repetitionCount = repMatch ? Number.parseInt(repMatch[1], 10) + 1 : 2;
   return { firstSeenAt, repetitionCount };
+}
+
+/**
+ * Prefix used for the `[Prior recovery reply (no marker posted — do not
+ * re-post an identical reply): ...]` hint that `reconcile.mjs` prepends to a
+ * review-thread blocker's summary when a trusted recovery agent already
+ * replied to that exact thread in a previous dispatch without resolving it.
+ * Duplicated here (rather than imported) because `reconcile.mjs` builds the
+ * hint inline and this library must stay a leaf module with no dependency on
+ * the reconciler's blocker-construction internals.
+ */
+const PRIOR_RECOVERY_REPLY_HINT_PREFIX = '[Prior recovery reply (no marker posted';
+const PRIOR_RECOVERY_REPLY_HINT_RE =
+  /^\[Prior recovery reply \(no marker posted[^:]*:\s*([^\]]*)\]/;
+const HUMAN_ESCALATION_PRIOR_REPLY_PREFIX = 'substantive disagreement - escalating to a human';
+
+function normalizedPriorReply(reply) {
+  return String(reply || '')
+    .replace(/[—–]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function priorRecoveryReplyText(summary) {
+  const match = String(summary || '').match(PRIOR_RECOVERY_REPLY_HINT_RE);
+  return match ? match[1].trim() : '';
+}
+
+function hasHumanEscalationPriorReply(summary) {
+  return normalizedPriorReply(priorRecoveryReplyText(summary)).startsWith(
+    HUMAN_ESCALATION_PRIOR_REPLY_PREFIX,
+  );
+}
+
+/**
+ * True when every blocker is a review-thread whose trusted prior recovery
+ * reply explicitly used the controlled human-escalation phrase. Generic
+ * non-marker replies (for example "Blocked outside this branch") use the same
+ * prior-reply hint prefix, but still need the normal defect/fix investigation
+ * prompt because they may be recoverable by an agent.
+ */
+function isAwaitingHumanDecision(blockers) {
+  const list = blockers || [];
+  if (list.length === 0) return false;
+  return list.every(
+    (blocker) =>
+      blocker?.kind === 'review-thread' &&
+      String(blocker?.summary || '').startsWith(PRIOR_RECOVERY_REPLY_HINT_PREFIX) &&
+      hasHumanEscalationPriorReply(blocker?.summary),
+  );
 }
 
 function isOpenIssue(issue) {
@@ -214,8 +283,7 @@ export async function fileLoopIncident({
     `/repos/${owner}/${repo}/issues?state=all&labels=${encodeURIComponent(LOOP_INCIDENT_LABEL)}`,
   );
   const matchingIssues = openIssues.filter(
-    (issue) =>
-      !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
+    (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
   );
   const existingOpen = matchingIssues.find((issue) => isOpenIssue(issue));
   const existingClosed = [...matchingIssues]
