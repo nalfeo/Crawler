@@ -1,30 +1,22 @@
 /**
- * Floor 4 — "The Main Event" scenario, slice 1 (floor plumbing + arena map).
+ * Floor 4 — "The Main Event" scenario, slice 2 (venue + deterministic rehearsal).
  *
- * This slice boots the authored venue and nothing else: the player lands in the
- * middle of an empty arena and can walk down the curtain tunnel into the Green
- * Room. The arena clock, the phase machine (`arenaDirectorSystem`), waves,
- * Headliners and the Green Room shops are slices 2–7 of
- * `.specify/specs/floor4-arena.md`, and are deliberately absent here rather
- * than stubbed.
+ * This slice boots the authored venue and runs the empty-arena rehearsal
+ * timeline via `arenaDirectorSystem`: COUNTDOWN → five WAVES/HEADLINE/
+ * INTERMISSION acts → VICTORY. Combat waves, Headliners, Green Room
+ * transactions and shops still land in later slices; today's goal is proving the
+ * broadcast clock/phase plumbing in both game and headless paths.
  *
- * Two contracts this file already honours, because getting them wrong later is
- * expensive:
+ * Key contracts:
  *
- * - **The stairs stay shut.** FR8.3 gates descent on `INTERMISSION(5)`, a phase
- *   that does not exist yet, so {@link confirmFloor4StairDescend} refuses
- *   unconditionally. Refusing is correct; a permissive stub would let a player
- *   leave an unfinished floor.
- * - **No countdown is shown.** FR5.6/FR8.4 make `timer.durationMs` a raw stall
- *   backstop, never a broadcast countdown, so the generic floor-timer HUD is
- *   suppressed (`world.hideFloorTimer`). Reaching the backstop means a
- *   non-terminating bug or an abandoned run, which is why it sets its own
- *   {@link FLOOR4_STALL_BACKSTOP_GOAL_ID} flag instead of reusing a floor
- *   "timeout" that a player could legitimately hit.
- * - **Slice-2 rehearsal intermissions auto-advance.** The Green Room
- *   transaction, stairs, Headliners and shops are later slices, so this slice's
- *   director proves the empty-arena phase timeline without spawning those
- *   systems prematurely.
+ * - **The stairs stay gated by `INTERMISSION(5)` (FR8.3).** Slice 2 exposes the
+ *   same phase-gated `confirmFloor4StairDescend` contract used by later slices.
+ * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
+ *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
+ *   generic floor HUD timer.
+ * - **Rehearsal intermissions auto-advance.** Until Green Room/shop slices ship,
+ *   intermissions hold briefly then advance automatically, with final act
+ *   intermission auto-transitioning to VICTORY.
  */
 import { addComponent, hasComponent, setComponent, set } from 'bitecs';
 import { BroadcastScore, Health, Position, type GameWorld } from '../core/index.js';

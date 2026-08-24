@@ -101,9 +101,9 @@ function getFloor4CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     };
   }
   return {
-    title: 'Floor 4 In Progress',
-    subtitle: 'Venue slice',
-    body: 'The Main Event venue is wired, but the acts, waves and Headliners have not been staged yet.',
+    title: 'Floor 4 Complete!',
+    subtitle: 'Arena rehearsal cleared',
+    body: 'The Main Event rehearsal ran start-to-finish and the crowd got its winner banner.',
   };
 }
 
@@ -462,10 +462,10 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 
 const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
-  victory: 'Floor 4 is not winnable yet; this slice only builds the venue.',
+  victory: 'Floor 4 rehearsal complete. Five acts ran clean and the stairs opened on cue.',
   timeout: 'The Main Event never started. The Director cuts the feed.',
   milestones: [],
-  isVictoryReached: () => false,
+  isVictoryReached: isFloor4ArenaVictory,
   isTimeoutReached: (world: GameWorld) =>
     world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
 };

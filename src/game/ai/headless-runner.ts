@@ -1101,6 +1101,15 @@ export async function runHeadless(
         world.state = 'playing';
       }
 
+      // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
+      // the player physically spawns on stage, so sample the phase BEFORE the
+      // step and account for it at the same post-step point as safeRoomSystem.
+      // This intentionally includes the transition frame where COUNTDOWN flips
+      // to WAVES, so the full countdown window is excluded from active time.
+      const floor4CountdownSafeFrame =
+        world.floorId === 'floor4' &&
+        world.floorExtendedState?.floor4Arena?.phase.kind === 'COUNTDOWN';
+
       // Run one simulation step using the canonical preSystems/postSystems derived
       // from createFloorMainSceneOptions() — the same source the visual pipeline
       // uses. This ensures both pipelines share one ordering definition (issue #663).
@@ -1117,7 +1126,7 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
-      if (world.playerInSafeRoom === true) {
+      if (world.playerInSafeRoom === true || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death

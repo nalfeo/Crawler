@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameWorld } from '../../src/core/world.js';
 import { GAME } from '../../src/shared/constants.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import type { InputState } from '../../src/shared/input.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
@@ -27,6 +28,7 @@ class IdleFloor4Provider implements AIInputProvider {
 
 describe('Floor 4 empty-arena headless timeline', () => {
   it('reaches victory and records a deterministic phase timeline', async () => {
+    const floor4Phase = getFloorManifest('floor4')!.floor4!.phase;
     const run = () =>
       runHeadless(new IdleFloor4Provider(), {
         floorId: 'floor4',
@@ -40,6 +42,8 @@ describe('Floor 4 empty-arena headless timeline', () => {
     expect(first.outcome).toBe('victory');
     expect(first.floor4Arena?.phase).toEqual({ kind: 'VICTORY' });
     expect(first.floor4Arena?.arenaElapsedMs).toBe(600_000);
+    expect(first.safeRoomMs).toBeGreaterThanOrEqual(floor4Phase.countdownMs);
     expect(first.floor4Arena?.timeline).toEqual(second.floor4Arena?.timeline);
+    expect(first.safeRoomMs).toBe(second.safeRoomMs);
   });
 });
