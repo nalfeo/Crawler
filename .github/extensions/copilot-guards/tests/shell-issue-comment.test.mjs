@@ -67,6 +67,10 @@ test('denies the --input= attached implicit-POST form', () => {
   denies('gh api repos/nalfeo/Crawler/issues/3477/comments --input=/tmp/plan.json');
 });
 
+test('denies the standalone -F implicit-POST form', () => {
+  denies('gh api repos/nalfeo/Crawler/issues/3477/comments -F body=plan');
+});
+
 test('denies a DELETE against single issue-comment endpoint shape', () => {
   denies('gh api --method DELETE repos/nalfeo/Crawler/issues/comments/12345');
 });

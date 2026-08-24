@@ -111,10 +111,6 @@ function parseGhApi(tokens, startIndex) {
       continue;
     }
 
-    if (consumesFlagValue(tok, API_FLAGS_WITH_VALUE)) {
-      continue;
-    }
-
     if (tok.startsWith('-')) continue;
     if (!endpoint) endpoint = tok;
   }
