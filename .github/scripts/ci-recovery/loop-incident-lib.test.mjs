@@ -195,6 +195,83 @@ test('buildLoopIncidentBody includes first/last seen timestamps, repetition coun
   assert.ok(body.includes('https://github.com/owner/repo/actions/runs/42'));
 });
 
+test('buildLoopIncidentBody uses the default "investigate a defect" prompt when a blocker has no prior recovery reply', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [{ kind: 'review-thread', id: 'RT_001', summary: 'reviewer: fix this' }],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('Please investigate why the CI recovery automation failed to converge'));
+  assert.ok(!body.includes('pending human decision'));
+});
+
+test('buildLoopIncidentBody switches to a human-decision prompt when every review-thread blocker already carries a prior recovery reply', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [
+      {
+        kind: 'review-thread',
+        id: 'RT_001',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Escalating to a human] reviewer: implement the level gate',
+      },
+      {
+        kind: 'review-thread',
+        id: 'RT_002',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Escalating to a human] reviewer: wire team-aware damage',
+      },
+    ],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('pending human decision rather than a CI recovery automation defect'));
+  assert.ok(!body.includes('Please investigate why the CI recovery automation failed to converge'));
+  assert.ok(body.includes('Do not assume a CI recovery automation defect exists.'));
+  // The prior-reply text itself is untrusted and must still never appear in the body.
+  assert.ok(!body.includes('Escalating to a human'));
+});
+
+test('buildLoopIncidentBody keeps the default prompt when a non-review-thread blocker is also present', () => {
+  const body = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: 'abc123',
+    blockers: [
+      {
+        kind: 'review-thread',
+        id: 'RT_001',
+        summary:
+          '[Prior recovery reply (no marker posted — do not re-post an identical reply): Escalating to a human] reviewer: implement the level gate',
+      },
+      { kind: 'ci-failure', id: 'unit-tests', summary: 'unit tests failed' },
+    ],
+    attempt: 2,
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/test-owner/test-repo/pull/1243',
+    repository: REPOSITORY,
+  });
+  assert.ok(body.includes('Please investigate why the CI recovery automation failed to converge'));
+});
+
 // ─── Mock-server integration tests ──────────────────────────────────────────
 
 function startMockServer(routes) {
