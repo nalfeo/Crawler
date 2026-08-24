@@ -289,14 +289,25 @@ interface CollisionFingerprint {
 // family. Verified stable across two back-to-back invocations by the
 // determinism assertion below. (The post-boss farm window that item 4 added was
 // removed entirely by issue #3449; it never reached this slice either way.)
+//
+// 2026-08-24 re-baseline — mid-run loot sweep wired into the behavior tree.
+// `buildLootSweepBehavior('mid-run')` (ADR 0083 DEC-002) was implemented but
+// never invoked by the Track A selector; wiring it changes which pickups the
+// AI detours for inside this 1500-frame slice, which shifts engagement order.
+// Only seed 42 drifts, and strictly in the AI's favour (one extra kill, more
+// damage dealt, identical damage taken). Verified stable across two back-to-back
+// invocations by the determinism assertion below on the same run.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed  42:  3/192.44999933242798/5/6  →  4/216.44999933242798/5/8
+//   seeds 7 / 13 / 137: unchanged.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 192.44999933242798,
+    kills: 4,
+    damageDealt: 216.44999933242798,
     damageTaken: 5,
-    finalScore: 6,
+    finalScore: 8,
   },
   7: {
     totalFrames: 1500,
