@@ -1,5 +1,39 @@
 [
   {
+    "commit": "4fa71a950c0ce0a859b82a82baac242ddf6e8588",
+    "commitDate": "2026-08-24T05:23:25Z",
+    "commitSubject": "Hook Floor 3 up to the real game, headless runner, and AI runner lab (#3448)",
+    "capturedAt": "2026-08-24T06:55:18.337Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32695024128",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/4fa71a950c0ce0a859b82a82baac242ddf6e8588.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9133333333333333,
+        "totalWins": 137,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.79,
+      "gatePass": false,
+      "path": "by-sha/4fa71a950c0ce0a859b82a82baac242ddf6e8588.fun-report.json"
+    }
+  },
+  {
     "commit": "73a0e355d34001d62a5a38efb13d4c0877b9be91",
     "commitDate": "2026-08-24T04:20:32Z",
     "commitSubject": "Fix Floor 1 post-boss stair-descend deadlock: anchor the loot deferral window and delete the half-wired farm window (#3450)",
