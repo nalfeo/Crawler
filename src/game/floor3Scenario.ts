@@ -396,6 +396,11 @@ function spawnFloor3RosterCompanion(
  * Companion of that Studio on one tile. Fall back to a bounds-inset scan of
  * passable tiles so carved rooms still fan their roster out; only a room with
  * no passable interior at all degrades to the centre tile.
+ *
+ * The mask stays authoritative when it exists: an irregular cave room's
+ * bounding box can also contain passable tiles belonging to a neighbouring
+ * room or corridor, so the bounds scan runs only when the mask yields no
+ * usable tile (which is exactly the carved-room case).
  */
 function collectFloor3RosterSpawnTiles(
   floorMap: NonNullable<GameWorld['floorMap']>,
@@ -414,8 +419,10 @@ function collectFloor3RosterSpawnTiles(
     for (const cell of room.interiorCells) push(cell.x, cell.y);
   }
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
-  for (let ty = by + 1; ty <= by + bh - 2; ty += 1) {
-    for (let tx = bx + 1; tx <= bx + bw - 2; tx += 1) push(tx, ty);
+  if (tiles.length === 0) {
+    for (let ty = by + 1; ty <= by + bh - 2; ty += 1) {
+      for (let tx = bx + 1; tx <= bx + bw - 2; tx += 1) push(tx, ty);
+    }
   }
   if (tiles.length === 0) {
     tiles.push({ x: bx + Math.floor(bw / 2), y: by + Math.floor(bh / 2) });

@@ -14,8 +14,30 @@
       "notes": "Plan review rejected the data-only 6+1 proposal. Resolved by changing scope to 7 affinity Studio motifs plus 1 Final Four arena; adding minimal runtime glue in floor3Scenario so selected Studio/Final Four rooms use the authored set-piece IDs; adding shared typed mapping data near floor3 studios; and strengthening tests to cover mapping, schema, door slots, and stamp/carve/runtime assignment rather than just ID existence."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "PR review round on efccb56: carved Studio/Final-Four rooms stacked every roster Companion on the room centre (carveSetPieceRoom drops interiorCells); the eight new layouts shipped without setpiece:score evidence; this ledger was incomplete. All three addressed - roster spawns now fan across distinct passable tiles with a uniqueness assertion, setpiece:score reports 8/8 layouts passing 12/12 checks (recorded in the PR description), and the harness stages are recorded here."
+        },
+        {
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Separate-model review of the fixed diff: the new bounds-inset spawn scan could leak roster spawns onto passable tiles inside an irregular cave room bounding box that belong to a neighbouring room. Fixed by running the bounds scan only when the interiorCells mask yields no usable tile, plus a regression test proven failing before the fix."
+        },
+        {
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verification round on the repaired tree: no validated findings remain; correctness, determinism, runtime wiring, contracts, security and regression coverage all clean."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

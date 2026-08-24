@@ -125,6 +125,52 @@ function defeatAllStudios(
   floor3ObjectiveTick(world);
 }
 
+const MASK_ROOM_CELLS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 1, y: 1 },
+  { x: 2, y: 1 },
+];
+
+/**
+ * A 6x6 map whose single territory room carries an irregular `interiorCells`
+ * mask, plus extra passable tiles inside the same bounding box that do NOT
+ * belong to the room (they stand in for a neighbouring room/corridor). Roster
+ * spawns must stay on the mask.
+ */
+function createMaskedFloor3Map(): FloorMap {
+  const flags = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT);
+  const terrain = new Uint8Array(TINY_FLOOR3_MAP_WIDTH * TINY_FLOOR3_MAP_HEIGHT).fill(
+    TerrainType.STONE_WALL,
+  );
+  const setFloor = (x: number, y: number): void => {
+    const idx = y * TINY_FLOOR3_MAP_WIDTH + x;
+    flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+  for (const cell of MASK_ROOM_CELLS) setFloor(cell.x, cell.y);
+  // Passable, but outside the masked room's own cells.
+  setFloor(3, 3);
+  setFloor(4, 3);
+
+  const roomGraph = new RoomGraph();
+  roomGraph.add(
+    { x: 0, y: 0, width: 6, height: 6 },
+    [],
+    [],
+    RoomRole.TERRITORY,
+    undefined,
+    undefined,
+    MASK_ROOM_CELLS.map((cell) => ({ ...cell })),
+  );
+
+  return new FloorMap(
+    TINY_FLOOR3_MAP_CONFIG,
+    new TileMap(TINY_FLOOR3_MAP_WIDTH, TINY_FLOOR3_MAP_HEIGHT, flags),
+    roomGraph,
+    terrain,
+    { x: 1, y: 1 },
+  );
+}
+
 /** Distinct `x,y` keys across a pending-spawn list. */
 function distinctSpawnPositions(pendings: readonly { x?: number; y?: number }[]): number {
   return new Set(pendings.map((pending) => `${pending.x},${pending.y}`)).size;
@@ -222,6 +268,25 @@ describe('floor3 studios + final four objective tick', () => {
     for (const pending of state.finalFourPendingSpawns) {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();
+    }
+  });
+
+  it('keeps roster spawns on an irregular room mask instead of leaking into its bounding box', () => {
+    const world = createTestWorld({ seed: 911, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    const floorMap = createMaskedFloor3Map();
+    initializeFloor3Scenario(world, playerEid, { floorMapOverride: floorMap });
+    const state = world.floorExtendedState!.floor3Studios!;
+
+    const maskKeys = new Set(MASK_ROOM_CELLS.map((cell) => `${cell.x},${cell.y}`));
+    const pendings = state.studios.flatMap((studio) => studio.pendingSpawns);
+    expect(pendings.length).toBeGreaterThan(0);
+    for (const studio of state.studios) {
+      expect(studio.setPieceCarved).toBe(false);
+    }
+    for (const pending of pendings) {
+      const tile = floorMap.worldToTile(pending.x!, pending.y!);
+      expect(maskKeys.has(`${tile.x},${tile.y}`)).toBe(true);
     }
   });
 
