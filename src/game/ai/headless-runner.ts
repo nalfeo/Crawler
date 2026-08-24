@@ -28,6 +28,7 @@ import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../sha
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
+import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -122,6 +123,14 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
     world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status === 'complete' ||
     readRunState(world) === 'safe_room'
   );
+}
+
+function computeHeadlessFloorProgressScore(world: GameWorld): number {
+  const floor4Arena = world.floorExtendedState?.floor4Arena;
+  if (floor4Arena) {
+    return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
+  }
+  return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
 
 function computeXpOnGroundAtEnd(world: GameWorld): number {
@@ -1093,6 +1102,15 @@ export async function runHeadless(
         world.state = 'playing';
       }
 
+      // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
+      // the player physically spawns on stage, so sample the phase BEFORE the
+      // step and account for it at the same post-step point as safeRoomSystem.
+      // This intentionally includes the transition frame where COUNTDOWN flips
+      // to WAVES, so the full countdown window is excluded from active time.
+      const floor4CountdownSafeFrame =
+        world.floorId === 'floor4' &&
+        world.floorExtendedState?.floor4Arena?.phase.kind === 'COUNTDOWN';
+
       // Run one simulation step using the canonical preSystems/postSystems derived
       // from createFloorMainSceneOptions() — the same source the visual pipeline
       // uses. This ensures both pipelines share one ordering definition (issue #663).
@@ -1109,7 +1127,7 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
-      if (world.playerInSafeRoom === true) {
+      if (world.playerInSafeRoom === true || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death
@@ -1467,8 +1485,16 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      if (world.floorScenario?.runSummary?.outcome === 'cleared_floor') {
+      const scenarioOutcome = scenario.getRunOutcome(world);
+      if (
+        scenarioOutcome === 'cleared_floor' ||
+        world.floorScenario?.runSummary?.outcome === 'cleared_floor'
+      ) {
         outcome = 'victory';
+        break;
+      }
+      if (scenarioOutcome === 'failed_timeout') {
+        outcome = 'timeout';
         break;
       }
       if (world.floorId === 'floor2' && hasFloor2ExitCompleted(world)) {
@@ -1493,12 +1519,7 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (
-        stallTracker.update(
-          computeFloorProgressScore(world.questLog.values(), world.playerGold),
-          frameCount,
-        )
-      ) {
+      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),
@@ -1640,6 +1661,7 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      floor4Arena: getFloor4ArenaRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -1747,6 +1769,7 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    floor4Arena: getFloor4ArenaRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),

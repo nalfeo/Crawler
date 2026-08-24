@@ -24,6 +24,8 @@ import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
 } from '../../src/game/floor3Scenario.js';
+import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -201,6 +203,34 @@ describe('scenario definitions', () => {
       expect(scenario.getRunOutcome(world)).toBeNull();
       world.goalFlags.set(FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+    });
+
+    it('floor4 returns cleared_floor on rehearsal victory with matching presentation copy', () => {
+      const scenario = getScenarioDefinition('floor4');
+      const world = createTestWorld({ seed: 44, floor: 4 });
+      const player = spawnPlayer(world, 0, 0);
+      const phase = getFloorManifest('floor4')!.floor4!.phase;
+      initializeFloor4Scenario(world, player);
+
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      world.elapsedMs += phase.countdownMs;
+      arenaDirectorSystem(world);
+      for (let act = 1; act <= phase.actCount; act += 1) {
+        world.elapsedMs += phase.waveWindowMs;
+        arenaDirectorSystem(world);
+        world.elapsedMs += phase.headlineWindowMs;
+        arenaDirectorSystem(world);
+        world.elapsedMs += phase.intermissionMs;
+        arenaDirectorSystem(world);
+      }
+
+      expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+      expect(scenario.director.isVictoryReached(world)).toBe(true);
+      expect(scenario.getCompletionCopy('terminal_complete')).toEqual({
+        title: 'Floor 4 Complete!',
+        subtitle: 'Arena rehearsal cleared',
+        body: 'The Main Event rehearsal ran start-to-finish and the crowd got its winner banner.',
+      });
     });
   });
 

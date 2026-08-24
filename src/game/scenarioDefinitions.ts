@@ -53,8 +53,10 @@ import {
 } from './floor3Scenario.js';
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
+  arenaDirectorSystem,
   confirmFloor4StairDescend,
   initializeFloor4Scenario,
+  isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -100,14 +102,17 @@ function getFloor4CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     };
   }
   return {
-    title: 'Floor 4 In Progress',
-    subtitle: 'Venue slice',
-    body: 'The Main Event venue is wired, but the acts, waves and Headliners have not been staged yet.',
+    title: 'Floor 4 Complete!',
+    subtitle: 'Arena rehearsal cleared',
+    body: 'The Main Event rehearsal ran start-to-finish and the crowd got its winner banner.',
   };
 }
 
 function getFloor4RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
-  return world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true ? 'failed_timeout' : null;
+  if (world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true) {
+    return 'failed_timeout';
+  }
+  return isFloor4ArenaVictory(world) ? 'cleared_floor' : null;
 }
 
 /**
@@ -458,10 +463,10 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 
 const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
   intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
-  victory: 'Floor 4 is not winnable yet; this slice only builds the venue.',
+  victory: 'Floor 4 rehearsal complete. Five acts ran clean and the stairs opened on cue.',
   timeout: 'The Main Event never started. The Director cuts the feed.',
   milestones: [],
-  isVictoryReached: () => false,
+  isVictoryReached: isFloor4ArenaVictory,
   isTimeoutReached: (world: GameWorld) =>
     world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
 };
@@ -567,6 +572,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
       onStairDescend: confirmFloor4StairDescend,
+      afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,

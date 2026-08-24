@@ -1089,7 +1089,10 @@ export function initializeFloor3Scenario(
 export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
   if (world.state !== 'loadout') return;
   const offer = world.floorExtendedState?.floor3StarterOffer;
-  if (!offer || offer.length === 0) return;
+  if (!offer || offer.length === 0) {
+    world.state = 'playing';
+    return;
+  }
 
   const speciesId = offer[optionIndex] ?? offer[0];
   let species = speciesId !== undefined ? getPetSpecies(speciesId) : undefined;

@@ -39,4 +39,10 @@ describe('floor4 manifest schema cross-field geometry rules', () => {
     bad.floor4.greenRoom.heightTiles = 20;
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
+
+  it('rejects phase timing whose windows do not add up to the act duration', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.phase.headlineWindowMs += 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
 });
