@@ -42,13 +42,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "90456e9bc1636802a88de50410311c9c18412677",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The slice lands coherent Floor 3 studio/final-four progression with deterministic seeded selection, keeps scope focused on the required systems/data/types, and adds direct regression coverage for objective and outcome behavior."
     }
   }
 }
