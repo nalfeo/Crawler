@@ -38,7 +38,9 @@ requirement changed.
 - `src/game/ai/bt-ai-provider.ts`
 - `src/game/ai/spell-broker-intent.ts`
 - `tests/game/spell-broker-progression.test.ts`
+- `tests/headless/collision-pair-parity.test.ts`
 - `tests/headless/floor1-release-sweep-loss-regressions.test.ts`
+- `tests/unit/ai/bt-loot-sweep.test.ts`
 
 ## Verification
 
