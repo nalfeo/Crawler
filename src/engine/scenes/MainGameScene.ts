@@ -80,6 +80,9 @@ import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
+import { createFloor3RosterUI } from '../Floor3RosterUI.js';
+import { shouldShowFloor3Party } from '../floor3-party-state.js';
+import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
@@ -732,12 +735,17 @@ export class MainGameScene extends Phaser.Scene {
   private keyAbilities?: Phaser.Input.Keyboard.Key;
 
   private keyAchievements?: Phaser.Input.Keyboard.Key;
+  private keyRoster?: Phaser.Input.Keyboard.Key;
+  private keyCommand?: Phaser.Input.Keyboard.Key;
+  private queuedRosterToggle = false;
+  private queuedCompanionCommand = false;
 
   private keyQuartermaster?: Phaser.Input.Keyboard.Key;
 
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
+  private floor3RosterUI?: ReturnType<typeof createFloor3RosterUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private shopPanelUI?: ReturnType<typeof createShopPanelUI>;
@@ -1051,6 +1059,8 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.keyRoster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1110,6 +1120,7 @@ export class MainGameScene extends Phaser.Scene {
       },
     });
     this.bossIntroUI = createBossIntroUI(this);
+    this.floor3RosterUI = createFloor3RosterUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onVisibilityChange: () => {
         this.clearPendingInteractionInput();
@@ -1326,6 +1337,8 @@ export class MainGameScene extends Phaser.Scene {
       this.equipmentUI = undefined;
       this.achievementsUI?.destroy();
       this.achievementsUI = undefined;
+      this.floor3RosterUI?.destroy();
+      this.floor3RosterUI = undefined;
       this.rewardOpeningUI?.destroy();
       this.rewardOpeningUI = undefined;
       this.shopPanelUI?.destroy();
@@ -1488,6 +1501,8 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAchievements,
       this.keyAbilities,
       this.keyQuartermaster,
+      this.keyRoster,
+      this.keyCommand,
       this.keyEsc,
     ]) {
       if (key) {
@@ -1529,6 +1544,21 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.floor3RosterUI?.isOpen()) {
+      if (event.repeat) return;
+      if (event.code === 'KeyR' || event.code === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.closeFloor3Roster();
+      } else if (event.code === 'KeyW' || event.code === 'ArrowUp') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, -1);
+      } else if (event.code === 'KeyS' || event.code === 'ArrowDown') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, 1);
+      }
+      return;
+    }
     if (this.isBlockingSurfaceOpen()) {
       return;
     }
@@ -1556,6 +1586,32 @@ export class MainGameScene extends Phaser.Scene {
   public requestAchievementsToggle(): void {
     this.clearPendingInteractionInput();
     this.queuedAchievementsToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 roster overlay ([R]). */
+  public requestFloor3RosterToggle(): void {
+    this.clearPendingInteractionInput();
+    this.queuedRosterToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 companion command verb ([C]). */
+  public requestCompanionCommand(): void {
+    this.queuedCompanionCommand = true;
+  }
+
+  private closeFloor3Roster(): void {
+    this.floor3RosterUI?.close();
+    this.clearPendingInteractionInput();
+  }
+
+  private issueCompanionCommandFromInput(): void {
+    const result = this.hudUi?.issueFloor3Command(this.world, this.playerEid);
+    if (result === undefined) return;
+    if (result.accepted) {
+      this.flashHint(`${result.row.formName} uses ${result.abilityName}!`);
+      return;
+    }
+    this.flashHint(describeCompanionCommandRejection(result.rejection));
   }
 
   public requestQuartermasterToggle(): void {
@@ -1899,6 +1955,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
+      (this.floor3RosterUI?.isOpen() ?? false) ||
       (this.shopPanelUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
@@ -2377,6 +2434,34 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         this.achievementsUI.toggle(this.world);
       }
+    }
+
+    const rosterToggleRequested =
+      this.queuedRosterToggle ||
+      Boolean(this.keyRoster && Phaser.Input.Keyboard.JustDown(this.keyRoster));
+    this.queuedRosterToggle = false;
+    const rosterOpen = this.floor3RosterUI?.isOpen() ?? false;
+    if (rosterOpen) {
+      if (rosterToggleRequested) {
+        this.closeFloor3Roster();
+      } else if (shouldShowFloor3Party(this.world)) {
+        this.floor3RosterUI?.sync(this.world);
+      } else {
+        this.closeFloor3Roster();
+      }
+    } else if (rosterToggleRequested && shouldShowFloor3Party(this.world) && !isUiLockOpen()) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels();
+      this.clearPendingInteractionInput();
+      this.floor3RosterUI?.open(this.world);
+    }
+
+    const commandRequested =
+      this.queuedCompanionCommand ||
+      Boolean(this.keyCommand && Phaser.Input.Keyboard.JustDown(this.keyCommand));
+    this.queuedCompanionCommand = false;
+    if (commandRequested && !this.isBlockingSurfaceOpen() && shouldShowFloor3Party(this.world)) {
+      this.issueCompanionCommandFromInput();
     }
 
     // Boss chests now appear as physical in-world entities. Surface a one-time

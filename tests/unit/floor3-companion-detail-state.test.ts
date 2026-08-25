@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  detailLines,
+  MAX_DETAIL_LINES,
   resolveAbilityTrack,
   resolveCompanionDetail,
   resolveFormTrack,
@@ -106,5 +108,47 @@ describe('wrapRosterIndex', () => {
     expect(wrapRosterIndex(3, 3)).toBe(0);
     expect(wrapRosterIndex(-1, 3)).toBe(2);
     expect(wrapRosterIndex(5, 0)).toBe(0);
+  });
+});
+
+describe('detailLines', () => {
+  it('explains the empty roster instead of rendering a blank column', () => {
+    expect(detailLines(undefined)).toEqual(['No companions recruited yet.']);
+  });
+
+  it('renders identity, matchup spread, and both progression tracks', () => {
+    const world = floor3World();
+    spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0, level: 12 });
+    const detail = resolveCompanionDetail(world, resolveRosterEntries(world)[0]!.eid)!;
+
+    const lines = detailLines(detail);
+    expect(lines[0]).toContain(detail.displayName);
+    expect(lines[0]).toContain('L12');
+    expect(lines).toContain('FORMS');
+    expect(lines).toContain('ABILITIES');
+    expect(lines.some((line) => line.startsWith('Strong vs'))).toBe(true);
+    expect(lines.some((line) => line.startsWith('Weak to'))).toBe(true);
+    // Every authored milestone stays visible inside the rendered budget.
+    expect(detail.abilityTrack).toHaveLength(5);
+    expect(lines.length).toBeLessThanOrEqual(MAX_DETAIL_LINES);
+    for (const step of detail.abilityTrack) {
+      expect(lines.some((line) => line.includes(step.name))).toBe(true);
+    }
+  });
+
+  it('never leaks a raw f3.* ability id into player-facing copy', () => {
+    const world = floor3World();
+    spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0, level: 34 });
+    const detail = resolveCompanionDetail(world, resolveRosterEntries(world)[0]!.eid)!;
+    for (const line of detailLines(detail)) {
+      expect(line).not.toContain('f3.');
+    }
+  });
+
+  it('flags a knocked-out companion in the header line', () => {
+    const world = floor3World();
+    spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0, level: 5, knockedOut: true });
+    const detail = resolveCompanionDetail(world, resolveRosterEntries(world)[0]!.eid)!;
+    expect(detailLines(detail)[0]).toContain('[KO]');
   });
 });

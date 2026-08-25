@@ -219,3 +219,19 @@ export function pruneCommandState(
     if (!live.has(key)) state.lastCommandFrame.delete(key);
   }
 }
+
+/** Player-facing reason a command press was refused. */
+export function describeCompanionCommandRejection(rejection: CommandRejection): string {
+  switch (rejection) {
+    case 'empty-party':
+      return 'No companions to command yet.';
+    case 'knocked-out':
+      return 'That companion is knocked out.';
+    case 'cooling-down':
+      return 'That companion is still recovering.';
+    case 'no-capacity':
+      return 'No command charges left — level up to command more companions.';
+    case 'unknown-slot':
+      return 'No companion in that party slot.';
+  }
+}

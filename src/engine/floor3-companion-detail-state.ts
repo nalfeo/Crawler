@@ -23,6 +23,7 @@ import {
   AFFINITY_HUD_COLORS,
   partyMemberKey,
   resolvePartyMemberEids,
+  stylePersonaSummary,
   type PartyMemberKey,
 } from './floor3-party-state.js';
 
@@ -179,4 +180,39 @@ export function resolveRosterEntries(
 export function wrapRosterIndex(index: number, count: number): number {
   if (count <= 0) return 0;
   return ((index % count) + count) % count;
+}
+
+/** Maximum roster detail lines the overlay renders. */
+export const MAX_DETAIL_LINES = 24;
+
+/** Detail column contents, derived so labs/tests can assert on the text. */
+export function detailLines(detail: CompanionDetail | undefined): readonly string[] {
+  if (detail === undefined) return ['No companions recruited yet.'];
+  const lines: string[] = [
+    `${detail.displayName}  L${detail.level}${detail.knockedOut ? '  [KO]' : ''}`,
+    `HP ${Math.round(detail.hpCurrent)}/${Math.round(detail.hpMax)}   XP ${Math.round(detail.xp)}`,
+    `HP ${detail.persona.hpProfile} · DMG ${detail.persona.dmgProfile} · SPD ${detail.persona.speedProfile}`,
+    `Affinity ${detail.affinity}   Style ${detail.fightingStyle}`,
+    stylePersonaSummary(detail.fightingStyle),
+    `AI ${detail.persona.aiType} · ${detail.persona.rangeProfile} · cadence ${detail.persona.cadence}`,
+    `Strong vs ${detail.strongAgainst.join(', ') || '-'}`,
+    `Weak to   ${detail.weakTo.join(', ') || '-'}`,
+    '',
+    'FORMS',
+  ];
+  for (const step of detail.formTrack) {
+    const mark = step.current ? '>' : step.reached ? '*' : ' ';
+    lines.push(`${mark} L${String(step.minLevel).padStart(2, ' ')} ${step.name}`);
+  }
+  lines.push('', 'ABILITIES');
+  for (const step of detail.abilityTrack) {
+    lines.push(`${step.learned ? '*' : ' '} L${String(step.level).padStart(2, ' ')} ${step.name}`);
+  }
+  if (detail.nextForm !== undefined) {
+    lines.push('', `Next form at L${detail.nextForm.minLevel}: ${detail.nextForm.name}`);
+  }
+  if (detail.nextAbility !== undefined) {
+    lines.push(`Next ability at L${detail.nextAbility.level}: ${detail.nextAbility.name}`);
+  }
+  return lines.slice(0, MAX_DETAIL_LINES);
 }
