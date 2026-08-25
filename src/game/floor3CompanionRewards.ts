@@ -17,8 +17,8 @@
  * 1. **Once per Companion.** `companion.defeatRewarded` latches on payout, so
  *    the generic engagement-end revival (spec R11) cannot be farmed by
  *    re-KO'ing the same rival. The latch lives in the component store rather
- *    than a world-level set because `clearEntityStores` already zeroes every
- *    store slot on create/remove, making it EID-recycling-safe.
+ *    than a world-level set because `createEntity` clears recycled EID store
+ *    slots through `clearEntityStores`, making it EID-recycling-safe.
  * 2. **Rivals only.** A Companion on `TeamId.PLAYER` is the player's own party;
  *    its members going down must never pay the player.
  *
