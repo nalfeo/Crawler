@@ -14,8 +14,37 @@
       "notes": "Review approved the no-duplicate-first approach. Adopted exact Actions config extraction, verification-only scope for unrelated historical cases, and ledger-before-edit ordering. Actions logs then proved four distinct authoritative failures, so scope is limited to those four."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

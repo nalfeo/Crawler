@@ -2230,13 +2230,12 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
+            if (!ctx.world.playerInSafeRoom && projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below. Inside safe rooms, weapons are disabled,
-              // so threat-clearing cannot make progress until movement exits first.
+              // direct-approach path below.
               this.resetNpcApproachThreatTracking();
-            } else if (this.shouldClearThreatBeforeNpc(target)) {
+            } else if (!ctx.world.playerInSafeRoom && this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
               this.decision.state = AIState.ENGAGE;
               this.decision.targetEid = nearestEnemy.eid;
@@ -2245,14 +2244,19 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
-          } else if (this.npcApproachThreatNpcEid !== target.eid) {
-            // Only reset when the tracked NPC actually changed (or nothing was
-            // tracked). Leaving this branch a no-op for a matching target eid
-            // is what lets the no-progress tracking survive a one-frame
-            // safe-room doorway flicker — `playerInSafeRoom` no longer gates
-            // the outer condition above, so this branch is reachable on the
-            // flicker frame itself instead of being shadowed by the final
-            // `else` below.
+            // else: either `ctx.world.playerInSafeRoom` is true (a
+            // doorway-flicker frame where the threat is still nearby but we
+            // can't act on it inside the safe room, weapons disabled) or the
+            // per-NPC bypass has already latched (shouldClearThreatBeforeNpc
+            // returned false). Either way, tracking is deliberately left
+            // untouched: the flicker frame must preserve it so the
+            // no-progress counter survives the boundary, and once the bypass
+            // has latched there is nothing left to reset — it stays latched
+            // until this outer `if` sees no nearby threat (the `else` below)
+            // or targets a different NPC (see `shouldClearThreatBeforeNpc`).
+          } else {
+            // No threat within range: the gate genuinely exited, so reset
+            // unconditionally instead of leaving a stale bypass latched.
             this.resetNpcApproachThreatTracking();
           }
         } else {

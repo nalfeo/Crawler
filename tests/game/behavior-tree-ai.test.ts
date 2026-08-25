@@ -2622,6 +2622,26 @@ describe('BehaviorTreeAI', () => {
     },
   );
 
+  it('keeps a healthy projectile user travelling toward an NPC while in a safe room, without engaging', () => {
+    // Companion regression test for the safe-room-flicker fix above: whether
+    // `playerInSafeRoom` is true or the equipped weapon is a healthy
+    // projectile weapon, the resulting decision for this frame must be the
+    // same (EXPLORE toward the NPC, never ENGAGE) — only the internal
+    // no-progress tracking differs between the two causes now that the
+    // safe-room branch no longer shares the projectile-weapon reset call.
+    const { world, shopkeeperNpcEid } = setupNpcApproachThreat('bow');
+    world.playerInSafeRoom = true;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(shopkeeperNpcEid);
+    expect(decision.targetX).toBe(38);
+    expect(decision.targetY).toBe(14);
+    expect(decision.reason).not.toContain('Clearing nearby threat');
+  });
+
   it('clears nearby NPC-approach threats for wounded projectile users', () => {
     const { world, player } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 20;
@@ -2975,6 +2995,58 @@ describe('BehaviorTreeAI', () => {
 
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('preserves the NPC threat-clear no-progress count across a one-frame safe-room doorway flicker', () => {
+    // Regression test: `playerInSafeRoom` can flip true for a single frame at
+    // a doorway boundary while the tracked NPC-approach threat is still
+    // nearby (the enclosing guard no longer excludes this frame — see
+    // bt-ai-provider.ts "Set Progress State"). Pre-fix, that frame always
+    // called resetNpcApproachThreatTracking(), so the no-progress counter
+    // could never accumulate across a flicker and the bypass could never
+    // latch while ENGAGE and the safe-room fallback alternated at the
+    // boundary.
+    const { world, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    const internals = ai as unknown as { npcApproachThreatNoProgressFrames: number };
+
+    // Run the counter up to just short of the bypass threshold with normal
+    // (non-flicker) polls, confirming ENGAGE persists throughout.
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+    const countBeforeFlicker = internals.npcApproachThreatNoProgressFrames;
+    expect(countBeforeFlicker).toBeGreaterThan(0);
+
+    // Simulate the doorway flicker: the enemy stays right where it is
+    // (still inside threat radius), only `playerInSafeRoom` toggles true
+    // for a single poll.
+    world.playerInSafeRoom = true;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+    expect(ai.getDecision().targetEid).toBe(shopkeeperNpcEid);
+    expect(internals.npcApproachThreatNoProgressFrames).toBe(countBeforeFlicker);
+
+    // Back to normal: the threat is still nearby, so ENGAGE resumes exactly
+    // where the counter left off instead of restarting from zero.
+    world.playerInSafeRoom = false;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+
+    // One more real (non-flicker) poll should be enough to cross the
+    // threshold and latch the bypass — proving the flicker frame above did
+    // not reset the counter, since a genuine reset would require the full
+    // NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES budget all over again.
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
+    expect(ai.getDecision().reason).not.toContain('Clearing nearby threat before NPC interaction');
+    expect(enemies.length).toBeGreaterThan(0);
   });
 
   it('clears NPC threat-clear bypass after higher-priority Progress preemption', () => {
