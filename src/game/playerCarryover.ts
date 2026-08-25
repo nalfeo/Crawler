@@ -1,5 +1,7 @@
+import { hasComponent } from 'bitecs';
 import type { GameWorld, LootLedger } from '../core/world.js';
 import { createLootLedger } from '../core/world.js';
+import { Companion } from '../core/components.js';
 import {
   addGeneratedEquipmentToBag,
   clearEquipmentState,
@@ -39,6 +41,14 @@ import {
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
+import { AFFINITY_RING, type Affinity } from '../shared/data/floor3/affinity.js';
+import { FIGHTING_STYLES, type FightingStyle } from '../shared/data/floor3/styles.js';
+import {
+  KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+  buildKeptCompanionContract,
+  type KeptCompanionContract,
+} from '../shared/data/floor3/kept-companion-contract.js';
+import { getPetSpecies, speciesForToken } from '../shared/data/floor3/species.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
@@ -196,6 +206,14 @@ export interface PlayerCarryoverSnapshot {
    * a zeroed ledger so the ratio stays well-defined).
    */
   readonly lootLedger?: Readonly<LootLedger>;
+  /**
+   * Floor 3 Slice 11 (spec R7 §9.3, ADR 0071 D6): the single party Companion
+   * the player kept on winning Floor 3, carried at its ultimate form.
+   * Producer-only — Floor 4+ consuming this to re-host the Companion is a
+   * separate, out-of-scope epic concern. Absent on every non-Floor-3-win
+   * snapshot (including snapshots created before this field existed).
+   */
+  readonly keptCompanion?: KeptCompanionContract;
 }
 
 type LegacyPlayerCarryoverSnapshot = Omit<
@@ -424,6 +442,88 @@ function assertResolvedRewardPresentation(
   throw new PlayerCarryoverSnapshotError(
     `Unknown reward presentation kind at ${path}: ${String(record.kind)}`,
   );
+}
+
+/**
+ * Fail-closed structural validation for a persisted {@link KeptCompanionContract}
+ * (Floor 3 Slice 11, spec R7 §9.3). Never repairs a malformed value — always
+ * throws, matching {@link assertResolvedRewardPresentation}'s contract.
+ */
+function assertKeptCompanionContract(
+  value: unknown,
+  path: string,
+): asserts value is KeptCompanionContract {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new PlayerCarryoverSnapshotError(`Expected object at ${path}`);
+  }
+  const record = value as Record<string, unknown>;
+  if (record.schemaVersion !== KEPT_COMPANION_CONTRACT_SCHEMA_VERSION) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unsupported kept-companion contract schema version at ${path}.schemaVersion: ` +
+        `${String(record.schemaVersion)}`,
+    );
+  }
+  if (typeof record.speciesId !== 'string' || record.speciesId.length === 0) {
+    throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}.speciesId`);
+  }
+  if (typeof record.affinity !== 'string' || !AFFINITY_RING.includes(record.affinity as Affinity)) {
+    throw new PlayerCarryoverSnapshotError(`Invalid affinity at ${path}.affinity`);
+  }
+  if (
+    typeof record.fightingStyle !== 'string' ||
+    !FIGHTING_STYLES.includes(record.fightingStyle as FightingStyle)
+  ) {
+    throw new PlayerCarryoverSnapshotError(`Invalid fightingStyle at ${path}.fightingStyle`);
+  }
+  if (record.form !== 2) {
+    throw new PlayerCarryoverSnapshotError(`Expected form === 2 at ${path}.form`);
+  }
+  if (record.levelBand !== 'floor3-graduate') {
+    throw new PlayerCarryoverSnapshotError(
+      `Expected levelBand 'floor3-graduate' at ${path}.levelBand`,
+    );
+  }
+  assertArray(record.learnedAbilityIds, `${path}.learnedAbilityIds`);
+  assertUniqueStrings(record.learnedAbilityIds as readonly string[], `${path}.learnedAbilityIds`);
+
+  // Resolve speciesId through the canonical roster and compare every
+  // denormalized field plus the ordered ability list against the contract
+  // `buildKeptCompanionContract` would produce for that species. This is the
+  // only way to catch a structurally valid but semantically wrong contract
+  // (e.g. a speciesId paired with another species' affinity/style, or an
+  // ability list that isn't the species' full ordered ultimate-form set) —
+  // a future Floor 4+ consumer cannot faithfully re-host anything else.
+  const canonicalSpecies = getPetSpecies(record.speciesId);
+  if (canonicalSpecies === undefined) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unknown Floor 3 speciesId at ${path}.speciesId: ${record.speciesId}`,
+    );
+  }
+  const expected = buildKeptCompanionContract(canonicalSpecies);
+  if (record.affinity !== expected.affinity) {
+    throw new PlayerCarryoverSnapshotError(
+      `Affinity at ${path}.affinity does not match species '${record.speciesId}': ` +
+        `expected ${expected.affinity}, got ${String(record.affinity)}`,
+    );
+  }
+  if (record.fightingStyle !== expected.fightingStyle) {
+    throw new PlayerCarryoverSnapshotError(
+      `FightingStyle at ${path}.fightingStyle does not match species '${record.speciesId}': ` +
+        `expected ${expected.fightingStyle}, got ${String(record.fightingStyle)}`,
+    );
+  }
+  const learnedAbilityIds = record.learnedAbilityIds as readonly string[];
+  const expectedAbilityIds = expected.learnedAbilityIds;
+  if (
+    learnedAbilityIds.length !== expectedAbilityIds.length ||
+    !learnedAbilityIds.every((id, index) => id === expectedAbilityIds[index])
+  ) {
+    throw new PlayerCarryoverSnapshotError(
+      `learnedAbilityIds at ${path}.learnedAbilityIds does not match species ` +
+        `'${record.speciesId}' ultimate-form ability set: expected ` +
+        `[${expectedAbilityIds.join(', ')}], got [${learnedAbilityIds.join(', ')}]`,
+    );
+  }
 }
 
 function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapshot {
@@ -898,6 +998,9 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
       ast.passiveAbilityGrantSources,
       'abilityState.passiveAbilityGrantSources',
     );
+  }
+  if (normalized.keptCompanion !== undefined) {
+    assertKeptCompanionContract(normalized.keptCompanion, 'keptCompanion');
   }
   return normalized;
 }
@@ -1942,6 +2045,23 @@ function remapModifierHolder(
   return parts.join(':');
 }
 
+/**
+ * Resolves the Floor 3 kept-companion pick (spec R7 §9.3, slice 11) into its
+ * persisted {@link KeptCompanionContract}, or `undefined` when there is
+ * nothing to carry (no Floor 3 state, no pick made yet, or the picked entity
+ * is no longer a live Companion / has an unresolvable species token —
+ * defensive, should never happen given `latchFloor3Victory`'s auto-default
+ * and `selectFloor3KeptCompanion`'s validation, but must never throw here).
+ */
+function resolveFloor3KeptCompanionContract(world: GameWorld): KeptCompanionContract | undefined {
+  const keptEid = world.floorExtendedState?.floor3Studios?.keptCompanionEid;
+  if (keptEid === undefined || !hasComponent(world.ecs, keptEid, Companion)) return undefined;
+  const speciesToken = world.stores.companion.speciesToken[keptEid] ?? 0;
+  const species = speciesForToken(speciesToken);
+  if (!species) return undefined;
+  return buildKeptCompanionContract(species);
+}
+
 export function capturePlayerCarryover(
   world: GameWorld,
   playerEid: number,
@@ -1995,6 +2115,7 @@ export function capturePlayerCarryover(
     world.generatedEquipmentRegistry.runKey === null
       ? undefined
       : snapshotGeneratedEquipmentRegistry(world);
+  const keptCompanion = resolveFloor3KeptCompanionContract(world);
 
   const snapshot: PlayerCarryoverSnapshot = {
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
@@ -2091,6 +2212,7 @@ export function capturePlayerCarryover(
       pendingPresentations: [...world.achievements.pendingPresentations.entries()],
     },
     lootLedger: { ...world.lootLedger },
+    ...(keptCompanion ? { keptCompanion } : {}),
   };
 
   validateGeneratedCarryover(world, snapshot);
