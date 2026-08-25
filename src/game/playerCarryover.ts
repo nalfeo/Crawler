@@ -520,7 +520,7 @@ function assertKeptCompanionContract(
   ) {
     throw new PlayerCarryoverSnapshotError(
       `learnedAbilityIds at ${path}.learnedAbilityIds does not match species ` +
-        `'${record.speciesId}''s ultimate-form ability set: expected ` +
+        `'${record.speciesId}' ultimate-form ability set: expected ` +
         `[${expectedAbilityIds.join(', ')}], got [${learnedAbilityIds.join(', ')}]`,
     );
   }
