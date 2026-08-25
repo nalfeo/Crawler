@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 import { graphql, paginate, request } from './ci-recovery/github.mjs';
 import { runIssueIntake } from './ci-recovery/issue-intake-lib.mjs';
+import { BASELINE_RECURRENCE_MARKER } from './ci-recovery/markers.mjs';
 
 export const BASELINE_REGRESSION_LABELS = Object.freeze(['bug', 'automation', 'ai']);
 
@@ -49,12 +50,19 @@ function isManagedReleaseRegressionIssue(issue) {
 
 function recurrenceComment(body, signatures) {
   return [
+    BASELINE_RECURRENCE_MARKER,
+    '',
     '## Recurring Floor 1 release sweep loss',
     '',
     'The same sweep configuration occurred again in a later release. The original issue remains the canonical tracker for this configuration.',
     '',
     ...bodyForSignatures(body, signatures).split('\n'),
   ].join('\n');
+}
+
+function isCopilotAssignee(issue) {
+  const assignees = Array.isArray(issue?.assignees) ? issue.assignees : [];
+  return assignees.some((assignee) => /copilot/i.test(String(assignee?.login || '')));
 }
 
 function bodyForSignatures(body, signatures) {
@@ -160,7 +168,7 @@ export async function fileBaselineRegressionIssue({
       if (!issueNumber) {
         throw new Error(`GitHub ${action} response did not identify an issue`);
       }
-      if (existing) {
+      if (existing && isCopilotAssignee(existing)) {
         outcomes.push({ action, issueNumber });
       } else {
         const intake = await intakeFn({
@@ -170,7 +178,7 @@ export async function fileBaselineRegressionIssue({
           token: intakeToken,
           owner,
           repo,
-          issue,
+          issue: existing || issue,
         });
         outcomes.push({ action, issueNumber, assignee: intake.assignee });
       }
