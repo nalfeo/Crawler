@@ -101,7 +101,12 @@ function spawnDefeatDrops(
         const itemIndex = getItemIndex(drop.itemId);
         if (itemIndex < 0) break;
         for (let i = 0; i < drop.quantity; i += 1) {
-          spawnDroppedItem(world, dx, dy, itemIndex);
+          spawnDroppedItem(
+            world,
+            dx + (world.rng.next() - 0.5) * DEFEAT_UNIT_SCATTER_FT,
+            dy + (world.rng.next() - 0.5) * DEFEAT_UNIT_SCATTER_FT,
+            itemIndex,
+          );
         }
         break;
       }

@@ -110,6 +110,22 @@ describe('floor3 persistent player reward track', () => {
     expect(listStaticInventorySlots(bag!).length).toBeGreaterThan(0);
   });
 
+  it('scatters each item in a multi-item rival drop', () => {
+    const { world } = createFloor3RewardWorld(18);
+    const rival = spawnRival(world, RIVAL_TEAM_ID);
+
+    knockOut(world, rival);
+    awardFloor3CompanionDefeatRewards(world);
+
+    const items = query(world.ecs, [DroppedItem]);
+    expect(items.length).toBe(2);
+    const positions = Array.from(items, (eid) => [
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    ]);
+    expect(new Set(positions.map(([x, y]) => `${x}:${y}`)).size).toBe(positions.length);
+  });
+
   it('pays a defeated rival exactly once, even across revive and re-KO', () => {
     const { world } = createFloor3RewardWorld();
     const rival = spawnRival(world, RIVAL_TEAM_ID);
