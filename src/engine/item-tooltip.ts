@@ -122,7 +122,8 @@ export function renderItemTooltip(
     diffLines.length > 0 ||
     sectionLabel !== undefined;
   const tooltipWidth = placement?.width ?? TOOLTIP_WIDTH;
-  const isCompactEquipmentCard = placement !== undefined && sectionLabel === 'EQUIPPED';
+  const isCompactEquipmentCard =
+    placement !== undefined && (sectionLabel === 'EQUIPPED' || sectionLabel === 'CANDIDATE');
   const compactLayout = isCompactEquipmentCard
     ? getEquipmentTooltipCardLayout(tooltipWidth, statLines, flavorText ?? def.description)
     : null;

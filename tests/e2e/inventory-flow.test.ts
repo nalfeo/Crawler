@@ -1002,8 +1002,27 @@ describe('equipment decision gate (e2e)', () => {
 
       // Slot filtering: selecting a slot narrows the bag to what fits it.
       expect(await probe.selectEquipmentSlot(hoverPage, emptySlot)).toBe(true);
-      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
       expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(emptySlot);
+      await probe.previewEquipmentBagItem(hoverPage, 'leather-boots');
+      const [emptyBounds, emptyTooltip] = await Promise.all([
+        probe.getEquipmentSlotBounds(hoverPage, emptySlot),
+        probe.getEquipmentTooltipBounds(hoverPage),
+      ]);
+      expect(emptyBounds).not.toBeNull();
+      expect(emptyTooltip).not.toBeNull();
+      expect(
+        overlaps(emptyBounds!, emptyTooltip!),
+        'an empty target remains visible while its candidate preview is shown',
+      ).toBe(false);
+      expect(
+        emptyTooltip!.x,
+        'the empty Feet target should use the center-facing side with a clear gap',
+      ).toBeGreaterThanOrEqual(emptyBounds!.x + emptyBounds!.width + 10);
+      expect(
+        await probe.isEquipmentTooltipTopmost(hoverPage),
+        'the empty-slot candidate preview must remain above all panel content',
+      ).toBe(true);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
 
       await probe.selectEquipmentSlot(hoverPage, null);
       const bagIds = await probe.getEquipmentBagItemIds(hoverPage);

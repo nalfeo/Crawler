@@ -1309,6 +1309,62 @@ export function createEquipmentUI(
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
+  function getCenterFacingTooltipPlacement(
+    slotId: EquipmentSlotId,
+    preferredWidth: number,
+    height: number,
+  ): { x: number; y: number; width: number; height: number } | null {
+    const anchor = slotBounds.get(slotId);
+    if (!anchor) return null;
+    const tooltipGap = 14;
+    const panelInset = 8;
+    const preferRight = anchor.x + anchor.width / 2 < panelX + panelWidth / 2;
+    const rightX = anchor.x + anchor.width + tooltipGap;
+    // The Stats column is a separate decision surface; a tooltip may approach
+    // it but never cover it. Shrink before falling back to the away-facing side.
+    const rightWidth = statsX - panelInset - rightX;
+    const leftWidth = anchor.x - tooltipGap - (panelX + panelInset);
+    const useRight = preferRight
+      ? rightWidth >= 152 || rightWidth >= leftWidth
+      : rightWidth > leftWidth;
+    const availableWidth = useRight ? rightWidth : leftWidth;
+    const width = Math.min(preferredWidth, availableWidth);
+    if (width < 152) return null;
+    return {
+      x: useRight ? rightX : anchor.x - tooltipGap - width,
+      y: Math.max(dollY + 3, anchor.y - 5),
+      width,
+      height,
+    };
+  }
+
+  function showCandidateTooltip(def: EquipmentItemDef, slotId: EquipmentSlotId): void {
+    const preferredWidth = 176;
+    const placementSeed = getEquipmentTooltipCardLayout(
+      preferredWidth,
+      tooltipStatLines(def),
+      itemTooltipDef(def).description || undefined,
+    );
+    const placement = getCenterFacingTooltipPlacement(slotId, preferredWidth, placementSeed.height);
+    if (!placement) {
+      renderTooltipPair(emptyComparisonDef(slotId), def);
+      return;
+    }
+    const layout = getEquipmentTooltipCardLayout(
+      placement.width,
+      tooltipStatLines(def),
+      itemTooltipDef(def).description || undefined,
+    );
+    const contentPlacement = { ...placement, height: layout.height };
+    inspectorBg.setPosition(
+      contentPlacement.x + contentPlacement.width / 2,
+      contentPlacement.y + contentPlacement.height / 2,
+    );
+    inspectorBg.setSize(contentPlacement.width, contentPlacement.height);
+    renderEquipmentTooltipCard(def, contentPlacement, 'CANDIDATE');
+    tooltipBounds = { ...contentPlacement };
+  }
+
   /** Show only the equipped item; comparison belongs to bag-item hover. */
   function showTooltip(def: ItemDef, slotId: EquipmentSlotId): void {
     setCompare(null);
@@ -1332,23 +1388,16 @@ export function createEquipmentUI(
       tooltipStatLines(equipmentDef),
       itemTooltipDef(equipmentDef).description || undefined,
     ).height;
-    const tooltipGap = 14;
     const placement = anchor
-      ? (() => {
-          const anchorCenter = anchor.x + anchor.width / 2;
-          const panelCenter = panelX + panelWidth / 2;
-          const preferRight = anchorCenter < panelCenter;
-          const preferredX = preferRight
-            ? anchor.x + anchor.width + tooltipGap
-            : anchor.x - width - tooltipGap;
-          return {
-            x: Math.max(panelX + 8, Math.min(preferredX, panelX + panelWidth - width - 8)),
-            y: Math.max(dollY + 3, anchor.y - 5),
-            width,
-            height,
-          };
-        })()
+      ? getCenterFacingTooltipPlacement(slotId, width, height)
       : { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height };
+    if (placement === null) {
+      renderInspector([
+        { text: equipmentDef.name, color: COLORS.textPrimary, size: 12 },
+        { text: 'Unable to place item preview', color: COLORS.textSecondary, size: 12 },
+      ]);
+      return;
+    }
     // Slot hover is reconnaissance, not the persistent bottom inspector. Anchor
     // the compact card beside the actual item so it stays in the player's eye
     // line without covering the item being examined.
@@ -1410,11 +1459,13 @@ export function createEquipmentUI(
       changed.length === 0
         ? ['No stat change']
         : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
-    renderTooltipPair(
-      current,
-      getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name),
-      diffLines,
-    );
+    const candidate = getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name);
+    const targetSlot = targets[0];
+    if (preview.swappedOut.length === 0 && targetSlot) {
+      showCandidateTooltip(candidate, targetSlot);
+    } else {
+      renderTooltipPair(current, candidate, diffLines);
+    }
   }
 
   // ---------------------------------------------------------------------------

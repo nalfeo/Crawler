@@ -20,8 +20,7 @@
     await new Promise((resolve) => setTimeout(resolve, 350));
     probe?.previewEquipmentBagItem?.('iron-helm');
   } else if (scenario === 'equipment-hover-empty-slot') {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    probe?.previewEquipmentBagItem?.('leather-boots');
+    probe?.selectEquipmentSlot?.('feet');
   } else if (scenario === 'equipment-hover-mixed-delta') {
     probe?.equipInventoryItem?.('iron-breastplate');
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -54,6 +53,10 @@
     // transient hover content. Invoke the real preview seam only after that final
     // layout pass so this capture represents an actual equipped-item hover.
     probe?.previewEquipmentSlot?.('head');
+  } else if (scenario === 'equipment-hover-empty-slot') {
+    // Recreate the actual bag-item hover after the final resize while retaining
+    // Feet's active outline as the preview target.
+    probe?.previewEquipmentBagItem?.('leather-boots');
   }
   const slotIds = [
     'head',
@@ -99,7 +102,12 @@
   }
   if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
   const tooltip = probe?.getEquipmentTooltipBounds?.();
-  const hoveredSlotId = scenario === 'equipment-hover-equipped' ? 'head' : null;
+  const hoveredSlotId =
+    scenario === 'equipment-hover-equipped'
+      ? 'head'
+      : scenario === 'equipment-hover-empty-slot'
+        ? 'feet'
+        : null;
   const hoveredSlot = hoveredSlotId ? probe?.getEquipmentSlotBounds?.(hoveredSlotId) : null;
   if (hoveredSlot) {
     // The hover target and tooltip share a parent so the deterministic reviewer

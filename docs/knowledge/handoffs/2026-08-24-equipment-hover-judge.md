@@ -52,6 +52,20 @@ Head slot, as well as preserving the non-overlap and topmost contracts.
 `files/visual-review/after/v0.1.20/equipment-hover-equipped.{png,review.json}`
 is the updated real Phaser/Azure capture and reports zero deterministic blockers.
 
+### Empty-slot geometry follow-up
+
+The empty Feet candidate preview no longer uses the fixed bottom comparison strip,
+which covered the highlighted target. It now uses the same compact, content-aware
+card as equipped hover, center-facing placement, and 14px target gap. Placement
+shrinks the card before allowing it to cover the Stats column. The real-game e2e
+asserts the candidate card never overlaps Feet, remains at least 10px to its
+center-facing side, and is topmost.
+
+`files/visual-review/before/v0.1.20/equipment-hover-empty-slot.{png,review.json}`
+captures the broken overlapping strip. The fixed real Phaser/Azure artifact is
+`files/visual-review/after/v0.1.21/equipment-hover-empty-slot.{png,review.json}`;
+it declares 23 regions and reports zero deterministic blockers.
+
 ## Validation
 
 - `npm run verify:fast` — passed.
