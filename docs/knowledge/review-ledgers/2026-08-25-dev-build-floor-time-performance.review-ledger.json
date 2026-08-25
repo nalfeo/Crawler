@@ -14,8 +14,26 @@
       "notes": "Adopted all review refinements: use same-machine back-to-back >=3-run median/spread measurements; never assert wall time in CI; branch explicitly between browser/render/load tracing and simulation profiling; treat RunStats fingerprint as collateral-only evidence for render/load changes and require surface-specific observation; describe inaccessible-bundle fallback as best-available with gaps. No architectural fork warranted."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["built-in-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Automated review flagged the familyState null sentinel edge case in the minimap guard; fixed by using != null and adding an explicit null regression assertion."
+        },
+        {
+          "round": 2,
+          "models": ["built-in-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Second automated code review after the null-sentinel fix found no issues."
+        }
+      ],
+      "notes": "Code-review loop completed before CodeQL. The only finding was fixed and re-reviewed clean."
     },
     "independent_grade": {
       "completed": false,
