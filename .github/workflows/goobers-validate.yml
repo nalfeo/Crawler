@@ -1,0 +1,85 @@
+name: Goobers Validate
+
+# Manual-only infrastructure workflow. Downloads a pinned, checksum-verified
+# Goobers release binary (no Go build step) and validates the versioned
+# `.goobers/` desired-state source tree against it. This does not run any
+# Goobers workflow or daemon — it only proves the source is well-formed on a
+# GitHub-hosted runner. See .goobers/README.md and README.md#goobers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      goobers_version:
+        description: 'Goobers release tag to pin (see https://github.com/Agent-Clubhouse/Goobers/releases)'
+        type: string
+        default: 'v0.2.2'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Download pinned Goobers binary and validate source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOBERS_VERSION: ${{ inputs.goobers_version }}
+      GOOBERS_REPO: Agent-Clubhouse/Goobers
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve pinned archive checksum
+        # Independent pin: this digest is reviewed and committed here, not
+        # fetched from the same mutable release as the archive. It must be
+        # updated (with a diff review of the new digest) whenever
+        # goobers_version's default changes. See
+        # .github/workflows/goobers-run.yml for the shared list.
+        run: |
+          set -euo pipefail
+          case "${GOOBERS_VERSION}" in
+            v0.2.2)
+              echo "GOOBERS_SHA256=82f636c7b4451e500081ca4b2fdd498c4be27d0d6e619e412faaac57b064dafa" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-run.yml) after independently verifying the release artifact." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Cache pinned Goobers archive
+        id: cache-goobers
+        uses: actions/cache@v4
+        with:
+          path: dl/goobers.tar.gz
+          key: goobers-archive-linux-amd64-${{ env.GOOBERS_VERSION }}-${{ env.GOOBERS_SHA256 }}
+
+      - name: Download pinned Goobers release
+        if: steps.cache-goobers.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          curl -fsSL -o dl/goobers.tar.gz \
+            "https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+
+      - name: Verify archive against pinned checksum
+        # Always re-hash, including on a cache hit, so a poisoned/corrupted
+        # cache entry can't smuggle an unverified binary past this gate.
+        run: |
+          set -euo pipefail
+          echo "${GOOBERS_SHA256}  dl/goobers.tar.gz" | sha256sum --check --strict -
+
+      - name: Extract binary
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          tar -xzf dl/goobers.tar.gz -C bin goobers
+          chmod +x bin/goobers
+
+      - name: Verify binary version
+        run: |
+          set -euo pipefail
+          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
+
+      - name: Validate .goobers source tree
+        run: ./bin/goobers validate --source-tree .goobers
