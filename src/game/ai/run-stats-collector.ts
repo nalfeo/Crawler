@@ -1,5 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
+import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { assembleRunStats } from '../../shared/run-stats-collector.js';
+import type { GeneratedEquipmentInstanceId } from '../../shared/generated-equipment-types.js';
 import type { SessionRecorderStats } from '../../shared/session-recorder-types.js';
 import type {
   ItemInteractionEntry,
@@ -9,6 +11,9 @@ import type {
 } from './types.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
+import { generatedEquipmentCatalogKey } from './headless-run-data.js';
+
+const GENERATED_EQUIPMENT_INSTANCE_SOURCE_PREFIX = 'generated-equipment-instance:';
 
 interface MutableHumanItemInteraction {
   readonly catalogKey: string;
@@ -42,8 +47,7 @@ function ensureHumanItem(
 
 function collectHumanItemInteractions(world: GameWorld, playerEid: number): ItemInteractionSummary {
   const items = new Map<string, MutableHumanItemInteraction>();
-  const selectedWeapon =
-    world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0];
+  const selectedWeapon = world.floorScenario?.selectedWeaponId;
   if (selectedWeapon) {
     const item = ensureHumanItem(items, `weapon:${selectedWeapon}`, 'starter_weapon');
     item.offeredCount = Math.max(item.offeredCount, 1);
@@ -51,10 +55,15 @@ function collectHumanItemInteractions(world: GameWorld, playerEid: number): Item
     item.selectionCount = Math.max(item.selectionCount, 1);
   }
 
-  for (const spellId of world.floorScenario?.offeredRewardSpellIds ?? []) {
-    const item = ensureHumanItem(items, `spell:${spellId}`, 'spell');
-    item.offeredCount = Math.max(item.offeredCount, 1);
-    item.selectableExposureCount = Math.max(item.selectableExposureCount, 1);
+  const bossRewardAvailable =
+    world.goalFlags.get('floor1-boss-battle-complete') === true ||
+    world.goalFlags.get('floor1-boss-spellbook-claimed') === true;
+  if (bossRewardAvailable) {
+    for (const spellId of world.floorScenario?.offeredRewardSpellIds ?? []) {
+      const item = ensureHumanItem(items, `spell:${spellId}`, 'spell');
+      item.offeredCount = Math.max(item.offeredCount, 1);
+      item.selectableExposureCount = Math.max(item.selectableExposureCount, 1);
+    }
   }
 
   for (const spellId of world.abilityStatesByEntity.get(playerEid)?.learnedSpellIds ?? []) {
@@ -67,14 +76,27 @@ function collectHumanItemInteractions(world: GameWorld, playerEid: number): Item
     uniqueActivationCount += 1;
     const creditedKeys = new Set<string>();
     for (const source of activation.itemSources) {
-      const kind: ItemInteractionKind = source.startsWith('weapon:')
-        ? 'starter_weapon'
-        : source.startsWith('spell:')
-          ? 'spell'
-          : 'generated_equipment';
-      if (creditedKeys.has(source)) continue;
-      creditedKeys.add(source);
-      ensureHumanItem(items, source, kind).activationCount += 1;
+      let catalogKey: string | undefined;
+      let kind: ItemInteractionKind;
+      if (source.startsWith('weapon:')) {
+        catalogKey = source;
+        kind = 'starter_weapon';
+      } else if (source.startsWith('spell:')) {
+        catalogKey = source;
+        kind = 'spell';
+      } else if (source.startsWith(GENERATED_EQUIPMENT_INSTANCE_SOURCE_PREFIX)) {
+        const instanceId = source.slice(
+          GENERATED_EQUIPMENT_INSTANCE_SOURCE_PREFIX.length,
+        ) as GeneratedEquipmentInstanceId;
+        const instance = getGeneratedEquipmentInstance(world, instanceId);
+        catalogKey = instance ? generatedEquipmentCatalogKey(instance) : undefined;
+        kind = 'generated_equipment';
+      } else {
+        continue;
+      }
+      if (!catalogKey || creditedKeys.has(catalogKey)) continue;
+      creditedKeys.add(catalogKey);
+      ensureHumanItem(items, catalogKey, kind).activationCount += 1;
     }
   }
 

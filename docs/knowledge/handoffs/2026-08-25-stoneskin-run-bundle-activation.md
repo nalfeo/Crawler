@@ -43,6 +43,19 @@ spell fired.
   - a human Stoneskin activation appearing as `spell:stoneskin` with
     `activationCount: 1`.
 
+## Review recovery
+
+- Addressed PR review recovery for the human `itemInteractions` rollup:
+  - removed the pre-loadout fallback that reported `starterChoices[0]` as a
+    selected starter weapon;
+  - gated boss reward spell offer/exposure counts on the same boss-complete /
+    spellbook-claimed flags used by the headless collector;
+  - normalized generated-equipment activation sources through the generated
+    equipment registry and shared stable catalog-key logic, skipping unresolved
+    instance IDs.
+- Added focused unit regressions in `tests/unit/run-bundle.test.ts` for all
+  three cases above.
+
 ## Verification
 
 - Before editing, an isolated probe and a shipped-pipeline probe both showed
@@ -57,6 +70,14 @@ spell fired.
   passed (21 tests).
 - `bash scripts/agent/verify-fast.sh` passed:
   144 test files, 2,368 tests, plus data-contract/integrity checks.
+- Review recovery validation:
+  - `npx vitest run tests/unit/run-bundle.test.ts tests/unit/run-events.test.ts`
+    passed (10 tests).
+  - `npx prettier --check src/game/ai/run-stats-collector.ts src/game/ai/headless-run-data.ts tests/unit/run-bundle.test.ts`
+    passed.
+  - `npx eslint src/game/ai/run-stats-collector.ts src/game/ai/headless-run-data.ts tests/unit/run-bundle.test.ts --max-warnings 0`
+    passed.
+  - `bash scripts/agent/verify-fast.sh` passed.
 
 ## Unresolved issues
 
