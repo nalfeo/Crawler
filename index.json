@@ -1,5 +1,39 @@
 [
   {
+    "commit": "fa3b186a940a2530bc287497e18f3294db216cfb",
+    "commitDate": "2026-08-25T06:49:14Z",
+    "commitSubject": "Recover all Floor 1 release sweep losses (#3555)",
+    "capturedAt": "2026-08-25T08:04:51.084Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32820557652",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/fa3b186a940a2530bc287497e18f3294db216cfb.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.09,
+      "gatePass": false,
+      "path": "by-sha/fa3b186a940a2530bc287497e18f3294db216cfb.fun-report.json"
+    }
+  },
+  {
     "commit": "019737393aa97124aeaa9bbb070156d515c4840c",
     "commitDate": "2026-08-25T05:53:50Z",
     "commitSubject": "fix: deduplicate recurring Floor 1 release loss issues (#3564)",
