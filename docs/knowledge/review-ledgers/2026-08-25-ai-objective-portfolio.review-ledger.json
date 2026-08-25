@@ -16,22 +16,49 @@
       "notes": "Alt A second scheduler rejected: would duplicate route/budget authority. Alt B whole-BT utility selector rejected: tactical safety ordering remains valid. Alt C scenario-only scorer rejected: shared deterministic portfolio contract is needed, but v1 remains bounded to existing Floor 1 graph producers plus Floor 2 settlement candidate. Alt D extend current planner adopted: add utility/portfolio semantics to the exact planner rather than a competing DSL. Resolutions: explicit AI strategic affinity config; preserve optional bundle verdicts; settlement router retains latch/cooldown/fingerprint ownership and emits a candidate; cover every decision-mode consumer; separate portfolio-choice invalidation from route feasibility; explicit v1 floor scope; explicit committed-active-objective state with completion/invalidity release."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "1) A partially populated ObjectiveUtilityWeights object silently produced NaN utility scores, collapsing portfolio selection into arbitrary cost-only behavior \u2014 fixed by validating weights BY NAME (UTILITY_WEIGHT_KEYS) in the top validation block. 2) The runtime portfolio forwarding at bt-ai-provider.ts was not behaviorally covered: ai-invariant-matrix runs both decision modes but its scenarios carry no utility-bearing optional objectives, so deleting the forwarding would have left the suite green \u2014 fixed by adding tests/unit/ai-objective-portfolio-wiring.test.ts (gated-forwarding + activeObjectiveId + lab/CLI reachability + per-persona weight completeness) and a real Floor 1 graph test where two weight profiles select DIFFERENT optional bundles.",
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "notes": "Both reviewers independently verified LEGACY default-off parity (the utilityWeights branch continues on every path, leaving bestBundleCount unreachable in portfolio mode and untouched otherwise), determinism, required-goal safety, and canonical legacy sweep-config id stability. VALID+FIXED: (a) assertNonNegativeInteger on weights forbade fractional multipliers such as costPerSecond 0.5 (both reviewers) -> assertNonNegativeFinite; (b) weight validation was defined ~250 lines after the closure consuming it (opus) -> moved into the top validation block; (c) the Math.ceil whole-second overhead penalty was a step function charging a 1ms detour the same as a 1000ms one (gemini) -> linear penalty; (d) goal.utility dimensions were also integer-only (gemini; opus argued counts should stay integral) -> adjudicated toward gemini, one rule for every utility number, since exactness dies anyway once weights are fractional; (e) no test exercised costPerSecond > 0 or an equal-utility cost tie-break (both) -> added, with the linear case chosen so a ceil-based penalty would fail it. NOT VALID: negative selected utility scores under a high costPerSecond (opus) \u2014 the required-only mask scores 0 and correctly wins, so this is a tuning observation, not a defect.",
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "ffa5f1165bc916a5d947701477400c5d2a0d5c35",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Round 1 (head 2eed19c) FAILED with one blocker: planFloor1ObjectiveRoute \u2014 which drives merchant/Spell-Broker purchase-intent admission off includedOptionalBundleIds \u2014 was never given utilityWeights, so under a contended budget it could admit a bundle the behavior tree's weighted route had already dropped. Fixed by routing both Floor 1 planner call sites through a single private strategicUtilityWeights() gate, plus a wiring guard pinning the call-site count and a behavioral run-planner test proving two personality profiles select different optional bundles while legacy stays byte-identical. Round 2 (head ffa5f11) found no high-confidence issues: dual call-site gating, required goals non-droppable, legacy default-off parity, partial/NaN weight rejection, linear cost penalty and persona divergence all covered. Weakest aspect is maintainability \u2014 several wiring guards assert on source-text slices (the repo's established pattern) and activeObjectiveId currently aliases routeHeadId."
     }
   }
 }

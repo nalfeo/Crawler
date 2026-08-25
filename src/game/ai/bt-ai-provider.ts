@@ -347,7 +347,11 @@ import {
   type ScenarioAiOperation,
 } from './scenario-ai-tasks.js';
 import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
-import { planObjectiveRoute, type ObjectivePortfolioEntry } from './objective-route-planner.js';
+import {
+  planObjectiveRoute,
+  type ObjectivePortfolioEntry,
+  type ObjectiveUtilityWeights,
+} from './objective-route-planner.js';
 import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
@@ -4974,12 +4978,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
+    const portfolioWeights = this.strategicUtilityWeights();
     return {
       ...RUN_PLANNER_PARAMS,
       moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
-      ...(this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
-        ? { utilityWeights: this.config.strategicUtilityWeights }
-        : {}),
+      ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
     };
   }
 
@@ -7341,14 +7344,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         },
       });
 
+      const portfolioWeights = this.strategicUtilityWeights();
       const route = planObjectiveRoute({
         goals: graph.goals,
         startLocation: PLAYER_START_LOCATION,
         initialSatisfiedEffects: graph.initialSatisfiedEffects,
         budgetMs: Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs),
-        ...(this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
-          ? { utilityWeights: this.config.strategicUtilityWeights }
-          : {}),
+        ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
         travelOracle: oracle,
       });
       nextGoalId = route.activeObjectiveId;
@@ -9706,6 +9708,23 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** A/B axis 2: the decision mode this AI was constructed with. */
   getDecisionMode(): AIDecisionModeValue {
     return this.config.decisionMode;
+  }
+
+  /**
+   * Single gate for the `objectivePortfolio` A/B arm: the personality utility
+   * weights in flagged mode, `undefined` in LEGACY.
+   *
+   * EVERY Floor 1 planner entry point must go through this. The behavior tree's
+   * middle-chain route and {@link planFloor1ObjectiveRoute} (whose
+   * `includedOptionalBundleIds` drive merchant/Spell-Broker purchase-intent
+   * admission) build the same goal graph; if only one is weighted they can
+   * select different optional bundles under a contended budget and the agent
+   * farms gold for a purchase its own committed route already dropped.
+   */
+  private strategicUtilityWeights(): ObjectiveUtilityWeights | undefined {
+    return this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
+      ? this.config.strategicUtilityWeights
+      : undefined;
   }
 
   /** Current flagged Floor 1 agenda, including optional objectives not selected. */

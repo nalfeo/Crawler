@@ -57,7 +57,12 @@
 export type GoalId = string;
 export type LocationId = string;
 
-/** Fixed-point, non-negative integer objective values. */
+/**
+ * Strategic value of a single OPTIONAL objective, split by dimension. Each
+ * value is a finite non-negative number (fractional allowed) and is multiplied
+ * by the matching {@link ObjectiveUtilityWeights} entry. Required goals never
+ * consult utility — they are constraints, not preferences.
+ */
 export interface ObjectiveUtility {
   readonly completion?: number;
   readonly optimization?: number;
@@ -65,13 +70,19 @@ export interface ObjectiveUtility {
   readonly exploration?: number;
 }
 
-/** Fixed-point, non-negative integer personality weights. */
+/**
+ * The personality half of the portfolio: how much this run values each utility
+ * dimension, plus what it charges for the time an optional detour costs. Every
+ * field is required and must be a finite non-negative number — a partially
+ * populated weights object is rejected rather than silently scoring `NaN`.
+ */
 export interface ObjectiveUtilityWeights {
   readonly completion: number;
   readonly optimization: number;
   readonly safety: number;
   readonly exploration: number;
-  /** Integer utility points charged per second of optional route/work overhead. */
+  /** Utility points charged per second of optional route/work overhead, scaled
+   * LINEARLY (a 500ms detour costs half of `costPerSecond`). */
   readonly costPerSecond: number;
 }
 
@@ -225,6 +236,42 @@ function assertNonNegativeInteger(
   }
 }
 
+/** Every utility number — both {@link ObjectiveUtility} dimension values and
+ * {@link ObjectiveUtilityWeights} multipliers — may be fractional. Float
+ * arithmetic stays deterministic here because scoring always sums over the same
+ * id-ordered `goals` array, so a fractional value cannot introduce
+ * iteration-order dependence. */
+function assertNonNegativeFinite(
+  value: unknown,
+  code: ObjectiveRoutePlannerErrorCode,
+  what: string,
+): void {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new ObjectiveRoutePlannerError(
+      code,
+      `${what} must be a finite non-negative number, got ${String(value)}.`,
+    );
+  }
+}
+
+/** Every weight the portfolio score multiplies by. Validated BY NAME (not via
+ * `Object.entries`) so a partially populated weights object fails loudly here
+ * instead of silently producing `NaN` scores that collapse portfolio selection
+ * into arbitrary cost-only behavior. */
+const UTILITY_WEIGHT_KEYS = [
+  'completion',
+  'optimization',
+  'safety',
+  'exploration',
+  'costPerSecond',
+] as const;
+
+function assertValidUtilityWeights(weights: ObjectiveUtilityWeights): void {
+  for (const key of UTILITY_WEIGHT_KEYS) {
+    assertNonNegativeFinite(weights[key], 'invalid-utility', `utilityWeights.${key}`);
+  }
+}
+
 function assertValidTravelCost(value: number): void {
   if (value === Infinity) return;
   if (!Number.isInteger(value) || value < 0) {
@@ -288,10 +335,12 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
     idToIndex.set(goal.id, idToIndex.size);
   }
 
+  if (utilityWeights) assertValidUtilityWeights(utilityWeights);
+
   for (const goal of goals) {
     assertNonNegativeInteger(goal.workCost, 'invalid-work-cost', `Goal "${goal.id}" workCost`);
     for (const [dimension, value] of Object.entries(goal.utility ?? {})) {
-      assertNonNegativeInteger(value, 'invalid-utility', `Goal "${goal.id}" utility.${dimension}`);
+      assertNonNegativeFinite(value, 'invalid-utility', `Goal "${goal.id}" utility.${dimension}`);
     }
     for (const prereqId of goal.prerequisiteIds) {
       if (!idToIndex.has(prereqId) && !completedGoalIds.has(prereqId)) {
@@ -544,11 +593,6 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
     );
   };
 
-  if (utilityWeights) {
-    for (const [dimension, value] of Object.entries(utilityWeights)) {
-      assertNonNegativeInteger(value, 'invalid-utility', `utilityWeights.${dimension}`);
-    }
-  }
   const weightedUtilityByGoal = goals.map(weightedGoalUtility);
 
   const utilityScore = (mask: number, entry: DpEntry): number => {
@@ -556,8 +600,10 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
     for (let i = 0; i < n; i++) {
       if ((mask & (1 << i)) !== 0) utility += weightedUtilityByGoal[i]!;
     }
-    const optionalOverheadSeconds = Math.ceil(Math.max(0, entry.cost - requiredOnly.cost) / 1000);
-    return utility - optionalOverheadSeconds * (utilityWeights?.costPerSecond ?? 0);
+    // Linear, NOT rounded up to whole seconds: a step function would charge a
+    // 1ms detour the same as a 1000ms one and make marginal choices arbitrary.
+    const optionalOverheadMs = Math.max(0, entry.cost - requiredOnly.cost);
+    return utility - (optionalOverheadMs * (utilityWeights?.costPerSecond ?? 0)) / 1000;
   };
 
   const requiredOverBudget = requiredOnly.cost > budgetMs;
