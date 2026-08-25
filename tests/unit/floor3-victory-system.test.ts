@@ -17,6 +17,7 @@ import {
   floor3WildDirectorSystem,
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
+  selectFloor3LoadoutOption,
   selectFloor3StarterCompanion,
 } from '../../src/game/floor3Scenario.js';
 import {
@@ -128,6 +129,27 @@ function defeatAllStudios(
     knockOutTeams(world, studio.teamIds);
   }
   floor3ObjectiveTick(world);
+  drainPoachOffers(world, state);
+}
+
+/**
+ * Resolves the Trainer-poach pauses each defeated Studio produces (spec §6.2,
+ * slice 12): the objective tick pauses on `'loadout'` once per defeated
+ * Studio until the pick is confirmed, exactly as the game modal and the
+ * headless runner do. Tests that tick past a Studio defeat must drain them or
+ * the floor stays paused and never reaches the Final Four.
+ */
+function drainPoachOffers(
+  world: GameWorld,
+  state: NonNullable<GameWorld['floorExtendedState']>['floor3Studios'],
+): void {
+  // One pause per Studio at most; the extra iteration is the settling tick
+  // that proves no further offer is pending.
+  for (let i = 0; i <= state!.studios.length; i += 1) {
+    floor3ObjectiveTick(world);
+    if (world.state !== 'loadout') break;
+    selectFloor3LoadoutOption(world, 0);
+  }
 }
 
 const MASK_ROOM_CELLS: ReadonlyArray<{ x: number; y: number }> = [
@@ -423,20 +445,9 @@ describe('floor3 studios + final four objective tick', () => {
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
     expect(world.state).toBe('playing');
 
-    const partyEid = recruitPartyCompanion(world, {
-      x: 0,
-      y: 0,
-      hp: 10,
-      aiType: AI_TYPE.CHASE,
-      speed: 0.1,
-      aggroRange: 999,
-      attackRange: 0,
-      speciesToken: 0,
-      level: 1,
-      ownerTeam: TeamId.PLAYER,
-    });
-    expect(partyEid).toBeDefined();
-    world.stores.companion.knockedOut[partyEid!] = 1;
+    // The party is full of poached Companions by now (one pick per Studio),
+    // so wipe the whole player party rather than recruiting another member.
+    knockOutTeams(world, [TeamId.PLAYER]);
 
     floor3ObjectiveTick(world);
 
