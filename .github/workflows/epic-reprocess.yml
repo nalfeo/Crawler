@@ -12,6 +12,11 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: epic-reprocess
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   reprocess:
     if: >-
