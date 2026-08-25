@@ -132,8 +132,8 @@ export function awardFloor3CompanionDefeatRewards(world: GameWorld): void {
     if ((companion.defeatRewarded[eid] ?? 0) === 1) continue;
     if ((team.id[eid] ?? TeamId.PLAYER) === TeamId.PLAYER) continue;
 
-    companion.defeatRewarded[eid] = 1;
     entries ??= resolveRivalDefeatEntries(world);
+    companion.defeatRewarded[eid] = 1;
     spawnDefeatDrops(
       world,
       position.x[eid] ?? 0,
