@@ -21,7 +21,9 @@
  *     radius, so it never preempts post-retreat local threat recovery.
  */
 
+import { query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
+import { Gold, XpGem } from '../../../src/core/components.js';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { LOOT_SWEEP_RADIUS_FT } from '../../../src/game/ai/bt-ai-tuning.js';
 import { spawnEnemy, spawnPlayer } from '../../../src/core/spawners/combatants.js';
@@ -74,6 +76,12 @@ function suppressProgressGoals(ai: BehaviorTreeAI): void {
       progressGoalSuppressedUntilFrame: number;
     }
   ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+}
+
+function clearSweepLoot(world: ReturnType<typeof createTestWorld>): void {
+  for (const eid of [...query(world.ecs, [XpGem]), ...query(world.ecs, [Gold])]) {
+    removeEntity(world.ecs, eid);
+  }
 }
 
 function makeFloor1World() {
@@ -171,23 +179,31 @@ describe('BT — loot sweep (Priority 2.5)', () => {
     });
 
     it('does NOT reach past LOOT_SWEEP_RADIUS_FT', () => {
-      const { world, x, y } = makeFloor1World();
+      const { world, x, y } = makeFloor2MidRunWorld();
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      suppressProgressGoals(ai);
 
       spawnXpGem(world, x + BEYOND_LOCAL_WINDOW_FT, y, 10);
 
-      const decision = pollDecision(world);
+      const decision = pollDecision(world, ai);
       expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
 
     it('falls through when nothing is on the ground', () => {
-      const { world } = makeFloor1World();
+      const { world } = makeFloor2MidRunWorld();
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      suppressProgressGoals(ai);
+      clearSweepLoot(world);
 
-      const decision = pollDecision(world);
-      expect(decision.state).not.toBe(AIState.COLLECT);
+      const decision = pollDecision(world, ai);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
 
     it('does NOT sweep while an enemy sits inside the scan radius but outside engage range', () => {
-      const { world, x, y } = makeFloor1World();
+      const { world, x, y } = makeFloor2MidRunWorld();
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      suppressProgressGoals(ai);
+      world.floorMap = null;
 
       spawnXpGem(world, x + 5, y, 10);
       // 32 ft: well outside the 20 ft melee engage radius, well inside the 50 ft
@@ -196,7 +212,7 @@ describe('BT — loot sweep (Priority 2.5)', () => {
       // which only ever latches a threat inside the scan radius.
       spawnEnemy(world, x + 32, y, 20);
 
-      const decision = pollDecision(world);
+      const decision = pollDecision(world, ai);
       expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
   });

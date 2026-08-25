@@ -14,8 +14,16 @@
       "notes": "Late plan review approved the minimal Floor 1 release unblock shape but required proving the #3494 acceptance surface still passes, replacing a broad floorScenario?.objective proxy with an explicit Floor 1 predicate, using a real Floor 2 retained-path positive test, and adding gold coverage. Addressed by running floor1-completion + floor1-economy-gate, changing the guard to isFloor1ObjectiveChainActive(world) using world.floorId === floor1, and adding Floor 2 XP/gold mid-run tests."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

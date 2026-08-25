@@ -7468,13 +7468,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     const spellBrokerIntent = getSpellBrokerIntent(world);
     const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
     const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+    const playerHealth = world.stores.health.current[playerEid] ?? 1;
+    const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
 
     if (
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
-      staircaseBossDefeated
+      staircaseBossDefeated &&
+      playerHealth / playerMaxHealth >= FARM_MIN_HEALTH_FRACTION
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
       if (spellQuestGiverNpcEid == null) return null;
