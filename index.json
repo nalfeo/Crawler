@@ -1,5 +1,39 @@
 [
   {
+    "commit": "685f955a00285e08f895570216512702452448cc",
+    "commitDate": "2026-08-25T02:12:04Z",
+    "commitSubject": "Fix Floor 1 repeat-spell broker loop (#3524)",
+    "capturedAt": "2026-08-25T03:39:37.039Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32802337076",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/685f955a00285e08f895570216512702452448cc.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9066666666666666,
+        "totalWins": 136,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.55,
+      "gatePass": false,
+      "path": "by-sha/685f955a00285e08f895570216512702452448cc.fun-report.json"
+    }
+  },
+  {
     "commit": "f218b6a9e42d5a34f056ee9c2a757a7672b40ebb",
     "commitDate": "2026-08-25T01:07:06Z",
     "commitSubject": "Expand post-release sweep reporting (#3520)",
