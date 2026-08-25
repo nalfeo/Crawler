@@ -356,6 +356,14 @@ export interface Floor3StudiosState {
   staircaseUnlocked?: boolean;
   /** True once the player confirms descent — terminal run state. */
   staircaseDiscovered?: boolean;
+  /**
+   * ECS entity id of the single party Companion the player will keep
+   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
+   * first party slot the moment victory latches, then overridable by
+   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
+   * floor-transition carryover is captured. `undefined` before victory.
+   */
+  keptCompanionEid?: number;
 }
 
 export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;

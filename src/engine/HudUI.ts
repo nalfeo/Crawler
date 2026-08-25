@@ -28,6 +28,8 @@ import { getSafeAreaInsets, onSafeAreaChange } from './safe-area.js';
 import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
 import type { FamilyRelationshipsLayout } from './HudFamilyRelationships.js';
+import { createHudFloor3Party, type HudFloor3PartyState } from './HudFloor3Party.js';
+import type { CommandResult } from './floor3-ability-command-state.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
@@ -66,6 +68,10 @@ export function createHudUI(scene: Phaser.Scene): {
   getAbilityBarBounds(): ScreenBounds;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
+  /** Floor-3 party HUD read-back (rows, notices, command charges). */
+  getFloor3PartyState(): HudFloor3PartyState;
+  /** Fire the Floor-3 companion command verb; no-op off Floor 3. */
+  issueFloor3Command(world: GameWorld, playerEid: number, slot?: number): CommandResult;
   getEncounterProbeBounds(): HudEncounterProbeBounds;
   /**
    * The currently-rendered announcement banner content (kind + exact text),
@@ -118,6 +124,11 @@ export function createHudUI(scene: Phaser.Scene): {
       return bounds.filter((item): item is ScreenBounds => item !== null);
     },
   });
+
+  // Floor-3 party HUD: left edge, below the Floor-2+ quest tracker. It owns its
+  // own screen-space placement (like the minimap) rather than joining a scaled
+  // corner group, so it can never be pushed over the vitals cluster.
+  const floor3Party = createHudFloor3Party(scene);
 
   // Off-screen quest waypoint arrows live full-screen (edge-pinned), so they
   // own their depth rather than belonging to a scaled corner group.
@@ -173,7 +184,9 @@ export function createHudUI(scene: Phaser.Scene): {
   let hidden = false;
 
   function syncFamilyRelationshipsVisibility(): void {
-    familyRelationships.setVisible(!hidden && !minimap.isOverlayOpen());
+    const overlayOpen = minimap.isOverlayOpen();
+    familyRelationships.setVisible(!hidden && !overlayOpen);
+    floor3Party.setVisible(!hidden && !overlayOpen);
   }
 
   function setVisible(visible: boolean): void {
@@ -208,6 +221,7 @@ export function createHudUI(scene: Phaser.Scene): {
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
     familyRelationships.sync(world);
+    floor3Party.sync(world, playerEid);
     const mapOpen = minimap.isOverlayOpen();
     questTracker.setVisible(!mapOpen);
     directionArrows.setVisible(!mapOpen);
@@ -251,6 +265,7 @@ export function createHudUI(scene: Phaser.Scene): {
     directionArrows.destroy();
     abilityBar.destroy();
     familyRelationships.destroy();
+    floor3Party.destroy();
     bottomLeft.destroy();
     bottomCenter.destroy();
     topCenter.destroy();
@@ -292,6 +307,8 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
+    getFloor3PartyState: floor3Party.getState,
+    issueFloor3Command: floor3Party.issueCommand,
     getEncounterProbeBounds,
     getCurrentAnnouncement: () => (hidden ? null : announcementBanner.getCurrentAnnouncement()),
     setVisible,

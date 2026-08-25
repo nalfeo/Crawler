@@ -17,6 +17,7 @@ import {
   floor3WildDirectorSystem,
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
+  selectFloor3KeptCompanion,
   selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import {
@@ -27,6 +28,13 @@ import {
   type MapConfig,
 } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/kept-companion-contract.js';
+import {
+  ABILITY_MILESTONE_LEVELS,
+  learnedAbilityIds,
+  speciesForToken,
+} from '../../src/shared/data/floor3/species.js';
 import type { GameWorld } from '../../src/core/index.js';
 
 const TINY_FLOOR3_MAP_WIDTH = 6;
@@ -514,5 +522,115 @@ describe('floor3 studios + final four objective tick', () => {
     }
     const after = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
     expect(after).toBe(before);
+  });
+});
+
+describe('floor3 kept-companion producer hook (slice 11)', () => {
+  it('auto-defaults keptCompanionEid to the first party slot the moment victory latches', () => {
+    const { world } = createFloor3World(1010);
+    const state = world.floorExtendedState!.floor3Studios!;
+    expect(state.keptCompanionEid).toBeUndefined();
+
+    defeatAllStudios(world, state);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+
+    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
+    expect(state.keptCompanionEid).toBeDefined();
+    expect(query(world.ecs, [Companion, Team])).toContain(state.keptCompanionEid);
+  });
+
+  it('lets selectFloor3KeptCompanion override the auto-defaulted pick with another live party Companion', () => {
+    const { world } = createFloor3World(1011);
+    const state = world.floorExtendedState!.floor3Studios!;
+    const secondPartyEid = recruitPartyCompanion(world, {
+      x: 0,
+      y: 0,
+      hp: 10,
+      aiType: AI_TYPE.CHASE,
+      speed: 0.1,
+      aggroRange: 999,
+      attackRange: 0,
+      speciesToken: 0,
+      level: 1,
+      ownerTeam: TeamId.PLAYER,
+    });
+    expect(secondPartyEid).toBeDefined();
+
+    defeatAllStudios(world, state);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+    const autoDefaulted = state.keptCompanionEid;
+    expect(autoDefaulted).toBeDefined();
+
+    const result = selectFloor3KeptCompanion(world, secondPartyEid!);
+
+    expect(result).toBe(true);
+    expect(state.keptCompanionEid).toBe(secondPartyEid);
+    expect(state.keptCompanionEid).not.toBe(autoDefaulted);
+  });
+
+  it('returns false and does not mutate the pick when selectFloor3KeptCompanion is called before victory latches', () => {
+    const { world } = createFloor3World(1012);
+    const state = world.floorExtendedState!.floor3Studios!;
+    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).not.toBe(true);
+    const [starterEid] = query(world.ecs, [Companion, Team]);
+    expect(starterEid).toBeDefined();
+
+    const result = selectFloor3KeptCompanion(world, starterEid!);
+
+    expect(result).toBe(false);
+    expect(state.keptCompanionEid).toBeUndefined();
+  });
+
+  it('returns false and does not mutate the pick for an invalid or non-party entity', () => {
+    const { world } = createFloor3World(1013);
+    const state = world.floorExtendedState!.floor3Studios!;
+    defeatAllStudios(world, state);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+    const autoDefaulted = state.keptCompanionEid;
+
+    const result = selectFloor3KeptCompanion(world, 999_999);
+
+    expect(result).toBe(false);
+    expect(state.keptCompanionEid).toBe(autoDefaulted);
+  });
+
+  it('resolves the kept-companion pick into a valid KeptCompanionContract on capturePlayerCarryover', () => {
+    const { world, playerEid } = createFloor3World(1014);
+    const state = world.floorExtendedState!.floor3Studios!;
+    defeatAllStudios(world, state);
+    knockOutTeams(world, state.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+    const keptEid = state.keptCompanionEid;
+    expect(keptEid).toBeDefined();
+    const expectedSpecies = speciesForToken(world.stores.companion.speciesToken[keptEid!] ?? 0);
+    expect(expectedSpecies).toBeDefined();
+
+    const snapshot = capturePlayerCarryover(world, playerEid);
+
+    const ultimateFormLevel = ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
+    const expectedAbilityIds = learnedAbilityIds(expectedSpecies!, ultimateFormLevel);
+    expect(expectedAbilityIds.length).toBeGreaterThan(1);
+
+    expect(snapshot.keptCompanion).toEqual({
+      schemaVersion: KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+      speciesId: expectedSpecies!.speciesId,
+      affinity: expectedSpecies!.affinity,
+      fightingStyle: expectedSpecies!.fightingStyle,
+      form: 2,
+      levelBand: 'floor3-graduate',
+      learnedAbilityIds: expectedAbilityIds,
+    });
+  });
+
+  it('omits keptCompanion from the carryover snapshot outside Floor 3', () => {
+    const world = createTestWorld({ seed: 1015 });
+    const playerEid = spawnPlayer(world, 0, 0);
+
+    const snapshot = capturePlayerCarryover(world, playerEid);
+
+    expect(snapshot.keptCompanion).toBeUndefined();
   });
 });
