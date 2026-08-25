@@ -53,7 +53,7 @@ import {
 } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
-import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/index.js';
+import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/kept-companion-contract.js';
 describe('player floor carryover', () => {
   it('drops retired disabled slots while migrating a saved snapshot', () => {
     const source = createTestWorld({ seed: 7 });

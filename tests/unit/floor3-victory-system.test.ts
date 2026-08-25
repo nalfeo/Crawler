@@ -30,11 +30,13 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
 import {
-  ABILITY_MILESTONE_LEVELS,
   KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+} from '../../src/shared/data/floor3/kept-companion-contract.js';
+import {
+  ABILITY_MILESTONE_LEVELS,
   learnedAbilityIds,
   speciesForToken,
-} from '../../src/shared/data/floor3/index.js';
+} from '../../src/shared/data/floor3/species.js';
 import type { GameWorld } from '../../src/core/index.js';
 
 const TINY_FLOOR3_MAP_WIDTH = 6;

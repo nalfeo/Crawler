@@ -41,17 +41,14 @@ import {
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
+import { AFFINITY_RING, type Affinity } from '../shared/data/floor3/affinity.js';
+import { FIGHTING_STYLES, type FightingStyle } from '../shared/data/floor3/styles.js';
 import {
-  AFFINITY_RING,
-  FIGHTING_STYLES,
   KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
   buildKeptCompanionContract,
-  getPetSpecies,
-  speciesForToken,
-  type Affinity,
-  type FightingStyle,
   type KeptCompanionContract,
-} from '../shared/data/floor3/index.js';
+} from '../shared/data/floor3/kept-companion-contract.js';
+import { getPetSpecies, speciesForToken } from '../shared/data/floor3/species.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
