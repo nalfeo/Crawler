@@ -18,7 +18,12 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { stampSetPiece } from '../core/map/stampSetPiece.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
-import { _partyMembers, spawnRosterCompanion } from '../core/spawners/companions.js';
+import {
+  _isPartyLocked,
+  _partyMembers,
+  _PARTY_MAX_SIZE,
+  spawnRosterCompanion,
+} from '../core/spawners/companions.js';
 import { addSetPieceProp } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
@@ -59,6 +64,7 @@ import { TeamId } from '../shared/constants.js';
 import type {
   Floor3EncounterState,
   Floor3PendingRosterSpawn,
+  Floor3PoachOffer,
   Floor3StudiosState,
 } from '../shared/floor-types.js';
 import {
@@ -78,7 +84,12 @@ import {
   type SpawnZoneWeights,
   type SpawnZoneMix,
 } from './spawn-zones.js';
-import { _aiTypeForSpecies, _generateStarterOffer, _recruitCompanion } from './floor3Recruiting.js';
+import {
+  _aiTypeForSpecies,
+  _generateStarterOffer,
+  _generateTrainerPoachOffer,
+  _recruitCompanion,
+} from './floor3Recruiting.js';
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -86,6 +97,9 @@ import { AI_TYPE } from './enemyAISystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('game:floor3-scenario');
 
 const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
 const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
@@ -572,6 +586,16 @@ function initializeFloor3Studios(
         FLOOR3_STUDIO_UNLOCK_LEVELS[studioIndex % FLOOR3_STUDIO_UNLOCK_LEVELS.length] ?? 0,
       unlocked: false,
       pendingSpawns,
+      // Retained past spawning (unlike `pendingSpawns`, which the unlock clears)
+      // so the poach picker can still offer this roster after the Studio is
+      // defeated and its entities are despawned (spec §6.2, UX surface #3).
+      poachRoster: studio.trainers.flatMap((trainer) =>
+        trainer.companions.map((companion) => ({
+          speciesId: companion.speciesId,
+          level: companion.level,
+        })),
+      ),
+      poachOffered: false,
     });
   });
 
@@ -626,6 +650,9 @@ function initializeFloor3Studios(
       unlockLevel: 0,
       unlocked: false,
       pendingSpawns: [],
+      // The Final Four is never poachable — beating it ends the floor (§12.2).
+      poachRoster: [],
+      poachOffered: true,
     },
     finalFourPendingSpawns,
     studiosDefeatedCount: 0,
@@ -951,6 +978,29 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (!studiosState) return;
 
+  // Trainer-poach offer (spec R5 §6.2, UX surface #3). Checked at the top of a
+  // fresh `'playing'` tick rather than inline in the defeat loop below so that
+  // latching a Studio and pausing for the pick are never the same tick: the
+  // defeat loop always runs to completion (Final Four unlock, victory latch,
+  // party-wipe predicate) before any pause, and at most one offer is ever
+  // pending. Two Studios wiped on the same tick therefore yield two offers on
+  // two consecutive ticks, in `studios` order, instead of one overwriting the
+  // other.
+  if (
+    world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true &&
+    world.floorExtendedState?.floor3PoachOffer === undefined
+  ) {
+    for (const studio of studiosState.studios) {
+      if (!studio.defeated || studio.poachOffered) continue;
+      studio.poachOffered = true;
+      const offer = buildFloor3PoachOffer(world, studio);
+      if (offer === undefined) continue;
+      world.floorExtendedState = { ...world.floorExtendedState, floor3PoachOffer: offer };
+      world.state = 'loadout';
+      return;
+    }
+  }
+
   if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) {
     for (const studio of studiosState.studios) {
       if (studio.defeated) continue;
@@ -1141,7 +1191,7 @@ export function initializeFloor3Scenario(
  * of which should be reachable from the real offer/UI, but must never strand
  * the player on an un-resumable pause).
  */
-export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
+function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
   if (world.state !== 'loadout') return;
   const offer = world.floorExtendedState?.floor3StarterOffer;
   if (!offer || offer.length === 0) {
@@ -1157,63 +1207,167 @@ export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: numb
     // `getPetSpecies` results in the first place), but if it does, fall back
     // to scanning the rest of the offer for a resolvable species rather than
     // silently starting Floor 3 with no Companion at all.
-    console.warn(
+    logger.warn(
       `[floor3:starter-degraded] offer entry ${speciesId ?? 'undefined'} did not resolve to a ` +
         `known species; scanning the rest of the offer for a valid fallback.`,
     );
     species = offer.map((id) => getPetSpecies(id)).find((resolved) => resolved !== undefined);
     if (species === undefined) {
-      console.warn(
+      logger.warn(
         '[floor3:starter-degraded] no offer entry resolved to a known species; ' +
           'resuming play with no starter Companion.',
       );
     }
   }
   if (species !== undefined) {
-    const playerEid = query(world.ecs, [Player])[0];
-    const playerX = playerEid !== undefined ? (world.stores.position.x[playerEid] ?? 0) : 0;
-    const playerY = playerEid !== undefined ? (world.stores.position.y[playerEid] ?? 0) : 0;
-    const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
-    const spawnOffset = tileSizeFt * FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES;
-
-    const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
-    const form = formForLevel(species, 1);
-    const hp = archetype ? Math.max(1, Math.round(archetype.hp * form.statScale)) : 1;
-    const attackRange =
-      archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
-        ? archetype.detectRange * 0.65
-        : 0;
-
-    const starterEid = _recruitCompanion(world, species.speciesId, {
-      x: playerX + spawnOffset,
-      y: playerY,
-      hp,
-      speed: archetype?.speed ?? 0.1,
-      aggroRange: archetype?.detectRange ?? 200,
-      attackRange,
-      level: 1,
-      ownerTeam: TeamId.PLAYER,
-    });
-    if (starterEid !== undefined && archetype) {
-      setComponent(world.ecs, starterEid, Sprite, {
-        textureId: archetype.spriteTexture,
-        width: archetype.spriteWidth,
-        height: archetype.spriteHeight,
-      });
-      setComponent(world.ecs, starterEid, Size, {
-        radius:
-          archetype.collisionRadius ??
-          Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
-        halfWidth: 0,
-        halfHeight: 0,
-        shape: SHAPE_CIRCLE,
-      });
-      setEnemyAppearanceKey(world, starterEid, archetype.id);
-    }
+    recruitFloor3PartyCompanion(world, species, 1);
   }
 
   if (world.floorExtendedState) {
     world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
   }
   world.state = 'playing';
+}
+
+/**
+ * Spawns `species` into the player's party beside the player at `level`,
+ * resolving its combat stats and appearance the same way every other roster
+ * Companion is resolved (`findFloor3ArchetypeForSpecies` + the form's
+ * `statScale`) so a recruit is never a bespoke balance number. Shared by the
+ * starter pick (spec §6.1) and the Trainer poach (§6.2). Returns the new
+ * entity id, or `undefined` when the party has already locked.
+ */
+function recruitFloor3PartyCompanion(
+  world: GameWorld,
+  species: PetSpeciesDef,
+  level: number,
+): number | undefined {
+  const playerEid = query(world.ecs, [Player])[0];
+  const playerX = playerEid !== undefined ? (world.stores.position.x[playerEid] ?? 0) : 0;
+  const playerY = playerEid !== undefined ? (world.stores.position.y[playerEid] ?? 0) : 0;
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  const spawnOffset = tileSizeFt * FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES;
+
+  const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
+  const form = formForLevel(species, level);
+  const hp = archetype ? Math.max(1, Math.round(archetype.hp * form.statScale)) : 1;
+  const attackRange =
+    archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
+      ? archetype.detectRange * 0.65
+      : 0;
+
+  const eid = _recruitCompanion(world, species.speciesId, {
+    x: playerX + spawnOffset,
+    y: playerY,
+    hp,
+    speed: archetype?.speed ?? 0.1,
+    aggroRange: archetype?.detectRange ?? 200,
+    attackRange,
+    level,
+    ownerTeam: TeamId.PLAYER,
+  });
+  if (eid !== undefined && archetype) {
+    setComponent(world.ecs, eid, Sprite, {
+      textureId: archetype.spriteTexture,
+      width: archetype.spriteWidth,
+      height: archetype.spriteHeight,
+    });
+    setComponent(world.ecs, eid, Size, {
+      radius:
+        archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    });
+    setEnemyAppearanceKey(world, eid, archetype.id);
+  }
+  return eid;
+}
+
+/**
+ * Builds the seeded poach offer for a defeated Trainer roster (spec §6.2):
+ * the Trainer's complete surviving-on-paper roster in a seeded presentation
+ * order, plus the recruit slots the player has left. Returns `undefined` when
+ * the party has already locked (post-lock defeats yield loot + XP only,
+ * §6.3) or when the roster resolves to no known species.
+ */
+function buildFloor3PoachOffer(
+  world: GameWorld,
+  encounter: Floor3EncounterState,
+): Floor3PoachOffer | undefined {
+  if (encounter.poachRoster.length === 0) return undefined;
+  if (_isPartyLocked(world, TeamId.PLAYER)) return undefined;
+  const slotsRemaining = _PARTY_MAX_SIZE - _partyMembers(world, TeamId.PLAYER).length;
+  if (slotsRemaining <= 0) return undefined;
+
+  // Highest-level entry wins when a Trainer fields the same species twice, so
+  // the seeded species ordering below can never silently downgrade an offer.
+  const levelBySpecies = new Map<string, number>();
+  for (const candidate of encounter.poachRoster) {
+    const existing = levelBySpecies.get(candidate.speciesId);
+    if (existing === undefined || candidate.level > existing) {
+      levelBySpecies.set(candidate.speciesId, candidate.level);
+    }
+  }
+  const rng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor3-poach:${encounter.id}`));
+  const candidates = _generateTrainerPoachOffer(rng, [...levelBySpecies.keys()]).map((species) => ({
+    speciesId: species.speciesId,
+    level: levelBySpecies.get(species.speciesId) ?? 1,
+  }));
+  if (candidates.length === 0) return undefined;
+
+  return {
+    encounterId: encounter.id,
+    encounterName: encounter.name,
+    candidates,
+    slotsRemaining,
+  };
+}
+
+/**
+ * Confirms the player's Trainer-poach pick (spec §6.2, UX surface #3).
+ * Mirrors {@link selectFloor3StarterCompanion}: a no-op outside `'loadout'`,
+ * clamps an out-of-range index to the first candidate, and always resumes
+ * `'playing'` — even if the recruit itself failed — so a bad pick can never
+ * strand the player on an un-resumable pause.
+ */
+function selectFloor3PoachCompanion(world: GameWorld, optionIndex: number): void {
+  if (world.state !== 'loadout') return;
+  const offer = world.floorExtendedState?.floor3PoachOffer;
+  if (!offer) {
+    world.state = 'playing';
+    return;
+  }
+
+  const candidate = offer.candidates[optionIndex] ?? offer.candidates[0];
+  const species = candidate !== undefined ? getPetSpecies(candidate.speciesId) : undefined;
+  if (species !== undefined && candidate !== undefined) {
+    recruitFloor3PartyCompanion(world, species, candidate.level);
+  } else {
+    logger.warn(
+      `[floor3:poach-degraded] offer entry ${candidate?.speciesId ?? 'undefined'} did not ` +
+        'resolve to a known species; resuming play with no poached Companion.',
+    );
+  }
+
+  if (world.floorExtendedState) {
+    const { floor3PoachOffer: _consumed, ...rest } = world.floorExtendedState;
+    world.floorExtendedState = rest;
+  }
+  world.state = 'playing';
+}
+
+/**
+ * Floor 3's single `'loadout'` pause resolver (`ScenarioDefinition.selectLoadoutOption`).
+ * The floor pauses on `'loadout'` twice: the starter pick at floor entry and
+ * every Trainer poach mid-run. A pending poach offer always wins, since the
+ * starter offer is cleared the moment it is resolved and only a poach can
+ * re-enter `'loadout'` afterwards.
+ */
+export function selectFloor3LoadoutOption(world: GameWorld, optionIndex: number): void {
+  if (world.floorExtendedState?.floor3PoachOffer !== undefined) {
+    selectFloor3PoachCompanion(world, optionIndex);
+    return;
+  }
+  selectFloor3StarterCompanion(world, optionIndex);
 }

@@ -20,7 +20,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import {
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
@@ -65,7 +65,7 @@ function createPipelineWorld(seed: number): { world: GameWorld; playerEid: numbe
   const spawn = map.tileToWorld(map.playerSpawn.x, map.playerSpawn.y);
   const playerEid = spawnPlayer(world, spawn.x, spawn.y);
   initializeFloor3Scenario(world, playerEid, { floorMapOverride: map });
-  selectFloor3StarterCompanion(world, 0);
+  selectFloor3LoadoutOption(world, 0);
   expect(world.state).toBe('playing');
   return { world, playerEid };
 }

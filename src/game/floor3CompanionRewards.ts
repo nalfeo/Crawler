@@ -101,7 +101,12 @@ function spawnDefeatDrops(
         const itemIndex = getItemIndex(drop.itemId);
         if (itemIndex < 0) break;
         for (let i = 0; i < drop.quantity; i += 1) {
-          spawnDroppedItem(world, dx, dy, itemIndex);
+          spawnDroppedItem(
+            world,
+            dx + (world.rng.next() - 0.5) * DEFEAT_UNIT_SCATTER_FT,
+            dy + (world.rng.next() - 0.5) * DEFEAT_UNIT_SCATTER_FT,
+            itemIndex,
+          );
         }
         break;
       }
@@ -127,7 +132,6 @@ export function awardFloor3CompanionDefeatRewards(world: GameWorld): void {
     if ((companion.defeatRewarded[eid] ?? 0) === 1) continue;
     if ((team.id[eid] ?? TeamId.PLAYER) === TeamId.PLAYER) continue;
 
-    companion.defeatRewarded[eid] = 1;
     entries ??= resolveRivalDefeatEntries(world);
     spawnDefeatDrops(
       world,
@@ -135,5 +139,6 @@ export function awardFloor3CompanionDefeatRewards(world: GameWorld): void {
       position.y[eid] ?? 0,
       rollLootTable(entries, world.rng),
     );
+    companion.defeatRewarded[eid] = 1;
   }
 }

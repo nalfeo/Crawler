@@ -99,6 +99,7 @@ import type {
   FloorScenarioState,
   Floor2SettlementSnapshot,
   Floor3StudiosState,
+  Floor3PoachOffer,
   Floor4ArenaState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
@@ -149,6 +150,13 @@ export interface FloorExtendedState {
    * consumers should treat a missing/empty offer as "no pick pending".
    */
   floor3StarterOffer?: readonly string[];
+  /**
+   * Pending Floor 3 Trainer-poach pick (spec R5 §6.2): written when a Trainer
+   * roster is defeated while the player's party still has a recruit slot, and
+   * presented while `world.state === 'loadout'`. Cleared once the pick is
+   * resolved — consumers treat a missing offer as "no poach pending".
+   */
+  floor3PoachOffer?: Floor3PoachOffer;
   /** Floor 4 arena clock + phase-machine state. */
   floor4Arena?: Floor4ArenaState;
 }
