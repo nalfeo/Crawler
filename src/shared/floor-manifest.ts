@@ -427,8 +427,12 @@ export const floorManifestDefSchema = z
             actMultipliers: z.array(z.number().positive()).length(5),
             /** Live hostile arena combatants allowed at once (spec FR3.5). */
             concurrencyCap: z.number().int().positive(),
-            /** Maximum queued spawn debt; overflow beyond this is discarded (spec FR3.5). */
-            debtCap: z.number().int().min(0),
+            /**
+             * Maximum queued spawn debt; overflow beyond this is discarded
+             * (spec FR3.5). Must be positive: every release is queued before it
+             * drains, so a zero cap would discard the entire floor's spawns.
+             */
+            debtCap: z.number().int().positive(),
             /** Spacing (ft) between the deterministic spawn slots behind a feed gate. */
             gateSlotSpacingFt: z.number().positive(),
             /** Per-act rosters and threat costs (spec FR3.3/FR8.2). */

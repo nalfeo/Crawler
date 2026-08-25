@@ -91,6 +91,12 @@ describe('floor4 manifest wave block', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects a zero debt cap, which would discard every spawn of the floor', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves!.debtCap = 0;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects an act whose first wave cannot afford its cheapest archetype', () => {
     const bad = cloneFloor4Manifest();
     bad.floor4.waves!.acts[0]!.roster[0]!.threatCost = 10_000;

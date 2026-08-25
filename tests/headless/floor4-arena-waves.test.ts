@@ -34,10 +34,19 @@ describe('Floor 4 arena waves (headless pipeline)', () => {
 
     const stats = first.floor4Arena?.waves;
     expect(stats).toBeDefined();
-    // Every act-1 wave releases inside its own wave window (spec FR3.1).
-    expect(stats!.wavesReleased).toBe(waves.wavesPerAct);
+    // Every wave whose release offset the arena clock passed must have fired
+    // (spec FR3.1). Expressing it against the clock the run actually reached
+    // keeps this a wave-scheduling gate rather than an accidental
+    // "can the AI survive 90 seconds" gate, which slices 4-7 own.
+    const arenaMs = Math.min(first.floor4Arena!.arenaElapsedMs, floor4.phase.waveWindowMs);
+    const expectedReleases = Math.min(
+      waves.wavesPerAct,
+      Math.floor(arenaMs / waves.waveIntervalMs) + 1,
+    );
+    expect(expectedReleases).toBeGreaterThan(0);
+    expect(stats!.wavesReleased).toBe(expectedReleases);
     expect(stats!.enemiesScheduled).toBeGreaterThan(0);
-    expect(stats!.gateTelegraphsFired).toBeGreaterThanOrEqual(waves.wavesPerAct);
+    expect(stats!.gateTelegraphsFired).toBeGreaterThanOrEqual(expectedReleases);
     // The cap bounds live enemies, so spawns can be deferred but never exceed
     // what the manifests scheduled.
     expect(stats!.enemiesSpawned).toBeLessThanOrEqual(stats!.enemiesScheduled);

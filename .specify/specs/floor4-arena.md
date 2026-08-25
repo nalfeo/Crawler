@@ -1,7 +1,8 @@
 # Spec: Floor 4 — The Main Event (Arena)
 
-> **Status:** **In implementation.** Slice 1 (floor plumbing + authored arena venue) is
-> implemented in code; slices 2–8 in §Epic decomposition remain planned.
+> **Status:** **In implementation.** Slices 1–3 (floor plumbing + authored arena venue;
+> phase machine + arena clock; deterministic waves, cap, debt, cut, gate telegraphs) are
+> implemented in code; slices 4–8 in §Epic decomposition remain planned.
 > **Authored:** 2026-08-22.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — a new floor archetype spanning the
 > floor-manifest/registry/scenario stack, a new phase-driven arena director, deterministic
@@ -415,13 +416,33 @@ The arena clock still obeys FR1.2/FR1.3 during the rehearsal: it advances only i
 `WAVES`/`HEADLINE`, holds during `COUNTDOWN` and `INTERMISSION`, and reaches
 exactly 600,000 ms at `VICTORY`.
 
+### Slice-3 deviation: the empty-arena victory assertion retires
+
+Slice 2's headless test asserted that an **idle** contestant reaches `VICTORY`
+over the empty rehearsal arena. Slice 3 fills that arena with real combat waves,
+so an idle contestant now correctly dies, and an honest five-act clear depends on
+Headliners (slice 4), the Green Room economy (slice 5) and balance (slice 7).
+
+Manufacturing a victory at this slice — invulnerability, empty manifests, or a
+hand-picked comfortable seed — would weaken a gate to protect an assertion
+(AGENTS.md rules #11/#12). The end-to-end clear therefore returns with **slice
+7's win-rate gate**, and slice 3 instead gates what it actually owns, in the real
+headless pipeline: waves release on cadence, under the concurrency cap, with
+per-act manifest fingerprints identical across two runs of a seed
+(`tests/headless/floor4-arena-waves.test.ts`).
+
+Slice 3 also clamps the **wave-0 gate telegraph**. FR3.4 telegraphs a gate ahead
+of its wave, but act-relative wave 0 releases at t=0, so there is no room ahead
+of it: its flare is clamped to fire with the release rather than at a negative
+arena time that could never fire.
+
 ## Test Plan
 
 | Level            | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Unit**         | Phase transition table totality (every trigger from every phase); arena clock advances in combat (including the victory lap) and holds in overtime/intermission; an early kill does not shorten the act; wave manifest determinism for a fixed seed; budget curve maths; debt cap and phase-boundary clearing; debt release consumes no RNG; Headliner draw is without-replacement, grade-legal, and seed-stable; per-visit shop stock is seed-stable **and** path-independent (identical after divergent simulated combat); stock retires on exit and retires unpurchased generated instances; the affordability invariant (FR6.8) holds for every visit. |
 | **Integration**  | Full act cycle `WAVES → HEADLINE → INTERMISSION → WAVES`; the intermission transaction in order, including force-resolution of an uncollected chest at the act mark; zero hostile entities and zero player damage across a Green Room visit; the Green Room is `RoomRole.SAFE` and the generic floor-timer HUD is suppressed; the cut awards nothing; overtime terminates at its cap; stairs refuse to descend outside `INTERMISSION(5)`.                                                                                                                                                                                                                  |
-| **Headless**     | `tests/headless/floor4-arena-completion.test.ts` — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the configured raw elapsed-time stall backstop).                                                                                                                                                                                                                                                                                                                                                   |
+| **Headless**     | `tests/headless/floor4-arena-waves.test.ts` (slice 3: waves release in the real pipeline under the cap, deterministically per seed) and, from slice 7, a floor-completion gate — a seed sweep asserting the declared win-rate gate; a determinism test asserting identical `RunStats` fingerprints across repeated runs of the same seed; a bounded-episode assertion (no run exceeds the configured raw elapsed-time stall backstop).                                                                                                                                                                                                                     |
 | **E2E / visual** | HUD surfaces from slice 6 via `tests/e2e/helpers/pixels.ts` and `ui-probe.ts`, deterministic only — never an LLM judge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **Lab**          | `src/labs/floor4-arena-lab/` for exploratory phase/wave/boss inspection. **Lab proof is never sufficient** for a wiring or behavior claim (project rule #9); each slice's "done when" names a real-pipeline artifact.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 

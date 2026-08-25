@@ -32,6 +32,7 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
+import { clearEntityStores } from '../core/helpers.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { getFloorEnemyPack, type EnemyArchetypeDef } from '../shared/enemy-packs.js';
 import { TeamId } from '../shared/constants.js';
@@ -434,6 +435,12 @@ function processFloor4Waves(world: GameWorld, state: Floor4ArenaState): void {
   if (state.phase.kind !== 'WAVES' || state.waveManifestAct !== state.phase.act) {
     return;
   }
+  // Once the wave window has closed, the boundary owns what happens next: the
+  // cut removes the survivors and unreleased debt is cleared (FR3.5/FR3.6).
+  // Draining debt on that same tick would spawn enemies only to cut them.
+  if (state.arenaElapsedMs >= floor4WaveEndMs(state.phase.act)) {
+    return;
+  }
   const actRelativeMs = state.arenaElapsedMs - floor4ActStartMs(state.phase.act);
 
   while (state.telegraphCursor < state.waveManifests.length) {
@@ -469,14 +476,11 @@ function processFloor4Waves(world: GameWorld, state: Floor4ArenaState): void {
     state.waveStats.wavesReleased += 1;
     state.waveStats.enemiesScheduled += wave.spawns.length;
     const queued = queueFloor4Spawns(state, wave.spawns);
-    const spawnedBefore = state.waveStats.enemiesSpawned;
     drainFloor4SpawnDebt(world, state);
     // Whatever this wave queued but could not place immediately is deferred to
-    // debt, not lost. Clamped because the same drain may also flush older debt.
-    state.waveStats.spawnsDeferred += Math.max(
-      0,
-      queued - (state.waveStats.enemiesSpawned - spawnedBefore),
-    );
+    // debt, not lost. The drain is FIFO, so the entries still queued afterwards
+    // are exactly the tail — i.e. the newest ones, this wave's.
+    state.waveStats.spawnsDeferred += Math.min(queued, state.spawnDebt.length);
   }
 
   drainFloor4SpawnDebt(world, state);
@@ -504,6 +508,7 @@ function applyFloor4Cut(world: GameWorld, state: Floor4ArenaState): void {
     }
     // Deliberately NOT a combat `death` event: the headless runner counts those
     // as kills, and a cut enemy is explicitly not a kill.
+    clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
     state.waveStats.enemiesCut += 1;
   }
@@ -552,7 +557,13 @@ export function arenaDirectorSystem(world: GameWorld): void {
     remainingMs -= stepMs;
     advanceFloor4Clock(state, stepMs);
     processFloor4Waves(world, state);
+    const actBefore = state.phase.kind === 'WAVES' ? state.phase.act : null;
     applyFloor4PhaseBoundary(world, state);
+    // Entering a new act arms its manifest mid-iteration, and wave 0 is due at
+    // act-relative 0 (FR3.1) — release it now rather than a tick late.
+    if (state.phase.kind === 'WAVES' && state.phase.act !== actBefore) {
+      processFloor4Waves(world, state);
+    }
   }
 }
 
@@ -564,11 +575,8 @@ function isFloor4TerminalPhase(state: Floor4ArenaState): boolean {
 /** Advance the phase clock, and the arena clock for the phases it runs in. */
 function advanceFloor4Clock(state: Floor4ArenaState, stepMs: number): void {
   state.phaseElapsedMs += stepMs;
-  if (
-    state.phase.kind === 'WAVES' ||
-    state.phase.kind === 'HEADLINE' ||
-    state.phase.kind === 'OVERTIME'
-  ) {
+  // The arena clock is held during OVERTIME and INTERMISSION (spec FR1.2).
+  if (state.phase.kind === 'WAVES' || state.phase.kind === 'HEADLINE') {
     state.arenaElapsedMs += stepMs;
   }
 }

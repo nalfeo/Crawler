@@ -16,13 +16,37 @@
       "notes": "Adversarial red-team of the slice-3 plan. 4 alternatives enumerated and argued against (separate floor4WaveSystem; one RNG stream per act; suppressed-death-event cut; keep end-to-end headless victory now). All 10 concerns folded into the design before coding: (1) wave-0 telegraph clamped to arena t=0 and documented; (2) director rewritten as a bounded chronological boundary loop so a single large delta emits every crossed telegraph/release exactly once (equivalence test vs fixed steps); (3) cap defined over live hostile arena combatants (Enemy, hp>0, no DeathTimer, non-player team) so future summons share it; (4) wave ownership carried by a real ECS marker component, not an EID set, so recycled EIDs cannot be cut; (5) threat costs and budgets are validated positive integers with an explicit termination invariant; (6) the cut skips already-dead/DeathTimer entities so it can never race dropSystem; (7) gate spawn slots are enumerated and walkability-validated at scenario init, failing loudly, with zero runtime retry/RNG; (8) telegraph/cut counts recorded in floor state + RunStats first, VFX purely presentational; (9) manifest waves block cross-validates enemyPackId and every roster archetype id against the enemy-pack registry at load; (10) idle-provider headless victory test retired explicitly as a documented slice-3 deviation and replaced with bounded real-pipeline act-1 wave telemetry coverage."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "adjudicator_model": "gemini-3.1-pro-preview",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "adjudicator": "gemini-3.1-pro-preview",
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

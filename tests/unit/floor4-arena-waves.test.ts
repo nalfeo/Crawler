@@ -1,4 +1,4 @@
-import { addComponent, query, set } from 'bitecs';
+import { addComponent, query, removeEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { ArenaWaveEnemy, DeathTimer, Enemy, Health } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
@@ -35,13 +35,55 @@ describe('Floor 4 wave release', () => {
   it('releases act 1 wave 0 the moment the act starts and telegraphs it with the release', () => {
     const world = setupFloor4();
     advance(world, phase.countdownMs);
-    expect(arenaState(world).phase).toEqual({ kind: 'WAVES', act: 1 });
-
-    advance(world, 1);
     const state = arenaState(world);
+    expect(state.phase).toEqual({ kind: 'WAVES', act: 1 });
+    // Wave 0 is due at act-relative 0, so it must land on the very tick that
+    // enters the act — not one tick later.
     expect(state.waveStats.wavesReleased).toBe(1);
     expect(state.waveStats.gateTelegraphsFired).toBeGreaterThan(0);
     expect(waveEnemies(world).length).toBeGreaterThan(0);
+  });
+
+  it('holds the arena clock during OVERTIME', () => {
+    // Spec FR1.2: the arena clock runs in WAVES/HEADLINE only.
+    const world = setupFloor4();
+    advance(world, phase.countdownMs + 1);
+    const state = arenaState(world);
+    const heldAtMs = state.arenaElapsedMs;
+    state.phase = { kind: 'OVERTIME', act: 1 };
+    state.phaseElapsedMs = 0;
+
+    advance(world, 1000);
+    expect(state.arenaElapsedMs).toBe(heldAtMs);
+    expect(state.phaseElapsedMs).toBe(1000);
+  });
+
+  it('clears unreleased spawn debt at the wave window boundary instead of spawning it', () => {
+    const world = setupFloor4(5);
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs - 1);
+    const state = arenaState(world);
+    const spawnedBefore = state.waveStats.enemiesSpawned;
+    const clearedBefore = state.waveStats.debtCleared;
+    // Open concurrency headroom so the drain *could* place the debt: without
+    // headroom this regression test would pass vacuously.
+    for (const eid of waveEnemies(world).slice(0, 5)) {
+      removeEntity(world.ecs, eid);
+    }
+    state.spawnDebt = [
+      {
+        archetypeId: waves.acts[0]!.roster[0]!.archetypeId,
+        gateIndex: 0,
+        slotIndex: 0,
+        threatCost: 1,
+      },
+    ];
+
+    advance(world, 1);
+    expect(state.phase.kind).not.toBe('WAVES');
+    expect(state.waveStats.enemiesSpawned).toBe(spawnedBefore);
+    expect(state.waveStats.debtCleared).toBe(clearedBefore + 1);
+    expect(state.spawnDebt).toHaveLength(0);
   });
 
   it('telegraphs a mid-act wave before it releases', () => {
@@ -157,7 +199,7 @@ describe('Floor 4 cut', () => {
     expect(world.vfxEvents.some((event) => event.kind === 'deathPop')).toBe(true);
   });
 
-  it('leaves an enemy that is already dying this frame to the normal death path', () => {
+  it('leaves an enemy whose health already hit zero this frame to the normal death path', () => {
     const world = setupFloor4(3);
     advance(world, phase.countdownMs);
     advance(world, phase.waveWindowMs - 1);
@@ -166,6 +208,23 @@ describe('Floor 4 cut', () => {
     // The director runs before damage/drop resolution, so a lethal hit landed
     // this frame must still pay out through dropSystem, not be erased.
     world.stores.health.current[dying!] = 0;
+    const before = arenaState(world).waveStats.enemiesCut;
+
+    advance(world, 1);
+
+    expect(query(world.ecs, [ArenaWaveEnemy]).includes(dying!)).toBe(true);
+    expect(arenaState(world).waveStats.enemiesCut).toBeGreaterThan(before);
+  });
+
+  it('leaves an enemy that is already playing its death timer to the normal death path', () => {
+    const world = setupFloor4(3);
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs - 1);
+    const [dying] = waveEnemies(world);
+    expect(dying).toBeDefined();
+    // Health is deliberately left positive so this exercises the DeathTimer
+    // branch on its own rather than falling through the health guard.
+    expect(world.stores.health.current[dying!]).toBeGreaterThan(0);
     addComponent(world.ecs, dying!, set(DeathTimer, { remaining: 0.5 }));
     const before = arenaState(world).waveStats.enemiesCut;
 
