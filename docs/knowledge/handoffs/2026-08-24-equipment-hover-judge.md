@@ -66,6 +66,20 @@ captures the broken overlapping strip. The fixed real Phaser/Azure artifact is
 `files/visual-review/after/v0.1.21/equipment-hover-empty-slot.{png,review.json}`;
 it declares 23 regions and reports zero deterministic blockers.
 
+### Empty-slot Bag hover correction
+
+The Empty Slot scenario now correctly targets the hovered Leather Boots item in
+Bag, not the empty Feet destination. The Bag cell receives the persistent hover
+highlight and the tooltip anchors to its left. A dedicated real-Phaser e2e
+fixture builds this empty-Feet state and asserts the actual highlighted Bag cell
+does not overlap its tooltip, the tooltip is left/center-facing, and it is
+topmost. The scenario also declares a clipped detail-review frame around those
+two elements, so Azure reviews the interaction at readable scale while the
+full-panel declared geometry remains available for placement context.
+
+`files/visual-review/after/v0.1.23/equipment-hover-empty-slot.{png,review.json}`
+is the focused real Phaser/Azure capture.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

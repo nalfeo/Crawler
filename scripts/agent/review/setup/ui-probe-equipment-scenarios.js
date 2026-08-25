@@ -109,18 +109,44 @@
         ? 'feet'
         : null;
   const hoveredSlot = hoveredSlotId ? probe?.getEquipmentSlotBounds?.(hoveredSlotId) : null;
-  if (hoveredSlot) {
+  const hoveredBagIndex =
+    scenario === 'equipment-hover-empty-slot'
+      ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'leather-boots')
+      : -1;
+  const hoveredBag =
+    hoveredBagIndex !== undefined && hoveredBagIndex >= 0
+      ? probe?.getEquipmentBagCellBounds?.(hoveredBagIndex)
+      : null;
+  const hoverTarget = hoveredBag ?? hoveredSlot;
+  const hoverTargetId = hoveredBag
+    ? 'hover-target:bag:leather-boots'
+    : hoveredSlotId
+      ? `hover-target:${hoveredSlotId}`
+      : null;
+  if (hoverTarget && hoverTargetId) {
     // The hover target and tooltip share a parent so the deterministic reviewer
     // hard-fails any overlap instead of leaving occlusion to the LLM.
     regions.push({
-      id: `hover-target:${hoveredSlotId}`,
-      box: hoveredSlot,
+      id: hoverTargetId,
+      box: hoverTarget,
       kind: 'slot',
       parentId: 'hover-context',
     });
   }
   if (tooltip)
     regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip', parentId: 'hover-context' });
+  if (scenario === 'equipment-hover-empty-slot' && hoverTarget && tooltip) {
+    const padding = 16;
+    const left = Math.max(0, Math.min(hoverTarget.x, tooltip.x) - padding);
+    const top = Math.max(0, Math.min(hoverTarget.y, tooltip.y) - padding);
+    const right = Math.max(hoverTarget.x + hoverTarget.width, tooltip.x + tooltip.width) + padding;
+    const bottom =
+      Math.max(hoverTarget.y + hoverTarget.height, tooltip.y + tooltip.height) + padding;
+    // Hover reviews inspect this interaction at readable scale. The full panel
+    // remains in declared geometry for placement context, while Azure receives
+    // the target-and-card crop as the detailed inspection frame.
+    window.__visualReviewClip = { x: left, y: top, width: right - left, height: bottom - top };
+  }
   const doll = probe?.getEquipmentDollBounds?.();
   if (doll) regions.push({ id: 'paper-doll', box: doll, kind: 'panel' });
   const stats = probe?.getEquipmentStatsBounds?.();

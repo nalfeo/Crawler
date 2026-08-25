@@ -1003,25 +1003,6 @@ describe('equipment decision gate (e2e)', () => {
       // Slot filtering: selecting a slot narrows the bag to what fits it.
       expect(await probe.selectEquipmentSlot(hoverPage, emptySlot)).toBe(true);
       expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(emptySlot);
-      await probe.previewEquipmentBagItem(hoverPage, 'leather-boots');
-      const [emptyBounds, emptyTooltip] = await Promise.all([
-        probe.getEquipmentSlotBounds(hoverPage, emptySlot),
-        probe.getEquipmentTooltipBounds(hoverPage),
-      ]);
-      expect(emptyBounds).not.toBeNull();
-      expect(emptyTooltip).not.toBeNull();
-      expect(
-        overlaps(emptyBounds!, emptyTooltip!),
-        'an empty target remains visible while its candidate preview is shown',
-      ).toBe(false);
-      expect(
-        emptyTooltip!.x,
-        'the empty Feet target should use the center-facing side with a clear gap',
-      ).toBeGreaterThanOrEqual(emptyBounds!.x + emptyBounds!.width + 10);
-      expect(
-        await probe.isEquipmentTooltipTopmost(hoverPage),
-        'the empty-slot candidate preview must remain above all panel content',
-      ).toBe(true);
       await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
 
       await probe.selectEquipmentSlot(hoverPage, null);
@@ -1039,6 +1020,48 @@ describe('equipment decision gate (e2e)', () => {
       ]) {
         expect(existsSync(captureArtifactPath(name)), `${name} capture should exist`).toBe(true);
       }
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('keeps a Bag-hovered candidate visible when its destination slot is empty', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const emptyHoverPage = await context.newPage();
+    try {
+      await loadUiProbeLab(emptyHoverPage);
+      await hideLabChrome(emptyHoverPage);
+      await emptyHoverPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+      });
+      await emptyHoverPage.waitForTimeout(250);
+      expect(await probe.getEquippedSlotIds(emptyHoverPage)).not.toContain('feet');
+      expect(await probe.selectEquipmentSlot(emptyHoverPage, 'feet')).toBe(true);
+      const bagIds = await probe.getEquipmentBagItemIds(emptyHoverPage);
+      const leatherBootsIndex = bagIds.lastIndexOf('leather-boots');
+      expect(
+        leatherBootsIndex,
+        'the empty Feet filter should expose Leather Boots',
+      ).toBeGreaterThanOrEqual(0);
+
+      await probe.previewEquipmentBagItem(emptyHoverPage, 'leather-boots');
+      const [bagTarget, tooltip] = await Promise.all([
+        probe.getEquipmentBagCellBounds(emptyHoverPage, leatherBootsIndex),
+        probe.getEquipmentTooltipBounds(emptyHoverPage),
+      ]);
+      expect(bagTarget).not.toBeNull();
+      expect(tooltip).not.toBeNull();
+      expect(
+        overlaps(bagTarget!, tooltip!),
+        `the candidate tooltip must not cover the Bag item being hovered: target=${JSON.stringify(bagTarget)} tooltip=${JSON.stringify(tooltip)}`,
+      ).toBe(false);
+      expect(
+        tooltip!.x + tooltip!.width,
+        'a right-side Bag item must put its tooltip to the left toward screen center',
+      ).toBeLessThanOrEqual(bagTarget!.x - 10);
+      expect(await probe.isEquipmentTooltipTopmost(emptyHoverPage)).toBe(true);
     } finally {
       await closeQuietly(context);
     }

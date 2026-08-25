@@ -713,6 +713,10 @@ export function createEquipmentUI(
   let bagScrollRow = 0;
   let bagMaxScroll = 0;
   let previewEntryIdentity: string | null = null;
+  const bagPreviewBoxes = new Map<
+    string,
+    { box: Phaser.GameObjects.Rectangle; inset: Phaser.GameObjects.Rectangle; bounds: ScreenBounds }
+  >();
   let tooltipBounds: ScreenBounds | null = null;
 
   /**
@@ -1282,6 +1286,12 @@ export function createEquipmentUI(
     return undefined;
   }
 
+  function isSlotEmpty(slotId: EquipmentSlotId): boolean {
+    if (!lastWorld || playerEid < 0) return false;
+    const state = getEquipmentState(lastWorld, playerEid);
+    return state?.equipped[operationalSlotId(slotId)] == null;
+  }
+
   function renderTooltipPair(
     current: EquipmentItemDef,
     candidate: EquipmentItemDef,
@@ -1338,14 +1348,36 @@ export function createEquipmentUI(
     };
   }
 
-  function showCandidateTooltip(def: EquipmentItemDef, slotId: EquipmentSlotId): void {
+  function getBagTooltipPlacement(
+    anchor: ScreenBounds,
+    preferredWidth: number,
+    height: number,
+  ): { x: number; y: number; width: number; height: number } {
+    const gap = 14;
+    const width = preferredWidth;
+    const prefersLeft = anchor.x + anchor.width / 2 > panelX + panelWidth / 2;
+    return {
+      x: prefersLeft ? anchor.x - gap - width : anchor.x + anchor.width + gap,
+      y: Math.max(panelY + 8, anchor.y - 5),
+      width,
+      height,
+    };
+  }
+
+  function showCandidateTooltip(
+    def: EquipmentItemDef,
+    slotId: EquipmentSlotId,
+    sourceBounds: ScreenBounds | null = null,
+  ): void {
     const preferredWidth = 176;
     const placementSeed = getEquipmentTooltipCardLayout(
       preferredWidth,
       tooltipStatLines(def),
       itemTooltipDef(def).description || undefined,
     );
-    const placement = getCenterFacingTooltipPlacement(slotId, preferredWidth, placementSeed.height);
+    const placement = sourceBounds
+      ? getBagTooltipPlacement(sourceBounds, preferredWidth, placementSeed.height)
+      : getCenterFacingTooltipPlacement(slotId, preferredWidth, placementSeed.height);
     if (!placement) {
       renderTooltipPair(emptyComparisonDef(slotId), def);
       return;
@@ -1460,9 +1492,13 @@ export function createEquipmentUI(
         ? ['No stat change']
         : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
     const candidate = getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name);
-    const targetSlot = targets[0];
-    if (preview.swappedOut.length === 0 && targetSlot) {
-      showCandidateTooltip(candidate, targetSlot);
+    const targetSlot = targets[0] ?? selectedSlotFilter;
+    if (targetSlot && (isSlotEmpty(targetSlot) || selectedSlotFilter === targetSlot)) {
+      const bagSource =
+        previewEntryIdentity === null
+          ? null
+          : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
+      showCandidateTooltip(candidate, targetSlot, bagSource);
     } else {
       renderTooltipPair(current, candidate, diffLines);
     }
@@ -1548,6 +1584,12 @@ export function createEquipmentUI(
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {
     previewEntryIdentity = entry ? inventoryEntryIdentity(entry) : null;
+    for (const [identity, preview] of bagPreviewBoxes) {
+      const active = identity === previewEntryIdentity;
+      preview.box.setFillStyle(active ? COLORS.slotHover : COLORS.slotBg);
+      preview.box.setStrokeStyle(active ? 3 : 2, active ? COLORS.headerAccent : COLORS.panelBorder);
+      preview.inset.setStrokeStyle(1, 0x5b76aa, active ? 1 : 0.8);
+    }
     if (entry === null || !lastWorld || playerEid < 0) {
       clearTooltip();
       return;
@@ -2175,6 +2217,7 @@ export function createEquipmentUI(
       bagStaticEntryIndices.push(index);
     });
     bagCellBounds = new Array(entries.length).fill(null);
+    bagPreviewBoxes.clear();
 
     // Header row — heading sits ABOVE the bag frame, in the shared header band
     // with "Equipment" and "Stats".
@@ -2270,12 +2313,20 @@ export function createEquipmentUI(
           : COLORS.panelBorder;
 
       const box = scene.add.rectangle(snap(cx), snap(cy), cell, cell, COLORS.slotBg, 0.95);
-      box.setStrokeStyle(2, rarityColor);
+      const entryIdentity = inventoryEntryIdentity(entry);
+      const previewed = previewEntryIdentity === entryIdentity;
+      box.setFillStyle(previewed ? COLORS.slotHover : COLORS.slotBg);
+      box.setStrokeStyle(previewed ? 3 : 2, previewed ? COLORS.headerAccent : rarityColor);
       box.setInteractive({ useHandCursor: true });
       const b = box.getBounds();
       bagCellBounds[index] = { x: b.x, y: b.y, width: b.width, height: b.height };
       const inset = scene.add.rectangle(snap(cx), snap(cy + 1), cell - 6, cell - 8, 0x2e4167, 0.98);
-      inset.setStrokeStyle(1, 0x5b76aa, 0.8);
+      inset.setStrokeStyle(1, 0x5b76aa, previewed ? 1 : 0.8);
+      bagPreviewBoxes.set(entryIdentity, {
+        box,
+        inset,
+        bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
+      });
       const icon = generated
         ? createGeneratedItemIcon(
             generated.frozen.artKey,
