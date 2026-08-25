@@ -66,6 +66,7 @@ import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type QuestState,
@@ -7551,15 +7552,32 @@ export class BehaviorTreeAI implements AIInputProvider {
     const spellBrokerIntent = getSpellBrokerIntent(world);
     const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
     const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+    const leaveFloorAccepted = world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID);
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
 
+    if (leaveFloorAccepted && staircaseBossDefeated && objective.staircaseUnlocked) {
+      const reason = 'Heading to the stairs to clear the floor';
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.staircasePos.x,
+          objective.staircasePos.y,
+          playerX,
+          playerY,
+          reason,
+        ),
+      );
+    }
+
+    // A repeat intent may already have been returning when the exit quest was
+    // accepted. Keep that stale lifecycle state from preempting the stairs.
     if (
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
       staircaseBossDefeated &&
+      !leaveFloorAccepted &&
       playerHealth / playerMaxHealth >= FARM_MIN_HEALTH_FRACTION
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;

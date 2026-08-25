@@ -49,6 +49,8 @@ import {
 import {
   configureSpellBrokerPurchase,
   ensureSpellBrokerDecision,
+  getSpellBrokerIntent,
+  markSpellBrokerPurchased,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -90,6 +92,7 @@ import {
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
 } from '../../src/shared/quest-types.js';
 import {
@@ -4738,6 +4741,44 @@ describe('BehaviorTreeAI', () => {
 
       void player; // used in setup
       void brokerY; // declared above
+    });
+
+    it('routes a returning repeat spell intent to the stairs after accepting the leave-floor quest', () => {
+      const buySeed = findBuySeed();
+      const { world, brokerX } = setupPostBossBattleWorld(buySeed);
+      const staircaseX = 8;
+      const staircaseY = 4;
+      const objective = world.floorScenario!.objective;
+      objective.bossBattles.get('staircase')!.started = true;
+      objective.bossBattles.get('staircase')!.defeated = true;
+      world.floorScenario!.objective = {
+        ...objective,
+        staircaseUnlocked: true,
+        staircaseDiscovered: true,
+        staircasePos: { x: staircaseX, y: staircaseY },
+      };
+      acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+      expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+
+      configureSpellBrokerPurchase(world, true);
+      ensureSpellBrokerDecision(world);
+      markSpellBrokerPurchased(world);
+      world.playerGold = FLOOR1_SPELL_BROKER_COST + 1;
+      updateSpellBrokerIntent(world, null, 3_000);
+      expect(getSpellBrokerIntent(world)).toMatchObject({
+        purchaseCount: 1,
+        purchaseStatus: 'returning',
+      });
+      const ai = new BehaviorTreeAI({ seed: buySeed });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+      expect(decision.state).toBe(AIState.EXPLORE);
+      expect(decision.reason).toBe('Heading to the stairs to clear the floor');
+      expect(decision.targetX).toBeCloseTo(staircaseX, -1);
+      expect(decision.targetX).not.toBeCloseTo(brokerX, -1);
+      expect(decision.targetY).toBeCloseTo(staircaseY, -1);
     });
 
     it('farm-spell-broker-gold: resolver does not throw even with no gold or enemies nearby', () => {
