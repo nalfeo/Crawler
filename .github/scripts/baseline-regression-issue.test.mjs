@@ -43,6 +43,9 @@ function harness(existingIssues = []) {
     if (options.method === 'POST' && url.endsWith('/issues')) {
       return { data: { number: 42, node_id: 'ISSUE_42', state: 'open' } };
     }
+    if (options.method === 'POST' && url.endsWith('/comments')) {
+      return { data: { id: 99 } };
+    }
     const number = Number(url.split('/').at(-1));
     return { data: { number, node_id: `ISSUE_${number}`, state: 'open' } };
   };
@@ -154,7 +157,7 @@ test('collapses duplicate stable-marker issues onto the oldest and closes the re
   );
 });
 
-test('updates an existing open issue when the failure signature repeats on a new release', async () => {
+test('comments on an existing issue when the same sweep configuration repeats', async () => {
   const signature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
   const h = harness([
@@ -176,16 +179,51 @@ test('updates an existing open issue when the failure signature repeats on a new
     repo: 'Crawler',
     decision: signatureDecision([signature], 'newer'),
   });
-  assert.deepEqual(result, [{ action: 'updated', issueNumber: 12, assignee: 'copilot-swe-agent' }]);
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 12 }]);
   const update = h.calls.find((call) => call[0] === 'request');
-  assert.equal(update[2], '/repos/nalfeo/Crawler/issues/12');
+  assert.equal(update[2], '/repos/nalfeo/Crawler/issues/12/comments');
+  assert.match(update[3].body.body, /occurred again/);
+  assert.match(update[3].body.body, new RegExp(signature.replaceAll('|', '\\\\|')));
+});
+
+test('comments on the existing issue when only the failed seed changes', async () => {
+  const oldSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const newSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=sword';
+  const h = harness([
+    {
+      number: 15,
+      node_id: 'ISSUE_15',
+      state: 'open',
+      body: signatureDecision([oldSignature]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([newSignature], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 15 }]);
+  assert.equal(
+    h.calls.filter((call) => call[0] === 'request' && call[2].endsWith('/issues')).length,
+    0,
+  );
+  assert.equal(h.calls.filter((call) => call[0] === 'intake').length, 0);
 });
 
 test('creates an issue only for a new failure signature', async () => {
   const oldSignature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
   const newSignature =
-    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=sword';
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=bow';
   const h = harness([
     {
       number: 13,

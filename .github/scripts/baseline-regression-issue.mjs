@@ -25,11 +25,36 @@ function issueSignaturesFromBody(body) {
     .filter((signature) => signature.includes('|seed=') && signature.includes('|weapon='));
 }
 
+function signatureConfiguration(signature) {
+  return signature.replace(/\|seed=[^|]*/, '');
+}
+
+function groupSignaturesByConfiguration(signatures) {
+  const groups = new Map();
+  for (const signature of signatures) {
+    const configuration = signatureConfiguration(signature);
+    const group = groups.get(configuration) || [];
+    group.push(signature);
+    groups.set(configuration, group);
+  }
+  return groups;
+}
+
 function isManagedReleaseRegressionIssue(issue) {
   const body = String(issue?.body || '');
   return (
     body.includes('<!-- release-baseline-regression:') && body.includes('### Failure signatures')
   );
+}
+
+function recurrenceComment(body, signatures) {
+  return [
+    '## Recurring Floor 1 release sweep loss',
+    '',
+    'The same sweep configuration occurred again in a later release. The original issue remains the canonical tracker for this configuration.',
+    '',
+    ...bodyForSignatures(body, signatures).split('\n'),
+  ].join('\n');
 }
 
 function bodyForSignatures(body, signatures) {
@@ -79,44 +104,65 @@ export async function fileBaselineRegressionIssue({
   const openIssues = issues.filter((issue) => !issue.pull_request && isOpen(issue));
   const signatures = issueSignatures(decision.issue);
   if (signatures.length > 0) {
-    const managedOpenIssues = openIssues.filter(isManagedReleaseRegressionIssue);
+    const managedOpenIssues = openIssues
+      .filter(isManagedReleaseRegressionIssue)
+      .slice()
+      .sort((left, right) => Number(left.number) - Number(right.number));
     const outcomes = [];
-    for (const signature of signatures) {
+    for (const [configuration, configurationSignatures] of groupSignaturesByConfiguration(
+      signatures,
+    )) {
       const existing = managedOpenIssues.find((issue) =>
-        issueSignaturesFromBody(issue.body).includes(signature),
+        issueSignaturesFromBody(issue.body).some(
+          (signature) => signatureConfiguration(signature) === configuration,
+        ),
       );
       const response = existing
-        ? await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${existing.number}`, {
-            method: 'PATCH',
-            body: {
-              title,
-              body: bodyForSignatures(body, [signature]),
-              labels: BASELINE_REGRESSION_LABELS,
+        ? await requestFn(
+            mutationToken,
+            `/repos/${owner}/${repo}/issues/${existing.number}/comments`,
+            {
+              method: 'POST',
+              body: {
+                body: recurrenceComment(body, configurationSignatures),
+              },
             },
-          })
+          )
         : await requestFn(mutationToken, `/repos/${owner}/${repo}/issues`, {
             method: 'POST',
             body: {
               title,
-              body: bodyForSignatures(body, [signature]),
+              body: bodyForSignatures(body, configurationSignatures),
               labels: BASELINE_REGRESSION_LABELS,
             },
           });
       const issue = response.data;
-      const action = existing ? 'updated' : 'created';
-      if (!issue?.number || !issue?.node_id) {
-        throw new Error(`GitHub ${action} response did not include an issue number and node_id`);
+      const action = existing ? 'commented' : 'created';
+      if (existing) {
+        if (!issue?.id) {
+          throw new Error('GitHub commented response did not include a comment id');
+        }
+      } else if (!issue?.number || !issue?.node_id) {
+        throw new Error(`GitHub created response did not include an issue number and node_id`);
       }
-      const intake = await intakeFn({
-        graphql: graphqlFn,
-        paginate: paginateFn,
-        request: requestFn,
-        token: intakeToken,
-        owner,
-        repo,
-        issue,
-      });
-      outcomes.push({ action, issueNumber: issue.number, assignee: intake.assignee });
+      const issueNumber = existing ? existing.number : issue.number;
+      if (!issueNumber) {
+        throw new Error(`GitHub ${action} response did not identify an issue`);
+      }
+      if (existing) {
+        outcomes.push({ action, issueNumber });
+      } else {
+        const intake = await intakeFn({
+          graphql: graphqlFn,
+          paginate: paginateFn,
+          request: requestFn,
+          token: intakeToken,
+          owner,
+          repo,
+          issue,
+        });
+        outcomes.push({ action, issueNumber, assignee: intake.assignee });
+      }
     }
     return outcomes;
   }
@@ -211,8 +257,9 @@ async function main() {
     decision,
   });
   for (const issue of Array.isArray(outcome) ? outcome : [outcome]) {
+    const assignment = issue.assignee ? `; assigned @${issue.assignee}` : '';
     process.stdout.write(
-      `${issue.action} release regression issue #${issue.issueNumber}; assigned @${issue.assignee}\n`,
+      `${issue.action} release regression issue #${issue.issueNumber}${assignment}\n`,
     );
   }
 }
