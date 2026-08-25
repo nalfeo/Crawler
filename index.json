@@ -1,5 +1,39 @@
 [
   {
+    "commit": "019737393aa97124aeaa9bbb070156d515c4840c",
+    "commitDate": "2026-08-25T05:53:50Z",
+    "commitSubject": "fix: deduplicate recurring Floor 1 release loss issues (#3564)",
+    "capturedAt": "2026-08-25T07:16:02.240Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32816693132",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/019737393aa97124aeaa9bbb070156d515c4840c.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.12,
+      "gatePass": false,
+      "path": "by-sha/019737393aa97124aeaa9bbb070156d515c4840c.fun-report.json"
+    }
+  },
+  {
     "commit": "6a9011cd4106be2e91c25f39a6ed541ebbc94123",
     "commitDate": "2026-08-25T05:29:57Z",
     "commitSubject": "docs: add Goobers setup instructions and CI workflows (#3563)",
