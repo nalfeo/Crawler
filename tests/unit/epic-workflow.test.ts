@@ -13,7 +13,7 @@ interface Workflow {
     workflow_run?: { workflows?: string[]; types?: string[] };
   };
   permissions?: { issues?: string };
-  concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+  concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
 }
 
 function loadWorkflow(file: string): Workflow {
@@ -36,7 +36,6 @@ describe('epic workflows', () => {
     expect(workflow.permissions?.issues).toBe('write');
     expect(workflow.concurrency).toEqual({
       group: 'epic-reprocess',
-      queue: 'max',
       'cancel-in-progress': false,
     });
   });

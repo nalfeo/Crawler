@@ -15,7 +15,6 @@ permissions:
 concurrency:
   group: epic-reprocess
   cancel-in-progress: false
-  queue: max
 
 jobs:
   reprocess:
