@@ -1,5 +1,39 @@
 [
   {
+    "commit": "86ff757e7dd4dec2beac888f6f24264c469057ed",
+    "commitDate": "2026-08-25T14:45:57Z",
+    "commitSubject": "Floor 3 Slice 12: onboarding, starter, and poach UX surfaces (#3591)",
+    "capturedAt": "2026-08-25T16:01:04.770Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32864026345",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/86ff757e7dd4dec2beac888f6f24264c469057ed.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/86ff757e7dd4dec2beac888f6f24264c469057ed.fun-report.json"
+    }
+  },
+  {
     "commit": "a65cc66cd8a4c350d4d5baf9b4e88819a28d351b",
     "commitDate": "2026-08-25T12:59:18Z",
     "commitSubject": "Floor 3 Slice 11: kept-companion persistence producer contract (#3592)",
