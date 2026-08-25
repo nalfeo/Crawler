@@ -110,7 +110,7 @@ describe('Floor 3 Trainer-poach offer (spec §6.2, UX surface #3)', () => {
 
     expect(world.state).toBe('playing');
     expect(partySize(world)).toBe(before + 1);
-    const levels = query(world.ecs, [Companion, PartySlot, Team])
+    const levels = Array.from(query(world.ecs, [Companion, PartySlot, Team]))
       .filter((eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER)
       .map((eid) => world.stores.companion.level[eid]);
     expect(levels).toContain(picked.level);
