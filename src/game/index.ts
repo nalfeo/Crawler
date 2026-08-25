@@ -148,6 +148,7 @@ export {
   _STARTER_OFFER_SIZE,
 } from './floor3Recruiting.js';
 export type { RecruitCompanionOptions } from './floor3Recruiting.js';
+export { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 export {
   familyFeudSystem,
   getFamilyAIDecision,
