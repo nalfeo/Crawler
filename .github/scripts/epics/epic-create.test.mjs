@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   EPIC_LABEL,
+  EPIC_ISSUE_ASSIGNEES,
   EPIC_REVIEW_LABEL,
   assertUniqueEpicIds,
   ensureLabelsExist,
@@ -198,6 +199,7 @@ test('first run creates only the human-review issue, no node issues', async () =
     options.body.body.includes(reviewMarker('example-epic', epicContentHash(exampleEpic()))),
   );
   assert.deepEqual(options.body.labels, [EPIC_LABEL, epicLabel('example-epic'), EPIC_REVIEW_LABEL]);
+  assert.deepEqual(options.body.assignees, EPIC_ISSUE_ASSIGNEES);
   assert.match(options.body.body, /## Global labels/);
   assert.match(options.body.body, /`epic:example-epic`/);
   assert.match(options.body.body, /### `slice-1`: Slice 1/);
@@ -329,10 +331,12 @@ test('once the review issue is closed as completed, node issues are created in d
   assert.equal(slice1Options.body.title, 'Slice 1');
   assert.ok(slice1Options.body.body.includes(nodeMarker('example-epic', hash, 'slice-1')));
   assert.ok(slice1Options.body.body.includes('Blocked by #1'));
+  assert.deepEqual(slice1Options.body.assignees, EPIC_ISSUE_ASSIGNEES);
 
   const [, , , slice2Options] = posts[1];
   assert.equal(slice2Options.body.title, 'Slice 2');
   assert.ok(slice2Options.body.body.includes(nodeMarker('example-epic', hash, 'slice-2')));
+  assert.deepEqual(slice2Options.body.assignees, EPIC_ISSUE_ASSIGNEES);
   // slice-2 depends on the review issue AND on slice-1's freshly created number.
   const slice1IssueNumber = result.outcomes.find((o) => o.nodeId === 'slice-1').issueNumber;
   assert.ok(slice2Options.body.body.includes(`Blocked by #1, #${slice1IssueNumber}`));

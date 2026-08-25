@@ -57,8 +57,8 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    reopened**. Runs are serialized (a `concurrency` group) so overlapping
    triggers can't race each other into creating duplicate issues.
 2. If no review issue matching the current file's content hash exists yet, it
-   creates **only** the human-review issue (labeled `epic`, `epic:<epic_id>`,
-   `epic-review`) and stops. The review issue body lists every planned node's
+   creates **only** the human-review issue (assigned to `@nalfeo` and labeled
+   `epic`, `epic:<epic_id>`, `epic-review`) and stops. The review issue body lists every planned node's
    title, body, dependencies, and global/node labels so a human can review the whole plan in one place;
    the hash is embedded in a hidden marker in the issue body. Any label an
    epic needs (the `epic:<epic_id>` label, `epic-review`, or a custom label
@@ -72,7 +72,7 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    is created for it in that state. Re-opening the review issue returns it to
    the "waiting for review" state.
 5. If the review issue is closed **as completed**, the workflow creates each
-   node's issue in dependency order, but only when GitHub reports the closer as
+   node's issue in dependency order assigned to `@nalfeo`, but only when GitHub reports the closer as
    a human user; bot/API closures fail closed. Every node issue body includes
    `Blocked by #N` for the review issue itself plus every declared
    dependency, so the dependency graph is visible directly on GitHub.

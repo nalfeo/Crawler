@@ -61,6 +61,7 @@ export { nodeMarker, reviewMarker };
 
 export const EPIC_LABEL = 'epic';
 export const EPIC_REVIEW_LABEL = 'epic-review';
+export const EPIC_ISSUE_ASSIGNEES = ['nalfeo'];
 
 export function epicLabel(epicId) {
   return `epic:${epicId}`;
@@ -426,6 +427,7 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
         title: reviewIssueTitle(epic),
         body: buildReviewIssueBody(epic),
         labels: [...sharedLabels, EPIC_REVIEW_LABEL],
+        assignees: EPIC_ISSUE_ASSIGNEES,
       },
     });
     reviewIssue = response.data;
@@ -527,6 +529,7 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
         title: node.title,
         body: buildNodeIssueBody(epic, node, reviewIssue.number, issueNumberByNodeId),
         labels: [...sharedLabels, ...(node.labels || [])],
+        assignees: EPIC_ISSUE_ASSIGNEES,
       },
     });
     issueNumberByNodeId.set(node.id, response.data.number);
