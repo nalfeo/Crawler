@@ -6,9 +6,9 @@
  * proves the widgets render and respond; a lab can never prove the *shipped*
  * scene mounts them or binds their keys (AGENTS.md rule #9). This suite boots
  * the real `MainGameScene` on Floor 3 through the shipped floor bootstrap
- * (`main-scene-probe-lab`), resolves the real starter-Companion loadout, and
- * then drives the real `[R]` / `[C]` key bindings, asserting the mounted HUD
- * and roster overlay respond.
+ * (`main-scene-probe-lab`), resolves the real rules briefing and
+ * starter-Companion loadout, then drives the real `[R]` / `[C]` key bindings,
+ * asserting the mounted HUD and roster overlay respond.
  *
  * Determinism: the probe lab boots with a fixed world seed, every assertion
  * reads mounted-widget state (never wall-clock or RNG), and the only timing
@@ -31,6 +31,18 @@ async function waitForPartyHud(
     if (predicate(state)) return state;
     if (Date.now() > deadline) {
       throw new Error(`Timed out waiting for ${label}; last state: ${JSON.stringify(state)}`);
+    }
+    await page.waitForTimeout(80);
+  }
+}
+
+async function waitForModalTitle(page: Page, title: string, label: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const content = await mainSceneProbe.getModalPickerContent(page);
+    if (content?.title === title) return;
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}; last content: ${JSON.stringify(content)}`);
     }
     await page.waitForTimeout(80);
   }
@@ -62,7 +74,14 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       expect(beforeStarter.hudVisible).toBe(false);
       expect(beforeStarter.rowNames).toEqual([]);
 
-      // Resolve the real starter picker through the shipped modal.
+      // Resolve the real Floor 3 intro, then the starter picker through the shipped modals.
+      await page.keyboard.press('Enter');
+      await waitForModalTitle(
+        page,
+        'Choose your starter Companion',
+        'Floor 3 starter-companion modal after intro',
+      );
+
       await page.keyboard.press('Enter');
       await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'playing', {
         timeoutMs: 10_000,
