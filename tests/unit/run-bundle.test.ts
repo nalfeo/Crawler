@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { spawnPlayer } from '../../src/core/helpers.js';
+import { createRunEventCollector } from '../../src/core/run-events.js';
 import { collectHumanRunStats } from '../../src/game/ai/run-stats-collector.js';
+import { forceActivateAbility, memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import { assembleRunStats } from '../../src/shared/run-stats-collector.js';
 import { createRunBundle } from '../../src/shared/run-bundle.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -43,6 +46,29 @@ describe('run bundle contracts', () => {
     expect(stats.health.lowHealthCount).toBe(3);
     expect(stats.runStartXp).toBe(3);
     expect(stats.startingWeapon).toBe('unknown');
+  });
+
+  it('reports human learned-spell activations in item interactions', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    world.runEvents = createRunEventCollector();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'stoneskin');
+
+    expect(forceActivateAbility(world, player, 'stoneskin')).toBe(true);
+
+    const stats = collectHumanRunStats(world, player, 'quit');
+    expect(stats.itemInteractions?.items).toContainEqual({
+      catalogKey: 'spell:stoneskin',
+      kind: 'spell',
+      offeredCount: 0,
+      selectableExposureCount: 0,
+      selectionCount: 1,
+      activationCount: 1,
+      activeTimeMs: 0,
+    });
+    expect(stats.itemInteractions?.uniqueActivationCount).toBe(1);
+    expect(stats.itemInteractions?.dominantActivationCount).toBe(1);
   });
 
   it('preserves the assembled RunStats values without pipeline-specific behavior', () => {

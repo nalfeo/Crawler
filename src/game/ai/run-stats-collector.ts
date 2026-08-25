@@ -1,9 +1,96 @@
 import type { GameWorld } from '../../core/world.js';
 import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import type { SessionRecorderStats } from '../../shared/session-recorder-types.js';
-import type { RunStats } from './types.js';
+import type {
+  ItemInteractionEntry,
+  ItemInteractionKind,
+  ItemInteractionSummary,
+  RunStats,
+} from './types.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
+
+interface MutableHumanItemInteraction {
+  readonly catalogKey: string;
+  readonly kind: ItemInteractionKind;
+  offeredCount: number;
+  selectableExposureCount: number;
+  selectionCount: number;
+  activationCount: number;
+  activeTimeMs: number;
+}
+
+function ensureHumanItem(
+  items: Map<string, MutableHumanItemInteraction>,
+  catalogKey: string,
+  kind: ItemInteractionKind,
+): MutableHumanItemInteraction {
+  const existing = items.get(catalogKey);
+  if (existing) return existing;
+  const created: MutableHumanItemInteraction = {
+    catalogKey,
+    kind,
+    offeredCount: 0,
+    selectableExposureCount: 0,
+    selectionCount: 0,
+    activationCount: 0,
+    activeTimeMs: 0,
+  };
+  items.set(catalogKey, created);
+  return created;
+}
+
+function collectHumanItemInteractions(world: GameWorld, playerEid: number): ItemInteractionSummary {
+  const items = new Map<string, MutableHumanItemInteraction>();
+  const selectedWeapon =
+    world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0];
+  if (selectedWeapon) {
+    const item = ensureHumanItem(items, `weapon:${selectedWeapon}`, 'starter_weapon');
+    item.offeredCount = Math.max(item.offeredCount, 1);
+    item.selectableExposureCount = Math.max(item.selectableExposureCount, 1);
+    item.selectionCount = Math.max(item.selectionCount, 1);
+  }
+
+  for (const spellId of world.floorScenario?.offeredRewardSpellIds ?? []) {
+    const item = ensureHumanItem(items, `spell:${spellId}`, 'spell');
+    item.offeredCount = Math.max(item.offeredCount, 1);
+    item.selectableExposureCount = Math.max(item.selectableExposureCount, 1);
+  }
+
+  for (const spellId of world.abilityStatesByEntity.get(playerEid)?.learnedSpellIds ?? []) {
+    const item = ensureHumanItem(items, `spell:${spellId}`, 'spell');
+    item.selectionCount = Math.max(item.selectionCount, 1);
+  }
+
+  let uniqueActivationCount = 0;
+  for (const activation of world.runEvents?.itemActivations ?? []) {
+    uniqueActivationCount += 1;
+    const creditedKeys = new Set<string>();
+    for (const source of activation.itemSources) {
+      const kind: ItemInteractionKind = source.startsWith('weapon:')
+        ? 'starter_weapon'
+        : source.startsWith('spell:')
+          ? 'spell'
+          : 'generated_equipment';
+      if (creditedKeys.has(source)) continue;
+      creditedKeys.add(source);
+      ensureHumanItem(items, source, kind).activationCount += 1;
+    }
+  }
+
+  const sortedItems: ItemInteractionEntry[] = [...items.values()]
+    .map((item) => ({ ...item }))
+    .sort((left, right) => left.catalogKey.localeCompare(right.catalogKey));
+  const dominantActivationCount = sortedItems.reduce(
+    (maximum, item) => Math.max(maximum, item.activationCount),
+    0,
+  );
+  return {
+    items: sortedItems,
+    uniqueActivationCount,
+    dominantActivationCount,
+  };
+}
 
 /**
  * Builds the common RunStats shape for a human run. World-specific harvesters
@@ -62,6 +149,7 @@ export function collectHumanRunStats(
     startingWeapon:
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
     vendors: computeVendorInteractions(world),
+    itemInteractions: collectHumanItemInteractions(world, playerEid),
     // Floor 2 den-boss diagnostics come from the session recorder's tracker,
     // which accumulated them frame-by-frame; the same rollup the headless
     // runner puts on `RunStats.denBoss`, so both paths are directly comparable.
