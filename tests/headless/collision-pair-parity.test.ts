@@ -297,17 +297,18 @@ interface CollisionFingerprint {
 // Only seed 42 drifts, and strictly in the AI's favour (one extra kill, more
 // damage dealt, identical damage taken). Verified stable across two back-to-back
 // invocations by the determinism assertion below on the same run.
-// Before → after (kills / damageDealt / damageTaken / score):
-//   seed  42:  3/192.44999933242798/5/6  →  4/216.44999933242798/5/8
+// Floor 1 mid-run loot-sweep suppression restores seed 42's pre-sweep
+// collision fingerprint (kills / damageDealt / damageTaken / score):
+//   seed 42: 4/216.44999933242798/5/8 → 3/192.44999933242798/5/6
 //   seeds 7 / 13 / 137: unchanged.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 216.44999933242798,
+    kills: 3,
+    damageDealt: 192.44999933242798,
     damageTaken: 5,
-    finalScore: 8,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,
