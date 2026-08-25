@@ -88,3 +88,58 @@ export function recruitPartyCompanion(
   );
   return eid;
 }
+
+export interface SpawnRosterCompanionOptions {
+  x: number;
+  y: number;
+  hp: number;
+  aiType: number;
+  speed: number;
+  aggroRange: number;
+  attackRange: number;
+  speciesToken: number;
+  level: number;
+  ownerTeam: number;
+  /** 0 = baby, 1 = adolescent, 2 = adult (spec R3 form thresholds). */
+  form: number;
+}
+
+/**
+ * Spawns a non-party roster Companion — a Trainer's/Studio's/Final-Four
+ * handler's own team (Floor 3 Companion League, spec R6, slice 8). Unlike
+ * {@link recruitPartyCompanion} this never assigns a `PartySlot` (only the
+ * player's own recruited party locks/counts toward `_PARTY_MAX_SIZE`) and is
+ * never party-capped, so callers can freely spawn every Trainer/Studio/
+ * Final-Four roster at floor init. `ownerTeam` should be a team id distinct
+ * from every other roster's so `companionKOSystem`'s per-team engagement/KO
+ * tracking and `_isEncounterTeamsWiped` never conflate two different rosters.
+ */
+export function spawnRosterCompanion(
+  world: GameWorld,
+  options: SpawnRosterCompanionOptions,
+): number {
+  const eid = spawnBehaviorEnemy(
+    world,
+    options.x,
+    options.y,
+    options.hp,
+    options.aiType,
+    options.speed,
+    options.aggroRange,
+    options.attackRange,
+  );
+  addComponent(world.ecs, eid, set(Team, { id: options.ownerTeam }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Companion, {
+      speciesToken: options.speciesToken,
+      form: options.form,
+      level: options.level,
+      xp: 0,
+      ownerTeam: options.ownerTeam,
+      knockedOut: 0,
+    }),
+  );
+  return eid;
+}

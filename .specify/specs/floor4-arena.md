@@ -1,8 +1,7 @@
 # Spec: Floor 4 — The Main Event (Arena)
 
-> **Status:** **Proposed — design only, no code.** Nothing in this spec is implemented; no
-> Floor 4 manifest, scenario, systems, data, or sprites exist yet. Everything below is the
-> **plan** that implementation sessions build against, sliced in §Epic decomposition.
+> **Status:** **In implementation.** Slice 1 (floor plumbing + authored arena venue) is
+> implemented in code; slices 2–8 in §Epic decomposition remain planned.
 > **Authored:** 2026-08-22.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — a new floor archetype spanning the
 > floor-manifest/registry/scenario stack, a new phase-driven arena director, deterministic
@@ -25,9 +24,10 @@
 > **Test suites (planned):** `tests/unit/floor4-arena-*.test.ts`,
 > `tests/integration/floor4-arena.integration.test.ts`,
 > `tests/headless/floor4-arena-completion.test.ts`.
-> **Known gaps (by design, this session):** no code; final tuning numbers are deliberately
-> unfixed and are set by the balance slice against the win-rate gate (project rule #12); the
-> paid shop re-roll and audience-vote mutators are explicitly out of scope.
+> **Known gaps (by design):** acts/waves/Headliners/Green Room transaction/HUD are not yet
+> implemented; final tuning numbers are deliberately unfixed and are set by the balance slice
+> against the win-rate gate (project rule #12); the paid shop re-roll and audience-vote
+> mutators are explicitly out of scope.
 
 ## Context
 
@@ -385,6 +385,35 @@ Slices are ordered so that each one is independently observable in a **real** ar
 | 6   | **HUD & feedback**                         | Act clock + overtime state, wave pips, Headliner banner, cut notice, break summary, Winner's Circle                                                                                                                                                          | Deterministic visual checks (`tests/e2e/helpers/pixels.ts` / `ui-probe.ts`) cover each surface.                                                   |
 | 7   | **Economy & balance**                      | Per-act income budgets, price bands, tuning pass, `tests/headless/floor4-arena-completion.test.ts` win-rate gate, achievements/quests data                                                                                                                   | The floor holds its declared win-rate gate over a seed sweep, with sweep evidence linked.                                                         |
 | 8   | **Floor 3 co-star (optional)**             | Kept-Companion carryover consumption                                                                                                                                                                                                                         | A run carrying a kept Companion fights with it; a run without one is unchanged.                                                                   |
+
+### Slice-1 deviation: the curtain tunnel ships open
+
+Slice 1's done-when ("walk into the Green Room") and **FR9.4** ("the arena and the
+Green Room are never simultaneously reachable") cannot both hold before the
+intermission transaction exists. Slice 1 therefore ships the tunnel **permanently
+open**, with no doors and no sealing logic, so the venue is observable in the real
+game. FR9.4 is satisfied by the **slice-5** intermission transaction, which owns
+the seal; until that lands, Floor 4 is explicitly non-conformant to FR9.4 and is
+marked `implemented.mvp: false`.
+
+For the same reason slice 1 does not stub the act clock: Floor 4 shows no
+countdown (FR5.6), and `timer.durationMs` is only the FR8.4 stall backstop, so the
+generic floor-timer HUD is suppressed and the backstop raises its own
+`floor4-stall-backstop` flag rather than an ordinary floor timeout.
+
+### Slice-2 deviation: empty broadcast rehearsal
+
+Slice 2 proves the **single-authority phase machine** and arena clock before the
+systems that make those phases physical exist. It therefore runs as an empty
+broadcast rehearsal: headline windows are marked cleared immediately, and each
+intermission auto-advances after a short deterministic hold. This is deliberately
+non-conformant with the final FR2.2 triggers where the player takes the Green
+Room exit and final stairs; slice 5 replaces this rehearsal hand-off with the
+real Green Room transaction.
+
+The arena clock still obeys FR1.2/FR1.3 during the rehearsal: it advances only in
+`WAVES`/`HEADLINE`, holds during `COUNTDOWN` and `INTERMISSION`, and reaches
+exactly 600,000 ms at `VICTORY`.
 
 ## Test Plan
 

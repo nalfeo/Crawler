@@ -1,0 +1,79 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "combat-loot-sfx",
+  "task_title": "Combat/loot sound effects layer",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Alt A: dedicated audioEvents/presentationEvents queue — rejected as unnecessary new core plumbing given two of three sources already had an authoritative queue. Alt B: single feedback presenter fanning out to VFX+audio — rejected, would require touching EffectsVfx/CombatVfx internals for a marginal ordering-safety gain over comment-documented + integration-tested ordering. Alt C (adopted, hybrid): combatEvents for weapon/damage/dodge/blocked/death (authoritative), world.abilityActivations for spells/abilities (authoritative, NOT vfxEvents abilityActivateFlash/spell-VFX kinds as originally planned), vfxEvents pickupSparkle ONLY for loot pickups as a single generic cue (no color-based type inference, since bossChestPickupSystem/harvestSystem use ad hoc tints outside the known palette). Also replaced naive per-kind-cooldown-only throttling with a priority-ranked per-frame budget (MAX_CUES_PER_FRAME=4) so a bursty mixed-kind frame keeps the highest-salience cues (damage taken > death > crit > spell/ability > blocked/dodge > hit > miss/pickup) instead of first-in-queue-order. Added tests/integration/combat-audio-pipeline.test.ts locking the read-before-drain ordering contract with a real GameWorld. divergence=major_fork: the original vfxEvents-heavy trigger architecture was replaced by the hybrid authoritative-source design."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ],
+      "notes": "Round 2 (PR review feedback, validated with a different model than the implementer): (1) enemy-target hits with fromActiveAbility were emitting weaponHit/weaponCrit for spell damage -- valid, fixed by classifying ability-sourced hits to a new spellImpact cue; (2) the integration test hard-coded the frame order it claimed to prove -- valid, rescoped to mapping/non-draining/throttling with runtime ordering covered by the real-scene e2e; (3) dangling 'see ADR' references -- valid, replaced with the exact ADR path."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (gpt-5.3-codex, gemini-3.1-pro-preview, gpt-5.4 security): (1) incomplete ledger mid-flight -- not a code concern, resolved by completing ledger before finalizing; (2) unbounded combatAudioCueLog growth -- valid, fixed by adding COMBAT_AUDIO_CUE_LOG_CAP=64 drop-oldest cap in MainGameScene.ts; (3) same-frame same-kind intensity masking (first-wins instead of highest-intensity-wins) -- valid, fixed in combat-audio.ts eligibleByKind loop to keep highest-intensity candidate per kind. Security review: clean, no findings. Round 2 re-review of the fixed diff: clean."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.7",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "9824bf3e5be4cfd0c6fdf3a4b89150951c669c44",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Small, well-bounded engine-layer SFX controller that reads (never drains) three already-populated queues and delegates to the existing AudioCueEngine primitive. cueForCombatEvent routes ability-sourced hits to spellImpact before falling through to weaponHit/weaponCrit; damage intensity clamped to [0.3,1.0]; per-kind cooldown uses injected renderElapsedMs (no Date.now()); the per-frame budget de-duplicates by kind keeping the highest-intensity candidate before priority-sorting, and a cue dropped only by the budget does not stamp lastPlayedMs. Scope is surgical; PhaserBridge wiring is additive and runs before the existing drainers. Coverage spans unit (decision layer + every cue spec + controller arbitration), integration (real GameWorld, explicitly disclaiming frame-order proof), and an e2e that boots the real MainGameScene + PhaserBridge and asserts against the real injected AudioCueEngine (rule #9 runtime-wiring proof). No Math.random/Date.now, shared layer stays Phaser-free, engine imports stay within layer, no new *System so rule #14 does not apply, ADR + ledger present. Maintainability docked one point only for very long module doc comments and the probe affordances that mutate real world queues from test code."
+    }
+  }
+}

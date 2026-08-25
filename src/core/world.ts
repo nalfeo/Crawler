@@ -95,7 +95,12 @@ import type {
   PlayerLevel,
   MilestoneGrantEvent,
 } from '../shared/skills.js';
-import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
+import type {
+  FloorScenarioState,
+  Floor2SettlementSnapshot,
+  Floor3StudiosState,
+  Floor4ArenaState,
+} from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
 import type { QuestState } from '../shared/quest-types.js';
@@ -135,6 +140,17 @@ export interface FloorExtendedState {
   trashTerritories?: Map<string, string>;
   /** Ambient enemies tracked by the floor director when `world.floorScenario` is intentionally null (e.g. Floor 2). */
   ambientEnemyArchetypes?: Map<number, string>;
+  /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
+  floor3Studios?: Floor3StudiosState;
+  /**
+   * Pending Floor 3 starter-Companion offer (spec R5 §6.1): the seeded 4
+   * `speciesId`s presented while `world.state === 'loadout'` at floor start.
+   * Cleared implicitly once `selectFloor3StarterCompanion` resumes play —
+   * consumers should treat a missing/empty offer as "no pick pending".
+   */
+  floor3StarterOffer?: readonly string[];
+  /** Floor 4 arena clock + phase-machine state. */
+  floor4Arena?: Floor4ArenaState;
 }
 
 /**

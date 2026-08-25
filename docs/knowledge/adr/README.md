@@ -135,6 +135,7 @@ hundreds of inbound references.
 - [Floor 2 settlement progression contract](0059-floor2-settlement-progression-contract.md) — deterministic two-phase introduction (settlement discovery then Broker introduction) shared by quest waypoints, AI routing, and the Families HUD activation gate.
 - [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md) — inverts combat via the existing `Invincible` tag (player + handlers undamageable), generalizes Floor 2 ally AI into a team-tagged Companion roster, defines a species = affinity × fighting-style model (styles as reusable AI personas seeding `AI_TYPE`), two-track progression (persistent player level/gear vs floor-scoped creature XP), a cross-floor kept-companion slot, party-lock recruiting, simultaneous-wipe lose, and seeded 6-gym + Final Four win.
 - [Floor 4 — The Main Event (timed survival arena floor)](0090-floor4-arena.md) — the first non-exploration floor: a dedicated arena clock running continuously through waves and bosses (additive to `world.elapsedMs`), a single `arenaDirectorSystem` phase authority, bounded overtime as the boss failure path, precomputed immutable wave manifests with capped spawn debt, a graded append-only Headliner draw keyed by act slot, isolated per-purpose RNG streams making per-visit shop stock path-independent, and a transactional safe-room hand-off.
+- [Floor 4 Slice 2 — Arena Director Rehearsal](0091-floor4-slice2-arena-director-rehearsal.md) — implements the first runtime phase authority as an empty broadcast rehearsal: real-pipeline `arenaDirectorSystem` wiring, exact arena-clock marks, deterministic timeline RunStats, and temporary auto-advanced intermissions until the Green Room transaction slice lands.
 
 ### Quests & NPCs
 
@@ -170,6 +171,8 @@ hundreds of inbound references.
 - [Boss health bar as a scaled HUD component](0017-boss-health-bar-hud-component.md)
 - [HiDPI supersampling render scale for crisp text](0025-hidpi-supersampling-render-scale.md)
 - [Generic VFX effects pipeline](0025-vfx-effects-pipeline.md)
+- [Reward-opening audio as a reusable, deterministic cue layer](0071-reward-opening-audio-cues.md) — the first `AudioCueEngine`-based procedural synth cue layer.
+- [Combat/loot audio cues as a second reuse of the reward-opening cue pattern](2026-08-23-combat-loot-audio-cues.md) — weapon/spell/ability/damage/pickup SFX sourced from the existing `combatEvents`/`abilityActivations`/`vfxEvents` queues, no new core plumbing.
 
 ### Process, CI & telemetry
 
@@ -293,3 +296,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0071 | [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md)                                                     | Proposed                 | 2026-07-24 |
 | 0072 | [Retire Foundry — Standardize Asset Pipeline on Azure OpenAI](0072-retire-foundry-standardize-azure-openai.md)                                     | Accepted                 | 2026-07-24 |
 | 0090 | [Floor 4 — The Main Event (timed survival arena floor)](0090-floor4-arena.md)                                                                      | Proposed                 | 2026-08-22 |
+| 0091 | [Floor 4 Slice 2 — Arena Director Rehearsal](0091-floor4-slice2-arena-director-rehearsal.md)                                                       | Accepted                 | 2026-08-24 |

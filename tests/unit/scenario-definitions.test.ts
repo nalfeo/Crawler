@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getScenarioDefinition,
   getScenarioPresentationContract,
+  isFloorPlayable,
   type ScenarioDefinition,
 } from '../../src/game/scenarioDefinitions.js';
 import {
@@ -10,6 +11,7 @@ import {
   type ScenarioRunOutcome,
 } from '../../src/shared/scenario-presentation.js';
 import * as floorRegistry from '../../src/shared/floor-registry.js';
+import { isFloorImplemented } from '../../src/shared/floor-registry.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import {
@@ -18,7 +20,12 @@ import {
 } from '../../src/game/floorScenario.js';
 import { confirmFloor2StairDescend } from '../../src/game/floor2Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
-import { FLOOR3_TIMEOUT_GOAL_ID } from '../../src/game/floor3Scenario.js';
+import {
+  FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
+  FLOOR3_TIMEOUT_GOAL_ID,
+} from '../../src/game/floor3Scenario.js';
+import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -36,12 +43,38 @@ describe('scenario definitions', () => {
     expect(scenario.director.victory).toContain('Floor 2');
   });
 
+  it('chains floor2 into floor3 instead of ending the run', () => {
+    // "Beating Floor 2 starts Floor 3": the scenario contract is the single
+    // place that decides this — `createFloorMainSceneOptions` builds the
+    // in-process transition callback from `nextFloorId`, and the completion
+    // screen picks its variant from `nextFloorId` + `isTerminalRunVictory`.
+    const floor2 = getScenarioDefinition('floor2');
+    expect(floor2.nextFloorId).toBe('floor3');
+    expect(floor2.isTerminalRunVictory).toBe(false);
+    expect(floor2.stairConfirmation?.confirmDescription).toContain('Floor 3');
+    // Floor 3 is the last authored floor, so it must not advertise a next one.
+    expect(getScenarioDefinition('floor3').nextFloorId).toBeUndefined();
+  });
+
+  it('marks every registered floor playable, and only winnable floors implemented', () => {
+    for (const floorId of ['floor1', 'floor2', 'floor3'] as const) {
+      expect(isFloorPlayable(floorId)).toBe(true);
+    }
+    expect(isFloorPlayable('floor-does-not-exist')).toBe(false);
+    // Floor 3 is playable but has no attainable victory yet, so it must stay
+    // OUT of the implemented (sweepable/winnable) set.
+    expect(isFloorImplemented('floor3')).toBe(false);
+  });
+
   it('returns floor3 scenario with the biome-overworld director copy', () => {
     const scenario = getScenarioDefinition('floor3');
     expect(typeof scenario.configureWorld).toBe('function');
-    expect(scenario.selectLoadoutOption).toBeUndefined();
+    // Floor 3 now pauses on a starter-Companion pick (spec R5 §6.1), mirroring
+    // Floor 1's weapon loadout, so it must expose a loadout selector too.
+    expect(typeof scenario.selectLoadoutOption).toBe('function');
     expect(scenario.director.intro).toContain('wilds');
-    expect(scenario.isTerminalRunVictory).toBe(false);
+    expect(scenario.director.victory).toContain('Final Four');
+    expect(scenario.isTerminalRunVictory).toBe(true);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {
@@ -163,6 +196,42 @@ describe('scenario definitions', () => {
         body: 'The Companion League timer expired.\nRally your party and reach the objective faster.',
       });
     });
+
+    it('floor3 reports cleared_floor once staircase discovery latches', () => {
+      const scenario = getScenarioDefinition('floor3');
+      const world = createTestWorld({ seed: 43, floor: 3 });
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      world.goalFlags.set(FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
+      expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+    });
+
+    it('floor4 returns cleared_floor on rehearsal victory with matching presentation copy', () => {
+      const scenario = getScenarioDefinition('floor4');
+      const world = createTestWorld({ seed: 44, floor: 4 });
+      const player = spawnPlayer(world, 0, 0);
+      const phase = getFloorManifest('floor4')!.floor4!.phase;
+      initializeFloor4Scenario(world, player);
+
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      world.elapsedMs += phase.countdownMs;
+      arenaDirectorSystem(world);
+      for (let act = 1; act <= phase.actCount; act += 1) {
+        world.elapsedMs += phase.waveWindowMs;
+        arenaDirectorSystem(world);
+        world.elapsedMs += phase.headlineWindowMs;
+        arenaDirectorSystem(world);
+        world.elapsedMs += phase.intermissionMs;
+        arenaDirectorSystem(world);
+      }
+
+      expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+      expect(scenario.director.isVictoryReached(world)).toBe(true);
+      expect(scenario.getCompletionCopy('terminal_complete')).toEqual({
+        title: 'Floor 4 Complete!',
+        subtitle: 'Arena rehearsal cleared',
+        body: 'The Main Event rehearsal ran start-to-finish and the crowd got its winner banner.',
+      });
+    });
   });
 
   describe('semantic stair marker/proximity', () => {
@@ -264,13 +333,21 @@ describe('scenario definitions', () => {
       });
     });
 
-    it('floor2 preserves the exact reachable completion copy (terminal_victory)', () => {
+    it('floor2 announces the Floor 3 transition on its reachable completion variant', () => {
+      // Floor 2 now declares `nextFloorId: 'floor3'`, so the variant the
+      // shipped game reaches on a clear is the transition — the old
+      // "you escaped the dungeon" terminal copy would lie about what happens
+      // next.
       const scenario = getScenarioDefinition('floor2');
-      expect(scenario.getCompletionCopy('terminal_victory')).toEqual({
-        title: 'Victory!',
-        subtitle: 'Floor 2 complete!',
-        body: 'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+      expect(scenario.getCompletionCopy('transition_to_next_floor')).toEqual({
+        title: 'Floor 2 Complete!',
+        subtitle: 'Heading to Floor 3...',
+        body: 'The Companion League wilds are waiting below!',
       });
+      // Still total: a host that boots Floor 2 without a transition callback
+      // (labs) genuinely ends the run there and must get non-victory-claiming
+      // terminal copy.
+      expect(scenario.getCompletionCopy('terminal_victory').title).toBe('Floor 2 Complete!');
     });
 
     it('every registered scenario returns copy for every completion variant (total mapping)', () => {
@@ -322,7 +399,7 @@ describe('scenario definitions', () => {
         'transition_to_next_floor',
       );
       expect(selectScenarioCompletionVariant(outcome, getScenarioDefinition('floor2'))).toBe(
-        'terminal_victory',
+        'transition_to_next_floor',
       );
     });
 

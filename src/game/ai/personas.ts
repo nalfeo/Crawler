@@ -35,9 +35,6 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     dodgeWeight: 0.9,
     collectPullWeight: 0.55,
     farmPullWeight: 0.05,
-    // A new player leaves the moment the exit opens — they do not read the
-    // clock as spare budget.
-    postBossFarmReserveFraction: 1,
     // A new player does not think in terms of spare budget, so no calm boost.
     calmFarmPullBoost: 1,
   },
@@ -52,8 +49,6 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     dodgeWeight: 0.35,
     collectPullWeight: 0.15,
     farmPullWeight: 0.45,
-    // The cheeser squeezes the clock hardest: farm down to a 15% exit reserve.
-    postBossFarmReserveFraction: 0.15,
     // The cheeser deliberately skips loot that isn't on the optimal line.
     calmFarmPullBoost: 1,
   },
@@ -67,9 +62,6 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     dodgeWeight: 0.75,
     collectPullWeight: 0.75,
     farmPullWeight: 0.2,
-    // The explorer keeps a wider margin — it wanders, so its walk back to the
-    // stairs is the least predictable.
-    postBossFarmReserveFraction: 0.3,
     // The explorer sweeps hardest while the clock is quiet.
     calmFarmPullBoost: 1.5,
   },

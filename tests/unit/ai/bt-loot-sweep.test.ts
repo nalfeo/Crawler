@@ -1,17 +1,24 @@
 /**
  * BT loot sweep tests (Priority 2.5).
  *
- * The sweep fires as a **pre-exit** window only: unbounded radius, active while
- * the floor staircase is unlocked and not yet discovered, because descending
- * destroys every uncollected pickup.
+ * Two mutually-exclusive windows share this node:
+ *   - **mid-run** (default, whenever the pre-exit window is not open): bounded
+ *     to `LOOT_SWEEP_RADIUS_FT`, a local post-combat cleanup so drops from the
+ *     fight that just ended aren't left behind while the AI moves on.
+ *   - **pre-exit**: unbounded radius, active while the floor staircase is
+ *     unlocked and not yet discovered, because descending destroys every
+ *     uncollected pickup.
  *
  * Verifies:
  *   - the window targets the nearest reachable XP gem (and gold);
- *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept in the pre-exit window,
- *     for both the Floor 1 and the distinct Floor 2 staircase guards;
+ *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept in the pre-exit window but
+ *     NOT in the mid-run window, for both the Floor 1 and the distinct Floor 2
+ *     staircase guards;
  *   - the sweep does NOT fire with nothing on the ground;
  *   - the sweep does NOT fire when an enemy is within engage range, including
- *     enemies currently ignored for target selection.
+ *     enemies currently ignored for target selection;
+ *   - the mid-run window additionally stands down for any enemy inside the scan
+ *     radius, so it never preempts post-retreat local threat recovery.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -96,6 +103,51 @@ describe('BT — loot sweep (Priority 2.5)', () => {
 
       const decision = pollDecision(world);
       expect(decision.state).not.toBe(AIState.COLLECT);
+    });
+  });
+
+  describe('mid-run (local) window', () => {
+    it('sweeps a nearby XP gem while no staircase sweep window is open', () => {
+      const { world, x, y } = makeFloor1World();
+      // No `openSweepWindow` call — the pre-exit window is closed, so any sweep
+      // that fires here must be the mid-run window.
+
+      const gemEid = spawnXpGem(world, x + 5, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.state).toBe(AIState.COLLECT);
+      expect(decision.targetEid).toBe(gemEid);
+      expect(decision.reason.toLowerCase()).toContain('sweep');
+    });
+
+    it('does NOT reach past LOOT_SWEEP_RADIUS_FT', () => {
+      const { world, x, y } = makeFloor1World();
+
+      spawnXpGem(world, x + BEYOND_LOCAL_WINDOW_FT, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
+    });
+
+    it('falls through when nothing is on the ground', () => {
+      const { world } = makeFloor1World();
+
+      const decision = pollDecision(world);
+      expect(decision.state).not.toBe(AIState.COLLECT);
+    });
+
+    it('does NOT sweep while an enemy sits inside the scan radius but outside engage range', () => {
+      const { world, x, y } = makeFloor1World();
+
+      spawnXpGem(world, x + 5, y, 10);
+      // 32 ft: well outside the 20 ft melee engage radius, well inside the 50 ft
+      // scan radius. The mid-run window deliberately uses the full scan radius so
+      // it stays strictly post-combat and can never preempt LocalThreatRecovery,
+      // which only ever latches a threat inside the scan radius.
+      spawnEnemy(world, x + 32, y, 20);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
   });
 

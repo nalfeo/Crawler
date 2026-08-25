@@ -142,6 +142,7 @@ import {
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
+import { formForLevel, getPetSpecies } from '../../shared/data/floor3/species.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
@@ -167,6 +168,14 @@ import { openShopModal } from '../shop/shop-modal-presenter.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
+/**
+ * Cap on `combatAudioCueLog`'s retained entries (drop-oldest, mirrors
+ * `VFX_EVENT_CAP`/`ABILITY_ACTIVATION_EVENT_CAP`). Test/automation
+ * observability only, but combat cues fire far more often than the rare
+ * reward-opening cues `rewardAudioCueLog` logs, so this needs an explicit
+ * bound to avoid unbounded growth over a floor's lifetime.
+ */
+const COMBAT_AUDIO_CUE_LOG_CAP = 64;
 /**
  * Render frames the level-up modal is held open before an `autoLevelUpAllocator`
  * (AI driver) auto-confirms it. ~0.4s at 60fps — long enough for a viewer to see
@@ -496,6 +505,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private inputCapture?: ReturnType<typeof createInputCapture>;
 
+  private blockingSurfaceWasOpen = false;
+
   private playerEid = -1;
 
   private world!: GameWorld;
@@ -742,6 +753,15 @@ export class MainGameScene extends Phaser.Scene {
    * code.
    */
   private rewardAudioCueLog: RewardAudioCueLogEntry[] = [];
+  /**
+   * Test/automation observability only: every `SynthCueSpec` actually
+   * dispatched by `PhaserBridge`'s `combatAudio` controller to the real
+   * `AudioCueEngine`, in dispatch order. Populated by a thin logging wrapper
+   * around the engine instance injected into `createPhaserBridge`, so e2e
+   * coverage can assert weapon/spell/ability/damage/pickup cues fire against
+   * the REAL scene+bridge wiring — never read by gameplay code.
+   */
+  private combatAudioCueLog: RewardAudioCueLogEntry[] = [];
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
@@ -1015,7 +1035,9 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('[session-recorder] Player session recording started');
     }
 
-    this.bridge = createPhaserBridge(this);
+    this.bridge = createPhaserBridge(this, {
+      combatAudioEngine: this.createCombatAudioCueLoggingEngine(createAudioCueEngine()),
+    });
     this.modalPicker = createModalPickerUI(this);
     this.issueReportPicker = createModalPickerUI(this, ISSUE_REPORT_PICKER_DEPTH);
     this.abilityLoadoutUI = createAbilityLoadoutUI(this);
@@ -1522,26 +1544,22 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   public requestInventoryToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedInventoryToggle = true;
   }
 
   public requestEquipAction(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedEquip = true;
   }
 
   public requestAchievementsToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedAchievementsToggle = true;
   }
 
   public requestQuartermasterToggle(): void {
-    this.tappedInteraction = false;
-    this.queuedInteraction = false;
+    this.clearPendingInteractionInput();
     this.queuedQuartermasterToggle = true;
   }
 
@@ -1765,6 +1783,40 @@ export class MainGameScene extends Phaser.Scene {
     };
   }
 
+  /**
+   * Same wrapping as `createRewardAudioCueLoggingEngine`, but backing
+   * `combatAudioCueLog` — the log for cues dispatched by `PhaserBridge`'s
+   * `combatAudio` controller (weapon/spell/ability/damage/pickup SFX).
+   * Test/automation observability only — playback behavior is untouched.
+   */
+  private createCombatAudioCueLoggingEngine(engine: AudioCueEngine): AudioCueEngine {
+    return {
+      isAvailable: () => engine.isAvailable(),
+      play: (spec: SynthCueSpec) => {
+        this.combatAudioCueLog.push({
+          label: spec.label,
+          frequencyHz: spec.frequencyHz,
+          durationMs: spec.durationMs,
+          gain: spec.gain,
+        });
+        // Combat cues fire far more often than reward-opening cues (many
+        // times per second during a fight), so — unlike `rewardAudioCueLog`,
+        // whose source events are rare — this log needs an explicit cap to
+        // avoid unbounded growth over a floor's lifetime. Mirrors the
+        // drop-oldest pattern used by `VFX_EVENT_CAP`/`ABILITY_ACTIVATION_EVENT_CAP`.
+        if (this.combatAudioCueLog.length > COMBAT_AUDIO_CUE_LOG_CAP) {
+          this.combatAudioCueLog.splice(
+            0,
+            this.combatAudioCueLog.length - COMBAT_AUDIO_CUE_LOG_CAP,
+          );
+        }
+        engine.play(spec);
+      },
+      stopAll: () => engine.stopAll(),
+      dispose: () => engine.dispose(),
+    };
+  }
+
   public isInventoryOpen(): boolean {
     return this.inventoryUI?.isOpen() ?? false;
   }
@@ -1866,6 +1918,11 @@ export class MainGameScene extends Phaser.Scene {
     if (this.previousWorldState !== this.world.state) {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
+    }
+    const blockingSurfaceOpen = this.isBlockingSurfaceOpen();
+    if (blockingSurfaceOpen !== this.blockingSurfaceWasOpen) {
+      this.blockingSurfaceWasOpen = blockingSurfaceOpen;
+      this.clearPendingInteractionInput();
     }
     // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
     // as the last completed step left it; only the fixed-step path below has a
@@ -1989,7 +2046,18 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.inputCapture.poll(this.inputState);
-    if (this.achievementsUI?.isOpen()) {
+    // Freeze movement/action input whenever any blocking HUD surface (equipment,
+    // inventory, abilities, achievements, quartermaster, map overlay, etc.) is
+    // open. These panels have no dedicated close button — they're dismissed by
+    // re-tapping their corner button — so on touch devices the raw canvas touch
+    // listener in InputCapture (which classifies touches purely by screen-half
+    // position, unaware of any Phaser UI drawn on top) would otherwise keep
+    // driving the player around the still-running simulation while the player
+    // is just trying to browse the panel, letting them drift into an NPC and
+    // accidentally start a conversation. Previously only AchievementsUI froze
+    // input here; broadened to the shared isBlockingSurfaceOpen() predicate
+    // already used elsewhere to gate NPC interaction for the same reason.
+    if (this.isBlockingSurfaceOpen()) {
       this.inputState.moveX = 0;
       this.inputState.moveY = 0;
       this.inputState.action = false;
@@ -2592,19 +2660,19 @@ export class MainGameScene extends Phaser.Scene {
         .on('pointerdown', onTap);
     const cornerButtonTop = (): number => MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).top;
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
-      this.queuedInventoryToggle = true;
+      this.requestInventoryToggle();
     });
     this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
-      this.queuedEquip = true;
+      this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
-      this.queuedAchievementsToggle = true;
+      this.requestAchievementsToggle();
     });
     this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
-      this.queuedQuartermasterToggle = true;
+      this.requestQuartermasterToggle();
     });
     this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
       this.openIssueReport();
@@ -3285,10 +3353,19 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openLoadoutModal(): void {
-    if (!this.modalPicker || this.world.state !== 'loadout' || !this.world.floorScenario) {
+    if (!this.modalPicker || this.world.state !== 'loadout') {
       return;
     }
     if (this.modalPicker.isOpen() || !this.options.selectLoadoutOption) {
+      return;
+    }
+
+    if (this.world.floorId === 'floor3') {
+      this.openFloor3StarterModal();
+      return;
+    }
+
+    if (!this.world.floorScenario) {
       return;
     }
 
@@ -3315,6 +3392,56 @@ export class MainGameScene extends Phaser.Scene {
       {
         onConfirm: ({ option }) => {
           const choiceIndex = this.world.floorScenario?.starterChoices.indexOf(option.id) ?? -1;
+          if (choiceIndex >= 0) {
+            this.options.selectLoadoutOption?.(this.world, choiceIndex);
+          }
+          this.updateOverlayText();
+        },
+        onCancel: () => {
+          this.options.selectLoadoutOption?.(this.world, 0);
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
+  /**
+   * Floor 3's starter-Companion pick (spec R5 §6.1) — the species-based
+   * counterpart to Floor 1's weapon loadout modal above. Sourced from
+   * `floorExtendedState.floor3StarterOffer` since Floor 3 intentionally
+   * never populates `world.floorScenario` (see `initializeFloor3Scenario`).
+   */
+  private openFloor3StarterModal(): void {
+    if (!this.modalPicker) return;
+    const offer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
+    if (offer.length === 0) return;
+
+    const options = offer.map((speciesId, index) => {
+      const species = getPetSpecies(speciesId);
+      if (!species) {
+        return { id: speciesId, label: `Option ${index + 1}`, description: speciesId };
+      }
+      const babyForm = formForLevel(species, 1);
+      const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+      return {
+        id: speciesId,
+        label: babyForm.name,
+        description: `${capitalize(species.affinity)} · ${capitalize(species.fightingStyle)} · ${species.innateAbilityName}`,
+      };
+    });
+
+    this.modalPicker.open(
+      {
+        title: 'Choose your starter Companion',
+        subtitle: 'Floor 3 is paused until you confirm a starter.',
+        body: 'Pick the Companion you want to begin the Companion League with.',
+        options,
+        allowCancel: true,
+        initialSelectedId: offer[0],
+      },
+      {
+        onConfirm: ({ option }) => {
+          const choiceIndex = offer.indexOf(option.id);
           if (choiceIndex >= 0) {
             this.options.selectLoadoutOption?.(this.world, choiceIndex);
           }

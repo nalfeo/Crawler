@@ -1,6 +1,7 @@
 import { hasComponent, query } from 'bitecs';
 import { Companion, DeathTimer, Enemy, Player, Position, Team } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
+import { TeamId } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
 
 export type CompanionTargetKind = 'rival-primary' | 'follow' | 'idle' | 'disabled';
@@ -39,6 +40,8 @@ export function companionAISystem(world: GameWorld): void {
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const leash = tuning.factionRelations.friendlyLeashTiles;
+  const rivalRangeFt = tuning.factionRelations.feudEngagementRadiusTiles * 4;
+  const rivalRangeSq = rivalRangeFt * rivalRangeFt;
   const companions = query(world.ecs, [Enemy, Companion, Position]);
   const candidates = query(world.ecs, [Enemy, Position, Team]);
 
@@ -76,6 +79,7 @@ export function companionAISystem(world: GameWorld): void {
       const dx = ox - x;
       const dy = oy - y;
       const d2 = dx * dx + dy * dy;
+      if (d2 > rivalRangeSq) continue;
       if (
         nearestRival === null ||
         d2 < nearestRival.d2 ||
@@ -96,24 +100,35 @@ export function companionAISystem(world: GameWorld): void {
       continue;
     }
 
-    const dx = playerX - x;
-    const dy = playerY - y;
-    const dist = Math.hypot(dx, dy);
-    if (dist <= leash) {
-      decisions.set(eid, {
-        x,
-        y,
-        kind: 'idle',
-        targetEid: undefined,
-        bypassPlayerDetection: true,
-      });
-      continue;
+    // Only the player's OWN party (Team.id === TeamId.PLAYER) follows the
+    // player when idle — an NPC-owned roster (Studio/Final-Four Companion,
+    // any other team) has no owner to follow and MUST hold its assigned
+    // territory instead. Without this guard, every hostile roster on the
+    // floor eventually converges on wherever the player currently stands
+    // once it runs out of nearby rivals (plan-review finding, slice 8): the
+    // 'follow' decision sets `bypassPlayerDetection: true`, which makes
+    // `enemyAISystem` treat the Companion as permanently aggroed on the real
+    // player regardless of range/line-of-sight/room gating.
+    if (teamId === TeamId.PLAYER) {
+      const dx = playerX - x;
+      const dy = playerY - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > leash) {
+        decisions.set(eid, {
+          x: playerX,
+          y: playerY,
+          kind: 'follow',
+          targetEid: playerEid,
+          bypassPlayerDetection: true,
+        });
+        continue;
+      }
     }
     decisions.set(eid, {
-      x: playerX,
-      y: playerY,
-      kind: 'follow',
-      targetEid: playerEid,
+      x,
+      y,
+      kind: 'idle',
+      targetEid: undefined,
       bypassPlayerDetection: true,
     });
   }

@@ -8,6 +8,7 @@ import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 import type { EventSummary } from './event-log.js';
 
 /**
@@ -185,19 +186,6 @@ export interface AIConfig {
    */
   farmPullWeight?: number;
   /**
-   * Fraction of the floor's total time budget this cohort keeps in reserve for
-   * the exit once the final boss is already dead.
-   *
-   * The floor deadline is a *budget*, not a target: with the boss down and the
-   * stairs unlocked there is nothing left that can fail except the clock, so a
-   * confident player spends the leftover time farming the floor for loot and XP
-   * instead of walking straight out. `1` opts a cohort out entirely (leave as
-   * soon as the stairs are open); `0.2` means "farm until only 20% of the floor
-   * budget is left, then go". Never farm past the reserve — see
-   * {@link resolvePostBossFarmWindow}.
-   */
-  postBossFarmReserveFraction?: number;
-  /**
    * Multiplier applied to {@link collectPullWeight} and {@link farmPullWeight}
    * while the collapse clock is *not* yet applying any pressure.
    *
@@ -243,16 +231,6 @@ export interface AIInputProvider {
    * headless auto-progression driver to share the provider's exact budget.
    */
   resolveFloor1PlanningDeadlineMs?(objectiveDeadlineMs: number): number;
-
-  /**
-   * Whether the provider is deliberately holding the Floor 1 descend open so
-   * the run can farm its leftover floor budget (see
-   * `resolvePostBossFarmWindow`). The headless auto-progression driver asks
-   * before confirming a descend so it cannot exit the floor underneath a
-   * provider that is still farming. Providers without a farm window may omit
-   * this capability (treated as "not farming").
-   */
-  isFarmingPostBossFloorTime?(world: GameWorld, objectiveDeadlineMs: number): boolean;
 
   /**
    * Generate input for the current frame based on world state.
@@ -805,6 +783,8 @@ export interface RunStats {
   floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
+  /** Floor 4 arena clock and phase timeline evidence. */
+  floor4Arena?: Floor4ArenaRunStats;
   /**
    * Shared den-boss diagnostic rollup — the SAME contract emitted as `den`
    * telemetry records by the player / AI Runner session recorder, so a headless

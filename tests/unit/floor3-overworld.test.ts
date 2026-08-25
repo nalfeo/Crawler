@@ -2,12 +2,13 @@ import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { Companion, Enemy, PartySlot, Prop } from '../../src/core/index.js';
+import { Companion, Enemy, PartySlot, Prop, Size, Sprite } from '../../src/core/index.js';
 import {
   FLOOR3_TIMEOUT_GOAL_ID,
   _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
+  selectFloor3StarterCompanion,
 } from '../../src/game/floor3Scenario.js';
 import { getFloorEnemyPack } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
@@ -17,6 +18,7 @@ import {
   type Affinity,
 } from '../../src/shared/data/floor3/affinity.js';
 import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
+import { _STARTER_OFFER_SIZE } from '../../src/game/floor3Recruiting.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -24,6 +26,10 @@ function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
   const playerEid = spawnPlayer(world, 0, 0);
   initializeFloor3Scenario(world, playerEid);
+  // Confirm the starter-Companion pick (spec R5 §6.1) so the world lands in
+  // 'playing' the way a real run does — `initializeFloor3Scenario` now pauses
+  // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
+  selectFloor3StarterCompanion(world, 0);
   return { world, playerEid };
 }
 
@@ -195,6 +201,96 @@ describe('Floor 3 overworld + wild spawns', () => {
       expect(hasComponent(world.ecs, eid, PartySlot)).toBe(false);
       expect(world.stores.team.id[eid]).toBe(TeamId.ENEMY);
     }
+    // The starter Companion (spec R5 §6.1, picked via `createFloor3World`) is
+    // the only Companion+PartySlot entity — wild ambient spawns above must
+    // never also carry that combo.
+    expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
+  });
+});
+
+describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
+  it('pauses on loadout with a distinct-species starter offer until a pick is confirmed', () => {
+    const world = createTestWorld({ seed: 1301, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+
+    expect(world.state).toBe('loadout');
+    const offer = world.floorExtendedState?.floor3StarterOffer ?? [];
+    expect(offer.length).toBe(_STARTER_OFFER_SIZE);
+    expect(new Set(offer).size).toBe(offer.length);
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
+  });
+
+  it('recruits the picked species into the party and resumes play', () => {
+    const world = createTestWorld({ seed: 1302, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+    const offer = world.floorExtendedState?.floor3StarterOffer ?? [];
+    expect(offer.length).toBeGreaterThan(0);
+
+    selectFloor3StarterCompanion(world, 0);
+
+    expect(world.state).toBe('playing');
+    expect(world.floorExtendedState?.floor3StarterOffer ?? []).toEqual([]);
+    const companions = query(world.ecs, [Companion, PartySlot]);
+    expect(companions.length).toBe(1);
+    const starterEid = companions[0]!;
+    expect(world.stores.team.id[starterEid]).toBe(TeamId.PLAYER);
+    const selectedSpecies = getPetSpecies(offer[0]!);
+    expect(selectedSpecies).toBeDefined();
+    const expectedArchetype = getFloorEnemyPack('floor3-wild')?.archetypes.find((archetype) => {
+      const species = archetype.speciesId ? getPetSpecies(archetype.speciesId) : undefined;
+      return (
+        species?.speciesId === selectedSpecies?.speciesId ||
+        archetype.id.endsWith(`-${selectedSpecies?.fightingStyle}`)
+      );
+    });
+    expect(expectedArchetype).toBeDefined();
+    expect(hasComponent(world.ecs, starterEid, Sprite)).toBe(true);
+    expect(hasComponent(world.ecs, starterEid, Size)).toBe(true);
+    expect(world.stores.sprite.textureId[starterEid]).toBe(expectedArchetype!.spriteTexture);
+    expect(world.stores.size.radius[starterEid]).toBeCloseTo(
+      expectedArchetype!.collisionRadius ??
+        Math.max(expectedArchetype!.spriteWidth, expectedArchetype!.spriteHeight) * 0.5,
+      6,
+    );
+    expect(world.enemyAppearanceKeys.get(starterEid)).toBe(expectedArchetype!.id);
+  });
+
+  it('falls back to the first offer option for an out-of-range index instead of stranding the pause', () => {
+    const world = createTestWorld({ seed: 1303, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+
+    selectFloor3StarterCompanion(world, 999);
+
+    expect(world.state).toBe('playing');
+    expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
+  });
+
+  it('resumes play when loadout is active but the starter offer is missing', () => {
+    const world = createTestWorld({ seed: 1305, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+    world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
+    world.state = 'loadout';
+
+    selectFloor3StarterCompanion(world, 0);
+
+    expect(world.state).toBe('playing');
+    expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
+  });
+
+  it('is a no-op once play has already resumed', () => {
+    const world = createTestWorld({ seed: 1304, floor: 3 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor3Scenario(world, playerEid);
+    selectFloor3StarterCompanion(world, 0);
+    expect(world.state).toBe('playing');
+
+    selectFloor3StarterCompanion(world, 1);
+
+    expect(world.state).toBe('playing');
+    expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
   });
 });
