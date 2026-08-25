@@ -14,8 +14,16 @@
       "notes": "Adopted: compare the exact seed against previous baseline before assigning regression; inspect existing throwing-knife seed14 ENGAGE watchdog coverage; add paired rerun plus focused coverage when applicable; preserve release-loss and adjacent knife tests. Alternatives rejected: gameplay damage/drop tuning would tune one seed; sweep weakening/retry violates the hard gate; rearchitecture is unwarranted absent broader planner drift."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
