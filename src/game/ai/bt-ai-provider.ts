@@ -2348,9 +2348,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** Clear the NPC-approach threat-clear no-progress tracking/bypass. Called
    * whenever the approach itself ends (no progress target, target is not an
    * NPC, or the target is already in interaction range) so a later re-entry
-   * starts fresh instead of inheriting a stale bypass latch. A poll where only
-   * the *threat* went away keeps the evidence — see
-   * {@link noteNpcApproachThreatGateIdle}. */
+   * starts fresh instead of inheriting a stale bypass latch. A poll where the
+   * threat remains nearby but safe-room state suppresses threat-clearing uses
+   * {@link noteNpcApproachThreatGateIdle} instead. */
   private resetNpcApproachThreatTracking(): void {
     this.npcApproachThreatNpcEid = null;
     this.npcApproachThreatBestDistance = Number.POSITIVE_INFINITY;
