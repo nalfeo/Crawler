@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FLOOR3_INTRO_ACKNOWLEDGE_ID,
-  FLOOR3_INTRO_PICKER_KIND,
-  FLOOR3_INTRO_RULES,
-  FLOOR3_POACH_PICKER_KIND,
-  FLOOR3_STARTER_PICKER_KIND,
   buildFloor3IntroModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
@@ -25,22 +20,22 @@ describe('floor3 UX surface #1 — welcome + rules briefing', () => {
   it('teaches the four rules the onboarding screen owns', () => {
     const model = buildFloor3IntroModel();
     const body = model.body ?? '';
-    expect(model.kind).toBe(FLOOR3_INTRO_PICKER_KIND);
+    expect(model.kind).toBe('floor3-intro');
     // Show format, "you don't fight", recruit + lock rules, win condition.
     expect(body).toContain('Companion League');
     expect(body).toContain('never fight');
     expect(body).toContain('poach');
     expect(body).toContain('The lock:');
     expect(body).toContain('Best in Show');
-    expect(FLOOR3_INTRO_RULES.length).toBeGreaterThanOrEqual(4);
+    expect(body.split('\n')).toHaveLength(5);
   });
 
   it('is a single non-cancellable acknowledgement so the briefing cannot be skipped', () => {
     const model = buildFloor3IntroModel();
     expect(model.allowCancel).toBe(false);
     expect(model.options).toHaveLength(1);
-    expect(model.options[0]?.id).toBe(FLOOR3_INTRO_ACKNOWLEDGE_ID);
-    expect(model.initialSelectedId).toBe(FLOOR3_INTRO_ACKNOWLEDGE_ID);
+    expect(model.options[0]?.id).toBe('floor3-intro-ack');
+    expect(model.initialSelectedId).toBe('floor3-intro-ack');
   });
 
   it('is deterministic — the same copy every call', () => {
@@ -52,7 +47,7 @@ describe('floor3 UX surface #2 — starter picker', () => {
   it('shows each candidate as name + affinity, style, and innate ability', () => {
     const model = buildFloor3StarterPickerModel([FIRST_SPECIES, SECOND_SPECIES]);
     const species = getPetSpecies(FIRST_SPECIES)!;
-    expect(model.kind).toBe(FLOOR3_STARTER_PICKER_KIND);
+    expect(model.kind).toBe('floor3-starter');
     expect(model.options).toHaveLength(2);
     expect(model.options[0]?.id).toBe(FIRST_SPECIES);
     expect(model.options[0]?.label).toBe(formForLevel(species, 1).name);
@@ -94,7 +89,7 @@ describe('floor3 UX surface #3 — poach picker', () => {
       slotsRemaining: 4,
       trainerName: 'Studio Ember',
     });
-    expect(model.kind).toBe(FLOOR3_POACH_PICKER_KIND);
+    expect(model.kind).toBe('floor3-poach');
     expect(model.subtitle).toContain('Studio Ember');
     expect(model.options).toHaveLength(3);
     expect(model.body).toContain('4 recruit slots remaining');

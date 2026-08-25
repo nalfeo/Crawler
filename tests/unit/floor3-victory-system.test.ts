@@ -18,7 +18,6 @@ import {
   floor3StudioDefeatGoalId,
   initializeFloor3Scenario,
   selectFloor3LoadoutOption,
-  selectFloor3StarterCompanion,
 } from '../../src/game/floor3Scenario.js';
 import {
   BiomeType,
@@ -52,7 +51,7 @@ function createFloor3World(seed: number) {
   // Confirm the starter-Companion pick (spec R5 §6.1) so the world lands in
   // 'playing' the way a real run does — `initializeFloor3Scenario` now pauses
   // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
-  selectFloor3StarterCompanion(world, 0);
+  selectFloor3LoadoutOption(world, 0);
   return { world, playerEid };
 }
 

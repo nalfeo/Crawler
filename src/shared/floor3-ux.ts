@@ -13,19 +13,19 @@ import type { Floor3PoachCandidate } from './floor-types.js';
 import type { ModalPickerConfig, ModalPickerOption } from './modal-picker.js';
 
 /** Stable `kind` ids so automation can tell the three Floor 3 surfaces apart. */
-export const FLOOR3_INTRO_PICKER_KIND = 'floor3-intro';
-export const FLOOR3_STARTER_PICKER_KIND = 'floor3-starter';
-export const FLOOR3_POACH_PICKER_KIND = 'floor3-poach';
+const FLOOR3_INTRO_PICKER_KIND = 'floor3-intro';
+const FLOOR3_STARTER_PICKER_KIND = 'floor3-starter';
+const FLOOR3_POACH_PICKER_KIND = 'floor3-poach';
 
 /** Option id of the intro screen's single acknowledgement button. */
-export const FLOOR3_INTRO_ACKNOWLEDGE_ID = 'floor3-intro-ack';
+const FLOOR3_INTRO_ACKNOWLEDGE_ID = 'floor3-intro-ack';
 
 /**
  * The rules the welcome screen has to teach (UX surface #1): the show format,
  * that the player never fights, how recruiting and the party lock work, and
  * the win condition.
  */
-export const FLOOR3_INTRO_RULES: readonly string[] = [
+const FLOOR3_INTRO_RULES: readonly string[] = [
   'The format: you are a Wrangler in the Companion League. Your Companions battle; you command.',
   'You never fight. Wranglers and handlers are insured non-combatants — only Companions take damage.',
   'Recruit: pick 1 starter now, then poach 1 Companion from every Trainer you beat.',

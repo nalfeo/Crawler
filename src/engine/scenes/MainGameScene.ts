@@ -2040,6 +2040,13 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      if (this.world.state === 'loadout') {
+        this.openLoadoutModal();
+        if (this.modalPicker?.isOpen()) {
+          this.updateOverlayText();
+          return;
+        }
+      }
       this.updateDoorOverlay();
       this.updateLightingOverlay();
       this.bridge.sync(this.world);
@@ -3431,10 +3438,6 @@ export class MainGameScene extends Phaser.Scene {
       this.modalPicker.open(buildFloor3IntroModel(), {
         onConfirm: () => {
           this.floor3IntroAcknowledged = true;
-          // Reopen immediately so the briefing hands straight off to the
-          // starter/poach picker instead of leaving the floor paused with no
-          // surface until the next update tick.
-          this.openFloor3LoadoutSurface();
           this.updateOverlayText();
         },
       });

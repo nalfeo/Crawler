@@ -1136,7 +1136,7 @@ export function initializeFloor3Scenario(
  * of which should be reachable from the real offer/UI, but must never strand
  * the player on an un-resumable pause).
  */
-export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
+function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): void {
   if (world.state !== 'loadout') return;
   const offer = world.floorExtendedState?.floor3StarterOffer;
   if (!offer || offer.length === 0) {
@@ -1276,7 +1276,7 @@ function buildFloor3PoachOffer(
  * `'playing'` — even if the recruit itself failed — so a bad pick can never
  * strand the player on an un-resumable pause.
  */
-export function selectFloor3PoachCompanion(world: GameWorld, optionIndex: number): void {
+function selectFloor3PoachCompanion(world: GameWorld, optionIndex: number): void {
   if (world.state !== 'loadout') return;
   const offer = world.floorExtendedState?.floor3PoachOffer;
   if (!offer) {

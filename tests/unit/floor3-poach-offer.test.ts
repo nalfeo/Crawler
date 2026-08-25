@@ -7,9 +7,14 @@ import {
   floor3ObjectiveTick,
   initializeFloor3Scenario,
   selectFloor3LoadoutOption,
-  selectFloor3PoachCompanion,
 } from '../../src/game/floor3Scenario.js';
 import { TeamId } from '../../src/shared/constants.js';
+import {
+  formForLevel,
+  getPetSpecies,
+  speciesTokenForId,
+} from '../../src/shared/data/floor3/species.js';
+import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 /** Knocks out every Companion belonging to any of `teamIds`. */
@@ -90,7 +95,7 @@ describe('Floor 3 Trainer-poach offer (spec §6.2, UX surface #3)', () => {
     const { world } = createFloor3World();
     defeatFirstStudio(world);
     floor3ObjectiveTick(world);
-    selectFloor3PoachCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
     expect(world.state).toBe('playing');
     expect(world.floorExtendedState?.floor3PoachOffer).toBeUndefined();
 
@@ -106,14 +111,25 @@ describe('Floor 3 Trainer-poach offer (spec §6.2, UX surface #3)', () => {
     floor3ObjectiveTick(world);
     const picked = world.floorExtendedState!.floor3PoachOffer!.candidates[0]!;
 
-    selectFloor3PoachCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     expect(world.state).toBe('playing');
     expect(partySize(world)).toBe(before + 1);
-    const levels = Array.from(query(world.ecs, [Companion, PartySlot, Team]))
+    const pickedSpecies = getPetSpecies(picked.speciesId)!;
+    const pickedEid = Array.from(query(world.ecs, [Companion, PartySlot, Team]))
       .filter((eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER)
-      .map((eid) => world.stores.companion.level[eid]);
-    expect(levels).toContain(picked.level);
+      .find(
+        (eid) =>
+          world.stores.companion.speciesToken[eid] === speciesTokenForId(picked.speciesId) &&
+          world.stores.companion.level[eid] === picked.level,
+      );
+    expect(pickedEid).toBeDefined();
+    expect(world.stores.companion.form[pickedEid!]).toBe(
+      formForLevel(pickedSpecies, picked.level).form,
+    );
+    expect(world.stores.companion.xp[pickedEid!]).toBe(
+      xpRequiredForLevel(Math.max(0, picked.level - 1)),
+    );
   });
 
   it('clamps an out-of-range pick to the first candidate instead of stranding the pause', () => {
@@ -122,7 +138,7 @@ describe('Floor 3 Trainer-poach offer (spec §6.2, UX surface #3)', () => {
     defeatFirstStudio(world);
     floor3ObjectiveTick(world);
 
-    selectFloor3PoachCompanion(world, 99);
+    selectFloor3LoadoutOption(world, 99);
 
     expect(world.state).toBe('playing');
     expect(partySize(world)).toBe(before + 1);
@@ -131,7 +147,7 @@ describe('Floor 3 Trainer-poach offer (spec §6.2, UX surface #3)', () => {
   it('is a no-op outside the loadout pause', () => {
     const { world } = createFloor3World();
     const before = partySize(world);
-    selectFloor3PoachCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
     expect(partySize(world)).toBe(before);
     expect(world.state).toBe('playing');
   });

@@ -227,10 +227,21 @@ describe('MainGameScene characterization guards', () => {
       expect(new URL(page.url()).searchParams.get('floor')).toBe('floor3');
       expect(floor3State.floorId).toBe('floor3');
       expect(floor3LoadoutState.worldState).toBe('loadout');
-      expect(floor3LoadoutContent?.title).toBe('Choose your starter Companion');
-      expect(floor3LoadoutContent?.options).toHaveLength(4);
+      expect(floor3LoadoutContent?.title).toBe('Welcome to the Companion League');
+      expect(floor3LoadoutContent?.options).toHaveLength(1);
+
+      await page.keyboard.press('Enter');
+      await waitForState(
+        page,
+        (s) => s.floorId === 'floor3' && s.worldState === 'loadout' && s.modalOpen,
+        { timeoutMs: 10_000, label: 'Floor 3 starter-companion modal after intro' },
+      );
+      const floor3StarterContent = await mainSceneProbe.getModalPickerContent(page);
+
+      expect(floor3StarterContent?.title).toBe('Choose your starter Companion');
+      expect(floor3StarterContent?.options).toHaveLength(4);
       expect(
-        floor3LoadoutContent?.options.every(
+        floor3StarterContent?.options.every(
           (option) =>
             option.label.trim().length > 0 &&
             (option.description ?? '').trim().length > 0 &&

@@ -8,7 +8,7 @@ import {
   _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import { getFloorEnemyPack } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
@@ -29,7 +29,7 @@ function createFloor3World(seed: number) {
   // Confirm the starter-Companion pick (spec R5 §6.1) so the world lands in
   // 'playing' the way a real run does — `initializeFloor3Scenario` now pauses
   // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
-  selectFloor3StarterCompanion(world, 0);
+  selectFloor3LoadoutOption(world, 0);
   return { world, playerEid };
 }
 
@@ -228,7 +228,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const offer = world.floorExtendedState?.floor3StarterOffer ?? [];
     expect(offer.length).toBeGreaterThan(0);
 
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     expect(world.state).toBe('playing');
     expect(world.floorExtendedState?.floor3StarterOffer ?? []).toEqual([]);
@@ -262,7 +262,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
 
-    selectFloor3StarterCompanion(world, 999);
+    selectFloor3LoadoutOption(world, 999);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
@@ -275,7 +275,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
     world.state = 'loadout';
 
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
@@ -285,10 +285,10 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const world = createTestWorld({ seed: 1304, floor: 3 });
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
     expect(world.state).toBe('playing');
 
-    selectFloor3StarterCompanion(world, 1);
+    selectFloor3LoadoutOption(world, 1);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);

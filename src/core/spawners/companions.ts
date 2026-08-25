@@ -41,6 +41,8 @@ export interface RecruitPartyCompanionOptions {
   attackRange: number;
   speciesToken: number;
   level: number;
+  form?: number;
+  xp?: number;
   ownerTeam: number;
 }
 
@@ -73,9 +75,9 @@ export function recruitPartyCompanion(
     eid,
     set(Companion, {
       speciesToken: options.speciesToken,
-      form: 0,
+      form: options.form ?? 0,
       level: options.level,
-      xp: 0,
+      xp: options.xp ?? 0,
       ownerTeam: options.ownerTeam,
       knockedOut: 0,
     }),
