@@ -24,8 +24,8 @@ revived an abandoned repeat spell purchase and routed the runner away from the
 stairs through a large enemy swarm.
 
 Repeat spell recovery now stops after the staircase boss is defeated, and the
-behavior tree independently prevents a stale repeat-broker intent from
-preempting exit navigation.
+behavior tree prioritizes accepted exit navigation ahead of a stale repeat-broker
+intent.
 
 ## Verification
 
@@ -35,6 +35,7 @@ preempting exit navigation.
 - Real headless artifact after the same command: victory at 298.3s with
   `floor1-leave-floor` complete.
 - Focused broker lifecycle test: 36 passed.
+- Focused returning-repeat intent exit-routing test: passed.
 - Paired seed-14 regression: passed.
 - Shared Floor 1 release-loss matrix: 10 passed.
 - `bash scripts/agent/verify-fast.sh`: passed (2,368 tests).
