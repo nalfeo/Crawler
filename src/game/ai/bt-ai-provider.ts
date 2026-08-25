@@ -318,7 +318,11 @@ import {
   type RunPlannerCurrentTargetKind,
   type RunPlannerParams,
 } from './run-planner.js';
-import { getMerchantWeaponIntent, updateMerchantWeaponIntent } from './merchant-weapon-intent.js';
+import {
+  getMerchantWeaponIntent,
+  merchantWeaponReserve,
+  updateMerchantWeaponIntent,
+} from './merchant-weapon-intent.js';
 import { getSpellBrokerIntent, updateSpellBrokerIntent } from './spell-broker-intent.js';
 import {
   getSettlementReturnIntent,
@@ -4212,7 +4216,12 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerY,
           playerSpeedFtPerFrame,
         );
-        updateSpellBrokerIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
+        updateSpellBrokerIntent(
+          world,
+          validatedMerchantPlan,
+          RUN_PLANNER_GOLD_FARM_MS,
+          merchantWeaponReserve(world),
+        );
       }
     }
     if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
