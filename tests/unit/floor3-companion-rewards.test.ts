@@ -19,7 +19,7 @@ import { awardFloor3CompanionDefeatRewards } from '../../src/game/floor3Companio
 import {
   floor3ObjectiveTick,
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { listStaticInventorySlots } from '../../src/shared/inventory.js';
@@ -108,6 +108,22 @@ describe('floor3 persistent player reward track', () => {
     const bag = world.inventories.get(playerEid);
     expect(bag).toBeDefined();
     expect(listStaticInventorySlots(bag!).length).toBeGreaterThan(0);
+  });
+
+  it('scatters each item in a multi-item rival drop', () => {
+    const { world } = createFloor3RewardWorld(18);
+    const rival = spawnRival(world, RIVAL_TEAM_ID);
+
+    knockOut(world, rival);
+    awardFloor3CompanionDefeatRewards(world);
+
+    const items = query(world.ecs, [DroppedItem]);
+    expect(items.length).toBeGreaterThan(1);
+    const positions = Array.from(items, (eid) => [
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    ]);
+    expect(new Set(positions.map(([x, y]) => `${x}:${y}`)).size).toBe(positions.length);
   });
 
   it('pays a defeated rival exactly once, even across revive and re-KO', () => {
@@ -202,7 +218,7 @@ describe('floor3 reward track wiring', () => {
     const world = createTestWorld({ seed: 808, floor: 3 });
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     const state = world.floorExtendedState?.floor3Studios;
     expect(state).toBeDefined();

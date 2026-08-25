@@ -145,7 +145,12 @@ import {
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import { formForLevel, getPetSpecies } from '../../shared/data/floor3/species.js';
+import {
+  buildFloor3IntroModel,
+  buildFloor3PoachPickerModel,
+  buildFloor3StarterPickerModel,
+} from '../../shared/floor3-ux.js';
+import type { ModalPickerConfig } from '../../shared/modal-picker.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
@@ -544,6 +549,8 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+  /** True once the Floor 3 rules briefing (UX surface #1) has been acknowledged this floor. */
+  private floor3IntroAcknowledged = false;
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
@@ -2118,6 +2125,13 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      if (this.world.state === 'loadout') {
+        this.openLoadoutModal();
+        if (this.modalPicker?.isOpen()) {
+          this.updateOverlayText();
+          return;
+        }
+      }
       this.updateDoorOverlay();
       this.updateLightingOverlay();
       this.bridge.sync(this.world);
@@ -3494,7 +3508,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.world.floorId === 'floor3') {
-      this.openFloor3StarterModal();
+      this.openFloor3LoadoutSurface();
       return;
     }
 
@@ -3539,53 +3553,69 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
-   * Floor 3's starter-Companion pick (spec R5 §6.1) — the species-based
-   * counterpart to Floor 1's weapon loadout modal above. Sourced from
-   * `floorExtendedState.floor3StarterOffer` since Floor 3 intentionally
+   * Floor 3's `'loadout'` surfaces (spec slice 12, UX surfaces #1–#3). One
+   * resolver picks exactly one surface by priority so the rules briefing can
+   * never be skipped and a poach can never be masked by the starter offer:
+   *
+   * 1. the welcome + rules briefing, once per floor entry (non-cancellable);
+   * 2. the Trainer-poach picker, whenever a poach offer is pending;
+   * 3. the starter-Companion picker.
+   *
+   * Offers are sourced from `floorExtendedState` since Floor 3 intentionally
    * never populates `world.floorScenario` (see `initializeFloor3Scenario`).
    */
-  private openFloor3StarterModal(): void {
+  private openFloor3LoadoutSurface(): void {
     if (!this.modalPicker) return;
-    const offer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
-    if (offer.length === 0) return;
 
-    const options = offer.map((speciesId, index) => {
-      const species = getPetSpecies(speciesId);
-      if (!species) {
-        return { id: speciesId, label: `Option ${index + 1}`, description: speciesId };
-      }
-      const babyForm = formForLevel(species, 1);
-      const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
-      return {
-        id: speciesId,
-        label: babyForm.name,
-        description: `${capitalize(species.affinity)} · ${capitalize(species.fightingStyle)} · ${species.innateAbilityName}`,
-      };
+    if (!this.floor3IntroAcknowledged) {
+      this.modalPicker.open(buildFloor3IntroModel(), {
+        onConfirm: () => {
+          this.floor3IntroAcknowledged = true;
+          this.updateOverlayText();
+        },
+      });
+      return;
+    }
+
+    const poachOffer = this.world.floorExtendedState?.floor3PoachOffer;
+    if (poachOffer !== undefined) {
+      this.openFloor3PickerModal(
+        buildFloor3PoachPickerModel({
+          candidates: poachOffer.candidates,
+          slotsRemaining: poachOffer.slotsRemaining,
+          trainerName: poachOffer.encounterName,
+        }),
+        poachOffer.candidates.map((candidate) => candidate.speciesId),
+      );
+      return;
+    }
+
+    const starterOffer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
+    if (starterOffer.length === 0) return;
+    this.openFloor3PickerModal(buildFloor3StarterPickerModel(starterOffer), starterOffer);
+  }
+
+  /** Opens a Floor 3 species picker and routes the pick back through `selectLoadoutOption`. */
+  private openFloor3PickerModal(
+    config: ModalPickerConfig,
+    offerSpeciesIds: readonly string[],
+  ): void {
+    this.modalPicker?.open(config, {
+      onConfirm: ({ option }) => {
+        // An unmatched option id must still dispatch: `selectLoadoutOption`
+        // is the only thing that leaves `'loadout'`, so skipping it would
+        // strand the floor paused with no picker on screen. Index 0 is the
+        // same never-strand fallback the cancel path and the headless runner
+        // use.
+        const choiceIndex = offerSpeciesIds.indexOf(option.id);
+        this.options.selectLoadoutOption?.(this.world, Math.max(0, choiceIndex));
+        this.updateOverlayText();
+      },
+      onCancel: () => {
+        this.options.selectLoadoutOption?.(this.world, 0);
+        this.updateOverlayText();
+      },
     });
-
-    this.modalPicker.open(
-      {
-        title: 'Choose your starter Companion',
-        subtitle: 'Floor 3 is paused until you confirm a starter.',
-        body: 'Pick the Companion you want to begin the Companion League with.',
-        options,
-        allowCancel: true,
-        initialSelectedId: offer[0],
-      },
-      {
-        onConfirm: ({ option }) => {
-          const choiceIndex = offer.indexOf(option.id);
-          if (choiceIndex >= 0) {
-            this.options.selectLoadoutOption?.(this.world, choiceIndex);
-          }
-          this.updateOverlayText();
-        },
-        onCancel: () => {
-          this.options.selectLoadoutOption?.(this.world, 0);
-          this.updateOverlayText();
-        },
-      },
-    );
   }
 
   private openSpellSelectionModal(): void {
