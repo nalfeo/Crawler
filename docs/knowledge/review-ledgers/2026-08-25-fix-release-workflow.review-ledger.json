@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "fix-release-workflow",
+  "task_title": "Deduplicate recurring release loss issues",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "convergent",
+      "notes": "Plan review identified and assessed configuration-keying, API return shape, closed-issue coverage, comment failure propagation, mixed create/comment coverage, and fallback coverage. The implementation preserves original issue bodies, comments on matching open configurations, and creates only new configurations."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Reviewer found no significant issues."
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

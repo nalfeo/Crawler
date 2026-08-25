@@ -230,7 +230,7 @@ export async function fileBaselineRegressionIssue({
     repo,
     issue,
   });
-  return { action, issueNumber: issue.number, assignee: intake.assignee };
+  return [{ action, issueNumber: issue.number, assignee: intake.assignee }];
 }
 
 async function main() {
@@ -256,7 +256,7 @@ async function main() {
     repo,
     decision,
   });
-  for (const issue of Array.isArray(outcome) ? outcome : [outcome]) {
+  for (const issue of outcome) {
     const assignment = issue.assignee ? `; assigned @${issue.assignee}` : '';
     process.stdout.write(
       `${issue.action} release regression issue #${issue.issueNumber}${assignment}\n`,

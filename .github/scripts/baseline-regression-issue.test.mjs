@@ -70,11 +70,7 @@ test('creates one labeled issue with GITHUB_TOKEN then assigns through shared PA
     decision: decision(),
   });
 
-  assert.deepEqual(result, {
-    action: 'created',
-    issueNumber: 42,
-    assignee: 'copilot-swe-agent',
-  });
+  assert.deepEqual(result, [{ action: 'created', issueNumber: 42, assignee: 'copilot-swe-agent' }]);
   const create = h.calls.find(
     (call) => call[0] === 'request' && call[2] === '/repos/nalfeo/Crawler/issues',
   );
@@ -105,7 +101,7 @@ test('updates an open marker match instead of creating a duplicate', async () =>
     decision: decision(),
   });
 
-  assert.equal(result.action, 'updated');
+  assert.equal(result[0].action, 'updated');
   const patch = h.calls.find((call) => call[0] === 'request');
   assert.equal(patch[2], '/repos/nalfeo/Crawler/issues/7');
   assert.equal(patch[3].body.state, undefined);
@@ -142,8 +138,8 @@ test('collapses duplicate stable-marker issues onto the oldest and closes the re
     decision: decision(),
   });
 
-  assert.equal(result.action, 'updated');
-  assert.equal(result.issueNumber, 5);
+  assert.equal(result[0].action, 'updated');
+  assert.equal(result[0].issueNumber, 5);
   const patches = h.calls.filter((call) => call[0] === 'request');
   assert.equal(patches[0][2], '/repos/nalfeo/Crawler/issues/5');
   assert.equal(patches[0][3].body.state, undefined);
@@ -304,7 +300,7 @@ test('does not treat a closed issue as an open duplicate', async () => {
     repo: 'Crawler',
     decision: decision(),
   });
-  assert.equal(result.action, 'created');
+  assert.equal(result[0].action, 'created');
   const create = h.calls.find((call) => call[0] === 'request');
   assert.equal(create[2], '/repos/nalfeo/Crawler/issues');
 });
