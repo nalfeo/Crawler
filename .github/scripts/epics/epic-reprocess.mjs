@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 import { EPIC_NODE_MARKER_PREFIX } from '../ci-recovery/markers.mjs';
 import { graphql, paginate, request } from '../ci-recovery/github.mjs';
@@ -45,10 +46,7 @@ export async function reprocessEpicNodes({
   repo,
   maintainerLogin = 'nalfeo',
 }) {
-  const issues = await paginateFn(
-    token,
-    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent('epic')}`,
-  );
+  const issues = await paginateFn(token, `/repos/${owner}/${repo}/issues?state=open&labels=epic`);
   const results = [];
   for (const issue of issues.filter(isManagedOpenEpicNode)) {
     try {
@@ -127,7 +125,7 @@ async function main() {
   if (errors > 0) process.exitCode = 1;
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
     process.stderr.write(
       `epic-reprocess failed: ${error instanceof Error ? error.message : String(error)}\n`,
