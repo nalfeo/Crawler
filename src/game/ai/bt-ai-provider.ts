@@ -1258,9 +1258,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Pre-exit loot sweep — unbounded once the staircase is
-        // unlocked but not yet discovered, because the floor transition destroys
-        // every uncollected pickup.
+        // Priority 2.5: Pre-exit loot sweep — collect nearby loot once the
+        // staircase is unlocked but not yet discovered, because the floor
+        // transition destroys every uncollected pickup.
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
         // Priority 2.7: Mid-run loot sweep — a bounded post-combat cleanup
@@ -8279,12 +8279,13 @@ export class BehaviorTreeAI implements AIInputProvider {
    * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT`, so it only picks up
    *   the drops from the fight that just ended and never becomes a cross-floor
    *   errand.
-   * - **Pre-exit** — unbounded once the staircase is unlocked but not yet
-   *   descended, because the floor transition destroys every uncollected pickup.
+   * - **Pre-exit** — bounded to `scanRadius` once the staircase is unlocked but
+   *   not yet descended. Chaining nearby drops preserves their value without
+   *   sending the player across the floor through a newly-active swarm.
    *
    * Guard conditions (all must hold):
    * 1. Collapse panic below threshold (surrender the sweep in a time crunch).
-   * 2. No enemies within engage radius — safety first; combat pre-empts sweep.
+   * 2. No enemies within scan radius — safety first; combat pre-empts sweep.
    * 3. At least one reachable XP gem or gold pile inside the active window.
    */
   private buildLootSweepBehavior(window: 'pre-exit' | 'mid-run'): BTNode {
@@ -8296,10 +8297,10 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.lootSweepTargetEid = null;
           return false;
         }
-        // Safety gate: don't sweep while an enemy is close enough to matter.
-        // Pre-exit uses the engage radius (the floor is cleared, so a straggler
-        // must not cancel the last-chance sweep). The mid-run window uses the
-        // full `scanRadius` instead, for two reasons:
+        // Safety gate: don't sweep while an enemy is close enough to matter. Both
+        // windows use the full `scanRadius`: an undiscovered exit can still have
+        // lingering enemies, so the pre-exit sweep must not outrun the threat
+        // check. The mid-run window uses it for two reasons:
         //  1. It keeps the sweep strictly post-combat. With the narrower engage
         //     radius the gate flickers as an enemy drifts in and out of range,
         //     which made the AI oscillate between COLLECT and Engage/Progress
@@ -8307,9 +8308,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         //  2. LocalThreatRecovery only latches an enemy inside `scanRadius`, so
         //     requiring an empty scan radius means the mid-run sweep can never
         //     preempt a live recovery target, even at critical health.
-        const safetyRadius =
-          window === 'pre-exit' ? this.getEngageRadius(ctx.world) : this.config.scanRadius;
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, safetyRadius, true)) {
+        if (
+          this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, this.config.scanRadius, true)
+        ) {
           this.lootSweepTargetEid = null;
           return false;
         }
@@ -8318,7 +8319,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // staircase has not yet been descended; mid-run fires at all other times.
         if (window === 'pre-exit' && !inPreExitWindow) return false;
         if (window === 'mid-run' && inPreExitWindow) return false;
-        const maxDistance = inPreExitWindow ? Number.POSITIVE_INFINITY : LOOT_SWEEP_RADIUS_FT;
+        const maxDistance = inPreExitWindow ? this.config.scanRadius : LOOT_SWEEP_RADIUS_FT;
         const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
         if (!loot) return false;
         ctx.blackboard['sweepLoot'] = loot;

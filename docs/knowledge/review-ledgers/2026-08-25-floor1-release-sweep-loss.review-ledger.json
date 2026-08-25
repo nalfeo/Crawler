@@ -2,34 +2,35 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-25",
   "session_slug": "floor1-release-sweep-loss",
-  "task_title": "Restore Floor 1 release sweep victory",
+  "task_title": "Fix Floor 1 release sweep loss",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "claude-sonnet-4.6",
-      "concerns_count": 1,
-      "resolved_count": 1,
-      "plan_divergence": "convergent",
-      "notes": "Independent plan review confirmed the reserve-threading design. It identified a direct returning-to-abandoned unit-test gap; resolved by asserting the intent first returns without the reserve and then abandons when the reserve is supplied."
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Reviewed before implementation. Paired baseline/current reproduction and first-decision trace were added to the plan; controls now include exact release options, a forced-weapon matrix, and paired official-win determinism assertions."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-5"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
-      ]
+      ],
+      "notes": "Final review found one low-risk stale integration-test setup guard after the recovery fixture moved the gold near the player; lowered the anchor requirement and updated the docstring before final validation."
     },
     "independent_grade": {
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
-      "implementer_model": "gpt-5.6",
-      "head_sha": "cab71fb9f9e5afac030f954575c58a29f5bdc9a0",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "f379dbe05417644c919b2e6dfc902ac8ca99b8e9",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -40,7 +41,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation successfully resolves the intent/execution mismatch by threading the merchant weapon reserve into updateSpellBrokerIntent and applying it exclusively to repeat purchases. The fix prevents returning-to-abandoned loops while preserving initial spell purchase priorities. The diff is surgically scoped, comprehensively covered by targeted unit tests and a headless regression seed case, and fully compliant with project policies (handoff, review ledger, and apple tracking are all present and accurate)."
+      "notes": "The change correctly bounds the pre-exit loot sweep to the AI's scan radius, preventing dangerous cross-map sweeps that lead to late-run deaths. The unit and integration tests were thoroughly and correctly updated to reflect the new bounded behavior, and a regression seed was appropriately added to the headless suite. The code is highly disciplined, well-commented, and fully policy-compliant."
     }
   }
 }

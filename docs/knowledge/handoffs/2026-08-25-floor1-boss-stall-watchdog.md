@@ -20,7 +20,7 @@ watchdog change, regression coverage, and review ledger required.
 ## Issue
 
 Closes nalfeo/Crawler#3523 ("bug: Floor 1 release sweep loss at
-f218b6a9e42d").
+685f955a0028").
 
 ## What Was Done
 
