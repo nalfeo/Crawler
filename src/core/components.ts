@@ -163,7 +163,9 @@ export const FamilyMembership = {};
  * `speciesToken` is an opaque numeric key for the species line (string species
  * ids live in higher-level data registries), `form` is 0/1/2 (baby/adolescent/adult),
  * `level`/`xp` track floor-scoped creature progression, `ownerTeam` mirrors the
- * owning handler/wrangler team id, and `knockedOut` is the in-engagement KO flag.
+ * owning handler/wrangler team id, `knockedOut` is the in-engagement KO flag,
+ * and `defeatRewarded` latches once a defeated rival has paid out the player's
+ * persistent reward track.
  */
 export const Companion = {};
 
@@ -608,6 +610,12 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       ownerTeam: new Uint16Array(maxEntities),
       /** 1 when this companion is KO'd for the active engagement. */
       knockedOut: new Uint8Array(maxEntities),
+      /**
+       * 1 once this companion's defeat has already paid the player's
+       * persistent reward track (Floor 3, spec R7). Latched so the generic
+       * engagement-end revival cannot be farmed by re-KO'ing the same rival.
+       */
+      defeatRewarded: new Uint8Array(maxEntities),
     },
     partySlot: {
       /** Ordered 0-based slot index in the player's floor-scoped party. */
