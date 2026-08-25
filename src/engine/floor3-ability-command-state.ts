@@ -18,17 +18,17 @@ import tuning from '../shared/data/tuning.json';
 import type { Floor3PartyRow, PartyMemberKey } from './floor3-party-state.js';
 
 /** Frames a commanded Companion's signature ability stays on cooldown. */
-export const COMMAND_COOLDOWN_FRAMES: number = tuning.floor3Companion.commandCooldownFrames;
+export const _COMMAND_COOLDOWN_FRAMES: number = tuning.floor3Companion.commandCooldownFrames;
 
 /** Player levels required per extra simultaneous command charge (spec R7). */
-export const COMMAND_LEVELS_PER_CHARGE: number =
+export const _COMMAND_LEVELS_PER_CHARGE: number =
   tuning.floor3Companion.commandLevelsPerCapacityCharge;
 
 /** Hard cap on simultaneous command charges — one per party slot. */
-export const COMMAND_MAX_CAPACITY: number = tuning.floor3Companion.partyMaxSize;
+const COMMAND_MAX_CAPACITY: number = tuning.floor3Companion.partyMaxSize;
 
 /** Frames the HUD flashes a row after its command is accepted. */
-export const COMMAND_FLASH_FRAMES = 20;
+export const _COMMAND_FLASH_FRAMES = 20;
 
 /** Why a command was refused. */
 export type CommandRejection =
@@ -52,17 +52,17 @@ export function createFloor3CommandState(): Floor3CommandState {
 /**
  * Simultaneous command charges the player has earned. Player level is the
  * persistent track that "powers Floor-3 command capacity" (spec R7): one
- * charge at level 1, plus one per {@link COMMAND_LEVELS_PER_CHARGE} levels,
+ * charge at level 1, plus one per {@link _COMMAND_LEVELS_PER_CHARGE} levels,
  * capped at the party size.
  */
 export function commandCapacity(playerLevel: number): number {
   const level = Number.isFinite(playerLevel) ? Math.max(1, Math.floor(playerLevel)) : 1;
-  const earned = 1 + Math.floor((level - 1) / COMMAND_LEVELS_PER_CHARGE);
+  const earned = 1 + Math.floor((level - 1) / _COMMAND_LEVELS_PER_CHARGE);
   return Math.min(COMMAND_MAX_CAPACITY, earned);
 }
 
 /** Frames left on a member's cooldown; 0 when ready. */
-export function commandCooldownRemaining(
+function commandCooldownRemaining(
   state: Floor3CommandState,
   key: PartyMemberKey,
   frameCount: number,
@@ -72,17 +72,17 @@ export function commandCooldownRemaining(
   // A rewound/reset frame counter (new floor, restarted lab) must not strand a
   // Companion on a cooldown that can never expire.
   if (frameCount < last) return 0;
-  return Math.max(0, COMMAND_COOLDOWN_FRAMES - (frameCount - last));
+  return Math.max(0, _COMMAND_COOLDOWN_FRAMES - (frameCount - last));
 }
 
 /** Cooldown progress in `[0, 1]`, where 1 means "ready now". */
-export function commandCooldownFraction(
+export function _commandCooldownFraction(
   state: Floor3CommandState,
   key: PartyMemberKey,
   frameCount: number,
 ): number {
-  if (COMMAND_COOLDOWN_FRAMES <= 0) return 1;
-  return 1 - commandCooldownRemaining(state, key, frameCount) / COMMAND_COOLDOWN_FRAMES;
+  if (_COMMAND_COOLDOWN_FRAMES <= 0) return 1;
+  return 1 - commandCooldownRemaining(state, key, frameCount) / _COMMAND_COOLDOWN_FRAMES;
 }
 
 /** Party members currently spending a charge (i.e. still cooling down). */
@@ -109,7 +109,7 @@ export interface CommandSlotState {
   readonly cooldownFrames: number;
   /** Set when `ready` is false. */
   readonly blockedBy?: CommandRejection;
-  /** True for `COMMAND_FLASH_FRAMES` after this row's command was accepted. */
+  /** True for `_COMMAND_FLASH_FRAMES` after this row's command was accepted. */
   readonly flashing: boolean;
 }
 
@@ -134,11 +134,11 @@ export function resolveCommandSlots(
       slot: row.slot,
       abilityName: row.signatureAbilityName,
       ready: blockedBy === undefined,
-      cooldownFraction: commandCooldownFraction(state, row.key, frameCount),
+      cooldownFraction: _commandCooldownFraction(state, row.key, frameCount),
       cooldownFrames: remaining,
       ...(blockedBy === undefined ? {} : { blockedBy }),
       flashing:
-        last !== undefined && frameCount >= last && frameCount - last < COMMAND_FLASH_FRAMES,
+        last !== undefined && frameCount >= last && frameCount - last < _COMMAND_FLASH_FRAMES,
     };
   });
 }
@@ -147,7 +147,7 @@ export function resolveCommandSlots(
  * The Companion the bare command verb fires: the lowest-slot party member that
  * is ready right now. `undefined` when nobody can be commanded.
  */
-export function selectCommandTarget(
+export function _selectCommandTarget(
   state: Floor3CommandState,
   rows: readonly Floor3PartyRow[],
   frameCount: number,
@@ -179,7 +179,7 @@ export function issueCompanionCommand(
 
   const target =
     slot === undefined
-      ? selectCommandTarget(state, rows, frameCount, playerLevel)
+      ? _selectCommandTarget(state, rows, frameCount, playerLevel)
       : rows.find((row) => row.slot === slot);
   if (target === undefined) {
     if (slot !== undefined) return { accepted: false, rejection: 'unknown-slot' };
@@ -210,7 +210,7 @@ export function issueCompanionCommand(
  * map cannot grow across a long run (party members leave only on floor exit
  * today, but a KO'd-and-removed member would otherwise leak an entry).
  */
-export function pruneCommandState(
+export function _pruneCommandState(
   state: Floor3CommandState,
   rows: readonly Floor3PartyRow[],
 ): void {

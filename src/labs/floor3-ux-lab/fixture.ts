@@ -19,7 +19,7 @@ import {
 import { TeamId } from '../../shared/constants.js';
 import { speciesTokenForId } from '../../shared/data/floor3/species.js';
 
-export const LAB_SEED = 31313;
+const LAB_SEED = 31313;
 
 export interface LabPartySpec {
   readonly speciesId: string;
@@ -29,7 +29,7 @@ export interface LabPartySpec {
 }
 
 /** Default party: mixed affinities/styles so every HUD tag is exercised. */
-export const DEFAULT_PARTY: readonly LabPartySpec[] = [
+const DEFAULT_PARTY: readonly LabPartySpec[] = [
   { speciesId: 'ember-charger', level: 12, hpFraction: 1, knockedOut: false },
   { speciesId: 'tide-warden', level: 7, hpFraction: 0.45, knockedOut: false },
   { speciesId: 'gloom-slinger', level: 25, hpFraction: 0.18, knockedOut: false },

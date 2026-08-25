@@ -55,7 +55,7 @@ export interface Floor3ProgressEntry {
 export type Floor3ProgressSnapshot = ReadonlyMap<PartyMemberKey, Floor3ProgressEntry>;
 
 /** Capture the party's current progression state (cheap: one row scan). */
-export function captureFloor3PartyProgress(
+export function _captureFloor3PartyProgress(
   world: GameWorld,
   ownerTeam: number = TeamId.PLAYER,
 ): Floor3ProgressSnapshot {
@@ -80,7 +80,7 @@ export function snapshotFromRows(rows: readonly Floor3PartyRow[]): Floor3Progres
 /** Milestone levels crossed by going from `previousLevel` to `nextLevel`. */
 export type AbilityMilestoneLevel = (typeof ABILITY_MILESTONE_LEVELS)[number];
 
-export function milestonesCrossed(
+export function _milestonesCrossed(
   previousLevel: number,
   nextLevel: number,
 ): readonly AbilityMilestoneLevel[] {
@@ -137,7 +137,7 @@ export function diffFloor3PartyProgress(
         text: `${after.name} evolved!`,
       });
     }
-    for (const milestone of milestonesCrossed(before.level, after.level)) {
+    for (const milestone of _milestonesCrossed(before.level, after.level)) {
       const def = getPetSpecies(after.speciesId);
       if (def === undefined) continue;
       notices.push({

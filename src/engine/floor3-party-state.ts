@@ -16,7 +16,7 @@ import { query } from 'bitecs';
 import { Companion, PartySlot, Team } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { TeamId } from '../shared/constants.js';
-import { AFFINITY_RING, type Affinity } from '../shared/data/floor3/affinity.js';
+import type { Affinity } from '../shared/data/floor3/affinity.js';
 import {
   ABILITY_MILESTONE_LEVELS,
   formForLevel,
@@ -27,7 +27,7 @@ import {
 import { STYLE_PERSONAS, type FightingStyle } from '../shared/data/floor3/styles.js';
 
 /** Floor id the Companion League party surfaces belong to. */
-export const FLOOR3_FLOOR_ID = 'floor3';
+const FLOOR3_FLOOR_ID = 'floor3';
 
 /** Per-affinity HUD swatch color (`0xRRGGBB`), one per Temperament. */
 export const AFFINITY_HUD_COLORS: Readonly<Record<Affinity, number>> = Object.freeze({
@@ -45,7 +45,7 @@ export const AFFINITY_HUD_COLORS: Readonly<Record<Affinity, number>> = Object.fr
  * for the style name. Sprites do not exist for Floor 3 yet (spec "known
  * gaps"), so the party HUD reads affinity by color swatch and style by glyph.
  */
-export const STYLE_HUD_GLYPHS: Readonly<Record<FightingStyle, string>> = Object.freeze({
+export const _STYLE_HUD_GLYPHS: Readonly<Record<FightingStyle, string>> = Object.freeze({
   charger: '»',
   bruiser: '#',
   slinger: '↗',
@@ -121,7 +121,7 @@ export function abilityDisplayName(species: PetSpeciesDef, milestoneLevel: numbe
  * The highest milestone this Companion has already reached — the ability the
  * commander verb (surface 7) fires.
  */
-export function signatureMilestoneLevel(level: number): number {
+export function _signatureMilestoneLevel(level: number): number {
   let milestone: number = ABILITY_MILESTONE_LEVELS[0];
   for (const candidate of ABILITY_MILESTONE_LEVELS) {
     if (level >= candidate) milestone = candidate;
@@ -155,7 +155,7 @@ export function resolvePartyMemberEids(
 }
 
 /** Resolve one party row, or `undefined` when the species token is unknown. */
-export function resolvePartyRow(world: GameWorld, eid: number): Floor3PartyRow | undefined {
+function resolvePartyRow(world: GameWorld, eid: number): Floor3PartyRow | undefined {
   const store = world.stores.companion;
   const speciesToken = store.speciesToken[eid] ?? 0;
   const species = speciesForToken(speciesToken);
@@ -178,13 +178,13 @@ export function resolvePartyRow(world: GameWorld, eid: number): Floor3PartyRow |
     affinity: species.affinity,
     affinityColor: AFFINITY_HUD_COLORS[species.affinity],
     fightingStyle: species.fightingStyle,
-    styleGlyph: STYLE_HUD_GLYPHS[species.fightingStyle],
+    styleGlyph: _STYLE_HUD_GLYPHS[species.fightingStyle],
     hpCurrent,
     hpMax,
     hpFraction: hpMax > 0 ? Math.max(0, Math.min(1, hpCurrent / hpMax)) : 0,
     knockedOut: (store.knockedOut[eid] ?? 0) === 1,
     learnedAbilityIds: learnedAbilityIds(species, level),
-    signatureAbilityName: abilityDisplayName(species, signatureMilestoneLevel(level)),
+    signatureAbilityName: abilityDisplayName(species, _signatureMilestoneLevel(level)),
   };
 }
 
@@ -204,9 +204,6 @@ export function resolveFloor3PartyRows(
   }
   return rows;
 }
-
-/** Affinity ring order, re-exported so widgets can render a stable legend. */
-export const PARTY_AFFINITY_ORDER: readonly Affinity[] = AFFINITY_RING;
 
 /** Persona summary shown by the party HUD tooltip and the roster screen. */
 export function stylePersonaSummary(style: FightingStyle): string {

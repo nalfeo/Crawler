@@ -40,13 +40,22 @@ describe('Floor 3 UX surface wiring', () => {
 
   it('treats the roster overlay as a blocking surface and destroys it on shutdown', () => {
     expect(scene).toMatch(/isBlockingSurfaceOpen\(\)[\s\S]*floor3RosterUI\?\.isOpen\(\)/);
+    expect(scene).toMatch(/if \(this\.floor3RosterUI\?\.isOpen\(\)\)[\s\S]*return;/);
     expect(scene).toContain('this.floor3RosterUI?.destroy();');
   });
 
   it('gates both verbs on the Floor 3 party being present', () => {
     expect(scene).toContain("import { shouldShowFloor3Party } from '../floor3-party-state.js';");
-    expect(scene).toMatch(/rosterToggleRequested && shouldShowFloor3Party\(this\.world\)/);
-    expect(scene).toMatch(/commandRequested &&[\s\S]{0,120}shouldShowFloor3Party\(this\.world\)/);
+    expect(scene).toContain('const floor3PartyAvailable = shouldShowFloor3Party(this.world);');
+    expect(scene).toMatch(/rosterToggleRequested && floor3PartyAvailable/);
+    expect(scene).toMatch(/commandRequested &&[\s\S]{0,120}floor3PartyAvailable/);
+  });
+
+  it('wires Floor 3 roster and command touch buttons', () => {
+    expect(scene).toContain('this.floor3RosterButton = makeCornerButton');
+    expect(scene).toContain('this.requestFloor3RosterToggle();');
+    expect(scene).toContain('this.floor3CommandButton = makeCornerButton');
+    expect(scene).toContain('this.requestCompanionCommand();');
   });
 
   it.each(LAB_IDS)('registers the %s lab module path', (labId, dir) => {

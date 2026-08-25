@@ -26,7 +26,7 @@ import type { Floor3PartyRow, PartyMemberKey } from './floor3-party-state.js';
  * engagement tracking, so the indicator can never disagree with the KO/recovery
  * state machine about who is fighting whom.
  */
-export const MATCHUP_RANGE_FT: number = tuning.floor3Companion.engagementRangeFt;
+export const _MATCHUP_RANGE_FT: number = tuning.floor3Companion.engagementRangeFt;
 
 /** Player-facing read of an affinity matchup. */
 export type MatchupTag = 'strong' | 'weak' | 'neutral';
@@ -39,14 +39,14 @@ export const MATCHUP_COLORS: Readonly<Record<MatchupTag, number>> = Object.freez
 });
 
 /** Short label per matchup tag. */
-export const MATCHUP_LABELS: Readonly<Record<MatchupTag, string>> = Object.freeze({
+const MATCHUP_LABELS: Readonly<Record<MatchupTag, string>> = Object.freeze({
   strong: 'STRONG',
   weak: 'WEAK',
   neutral: 'EVEN',
 });
 
 /** Map an effectiveness multiplier to its player-facing tag. */
-export function matchupTagForMultiplier(multiplier: AffinityMultiplier): MatchupTag {
+export function _matchupTagForMultiplier(multiplier: AffinityMultiplier): MatchupTag {
   if (multiplier > 1) return 'strong';
   if (multiplier < 1) return 'weak';
   return 'neutral';
@@ -72,14 +72,14 @@ function affinityFor(world: GameWorld, eid: number): Affinity | undefined {
 
 /**
  * Nearest living, non-KO'd rival Companion to `sourceEid` within
- * {@link MATCHUP_RANGE_FT}. Ties on squared distance break by lowest entity id
+ * {@link _MATCHUP_RANGE_FT}. Ties on squared distance break by lowest entity id
  * so the pick is total-ordered and reproducible.
  */
-export function nearestRivalCompanion(
+export function _nearestRivalCompanion(
   world: GameWorld,
   sourceEid: number,
   ownerTeam: number = TeamId.PLAYER,
-  rangeFt: number = MATCHUP_RANGE_FT,
+  rangeFt: number = _MATCHUP_RANGE_FT,
 ): { eid: number; distanceSqFt: number } | undefined {
   const sourceX = world.stores.position.x[sourceEid] ?? 0;
   const sourceY = world.stores.position.y[sourceEid] ?? 0;
@@ -111,7 +111,7 @@ export function nearestRivalCompanion(
  * Matchup for one party Companion, or `undefined` when it is KO'd, has no
  * rival in range, or either side's species token is unknown.
  */
-export function resolveCompanionMatchup(
+export function _resolveCompanionMatchup(
   world: GameWorld,
   sourceEid: number,
   ownerTeam: number = TeamId.PLAYER,
@@ -120,13 +120,13 @@ export function resolveCompanionMatchup(
   const attackerAffinity = affinityFor(world, sourceEid);
   if (attackerAffinity === undefined) return undefined;
 
-  const rival = nearestRivalCompanion(world, sourceEid, ownerTeam);
+  const rival = _nearestRivalCompanion(world, sourceEid, ownerTeam);
   if (rival === undefined) return undefined;
   const defenderAffinity = affinityFor(world, rival.eid);
   if (defenderAffinity === undefined) return undefined;
 
   const multiplier = affinityMultiplier(attackerAffinity, defenderAffinity);
-  const tag = matchupTagForMultiplier(multiplier);
+  const tag = _matchupTagForMultiplier(multiplier);
   return {
     sourceEid,
     targetEid: rival.eid,
@@ -151,7 +151,7 @@ export function resolvePartyMatchups(
 ): ReadonlyMap<PartyMemberKey, Floor3Matchup> {
   const byKey = new Map<PartyMemberKey, Floor3Matchup>();
   for (const row of rows) {
-    const matchup = resolveCompanionMatchup(world, row.eid, ownerTeam);
+    const matchup = _resolveCompanionMatchup(world, row.eid, ownerTeam);
     if (matchup !== undefined) byKey.set(row.key, matchup);
   }
   return byKey;
@@ -161,7 +161,7 @@ export function resolvePartyMatchups(
  * The single matchup the combat overlay headlines: the closest live
  * engagement in the party. `undefined` when nobody is engaged.
  */
-export function resolveHeadlineMatchup(
+export function _resolveHeadlineMatchup(
   world: GameWorld,
   rows: readonly Floor3PartyRow[],
   ownerTeam: number = TeamId.PLAYER,

@@ -228,6 +228,10 @@ export const mainSceneProbe = {
     ),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
+  tapFloor3RosterButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3RosterButton()),
+  tapFloor3CommandButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3CommandButton()),
   tapQuartermasterButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapQuartermasterButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>

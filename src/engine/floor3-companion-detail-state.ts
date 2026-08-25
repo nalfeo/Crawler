@@ -86,7 +86,7 @@ export interface CompanionDetail {
 }
 
 /** Evolution track for a species at `level` (pure; no world reads). */
-export function resolveFormTrack(
+export function _resolveFormTrack(
   species: PetSpeciesDef,
   level: number,
 ): readonly CompanionFormStep[] {
@@ -102,7 +102,7 @@ export function resolveFormTrack(
 }
 
 /** Ability milestone track for a species at `level` (pure; no world reads). */
-export function resolveAbilityTrack(
+export function _resolveAbilityTrack(
   species: PetSpeciesDef,
   level: number,
 ): readonly CompanionAbilityStep[] {
@@ -115,7 +115,10 @@ export function resolveAbilityTrack(
 }
 
 /** Detail view model for one Companion entity, or `undefined` when unknown. */
-export function resolveCompanionDetail(world: GameWorld, eid: number): CompanionDetail | undefined {
+export function _resolveCompanionDetail(
+  world: GameWorld,
+  eid: number,
+): CompanionDetail | undefined {
   const store = world.stores.companion;
   const speciesToken = store.speciesToken[eid] ?? 0;
   const species = speciesForToken(speciesToken);
@@ -124,8 +127,8 @@ export function resolveCompanionDetail(world: GameWorld, eid: number): Companion
   const level = store.level[eid] ?? 1;
   const form = formForLevel(species, level);
   const persona = STYLE_PERSONAS[species.fightingStyle];
-  const formTrack = resolveFormTrack(species, level);
-  const abilityTrack = resolveAbilityTrack(species, level);
+  const formTrack = _resolveFormTrack(species, level);
+  const abilityTrack = _resolveAbilityTrack(species, level);
   const slot = world.stores.partySlot.slot[eid] ?? 0;
 
   return {
@@ -167,7 +170,7 @@ export function resolveRosterEntries(
 ): readonly CompanionDetail[] {
   const entries: CompanionDetail[] = [];
   for (const eid of resolvePartyMemberEids(world, ownerTeam)) {
-    const detail = resolveCompanionDetail(world, eid);
+    const detail = _resolveCompanionDetail(world, eid);
     if (detail !== undefined) entries.push(detail);
   }
   return entries;

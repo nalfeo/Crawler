@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   AFFINITY_HUD_COLORS,
-  STYLE_HUD_GLYPHS,
+  _STYLE_HUD_GLYPHS,
   abilityDisplayName,
   partyMemberKey,
   resolveFloor3PartyRows,
   resolvePartyMemberEids,
   shouldShowFloor3Party,
-  signatureMilestoneLevel,
+  _signatureMilestoneLevel,
 } from '../../src/engine/floor3-party-state.js';
 import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
 import { TeamId } from '../../src/shared/constants.js';
@@ -76,7 +76,7 @@ describe('resolveFloor3PartyRows', () => {
     expect(row.hpFraction).toBeCloseTo(0.25);
     expect(row.knockedOut).toBe(true);
     expect(row.affinityColor).toBe(AFFINITY_HUD_COLORS.ember);
-    expect(row.styleGlyph).toBe(STYLE_HUD_GLYPHS.charger);
+    expect(row.styleGlyph).toBe(_STYLE_HUD_GLYPHS.charger);
     expect(row.key).toBe(partyMemberKey(0, world.stores.companion.speciesToken[row.eid]!));
   });
 
@@ -109,14 +109,14 @@ describe('resolveFloor3PartyRows', () => {
   });
 });
 
-describe('signatureMilestoneLevel', () => {
+describe('_signatureMilestoneLevel', () => {
   it('reports the highest milestone already reached', () => {
-    expect(signatureMilestoneLevel(1)).toBe(1);
-    expect(signatureMilestoneLevel(7)).toBe(1);
-    expect(signatureMilestoneLevel(8)).toBe(8);
-    expect(signatureMilestoneLevel(24)).toBe(16);
-    expect(signatureMilestoneLevel(25)).toBe(25);
-    expect(signatureMilestoneLevel(99)).toBe(34);
+    expect(_signatureMilestoneLevel(1)).toBe(1);
+    expect(_signatureMilestoneLevel(7)).toBe(1);
+    expect(_signatureMilestoneLevel(8)).toBe(8);
+    expect(_signatureMilestoneLevel(24)).toBe(16);
+    expect(_signatureMilestoneLevel(25)).toBe(25);
+    expect(_signatureMilestoneLevel(99)).toBe(34);
   });
 });
 

@@ -96,6 +96,21 @@ export function createFloor3RosterUI(
     .setOrigin(1, 0);
   root.add(hint);
 
+  const closeButton = scene.add
+    .text(PANEL_WIDTH - PANEL_PAD, PANEL_HEIGHT - PANEL_PAD - 2, '✕ CLOSE', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '8px',
+      fontStyle: 'bold',
+      color: hex(BLUE_STEEL.textPrimary),
+      backgroundColor: '#1f2937ee',
+      stroke: '#02040a',
+      strokeThickness: 2,
+      padding: { x: 10, y: 8 },
+    })
+    .setOrigin(1, 1)
+    .setInteractive({ useHandCursor: true });
+  root.add(closeButton);
+
   const listTop = PANEL_PAD + 32;
   const listRows: {
     background: Phaser.GameObjects.Rectangle;
@@ -107,7 +122,8 @@ export function createFloor3RosterUI(
     const background = scene.add
       .rectangle(PANEL_PAD, y, LIST_WIDTH, LIST_ROW_H - 2, 0x35476d)
       .setOrigin(0, 0)
-      .setStrokeStyle(1, BLUE_STEEL.panelBorder);
+      .setStrokeStyle(1, BLUE_STEEL.panelBorder)
+      .setInteractive({ useHandCursor: true });
     const swatch = scene.add
       .rectangle(PANEL_PAD + 5, y + 7, 10, 10, 0x64748b)
       .setOrigin(0, 0)
@@ -144,7 +160,7 @@ export function createFloor3RosterUI(
 
   const detachCrispText = applyCrispText(
     scene,
-    [title, hint, ...detailTexts, ...listRows.map((row) => row.label)],
+    [title, hint, closeButton, ...detailTexts, ...listRows.map((row) => row.label)],
     MIN_TEXT_RESOLUTION + 2,
   );
 
@@ -152,8 +168,23 @@ export function createFloor3RosterUI(
   let cursor = 0;
   let entries: readonly string[] = [];
   let lines: readonly string[] = [];
+  let currentWorld: GameWorld | null = null;
+
+  closeButton.on('pointerdown', () => {
+    open = false;
+    currentWorld = null;
+    root.setVisible(false);
+  });
+  listRows.forEach((row, index) => {
+    row.background.on('pointerdown', () => {
+      if (!open || currentWorld === null || index >= entries.length) return;
+      cursor = index;
+      sync(currentWorld);
+    });
+  });
 
   function sync(world: GameWorld): void {
+    currentWorld = world;
     const details = resolveRosterEntries(world);
     cursor = details.length === 0 ? 0 : wrapRosterIndex(cursor, details.length);
     entries = details.map((detail) => `${detail.slot + 1} ${detail.displayName} L${detail.level}`);
@@ -180,12 +211,14 @@ export function createFloor3RosterUI(
   return {
     open(world: GameWorld): void {
       open = true;
+      currentWorld = world;
       cursor = 0;
       root.setVisible(true);
       sync(world);
     },
     close(): void {
       open = false;
+      currentWorld = null;
       root.setVisible(false);
     },
     isOpen: () => open,

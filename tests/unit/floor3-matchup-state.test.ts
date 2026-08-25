@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   MATCHUP_COLORS,
-  MATCHUP_RANGE_FT,
-  matchupTagForMultiplier,
-  nearestRivalCompanion,
-  resolveCompanionMatchup,
-  resolveHeadlineMatchup,
+  _MATCHUP_RANGE_FT,
+  _matchupTagForMultiplier,
+  _nearestRivalCompanion,
+  _resolveCompanionMatchup,
+  _resolveHeadlineMatchup,
   resolvePartyMatchups,
 } from '../../src/engine/floor3-matchup-state.js';
 import { resolveFloor3PartyRows } from '../../src/engine/floor3-party-state.js';
@@ -20,15 +20,15 @@ function floor3World() {
   return world;
 }
 
-describe('matchupTagForMultiplier', () => {
+describe('_matchupTagForMultiplier', () => {
   it('maps the three effectiveness multipliers', () => {
-    expect(matchupTagForMultiplier(2)).toBe('strong');
-    expect(matchupTagForMultiplier(0.5)).toBe('weak');
-    expect(matchupTagForMultiplier(1)).toBe('neutral');
+    expect(_matchupTagForMultiplier(2)).toBe('strong');
+    expect(_matchupTagForMultiplier(0.5)).toBe('weak');
+    expect(_matchupTagForMultiplier(1)).toBe('neutral');
   });
 });
 
-describe('resolveCompanionMatchup', () => {
+describe('_resolveCompanionMatchup', () => {
   it('reads STRONG when the party Companion beats the rival affinity', () => {
     const world = floor3World();
     const mine = spawnTestCompanion(world, { speciesId: 'ember-charger' });
@@ -39,7 +39,7 @@ describe('resolveCompanionMatchup', () => {
       roster: true,
     });
 
-    const matchup = resolveCompanionMatchup(world, mine)!;
+    const matchup = _resolveCompanionMatchup(world, mine)!;
     expect(matchup.tag).toBe('strong');
     expect(matchup.multiplier).toBe(2);
     expect(matchup.color).toBe(MATCHUP_COLORS.strong);
@@ -56,7 +56,7 @@ describe('resolveCompanionMatchup', () => {
       roster: true,
     });
 
-    expect(resolveCompanionMatchup(world, mine)!.tag).toBe('weak');
+    expect(_resolveCompanionMatchup(world, mine)!.tag).toBe('weak');
   });
 
   it('has no read when the nearest rival is out of engagement range', () => {
@@ -64,12 +64,12 @@ describe('resolveCompanionMatchup', () => {
     const mine = spawnTestCompanion(world, { speciesId: 'ember-charger' });
     spawnTestCompanion(world, {
       speciesId: 'bloom-warden',
-      x: MATCHUP_RANGE_FT + 1,
+      x: _MATCHUP_RANGE_FT + 1,
       teamId: TeamId.ENEMY,
       roster: true,
     });
 
-    expect(resolveCompanionMatchup(world, mine)).toBeUndefined();
+    expect(_resolveCompanionMatchup(world, mine)).toBeUndefined();
   });
 
   it('ignores knocked-out and dead rivals, and a knocked-out source', () => {
@@ -90,10 +90,10 @@ describe('resolveCompanionMatchup', () => {
     });
     world.stores.health.current[dead] = 0;
 
-    expect(resolveCompanionMatchup(world, mine)).toBeUndefined();
+    expect(_resolveCompanionMatchup(world, mine)).toBeUndefined();
 
     world.stores.companion.knockedOut[mine] = 1;
-    expect(resolveCompanionMatchup(world, mine)).toBeUndefined();
+    expect(_resolveCompanionMatchup(world, mine)).toBeUndefined();
   });
 
   it('breaks equidistant rivals by lowest entity id so the read is reproducible', () => {
@@ -113,12 +113,12 @@ describe('resolveCompanionMatchup', () => {
     });
 
     expect(first).toBeLessThan(second);
-    expect(nearestRivalCompanion(world, mine)!.eid).toBe(first);
-    expect(resolveCompanionMatchup(world, mine)!.targetEid).toBe(first);
+    expect(_nearestRivalCompanion(world, mine)!.eid).toBe(first);
+    expect(_resolveCompanionMatchup(world, mine)!.targetEid).toBe(first);
   });
 });
 
-describe('resolvePartyMatchups / resolveHeadlineMatchup', () => {
+describe('resolvePartyMatchups / _resolveHeadlineMatchup', () => {
   it('keys per-row matchups by stable party identity and headlines the closest', () => {
     const world = floor3World();
     spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0, x: 0 });
@@ -135,13 +135,13 @@ describe('resolvePartyMatchups / resolveHeadlineMatchup', () => {
     expect(matchups.size).toBe(2);
     expect(matchups.get(rows[0]!.key)!.tag).toBe('strong');
 
-    const headline = resolveHeadlineMatchup(world, rows)!;
+    const headline = _resolveHeadlineMatchup(world, rows)!;
     expect(headline.sourceEid).toBe(rows[1]!.eid);
   });
 
   it('has no headline when nothing is engaged', () => {
     const world = floor3World();
     spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0 });
-    expect(resolveHeadlineMatchup(world, resolveFloor3PartyRows(world))).toBeUndefined();
+    expect(_resolveHeadlineMatchup(world, resolveFloor3PartyRows(world))).toBeUndefined();
   });
 });

@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor3-slice13-ux-recovery",
+  "task_title": "Recover Floor 3 Slice 13 UX review blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "CI review validator checked all seven PR review blockers before fixes. It validated touch affordances, notice queueing, redundant scan removal, and real-scene coverage; command effect was deterministically non-applicable for this UX slice; roster pause was implemented despite design-risk caveat.",
+      "adversarial": false,
+      "alternatives_considered": 0
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

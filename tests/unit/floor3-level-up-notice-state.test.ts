@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  captureFloor3PartyProgress,
+  _captureFloor3PartyProgress,
   diffFloor3PartyProgress,
-  milestonesCrossed,
+  _milestonesCrossed,
   snapshotFromRows,
 } from '../../src/engine/floor3-level-up-notice-state.js';
 import { resolveFloor3PartyRows } from '../../src/engine/floor3-party-state.js';
@@ -16,12 +16,12 @@ function floor3World() {
   return world;
 }
 
-describe('milestonesCrossed', () => {
+describe('_milestonesCrossed', () => {
   it('reports every milestone a multi-level jump crosses, in level order', () => {
-    expect(milestonesCrossed(1, 7)).toEqual([]);
-    expect(milestonesCrossed(7, 8)).toEqual([8]);
-    expect(milestonesCrossed(1, 26)).toEqual([8, 16, 25]);
-    expect(milestonesCrossed(25, 34)).toEqual([34]);
+    expect(_milestonesCrossed(1, 7)).toEqual([]);
+    expect(_milestonesCrossed(7, 8)).toEqual([8]);
+    expect(_milestonesCrossed(1, 26)).toEqual([8, 16, 25]);
+    expect(_milestonesCrossed(25, 34)).toEqual([34]);
   });
 });
 
@@ -29,17 +29,17 @@ describe('diffFloor3PartyProgress', () => {
   it('emits nothing when nothing changed', () => {
     const world = floor3World();
     spawnTestCompanion(world, { speciesId: 'ember-charger' });
-    const before = captureFloor3PartyProgress(world);
-    expect(diffFloor3PartyProgress(before, captureFloor3PartyProgress(world))).toEqual([]);
+    const before = _captureFloor3PartyProgress(world);
+    expect(diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world))).toEqual([]);
   });
 
   it('emits level, evolve, and learn notices for one level jump, in that order', () => {
     const world = floor3World();
     const eid = spawnTestCompanion(world, { speciesId: 'ember-charger', level: 7 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     world.stores.companion.level[eid] = 10;
-    const notices = diffFloor3PartyProgress(before, captureFloor3PartyProgress(world));
+    const notices = diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world));
 
     expect(notices.map((notice) => notice.kind)).toEqual(['level', 'evolve', 'learn']);
     expect(notices[1]!.form).toBe(1);
@@ -50,10 +50,10 @@ describe('diffFloor3PartyProgress', () => {
   it('emits one learn notice per crossed milestone on a multi-level jump', () => {
     const world = floor3World();
     const eid = spawnTestCompanion(world, { speciesId: 'ember-charger', level: 1 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     world.stores.companion.level[eid] = 26;
-    const notices = diffFloor3PartyProgress(before, captureFloor3PartyProgress(world));
+    const notices = diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world));
 
     const learns = notices.filter((notice) => notice.kind === 'learn');
     expect(learns.map((notice) => notice.abilityId)).toEqual([
@@ -67,11 +67,11 @@ describe('diffFloor3PartyProgress', () => {
     const world = floor3World();
     const second = spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 1, level: 1 });
     const first = spawnTestCompanion(world, { speciesId: 'bloom-warden', slot: 0, level: 1 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     world.stores.companion.level[second] = 2;
     world.stores.companion.level[first] = 2;
-    const notices = diffFloor3PartyProgress(before, captureFloor3PartyProgress(world));
+    const notices = diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world));
 
     expect(notices.map((notice) => notice.slot)).toEqual([0, 1]);
   });
@@ -79,16 +79,16 @@ describe('diffFloor3PartyProgress', () => {
   it('baselines a newly recruited Companion silently', () => {
     const world = floor3World();
     spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     spawnTestCompanion(world, { speciesId: 'bloom-warden', slot: 1, level: 30 });
-    expect(diffFloor3PartyProgress(before, captureFloor3PartyProgress(world))).toEqual([]);
+    expect(diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world))).toEqual([]);
   });
 
   it('never attributes a notice across a recycled entity id', () => {
     const world = floor3World();
     const eid = spawnTestCompanion(world, { speciesId: 'ember-charger', slot: 0, level: 20 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     // Same eid, different species token: a recycled entity, not a level-up.
     const recycled = snapshotFromRows(
@@ -101,9 +101,9 @@ describe('diffFloor3PartyProgress', () => {
   it('ignores a level regression', () => {
     const world = floor3World();
     const eid = spawnTestCompanion(world, { speciesId: 'ember-charger', level: 12 });
-    const before = captureFloor3PartyProgress(world);
+    const before = _captureFloor3PartyProgress(world);
 
     world.stores.companion.level[eid] = 5;
-    expect(diffFloor3PartyProgress(before, captureFloor3PartyProgress(world))).toEqual([]);
+    expect(diffFloor3PartyProgress(before, _captureFloor3PartyProgress(world))).toEqual([]);
   });
 });

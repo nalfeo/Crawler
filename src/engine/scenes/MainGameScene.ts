@@ -887,6 +887,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private achievementsButton?: Phaser.GameObjects.Text;
 
+  private floor3RosterButton?: Phaser.GameObjects.Text;
+
+  private floor3CommandButton?: Phaser.GameObjects.Text;
+
   /** Touch button for the abilities config modal. */
   private abilitiesButton?: Phaser.GameObjects.Text;
 
@@ -1347,6 +1351,10 @@ export class MainGameScene extends Phaser.Scene {
       this.rewardAudioEngine = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
+      this.floor3RosterButton?.destroy();
+      this.floor3RosterButton = undefined;
+      this.floor3CommandButton?.destroy();
+      this.floor3CommandButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
       this.issueButton?.destroy();
@@ -1471,6 +1479,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.inventoryButton) ||
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
+      isCornerButtonHit(this.floor3RosterButton) ||
+      isCornerButtonHit(this.floor3CommandButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
       isCornerButtonHit(this.quartermasterButton) ||
       isCornerButtonHit(this.issueButton)
@@ -2065,6 +2075,19 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.floor3RosterUI?.isOpen()) {
+      this.updateDoorOverlay();
+      this.updateLightingOverlay();
+      this.floor3RosterUI.sync(this.world);
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateFeatureUnlocks();
+      return;
+    }
+
     // On level-up, open the stat-allocation screen so the player can spend the
     // points they earned. If there are no points to spend (or no allocation
     // callback is wired), just resume the run.
@@ -2315,6 +2338,8 @@ export class MainGameScene extends Phaser.Scene {
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
     const quartermasterOpen = this.shopPanelUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
+    const rosterOpen = this.floor3RosterUI?.isOpen() ?? false;
+    const floor3PartyAvailable = shouldShowFloor3Party(this.world);
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
     // level-up, map overlay, or a non-abilities modal).
@@ -2333,7 +2358,8 @@ export class MainGameScene extends Phaser.Scene {
       !equipOpen &&
       !achievementsOpen &&
       !quartermasterOpen &&
-      !abilitiesOpen;
+      !abilitiesOpen &&
+      !rosterOpen;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
@@ -2343,6 +2369,10 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton?.setVisible(
       safeCtx && this.world.achievements.unlockedIds.size > 0 && (achievementsOpen || canOpenNew),
     );
+    this.floor3RosterButton
+      ?.setDepth(rosterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(floor3PartyAvailable && (rosterOpen || canOpenNew));
+    this.floor3CommandButton?.setVisible(floor3PartyAvailable && !rosterOpen && canOpenNew);
     this.abilitiesButton
       ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
@@ -2445,16 +2475,15 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedRosterToggle ||
       Boolean(this.keyRoster && Phaser.Input.Keyboard.JustDown(this.keyRoster));
     this.queuedRosterToggle = false;
-    const rosterOpen = this.floor3RosterUI?.isOpen() ?? false;
     if (rosterOpen) {
       if (rosterToggleRequested) {
         this.closeFloor3Roster();
-      } else if (shouldShowFloor3Party(this.world)) {
+      } else if (floor3PartyAvailable) {
         this.floor3RosterUI?.sync(this.world);
       } else {
         this.closeFloor3Roster();
       }
-    } else if (rosterToggleRequested && shouldShowFloor3Party(this.world) && !isUiLockOpen()) {
+    } else if (rosterToggleRequested && floor3PartyAvailable && !isUiLockOpen()) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels();
       this.clearPendingInteractionInput();
@@ -2465,7 +2494,7 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedCompanionCommand ||
       Boolean(this.keyCommand && Phaser.Input.Keyboard.JustDown(this.keyCommand));
     this.queuedCompanionCommand = false;
-    if (commandRequested && !this.isBlockingSurfaceOpen() && shouldShowFloor3Party(this.world)) {
+    if (commandRequested && !this.isBlockingSurfaceOpen() && floor3PartyAvailable) {
       this.issueCompanionCommandFromInput();
     }
 
@@ -2758,13 +2787,19 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.requestAchievementsToggle();
     });
-    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
+    this.floor3RosterButton = makeCornerButton(cornerButtonTop() + 168, '🐾 Roster', () => {
+      this.requestFloor3RosterToggle();
+    });
+    this.floor3CommandButton = makeCornerButton(cornerButtonTop() + 224, '⚡ Command', () => {
+      this.requestCompanionCommand();
+    });
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 280, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑ Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
@@ -2772,6 +2807,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
+      this.floor3RosterButton?.setScale(buttonScale);
+      this.floor3CommandButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
       this.issueButton?.setScale(buttonScale);
@@ -2782,6 +2819,8 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton,
         this.equipButton,
         this.achievementsButton,
+        this.floor3RosterButton,
+        this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
         this.issueButton,
@@ -2795,11 +2834,15 @@ export class MainGameScene extends Phaser.Scene {
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
       this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
+      this.floor3RosterButton?.setY(top + bagH + gearH + awardsH);
+      const rosterH = (this.floor3RosterButton?.height ?? 44) * buttonScale + 8;
+      this.floor3CommandButton?.setY(top + bagH + gearH + awardsH + rosterH);
+      const commandH = (this.floor3CommandButton?.height ?? 44) * buttonScale + 8;
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
       const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      this.issueButton?.setY(top + bagH + gearH + awardsH + skillsH + shopH);
+      this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);

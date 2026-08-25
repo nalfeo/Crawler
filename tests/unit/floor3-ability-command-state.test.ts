@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  COMMAND_COOLDOWN_FRAMES,
-  COMMAND_FLASH_FRAMES,
-  COMMAND_LEVELS_PER_CHARGE,
+  _COMMAND_COOLDOWN_FRAMES,
+  _COMMAND_FLASH_FRAMES,
+  _COMMAND_LEVELS_PER_CHARGE,
   chargesInUse,
   commandCapacity,
-  commandCooldownFraction,
+  _commandCooldownFraction,
   createFloor3CommandState,
   issueCompanionCommand,
-  pruneCommandState,
+  _pruneCommandState,
   resolveCommandSlots,
-  selectCommandTarget,
+  _selectCommandTarget,
 } from '../../src/engine/floor3-ability-command-state.js';
 import { resolveFloor3PartyRows } from '../../src/engine/floor3-party-state.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -30,8 +30,8 @@ function partyWorld(count = 2) {
 describe('commandCapacity', () => {
   it('starts at one charge and earns one per capacity band, capped at party size', () => {
     expect(commandCapacity(1)).toBe(1);
-    expect(commandCapacity(COMMAND_LEVELS_PER_CHARGE)).toBe(1);
-    expect(commandCapacity(COMMAND_LEVELS_PER_CHARGE + 1)).toBe(2);
+    expect(commandCapacity(_COMMAND_LEVELS_PER_CHARGE)).toBe(1);
+    expect(commandCapacity(_COMMAND_LEVELS_PER_CHARGE + 1)).toBe(2);
     expect(commandCapacity(1000)).toBe(6);
   });
 
@@ -66,7 +66,7 @@ describe('issueCompanionCommand', () => {
       rejection: 'no-capacity',
     });
 
-    const ready = 100 + COMMAND_COOLDOWN_FRAMES;
+    const ready = 100 + _COMMAND_COOLDOWN_FRAMES;
     expect(issueCompanionCommand(state, rows, ready - 1, 1).accepted).toBe(false);
     expect(issueCompanionCommand(state, rows, ready, 1).accepted).toBe(true);
   });
@@ -75,7 +75,7 @@ describe('issueCompanionCommand', () => {
     const world = partyWorld();
     const rows = resolveFloor3PartyRows(world);
     const state = createFloor3CommandState();
-    const playerLevel = COMMAND_LEVELS_PER_CHARGE + 1;
+    const playerLevel = _COMMAND_LEVELS_PER_CHARGE + 1;
 
     expect(issueCompanionCommand(state, rows, 10, playerLevel).accepted).toBe(true);
     const second = issueCompanionCommand(state, rows, 11, playerLevel);
@@ -140,12 +140,14 @@ describe('resolveCommandSlots', () => {
     expect(justCommanded.cooldownFraction).toBe(0);
     expect(justCommanded.flashing).toBe(true);
 
-    expect(resolveCommandSlots(state, rows, 50 + COMMAND_FLASH_FRAMES, 1)[0]!.flashing).toBe(false);
+    expect(resolveCommandSlots(state, rows, 50 + _COMMAND_FLASH_FRAMES, 1)[0]!.flashing).toBe(
+      false,
+    );
 
-    const halfway = resolveCommandSlots(state, rows, 50 + COMMAND_COOLDOWN_FRAMES / 2, 1)[0]!;
+    const halfway = resolveCommandSlots(state, rows, 50 + _COMMAND_COOLDOWN_FRAMES / 2, 1)[0]!;
     expect(halfway.cooldownFraction).toBeCloseTo(0.5);
 
-    const recharged = resolveCommandSlots(state, rows, 50 + COMMAND_COOLDOWN_FRAMES, 1)[0]!;
+    const recharged = resolveCommandSlots(state, rows, 50 + _COMMAND_COOLDOWN_FRAMES, 1)[0]!;
     expect(recharged.ready).toBe(true);
     expect(recharged.cooldownFraction).toBe(1);
   });
@@ -156,12 +158,12 @@ describe('resolveCommandSlots', () => {
     const state = createFloor3CommandState();
     issueCompanionCommand(state, rows, 5_000, 1);
 
-    expect(commandCooldownFraction(state, rows[0]!.key, 0)).toBe(1);
-    expect(selectCommandTarget(state, rows, 0, 1)!.slot).toBe(0);
+    expect(_commandCooldownFraction(state, rows[0]!.key, 0)).toBe(1);
+    expect(_selectCommandTarget(state, rows, 0, 1)!.slot).toBe(0);
   });
 });
 
-describe('pruneCommandState', () => {
+describe('_pruneCommandState', () => {
   it('drops cooldown entries for Companions that left the party', () => {
     const world = partyWorld();
     const rows = resolveFloor3PartyRows(world);
@@ -170,7 +172,7 @@ describe('pruneCommandState', () => {
     issueCompanionCommand(state, rows, 0, 100, 1);
     expect(state.lastCommandFrame.size).toBe(2);
 
-    pruneCommandState(state, [rows[0]!]);
+    _pruneCommandState(state, [rows[0]!]);
     expect(Array.from(state.lastCommandFrame.keys())).toEqual([rows[0]!.key]);
   });
 });

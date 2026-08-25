@@ -38,6 +38,13 @@ Wiring: `HudUI` creates/syncs/destroys/hides the party HUD and exposes `getFloor
 (command), handles roster keyboard nav ahead of the blocking-surface early return, and registers
 the roster in `isBlockingSurfaceOpen()`.
 
+Recovery update: the roster and command affordances are now also reachable through on-canvas
+Floor-3 touch buttons. The roster overlay pauses fixed-step gameplay while keeping rendering,
+camera, overlays, and the roster detail view synchronized; touch row selection and a close button
+mirror the keyboard path. Progress notices now queue FIFO instead of truncating bursts over three
+messages, and the HUD reuses the row-derived snapshot instead of scanning the ECS party twice per
+frame.
+
 Labs: five sandboxes under `src/labs/floor3-ux-lab/` sharing one fixture that builds a real
 recruited party via `recruitPartyCompanion` plus a rival Companion.
 
@@ -45,9 +52,12 @@ recruited party via `recruitPartyCompanion` plus a rival Companion.
 
 - `tests/unit/floor3-party-hud-state.test.ts` (12), `floor3-matchup-state.test.ts` (8),
   `floor3-companion-detail-state.test.ts` (12), `floor3-level-up-notice-state.test.ts` (8),
-  `floor3-ability-command-state.test.ts` (11), `floor3-ux-wiring.test.ts` (12) — 63 passing.
+  `floor3-ability-command-state.test.ts` (11), `floor3-ux-wiring.test.ts` (13) — 64 passing.
 - `tests/e2e/floor3-party-hud.deterministic.test.ts` — 7 passing (per-surface lab).
 - `tests/e2e/main-game-scene-floor3-party-ux.test.ts` — 1 passing (real `MainGameScene`).
+- `tests/e2e/hud-overlap-visual.test.ts` — 4 passing after hiding the inactive Floor-3 HUD
+  container from layout bounds.
+- `npm run typecheck`, `npm run check:test-only-exports`, `npm run lint:dead-code` — passed.
 - `bash scripts/agent/verify-fast.sh` — passed.
 
 ### Observe before done (rule #9)
@@ -62,7 +72,10 @@ Because a lab can never prove the shipped scene mounts a widget, a second suite
 Floor 3 via `main-scene-probe-lab`: before the starter Companion is chosen the party HUD is
 hidden with zero rows; after the real loadout modal resolves it shows the recruited starter;
 `[R]` opens the roster overlay with a live detail column, `[Escape]` closes it, and `[C]` spends
-a command charge (`commandsInUse` 0 → 1).
+or the touch `⚡ Command` button spends a command charge (`commandsInUse` 0 → 1). The same real
+scene test opens the roster through the touch `🐾 Roster` button, confirms `world.elapsedMs`
+does not advance while the roster is open, then confirms the simulation advances again after the
+overlay closes.
 
 ## Key decisions
 

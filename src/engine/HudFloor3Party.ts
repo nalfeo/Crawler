@@ -33,7 +33,6 @@ import {
   type MatchupTag,
 } from './floor3-matchup-state.js';
 import {
-  captureFloor3PartyProgress,
   diffFloor3PartyProgress,
   snapshotFromRows,
   type Floor3ProgressNotice,
@@ -71,7 +70,7 @@ const PANEL_MARGIN_LEFT = 12;
 const PANEL_MARGIN_TOP = 290;
 
 /** Frames a progress notice stays on screen (≈4s at 60fps). */
-export const NOTICE_TTL_FRAMES = 240;
+const NOTICE_TTL_FRAMES = 240;
 
 const MATCHUP_GLYPHS: Readonly<Record<MatchupTag, string>> = Object.freeze({
   strong: '^',
@@ -324,12 +323,14 @@ export function createHudFloor3Party(
   let lastFingerprint = '';
   let progressSnapshot: Floor3ProgressSnapshot = new Map();
   let activeNotices: { notice: Floor3ProgressNotice; expiresAtFrame: number }[] = [];
+  let pendingNotices: Floor3ProgressNotice[] = [];
   let viewRows: Floor3PartyRowView[] = [];
   let capacity = 0;
   let inUse = 0;
 
   function setPanelVisible(visible: boolean): void {
     const effective = visible && masterVisible;
+    root.setVisible(effective);
     panel.setVisible(effective);
     titleFrame.setVisible(effective);
     title.setVisible(effective);
@@ -424,18 +425,22 @@ export function createHudFloor3Party(
     const rows = resolveFloor3PartyRows(world);
     const frame = world.frameCount;
 
-    const fresh = diffFloor3PartyProgress(progressSnapshot, snapshotFromRows(rows));
-    progressSnapshot = captureFloor3PartyProgress(world);
+    const nextSnapshot = snapshotFromRows(rows);
+    const fresh = diffFloor3PartyProgress(progressSnapshot, nextSnapshot);
+    progressSnapshot = nextSnapshot;
     if (fresh.length > 0) {
-      activeNotices = [
-        ...activeNotices,
-        ...fresh.map((notice) => ({ notice, expiresAtFrame: frame + NOTICE_TTL_FRAMES })),
-      ].slice(-MAX_NOTICES);
+      pendingNotices = [...pendingNotices, ...fresh];
     }
     // A rewound frame counter (new floor / restarted lab) must not strand a notice.
     activeNotices = activeNotices.filter(
       (entry) => frame < entry.expiresAtFrame && entry.expiresAtFrame - frame <= NOTICE_TTL_FRAMES,
     );
+    while (activeNotices.length < MAX_NOTICES && pendingNotices.length > 0) {
+      const notice = pendingNotices.shift();
+      if (notice !== undefined) {
+        activeNotices.push({ notice, expiresAtFrame: frame + NOTICE_TTL_FRAMES });
+      }
+    }
 
     const playerLevel = world.playerLevel.level;
     const slots = resolveCommandSlots(commandState, rows, frame, playerLevel);

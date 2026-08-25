@@ -68,6 +68,7 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         timeoutMs: 10_000,
         label: 'Floor 3 loadout confirmed',
       });
+      await mainSceneProbe.setSimulationPaused(page, false);
 
       // AFTER: the mounted HUD shows the recruited starter.
       const docked = await waitForPartyHud(
@@ -80,16 +81,25 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       expect(docked.commandCapacity).toBeGreaterThanOrEqual(1);
       expect(docked.commandsInUse).toBe(0);
 
-      // [R] opens the real roster overlay with a live detail column.
-      await page.keyboard.press('r');
+      await waitForState(page, (s) => s.floor3RosterButtonVisible && s.floor3CommandButtonVisible, {
+        timeoutMs: 10_000,
+        label: 'Floor 3 touch buttons visible',
+      });
+
+      // The on-canvas roster button opens the real roster overlay with a live detail column.
+      expect(await mainSceneProbe.tapFloor3RosterButton(page)).toBe(true);
       const rosterOpen = await waitForPartyHud(
         page,
         (s) => s.rosterOpen,
-        'Floor 3 roster overlay opened by [R]',
+        'Floor 3 roster overlay opened by touch button',
       );
       expect(rosterOpen.rosterEntries.length).toBe(docked.rowNames.length);
       expect(rosterOpen.rosterCursor).toBe(0);
       expect(rosterOpen.rosterDetailLineCount).toBeGreaterThan(0);
+
+      const elapsedWhileOpen = await mainSceneProbe.getWorldElapsedMs(page);
+      await page.waitForTimeout(250);
+      expect(await mainSceneProbe.getWorldElapsedMs(page)).toBe(elapsedWhileOpen);
 
       // Escape closes it through the scene's blocking-surface handling.
       await page.keyboard.press('Escape');
@@ -99,15 +109,24 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         'Floor 3 roster overlay closed by [Escape]',
       );
 
-      // [C] spends a command charge on the mounted HUD.
-      await page.keyboard.press('c');
+      // The on-canvas command button spends a command charge on the mounted HUD.
+      expect(await mainSceneProbe.tapFloor3CommandButton(page)).toBe(true);
       const commanded = await waitForPartyHud(
         page,
         (s) => s.commandsInUse > 0,
-        'Floor 3 companion command issued by [C]',
+        'Floor 3 companion command issued by touch button',
       );
       expect(commanded.commandsInUse).toBe(1);
       expect(commanded.commandsInUse).toBeLessThanOrEqual(commanded.commandCapacity);
+
+      await page.waitForTimeout(250);
+      const elapsedAfterRosterClosed = await mainSceneProbe.getWorldElapsedMs(page);
+      expect(elapsedAfterRosterClosed).not.toBe(elapsedWhileOpen);
+
+      await page.keyboard.press('r');
+      await waitForPartyHud(page, (s) => s.rosterOpen, 'Floor 3 roster overlay opened by [R]');
+      await page.keyboard.press('Escape');
+      await waitForPartyHud(page, (s) => !s.rosterOpen, 'Floor 3 roster overlay closed again');
     } finally {
       await closeQuietly(page);
       await closeQuietly(context);

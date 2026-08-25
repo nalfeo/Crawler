@@ -287,6 +287,8 @@ interface MainSceneInternals {
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
+  floor3RosterButton?: { visible: boolean; emit(eventName: string): boolean };
+  floor3CommandButton?: { visible: boolean; emit(eventName: string): boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
@@ -517,6 +519,8 @@ export interface MainSceneState {
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
+  readonly floor3RosterButtonVisible: boolean;
+  readonly floor3CommandButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   readonly issueButtonVisible: boolean;
@@ -965,6 +969,10 @@ export interface MainSceneProbeApi {
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
+  /** Emit a pointer tap on the Floor-3 roster corner button. */
+  tapFloor3RosterButton(): boolean;
+  /** Emit a pointer tap on the Floor-3 command corner button. */
+  tapFloor3CommandButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -1343,6 +1351,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
+        floor3RosterButtonVisible: scene?.floor3RosterButton?.visible ?? false,
+        floor3CommandButtonVisible: scene?.floor3CommandButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         issueButtonVisible: scene?.issueButton?.visible ?? false,
@@ -2014,6 +2024,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapFloor3RosterButton: () => {
+      const button = getScene()?.floor3RosterButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapFloor3CommandButton: () => {
+      const button = getScene()?.floor3CommandButton;
       if (!button?.visible) {
         return false;
       }

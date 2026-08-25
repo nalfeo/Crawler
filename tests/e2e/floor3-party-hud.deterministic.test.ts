@@ -234,8 +234,16 @@ describe('Floor 3 party HUD deterministic observation', () => {
     await probe(page, 'setLevel', 1, 16);
     await settle(page);
     const notices = (await probe(page, 'getPartyState')).notices;
-    expect(notices.length).toBeGreaterThan(0);
+    expect(notices).toHaveLength(3);
+    expect(notices[0]).toContain('reached Lv 16');
     expect(notices.join(' | ')).not.toContain('f3.');
+
+    await probe(page, 'advanceFrames', 600);
+    await settle(page);
+    const queued = (await probe(page, 'getPartyState')).notices;
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toContain('learned');
+    expect(queued.join(' | ')).not.toContain('f3.');
 
     await probe(page, 'advanceFrames', 600);
     await settle(page);
