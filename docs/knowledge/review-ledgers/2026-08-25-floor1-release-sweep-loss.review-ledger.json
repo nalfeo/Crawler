@@ -27,13 +27,21 @@
       "notes": "Final review found one low-risk stale integration-test setup guard after the recovery fixture moved the gold near the player; lowered the anchor requirement and updated the docstring before final validation."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "f379dbe05417644c919b2e6dfc902ac8ca99b8e9",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly bounds the pre-exit loot sweep to the AI's scan radius, preventing dangerous cross-map sweeps that lead to late-run deaths. The unit and integration tests were thoroughly and correctly updated to reflect the new bounded behavior, and a regression seed was appropriately added to the headless suite. The code is highly disciplined, well-commented, and fully policy-compliant."
     }
   }
 }
