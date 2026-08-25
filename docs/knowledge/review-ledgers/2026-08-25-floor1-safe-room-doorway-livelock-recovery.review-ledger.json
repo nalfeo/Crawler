@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor1-safe-room-doorway-livelock-recovery",
+  "task_title": "Recover Floor 1 safe-room doorway livelock PR",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review approved the merge-conflict recovery shape but required moving artifact creation before verify:pr-prereqs and explicitly running/recording independent_grade. It also recommended running the full conflict-file headless regression and clarifying that top-level recovery progress is reported via report_progress rather than PR comment replies. The plan was updated accordingly."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Automated code review found the newly initialized 3-apple ledger incomplete. Resolved by completing the code_review and independent_grade stages before final validation."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
