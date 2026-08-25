@@ -14,26 +14,34 @@
       "notes": "Separate-model plan review approved the merge-conflict recovery shape but required moving artifact creation before verify:pr-prereqs and explicitly running/recording independent_grade. It also recommended running the full conflict-file headless regression and clarifying that top-level recovery progress is reported via report_progress rather than PR comment replies. The plan was updated accordingly."
     },
     "code_review": {
-      "clean": false,
+      "clean": true,
       "rounds": [
         {
           "round": 1,
           "models": ["copilot-code-review"],
           "concerns_count": 1,
           "resolved_count": 1,
-          "clean": false,
-          "notes": "Automated code review found the newly initialized 3-apple ledger incomplete. Resolved by completing the code_review and independent_grade stages before final validation."
+          "clean": true,
+          "notes": "Automated code review found the newly initialized 3-apple ledger incomplete. Resolved by completing the code_review and independent_grade stages before final validation; no code defects were reported."
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.6-flash",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "921d8253b535eed1aadda4bcdfb1944f2c9f5d1d",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change surgically resolves the safe-room doorway livelock bug where playerInSafeRoom flickering frame-to-frame continuously reset the threat-clear no-progress counter. By moving safe-room handling inside the threat gate and using noteNpcApproachThreatGateIdle to preserve approach evidence across safe-room polls, the AI successfully reaches the no-progress threshold and bypasses threat clearing. The implementation is well-documented, policy-compliant, and backed by focused unit test coverage."
     }
   }
 }
