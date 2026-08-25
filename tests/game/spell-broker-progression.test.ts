@@ -277,6 +277,7 @@ describe('spell skills', () => {
       const pendingWeaponReserve = 170;
       world.playerGold = repeat.cost + pendingWeaponReserve - 1;
 
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('returning');
       expect(updateSpellBrokerIntent(world, null, 3_000, pendingWeaponReserve).purchaseStatus).toBe(
         'abandoned',
       );

@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor1-release-sweep-loss",
+  "task_title": "Restore Floor 1 release sweep victory",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "convergent",
+      "notes": "Independent plan review confirmed the reserve-threading design. It identified a direct returning-to-abandoned unit-test gap; resolved by asserting the intent first returns without the reserve and then abandons when the reserve is supplied."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
