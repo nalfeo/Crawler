@@ -7555,6 +7555,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
 
+    // A repeat intent may already have been returning when the exit quest was
+    // accepted. Keep that stale lifecycle state from preempting the stairs.
     if (
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&

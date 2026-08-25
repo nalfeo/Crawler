@@ -52,8 +52,6 @@ import {
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
 import { autoFloor1ProgressionSystem } from '../../src/game/ai/auto-progression.js';
-import { acceptQuest } from '../../src/core/systems/questSystem.js';
-import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 
 describe('Floor 1 Spell Broker', () => {
   it('generates three unique deterministic offers from the ten-spell pool', () => {
@@ -268,8 +266,10 @@ describe('spell skills', () => {
       expect(result.purchaseStatus).toBe('returning');
     });
 
-    it('does not revive an abandoned repeat spell after the exit quest is accepted', () => {
+    it('does not revive an abandoned repeat spell after the final boss is defeated', () => {
       const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
       configureSpellBrokerPurchase(world, true);
       const first = ensureSpellBrokerDecision(world);
       world.featureUnlocks.spells = true;
@@ -281,7 +281,7 @@ describe('spell skills', () => {
       world.playerGold = 0;
       expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
 
-      acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+      world.floorScenario!.objective.bossBattles.get('staircase')!.defeated = true;
       world.playerGold = repeat.cost;
 
       expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
