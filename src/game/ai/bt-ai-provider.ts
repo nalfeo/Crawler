@@ -2232,12 +2232,17 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
-              // Auto-fire handles projectile weapons at range, so keep travelling
-              // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below. Inside safe rooms, weapons are disabled,
-              // so threat-clearing cannot make progress until movement exits first.
+            if (ctx.world.playerInSafeRoom) {
+              // Inside safe rooms weapons are disabled, so threat-clearing cannot
+              // make progress until movement exits first — fall through to the
+              // direct-approach path below while keeping the approach evidence.
               this.noteNpcApproachThreatGateIdle(target);
+            } else if (projectileWeapon && !woundedProjectile) {
+              // Auto-fire handles projectile weapons at range, so keep travelling
+              // toward the NPC instead of re-entering ENGAGE. The weapon/health
+              // mode is a genuine state change rather than a per-frame flicker,
+              // so the approach tracking starts over.
+              this.resetNpcApproachThreatTracking();
             } else if (this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
               this.decision.state = AIState.ENGAGE;
@@ -2316,9 +2321,9 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Threat-gate-idle step for the same NPC target: a threat is still inside the
-   * NPC-approach radius, but threat-clear ENGAGE is suppressed this poll
-   * (weapons are disabled in a safe room, or auto-fire already handles it), so
-   * the AI falls through to the direct approach.
+   * NPC-approach radius, but threat-clear ENGAGE is suppressed this poll because
+   * the player is in a safe room (weapons are disabled there), so the AI falls
+   * through to the direct approach.
    *
    * Crucially this does **not** discard the no-progress evidence collected for
    * this NPC. `world.playerInSafeRoom` flips frame-to-frame while the player
