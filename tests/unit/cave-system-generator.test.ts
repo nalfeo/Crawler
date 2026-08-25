@@ -169,7 +169,7 @@ describe('CaveSystemGenerator', () => {
 
   it('keeps the Final Four arena deterministic, sealed, and reachable across representative seeds', () => {
     const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
-    for (const seed of [1, 42, 4321]) {
+    for (const seed of [1, 42, 364, 412, 4321]) {
       const config = smallFloor3Config(seed);
       const left = generator.generate(config, new SeededRandom(seed));
       const right = generator.generate(config, new SeededRandom(seed));

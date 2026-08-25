@@ -945,21 +945,6 @@ export class CaveSystemGenerator implements MapGenerator {
     }
 
     const finalFourArena = this.carveFloor3FinalFourArena(tileMap, terrain, w, h);
-    const finalFourArenaAnchor = this.pickConnectivityAnchor(finalFourArena, tileMap, w, h);
-    const firstTerritoryCenter = regionCenters[0];
-    if (!firstTerritoryCenter) {
-      throw new Error('no Floor 3 territory available to connect Final Four arena');
-    }
-    this.ensureConnectedToHeartComponent(
-      tileMap,
-      terrain,
-      w,
-      h,
-      finalFourArenaAnchor.x,
-      finalFourArenaAnchor.y,
-      firstTerritoryCenter.x,
-      firstTerritoryCenter.y,
-    );
     const finalFourArenaRoomId = roomGraph.add(
       finalFourArena.bounds,
       finalFourArena.doors,
@@ -2591,6 +2576,22 @@ export class CaveSystemGenerator implements MapGenerator {
     if (doorY + 1 < h - 1 && !tileMap.isPassable(doorX, doorY + 1)) {
       tileMap.flags[(doorY + 1) * w + doorX] = TilePresets.FLOOR;
       terrain[(doorY + 1) * w + doorX] = TerrainType.CAVE_FLOOR;
+    }
+    const ringLeft = bounds.x - 1;
+    const ringRight = bounds.x + bounds.width;
+    const ringTop = bounds.y - 1;
+    const ringBottom = bounds.y + bounds.height;
+    for (let x = ringLeft; x <= ringRight; x += 1) {
+      tileMap.flags[ringTop * w + x] = TilePresets.FLOOR;
+      terrain[ringTop * w + x] = TerrainType.CAVE_FLOOR;
+      tileMap.flags[ringBottom * w + x] = TilePresets.FLOOR;
+      terrain[ringBottom * w + x] = TerrainType.CAVE_FLOOR;
+    }
+    for (let y = ringTop + 1; y < ringBottom; y += 1) {
+      tileMap.flags[y * w + ringLeft] = TilePresets.FLOOR;
+      terrain[y * w + ringLeft] = TerrainType.CAVE_FLOOR;
+      tileMap.flags[y * w + ringRight] = TilePresets.FLOOR;
+      terrain[y * w + ringRight] = TerrainType.CAVE_FLOOR;
     }
 
     const interiorCells: Array<{ x: number; y: number }> = [];
