@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "bb78e0749a6b10a133f84e0938fa7923e2572889",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation perfectly fulfills the requirements, wiring the automated settlement-return routing for Floor 1 and Floor 2 during auto-driven lab states and ensuring claims are skipped appropriately to match headless parity. Manual takeover correctly disables the routing. The unit tests are highly targeted and effectively cover the state sync lifecycle."
     }
   }
 }
