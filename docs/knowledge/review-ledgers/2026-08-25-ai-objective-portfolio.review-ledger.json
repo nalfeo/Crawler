@@ -6,14 +6,14 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "notes": "Alt A second scheduler rejected: would duplicate route/budget authority. Alt B whole-BT utility selector rejected: tactical safety ordering remains valid. Alt C scenario-only scorer rejected: shared deterministic portfolio contract is needed, but v1 remains bounded to existing Floor 1 graph producers plus Floor 2 settlement candidate. Alt D extend current planner adopted: add utility/portfolio semantics to the exact planner rather than a competing DSL. Resolutions: explicit AI strategic affinity config; preserve optional bundle verdicts; settlement router retains latch/cooldown/fingerprint ownership and emits a candidate; cover every decision-mode consumer; separate portfolio-choice invalidation from route feasibility; explicit v1 floor scope; explicit committed-active-objective state with completion/invalidity release."
     },
     "code_review": {
       "clean": false,
