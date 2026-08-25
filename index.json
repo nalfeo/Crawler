@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a65cc66cd8a4c350d4d5baf9b4e88819a28d351b",
+    "commitDate": "2026-08-25T12:59:18Z",
+    "commitSubject": "Floor 3 Slice 11: kept-companion persistence producer contract (#3592)",
+    "capturedAt": "2026-08-25T14:14:44.345Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32853142644",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/a65cc66cd8a4c350d4d5baf9b4e88819a28d351b.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/a65cc66cd8a4c350d4d5baf9b4e88819a28d351b.fun-report.json"
+    }
+  },
+  {
     "commit": "d70003f18a2f66527a81086d9fa792bde847f7cb",
     "commitDate": "2026-08-25T11:57:42Z",
     "commitSubject": "Wire Floor 3 rival Companion defeats into the persistent player reward track (#3593)",
