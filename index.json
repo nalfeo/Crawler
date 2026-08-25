@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1ceb5387275577e04eda9b0c035520e084ba8ec8",
+    "commitDate": "2026-08-25T03:25:21Z",
+    "commitSubject": "Fix unsafe Floor 1 pre-exit loot sweep chases (#3528)",
+    "capturedAt": "2026-08-25T04:42:18.063Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32806710258",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/1ceb5387275577e04eda9b0c035520e084ba8ec8.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.96,
+      "gatePass": false,
+      "path": "by-sha/1ceb5387275577e04eda9b0c035520e084ba8ec8.fun-report.json"
+    }
+  },
+  {
     "commit": "685f955a00285e08f895570216512702452448cc",
     "commitDate": "2026-08-25T02:12:04Z",
     "commitSubject": "Fix Floor 1 repeat-spell broker loop (#3524)",
