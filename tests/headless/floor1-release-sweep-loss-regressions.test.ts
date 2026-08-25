@@ -10,6 +10,9 @@ import { isOfficialWin } from '../../src/game/ai/scoring.js';
 const MAX_WALL_TIME_MS = 300_000;
 const RELEASE_SWEEP_LOSSES = [
   { weapon: 'sword', seed: 5 },
+  { weapon: 'bow', seed: 5 },
+  { weapon: 'baseball-bat', seed: 20 },
+  { weapon: 'baseball-bat', seed: 31 },
   { weapon: 'pistol', seed: 5 },
   { weapon: 'pistol', seed: 38 },
   { weapon: 'throwing-knife', seed: 1 },

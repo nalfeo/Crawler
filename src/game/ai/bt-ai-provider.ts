@@ -2242,7 +2242,14 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
-          } else {
+          } else if (
+            !ctx.world.playerInSafeRoom ||
+            !targetIsNpc ||
+            this.npcApproachThreatNpcEid !== target.eid
+          ) {
+            // Preserve target-specific no-progress tracking across a one-frame
+            // safe-room doorway flicker; otherwise the counter can never reach its
+            // bypass while ENGAGE and NPC approach alternate at the boundary.
             this.resetNpcApproachThreatTracking();
           }
         } else {
@@ -3700,9 +3707,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * approached — or simply lets auto-fire mow the wave as it gives chase.
    */
   private updateGlobalDwellWatchdog(world: GameWorld, playerX: number, playerY: number): void {
-    // Inside a safe room the weapon is disabled and LeaveSafeRoom is actively
-    // walking the player out — not a deadlock. Reset so it cannot false-fire.
-    if (world.playerInSafeRoom) {
+    // While a safe-room egress waypoint is actively walking the player out, the
+    // weapon is disabled and stationary frames are not a deadlock. A raw
+    // playerInSafeRoom flag is insufficient: an unreachable objective can leave
+    // the player parked inside with no egress, where this watchdog must still run.
+    if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
       this.globalDwellActive = false;
       this.globalDwellFrames = 0;
       return;
@@ -8230,9 +8239,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           return false;
         }
         // Safety gate: don't sweep while an enemy is close enough to matter.
-        // Pre-exit uses the engage radius (the floor is cleared, so a straggler
-        // must not cancel the last-chance sweep). The mid-run window uses the
-        // full `scanRadius` instead, for two reasons:
+        // Both windows use the full `scanRadius`, for two reasons:
         //  1. It keeps the sweep strictly post-combat. With the narrower engage
         //     radius the gate flickers as an enemy drifts in and out of range,
         //     which made the AI oscillate between COLLECT and Engage/Progress
@@ -8240,9 +8247,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         //  2. LocalThreatRecovery only latches an enemy inside `scanRadius`, so
         //     requiring an empty scan radius means the mid-run sweep can never
         //     preempt a live recovery target, even at critical health.
-        const safetyRadius =
-          window === 'pre-exit' ? this.getEngageRadius(ctx.world) : this.config.scanRadius;
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, safetyRadius, true)) {
+        if (
+          this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, this.config.scanRadius, true)
+        ) {
           this.lootSweepTargetEid = null;
           return false;
         }

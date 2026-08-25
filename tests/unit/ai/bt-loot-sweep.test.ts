@@ -104,6 +104,17 @@ describe('BT — loot sweep (Priority 2.5)', () => {
       const decision = pollDecision(world);
       expect(decision.state).not.toBe(AIState.COLLECT);
     });
+
+    it('does NOT sweep while an enemy sits inside the scan radius but outside engage range', () => {
+      const { world, x, y } = makeFloor1World();
+      openSweepWindow(world);
+
+      spawnXpGem(world, x + 5, y, 10);
+      spawnEnemy(world, x + 32, y, 20);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
+    });
   });
 
   describe('mid-run (local) window', () => {
