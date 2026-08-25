@@ -2205,10 +2205,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
         const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+        // Note: deliberately does not gate on `!ctx.world.playerInSafeRoom` —
+        // that check moves inside so the no-progress tracking below can still
+        // run (and be preserved) on a safe-room doorway flicker frame. Actual
+        // engagement remains blocked while inside the safe room.
         if (
           targetIsNpc &&
           tutorialAccepted &&
-          !ctx.world.playerInSafeRoom &&
           !this.isFloor2IntroductionPending(ctx.world) &&
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
@@ -2226,13 +2229,12 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
+            if (!ctx.world.playerInSafeRoom && projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below. Inside safe rooms, weapons are disabled,
-              // so threat-clearing cannot make progress until movement exits first.
+              // direct-approach path below.
               this.resetNpcApproachThreatTracking();
-            } else if (this.shouldClearThreatBeforeNpc(target)) {
+            } else if (!ctx.world.playerInSafeRoom && this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
               this.decision.state = AIState.ENGAGE;
               this.decision.targetEid = nearestEnemy.eid;
@@ -2241,7 +2243,19 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
+            // else: either `ctx.world.playerInSafeRoom` is true (a
+            // doorway-flicker frame where the threat is still nearby but we
+            // can't act on it inside the safe room, weapons disabled) or the
+            // per-NPC bypass has already latched (shouldClearThreatBeforeNpc
+            // returned false). Either way, tracking is deliberately left
+            // untouched: the flicker frame must preserve it so the
+            // no-progress counter survives the boundary, and once the bypass
+            // has latched there is nothing left to reset — it stays latched
+            // until this outer `if` sees no nearby threat (the `else` below)
+            // or targets a different NPC (see `shouldClearThreatBeforeNpc`).
           } else {
+            // No threat within range: the gate genuinely exited, so reset
+            // unconditionally instead of leaving a stale bypass latched.
             this.resetNpcApproachThreatTracking();
           }
         } else {
@@ -3699,9 +3713,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * approached — or simply lets auto-fire mow the wave as it gives chase.
    */
   private updateGlobalDwellWatchdog(world: GameWorld, playerX: number, playerY: number): void {
-    // Inside a safe room the weapon is disabled and LeaveSafeRoom is actively
-    // walking the player out — not a deadlock. Reset so it cannot false-fire.
-    if (world.playerInSafeRoom) {
+    // While a safe-room egress waypoint is actively walking the player out, the
+    // weapon is disabled and stationary frames are not a deadlock. A raw
+    // playerInSafeRoom flag is insufficient: an unreachable objective can leave
+    // the player parked inside with no egress, where this watchdog must still run.
+    if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
       this.globalDwellActive = false;
       this.globalDwellFrames = 0;
       return;
