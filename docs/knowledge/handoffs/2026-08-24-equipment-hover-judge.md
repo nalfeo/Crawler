@@ -80,6 +80,14 @@ full-panel declared geometry remains available for placement context.
 `files/visual-review/after/v0.1.23/equipment-hover-empty-slot.{png,review.json}`
 is the focused real Phaser/Azure capture.
 
+### Tooltip text containment
+
+Every inspector text run in the Empty Slot scenario is now declared as a child
+of the tooltip card. Container escape is therefore a deterministic blocker, not
+a subjective LLM finding. The v0.1.24 focused capture hard-failed the measured
+2px left overflow of `Leather Boots`; the compact layout inset was increased and
+v0.1.25 reports zero deterministic blockers.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

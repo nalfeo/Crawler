@@ -135,6 +135,18 @@
   }
   if (tooltip)
     regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip', parentId: 'hover-context' });
+  if (tooltip) {
+    let tooltipTextIndex = 0;
+    for (const run of probe?.getEquipmentTextRuns?.() ?? []) {
+      if (run.region !== 'inspector') continue;
+      regions.push({
+        id: `tooltip-text:${tooltipTextIndex++}`,
+        box: run.bounds,
+        kind: 'text',
+        parentId: 'tooltip',
+      });
+    }
+  }
   if (scenario === 'equipment-hover-empty-slot' && hoverTarget && tooltip) {
     const padding = 16;
     const left = Math.max(0, Math.min(hoverTarget.x, tooltip.x) - padding);

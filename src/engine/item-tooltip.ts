@@ -46,7 +46,7 @@ export function getEquipmentTooltipCardLayout(
       descriptionY +
       descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT +
       EQUIPMENT_CARD_BOTTOM_PADDING,
-    icon: { x: 34, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
+    icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
     descriptionY,
   };
