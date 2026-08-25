@@ -29,7 +29,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6",
-      "head_sha": "5e797f5c66bb81472e1e122661a4429310ed2bdf",
+      "head_sha": "cab71fb9f9e5afac030f954575c58a29f5bdc9a0",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -40,7 +40,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation successfully resolves the intent/execution mismatch by threading the merchant weapon reserve into updateSpellBrokerIntent and applying it exclusively to repeat purchases. The diff is surgically scoped, aligns precisely with the execution logic in auto-progression.ts, and is comprehensively verified by both new unit tests and the targeted headless regression sweep test. Complete documentation, apple metrics, and review ledgers are provided in accordance with repository policy."
+      "notes": "The implementation successfully resolves the intent/execution mismatch by threading the merchant weapon reserve into updateSpellBrokerIntent and applying it exclusively to repeat purchases. The fix prevents returning-to-abandoned loops while preserving initial spell purchase priorities. The diff is surgically scoped, comprehensively covered by targeted unit tests and a headless regression seed case, and fully compliant with project policies (handoff, review ledger, and apple tracking are all present and accurate)."
     }
   }
 }
