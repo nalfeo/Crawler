@@ -66,6 +66,7 @@ import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type QuestState,
@@ -7560,6 +7561,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
       staircaseBossDefeated &&
+      !world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID) &&
       playerHealth / playerMaxHealth >= FARM_MIN_HEALTH_FRACTION
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;

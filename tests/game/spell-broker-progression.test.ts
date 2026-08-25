@@ -52,6 +52,8 @@ import {
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
 import { autoFloor1ProgressionSystem } from '../../src/game/ai/auto-progression.js';
+import { acceptQuest } from '../../src/core/systems/questSystem.js';
+import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../src/shared/quest-types.js';
 
 describe('Floor 1 Spell Broker', () => {
   it('generates three unique deterministic offers from the ten-spell pool', () => {
@@ -264,6 +266,25 @@ describe('spell skills', () => {
       const result = updateSpellBrokerIntent(world, droppedPlan as Floor1RunPlan, 3_000);
 
       expect(result.purchaseStatus).toBe('returning');
+    });
+
+    it('does not revive an abandoned repeat spell after the exit quest is accepted', () => {
+      const world = createTestWorld({ seed: 5 });
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      world.playerGold = first.cost;
+      updateSpellBrokerIntent(world, null, 3_000);
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+
+      const repeat = getSpellBrokerIntent(world);
+      world.playerGold = 0;
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+
+      acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+      world.playerGold = repeat.cost;
+
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
     });
 
     it('abandons a repeat spell that would consume a pending weapon reserve', () => {

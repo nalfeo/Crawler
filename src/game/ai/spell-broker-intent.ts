@@ -1,5 +1,6 @@
 import type { GameWorld } from '../../core/world.js';
 import { FLOOR1_SPELL_BROKER_MAX_PURCHASES } from '../../shared/constants.js';
+import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
 import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
 import type { Floor1RunPlan } from './run-planner.js';
@@ -189,7 +190,8 @@ export function updateSpellBrokerIntent(
   if (intent.purchaseStatus === 'abandoned') {
     if (
       !world.featureUnlocks.spells ||
-      spendableGold(world, repeatSpellMerchantReserve) < intent.cost
+      spendableGold(world, repeatSpellMerchantReserve) < intent.cost ||
+      (intent.purchaseCount > 0 && world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID))
     ) {
       return intent;
     }

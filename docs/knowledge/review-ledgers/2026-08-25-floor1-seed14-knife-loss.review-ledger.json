@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted: compare the exact seed against previous baseline before assigning regression; inspect existing throwing-knife seed14 ENGAGE watchdog coverage; add paired rerun plus focused coverage when applicable; preserve release-loss and adjacent knife tests. Alternatives rejected: gameplay damage/drop tuning would tune one seed; sweep weakening/retry violates the hard gate; rearchitecture is unwarranted absent broader planner drift."
     },
     "code_review": {
       "clean": false,
