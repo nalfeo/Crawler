@@ -29,9 +29,7 @@ import {
 } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
-import {
-  KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
-} from '../../src/shared/data/floor3/kept-companion-contract.js';
+import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/kept-companion-contract.js';
 import {
   ABILITY_MILESTONE_LEVELS,
   learnedAbilityIds,
@@ -602,8 +600,7 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
 
     const snapshot = capturePlayerCarryover(world, playerEid);
 
-    const ultimateFormLevel =
-      ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
+    const ultimateFormLevel = ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
     const expectedAbilityIds = learnedAbilityIds(expectedSpecies!, ultimateFormLevel);
     expect(expectedAbilityIds.length).toBeGreaterThan(1);
 
