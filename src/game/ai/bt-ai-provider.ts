@@ -2206,10 +2206,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
         const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+        // `playerInSafeRoom` deliberately is NOT part of this condition: it flips
+        // frame-to-frame while the player straddles a safe-room doorway, and
+        // resetting the no-progress valve on those polls made the valve
+        // unreachable (baseball-bat seed 31 livelocked in a doorway for ~590s).
+        // Safe rooms are handled inside the gate instead, where they suppress
+        // threat-clearing without discarding the approach evidence.
         if (
           targetIsNpc &&
           tutorialAccepted &&
-          !ctx.world.playerInSafeRoom &&
           !this.isFloor2IntroductionPending(ctx.world) &&
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
@@ -2232,7 +2237,7 @@ export class BehaviorTreeAI implements AIInputProvider {
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below. Inside safe rooms, weapons are disabled,
               // so threat-clearing cannot make progress until movement exits first.
-              this.resetNpcApproachThreatTracking();
+              this.noteNpcApproachThreatGateIdle(target);
             } else if (this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
               this.decision.state = AIState.ENGAGE;
@@ -2243,6 +2248,8 @@ export class BehaviorTreeAI implements AIInputProvider {
               return BTStatus.SUCCESS;
             }
           } else {
+            // The threat genuinely left the NPC-approach radius, so the approach
+            // is unobstructed again and the valve starts over.
             this.resetNpcApproachThreatTracking();
           }
         } else {
@@ -2307,11 +2314,41 @@ export class BehaviorTreeAI implements AIInputProvider {
     return true;
   }
 
+  /**
+   * Threat-gate-idle step for the same NPC target: a threat is still inside the
+   * NPC-approach radius, but threat-clear ENGAGE is suppressed this poll
+   * (weapons are disabled in a safe room, or auto-fire already handles it), so
+   * the AI falls through to the direct approach.
+   *
+   * Crucially this does **not** discard the no-progress evidence collected for
+   * this NPC. `world.playerInSafeRoom` flips frame-to-frame while the player
+   * straddles a safe-room doorway, so a full reset here zeroed the valve on
+   * every alternate poll and {@link NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES}
+   * could never be reached — baseball-bat seed 31 oscillated between
+   * threat-clear ENGAGE and NPC-approach EXPLORE in a doorway for ~590
+   * simulated seconds that way. The counter is only ever advanced by
+   * {@link shouldClearThreatBeforeNpc} (polls where the gate actually fires),
+   * so an idle poll can never latch the bypass on its own; it can only release
+   * it, which is what genuine progress toward the NPC does below.
+   */
+  private noteNpcApproachThreatGateIdle(target: ProgressTarget): void {
+    if (this.npcApproachThreatNpcEid !== target.eid) {
+      this.resetNpcApproachThreatTracking();
+      return;
+    }
+    if (this.npcApproachThreatBestDistance - target.distance > ENGAGE_PROGRESS_EPSILON_FT) {
+      this.npcApproachThreatBestDistance = target.distance;
+      this.npcApproachThreatNoProgressFrames = 0;
+      this.npcApproachThreatBypassEid = null;
+    }
+  }
+
   /** Clear the NPC-approach threat-clear no-progress tracking/bypass. Called
-   * whenever the nearby-threat gate is not active (no progress target, target
-   * is not an NPC, target is already in interaction range, or no threat is
-   * nearby) so a later re-entry starts fresh instead of inheriting a stale
-   * bypass latch. */
+   * whenever the approach itself ends (no progress target, target is not an
+   * NPC, or the target is already in interaction range) so a later re-entry
+   * starts fresh instead of inheriting a stale bypass latch. A poll where only
+   * the *threat* went away keeps the evidence — see
+   * {@link noteNpcApproachThreatGateIdle}. */
   private resetNpcApproachThreatTracking(): void {
     this.npcApproachThreatNpcEid = null;
     this.npcApproachThreatBestDistance = Number.POSITIVE_INFINITY;

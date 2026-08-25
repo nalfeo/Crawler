@@ -2844,6 +2844,35 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
+  it('abandons a melee NPC threat clear even when playerInSafeRoom flickers every poll', () => {
+    // Regression test for the Floor 1 release-sweep loss at 685f955a
+    // (baseball-bat seed 31): the player straddled a safe-room doorway, so
+    // `playerInSafeRoom` flipped every frame. The NPC-approach threat gate used
+    // to fully reset its no-progress valve on safe-room polls, so the valve
+    // never reached NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES and the AI
+    // oscillated between threat-clear ENGAGE and NPC-approach EXPLORE for ~590
+    // simulated seconds until the frame budget expired.
+    const { world, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    // Only the non-safe-room polls can advance the valve, so twice the
+    // threshold's worth of polls is the earliest the bypass can latch.
+    for (let poll = 0; poll < (NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES + 2) * 2; poll += 1) {
+      world.playerInSafeRoom = poll % 2 === 1;
+      ai.poll(createInputState(), world);
+    }
+
+    world.playerInSafeRoom = false;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+      targetX: 38,
+      targetY: 14,
+    });
+  });
+
   it('persists the ENGAGE no-progress baseline across a flipping nearest-enemy target', () => {
     // Regression test for a legacy AI deadlock found via headless weapon-sweep
     // repro (GitHub Actions run 29453994290, bow-seed91 / throwing-knife-seed14 /

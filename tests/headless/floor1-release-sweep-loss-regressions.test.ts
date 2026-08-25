@@ -16,6 +16,8 @@ const RELEASE_SWEEP_LOSSES = [
   { weapon: 'throwing-knife', seed: 1 },
   { weapon: 'throwing-knife', seed: 11 },
   { weapon: 'fireball', seed: 13 },
+  { weapon: 'baseball-bat', seed: 20 },
+  { weapon: 'baseball-bat', seed: 31 },
 ] as const;
 
 describe('Floor 1 release sweep loss regressions', () => {
