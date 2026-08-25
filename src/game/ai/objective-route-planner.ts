@@ -57,6 +57,7 @@
 export type GoalId = string;
 export type LocationId = string;
 
+/** Fixed-point, non-negative integer objective values. */
 export interface ObjectiveUtility {
   readonly completion?: number;
   readonly optimization?: number;
@@ -64,12 +65,13 @@ export interface ObjectiveUtility {
   readonly exploration?: number;
 }
 
+/** Fixed-point, non-negative integer personality weights. */
 export interface ObjectiveUtilityWeights {
   readonly completion: number;
   readonly optimization: number;
   readonly safety: number;
   readonly exploration: number;
-  /** Utility points charged per second of optional route/work overhead. */
+  /** Integer utility points charged per second of optional route/work overhead. */
   readonly costPerSecond: number;
 }
 
@@ -547,11 +549,12 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
       assertNonNegativeInteger(value, 'invalid-utility', `utilityWeights.${dimension}`);
     }
   }
+  const weightedUtilityByGoal = goals.map(weightedGoalUtility);
 
   const utilityScore = (mask: number, entry: DpEntry): number => {
     let utility = 0;
     for (let i = 0; i < n; i++) {
-      if ((mask & (1 << i)) !== 0) utility += weightedGoalUtility(goals[i]!);
+      if ((mask & (1 << i)) !== 0) utility += weightedUtilityByGoal[i]!;
     }
     const optionalOverheadSeconds = Math.ceil(Math.max(0, entry.cost - requiredOnly.cost) / 1000);
     return utility - optionalOverheadSeconds * (utilityWeights?.costPerSecond ?? 0);
@@ -640,7 +643,7 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
       required: goal.required,
       optionalBundleId: goal.required ? null : (goal.optionalBundleId ?? goal.id),
       selected: (chosenMask & (1 << index)) !== 0,
-      weightedUtility: weightedGoalUtility(goal),
+      weightedUtility: weightedUtilityByGoal[index]!,
     }),
   );
 

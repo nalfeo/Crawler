@@ -63,6 +63,41 @@ function snapshot(overrides: Partial<Floor1RunPlannerSnapshot> = {}): Floor1RunP
 }
 
 describe('estimateFloor1RunPlan', () => {
+  it('forwards portfolio utility weights into optional-bundle predictions', () => {
+    const state = snapshot({
+      tutorialAccepted: true,
+      playerLevel: 2,
+      questCompleted: true,
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      staircaseUnlocked: true,
+      playerGold: 100,
+      merchantWeaponIntent: { status: 'returning', cost: 20 },
+    });
+
+    expect(planFloor1ObjectiveRoute(state, PARAMS).includedOptionalBundleIds).toContain(
+      'merchant-weapon-purchase',
+    );
+    expect(
+      planFloor1ObjectiveRoute(state, {
+        ...PARAMS,
+        utilityWeights: {
+          completion: 0,
+          optimization: 0,
+          safety: 0,
+          exploration: 0,
+          costPerSecond: 1,
+        },
+      }).droppedOptionalBundleIds,
+    ).toContain('merchant-weapon-purchase');
+  });
+
   it('gates optional merchant farming against existing slack without adding work to the plan', () => {
     const runPlan = estimateFloor1RunPlan(
       snapshot({
@@ -520,6 +555,21 @@ describe('buildRunPlanCacheKey', () => {
       snapshot({ merchantWeaponIntent: { status: 'farming', cost: 20 } }),
       PARAMS,
     );
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when strategic utility weights change', () => {
+    const key1 = buildRunPlanCacheKey(snapshot(), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot(), {
+      ...PARAMS,
+      utilityWeights: {
+        completion: 1,
+        optimization: 1,
+        safety: 1,
+        exploration: 1,
+        costPerSecond: 1,
+      },
+    });
     expect(key1).not.toBe(key2);
   });
 

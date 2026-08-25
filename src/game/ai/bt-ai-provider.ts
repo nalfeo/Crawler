@@ -4977,6 +4977,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       ...RUN_PLANNER_PARAMS,
       moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
+      ...(this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
+        ? { utilityWeights: this.config.strategicUtilityWeights }
+        : {}),
     };
   }
 
@@ -7316,7 +7319,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       nextGoalId = cache.goalId;
     } else {
       const rawGraph = buildFloor1GoalGraph(snapshot);
-      if (rawGraph.goals.length === 0) return null;
+      if (rawGraph.goals.length === 0) {
+        this.floor1MiddleChainCache = {
+          navEpoch: this.navEpoch,
+          stateKey,
+          goalId: null,
+          portfolio: [],
+        };
+        return null;
+      }
 
       const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
       const params = this.getRunPlannerParams(playerSpeedFtPerFrame);

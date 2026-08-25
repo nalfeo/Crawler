@@ -353,6 +353,23 @@ describe('planObjectiveRoute', () => {
     expect(route.includedOptionalBundleIds).toEqual([]);
   });
 
+  it('rejects fractional utility weights so deterministic fixed-point scoring stays explicit', () => {
+    expect(() =>
+      planObjectiveRoute({
+        goals: [],
+        startLocation: 'start',
+        travelOracle: makeGraphOracle({}),
+        utilityWeights: {
+          completion: 1,
+          optimization: 1,
+          safety: 1,
+          exploration: 1,
+          costPerSecond: 0.5,
+        },
+      }),
+    ).toThrowError(/utilityWeights\.costPerSecond must be a non-negative integer/);
+  });
+
   it('never drops a required goal to fit budget; reports requiredOverBudget with negative slack', () => {
     const oracle = makeGraphOracle({ start: { A: 500 } });
     const goals: GoalNode[] = [
