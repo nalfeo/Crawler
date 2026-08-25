@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "ai-objective-portfolio",
+  "task_title": "Add personality-weighted AI objective portfolio",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "adversarial": false,
+      "alternatives_considered": 0,
+      "plan_divergence": "",
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
