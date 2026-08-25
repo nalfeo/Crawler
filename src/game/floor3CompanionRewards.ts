@@ -3,7 +3,8 @@
  * `.specify/specs/floor3-companion-league.md` R7, slice 10).
  *
  * Wild Floor 3 pets are plain `Enemy` entities, so `dropSystem` already pays
- * the player for killing them. Trainer/Studio/Final-Four Companions never die:
+ * the player for killing them. Rival Companions also carry `Enemy` (they are
+ * spawned through `spawnBehaviorEnemy`), but they never die:
  * `companionKOSystem` clamps their `Health.current` back to 1 and raises
  * `Companion.knockedOut` specifically so `dropSystem`'s `[Enemy, Health]` kill
  * query never observes them at 0. This module closes that gap by paying the
