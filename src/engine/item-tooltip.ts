@@ -13,6 +13,7 @@ const TOOLTIP_LINE_SPACING = 18;
 const EQUIPMENT_CARD_ICON_SIZE = 28;
 const EQUIPMENT_CARD_ICON_CENTER_Y = 38;
 const EQUIPMENT_CARD_STAT_START_Y = 60;
+const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
 const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
 const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 13;
 
@@ -38,13 +39,14 @@ export function getEquipmentTooltipCardLayout(
     flavorText && flavorText.length > 0
       ? Math.min(3, Math.ceil(flavorText.length / descriptionColumns))
       : 0;
-  const descriptionY = EQUIPMENT_CARD_STAT_START_Y + statLines.length * 14 + 4;
+  const descriptionY =
+    EQUIPMENT_CARD_STAT_START_Y + statLines.length * 14 + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
   return {
     height:
       descriptionY +
       descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT +
       EQUIPMENT_CARD_BOTTOM_PADDING,
-    icon: { x: 26, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
+    icon: { x: 34, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
     descriptionY,
   };
@@ -233,6 +235,7 @@ export function renderItemTooltip(
   const descText = crispText(bodyX, bodyY, bodyText, {
     fontFamily,
     fontSize: richContent ? '11px' : '12px',
+    fontStyle: compactLayout ? 'italic' : undefined,
     color: '#9ca3af',
     wordWrap: { width: tooltipWidth - 16 },
   });

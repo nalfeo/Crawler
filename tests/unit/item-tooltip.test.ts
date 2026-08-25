@@ -61,6 +61,7 @@ describe('item tooltip redesign', () => {
     const iconBottom = layout.icon.y + layout.icon.size / 2;
 
     expect(layout.statStartY).toBeGreaterThan(iconBottom);
+    expect(layout.descriptionY - (layout.statStartY + 2 * 14)).toBe(12);
     expect(layout.height).toBe(layout.descriptionY + 2 * 13 + 10);
   });
 

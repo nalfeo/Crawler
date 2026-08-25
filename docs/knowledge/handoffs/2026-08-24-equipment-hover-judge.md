@@ -41,6 +41,17 @@ is the updated real Phaser/Azure capture. It has zero deterministic blockers.
 Azure still issued a subjective padding claim despite the compact measured
 layout; the capture shows no unused right/bottom area.
 
+### Tooltip composition follow-up
+
+The icon and title now share a deeper 34px left inset. Flavor text is italic and
+separated from stat rows by 12px. Hover cards select the side of their target
+that is closer to the panel center and leave a 14px gap. The real-game hover
+test asserts the Head card appears at least 10px to the right of the left-half
+Head slot, as well as preserving the non-overlap and topmost contracts.
+
+`files/visual-review/after/v0.1.20/equipment-hover-equipped.{png,review.json}`
+is the updated real Phaser/Azure capture and reports zero deterministic blockers.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

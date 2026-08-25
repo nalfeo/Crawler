@@ -987,6 +987,10 @@ describe('equipment decision gate (e2e)', () => {
         `the equipped-item tooltip must not occlude the hovered target: target=${JSON.stringify(equippedBounds)} tooltip=${JSON.stringify(equippedTooltip)}`,
       ).toBe(false);
       expect(
+        equippedTooltip!.x,
+        'a left-half hover target should put its tooltip on the screen-center side with a clear gap',
+      ).toBeGreaterThanOrEqual(equippedBounds!.x + equippedBounds!.width + 10);
+      expect(
         await probe.isEquipmentTooltipTopmost(hoverPage),
         'the equipped-item tooltip must render above every equipment-panel element',
       ).toBe(true);

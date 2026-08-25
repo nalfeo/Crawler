@@ -1332,13 +1332,22 @@ export function createEquipmentUI(
       tooltipStatLines(equipmentDef),
       itemTooltipDef(equipmentDef).description || undefined,
     ).height;
+    const tooltipGap = 14;
     const placement = anchor
-      ? {
-          x: Math.max(panelX + 8, anchor.x - width - 20),
-          y: Math.max(dollY + 3, anchor.y - 5),
-          width,
-          height,
-        }
+      ? (() => {
+          const anchorCenter = anchor.x + anchor.width / 2;
+          const panelCenter = panelX + panelWidth / 2;
+          const preferRight = anchorCenter < panelCenter;
+          const preferredX = preferRight
+            ? anchor.x + anchor.width + tooltipGap
+            : anchor.x - width - tooltipGap;
+          return {
+            x: Math.max(panelX + 8, Math.min(preferredX, panelX + panelWidth - width - 8)),
+            y: Math.max(dollY + 3, anchor.y - 5),
+            width,
+            height,
+          };
+        })()
       : { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height };
     // Slot hover is reconnaissance, not the persistent bottom inspector. Anchor
     // the compact card beside the actual item so it stays in the player's eye
