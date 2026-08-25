@@ -2856,7 +2856,22 @@ export class MainGameScene extends Phaser.Scene {
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
       const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      if (buttonScale > 1) {
+        const firstColumnWidth = Math.max(
+          ...[
+            this.inventoryButton,
+            this.equipButton,
+            this.achievementsButton,
+            this.floor3RosterButton,
+            this.floor3CommandButton,
+            this.abilitiesButton,
+            this.quartermasterButton,
+          ].map((button) => button?.displayWidth ?? 0),
+        );
+        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
+      } else {
+        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      }
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);

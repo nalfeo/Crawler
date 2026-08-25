@@ -1530,6 +1530,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('floorTimer', encounter?.timerPanel);
       push('bossBar', encounter?.bossPanel);
       push('announcement', encounter?.announcementPanel);
+      const skillPanel = phaserScene?.children
+        .getChildren()
+        .flatMap((child) => (child instanceof Phaser.GameObjects.Container ? child.list : [child]))
+        .find(({ name }) => name === 'hud-skill-panel-bounds') as
+        | Phaser.GameObjects.Zone
+        | undefined;
+      push('skillPanel', skillPanel?.getBounds());
       push('interactionHint', scene?.getInteractionHintBounds?.());
       push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
       push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);

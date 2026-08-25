@@ -45,6 +45,16 @@ async function withHeldTouch(
   }
 }
 
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
+    Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
+  );
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -150,6 +160,27 @@ describe('MainGameScene UI exclusivity', () => {
       restored.issueButtonVisible,
       'Issue button should return after cancelling a report',
     ).toBe(true);
+  });
+
+  it('keeps the Issue button clear of the skill HUD on small screens', async () => {
+    const smallContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+    const smallPage = await smallContext.newPage();
+    try {
+      await bootPlayingSafeScene(smallPage);
+      const issueBounds = await mainSceneProbe.getIssueButtonBounds(smallPage);
+      const skillBounds = (await mainSceneProbe.getSafeAreaLayout(smallPage)).surfaces.find(
+        ({ name }) => name === 'skillPanel',
+      )?.bounds;
+
+      expect(issueBounds, 'Issue button should remain visible on small screens').not.toBeNull();
+      expect(skillBounds, 'skill HUD bounds should be available').toBeDefined();
+      if (!issueBounds || !skillBounds) return;
+      expect(overlaps(issueBounds, skillBounds), 'Issue button must not cover the skill HUD').toBe(
+        false,
+      );
+    } finally {
+      await closeQuietly(smallContext);
+    }
   });
 
   it('gives the issue picker exclusive keyboard ownership over loadout and Skills UX', async () => {
