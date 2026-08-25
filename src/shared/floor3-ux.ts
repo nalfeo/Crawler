@@ -9,6 +9,7 @@
  * identical copy and the surfaces are unit-testable without Phaser.
  */
 import { formForLevel, getPetSpecies, type PetSpeciesDef } from './data/floor3/species.js';
+import type { Floor3PoachCandidate } from './floor-types.js';
 import type { ModalPickerConfig, ModalPickerOption } from './modal-picker.js';
 
 /** Stable `kind` ids so automation can tell the three Floor 3 surfaces apart. */
@@ -90,12 +91,14 @@ export function buildFloor3StarterPickerModel(
 }
 
 export interface Floor3PoachPickerParams {
-  /** Species ids of the defeated Trainer's Companions, in offer order. */
-  readonly offerSpeciesIds: readonly string[];
+  /**
+   * The defeated Trainer's Companions, in offer order. Each candidate carries
+   * its own level (a Trainer can field species at different levels), so every
+   * row renders the form and level the player would actually recruit.
+   */
+  readonly candidates: readonly Floor3PoachCandidate[];
   /** Recruit slots left before the party locks (this pick included). */
   readonly slotsRemaining: number;
-  /** Level the offered Companions are shown at (the Trainer roster level). */
-  readonly offerLevel?: number;
   /** Display name of the defeated Trainer/Studio, when known. */
   readonly trainerName?: string;
 }
@@ -106,7 +109,7 @@ export interface Floor3PoachPickerParams {
  * (game-design §6.3 — the 5th poach fills the 6-Companion party and locks it).
  */
 export function buildFloor3PoachPickerModel(params: Floor3PoachPickerParams): ModalPickerConfig {
-  const { offerSpeciesIds, slotsRemaining, offerLevel = 1, trainerName } = params;
+  const { candidates, slotsRemaining, trainerName } = params;
   const locksRoster = slotsRemaining <= 1;
   const slotsText = locksRoster
     ? 'This is your final recruit slot.'
@@ -121,8 +124,10 @@ export function buildFloor3PoachPickerModel(params: Floor3PoachPickerParams): Mo
       ? `${trainerName} is beaten — claim one of their Companions.`
       : 'Trainer beaten — claim one of their Companions.',
     body: `${slotsText}${lockWarning}`,
-    options: offerSpeciesIds.map((speciesId, index) => speciesOption(speciesId, index, offerLevel)),
+    options: candidates.map((candidate, index) =>
+      speciesOption(candidate.speciesId, index, candidate.level),
+    ),
     allowCancel: true,
-    ...(offerSpeciesIds[0] !== undefined ? { initialSelectedId: offerSpeciesIds[0] } : {}),
+    ...(candidates[0] !== undefined ? { initialSelectedId: candidates[0].speciesId } : {}),
   };
 }

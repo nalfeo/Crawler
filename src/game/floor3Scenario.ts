@@ -95,6 +95,9 @@ import { AI_TYPE } from './enemyAISystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('game:floor3-scenario');
 
 const FLOOR3_BIOME_MATCH_SPAWN_SHARE = 0.75;
 const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
@@ -1149,13 +1152,13 @@ export function selectFloor3StarterCompanion(world: GameWorld, optionIndex: numb
     // `getPetSpecies` results in the first place), but if it does, fall back
     // to scanning the rest of the offer for a resolvable species rather than
     // silently starting Floor 3 with no Companion at all.
-    console.warn(
+    logger.warn(
       `[floor3:starter-degraded] offer entry ${speciesId ?? 'undefined'} did not resolve to a ` +
         `known species; scanning the rest of the offer for a valid fallback.`,
     );
     species = offer.map((id) => getPetSpecies(id)).find((resolved) => resolved !== undefined);
     if (species === undefined) {
-      console.warn(
+      logger.warn(
         '[floor3:starter-degraded] no offer entry resolved to a known species; ' +
           'resuming play with no starter Companion.',
       );
@@ -1286,7 +1289,7 @@ export function selectFloor3PoachCompanion(world: GameWorld, optionIndex: number
   if (species !== undefined && candidate !== undefined) {
     recruitFloor3PartyCompanion(world, species, candidate.level);
   } else {
-    console.warn(
+    logger.warn(
       `[floor3:poach-degraded] offer entry ${candidate?.speciesId ?? 'undefined'} did not ` +
         'resolve to a known species; resuming play with no poached Companion.',
     );

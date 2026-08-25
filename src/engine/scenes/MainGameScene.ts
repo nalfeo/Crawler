@@ -3445,9 +3445,8 @@ export class MainGameScene extends Phaser.Scene {
     if (poachOffer !== undefined) {
       this.openFloor3PickerModal(
         buildFloor3PoachPickerModel({
-          offerSpeciesIds: poachOffer.candidates.map((candidate) => candidate.speciesId),
+          candidates: poachOffer.candidates,
           slotsRemaining: poachOffer.slotsRemaining,
-          offerLevel: poachOffer.candidates[0]?.level ?? 1,
           trainerName: poachOffer.encounterName,
         }),
         poachOffer.candidates.map((candidate) => candidate.speciesId),
@@ -3467,10 +3466,13 @@ export class MainGameScene extends Phaser.Scene {
   ): void {
     this.modalPicker?.open(config, {
       onConfirm: ({ option }) => {
+        // An unmatched option id must still dispatch: `selectLoadoutOption`
+        // is the only thing that leaves `'loadout'`, so skipping it would
+        // strand the floor paused with no picker on screen. Index 0 is the
+        // same never-strand fallback the cancel path and the headless runner
+        // use.
         const choiceIndex = offerSpeciesIds.indexOf(option.id);
-        if (choiceIndex >= 0) {
-          this.options.selectLoadoutOption?.(this.world, choiceIndex);
-        }
+        this.options.selectLoadoutOption?.(this.world, Math.max(0, choiceIndex));
         this.updateOverlayText();
       },
       onCancel: () => {

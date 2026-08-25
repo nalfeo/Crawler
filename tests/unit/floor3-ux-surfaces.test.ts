@@ -86,9 +86,12 @@ describe('floor3 UX surface #2 — starter picker', () => {
 describe('floor3 UX surface #3 — poach picker', () => {
   it('shows the defeated trainer, the roster, and the remaining recruit slots', () => {
     const model = buildFloor3PoachPickerModel({
-      offerSpeciesIds: [FIRST_SPECIES, SECOND_SPECIES, THIRD_SPECIES],
+      candidates: [
+        { speciesId: FIRST_SPECIES, level: 12 },
+        { speciesId: SECOND_SPECIES, level: 12 },
+        { speciesId: THIRD_SPECIES, level: 12 },
+      ],
       slotsRemaining: 4,
-      offerLevel: 12,
       trainerName: 'Studio Ember',
     });
     expect(model.kind).toBe(FLOOR3_POACH_PICKER_KIND);
@@ -100,18 +103,33 @@ describe('floor3 UX surface #3 — poach picker', () => {
 
   it('shows the roster level on the offered Companions', () => {
     const model = buildFloor3PoachPickerModel({
-      offerSpeciesIds: [FIRST_SPECIES],
+      candidates: [{ speciesId: FIRST_SPECIES, level: 12 }],
       slotsRemaining: 3,
-      offerLevel: 12,
     });
     const species = getPetSpecies(FIRST_SPECIES)!;
     expect(model.options[0]?.label).toBe(formForLevel(species, 12).name);
     expect(model.options[0]?.description).toContain('Lv 12');
   });
 
+  it("renders each candidate at its own level, not the first candidate's", () => {
+    const model = buildFloor3PoachPickerModel({
+      candidates: [
+        { speciesId: FIRST_SPECIES, level: 12 },
+        { speciesId: SECOND_SPECIES, level: 3 },
+      ],
+      slotsRemaining: 4,
+    });
+    const first = getPetSpecies(FIRST_SPECIES)!;
+    const second = getPetSpecies(SECOND_SPECIES)!;
+    expect(model.options[0]?.label).toBe(formForLevel(first, 12).name);
+    expect(model.options[0]?.description).toContain('Lv 12');
+    expect(model.options[1]?.label).toBe(formForLevel(second, 3).name);
+    expect(model.options[1]?.description).toContain('Lv 3');
+  });
+
   it('warns that the final recruit signs the roster for the season (§6.3 party lock)', () => {
     const model = buildFloor3PoachPickerModel({
-      offerSpeciesIds: [FIRST_SPECIES],
+      candidates: [{ speciesId: FIRST_SPECIES, level: 1 }],
       slotsRemaining: 1,
     });
     expect(model.body).toContain('final recruit slot');
@@ -120,7 +138,7 @@ describe('floor3 UX surface #3 — poach picker', () => {
 
   it('falls back to a generic trainer subtitle when no name is known', () => {
     const model = buildFloor3PoachPickerModel({
-      offerSpeciesIds: [FIRST_SPECIES],
+      candidates: [{ speciesId: FIRST_SPECIES, level: 1 }],
       slotsRemaining: 2,
     });
     expect(model.subtitle).toContain('Trainer beaten');

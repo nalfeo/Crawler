@@ -43,6 +43,14 @@ describe('Floor 3 UX surface wiring (slice 12)', () => {
     );
   });
 
+  it('never strands the loadout pause when a picked option is not in the offer', () => {
+    // `selectLoadoutOption` is the only exit from `'loadout'`, so the confirm
+    // handler must dispatch even for an unmatched option id.
+    expect(mainGameSceneSource).toContain(
+      'this.options.selectLoadoutOption?.(this.world, Math.max(0, choiceIndex));',
+    );
+  });
+
   it('registers the floor3-ux-lab so `?lab=floor3-ux-lab` loads it', () => {
     expect(labMainSource).toContain("'floor3-ux-lab': '/src/labs/floor3-ux-lab/index.ts'");
     expect(labSource).toContain('registerLab(LAB_ID, {');

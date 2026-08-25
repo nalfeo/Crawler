@@ -99,9 +99,11 @@ function createFloor3UxLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   const openPoach = (): void => {
     picker?.open(
       buildFloor3PoachPickerModel({
-        offerSpeciesIds: poachOffer(),
+        candidates: poachOffer().map((speciesId) => ({
+          speciesId,
+          level: settings.trainerLevel,
+        })),
         slotsRemaining: settings.slotsRemaining,
-        offerLevel: settings.trainerLevel,
         trainerName: 'Studio Ember',
       }),
       {
