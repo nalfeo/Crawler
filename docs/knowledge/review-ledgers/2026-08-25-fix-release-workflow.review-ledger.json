@@ -22,18 +22,33 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ],
-      "notes": "Reviewer found no significant issues."
+      "notes": "Round 1 found no code issues. Round 2 re-reviewed the historical duplicate collapse and found no code issues; the only ledger completeness note was resolved by recording the independent grade."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "c91b5e3970f12c14e4c9deaff46187d27bf31413",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Pass. The diff is tightly scoped to release-regression issue deduplication, preserves the existing stable-marker path, and changes the signature path in a coherent way: recurring configurations now comment on the canonical open issue, seed-only variants coalesce correctly, and historical duplicates are collapsed onto the oldest open tracker. The changed behavior is covered by focused tests for repeated signatures, seed-only changes, duplicate-history collapse, unrelated issues, and closed issues, and the targeted script tests plus related baseline-regression unit tests pass."
     }
   }
 }
