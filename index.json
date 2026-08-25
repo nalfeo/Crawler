@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f218b6a9e42d5a34f056ee9c2a757a7672b40ebb",
+    "commitDate": "2026-08-25T01:07:06Z",
+    "commitSubject": "Expand post-release sweep reporting (#3520)",
+    "capturedAt": "2026-08-25T02:47:09.468Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32798272820",
+    "winRate": 0.9866666666666667,
+    "totalWins": 296,
+    "totalRuns": 300,
+    "path": "by-sha/f218b6a9e42d5a34f056ee9c2a757a7672b40ebb.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9866666666666667,
+        "totalWins": 296,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.63,
+      "gatePass": false,
+      "path": "by-sha/f218b6a9e42d5a34f056ee9c2a757a7672b40ebb.fun-report.json"
+    }
+  },
+  {
     "commit": "6fbb2523e5f5f232ac1cd84866ac6f760e286cb1",
     "commitDate": "2026-08-24T23:53:59Z",
     "commitSubject": "Add Floor 3 and Floor 4 epic workflow inputs (#3519)",
