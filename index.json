@@ -1,5 +1,39 @@
 [
   {
+    "commit": "435e0b2963aa458d2bd3f1faaf28c629b63a9dd0",
+    "commitDate": "2026-08-25T04:29:22Z",
+    "commitSubject": "Fix Floor 1 loot sweep release losses (#3550)",
+    "capturedAt": "2026-08-25T05:52:48.862Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32810626195",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/435e0b2963aa458d2bd3f1faaf28c629b63a9dd0.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.13,
+      "gatePass": false,
+      "path": "by-sha/435e0b2963aa458d2bd3f1faaf28c629b63a9dd0.fun-report.json"
+    }
+  },
+  {
     "commit": "1ceb5387275577e04eda9b0c035520e084ba8ec8",
     "commitDate": "2026-08-25T03:25:21Z",
     "commitSubject": "Fix unsafe Floor 1 pre-exit loot sweep chases (#3528)",
