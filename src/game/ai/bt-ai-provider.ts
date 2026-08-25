@@ -1256,19 +1256,16 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Pre-exit loot sweep — unbounded once the staircase is
-        // unlocked but not yet discovered, because the floor transition destroys
-        // every uncollected pickup.
+        // Priority 2.5: Pre-exit loot sweep — collect nearby loot once the
+        // staircase is unlocked but not yet discovered, because the floor
+        // transition destroys every uncollected pickup.
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
         // Priority 2.7: Mid-run loot sweep — a bounded post-combat cleanup
-        // (`LOOT_SWEEP_RADIUS_FT`) so the drops from the fight that just ended
-        // aren't left behind while Engage/Hunt (lower priority) moves on to the
-        // next enemy. It sits BELOW LocalThreatRecovery on purpose: recovery owns
-        // resolving the exact enemy that triggered a retreat before the AI
-        // resumes progression, and a nearby gem must never preempt that at
-        // critical health. The window guard inside `buildLootSweepBehavior` makes
-        // the two windows mutually exclusive, so only one ever fires per frame.
+        // (`LOOT_SWEEP_RADIUS_FT`) outside Floor 1's release-critical run. It
+        // remains below LocalThreatRecovery so a nearby gem never preempts a live
+        // recovery target, but above Progress on other floors so post-combat drops
+        // are still collected before moving on.
         this.buildLootSweepBehavior('mid-run'),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
         // equipment, so it is treated as a quest objective rather than as loot
@@ -7471,6 +7468,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const spellBrokerIntent = getSpellBrokerIntent(world);
     const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
     const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+    const playerHealth = world.stores.health.current[playerEid] ?? 1;
+    const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
 
     if (
       world.featureUnlocks.spells &&
@@ -7478,7 +7477,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
       staircaseBossDefeated &&
-      !panicProfile.beeline
+      !panicProfile.beeline &&
+      playerHealth / playerMaxHealth >= FARM_MIN_HEALTH_FRACTION
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
       if (spellQuestGiverNpcEid == null) return null;
@@ -8210,15 +8210,16 @@ export class BehaviorTreeAI implements AIInputProvider {
    * while reachable loot remains.
    *
    * Two windows share this node:
-   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT`, so it only picks up
-   *   the drops from the fight that just ended and never becomes a cross-floor
-   *   errand.
-   * - **Pre-exit** — unbounded once the staircase is unlocked but not yet
-   *   descended, because the floor transition destroys every uncollected pickup.
+   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT` outside Floor 1's
+   *   objective chain, so it only picks up the drops from the fight that just
+   *   ended and never becomes a cross-floor errand.
+   * - **Pre-exit** — bounded to `scanRadius` once the staircase is unlocked but
+   *   not yet descended. Chaining nearby drops preserves their value without
+   *   sending the player across the floor through a newly-active swarm.
    *
    * Guard conditions (all must hold):
    * 1. Collapse panic below threshold (surrender the sweep in a time crunch).
-   * 2. No enemies within engage radius — safety first; combat pre-empts sweep.
+   * 2. No enemies within scan radius — safety first; combat pre-empts sweep.
    * 3. At least one reachable XP gem or gold pile inside the active window.
    */
   private buildLootSweepBehavior(window: 'pre-exit' | 'mid-run'): BTNode {
@@ -8230,10 +8231,10 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.lootSweepTargetEid = null;
           return false;
         }
-        // Safety gate: don't sweep while an enemy is close enough to matter.
-        // Pre-exit uses the engage radius (the floor is cleared, so a straggler
-        // must not cancel the last-chance sweep). The mid-run window uses the
-        // full `scanRadius` instead, for two reasons:
+        // Safety gate: don't sweep while an enemy is close enough to matter. Both
+        // windows use the full `scanRadius`: an undiscovered exit can still have
+        // lingering enemies, so the pre-exit sweep must not outrun the threat
+        // check. The mid-run window uses it for two reasons:
         //  1. It keeps the sweep strictly post-combat. With the narrower engage
         //     radius the gate flickers as an enemy drifts in and out of range,
         //     which made the AI oscillate between COLLECT and Engage/Progress
@@ -8241,9 +8242,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         //  2. LocalThreatRecovery only latches an enemy inside `scanRadius`, so
         //     requiring an empty scan radius means the mid-run sweep can never
         //     preempt a live recovery target, even at critical health.
-        const safetyRadius =
-          window === 'pre-exit' ? this.getEngageRadius(ctx.world) : this.config.scanRadius;
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, safetyRadius, true)) {
+        if (
+          this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, this.config.scanRadius, true)
+        ) {
           this.lootSweepTargetEid = null;
           return false;
         }
@@ -8252,7 +8253,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         // staircase has not yet been descended; mid-run fires at all other times.
         if (window === 'pre-exit' && !inPreExitWindow) return false;
         if (window === 'mid-run' && inPreExitWindow) return false;
-        const maxDistance = inPreExitWindow ? Number.POSITIVE_INFINITY : LOOT_SWEEP_RADIUS_FT;
+        if (window === 'mid-run' && this.isFloor1Run(ctx.world)) {
+          this.lootSweepTargetEid = null;
+          return false;
+        }
+        const maxDistance = inPreExitWindow ? this.config.scanRadius : LOOT_SWEEP_RADIUS_FT;
         const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
         if (!loot) return false;
         ctx.blackboard['sweepLoot'] = loot;
@@ -8268,6 +8273,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  private isFloor1Run(world: GameWorld): boolean {
+    return world.floorId === 'floor1' && world.floorScenario?.objective != null;
   }
 
   private findNearestLoot(world: GameWorld, playerX: number, playerY: number): LootTarget | null {
