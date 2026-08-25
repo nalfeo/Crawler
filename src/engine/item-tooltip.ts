@@ -10,6 +10,45 @@ const TOOLTIP_STAT_HEIGHT_BONUS = 18;
 const TOOLTIP_META_OFFSET = 16;
 const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
 const TOOLTIP_LINE_SPACING = 18;
+const EQUIPMENT_CARD_ICON_SIZE = 28;
+const EQUIPMENT_CARD_ICON_CENTER_Y = 38;
+const EQUIPMENT_CARD_STAT_START_Y = 60;
+const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
+const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 13;
+
+export interface EquipmentTooltipCardLayout {
+  readonly height: number;
+  readonly icon: { readonly x: number; readonly y: number; readonly size: number };
+  readonly statStartY: number;
+  readonly descriptionY: number;
+}
+
+/**
+ * The compact equipped-item card is content-sized. Keeping its icon and stat
+ * rows in this pure layout contract makes their collision impossible to hide
+ * behind a screenshot-only review.
+ */
+export function getEquipmentTooltipCardLayout(
+  width: number,
+  statLines: readonly string[],
+  flavorText?: string,
+): EquipmentTooltipCardLayout {
+  const descriptionColumns = Math.max(12, Math.floor((width - 20) / 6));
+  const descriptionLines =
+    flavorText && flavorText.length > 0
+      ? Math.min(3, Math.ceil(flavorText.length / descriptionColumns))
+      : 0;
+  const descriptionY = EQUIPMENT_CARD_STAT_START_Y + statLines.length * 14 + 4;
+  return {
+    height:
+      descriptionY +
+      descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT +
+      EQUIPMENT_CARD_BOTTOM_PADDING,
+    icon: { x: 26, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
+    statStartY: EQUIPMENT_CARD_STAT_START_Y,
+    descriptionY,
+  };
+}
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -81,6 +120,10 @@ export function renderItemTooltip(
     diffLines.length > 0 ||
     sectionLabel !== undefined;
   const tooltipWidth = placement?.width ?? TOOLTIP_WIDTH;
+  const isCompactEquipmentCard = placement !== undefined && sectionLabel === 'EQUIPPED';
+  const compactLayout = isCompactEquipmentCard
+    ? getEquipmentTooltipCardLayout(tooltipWidth, statLines, flavorText ?? def.description)
+    : null;
   const tooltipHeight =
     placement?.height ??
     (statLine !== undefined && statLine.length > 0
@@ -141,13 +184,15 @@ export function renderItemTooltip(
   const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
   container.add(tooltipBg);
   const richIcon = richContent || iconTextureKey !== undefined;
-  const iconX = tx + (richIcon ? 22 : tooltipWidth - 22);
-  const iconY = ty + (sectionLabel ? 36 : 22);
+  const iconX = tx + (compactLayout?.icon.x ?? (richIcon ? 22 : tooltipWidth - 22));
+  const iconY = ty + (compactLayout?.icon.y ?? (sectionLabel ? 36 : 22));
   const iconObjects: Phaser.GameObjects.GameObject[] = [];
   if (iconTextureKey !== undefined && scene.textures?.exists(iconTextureKey)) {
     const icon = scene.add.image(iconX, iconY, iconTextureKey);
     icon.setOrigin(0.5, 0.5);
-    icon.setScale(fitScaleForBox(icon.width, icon.height, richContent ? 28 : 24));
+    icon.setScale(
+      fitScaleForBox(icon.width, icon.height, compactLayout?.icon.size ?? (richContent ? 28 : 24)),
+    );
     container.add(icon);
     iconObjects.push(icon);
   } else if (richIcon) {
@@ -161,20 +206,29 @@ export function renderItemTooltip(
     iconObjects.push(icon);
   }
 
-  const nameText = crispText(tx + (richIcon ? 42 : 8), ty + (sectionLabel ? 18 : 8), def.name, {
-    fontFamily,
-    fontSize: richContent ? '13px' : '15px',
-    color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-    wordWrap: { width: tooltipWidth - (richIcon ? 50 : 16) },
-  });
+  const nameText = crispText(
+    tx + (compactLayout?.icon.x ?? (richIcon ? 42 : 8)),
+    ty + (compactLayout ? 12 : sectionLabel ? 18 : 8),
+    def.name,
+    {
+      fontFamily,
+      fontSize: compactLayout ? '11px' : richContent ? '13px' : '15px',
+      fontStyle: compactLayout ? 'bold' : undefined,
+      color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+      wordWrap: { width: compactLayout ? 80 : tooltipWidth - (richIcon ? 50 : 16) },
+    },
+  );
+  if (compactLayout) nameText.setOrigin(0.5, 0.5);
 
   const bodyX = tx + (richContent ? 8 : 8);
   const bodyY =
-    placement !== undefined
-      ? ty + (statLines.length > 0 ? 76 : 50)
-      : richContent
-        ? ty + 50 + Math.min(3, statLines.length) * 14
-        : ty + 26;
+    compactLayout !== null
+      ? ty + compactLayout.descriptionY
+      : placement !== undefined
+        ? ty + (statLines.length > 0 ? 76 : 50)
+        : richContent
+          ? ty + 50 + Math.min(3, statLines.length) * 14
+          : ty + 26;
   const bodyText = flavorText ?? def.description;
   const descText = crispText(bodyX, bodyY, bodyText, {
     fontFamily,
@@ -199,11 +253,17 @@ export function renderItemTooltip(
     : null;
 
   if (sectionLabel !== undefined && sectionLabel.length > 0) {
-    const labelText = crispText(tx + 8, ty + 4, sectionLabel, {
-      fontFamily,
-      fontSize: '9px',
-      color: '#e9c46a',
-    });
+    const labelText = crispText(
+      compactLayout ? tx + tooltipWidth - 8 : tx + 8,
+      ty + (compactLayout ? 12 : 4),
+      sectionLabel,
+      {
+        fontFamily,
+        fontSize: '9px',
+        color: '#e9c46a',
+      },
+    );
+    if (compactLayout) labelText.setOrigin(1, 0.5);
     container.add(labelText);
     iconObjects.push(labelText);
   }
@@ -214,7 +274,13 @@ export function renderItemTooltip(
   if (metaText) objects.push(metaText);
 
   if (statLines.length > 0) {
-    const statStartY = placement !== undefined ? ty + 44 : richContent ? ty + 50 : ty + statY;
+    const statStartY = compactLayout
+      ? ty + compactLayout.statStartY
+      : placement !== undefined
+        ? ty + 44
+        : richContent
+          ? ty + 50
+          : ty + statY;
     statLines.slice(0, 3).forEach((line, index) => {
       const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, line, {
         fontFamily,

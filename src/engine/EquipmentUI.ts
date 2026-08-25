@@ -64,7 +64,7 @@ import {
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import { renderItemTooltip } from './item-tooltip.js';
+import { getEquipmentTooltipCardLayout, renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
@@ -1327,7 +1327,11 @@ export function createEquipmentUI(
     const anchor = slotBounds.get(slotId);
     const width = 176;
     // Leave a full 10px more vertical breathing room around the tooltip copy.
-    const height = INSPECTOR_H - 4;
+    const height = getEquipmentTooltipCardLayout(
+      width,
+      tooltipStatLines(equipmentDef),
+      itemTooltipDef(equipmentDef).description || undefined,
+    ).height;
     const placement = anchor
       ? {
           x: Math.max(panelX + 8, anchor.x - width - 20),

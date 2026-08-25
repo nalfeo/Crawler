@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderItemTooltip } from '../../src/engine/item-tooltip.js';
+import { getEquipmentTooltipCardLayout, renderItemTooltip } from '../../src/engine/item-tooltip.js';
 import { ItemRarity, type ItemDef } from '../../src/shared/items.js';
 
 interface StubObject {
@@ -56,6 +56,14 @@ const def: ItemDef = {
 };
 
 describe('item tooltip redesign', () => {
+  it('content-sizes equipped cards and keeps stats clear of the icon', () => {
+    const layout = getEquipmentTooltipCardLayout(176, ['+2 Armor', '+1 Strength'], def.description);
+    const iconBottom = layout.icon.y + layout.icon.size / 2;
+
+    expect(layout.statStartY).toBeGreaterThan(iconBottom);
+    expect(layout.height).toBe(layout.descriptionY + 2 * 13 + 10);
+  });
+
   it('renders icon, stats, flavor, and candidate differences inside the requested card', () => {
     const objects: StubObject[] = [];
     const scene = makeScene();

@@ -26,6 +26,21 @@ The screenshot visibly shows the occupied Head slot, gold target emphasis, and a
 non-occluding tooltip. Azure's only advisory blocker is an unsupported subjective
 "cramped tooltip" claim; deterministic geometry and text containment pass.
 
+### Content-aware follow-up
+
+The fixed inspector-height card was replaced with a compact content-aware layout.
+`Iron Helm` is bold and centered over its icon; `EQUIPPED` is right-aligned on
+the same header row. Stat rows begin below the icon's 28px safe area, followed
+by flavor text, and the card height is derived from the visible stat and
+description line count. The unit layout contract asserts the icon's bottom
+remains above the first stat row, so an icon/`+2 Armor` collision fails
+deterministically.
+
+`files/visual-review/after/v0.1.19/equipment-hover-equipped.{png,review.json}`
+is the updated real Phaser/Azure capture. It has zero deterministic blockers.
+Azure still issued a subjective padding claim despite the compact measured
+layout; the capture shows no unused right/bottom area.
+
 ## Validation
 
 - `npm run verify:fast` — passed.
