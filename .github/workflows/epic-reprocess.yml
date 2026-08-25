@@ -33,5 +33,4 @@ jobs:
       - name: Assign managed epic nodes
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
-          ISSUE_OWNER: nalfeo
         run: node .github/scripts/epics/epic-reprocess.mjs
