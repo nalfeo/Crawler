@@ -1,0 +1,148 @@
+name: Goobers Run
+
+# Manual-only dispatch of the Goobers `crawler-feature-pr` workflow from
+# GitHub Actions. Downloads a pinned, checksum-verified Goobers release binary
+# (no Go build step — see .github/workflows/goobers-validate.yml), scaffolds a
+# throwaway instance root in the runner's temp directory, materializes this
+# repo's versioned `.goobers/` source into it, and triggers the workflow via
+# `goobers run`, which blocks until the run reaches a terminal state.
+#
+# This does not run a daemon and does not persist any instance state between
+# dispatches — every run gets a fresh instance root. See .goobers/README.md
+# and README.md#goobers for the source layout and runtime-boundary rules.
+
+on:
+  workflow_dispatch:
+    inputs:
+      goobers_version:
+        description: 'Goobers release tag to pin (see https://github.com/Agent-Clubhouse/Goobers/releases)'
+        type: string
+        default: 'v0.2.2'
+      workflow:
+        description: 'Goobers workflow to run'
+        type: string
+        default: 'crawler-feature-pr'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: goobers-run-${{ inputs.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run ${{ inputs.workflow }} via Goobers
+    runs-on: ubuntu-latest
+    # Generous ceiling for a full plan -> implement -> review -> PR loop;
+    # the workflow's own maxConcurrentRuns/gates bound retries within this.
+    timeout-minutes: 90
+    env:
+      GOOBERS_VERSION: ${{ inputs.goobers_version }}
+      GOOBERS_REPO: Agent-Clubhouse/Goobers
+      GOOBERS_INSTANCE: ${{ github.workspace }}/.goobers-instance
+      GOOBERS_WORKFLOW: ${{ inputs.workflow }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache pinned Goobers binary
+        id: cache-goobers
+        uses: actions/cache@v4
+        with:
+          path: bin/goobers
+          key: goobers-bin-linux-amd64-${{ env.GOOBERS_VERSION }}
+
+      - name: Download and verify pinned Goobers release
+        if: steps.cache-goobers.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p bin dl
+          base="https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}"
+
+          curl -fsSL -o "dl/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz" \
+            "${base}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o dl/SHA256SUMS "${base}/SHA256SUMS"
+
+          # Verify only the archive we downloaded; SHA256SUMS lists every
+          # platform's artifacts and we don't fetch the rest.
+          (cd dl && sha256sum --check --ignore-missing SHA256SUMS)
+
+          tar -xzf "dl/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz" -C bin goobers
+          chmod +x bin/goobers
+          rm -rf dl
+
+      - name: Verify binary version
+        run: |
+          set -euo pipefail
+          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - name: Install Copilot CLI
+        # The crawler-feature-pr workflow's producer/coder/reviewer goobers
+        # all declare harness: copilot. Headless PAT auth works as of
+        # Goobers #1996 as long as COPILOT_GITHUB_TOKEN is present in the
+        # ambient process environment before goobers run starts (see
+        # docs/guides/copilot-hosted-runner-auth-spike.md in the Goobers repo).
+        run: |
+          curl -fsSL https://gh.io/copilot-install | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Validate .goobers source tree
+        run: goobers validate --source-tree .goobers
+
+      - name: Scaffold throwaway instance root
+        run: |
+          set -euo pipefail
+          rm -rf "$GOOBERS_INSTANCE"
+          mkdir -p "$GOOBERS_INSTANCE"
+
+      - name: Point the instance at this repository and the checked-in source
+        # workflowSource: local-dir reads the checked-in .goobers/ tree
+        # directly (kind local-dir per Goobers internal/instance/config.go),
+        # so runtime definitions always match the branch's committed source —
+        # no separate `config materialize` copy step needed.
+        run: |
+          set -euo pipefail
+          cat > "${GOOBERS_INSTANCE}/instance.yaml" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${{ github.repository_owner }}
+              name: ${{ github.event.repository.name }}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          workflowSource:
+            kind: local-dir
+            path: ${{ github.workspace }}/.goobers
+          credentials:
+            - capability: agent:model
+              token:
+                env: COPILOT_GITHUB_TOKEN
+          runConditions:
+            maxParallelRuns: 1
+          EOF
+          goobers validate "$GOOBERS_INSTANCE"
+
+      - name: Run the workflow
+        env:
+          # Ambient env, not runner.envPassthrough — required for the
+          # CopilotAdapter preflight probe on a clean runner (see the
+          # "Install Copilot CLI" step comment above).
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          goobers run "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
+
+      - name: Upload run journal
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+          path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
+          if-no-files-found: warn
+          retention-days: 30

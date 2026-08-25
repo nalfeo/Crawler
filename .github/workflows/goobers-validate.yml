@@ -1,0 +1,64 @@
+name: Goobers Validate
+
+# Manual-only infrastructure workflow. Downloads a pinned, checksum-verified
+# Goobers release binary (no Go build step) and validates the versioned
+# `.goobers/` desired-state source tree against it. This does not run any
+# Goobers workflow or daemon — it only proves the source is well-formed on a
+# GitHub-hosted runner. See .goobers/README.md and README.md#goobers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      goobers_version:
+        description: 'Goobers release tag to pin (see https://github.com/Agent-Clubhouse/Goobers/releases)'
+        type: string
+        default: 'v0.2.2'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Download pinned Goobers binary and validate source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOBERS_VERSION: ${{ inputs.goobers_version }}
+      GOOBERS_REPO: Agent-Clubhouse/Goobers
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache pinned Goobers binary
+        id: cache-goobers
+        uses: actions/cache@v4
+        with:
+          path: bin/goobers
+          key: goobers-bin-linux-amd64-${{ env.GOOBERS_VERSION }}
+
+      - name: Download and verify pinned Goobers release
+        if: steps.cache-goobers.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p bin dl
+          base="https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}"
+
+          curl -fsSL -o "dl/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz" \
+            "${base}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o dl/SHA256SUMS "${base}/SHA256SUMS"
+
+          # Verify only the archive we downloaded; SHA256SUMS lists every
+          # platform's artifacts and we don't fetch the rest.
+          (cd dl && sha256sum --check --ignore-missing SHA256SUMS)
+
+          tar -xzf "dl/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz" -C bin goobers
+          chmod +x bin/goobers
+          rm -rf dl
+
+      - name: Verify binary version
+        run: |
+          set -euo pipefail
+          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
+
+      - name: Validate .goobers source tree
+        run: ./bin/goobers validate --source-tree .goobers
