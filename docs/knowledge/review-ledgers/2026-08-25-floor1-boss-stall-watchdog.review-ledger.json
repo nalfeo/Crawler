@@ -6,24 +6,39 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.6-luna",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "Validated the three PR-thread findings and confirmed they are all applicable on c38ac13."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "summary": "Fixed boss-fight progress tracking to use same-entity HP deltas, corrected handoff issue hash, and completed this v2 3🍎 ledger."
+        }
+      ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
+      "completed": true,
+      "grader_model": "claude-sonnet-5",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "4f832f1",
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
       "findings_count": 0
     }
   }

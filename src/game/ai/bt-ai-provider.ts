@@ -992,7 +992,8 @@ export class BehaviorTreeAI implements AIInputProvider {
   private globalDwellBestEnemyHp: number = Number.POSITIVE_INFINITY;
   private questProgressActive: boolean = false;
   private questProgressBestScore: number = 0;
-  private questProgressBestEnemyHp: number = Number.POSITIVE_INFINITY;
+  private readonly nearbyEnemyHpScratch = new Map<number, number>();
+  private readonly questProgressNearbyEnemyHpByEid = new Map<number, number>();
   private questProgressStallFrames: number = 0;
   private readonly targetReachableCache = new Map<number, { frame: number; reachable: boolean }>();
   private readonly discoveredNpcDefs = new Set<string>();
@@ -3840,19 +3841,30 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const score = this.computeFloorProgressFingerprint(world);
-    const nearbyHp = this.sumNearbyEnemyHp(world, playerX, playerY);
+    const nearbyEnemyHpByEid = this.collectNearbyEnemyHpByEid(
+      world,
+      playerX,
+      playerY,
+      this.nearbyEnemyHpScratch,
+    );
 
     if (!this.questProgressActive) {
       this.questProgressActive = true;
       this.questProgressBestScore = score;
-      this.questProgressBestEnemyHp = nearbyHp;
+      this.questProgressNearbyEnemyHpByEid.clear();
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+      }
       this.questProgressStallFrames = 0;
       return;
     }
 
     if (score > this.questProgressBestScore) {
       this.questProgressBestScore = score;
-      this.questProgressBestEnemyHp = nearbyHp;
+      this.questProgressNearbyEnemyHpByEid.clear();
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+      }
       this.questProgressStallFrames = 0;
       return;
     }
@@ -3860,19 +3872,35 @@ export class BehaviorTreeAI implements AIInputProvider {
     // An active boss battle legitimately freezes the fingerprint (a single
     // binary "defeat the boss" objective, no add payouts) for the length of the
     // whittle. Relocating mid-fight would abandon the boss, so hold the timer
-    // while the live HP pool is dropping. New adds re-baseline the pool without
-    // resetting the timer; damage lowers it. A nearby but unreachable add with no
-    // HP delta still trips relocation instead of parking the run until timeout.
+    // while the live HP pool is dropping. Add enter/exit churn only updates
+    // membership baselines; only same-entity HP loss resets the timer. A nearby
+    // but unreachable add with no HP delta still trips relocation instead of
+    // parking the run until timeout.
     const bossQuest = world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID);
     const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
     const activeBossFight = bossQuest?.status === 'active' && nearestEnemy;
-    if (activeBossFight && nearbyHp > this.questProgressBestEnemyHp + ENGAGE_PROGRESS_EPSILON_FT) {
-      this.questProgressBestEnemyHp = nearbyHp;
+    let damagingBossFight = false;
+    if (activeBossFight) {
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        const baselineHp = this.questProgressNearbyEnemyHpByEid.get(eid);
+        if (baselineHp === undefined || hp > baselineHp + ENGAGE_PROGRESS_EPSILON_FT) {
+          this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+          continue;
+        }
+        if (hp < baselineHp - ENGAGE_PROGRESS_EPSILON_FT) {
+          damagingBossFight = true;
+          this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+        }
+      }
+      for (const trackedEid of this.questProgressNearbyEnemyHpByEid.keys()) {
+        if (!nearbyEnemyHpByEid.has(trackedEid)) {
+          this.questProgressNearbyEnemyHpByEid.delete(trackedEid);
+        }
+      }
+    } else {
+      this.questProgressNearbyEnemyHpByEid.clear();
     }
-    const damagingBossFight =
-      activeBossFight && nearbyHp < this.questProgressBestEnemyHp - ENGAGE_PROGRESS_EPSILON_FT;
     if (damagingBossFight) {
-      this.questProgressBestEnemyHp = nearbyHp;
       this.questProgressStallFrames = 0;
       return;
     }
@@ -3923,6 +3951,32 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
     return sum;
+  }
+
+  private collectNearbyEnemyHpByEid(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: Map<number, number>,
+  ): Map<number, number> {
+    target.clear();
+    const engageRadius = this.getEngageRadius(world);
+    const radiusSq = engageRadius * engageRadius;
+    const enemies = query(world.ecs, [Enemy, Position, Health]);
+    for (const eid of enemies) {
+      if (eid === undefined) continue;
+      const hp = world.stores.health.current[eid] ?? 0;
+      if (hp <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const dx = ex - playerX;
+      const dy = ey - playerY;
+      if (dx * dx + dy * dy <= radiusSq) {
+        target.set(eid, hp);
+      }
+    }
+    return target;
   }
 
   private invalidateTransientDecisionForHostileEncounter(world: GameWorld): void {
@@ -9712,7 +9766,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.globalDwellBestEnemyHp = Number.POSITIVE_INFINITY;
     this.questProgressActive = false;
     this.questProgressBestScore = 0;
-    this.questProgressBestEnemyHp = Number.POSITIVE_INFINITY;
+    this.nearbyEnemyHpScratch.clear();
+    this.questProgressNearbyEnemyHpByEid.clear();
     this.questProgressStallFrames = 0;
     this.discoveredNpcDefs.clear();
     this.talkedNpcDefs.clear();

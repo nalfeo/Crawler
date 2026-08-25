@@ -88,7 +88,10 @@ import {
   LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
-import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+} from '../../src/shared/quest-types.js';
 import {
   FamilyMembership,
   AoeOnImpact,
@@ -2904,6 +2907,38 @@ describe('BehaviorTreeAI', () => {
     // Giveup must clear the entire baseline map so the next enemy the BT
     // retargets starts fresh rather than inheriting a stale bar.
     expect(internals.engageBaselinesByEid.size).toBe(0);
+  });
+
+  it('does not treat nearby enemy membership churn as boss-fight damage progress', () => {
+    const world = createTestWorld({ seed: 32 });
+    world.state = 'playing';
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+    const boss = spawnEnemy(world, 3, 0, 120);
+    const add = spawnEnemy(world, 10, 0, 60);
+
+    const ai = new BehaviorTreeAI({ seed: 32 });
+    const internals = ai as unknown as {
+      questProgressStallFrames: number;
+      questProgressNearbyEnemyHpByEid: Map<number, number>;
+      updateQuestProgressWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+
+    internals.updateQuestProgressWatchdog(world, 0, 0);
+    expect(internals.questProgressStallFrames).toBe(0);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(boss)).toBe(120);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(add)).toBe(60);
+
+    world.stores.position.x[add] = 1000;
+    world.stores.position.y[add] = 0;
+    internals.updateQuestProgressWatchdog(world, 0, 0);
+
+    expect(internals.questProgressStallFrames).toBe(1);
+    expect(internals.questProgressNearbyEnemyHpByEid.has(add)).toBe(false);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(boss)).toBe(120);
   });
 
   it('resets the ENGAGE progress baseline when the tracked target dies', () => {
