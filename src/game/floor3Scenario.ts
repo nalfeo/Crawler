@@ -89,6 +89,7 @@ import {
   _generateTrainerPoachOffer,
   _recruitCompanion,
 } from './floor3Recruiting.js';
+import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { AI_TYPE } from './enemyAISystem.js';
@@ -902,6 +903,11 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   // (`'safe_room'`) or any loss (`'game_over'`) the objective tick must not run
   // again and re-transition state.
   if (world.state !== 'playing') return;
+
+  // Persistent player reward track (spec R7, slice 10). Runs FIRST so the KOs
+  // that complete an encounter this frame still pay out before the wipe check
+  // below despawns that roster.
+  awardFloor3CompanionDefeatRewards(world);
 
   // Timeout loss — suppressed once victory is latched. `latchFloor3Victory`
   // sets `FLOOR3_VICTORY_GOAL_ID` while the world is still `'playing'` (the
