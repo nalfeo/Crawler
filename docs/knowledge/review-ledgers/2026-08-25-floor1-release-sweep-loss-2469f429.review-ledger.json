@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.6-flash",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "5d3935210231b69e668a9c85c618d546b89dedaf",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly resolves Floor 1 release sweep losses by incorporating merchant weapon reserves into repeat spell broker intent checks, adding a health threshold for post-boss spell broker return routing, and disabling mid-run loot sweeps on Floor 1. The changes are surgical, preserve initial spell purchase priorities, update collision parity baselines appropriately, and are thoroughly validated through both targeted unit tests and headless regression seeds."
     }
   }
 }
