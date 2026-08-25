@@ -576,9 +576,12 @@ function initializeFloor3Studios(
   // One team id shared by every Handler's Companions in the Final Four.
   const finalFourTeamId = FLOOR3_FINAL_FOUR_TEAM_BASE;
   const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
-  const finalFourRoom = territoryRooms.find(
-    (room) => !studios.some((studio) => studio.roomId === room.id),
-  );
+  const finalFourRoom =
+    floorMap.roomGraph
+      .getAll()
+      .find(
+        (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+      ) ?? territoryRooms.find((room) => !studios.some((studio) => studio.roomId === room.id));
   const finalFourPlacement = finalFourRoom
     ? stampFloor3EncounterSetPiece(world, finalFourRoom, FLOOR3_FINAL_FOUR_SET_PIECE_ID)
     : undefined;
@@ -634,11 +637,9 @@ function initializeFloor3Studios(
 function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3StudiosState): void {
   const floorMap = world.floorMap;
   if (!floorMap || studiosState.finalFourPendingSpawns.length === 0) return;
-  // Avoid spawning directly on top of the player — the Final Four arena is
-  // an unlabeled point found by spiral-scanning the map centre (no dedicated
-  // room geometry exists yet, spec slice 9), so it could otherwise coincide
-  // with wherever the player happens to be standing when the gate unlocks
-  // (plan-review finding, slice 8).
+  // Map overrides used by focused tests can omit the generated chamber. Keep
+  // their fallback spawn path from stacking on the player; production Floor 3
+  // maps resolve the Final Four's pending positions from the dedicated arena.
   const player = query(world.ecs, [Player, Position])[0];
   const avoidPlayerTile =
     player === undefined

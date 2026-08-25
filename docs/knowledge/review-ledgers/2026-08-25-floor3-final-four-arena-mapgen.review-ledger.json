@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor3-final-four-arena-mapgen",
+  "task_title": "Floor 3 Final Four arena chamber map generation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Reviewer identified that seven Studios exhaust all TERRITORY rooms, leaving the Final Four permanently on the spiral fallback. Resolved: carve/register an exact 10x10 generator-owned BOSS_STAIR arena; scenario selects it explicitly; use the carved room's roster tiles; delete the fallback scan; test fitted stamp, geometry/role, deterministic output, and multi-seed reachability. Alternative: scenario post-generation carve/stamp rejected because it bypasses generator reachability/retry ownership. Alternative: a new shared RoomRole rejected because BOSS_STAIR already describes a terminal boss chamber and avoids expanding every role consumer. Chosen: Floor 3 generator-owned arena chamber plus scenario wiring. divergence=minor."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -142,7 +142,7 @@ describe('CaveSystemGenerator', () => {
     expect(a.playerSpawn).toEqual(b.playerSpawn);
   });
 
-  it('builds deterministic floor3 biome territory zones with no Floor 2-only rooms', () => {
+  it('builds deterministic floor3 biome territory zones with a dedicated Final Four arena', () => {
     const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
     const config = smallFloor3Config(4321);
     const left = generator.generate(config, new SeededRandom(4321));
@@ -159,6 +159,40 @@ describe('CaveSystemGenerator', () => {
     expect(rooms.filter((room) => room.role === RoomRole.BOSS_DEN)).toHaveLength(0);
     expect(rooms.filter((room) => room.role === RoomRole.SETTLEMENT)).toHaveLength(0);
     expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
+    const arena = rooms.find(
+      (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+    );
+    expect(arena).toBeDefined();
+    expect(arena?.bounds).toMatchObject({ width: 10, height: 10 });
+    expect(arena?.doors).toHaveLength(1);
+  });
+
+  it('keeps the Final Four arena deterministic, sealed, and reachable across representative seeds', () => {
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    for (const seed of [1, 42, 4321]) {
+      const config = smallFloor3Config(seed);
+      const left = generator.generate(config, new SeededRandom(seed));
+      const right = generator.generate(config, new SeededRandom(seed));
+      const arena = left.roomGraph
+        .getAll()
+        .find(
+          (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+        );
+      expect(arena, `seed=${seed} missing Final Four arena`).toBeDefined();
+      expectRoomPerimeterSealed(left, arena!, seed);
+      expect(right.roomGraph.get(arena!.id)?.bounds).toEqual(arena!.bounds);
+
+      const reached = bfsReachable(
+        left,
+        left.playerSpawn.x,
+        left.playerSpawn.y,
+        left.width,
+        left.height,
+      );
+      const centerX = arena!.bounds.x + Math.floor(arena!.bounds.width / 2);
+      const centerY = arena!.bounds.y + Math.floor(arena!.bounds.height / 2);
+      expect(reached[centerY * left.width + centerX], `seed=${seed} arena unreachable`).toBe(1);
+    }
   });
 
   it('enlarges the floor3 spawn/entrance room (issue: too small for the starter-pick UX) while staying reachable', () => {

@@ -241,6 +241,9 @@ describe('floor3 studios + final four objective tick', () => {
     expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
     expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
     expect(state.finalFour.setPieceCarved).toBe(true);
+    const finalFourRoom = world.floorMap?.roomGraph.get(state.finalFour.roomId);
+    expect(finalFourRoom?.role).toBe(RoomRole.BOSS_STAIR);
+    expect(finalFourRoom?.label).toBe('floor3_final_four_arena');
     for (const pending of state.finalFourPendingSpawns) {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();
