@@ -163,16 +163,18 @@ function nextBrokerOffer(
  * `returning` intent that the executor then refuses to fund would walk the AI
  * back to the broker every tick without ever buying anything.
  */
-function spendableGold(world: GameWorld): number {
-  return Math.max(0, world.playerGold - requiredShopPurchaseReserve(world));
+function spendableGold(world: GameWorld, merchantReserve: number): number {
+  return Math.max(0, world.playerGold - requiredShopPurchaseReserve(world) - merchantReserve);
 }
 
 export function updateSpellBrokerIntent(
   world: GameWorld,
   runPlan: Floor1RunPlan | null,
   goldFarmMs: number,
+  merchantWeaponReserve = 0,
 ): SpellBrokerIntent {
   let intent = getSpellBrokerIntent(world);
+  const repeatSpellMerchantReserve = intent.purchaseCount > 0 ? merchantWeaponReserve : 0;
 
   // Nothing to do when disabled, already bought, or decision says no-buy.
   if (!intent.enabled || !intent.shouldBuy || intent.purchaseStatus === 'purchased') {
@@ -185,7 +187,10 @@ export function updateSpellBrokerIntent(
   // this recovery a run that abandoned early banks its whole income and buys
   // nothing, even while sitting on several times the asking price.
   if (intent.purchaseStatus === 'abandoned') {
-    if (!world.featureUnlocks.spells || spendableGold(world) < intent.cost) {
+    if (
+      !world.featureUnlocks.spells ||
+      spendableGold(world, repeatSpellMerchantReserve) < intent.cost
+    ) {
       return intent;
     }
     intent = { ...intent, purchaseStatus: 'returning' };
@@ -198,7 +203,7 @@ export function updateSpellBrokerIntent(
     return intent; // stay idle until then
   }
 
-  const deficit = Math.max(0, intent.cost - spendableGold(world));
+  const deficit = Math.max(0, intent.cost - spendableGold(world, repeatSpellMerchantReserve));
 
   // A repeat purchase (purchaseCount > 0) is the run's lowest-priority sink:
   // it exists to absorb gold that would otherwise sit unspent, not to justify

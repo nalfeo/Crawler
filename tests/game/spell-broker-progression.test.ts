@@ -266,6 +266,22 @@ describe('spell skills', () => {
       expect(result.purchaseStatus).toBe('returning');
     });
 
+    it('abandons a repeat spell that would consume a pending weapon reserve', () => {
+      const world = createTestWorld({ seed: 13 });
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+      const repeat = getSpellBrokerIntent(world);
+
+      const pendingWeaponReserve = 170;
+      world.playerGold = repeat.cost + pendingWeaponReserve - 1;
+
+      expect(updateSpellBrokerIntent(world, null, 3_000, pendingWeaponReserve).purchaseStatus).toBe(
+        'abandoned',
+      );
+    });
+
     it('runs the merchant weapon purchase alongside the broker, behind a gold reserve', () => {
       // These two purchases used to be mutually exclusive, capping a run at one
       // optional pickup no matter how much gold it had. They now run
