@@ -1258,13 +1258,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildLootSweepBehavior('pre-exit'),
         this.buildLocalThreatRecoveryBehavior(),
         // Priority 2.7: Mid-run loot sweep — a bounded post-combat cleanup
-        // (`LOOT_SWEEP_RADIUS_FT`) so the drops from the fight that just ended
-        // aren't left behind while Engage/Hunt (lower priority) moves on to the
-        // next enemy. It sits BELOW LocalThreatRecovery on purpose: recovery owns
-        // resolving the exact enemy that triggered a retreat before the AI
-        // resumes progression, and a nearby gem must never preempt that at
-        // critical health. The window guard inside `buildLootSweepBehavior` makes
-        // the two windows mutually exclusive, so only one ever fires per frame.
+        // (`LOOT_SWEEP_RADIUS_FT`) outside Floor 1's release-critical run. It
+        // remains below LocalThreatRecovery so a nearby gem never preempts a live
+        // recovery target, but above Progress on other floors so post-combat drops
+        // are still collected before moving on.
         this.buildLootSweepBehavior('mid-run'),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
         // equipment, so it is treated as a quest objective rather than as loot
@@ -8200,9 +8197,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * while reachable loot remains.
    *
    * Two windows share this node:
-   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT`, so it only picks up
-   *   the drops from the fight that just ended and never becomes a cross-floor
-   *   errand.
+   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT` outside Floor 1's
+   *   objective chain, so it only picks up the drops from the fight that just
+   *   ended and never becomes a cross-floor errand.
    * - **Pre-exit** — unbounded once the staircase is unlocked but not yet
    *   descended, because the floor transition destroys every uncollected pickup.
    *
@@ -8242,6 +8239,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         // staircase has not yet been descended; mid-run fires at all other times.
         if (window === 'pre-exit' && !inPreExitWindow) return false;
         if (window === 'mid-run' && inPreExitWindow) return false;
+        if (window === 'mid-run' && this.isFloor1Run(ctx.world)) {
+          this.lootSweepTargetEid = null;
+          return false;
+        }
         const maxDistance = inPreExitWindow ? Number.POSITIVE_INFINITY : LOOT_SWEEP_RADIUS_FT;
         const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
         if (!loot) return false;
@@ -8258,6 +8259,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  private isFloor1Run(world: GameWorld): boolean {
+    return world.floorId === 'floor1' && world.floorScenario?.objective != null;
   }
 
   private findNearestLoot(world: GameWorld, playerX: number, playerY: number): LootTarget | null {

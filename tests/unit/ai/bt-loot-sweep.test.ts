@@ -1,10 +1,10 @@
 /**
- * BT loot sweep tests (Priority 2.5).
+ * BT loot sweep tests.
  *
  * Two mutually-exclusive windows share this node:
- *   - **mid-run** (default, whenever the pre-exit window is not open): bounded
- *     to `LOOT_SWEEP_RADIUS_FT`, a local post-combat cleanup so drops from the
- *     fight that just ended aren't left behind while the AI moves on.
+ *   - **mid-run** (default outside the Floor 1 objective chain): bounded to
+ *     `LOOT_SWEEP_RADIUS_FT`, a local post-combat cleanup so drops from the fight
+ *     that just ended aren't left behind while the AI moves on.
  *   - **pre-exit**: unbounded radius, active while the floor staircase is
  *     unlocked and not yet discovered, because descending destroys every
  *     uncollected pickup.
@@ -25,12 +25,16 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { LOOT_SWEEP_RADIUS_FT } from '../../../src/game/ai/bt-ai-tuning.js';
 import { spawnEnemy, spawnPlayer } from '../../../src/core/spawners/combatants.js';
-import { spawnXpGem } from '../../../src/core/spawners/pickups.js';
+import { spawnGold, spawnXpGem } from '../../../src/core/spawners/pickups.js';
 import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
 } from '../../../src/game/floorScenario.js';
-import { initializeFloor2Scenario } from '../../../src/game/floor2Scenario.js';
+import {
+  FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
+  FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  initializeFloor2Scenario,
+} from '../../../src/game/floor2Scenario.js';
 import { createInputState } from '../../../src/shared/input.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AIState } from '../../../src/game/ai/types.js';
@@ -56,10 +60,20 @@ function playerPos(
   };
 }
 
-function pollDecision(world: ReturnType<typeof createTestWorld>) {
-  const ai = new BehaviorTreeAI({ seed: 42 });
+function pollDecision(
+  world: ReturnType<typeof createTestWorld>,
+  ai = new BehaviorTreeAI({ seed: 42 }),
+) {
   ai.poll(createInputState(), world);
   return ai.getDecision();
+}
+
+function suppressProgressGoals(ai: BehaviorTreeAI): void {
+  (
+    ai as unknown as {
+      progressGoalSuppressedUntilFrame: number;
+    }
+  ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
 }
 
 function makeFloor1World() {
@@ -67,6 +81,20 @@ function makeFloor1World() {
   const player = spawnPlayer(world, 0, 0);
   initializeFloor1Scenario(world, player);
   selectFloor1StarterWeapon(world, 0);
+  return { world, player, ...playerPos(world, player) };
+}
+
+function makeFloor2MidRunWorld() {
+  const world = createTestWorld({ seed: 42, floor: 2 });
+  const player = spawnPlayer(world, 0, 0);
+  initializeFloor2Scenario(world, player);
+  world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+  world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+  const floor2State = world.floorExtendedState?.familyState;
+  if (!floor2State) throw new Error('No Floor 2 family state');
+  floor2State.staircaseUnlocked = false;
+  floor2State.staircaseSpawned = false;
+  floor2State.staircaseDiscovered = false;
   return { world, player, ...playerPos(world, player) };
 }
 
@@ -107,16 +135,38 @@ describe('BT — loot sweep (Priority 2.5)', () => {
   });
 
   describe('mid-run (local) window', () => {
-    it('sweeps a nearby XP gem while no staircase sweep window is open', () => {
+    it('does NOT sweep during Floor 1 before the pre-exit window opens', () => {
       const { world, x, y } = makeFloor1World();
-      // No `openSweepWindow` call — the pre-exit window is closed, so any sweep
-      // that fires here must be the mid-run window.
+
+      spawnXpGem(world, x + 5, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
+    });
+
+    it('sweeps a nearby XP gem during Floor 2 mid-run cleanup', () => {
+      const { world, x, y } = makeFloor2MidRunWorld();
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      suppressProgressGoals(ai);
 
       const gemEid = spawnXpGem(world, x + 5, y, 10);
 
-      const decision = pollDecision(world);
+      const decision = pollDecision(world, ai);
       expect(decision.state).toBe(AIState.COLLECT);
       expect(decision.targetEid).toBe(gemEid);
+      expect(decision.reason.toLowerCase()).toContain('sweep');
+    });
+
+    it('sweeps nearby gold during Floor 2 mid-run cleanup', () => {
+      const { world, x, y } = makeFloor2MidRunWorld();
+      const ai = new BehaviorTreeAI({ seed: 42 });
+      suppressProgressGoals(ai);
+
+      const goldEid = spawnGold(world, x + 5, y, 3);
+
+      const decision = pollDecision(world, ai);
+      expect(decision.state).toBe(AIState.COLLECT);
+      expect(decision.targetEid).toBe(goldEid);
       expect(decision.reason.toLowerCase()).toContain('sweep');
     });
 
