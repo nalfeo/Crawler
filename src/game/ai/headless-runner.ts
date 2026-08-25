@@ -1102,6 +1102,17 @@ export async function runHeadless(
         world.state = 'playing';
       }
 
+      // Mirror MainGameScene.update()'s loadout modal: a scenario can re-enter
+      // `'loadout'` mid-run (Floor 3 pauses on every Trainer-poach pick, spec
+      // §6.2). The visual game reopens the picker; the headless runner has no
+      // UI, so it resolves each pending choice deterministically with option 0
+      // — exactly like the floor-start starter pick above. Without this the
+      // floor objective tick, which only runs while `'playing'`, would stall
+      // for the rest of the run.
+      if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
+        scenario.selectLoadoutOption(world, 0);
+      }
+
       // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
       // the player physically spawns on stage, so sample the phase BEFORE the
       // step and account for it at the same post-step point as safeRoomSystem.

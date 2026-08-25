@@ -281,6 +281,41 @@ export interface Floor3EncounterState {
    * which has its own `finalFourPendingSpawns` field.
    */
   pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /**
+   * The Companions this encounter's Trainers field, retained past spawning so
+   * the poach picker (spec §6.2, UX surface #3) can still offer the full
+   * roster after the encounter is defeated and despawned. Unused by the Final
+   * Four, which is never poachable (it ends the floor).
+   */
+  readonly poachRoster: readonly Floor3PoachCandidate[];
+  /**
+   * Latched true once this encounter's defeat has produced a poach offer (or
+   * was skipped because the party had already locked), so a defeated Studio
+   * can never re-offer its roster on a later tick.
+   */
+  poachOffered: boolean;
+}
+
+/** One poachable Companion on a defeated Trainer's roster (spec §6.2). */
+export interface Floor3PoachCandidate {
+  readonly speciesId: string;
+  readonly level: number;
+}
+
+/**
+ * A pending Trainer-poach pick (spec §6.2, UX surface #3): written by
+ * `floor3ObjectiveTick` when a Studio is defeated while the player's party
+ * still has a recruit slot, and consumed by the Floor 3 loadout dispatcher.
+ */
+export interface Floor3PoachOffer {
+  /** Id of the defeated encounter the offer came from (dedupe key). */
+  readonly encounterId: string;
+  /** Display name of the defeated Studio, for the picker subtitle. */
+  readonly encounterName: string;
+  /** The defeated roster in seeded offer order. */
+  readonly candidates: readonly Floor3PoachCandidate[];
+  /** Recruit slots left before the party locks, this pick included. */
+  readonly slotsRemaining: number;
 }
 
 /** A single Companion an encounter gate spawns once it unlocks (deferred, spec R6 soft-gate). */
@@ -321,6 +356,14 @@ export interface Floor3StudiosState {
   staircaseUnlocked?: boolean;
   /** True once the player confirms descent — terminal run state. */
   staircaseDiscovered?: boolean;
+  /**
+   * ECS entity id of the single party Companion the player will keep
+   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
+   * first party slot the moment victory latches, then overridable by
+   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
+   * floor-transition carryover is captured. `undefined` before victory.
+   */
+  keptCompanionEid?: number;
 }
 
 export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;

@@ -39,6 +39,9 @@ on:
           process. Leave empty to process every *.epic.json file in the repo.
         required: false
         default: ''
+  # Retry missed review-close events and finish partially materialized epics.
+  schedule:
+    - cron: '0 * * * *'
 
 permissions:
   contents: read

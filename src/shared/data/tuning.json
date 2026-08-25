@@ -51,6 +51,10 @@
     "_engagementEndFrames_note": "Frames (at 60 FPS, ~3s) a team must go without any rival within engagementRangeFt before its knocked-out Companions recover (spec R11 'short window', slice 6).",
     "rallyPointRangeFt": 4,
     "_rallyPointRangeFt_note": "Proximity radius (ft) within which the player instantly revives the whole party at a Rally Point (spec §8/R11, slice 6); matches the harvest/boss-chest pickup radius convention.",
+    "commandCooldownFrames": 300,
+    "_commandCooldownFrames_note": "Frames (at 60 FPS, ~5s) a Companion's signature ability stays on cooldown after the player commands it (spec R7 / game-design \u00a715 surface 7). Placeholder magnitude \u2014 the Floor 3 ability effects are not authored yet, so this gates only the command affordance; slice 16 tunes it with the abilities.",
+    "commandLevelsPerCapacityCharge": 5,
+    "_commandLevelsPerCapacityCharge_note": "Player levels required per EXTRA simultaneous command charge (spec R7 'player level also powers Floor-3 command capacity'). Capacity is 1 + floor((playerLevel - 1) / this), capped at partyMaxSize.",
     "partyMaxSize": 6,
     "_partyMaxSize_note": "Starter pick + 5 poaches = 6 (spec R5); PartySlot.locked latches once this many Companions have been recruited."
   },

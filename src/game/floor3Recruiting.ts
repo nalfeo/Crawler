@@ -14,11 +14,13 @@
 import { recruitPartyCompanion, type GameWorld } from '../core/index.js';
 import type { SeededRandom } from '../shared/random.js';
 import {
+  formForLevel,
   getPetSpecies,
   loadPetSpecies,
   speciesTokenForId,
   type PetSpeciesDef,
 } from '../shared/data/floor3/species.js';
+import { xpRequiredForLevel } from '../shared/xpMath.js';
 import type { Affinity } from '../shared/data/floor3/affinity.js';
 import {
   STYLE_PERSONAS,
@@ -143,6 +145,7 @@ export function _recruitCompanion(
 ): number | undefined {
   const species = getPetSpecies(speciesId);
   if (species === undefined) return undefined;
+  const level = options.level ?? 1;
 
   return recruitPartyCompanion(world, {
     x: options.x,
@@ -153,7 +156,9 @@ export function _recruitCompanion(
     aggroRange: options.aggroRange,
     attackRange: options.attackRange,
     speciesToken: speciesTokenForId(species.speciesId),
-    level: options.level ?? 1,
+    level,
+    form: formForLevel(species, level).form,
+    xp: xpRequiredForLevel(Math.max(0, level - 1)),
     ownerTeam: options.ownerTeam,
   });
 }
