@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { formatBaselineComment } from '../../scripts/agent/perf/format-baseline-comment';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const options = {
   baselineBlobUrl: 'https://example.test/baseline.json',
@@ -186,6 +192,7 @@ describe('formatBaselineComment', () => {
       winRate: 1,
       totalWins: 2,
       totalRuns: 2,
+      legs: { floor1: { winRate: 1, totalWins: 2, totalRuns: 2 } },
       runs: [
         {
           gameTimeMs: 60_000,
@@ -246,5 +253,46 @@ describe('formatBaselineComment', () => {
     expect(body).toContain(
       '[Release report](https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo)',
     );
+  });
+
+  it('withholds the fun delta when optional release legs differ', () => {
+    const current = {
+      meta: { commit: 'a'.repeat(40), sweep: { revision: 2 } },
+      winRate: 1,
+      totalWins: 2,
+      totalRuns: 2,
+      legs: {
+        floor1: { winRate: 1, totalWins: 2, totalRuns: 2 },
+        floor2: { winRate: 1, totalWins: 2, totalRuns: 2 },
+      },
+    };
+    const previous = {
+      ...current,
+      meta: { commit: 'b'.repeat(40), sweep: { revision: 2 } },
+      legs: {
+        floor1: { winRate: 1, totalWins: 2, totalRuns: 2 },
+        'floor1-chain': { winRate: 1, totalWins: 2, totalRuns: 2 },
+      },
+    };
+
+    const body = formatBaselineComment(current, [entry(10, 1), entry(9, 1)], {
+      ...options,
+      previousBaseline: previous,
+      funReport: funReport(75, true),
+      previousFunReport: funReport(72, true),
+    });
+
+    expect(body).toContain(
+      '**75.0/100** · gate **pass** · 2 runs · Δ inconclusive (cohort changed)',
+    );
+  });
+
+  it('links the report from the current dev Pages tier', () => {
+    const formatter = readFileSync(
+      path.join(REPO_ROOT, 'scripts/agent/perf/format-baseline-comment.ts'),
+      'utf8',
+    );
+
+    expect(formatter).toContain("new URL('dev/release-baseline-report.html', base)");
   });
 });

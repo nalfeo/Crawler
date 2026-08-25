@@ -19,6 +19,9 @@ describe('release baseline Pages report', () => {
     expect(report).toContain('by-sha/${encodeURIComponent(commit)}.fun-report.json');
     expect(report).toContain("fetchJson(rawUrl('index.json'), false)");
     expect(report).toContain('function sortBaselines(index)');
+    expect(report).toContain('function sameLegCohort(current, previous)');
+    expect(report).toContain('sameFunCohort(currentFun, previousFun)');
+    expect(report).toContain("typeof current.legs[legId].totalRuns === 'number'");
     expect(report).toContain('const history = sortBaselines(index)');
     expect(report).toContain('COMMIT_PATTERN');
     expect(report).toContain('REPO_PATTERN');

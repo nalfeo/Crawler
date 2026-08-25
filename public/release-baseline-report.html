@@ -251,6 +251,26 @@
           });
         }
 
+        function sameLegCohort(current, previous) {
+          if (!isRecord(current?.legs) || !isRecord(previous?.legs)) return false;
+          const currentLegIds = Object.keys(current.legs).sort();
+          const previousLegIds = Object.keys(previous.legs).sort();
+          return (
+            currentLegIds.length === previousLegIds.length &&
+            currentLegIds.every(
+              (legId, index) =>
+                legId === previousLegIds[index] &&
+                isRecord(current.legs[legId]) &&
+                isRecord(previous.legs[legId]) &&
+                typeof current.legs[legId].totalRuns === 'number' &&
+                Number.isFinite(current.legs[legId].totalRuns) &&
+                typeof previous.legs[legId].totalRuns === 'number' &&
+                Number.isFinite(previous.legs[legId].totalRuns) &&
+                current.legs[legId].totalRuns === previous.legs[legId].totalRuns,
+            )
+          );
+        }
+
         function sameFunCohort(current, previous) {
           if (!current || !previous || current.runs !== previous.runs) return false;
           const currentScores = isRecord(current.persona_scores) ? current.persona_scores : {};
@@ -373,7 +393,10 @@
           const previousFun = funReport(previousFunPayload);
           const fun = appendSection('Fun evaluation', 'Deterministic evaluation; diagnostic only.');
           if (currentFun && typeof currentFun.overall_fun_score === 'number') {
-            const funComparable = compatible && sameFunCohort(currentFun, previousFun);
+            const funComparable =
+              compatible &&
+              sameLegCohort(current, previous) &&
+              sameFunCohort(currentFun, previousFun);
             appendMetric(
               fun,
               'Overall fun score',

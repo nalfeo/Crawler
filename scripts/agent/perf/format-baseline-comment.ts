@@ -203,7 +203,31 @@ function isFunReport(value: unknown): value is ReleaseFunReport {
   );
 }
 
-function formatFunSection(currentValue: unknown, previousValue: unknown): string[] {
+function sameLegCohort(baseline: Baseline, previous: Baseline | undefined): boolean {
+  if (!previous || !baseline.legs || !previous.legs) return false;
+  const currentLegIds = Object.keys(baseline.legs).sort();
+  const previousLegIds = Object.keys(previous.legs).sort();
+  return (
+    currentLegIds.length === previousLegIds.length &&
+    currentLegIds.every((legId, index) => {
+      const currentRuns = baseline.legs?.[legId]?.totalRuns;
+      const previousRuns = previous.legs?.[legId]?.totalRuns;
+      return (
+        legId === previousLegIds[index] &&
+        Number.isFinite(currentRuns) &&
+        Number.isFinite(previousRuns) &&
+        currentRuns === previousRuns
+      );
+    })
+  );
+}
+
+function formatFunSection(
+  baseline: Baseline,
+  previousBaseline: Baseline | undefined,
+  currentValue: unknown,
+  previousValue: unknown,
+): string[] {
   if (!isFunReport(currentValue)) return [];
   const current = currentValue.report;
   const previous = isFunReport(previousValue) ? previousValue.report : undefined;
@@ -211,9 +235,10 @@ function formatFunSection(currentValue: unknown, previousValue: unknown): string
   if (previous) {
     try {
       const comparison = compareFunReports(previous, current);
-      delta = comparison.cohort.matched
-        ? `${formatNumberDelta(current.overall_fun_score, previous.overall_fun_score)} (${comparison.overall_fun_score.status})`
-        : 'inconclusive (cohort changed)';
+      delta =
+        comparison.cohort.matched && sameLegCohort(baseline, previousBaseline)
+          ? `${formatNumberDelta(current.overall_fun_score, previous.overall_fun_score)} (${comparison.overall_fun_score.status})`
+          : 'inconclusive (cohort changed)';
     } catch {
       // Historical diagnostic reports may predate a criterion; omit their delta.
     }
@@ -252,7 +277,7 @@ function formatPerformanceSections(baseline: Baseline, previous: Baseline | unde
       '',
       '### Damage rate',
       '',
-      `**${current.damagePerActiveMinute.toFixed(1)} damage / active min** (${dpsDelta(current.damagePerActiveMinute, previousMetrics?.damagePerActiveMinute)})`,
+      `**${current.damagePerActiveMinute.toFixed(1)} damage / active min** (${dpsDelta(current.damagePerActiveMinute, previousMetrics?.damagePerActiveMinute ?? undefined)})`,
     );
   }
   return sections;
@@ -347,7 +372,12 @@ export function formatBaselineComment(
     `📊 Baseline win-rate for this release: **${pct}%** (${wins}/${baseline.totalRuns})`,
     ...(breakdownLine ? [breakdownLine] : []),
     ...formatPerformanceSections(baseline, options.previousBaseline),
-    ...formatFunSection(options.funReport, options.previousFunReport),
+    ...formatFunSection(
+      baseline,
+      options.previousBaseline,
+      options.funReport,
+      options.previousFunReport,
+    ),
     ...legSection,
     '',
     `📈 Last ${newestFive.length} recorded baseline${newestFive.length === 1 ? '' : 's'} (oldest → newest):`,
@@ -406,7 +436,7 @@ function reportUrl(
     return '';
   }
   const base = pagesUrl.endsWith('/') ? pagesUrl : `${pagesUrl}/`;
-  const url = new URL('release-baseline-report.html', base);
+  const url = new URL('dev/release-baseline-report.html', base);
   url.searchParams.set('commit', commit);
   url.searchParams.set('repo', repo);
   return url.toString();
