@@ -12,6 +12,7 @@ const RELEASE_SWEEP_LOSSES = [
   { weapon: 'sword', seed: 5 },
   { weapon: 'pistol', seed: 5 },
   { weapon: 'pistol', seed: 38 },
+  { weapon: 'baseball-bat', seed: 31 },
   { weapon: 'throwing-knife', seed: 1 },
   { weapon: 'throwing-knife', seed: 11 },
 ] as const;

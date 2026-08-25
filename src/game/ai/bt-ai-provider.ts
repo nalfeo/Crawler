@@ -988,6 +988,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private globalDwellBestEnemyHp: number = Number.POSITIVE_INFINITY;
   private questProgressActive: boolean = false;
   private questProgressBestScore: number = 0;
+  private questProgressBestEnemyHp: number = Number.POSITIVE_INFINITY;
   private questProgressStallFrames: number = 0;
   private readonly targetReachableCache = new Map<number, { frame: number; reachable: boolean }>();
   private readonly discoveredNpcDefs = new Set<string>();
@@ -3835,33 +3836,45 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const score = this.computeFloorProgressFingerprint(world);
+    const nearbyHp = this.sumNearbyEnemyHp(world, playerX, playerY);
 
     if (!this.questProgressActive) {
       this.questProgressActive = true;
       this.questProgressBestScore = score;
+      this.questProgressBestEnemyHp = nearbyHp;
       this.questProgressStallFrames = 0;
       return;
     }
 
     if (score > this.questProgressBestScore) {
       this.questProgressBestScore = score;
+      this.questProgressBestEnemyHp = nearbyHp;
       this.questProgressStallFrames = 0;
-      return;
-    }
-
-    this.questProgressStallFrames++;
-    if (this.questProgressStallFrames <= QUEST_PROGRESS_STALL_FRAMES) {
       return;
     }
 
     // An active boss battle legitimately freezes the fingerprint (a single
     // binary "defeat the boss" objective, no add payouts) for the length of the
     // whittle. Relocating mid-fight would abandon the boss, so hold the timer
-    // while the boss quest is live and an enemy is actually in range.
+    // while the live HP pool is dropping. New adds re-baseline the pool without
+    // resetting the timer; damage lowers it. A nearby but unreachable add with no
+    // HP delta still trips relocation instead of parking the run until timeout.
     const bossQuest = world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID);
     const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
-    if (bossQuest?.status === 'active' && nearestEnemy) {
+    const activeBossFight = bossQuest?.status === 'active' && nearestEnemy;
+    if (activeBossFight && nearbyHp > this.questProgressBestEnemyHp + ENGAGE_PROGRESS_EPSILON_FT) {
+      this.questProgressBestEnemyHp = nearbyHp;
+    }
+    const damagingBossFight =
+      activeBossFight && nearbyHp < this.questProgressBestEnemyHp - ENGAGE_PROGRESS_EPSILON_FT;
+    if (damagingBossFight) {
+      this.questProgressBestEnemyHp = nearbyHp;
       this.questProgressStallFrames = 0;
+      return;
+    }
+
+    this.questProgressStallFrames++;
+    if (this.questProgressStallFrames <= QUEST_PROGRESS_STALL_FRAMES) {
       return;
     }
 
@@ -9690,6 +9703,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.globalDwellBestEnemyHp = Number.POSITIVE_INFINITY;
     this.questProgressActive = false;
     this.questProgressBestScore = 0;
+    this.questProgressBestEnemyHp = Number.POSITIVE_INFINITY;
     this.questProgressStallFrames = 0;
     this.discoveredNpcDefs.clear();
     this.talkedNpcDefs.clear();
