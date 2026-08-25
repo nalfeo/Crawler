@@ -56,8 +56,7 @@ function smallCaveConfig(seed: number): MapConfig {
 }
 
 /** Deterministic walkable anchors: the interior anchor cell of each room, in
- * descending room size, so the player, the staircase and the gold pile land in
- * three different rooms and the sweep is a real cross-map errand. */
+ * descending room size, so the player and the staircase land in different rooms. */
 function pickAnchors(floorMap: FloorMap): { x: number; y: number }[] {
   return [...floorMap.rooms]
     .sort(
@@ -78,7 +77,7 @@ function buildFloor2World() {
   world.state = 'playing';
 
   const anchors = pickAnchors(floorMap);
-  expect(anchors.length).toBeGreaterThanOrEqual(3);
+  expect(anchors.length).toBeGreaterThanOrEqual(2);
   const playerPos = anchors[0]!;
   const stairsPos = anchors[1]!;
   const goldPos = { x: playerPos.x + 4, y: playerPos.y };

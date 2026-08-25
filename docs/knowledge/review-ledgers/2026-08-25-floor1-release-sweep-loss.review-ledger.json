@@ -24,7 +24,7 @@
           "clean": true
         }
       ],
-      "notes": "Round 1 found no code correctness issues. The one process concern was the incomplete ledger itself; this session is resolving it before final PR prerequisites."
+      "notes": "Final review found one low-risk stale integration-test setup guard after the recovery fixture moved the gold near the player; lowered the anchor requirement and updated the docstring before final validation."
     },
     "independent_grade": {
       "completed": false,

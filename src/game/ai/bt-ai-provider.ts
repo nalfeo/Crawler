@@ -8223,8 +8223,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         // Safety gate: don't sweep while an enemy is close enough to matter. Both
         // windows use the full `scanRadius`: an undiscovered exit can still have
-        // lingering enemies, so an unbounded pre-exit chase must not outrun the
-        // threat check. The mid-run window uses it for two reasons:
+        // lingering enemies, so the pre-exit sweep must not outrun the threat
+        // check. The mid-run window uses it for two reasons:
         //  1. It keeps the sweep strictly post-combat. With the narrower engage
         //     radius the gate flickers as an enemy drifts in and out of range,
         //     which made the AI oscillate between COLLECT and Engage/Progress
