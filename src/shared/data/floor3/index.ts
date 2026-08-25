@@ -7,6 +7,11 @@ export * from './affinity.js';
 export * from './set-pieces.js';
 export * from './styles.js';
 export {
+  KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+  buildKeptCompanionContract,
+  type KeptCompanionContract,
+} from './kept-companion-contract.js';
+export {
   ABILITY_MILESTONE_LEVELS,
   FORM_MIN_LEVELS,
   formForLevel,

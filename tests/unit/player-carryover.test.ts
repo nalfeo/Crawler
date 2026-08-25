@@ -53,6 +53,7 @@ import {
 } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
+import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/index.js';
 describe('player floor carryover', () => {
   it('drops retired disabled slots while migrating a saved snapshot', () => {
     const source = createTestWorld({ seed: 7 });
@@ -2029,6 +2030,74 @@ describe('player floor carryover', () => {
       );
       expect(destination.playerName).toBe('Unchanged');
     }
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on a malformed keptCompanion contract (Floor 3 slice 11)', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.keptCompanion).toBeUndefined();
+
+    const validKeptCompanion = {
+      schemaVersion: KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+      speciesId: 'ember-charger',
+      affinity: 'ember',
+      fightingStyle: 'charger',
+      form: 2,
+      levelBand: 'floor3-graduate',
+      learnedAbilityIds: ['ember-charger-1'],
+    };
+
+    const invalidInputs: readonly unknown[] = [
+      // Wrong/missing schema version.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, schemaVersion: 'bogus' } },
+      // Non-string speciesId.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, speciesId: 42 } },
+      // Invalid affinity outside AFFINITY_RING.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, affinity: 'not-a-real-affinity' } },
+      // Invalid fightingStyle outside FIGHTING_STYLES.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, fightingStyle: 'not-a-style' } },
+      // Wrong form — the kept Companion must always be persisted at ultimate form (2).
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, form: 1 } },
+      // Wrong levelBand literal.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, levelBand: 'floor3-baby' } },
+      // learnedAbilityIds not an array.
+      {
+        ...snapshot,
+        keptCompanion: { ...validKeptCompanion, learnedAbilityIds: 'ember-charger-1' },
+      },
+      // learnedAbilityIds element not a string.
+      { ...snapshot, keptCompanion: { ...validKeptCompanion, learnedAbilityIds: [42] } },
+      // learnedAbilityIds has duplicate entries.
+      {
+        ...snapshot,
+        keptCompanion: {
+          ...validKeptCompanion,
+          learnedAbilityIds: ['ember-charger-1', 'ember-charger-1'],
+        },
+      },
+      // keptCompanion itself is not a non-null object.
+      { ...snapshot, keptCompanion: null },
+      { ...snapshot, keptCompanion: 'not-an-object' },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, floor: 2 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
+      expect(destination.playerName).toBe('Unchanged');
+    }
+
+    // A well-formed keptCompanion, in contrast, restores without throwing.
+    const destination = createTestWorld({ seed: 42, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    expect(() =>
+      restorePlayerCarryover(destination, destinationPlayer, {
+        ...snapshot,
+        keptCompanion: validKeptCompanion,
+      }),
+    ).not.toThrow();
   });
 
   describe('reward-opening presentation persistence (save/load-safe redisplay)', () => {

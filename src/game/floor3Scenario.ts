@@ -5,6 +5,7 @@ import {
   Enemy,
   Health,
   Player,
+  PartySlot,
   Position,
   Size,
   Sprite,
@@ -17,7 +18,7 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { stampSetPiece } from '../core/map/stampSetPiece.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
-import { spawnRosterCompanion } from '../core/spawners/companions.js';
+import { _partyMembers, spawnRosterCompanion } from '../core/spawners/companions.js';
 import { addSetPieceProp } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
@@ -720,9 +721,56 @@ function popFloor3ExitStairs(world: GameWorld): void {
   setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, true);
 }
 
+/**
+ * Auto-defaults the kept-companion pick (spec R7 §9.3, slice 11) to the
+ * player's first party slot the moment victory latches, so every run always
+ * carries a deterministic pick into `capturePlayerCarryover` even before the
+ * future keep-companion picker UI (slice 14) exists —
+ * `selectFloor3KeptCompanion` can still override it before the floor
+ * transition. A no-op if a pick already exists or the party is empty (never
+ * expected — the starter pick is mandatory).
+ */
+function autoDefaultFloor3KeptCompanion(world: GameWorld): void {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState || studiosState.keptCompanionEid !== undefined) return;
+  const party = [..._partyMembers(world, TeamId.PLAYER)].sort(
+    (a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0),
+  );
+  const firstEid = party[0];
+  if (firstEid !== undefined) {
+    studiosState.keptCompanionEid = firstEid;
+  }
+}
+
 function latchFloor3Victory(world: GameWorld): void {
   setGoalFlag(world, FLOOR3_VICTORY_GOAL_ID, true);
   popFloor3ExitStairs(world);
+  autoDefaultFloor3KeptCompanion(world);
+}
+
+/**
+ * End-of-floor picker hook (spec R7 §9.3, slice 11): lets the player
+ * override the auto-defaulted kept-companion pick with any of their own live
+ * party Companions before the floor-transition carryover is captured
+ * (`capturePlayerCarryover` resolves `studiosState.keptCompanionEid` into the
+ * persisted `KeptCompanionContract`). The actual picker UI is a separate,
+ * later slice (14) — this only wires the underlying selection.
+ *
+ * Returns `false` (no-op) if Floor 3 hasn't latched victory yet, or if
+ * `partyEid` isn't a live Companion on the player's own party.
+ */
+export function selectFloor3KeptCompanion(world: GameWorld, partyEid: number): boolean {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState || world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) return false;
+  if (
+    !hasComponent(world.ecs, partyEid, Companion) ||
+    !hasComponent(world.ecs, partyEid, PartySlot) ||
+    (world.stores.team.id[partyEid] ?? -1) !== TeamId.PLAYER
+  ) {
+    return false;
+  }
+  studiosState.keptCompanionEid = partyEid;
+  return true;
 }
 
 /**
