@@ -81,6 +81,11 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
 6. Re-running is always safe: every managed issue carries an HTML-comment
    marker in its body, so the script only ever creates issues that do not
    already exist. It never edits or duplicates one that does.
+7. [`Epic Reprocess`](../../.github/workflows/epic-reprocess.yml) runs after a
+   successful `Epic Create` run and hourly. It activates open managed node issues
+   through the normal Issue Copilot Intake path, after their textual blockers
+   close. This is necessary because issues created with `GITHUB_TOKEN` do not
+   emit a new `issues.opened` workflow event.
 
 ## Relationship to the `floor-2-equipment` epic-state control plane
 
