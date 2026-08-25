@@ -341,6 +341,9 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
       merchantWeaponIntent: { status: 'farming', cost: 20 },
     });
     const rawGraph = buildFloor1GoalGraph(snap);
+    expect(rawGraph.goals.find((goal) => goal.id === 'buy-merchant-weapon')?.utility).toEqual({
+      optimization: 100,
+    });
     const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
     const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
 
@@ -384,6 +387,11 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
       spellBrokerIntent: { status: 'farming', cost: 35 },
     });
     const rawGraph = buildFloor1GoalGraph(snap);
+    expect(rawGraph.goals.find((goal) => goal.id === 'buy-broker-spell')?.utility).toEqual({
+      completion: 40,
+      optimization: 60,
+      exploration: 20,
+    });
     const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
     const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
 

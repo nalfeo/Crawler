@@ -75,6 +75,7 @@ import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
+  AIDecisionMode,
   AIPathingMode,
   AIDecisionDebugState,
   AINpcInteractionAction,
@@ -346,7 +347,7 @@ import {
   type ScenarioAiOperation,
 } from './scenario-ai-tasks.js';
 import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
-import { planObjectiveRoute } from './objective-route-planner.js';
+import { planObjectiveRoute, type ObjectivePortfolioEntry } from './objective-route-planner.js';
 import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
@@ -1050,6 +1051,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     navEpoch: number;
     stateKey: string;
     goalId: string | null;
+    portfolio: readonly ObjectivePortfolioEntry[];
   } | null = null;
   /** Cached result of {@link planFloor1ObjectiveRoute}, keyed on quest-state + budget bucket + speed.
    * Exact timing and segment travel are recomputed per frame from the live snapshot. Cleared on {@link reset}. */
@@ -7333,13 +7335,17 @@ export class BehaviorTreeAI implements AIInputProvider {
         startLocation: PLAYER_START_LOCATION,
         initialSatisfiedEffects: graph.initialSatisfiedEffects,
         budgetMs: Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs),
+        ...(this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
+          ? { utilityWeights: this.config.strategicUtilityWeights }
+          : {}),
         travelOracle: oracle,
       });
-      nextGoalId = route.nextActionableGoalId;
+      nextGoalId = route.activeObjectiveId;
       this.floor1MiddleChainCache = {
         navEpoch: this.navEpoch,
         stateKey,
         goalId: nextGoalId,
+        portfolio: route.portfolio,
       };
     }
     if (!nextGoalId) return null;
@@ -9689,6 +9695,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** A/B axis 2: the decision mode this AI was constructed with. */
   getDecisionMode(): AIDecisionModeValue {
     return this.config.decisionMode;
+  }
+
+  /** Current flagged Floor 1 agenda, including optional objectives not selected. */
+  getObjectivePortfolio(): readonly ObjectivePortfolioEntry[] {
+    return this.floor1MiddleChainCache?.portfolio ?? [];
   }
 
   getNavigationDebug(): AINavigationDebug {

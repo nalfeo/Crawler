@@ -202,8 +202,11 @@ const EMPTY_OBJECTIVE_ROUTE: ObjectiveRoute = {
   totalMs: 0,
   includedOptionalBundleIds: [],
   droppedOptionalBundleIds: [],
+  portfolio: [],
+  selectedUtilityScore: null,
   requiredOverBudget: false,
   routeHeadId: null,
+  activeObjectiveId: null,
   nextActionableGoalId: null,
 };
 

@@ -10,6 +10,7 @@ import type { RunPlanSegmentPhase } from './run-planner.js';
 import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
 import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 import type { EventSummary } from './event-log.js';
+import type { ObjectiveUtilityWeights } from './objective-route-planner.js';
 
 /**
  * AI behavioral state machine states.
@@ -50,12 +51,14 @@ export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMo
 /**
  * A/B axis 2 — how the AI decides which Track A goal is eligible.
  *
- * `LEGACY` is the sole current member (fixed-priority ladder, time-blind).
- * Additional arms may be added for future floor tuning.
+ * `LEGACY` preserves the fixed-priority control. `OBJECTIVE_PORTFOLIO` is the
+ * opt-in personality-weighted strategic scheduler for declarative floor goals.
  */
 export const AIDecisionMode = {
   /** Fixed-priority Track A ladder, time-blind. The 2026-07-21 AI Sweep winner. */
   LEGACY: 'legacy',
+  /** Personality-weighted global objective portfolio with required deadline constraints. */
+  OBJECTIVE_PORTFOLIO: 'objectivePortfolio',
 } as const;
 export type AIDecisionModeValue = (typeof AIDecisionMode)[keyof typeof AIDecisionMode];
 
@@ -208,6 +211,8 @@ export interface AIConfig {
    * {@link AIDecisionMode.LEGACY} — fixed-priority Track A ladder, time-blind.
    */
   decisionMode?: AIDecisionModeValue;
+  /** Personality-specific strategic values used only by objectivePortfolio mode. */
+  strategicUtilityWeights?: ObjectiveUtilityWeights;
   /** Enable debug logging */
   debug?: boolean;
 }

@@ -244,6 +244,115 @@ describe('planObjectiveRoute', () => {
     expect(route.droppedOptionalBundleIds).toEqual(['expensive']);
   });
 
+  it('uses personality utility to choose an optional subset while retaining the full portfolio', () => {
+    const oracle = makeGraphOracle({
+      start: { required: 1, optimize: 1, explore: 1 },
+      required: { optimize: 1, explore: 1 },
+      optimize: { explore: 1 },
+    });
+    const goals: GoalNode[] = [
+      {
+        id: 'required',
+        location: 'required',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: true,
+      },
+      {
+        id: 'optimize',
+        location: 'optimize',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: false,
+        utility: { optimization: 10 },
+      },
+      {
+        id: 'explore',
+        location: 'explore',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: false,
+        utility: { exploration: 10 },
+      },
+    ];
+
+    const optimizer = planObjectiveRoute({
+      goals,
+      startLocation: 'start',
+      travelOracle: oracle,
+      budgetMs: 2,
+      utilityWeights: {
+        completion: 0,
+        optimization: 2,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0,
+      },
+    });
+
+    expect(optimizer.includedOptionalBundleIds).toEqual(['optimize']);
+    expect(optimizer.portfolio).toEqual([
+      {
+        goalId: 'explore',
+        required: false,
+        optionalBundleId: 'explore',
+        selected: false,
+        weightedUtility: 0,
+      },
+      {
+        goalId: 'optimize',
+        required: false,
+        optionalBundleId: 'optimize',
+        selected: true,
+        weightedUtility: 20,
+      },
+      {
+        goalId: 'required',
+        required: true,
+        optionalBundleId: null,
+        selected: true,
+        weightedUtility: 0,
+      },
+    ]);
+  });
+
+  it('treats required completion as a budget constraint instead of utility', () => {
+    const oracle = makeGraphOracle({ start: { required: 10, optional: 1 } });
+    const route = planObjectiveRoute({
+      goals: [
+        {
+          id: 'required',
+          location: 'required',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: true,
+        },
+        {
+          id: 'optional',
+          location: 'optional',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          utility: { optimization: 1_000_000 },
+        },
+      ],
+      startLocation: 'start',
+      travelOracle: oracle,
+      budgetMs: 5,
+      utilityWeights: {
+        completion: 0,
+        optimization: 100,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0,
+      },
+    });
+
+    expect(route.requiredOverBudget).toBe(true);
+    expect(route.steps.map((step) => step.goalId)).toEqual(['required']);
+    expect(route.includedOptionalBundleIds).toEqual([]);
+  });
+
   it('never drops a required goal to fit budget; reports requiredOverBudget with negative slack', () => {
     const oracle = makeGraphOracle({ start: { A: 500 } });
     const goals: GoalNode[] = [

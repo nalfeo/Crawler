@@ -1365,7 +1365,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiModesFolder
-    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY])
+    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.OBJECTIVE_PORTFOLIO])
     .name('Decision')
     .onChange(() => {
       rebuildAiBrain();

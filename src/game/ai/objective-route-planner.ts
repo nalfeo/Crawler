@@ -57,6 +57,22 @@
 export type GoalId = string;
 export type LocationId = string;
 
+export interface ObjectiveUtility {
+  readonly completion?: number;
+  readonly optimization?: number;
+  readonly safety?: number;
+  readonly exploration?: number;
+}
+
+export interface ObjectiveUtilityWeights {
+  readonly completion: number;
+  readonly optimization: number;
+  readonly safety: number;
+  readonly exploration: number;
+  /** Utility points charged per second of optional route/work overhead. */
+  readonly costPerSecond: number;
+}
+
 /**
  * Sentinel location for "work-only" goals that happen wherever the agent
  * currently stands (XP grinding, kill-quota grinding, equipping a purchased
@@ -83,6 +99,8 @@ export interface GoalNode {
    * without one default to a singleton bundle keyed by their own id. Ignored
    * for required goals. */
   readonly optionalBundleId?: string;
+  /** Optional strategic value. Required goals never use utility for eligibility. */
+  readonly utility?: ObjectiveUtility;
   /** Door/feature-unlock tags this goal satisfies once completed. Consulted
    * by the travel oracle via the "satisfied effects" argument. */
   readonly unlockEffects?: readonly string[];
@@ -108,6 +126,7 @@ export type ObjectiveRoutePlannerErrorCode =
   | 'cycle'
   | 'node-cardinality-exceeded'
   | 'invalid-work-cost'
+  | 'invalid-utility'
   | 'invalid-travel-cost'
   | 'unreachable-required-goal'
   | 'required-goal-depends-on-optional';
@@ -142,6 +161,11 @@ export interface PlanObjectiveRouteInput {
   /** Total time budget in ms. `undefined`/`Infinity` means unlimited — every
    * reachable optional bundle is affordable. */
   readonly budgetMs?: number;
+  /**
+   * Enables personality-weighted portfolio selection. Omit to preserve the
+   * legacy policy of maximizing optional bundle count before route cost.
+   */
+  readonly utilityWeights?: ObjectiveUtilityWeights;
   readonly travelOracle: TravelOracle;
 }
 
@@ -159,17 +183,31 @@ export interface ObjectiveRoute {
   readonly totalMs: number;
   readonly includedOptionalBundleIds: readonly string[];
   readonly droppedOptionalBundleIds: readonly string[];
+  /** Every known pending objective, including optional goals not selected. */
+  readonly portfolio: readonly ObjectivePortfolioEntry[];
+  /** Personality-weighted utility less optional route/work overhead. */
+  readonly selectedUtilityScore: number | null;
   /** True only when even the minimum-time required-only route exceeds
    * `budgetMs`. The returned route is still the minimal required route in
    * that case — required goals are never dropped to fit a budget. */
   readonly requiredOverBudget: boolean;
   /** First step's goal id, or `null` for an empty route (nothing left to do). */
   readonly routeHeadId: GoalId | null;
+  /** Objective currently committed to the executor for this stable plan. */
+  readonly activeObjectiveId: GoalId | null;
   /** The single next goal the agent should act on. Equal to `routeHeadId` at
    * this generic layer (there is no "in-flight" concept here) — kept as a
    * distinct field because floor-specific wiring layers may want to report a
    * stable route identity separately from "what to do this frame". */
   readonly nextActionableGoalId: GoalId | null;
+}
+
+export interface ObjectivePortfolioEntry {
+  readonly goalId: GoalId;
+  readonly required: boolean;
+  readonly optionalBundleId: string | null;
+  readonly selected: boolean;
+  readonly weightedUtility: number;
 }
 
 function assertNonNegativeInteger(
@@ -228,6 +266,7 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
   const completedGoalIds = input.completedGoalIds ?? new Set<GoalId>();
   const initialEffects = input.initialSatisfiedEffects ?? new Set<string>();
   const budgetMs = input.budgetMs ?? Infinity;
+  const utilityWeights = input.utilityWeights;
 
   // --- Validation -----------------------------------------------------
   const goals = [...input.goals].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -249,6 +288,9 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
 
   for (const goal of goals) {
     assertNonNegativeInteger(goal.workCost, 'invalid-work-cost', `Goal "${goal.id}" workCost`);
+    for (const [dimension, value] of Object.entries(goal.utility ?? {})) {
+      assertNonNegativeInteger(value, 'invalid-utility', `Goal "${goal.id}" utility.${dimension}`);
+    }
     for (const prereqId of goal.prerequisiteIds) {
       if (!idToIndex.has(prereqId) && !completedGoalIds.has(prereqId)) {
         throw new ObjectiveRoutePlannerError(
@@ -489,6 +531,32 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
     return count;
   };
 
+  const weightedGoalUtility = (goal: GoalNode): number => {
+    if (!utilityWeights || goal.required) return 0;
+    const utility = goal.utility ?? {};
+    return (
+      (utility.completion ?? 0) * utilityWeights.completion +
+      (utility.optimization ?? 0) * utilityWeights.optimization +
+      (utility.safety ?? 0) * utilityWeights.safety +
+      (utility.exploration ?? 0) * utilityWeights.exploration
+    );
+  };
+
+  if (utilityWeights) {
+    for (const [dimension, value] of Object.entries(utilityWeights)) {
+      assertNonNegativeInteger(value, 'invalid-utility', `utilityWeights.${dimension}`);
+    }
+  }
+
+  const utilityScore = (mask: number, entry: DpEntry): number => {
+    let utility = 0;
+    for (let i = 0; i < n; i++) {
+      if ((mask & (1 << i)) !== 0) utility += weightedGoalUtility(goals[i]!);
+    }
+    const optionalOverheadSeconds = Math.ceil(Math.max(0, entry.cost - requiredOnly.cost) / 1000);
+    return utility - optionalOverheadSeconds * (utilityWeights?.costPerSecond ?? 0);
+  };
+
   const requiredOverBudget = requiredOnly.cost > budgetMs;
 
   let chosenMask = requiredMask;
@@ -496,11 +564,30 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
 
   if (!requiredOverBudget) {
     let bestBundleCount = -1;
+    let bestUtilityScore = Number.NEGATIVE_INFINITY;
     for (let mask = 0; mask < totalMasks; mask++) {
       if (!isValidFinalMask(mask)) continue;
       const entry = bestForMask(mask);
       if (!entry || !Number.isFinite(entry.cost)) continue;
       if (entry.cost > budgetMs) continue;
+      if (utilityWeights) {
+        const candidateScore = utilityScore(mask, entry);
+        if (candidateScore < bestUtilityScore) continue;
+        if (candidateScore > bestUtilityScore) {
+          bestUtilityScore = candidateScore;
+          chosenMask = mask;
+          chosenEntry = entry;
+          continue;
+        }
+        if (
+          entry.cost < chosenEntry.cost ||
+          (entry.cost === chosenEntry.cost && comparePathsLex(entry.path, chosenEntry.path) < 0)
+        ) {
+          chosenMask = mask;
+          chosenEntry = entry;
+        }
+        continue;
+      }
       const bundleCount = countBundles(mask);
       if (bundleCount < bestBundleCount) continue;
       if (bundleCount > bestBundleCount) {
@@ -547,6 +634,15 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
   }
 
   const routeHeadId = steps[0]?.goalId ?? null;
+  const portfolio = goals.map(
+    (goal, index): ObjectivePortfolioEntry => ({
+      goalId: goal.id,
+      required: goal.required,
+      optionalBundleId: goal.required ? null : (goal.optionalBundleId ?? goal.id),
+      selected: (chosenMask & (1 << index)) !== 0,
+      weightedUtility: weightedGoalUtility(goal),
+    }),
+  );
 
   return {
     steps,
@@ -555,8 +651,11 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
     totalMs: totalTravelMs + totalWorkMs,
     includedOptionalBundleIds,
     droppedOptionalBundleIds,
+    portfolio,
+    selectedUtilityScore: utilityWeights ? utilityScore(chosenMask, chosenEntry) : null,
     requiredOverBudget,
     routeHeadId,
+    activeObjectiveId: routeHeadId,
     nextActionableGoalId: routeHeadId,
   };
 }
