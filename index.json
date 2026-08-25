@@ -1,5 +1,39 @@
 [
   {
+    "commit": "3aff74c8403ca1b1622788195f5117dc2f14d9f0",
+    "commitDate": "2026-08-25T08:26:01Z",
+    "commitSubject": "Fix Floor 1 seed-14 repeat spell detour (#3575)",
+    "capturedAt": "2026-08-25T09:39:46.880Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32828620275",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/3aff74c8403ca1b1622788195f5117dc2f14d9f0.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/3aff74c8403ca1b1622788195f5117dc2f14d9f0.fun-report.json"
+    }
+  },
+  {
     "commit": "fa3b186a940a2530bc287497e18f3294db216cfb",
     "commitDate": "2026-08-25T06:49:14Z",
     "commitSubject": "Recover all Floor 1 release sweep losses (#3555)",
