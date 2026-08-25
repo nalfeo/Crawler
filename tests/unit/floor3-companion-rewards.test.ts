@@ -19,7 +19,7 @@ import { awardFloor3CompanionDefeatRewards } from '../../src/game/floor3Companio
 import {
   floor3ObjectiveTick,
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { listStaticInventorySlots } from '../../src/shared/inventory.js';
@@ -202,7 +202,7 @@ describe('floor3 reward track wiring', () => {
     const world = createTestWorld({ seed: 808, floor: 3 });
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     const state = world.floorExtendedState?.floor3Studios;
     expect(state).toBeDefined();
