@@ -61,4 +61,17 @@ describe('deploy.yml baseline comment targeting', () => {
     expect(run).not.toContain('--label "released"');
     expect(run).not.toContain('gh pr list');
   });
+
+  it('provides Pages, repository, and baseline data context for the rich report link', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const baseline = getJob(doc, 'baseline-sweep');
+    const step = getStep(baseline, 'Comment baseline win-rate on released PR');
+
+    expect(deploy.outputs?.pages_url).toContain('steps.deploy-url.outputs.page_url');
+    expect(step.env?.PAGES_URL).toContain('needs.deploy.outputs.pages_url');
+    expect(step.env?.BASELINE_REPO).toContain('github.repository');
+    expect(step.env?.BASELINES_DIR).toContain('baselines-wt');
+    expect(step.env?.FUN_REPORT_JSON).toContain('.cache/baseline/fun-report.json');
+  });
 });
