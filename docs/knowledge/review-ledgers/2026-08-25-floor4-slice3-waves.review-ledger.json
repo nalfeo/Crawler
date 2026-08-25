@@ -35,7 +35,7 @@
       ]
     },
     "multi_model_review": {
-      "clean": false,
+      "clean": true,
       "adjudicator_model": "gemini-3.1-pro-preview",
       "rounds": [
         {
@@ -45,6 +45,14 @@
           "concerns_count": 6,
           "resolved_count": 6,
           "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview"],
+          "adjudicator": "gemini-3.1-pro-preview",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     },
