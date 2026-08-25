@@ -15,7 +15,15 @@
     },
     "code_review": {
       "clean": false,
-      "rounds": []
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 2,
+          "resolved_count": 0,
+          "clean": false
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
