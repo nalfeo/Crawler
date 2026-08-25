@@ -56,6 +56,13 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // A/B axis 2: LEGACY — fixed-priority Track A ladder.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   decisionMode: AIDecisionMode.LEGACY,
+  strategicUtilityWeights: {
+    completion: 1,
+    optimization: 1,
+    safety: 1,
+    exploration: 1,
+    costPerSecond: 1,
+  },
   debug: false,
 };
 

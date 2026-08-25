@@ -63,6 +63,41 @@ function snapshot(overrides: Partial<Floor1RunPlannerSnapshot> = {}): Floor1RunP
 }
 
 describe('estimateFloor1RunPlan', () => {
+  it('forwards portfolio utility weights into optional-bundle predictions', () => {
+    const state = snapshot({
+      tutorialAccepted: true,
+      playerLevel: 2,
+      questCompleted: true,
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      staircaseUnlocked: true,
+      playerGold: 100,
+      merchantWeaponIntent: { status: 'returning', cost: 20 },
+    });
+
+    expect(planFloor1ObjectiveRoute(state, PARAMS).includedOptionalBundleIds).toContain(
+      'merchant-weapon-purchase',
+    );
+    expect(
+      planFloor1ObjectiveRoute(state, {
+        ...PARAMS,
+        utilityWeights: {
+          completion: 0,
+          optimization: 0,
+          safety: 0,
+          exploration: 0,
+          costPerSecond: 1,
+        },
+      }).droppedOptionalBundleIds,
+    ).toContain('merchant-weapon-purchase');
+  });
+
   it('gates optional merchant farming against existing slack without adding work to the plan', () => {
     const runPlan = estimateFloor1RunPlan(
       snapshot({
@@ -523,6 +558,21 @@ describe('buildRunPlanCacheKey', () => {
     expect(key1).not.toBe(key2);
   });
 
+  it('produces a different key when strategic utility weights change', () => {
+    const key1 = buildRunPlanCacheKey(snapshot(), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot(), {
+      ...PARAMS,
+      utilityWeights: {
+        completion: 1,
+        optimization: 1,
+        safety: 1,
+        exploration: 1,
+        costPerSecond: 1,
+      },
+    });
+    expect(key1).not.toBe(key2);
+  });
+
   it('produces the same key when only nowMs changes within a budget bucket', () => {
     // 10s difference within the same 30-second bucket should not invalidate
     const key1 = buildRunPlanCacheKey(snapshot({ nowMs: 0, deadlineMs: 600_000 }), PARAMS);
@@ -603,5 +653,88 @@ describe('buildRunPlanCacheKey — cache-key arithmetic and sentinel correctness
     const parts = key.split('|');
     // merchantWeaponIntent.cost at index 24
     expect(parts[24]).toBe('0');
+  });
+});
+
+describe('planFloor1ObjectiveRoute personality weighting (objectivePortfolio arm)', () => {
+  // Both optional bundles pending, priced identically, on a deadline that
+  // cannot fit both. This route drives merchant/Spell-Broker purchase-intent
+  // admission, so it must honour the same personality weights the behavior
+  // tree's own route uses — otherwise the agent farms gold for a bundle its
+  // committed route already dropped.
+  const contested = (deadlineMs: number) =>
+    snapshot({
+      deadlineMs,
+      tutorialAccepted: true,
+      playerLevel: 2,
+      questCompleted: true,
+      ratsKilled: 6,
+      slimesKilled: 4,
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      playerGold: 0,
+      merchantWeaponIntent: { status: 'farming', cost: 20 },
+      spellBrokerIntent: { status: 'farming', cost: 20 },
+    });
+
+  const withWeights = (weights: RunPlannerParams['utilityWeights']) => ({
+    ...PARAMS,
+    utilityWeights: weights,
+  });
+  // Values the weapon bundle (optimization 100) over the spell (optimization 60).
+  const OPTIMIZER = withWeights({
+    completion: 0,
+    optimization: 1,
+    safety: 0,
+    exploration: 0,
+    costPerSecond: 0,
+  });
+  // Values the spell bundle, the only one carrying completion/exploration.
+  const COMPLETIONIST = withWeights({
+    completion: 3,
+    optimization: 0,
+    safety: 0,
+    exploration: 3,
+    costPerSecond: 0,
+  });
+
+  function tightDeadline(): number {
+    expect(
+      planFloor1ObjectiveRoute(contested(600_000), OPTIMIZER).includedOptionalBundleIds,
+    ).toHaveLength(2);
+    for (let deadline = 600_000; deadline > 0; deadline -= 5_000) {
+      const route = planFloor1ObjectiveRoute(contested(deadline), OPTIMIZER);
+      if (route.includedOptionalBundleIds.length === 1 && !route.requiredOverBudget) {
+        return deadline;
+      }
+    }
+    throw new Error('no deadline admits exactly one optional bundle');
+  }
+
+  it('selects a DIFFERENT optional bundle for a different personality profile', () => {
+    const snap = contested(tightDeadline());
+    const optimizer = planFloor1ObjectiveRoute(snap, OPTIMIZER);
+    const completionist = planFloor1ObjectiveRoute(snap, COMPLETIONIST);
+
+    expect(optimizer.includedOptionalBundleIds).toEqual(['merchant-weapon-purchase']);
+    expect(completionist.includedOptionalBundleIds).toEqual(['spell-broker-purchase']);
+    // Utility never trades away a required goal.
+    for (const route of [optimizer, completionist]) {
+      expect(route.requiredOverBudget).toBe(false);
+      expect(route.steps.map((step) => step.goalId)).toContain('take-stairs');
+    }
+  });
+
+  it('is identical to the legacy arm when no weights are supplied', () => {
+    const snap = contested(tightDeadline());
+    const legacy = planFloor1ObjectiveRoute(snap, PARAMS);
+    expect(planFloor1ObjectiveRoute(snap, withWeights(undefined))).toEqual(legacy);
+    expect(legacy.selectedUtilityScore).toBeNull();
   });
 });

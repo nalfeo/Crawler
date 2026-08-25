@@ -38,11 +38,11 @@ const RISK_REWARD_LEGACY: Combo = {
 };
 
 describe('enumerateCombos', () => {
-  it('yields exactly the 1 pathing × decision cell', () => {
+  it('yields exactly the 1 pathing × 2 decision cells', () => {
     const combos = enumerateCombos();
-    expect(combos).toHaveLength(1);
+    expect(combos).toHaveLength(2);
     const ids = combos.map(comboId);
-    expect(new Set(ids).size).toBe(1); // all unique
+    expect(new Set(ids).size).toBe(2); // all unique
   });
 
   it('lists RISK_REWARD_FUSED+LEGACY first so it is the incumbent/control', () => {
@@ -51,10 +51,10 @@ describe('enumerateCombos', () => {
     expect(comboId(first!)).toBe('riskRewardFused+legacy');
   });
 
-  it('covers the 1 pathing mode and 1 decision mode', () => {
+  it('covers the 1 pathing mode and 2 decision modes', () => {
     const combos = enumerateCombos();
     expect(new Set(combos.map((c) => c.pathing)).size).toBe(1);
-    expect(new Set(combos.map((c) => c.decision)).size).toBe(1);
+    expect(new Set(combos.map((c) => c.decision)).size).toBe(2);
   });
 });
 
