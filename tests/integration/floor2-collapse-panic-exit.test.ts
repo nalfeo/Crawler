@@ -9,13 +9,13 @@
  * Root cause: the AI's collapse-panic profile was built exclusively from
  * `world.floorScenario.objective`, which Floor 2 sets to `null`. Floor 2 does
  * collapse (`floor2ObjectiveTick` ends the run at the manifest timer duration),
- * but the AI could not see it, so the unbounded pre-exit loot sweep — which
- * sits ABOVE Progress in Track A and only surrenders on panic/beeline — swept
- * until the floor collapsed.
+ * but the AI could not see it, so the pre-exit loot sweep — which sits ABOVE
+ * Progress in Track A and only surrenders on panic/beeline — swept until the
+ * floor collapsed.
  *
  * This drives the real `BehaviorTreeAI` on a Floor-2 world with the staircase
- * unlocked and one reachable gold pile, and asserts the decision flips from the
- * loot sweep to the exit stairs once the collapse deadline closes in.
+ * unlocked and one nearby reachable gold pile, and asserts the decision flips
+ * from the loot sweep to the exit stairs once the collapse deadline closes in.
  */
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -56,8 +56,7 @@ function smallCaveConfig(seed: number): MapConfig {
 }
 
 /** Deterministic walkable anchors: the interior anchor cell of each room, in
- * descending room size, so the player, the staircase and the gold pile land in
- * three different rooms and the sweep is a real cross-map errand. */
+ * descending room size, so the player and the staircase land in different rooms. */
 function pickAnchors(floorMap: FloorMap): { x: number; y: number }[] {
   return [...floorMap.rooms]
     .sort(
@@ -78,10 +77,10 @@ function buildFloor2World() {
   world.state = 'playing';
 
   const anchors = pickAnchors(floorMap);
-  expect(anchors.length).toBeGreaterThanOrEqual(3);
+  expect(anchors.length).toBeGreaterThanOrEqual(2);
   const playerPos = anchors[0]!;
   const stairsPos = anchors[1]!;
-  const goldPos = anchors[2]!;
+  const goldPos = { x: playerPos.x + 4, y: playerPos.y };
 
   const roster = selectFloor2Roster(new SeededRandom(SEED), loadFamilies(), loadResources(), {
     presentCountFourProbability: 0,
@@ -106,7 +105,7 @@ function buildFloor2World() {
   const playerEid = spawnPlayer(world, playerPos.x, playerPos.y);
   world.stores.health.current[playerEid] = 100;
   world.stores.health.max[playerEid] = 100;
-  // One reachable gold pile far from the player: the pre-exit sweep's target.
+  // One reachable gold pile near the player: the bounded pre-exit sweep's target.
   spawnGold(world, goldPos.x, goldPos.y, 10);
 
   return { world, stairsPos };
