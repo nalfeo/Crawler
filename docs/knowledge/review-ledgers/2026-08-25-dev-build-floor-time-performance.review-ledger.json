@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted all review refinements: use same-machine back-to-back >=3-run median/spread measurements; never assert wall time in CI; branch explicitly between browser/render/load tracing and simulation profiling; treat RunStats fingerprint as collateral-only evidence for render/load changes and require surface-specific observation; describe inaccessible-bundle fallback as best-available with gaps. No architectural fork warranted."
     },
     "code_review": {
       "clean": false,
