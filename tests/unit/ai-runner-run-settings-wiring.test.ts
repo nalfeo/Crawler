@@ -69,4 +69,16 @@ describe('AI runner run-settings wiring', () => {
     expect(source).toContain('Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions))');
     expect(source).toContain('return sceneOptions');
   });
+
+  it('syncs settlement-return policy before polling and preserves achievement return signals', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+    const syncIndex = source.indexOf('syncAiRunnerSettlementReturnRouting(world, !manualControl);');
+    const manualBranchIndex = source.indexOf('if (manualControl) {', syncIndex);
+    const aiPollIndex = source.indexOf('ai.poll(state, world);', syncIndex);
+
+    expect(syncIndex).toBeGreaterThan(-1);
+    expect(manualBranchIndex).toBeGreaterThan(syncIndex);
+    expect(aiPollIndex).toBeGreaterThan(manualBranchIndex);
+    expect(source).toContain('skipAchievementClaims: isSettlementReturnRoutingEnabled(world)');
+  });
 });
