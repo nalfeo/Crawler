@@ -47,13 +47,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "0b92990e952b690c45727525c33f375c8d794404",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly addresses the safe-room doorway flicker bug that was resetting NPC-approach threat-tracking. The updated logic properly gates the threat-clear logic to require the player to not be in a safe room, allowing the branch to fall through and preserve the no-progress counter during a flicker frame where weapons are disabled. The rollback of the outer condition to an unconditional else is fully correct, as a genuinely exited gate should reset the tracker without leaving a stale bypass latched. The regression tests added are thorough and explicitly cover the flicker frame edge case."
     }
   }
 }
