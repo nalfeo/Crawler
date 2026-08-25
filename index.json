@@ -1,5 +1,39 @@
 [
   {
+    "commit": "4af7590c692109cf7f851fcec13e480c69f93fce",
+    "commitDate": "2026-08-25T09:57:58Z",
+    "commitSubject": "Reprocess approved epic nodes through issue intake (#3585)",
+    "capturedAt": "2026-08-25T11:37:52.586Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32836432634",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/4af7590c692109cf7f851fcec13e480c69f93fce.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/4af7590c692109cf7f851fcec13e480c69f93fce.fun-report.json"
+    }
+  },
+  {
     "commit": "3aff74c8403ca1b1622788195f5117dc2f14d9f0",
     "commitDate": "2026-08-25T08:26:01Z",
     "commitSubject": "Fix Floor 1 seed-14 repeat spell detour (#3575)",
