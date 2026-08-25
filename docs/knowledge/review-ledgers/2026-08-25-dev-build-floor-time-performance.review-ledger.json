@@ -27,22 +27,30 @@
         {
           "round": 2,
           "models": ["built-in-code-review"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true,
-          "notes": "Second automated code review after the null-sentinel fix found no issues."
+          "notes": "After the independent grade exposed a Floor 3 fallback-marker regression risk and the guard was made role-aware, automated review requested documenting why fallback-tinted roles still call familyTintForRoom without family state. The inline comment resolved that concern; no unresolved code-review findings remain."
         }
       ],
-      "notes": "Code-review loop completed before CodeQL. The only finding was fixed and re-reviewed clean."
+      "notes": "Code-review loop completed before CodeQL. Round 1 null-sentinel concern and round 2 role-aware guard documentation concern were both addressed; the independent grade over the final tree passed with no findings."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "7afa028e5d3949eb14cb883115e3613abb6bd88f",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change perfectly scopes the performance optimization to the render paths causing slowdowns by extracting the redundant-work conditions into well-named, isolated guards. It correctly handles the edge cases for specific territory-related roles that require fallback rendering, provides comprehensive unit tests, and fully complies with repo policies."
     }
   }
 }
