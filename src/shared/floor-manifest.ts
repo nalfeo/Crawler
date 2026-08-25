@@ -23,6 +23,107 @@ import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
+import { getFloorEnemyPack } from './enemy-packs.js';
+
+/** Shape of the parsed `floor4` manifest block, as seen by the cross-field refiner. */
+interface Floor4WaveRefineInput {
+  readonly phase: { readonly waveWindowMs: number };
+  readonly waves?: {
+    readonly enemyPackId: string;
+    readonly wavesPerAct: number;
+    readonly waveIntervalMs: number;
+    readonly gateTelegraphMs: number;
+    readonly baseBudget: number;
+    readonly intraActRamp: number;
+    readonly openingWaveBudgetScale: number;
+    readonly actMultipliers: readonly number[];
+    readonly acts: ReadonlyArray<{
+      readonly act: number;
+      readonly roster: ReadonlyArray<{ readonly archetypeId: string; readonly threatCost: number }>;
+    }>;
+  };
+}
+
+/**
+ * Cross-field + registry validation for the Floor 4 `waves` block.
+ *
+ * Zod can express the per-field bounds, but not "the cadence fits the wave
+ * window", "act rows are exactly 1..5 in order", or "every roster archetype
+ * actually exists in the referenced enemy pack". Those are the authoring
+ * mistakes that would otherwise surface as a mid-run spawn failure or a wave
+ * that silently never releases, so they fail loudly at manifest load instead.
+ */
+function validateFloor4Waves(floor4: Floor4WaveRefineInput, ctx: z.RefinementCtx): void {
+  const waves = floor4.waves;
+  if (!waves) {
+    return;
+  }
+  if ((waves.wavesPerAct - 1) * waves.waveIntervalMs >= floor4.phase.waveWindowMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'waveIntervalMs'],
+      message: 'Floor 4 wave cadence does not fit inside the act wave window',
+    });
+  }
+  if (waves.gateTelegraphMs > waves.waveIntervalMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'gateTelegraphMs'],
+      message: 'Floor 4 gate telegraph is longer than the gap between waves',
+    });
+  }
+  const pack = getFloorEnemyPack(waves.enemyPackId);
+  if (!pack) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'enemyPackId'],
+      message: `Floor 4 wave enemy pack "${waves.enemyPackId}" is not registered`,
+    });
+  }
+  waves.acts.forEach((actRow, index) => {
+    if (actRow.act !== index + 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['waves', 'acts', index, 'act'],
+        message: 'Floor 4 act rosters must be authored in act order 1..5',
+      });
+    }
+    const seen = new Set<string>();
+    for (const entry of actRow.roster) {
+      if (seen.has(entry.archetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['waves', 'acts', index, 'roster'],
+          message: `Floor 4 act ${actRow.act} lists archetype "${entry.archetypeId}" twice`,
+        });
+      }
+      seen.add(entry.archetypeId);
+      if (pack && !pack.archetypes.some((archetype) => archetype.id === entry.archetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['waves', 'acts', index, 'roster'],
+          message: `Floor 4 act ${actRow.act} references archetype "${entry.archetypeId}", which is not in pack "${waves.enemyPackId}"`,
+        });
+      }
+    }
+    // A wave whose budget cannot afford its cheapest roster entry would spawn
+    // nothing at all, which is an authoring bug rather than a design choice.
+    const cheapest = Math.min(...actRow.roster.map((entry) => entry.threatCost));
+    const multiplier = waves.actMultipliers[index] ?? 0;
+    const openingScale = actRow.act === 1 ? waves.openingWaveBudgetScale : 1;
+    const smallestBudget = Math.max(
+      1,
+      Math.round(waves.baseBudget * multiplier * openingScale * (1 + waves.intraActRamp * 0)),
+    );
+    if (cheapest > smallestBudget) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['waves', 'acts', index, 'roster'],
+        message: `Floor 4 act ${actRow.act} cannot afford its cheapest archetype in its first wave (budget ${smallestBudget}, cost ${cheapest})`,
+      });
+    }
+  });
+}
 
 /**
  * Floor manifest configuration schema.
@@ -295,6 +396,64 @@ export const floorManifestDefSchema = z
             overtimeCapMs: z.number().int().positive(),
           })
           .strict(),
+        /**
+         * Deterministic wave scheduling (spec R3). Every number the wave
+         * director reads lives here — budget curve, per-act rosters and threat
+         * costs, the live-enemy concurrency cap, the spawn-debt cap and the
+         * gate telegraph lead — because FR3.3 forbids hardcoding them in the
+         * system.
+         */
+        waves: z
+          .object({
+            /** Enemy pack id (see `src/shared/enemy-packs.ts`) the rosters draw from. */
+            enemyPackId: z.string().min(1),
+            /** Waves scheduled per act (spec FR3.1). */
+            wavesPerAct: z.number().int().positive(),
+            /** Act-relative spacing between wave releases (spec FR3.1). */
+            waveIntervalMs: z.number().int().positive(),
+            /** Lead time a feed gate flares before its wave releases. */
+            gateTelegraphMs: z.number().int().min(0),
+            /**
+             * Threat budget of act 1's first wave before the act multiplier and
+             * the intra-act ramp. Threat is an INTEGER unit so the spend loop
+             * can never drift or fail to terminate.
+             */
+            baseBudget: z.number().int().positive(),
+            /** Per-wave-index budget ramp inside an act (spec FR3.3). */
+            intraActRamp: z.number().min(0),
+            /** Scale applied to act 1's wave 0 only — the deliberately tiny opener. */
+            openingWaveBudgetScale: z.number().positive().max(1),
+            /** Per-act budget multipliers, act 1 → act 5 (spec FR3.3). */
+            actMultipliers: z.array(z.number().positive()).length(5),
+            /** Live hostile arena combatants allowed at once (spec FR3.5). */
+            concurrencyCap: z.number().int().positive(),
+            /** Maximum queued spawn debt; overflow beyond this is discarded (spec FR3.5). */
+            debtCap: z.number().int().min(0),
+            /** Spacing (ft) between the deterministic spawn slots behind a feed gate. */
+            gateSlotSpacingFt: z.number().positive(),
+            /** Per-act rosters and threat costs (spec FR3.3/FR8.2). */
+            acts: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    roster: z
+                      .array(
+                        z
+                          .object({
+                            archetypeId: z.string().min(1),
+                            threatCost: z.number().int().positive(),
+                          })
+                          .strict(),
+                      )
+                      .min(1),
+                  })
+                  .strict(),
+              )
+              .length(5),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .superRefine((floor4, ctx) => {
@@ -348,6 +507,7 @@ export const floorManifestDefSchema = z
             message: 'Floor 4 act duration must equal wave window plus headline window',
           });
         }
+        validateFloor4Waves(floor4, ctx);
       })
       .optional(),
     /**

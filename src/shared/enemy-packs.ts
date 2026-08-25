@@ -8,6 +8,7 @@ import { z } from 'zod';
 import floor1EnemyPackJson from './data/enemies.floor1.json';
 import floor2EnemyPackJson from './data/enemies.floor2.json';
 import floor3EnemyPackJson from './data/enemies.floor3.json';
+import floor4EnemyPackJson from './data/enemies.floor4.json';
 
 /**
  * Single enemy archetype configuration for spawning.
@@ -135,6 +136,12 @@ const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
   ['floor1-ambient', loadEnemyPackByJson(floor1EnemyPackJson)],
   ['floor2-families', loadEnemyPackByJson(floor2EnemyPackJson)],
   ['floor3-wild', loadEnemyPackByJson(floor3EnemyPackJson)],
+  // Floor 4's arena roster. Floor 4 runs NO ambient enemy director — every
+  // spawn comes from a seeded wave manifest released by `arenaDirectorSystem`
+  // — so this pack's ambient-director fields (`enemyCap`, `spawnIntervalMs`,
+  // `roomWave*`, …) are inert schema ballast. The live-enemy ceiling Floor 4
+  // actually enforces is `floor4.waves.concurrencyCap` in the floor manifest.
+  ['floor4-arena', loadEnemyPackByJson(floor4EnemyPackJson)],
 ]);
 
 /**

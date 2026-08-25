@@ -74,6 +74,59 @@
       "headlineWindowMs": 30000,
       "intermissionMs": 1000,
       "overtimeCapMs": 60000
+    },
+    "waves": {
+      "enemyPackId": "floor4-arena",
+      "wavesPerAct": 8,
+      "waveIntervalMs": 12000,
+      "gateTelegraphMs": 1000,
+      "baseBudget": 6,
+      "intraActRamp": 0.12,
+      "openingWaveBudgetScale": 0.34,
+      "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
+      "concurrencyCap": 36,
+      "debtCap": 24,
+      "gateSlotSpacingFt": 3.5,
+      "acts": [
+        {
+          "act": 1,
+          "roster": [{ "archetypeId": "floor4-usher", "threatCost": 1 }]
+        },
+        {
+          "act": 2,
+          "roster": [
+            { "archetypeId": "floor4-usher", "threatCost": 1 },
+            { "archetypeId": "floor4-intern", "threatCost": 1 }
+          ]
+        },
+        {
+          "act": 3,
+          "roster": [
+            { "archetypeId": "floor4-usher", "threatCost": 1 },
+            { "archetypeId": "floor4-intern", "threatCost": 1 },
+            { "archetypeId": "floor4-camera-op", "threatCost": 2 }
+          ]
+        },
+        {
+          "act": 4,
+          "roster": [
+            { "archetypeId": "floor4-usher", "threatCost": 1 },
+            { "archetypeId": "floor4-intern", "threatCost": 1 },
+            { "archetypeId": "floor4-camera-op", "threatCost": 2 },
+            { "archetypeId": "floor4-stagehand-elite", "threatCost": 5 }
+          ]
+        },
+        {
+          "act": 5,
+          "roster": [
+            { "archetypeId": "floor4-usher", "threatCost": 1 },
+            { "archetypeId": "floor4-intern", "threatCost": 1 },
+            { "archetypeId": "floor4-camera-op", "threatCost": 2 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3 },
+            { "archetypeId": "floor4-stagehand-elite", "threatCost": 5 }
+          ]
+        }
+      ]
     }
   }
 }

@@ -1,0 +1,76 @@
+{
+  "id": "floor4-arena",
+  "name": "Floor 4 Main Event Wave Roster",
+  "archetypes": [
+    {
+      "id": "floor4-usher",
+      "name": "Usher",
+      "hp": 18,
+      "speed": 0.14,
+      "detectRange": 60.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 1.0
+    },
+    {
+      "id": "floor4-intern",
+      "name": "Production Intern",
+      "hp": 12,
+      "speed": 0.19,
+      "detectRange": 64.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.7,
+      "spriteHeight": 1.7,
+      "aiType": "chase",
+      "spawnWeight": 1.0
+    },
+    {
+      "id": "floor4-camera-op",
+      "name": "Camera Operator",
+      "hp": 22,
+      "speed": 0.11,
+      "detectRange": 72.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.1,
+      "spriteHeight": 2.1,
+      "aiType": "ranged",
+      "spawnWeight": 1.0
+    },
+    {
+      "id": "floor4-pyro-tech",
+      "name": "Pyro Tech",
+      "hp": 30,
+      "speed": 0.13,
+      "detectRange": 66.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.2,
+      "spriteHeight": 2.2,
+      "aiType": "leaper",
+      "spawnWeight": 1.0
+    },
+    {
+      "id": "floor4-stagehand-elite",
+      "name": "Head Stagehand",
+      "hp": 70,
+      "speed": 0.1,
+      "detectRange": 62.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.8,
+      "spriteHeight": 2.8,
+      "aiType": "guardian",
+      "spawnWeight": 1.0
+    }
+  ],
+  "enemyCap": 36,
+  "spawnIntervalMs": 12000,
+  "spawnRadiusMin": 12.0,
+  "despawnDistanceFt": 400.0,
+  "engageRadiusFt": 40.0,
+  "engageTarget": 8,
+  "maxSpawnsPerTick": 8,
+  "roomWaveChance": 0.0,
+  "roomWaveMin": 0,
+  "roomWaveMax": 0
+}

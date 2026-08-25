@@ -348,12 +348,94 @@ export interface Floor4ArenaState {
   phaseElapsedMs: number;
   lastWorldElapsedMs: number;
   timeline: Floor4ArenaPhaseTimelineEntry[];
+  /**
+   * Wave manifests for the act currently in progress, precomputed immutably at
+   * act start (spec FR7.1). Empty until the first act arms.
+   */
+  waveManifests: readonly Floor4WaveManifest[];
+  /** Act the cached `waveManifests` belong to, or null before the first act. */
+  waveManifestAct: Floor4ActIndex | null;
+  /** Index of the next manifest whose gate telegraph has not fired yet. */
+  telegraphCursor: number;
+  /** Index of the next manifest that has not been released yet (spec FR3.1). */
+  releaseCursor: number;
+  /** Spawns deferred by the concurrency cap, released in manifest order (spec FR3.5). */
+  spawnDebt: Floor4WaveSpawn[];
+  /** Feed-gate flares still lit, keyed by gate index (spec FR3.4). */
+  activeGateTelegraphs: Floor4GateTelegraph[];
+  /** Deterministic spawn slots behind each feed gate, enumerated at init (spec FR3.4). */
+  gateSpawnSlots: readonly (readonly Floor4GateSpawnSlot[])[];
+  waveStats: Floor4WaveStats;
+  /** One fingerprint per armed act, in act order (spec FR7.2 determinism check). */
+  waveManifestFingerprints: string[];
+}
+
+/** One enemy scheduled by a wave manifest. */
+export interface Floor4WaveSpawn {
+  readonly archetypeId: string;
+  /** Index into `FloorMap.feedGates` — fixed at manifest time (spec FR3.4). */
+  readonly gateIndex: number;
+  /** Index into that gate's spawn slots. */
+  readonly slotIndex: number;
+  readonly threatCost: number;
+}
+
+/**
+ * An immutable, seeded plan for a single wave. Built once at act start and
+ * never re-rolled, so a wave releases identically no matter what the player
+ * does in between (spec FR7.1/FR7.2).
+ */
+export interface Floor4WaveManifest {
+  readonly act: Floor4ActIndex;
+  readonly waveIndex: number;
+  /** Arena-clock time the wave releases. */
+  readonly releaseAtMs: number;
+  /** Arena-clock time the gate flare lights (clamped to >= 0 for wave 0). */
+  readonly telegraphAtMs: number;
+  readonly budget: number;
+  readonly spawns: readonly Floor4WaveSpawn[];
+}
+
+/** A lit feed-gate flare awaiting its wave. */
+export interface Floor4GateTelegraph {
+  readonly gateIndex: number;
+  readonly waveIndex: number;
+  /** Arena-clock time the flare extinguishes (its wave's release time). */
+  readonly expiresAtMs: number;
+}
+
+/** A deterministic, walkability-validated spawn point behind a feed gate. */
+export interface Floor4GateSpawnSlot {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Aggregate wave telemetry for RunStats and lab readouts. */
+export interface Floor4WaveStats {
+  wavesReleased: number;
+  enemiesScheduled: number;
+  enemiesSpawned: number;
+  /** Spawns deferred to debt because the concurrency cap was full. */
+  spawnsDeferred: number;
+  /** Debt entries dropped because the debt queue was already full (spec FR3.5). */
+  spawnsDiscarded: number;
+  /** Debt entries cleared unreleased by a phase transition (spec FR3.5). */
+  debtCleared: number;
+  /** Wave enemies removed by the cut (spec FR3.6). */
+  enemiesCut: number;
+  gateTelegraphsFired: number;
 }
 
 export interface Floor4ArenaRunStats {
   readonly arenaElapsedMs: number;
   readonly phase: Floor4ArenaPhase;
   readonly timeline: readonly Floor4ArenaPhaseTimelineEntry[];
+  readonly waves: Floor4WaveStats;
+  /**
+   * Per-act fingerprint of the generated manifests, so a determinism test can
+   * compare two runs of a seed without serializing every spawn.
+   */
+  readonly waveManifestFingerprints: readonly string[];
 }
 
 // Backward compatibility exports

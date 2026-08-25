@@ -191,6 +191,17 @@ export const RallyPoint = {};
  */
 export const BossChestEntity = {};
 
+/**
+ * Marks an enemy as belonging to a Floor 4 arena wave (spec FR3.6).
+ *
+ * The cut removes exactly the entities carrying this tag, so ownership must
+ * survive EID recycling — a plain `Set<number>` of spawned EIDs would let a
+ * recycled entity inherit a dead wave's membership. bitecs strips components on
+ * `removeEntity`, so the tag is authoritative. Boss summons deliberately do NOT
+ * carry it: they share the concurrency cap but are exempt from the cut (FR3.7).
+ */
+export const ArenaWaveEnemy = {};
+
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
 export const DEFAULT_MAX_ENTITIES = 10_000;
