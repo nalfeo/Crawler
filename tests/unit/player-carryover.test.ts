@@ -2045,7 +2045,16 @@ describe('player floor carryover', () => {
       fightingStyle: 'charger',
       form: 2,
       levelBand: 'floor3-graduate',
-      learnedAbilityIds: ['ember-charger-1'],
+      // Must be the species' full ordered ultimate-form milestone set — the
+      // validator now resolves speciesId through the canonical roster and
+      // compares this against `buildKeptCompanionContract`'s output.
+      learnedAbilityIds: [
+        'f3.ember-charger.l1',
+        'f3.ember-charger.l8',
+        'f3.ember-charger.l16',
+        'f3.ember-charger.l25',
+        'f3.ember-charger.l34',
+      ],
     };
 
     const invalidInputs: readonly unknown[] = [

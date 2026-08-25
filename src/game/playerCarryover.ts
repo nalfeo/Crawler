@@ -46,6 +46,7 @@ import {
   FIGHTING_STYLES,
   KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
   buildKeptCompanionContract,
+  getPetSpecies,
   speciesForToken,
   type Affinity,
   type FightingStyle,
@@ -487,6 +488,45 @@ function assertKeptCompanionContract(
   }
   assertArray(record.learnedAbilityIds, `${path}.learnedAbilityIds`);
   assertUniqueStrings(record.learnedAbilityIds as readonly string[], `${path}.learnedAbilityIds`);
+
+  // Resolve speciesId through the canonical roster and compare every
+  // denormalized field plus the ordered ability list against the contract
+  // `buildKeptCompanionContract` would produce for that species. This is the
+  // only way to catch a structurally valid but semantically wrong contract
+  // (e.g. a speciesId paired with another species' affinity/style, or an
+  // ability list that isn't the species' full ordered ultimate-form set) —
+  // a future Floor 4+ consumer cannot faithfully re-host anything else.
+  const canonicalSpecies = getPetSpecies(record.speciesId);
+  if (canonicalSpecies === undefined) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unknown Floor 3 speciesId at ${path}.speciesId: ${record.speciesId}`,
+    );
+  }
+  const expected = buildKeptCompanionContract(canonicalSpecies);
+  if (record.affinity !== expected.affinity) {
+    throw new PlayerCarryoverSnapshotError(
+      `Affinity at ${path}.affinity does not match species '${record.speciesId}': ` +
+        `expected ${expected.affinity}, got ${String(record.affinity)}`,
+    );
+  }
+  if (record.fightingStyle !== expected.fightingStyle) {
+    throw new PlayerCarryoverSnapshotError(
+      `FightingStyle at ${path}.fightingStyle does not match species '${record.speciesId}': ` +
+        `expected ${expected.fightingStyle}, got ${String(record.fightingStyle)}`,
+    );
+  }
+  const learnedAbilityIds = record.learnedAbilityIds as readonly string[];
+  const expectedAbilityIds = expected.learnedAbilityIds;
+  if (
+    learnedAbilityIds.length !== expectedAbilityIds.length ||
+    !learnedAbilityIds.every((id, index) => id === expectedAbilityIds[index])
+  ) {
+    throw new PlayerCarryoverSnapshotError(
+      `learnedAbilityIds at ${path}.learnedAbilityIds does not match species ` +
+        `'${record.speciesId}''s ultimate-form ability set: expected ` +
+        `[${expectedAbilityIds.join(', ')}], got [${learnedAbilityIds.join(', ')}]`,
+    );
+  }
 }
 
 function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapshot {

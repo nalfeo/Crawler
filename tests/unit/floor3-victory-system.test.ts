@@ -30,7 +30,9 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
 import {
+  ABILITY_MILESTONE_LEVELS,
   KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+  learnedAbilityIds,
   speciesForToken,
 } from '../../src/shared/data/floor3/index.js';
 import type { GameWorld } from '../../src/core/index.js';
@@ -598,6 +600,11 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
 
     const snapshot = capturePlayerCarryover(world, playerEid);
 
+    const ultimateFormLevel =
+      ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
+    const expectedAbilityIds = learnedAbilityIds(expectedSpecies!, ultimateFormLevel);
+    expect(expectedAbilityIds.length).toBeGreaterThan(1);
+
     expect(snapshot.keptCompanion).toEqual({
       schemaVersion: KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
       speciesId: expectedSpecies!.speciesId,
@@ -605,9 +612,8 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
       fightingStyle: expectedSpecies!.fightingStyle,
       form: 2,
       levelBand: 'floor3-graduate',
-      learnedAbilityIds: expect.any(Array),
+      learnedAbilityIds: expectedAbilityIds,
     });
-    expect(snapshot.keptCompanion!.learnedAbilityIds.length).toBeGreaterThan(0);
   });
 
   it('omits keptCompanion from the carryover snapshot outside Floor 3', () => {

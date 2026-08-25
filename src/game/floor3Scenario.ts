@@ -765,6 +765,7 @@ export function selectFloor3KeptCompanion(world: GameWorld, partyEid: number): b
   if (
     !hasComponent(world.ecs, partyEid, Companion) ||
     !hasComponent(world.ecs, partyEid, PartySlot) ||
+    !hasComponent(world.ecs, partyEid, Team) ||
     (world.stores.team.id[partyEid] ?? -1) !== TeamId.PLAYER
   ) {
     return false;
