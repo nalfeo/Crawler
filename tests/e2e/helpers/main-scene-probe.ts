@@ -18,6 +18,7 @@ import type {
   HarvestableRenderSummary,
   PropRenderSize,
   FamilyHudProbeState,
+  Floor3PartyHudProbeState,
   FloatingTextProbe,
   ItemIconRenderInfo,
   MainSceneProbeApi,
@@ -95,6 +96,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
   getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
+  getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
   startStaircaseBossBattle: (page: Page): Promise<number> =>

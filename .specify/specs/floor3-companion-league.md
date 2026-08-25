@@ -11,7 +11,11 @@
 > Rally Point + party-wipe predicate state machine (`src/core/systems/companionKOSystem.ts`);
 > slice 7 adds the biome-overworld map generator, Floor 3 manifest, and affinity-weighted wild
 > spawns (`src/game/floor3Scenario.ts`, `src/shared/data/floors/floor3.manifest.json`,
-> `src/shared/data/enemies.floor3.json`). Sprites do not exist yet. The remaining schemas,
+> `src/shared/data/enemies.floor3.json`); slice 13 adds the party-combat UX group — game-design
+> §15 surfaces 4–8 (party HUD, roster/detail, level-up/evolve/learn notice, ability command,
+> matchup indicator) as `src/engine/floor3-*-state.ts` resolvers behind
+> `src/engine/HudFloor3Party.ts` + `src/engine/Floor3RosterUI.ts`, with one lab per surface in
+> `src/labs/floor3-ux-lab/`. Sprites do not exist yet. The remaining schemas,
 > wiring, and slices below
 > are the **plan** the implementation
 > sessions build against.

@@ -80,7 +80,7 @@ import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
-import { createFloor3RosterUI } from '../Floor3RosterUI.js';
+import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
 import { shouldShowFloor3Party } from '../floor3-party-state.js';
 import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
@@ -1597,6 +1597,11 @@ export class MainGameScene extends Phaser.Scene {
   /** Touch/e2e entry point for the Floor-3 companion command verb ([C]). */
   public requestCompanionCommand(): void {
     this.queuedCompanionCommand = true;
+  }
+
+  /** Read-back of the mounted Floor-3 roster overlay for labs/e2e probes. */
+  public getFloor3RosterState(): Floor3RosterState | null {
+    return this.floor3RosterUI?.getState() ?? null;
   }
 
   private closeFloor3Roster(): void {

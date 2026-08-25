@@ -168,6 +168,12 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getFloor3RosterState?(): {
+    open: boolean;
+    cursor: number;
+    entries: readonly string[];
+    detailLines: readonly string[];
+  } | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
@@ -189,6 +195,16 @@ interface MainSceneInternals {
       visible: boolean;
       bounds: ScreenBounds | null;
       panelVisible: boolean;
+    };
+    getFloor3PartyState?(): {
+      visible: boolean;
+      rows: readonly {
+        name: string;
+        matchup: string | null;
+      }[];
+      notices: readonly string[];
+      commandCapacity: number;
+      commandsInUse: number;
     };
     /**
      * The currently-rendered announcement banner content (kind + exact
@@ -531,6 +547,20 @@ export interface SafeAreaLayoutProbe {
   readonly surfaces: Array<{ readonly name: string; readonly bounds: ScreenBounds }>;
 }
 
+/** Mounted Floor-3 party-HUD + roster read-back (game-design §15 surfaces 4-8). */
+export interface Floor3PartyHudProbeState {
+  readonly hudVisible: boolean;
+  readonly rowNames: readonly string[];
+  readonly matchups: readonly (string | null)[];
+  readonly commandCapacity: number;
+  readonly commandsInUse: number;
+  readonly notices: readonly string[];
+  readonly rosterOpen: boolean;
+  readonly rosterCursor: number;
+  readonly rosterEntries: readonly string[];
+  readonly rosterDetailLineCount: number;
+}
+
 export interface FamilyHudProbeState {
   readonly mapOverlayOpen: boolean;
   readonly visible: boolean;
@@ -772,6 +802,8 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
+  getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
   /**
@@ -1555,6 +1587,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         sceneOptions.broker?.met(world);
         scene.setSimulationPaused(false);
       }
+    },
+
+    getFloor3PartyHudState: (): Floor3PartyHudProbeState => {
+      const scene = getScene();
+      const party = scene?.hudUi?.getFloor3PartyState?.();
+      const roster = scene?.getFloor3RosterState?.() ?? null;
+      return {
+        hudVisible: party?.visible ?? false,
+        rowNames: party?.rows.map((row) => row.name) ?? [],
+        matchups: party?.rows.map((row) => row.matchup) ?? [],
+        commandCapacity: party?.commandCapacity ?? 0,
+        commandsInUse: party?.commandsInUse ?? 0,
+        notices: party?.notices ?? [],
+        rosterOpen: roster?.open ?? false,
+        rosterCursor: roster?.cursor ?? -1,
+        rosterEntries: roster?.entries ?? [],
+        rosterDetailLineCount: roster?.detailLines.length ?? 0,
+      };
     },
 
     getFamilyHudState: (): FamilyHudProbeState => {
