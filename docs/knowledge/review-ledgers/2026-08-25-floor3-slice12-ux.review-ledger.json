@@ -1,0 +1,52 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor3-slice12-ux",
+  "task_title": "Floor 3 slice 12: onboarding, starter, and poach UX surfaces",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "moderate",
+      "notes": "Separate-model plan review before coding. Blockers: (1) headless runner only resolved the loadout pause once at floor start, so a mid-run poach would stall Floor 3 forever -> added generic mid-loop resolution; (2) pausing inside the studio-defeat loop could double-fire or interleave with terminal transitions -> offer is now raised at the top of a fresh playing tick behind a poachOffered latch; (3) reinterpreting a Studio as a Trainer -> offer contract kept generic (floor3PoachOffer) with Studio-handler defeat documented as its only current producer until roaming Trainers land; (4) candidates must carry the Trainer roster level -> Floor3PoachCandidate carries {speciesId, level} and recruits at that level. Non-blocking: never-strand fallback on out-of-range picks, and duplicate species collapsing to the highest level."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
