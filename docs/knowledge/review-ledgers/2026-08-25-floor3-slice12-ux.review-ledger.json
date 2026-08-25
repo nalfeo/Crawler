@@ -41,9 +41,9 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
+      "grader_model": "claude-sonnet-4.6",
       "implementer_model": "claude-opus-4.8",
-      "head_sha": "386f2acaf994780cb55f3deb7171a6a076626300",
+      "head_sha": "b15241bd560c4565a3ade60a242f0e018df4932a",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -54,7 +54,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation correctly separates UI concerns from deterministic state transitions. Loadout logic handles the state pause deterministically in both simulation and headless scenarios, avoids nondeterminism, is covered by thorough unit and headless tests, and cleanly adheres to the layer and sim-side policies."
+      "notes": "The change cleanly ships three Floor 3 UX surfaces (rules briefing, starter picker, poach picker) by reusing the existing 'loadout' world state rather than adding a new one, keeping every existing consumer correct. The poach offer is raised at the top of a fresh 'playing' tick behind a per-encounter latch, so the defeat loop always completes before any pause and two same-tick Studio wipes yield two consecutive offers — the design's key invariant. The headless-runner mid-run loadout fix is correctly placed, generic, and matches the scene's own modal-reopen path. Layer boundaries are respected throughout: floor3-ux.ts is Phaser-free and importable from shared, MainGameScene is the only consumer of Phaser-coupled builder calls, and the sim-side dispatcher is wired through scenarioDefinitions. All changed behaviors are covered by unit tests, a real headless regression test, and an updated e2e characterisation guard. The 'poachOffered' latch is set before buildFloor3PoachOffer returns to prevent re-offer; the only undefined-return cases are intentional (party locked, Final Four, unknown species), and the degraded path logs a warning. No determinism violations, no Date.now/Math.random usage, and the lab is created and registered before the surface ships."
     }
   }
 }

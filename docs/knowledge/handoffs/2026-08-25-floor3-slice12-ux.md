@@ -64,9 +64,15 @@ picker, plus the sim-side state the poach surface needs.
 - `npx vitest run tests/unit/floor3 tests/unit/ai-runner-lab-floor3-wiring.test.ts` — 94 pass (11 files).
 - `npm run lint`, Prettier, `npx tsc --noEmit` (both projects) — clean.
 - `bash scripts/agent/verify-fast.sh` — pass (144 files, 2,368 tests).
+- Review recovery: `npm run lint`, `npm run lint:dead-code`, `npm run typecheck`,
+  `npm test -- --run tests/unit/floor3-poach-offer.test.ts tests/game/floor3-recruiting.test.ts tests/unit/floor3-ux-surfaces.test.ts tests/unit/floor3-overworld.test.ts tests/unit/floor3-victory-system.test.ts`,
+  `npm run test:e2e -- --run tests/e2e/main-game-scene-boot.test.ts`, and
+  `npm run verify:pr-prereqs` — clean. Poached party Companions now start with
+  the recruited form and XP baseline for their offered level.
 - Review ledger `docs/knowledge/review-ledgers/2026-08-25-floor3-slice12-ux.review-ledger.json`
   — valid 3🍎 ledger; plan review (`gpt-5.6-terra`) 6/6 resolved, code-review loop
-  clean after 3 rounds, independent grade 5/5 with no findings.
+  clean after 3 rounds, independent grade refreshed against repair commit
+  `b15241bd` with 5/5 and no findings.
 
 ## Real artifact observation
 
