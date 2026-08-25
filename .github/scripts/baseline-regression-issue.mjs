@@ -112,11 +112,22 @@ export async function fileBaselineRegressionIssue({
     for (const [configuration, configurationSignatures] of groupSignaturesByConfiguration(
       signatures,
     )) {
-      const existing = managedOpenIssues.find((issue) =>
+      const matchingIssues = managedOpenIssues.filter((issue) =>
         issueSignaturesFromBody(issue.body).some(
           (signature) => signatureConfiguration(signature) === configuration,
         ),
       );
+      const existing = matchingIssues[0];
+      const superseded = matchingIssues.slice(1);
+      for (const duplicate of superseded) {
+        await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${duplicate.number}`, {
+          method: 'PATCH',
+          body: {
+            state: 'closed',
+            body: `${String(duplicate.body || '')}\n\nSuperseded by #${existing.number}, which now tracks this sweep configuration.`,
+          },
+        });
+      }
       const response = existing
         ? await requestFn(
             mutationToken,

@@ -23,7 +23,8 @@ sweep configuration do not create duplicate bugs. Configuration matching now
 ignores only the failed seed while retaining weapon and all other sweep
 settings. An existing managed open issue receives a recurrence comment and is
 left as the canonical tracker; new configurations still create and intake a
-new issue.
+new issue. Historical same-configuration duplicates are also collapsed onto the
+oldest open issue.
 
 ## Files touched
 
@@ -32,7 +33,7 @@ new issue.
 
 ## Verification
 
-- `node --test .github/scripts/baseline-regression-issue.test.mjs` — passed, 10 tests.
+- `node --test .github/scripts/baseline-regression-issue.test.mjs` — passed, 11 tests.
 - `npx vitest run --project unit tests/unit/baseline-regression-check.test.ts --reporter=dot` — passed, 14 tests.
 - `npm run verify:fast` — passed.
 

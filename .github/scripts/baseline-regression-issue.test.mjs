@@ -215,6 +215,43 @@ test('comments on the existing issue when only the failed seed changes', async (
   assert.equal(h.calls.filter((call) => call[0] === 'intake').length, 0);
 });
 
+test('keeps the oldest issue when historical duplicates share a configuration', async () => {
+  const signature = (seed) =>
+    `floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=${seed}|weapon=sword`;
+  const h = harness([
+    {
+      number: 18,
+      node_id: 'ISSUE_18',
+      state: 'open',
+      body: signatureDecision([signature(7)]).issue.body,
+    },
+    {
+      number: 11,
+      node_id: 'ISSUE_11',
+      state: 'open',
+      body: signatureDecision([signature(8)]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature(9)], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 11 }]);
+  const duplicateClose = h.calls.find(
+    (call) => call[0] === 'request' && call[2].endsWith('/issues/18'),
+  );
+  assert.equal(duplicateClose[3].body.state, 'closed');
+  assert.match(duplicateClose[3].body.body, /Superseded by #11/);
+});
+
 test('creates an issue only for a new failure signature', async () => {
   const oldSignature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
