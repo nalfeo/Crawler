@@ -1,5 +1,39 @@
 [
   {
+    "commit": "62a17381bb77038be8540cbc8c8fb0ee8af92937",
+    "commitDate": "2026-08-25T15:51:49Z",
+    "commitSubject": "Add personality-weighted AI objective portfolio mode (#3583)",
+    "capturedAt": "2026-08-25T17:05:49.717Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32870925323",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/62a17381bb77038be8540cbc8c8fb0ee8af92937.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/62a17381bb77038be8540cbc8c8fb0ee8af92937.fun-report.json"
+    }
+  },
+  {
     "commit": "86ff757e7dd4dec2beac888f6f24264c469057ed",
     "commitDate": "2026-08-25T14:45:57Z",
     "commitSubject": "Floor 3 Slice 12: onboarding, starter, and poach UX surfaces (#3591)",
