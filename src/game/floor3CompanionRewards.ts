@@ -133,12 +133,12 @@ export function awardFloor3CompanionDefeatRewards(world: GameWorld): void {
     if ((team.id[eid] ?? TeamId.PLAYER) === TeamId.PLAYER) continue;
 
     entries ??= resolveRivalDefeatEntries(world);
-    companion.defeatRewarded[eid] = 1;
     spawnDefeatDrops(
       world,
       position.x[eid] ?? 0,
       position.y[eid] ?? 0,
       rollLootTable(entries, world.rng),
     );
+    companion.defeatRewarded[eid] = 1;
   }
 }
