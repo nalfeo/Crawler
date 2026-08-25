@@ -186,6 +186,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
       wavesReleased: 0,
       enemiesScheduled: 0,
       enemiesSpawned: 0,
+      peakLiveHostiles: 0,
       spawnsDeferred: 0,
       spawnsDiscarded: 0,
       debtCleared: 0,
@@ -326,6 +327,13 @@ function countFloor4LiveHostiles(world: GameWorld): number {
   return live;
 }
 
+function recordFloor4LiveHostilePeak(world: GameWorld, state: Floor4ArenaState): void {
+  state.waveStats.peakLiveHostiles = Math.max(
+    state.waveStats.peakLiveHostiles,
+    countFloor4LiveHostiles(world),
+  );
+}
+
 const FLOOR4_AI_TYPES: Readonly<Record<string, number>> = {
   chase: AI_TYPE.CHASE,
   patrol: AI_TYPE.CHASE,
@@ -403,6 +411,7 @@ function drainFloor4SpawnDebt(world: GameWorld, state: Floor4ArenaState): void {
     spawnFloor4WaveEnemy(world, state, spawn);
     state.waveStats.enemiesSpawned += 1;
     live += 1;
+    state.waveStats.peakLiveHostiles = Math.max(state.waveStats.peakLiveHostiles, live);
   }
 }
 
@@ -477,6 +486,7 @@ function processFloor4Waves(world: GameWorld, state: Floor4ArenaState): void {
     state.waveStats.enemiesScheduled += wave.spawns.length;
     const queued = queueFloor4Spawns(state, wave.spawns);
     drainFloor4SpawnDebt(world, state);
+    recordFloor4LiveHostilePeak(world, state);
     // Whatever this wave queued but could not place immediately is deferred to
     // debt, not lost. The drain is FIFO, so the entries still queued afterwards
     // are exactly the tail — i.e. the newest ones, this wave's.
@@ -484,6 +494,7 @@ function processFloor4Waves(world: GameWorld, state: Floor4ArenaState): void {
   }
 
   drainFloor4SpawnDebt(world, state);
+  recordFloor4LiveHostilePeak(world, state);
 }
 
 /**
@@ -557,13 +568,7 @@ export function arenaDirectorSystem(world: GameWorld): void {
     remainingMs -= stepMs;
     advanceFloor4Clock(state, stepMs);
     processFloor4Waves(world, state);
-    const actBefore = state.phase.kind === 'WAVES' ? state.phase.act : null;
     applyFloor4PhaseBoundary(world, state);
-    // Entering a new act arms its manifest mid-iteration, and wave 0 is due at
-    // act-relative 0 (FR3.1) — release it now rather than a tick late.
-    if (state.phase.kind === 'WAVES' && state.phase.act !== actBefore) {
-      processFloor4Waves(world, state);
-    }
   }
 }
 
@@ -698,6 +703,7 @@ function transitionFloor4Phase(
   recordFloor4PhaseTransition(world, state, phase, reason);
   if (phase.kind === 'WAVES') {
     armFloor4Act(world, state, phase.act);
+    processFloor4Waves(world, state);
   }
 }
 

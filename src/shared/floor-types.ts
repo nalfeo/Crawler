@@ -388,9 +388,9 @@ export interface Floor4WaveSpawn {
 export interface Floor4WaveManifest {
   readonly act: Floor4ActIndex;
   readonly waveIndex: number;
-  /** Arena-clock time the wave releases. */
+  /** Act-relative time the wave releases. */
   readonly releaseAtMs: number;
-  /** Arena-clock time the gate flare lights (clamped to >= 0 for wave 0). */
+  /** Act-relative time the gate flare lights (clamped to >= 0 for wave 0). */
   readonly telegraphAtMs: number;
   readonly budget: number;
   readonly spawns: readonly Floor4WaveSpawn[];
@@ -400,7 +400,7 @@ export interface Floor4WaveManifest {
 export interface Floor4GateTelegraph {
   readonly gateIndex: number;
   readonly waveIndex: number;
-  /** Arena-clock time the flare extinguishes (its wave's release time). */
+  /** Act-relative time the flare extinguishes (its wave's release time). */
   readonly expiresAtMs: number;
 }
 
@@ -415,6 +415,8 @@ export interface Floor4WaveStats {
   wavesReleased: number;
   enemiesScheduled: number;
   enemiesSpawned: number;
+  /** Highest live hostile count observed after wave releases/debt drains. */
+  peakLiveHostiles: number;
   /** Spawns deferred to debt because the concurrency cap was full. */
   spawnsDeferred: number;
   /** Debt entries dropped because the debt queue was already full (spec FR3.5). */

@@ -43,27 +43,37 @@
           "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
           "adjudicator": "gemini-3.1-pro-preview",
           "concerns_count": 6,
+          "valid_count": 6,
           "resolved_count": 6,
           "clean": false
         },
         {
           "round": 2,
-          "models": ["gemini-3.1-pro-preview"],
+          "models": ["claude-sonnet-5", "gemini-3.6-flash"],
           "adjudicator": "gemini-3.1-pro-preview",
           "concerns_count": 0,
+          "valid_count": 0,
           "resolved_count": 0,
           "clean": true
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "4a37751fef2b83a9e7062b2287cd53daccb216ca",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Slice 3 lands real deterministic Floor 4 waves cleanly: pure seeded manifests, schema/registry cross-checks, fixed gate slots, a chronological director boundary loop, ECS-tagged cut ownership, concurrency debt/cap, and cut-vs-kill separation. Extending the already-wired arenaDirectorSystem avoids orphan-system risk; idle victory is retired with an explicit rules #11/#12-safe headless act-1 gate rather than a weakened clear. Coverage is strong across pure unit, director, schema, and real headless pipeline paths, with clear module boundaries and ADR-backed rationale."
     }
   }
 }

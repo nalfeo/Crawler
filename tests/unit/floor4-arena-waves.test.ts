@@ -225,7 +225,7 @@ describe('Floor 4 cut', () => {
     // Health is deliberately left positive so this exercises the DeathTimer
     // branch on its own rather than falling through the health guard.
     expect(world.stores.health.current[dying!]).toBeGreaterThan(0);
-    addComponent(world.ecs, dying!, set(DeathTimer, { remaining: 0.5 }));
+    addComponent(world.ecs, dying!, set(DeathTimer, { remainingMs: 0.5 }));
     const before = arenaState(world).waveStats.enemiesCut;
 
     advance(world, 1);

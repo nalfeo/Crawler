@@ -47,8 +47,11 @@ describe('Floor 4 arena waves (headless pipeline)', () => {
     expect(stats!.wavesReleased).toBe(expectedReleases);
     expect(stats!.enemiesScheduled).toBeGreaterThan(0);
     expect(stats!.gateTelegraphsFired).toBeGreaterThanOrEqual(expectedReleases);
-    // The cap bounds live enemies, so spawns can be deferred but never exceed
-    // what the manifests scheduled.
+    // The real pipeline samples the live hostile peak exposed by RunStats, so
+    // this gates the actual concurrency cap rather than only aggregate totals.
+    expect(stats!.peakLiveHostiles).toBeGreaterThan(0);
+    expect(stats!.peakLiveHostiles).toBeLessThanOrEqual(waves.concurrencyCap);
+    // Spawns can be deferred but never exceed what the manifests scheduled.
     expect(stats!.enemiesSpawned).toBeLessThanOrEqual(stats!.enemiesScheduled);
     expect(
       stats!.enemiesSpawned + stats!.spawnsDiscarded + first.floor4Arena!.waves.debtCleared,

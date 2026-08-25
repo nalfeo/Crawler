@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFloor4ActWaveManifests,
-  floor4WaveBudget,
   floor4WaveManifestFingerprint,
-  type Floor4WaveConfig,
 } from '../../src/game/floor4/wave-manifest.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import type { Floor4ActIndex } from '../../src/shared/floor-types.js';
+
+type Floor4WaveConfig = Parameters<typeof buildFloor4ActWaveManifests>[0];
 
 const authoredConfig = getFloorManifest('floor4')!.floor4!.waves! as Floor4WaveConfig;
 const GATE_SLOT_COUNTS = [5, 5, 5, 5];
@@ -14,23 +14,30 @@ const GATE_SLOT_COUNTS = [5, 5, 5, 5];
 describe('floor4 wave budget', () => {
   it('scales with the act multiplier and ramps inside the act', () => {
     for (const act of [1, 2, 3, 4, 5] as const) {
+      const manifests = buildFloor4ActWaveManifests(
+        authoredConfig,
+        act,
+        'budget',
+        GATE_SLOT_COUNTS,
+      );
       for (let waveIndex = 1; waveIndex < authoredConfig.wavesPerAct; waveIndex += 1) {
-        expect(floor4WaveBudget(authoredConfig, act, waveIndex)).toBeGreaterThanOrEqual(
-          floor4WaveBudget(authoredConfig, act, waveIndex - 1),
+        expect(manifests[waveIndex]!.budget).toBeGreaterThanOrEqual(
+          manifests[waveIndex - 1]!.budget,
         );
       }
     }
+    const act1 = buildFloor4ActWaveManifests(authoredConfig, 1, 'budget', GATE_SLOT_COUNTS);
+    const act5 = buildFloor4ActWaveManifests(authoredConfig, 5, 'budget', GATE_SLOT_COUNTS);
     for (const waveIndex of [1, 4, 7]) {
-      expect(floor4WaveBudget(authoredConfig, 5, waveIndex)).toBeGreaterThan(
-        floor4WaveBudget(authoredConfig, 1, waveIndex),
-      );
+      expect(act5[waveIndex]!.budget).toBeGreaterThan(act1[waveIndex]!.budget);
     }
   });
 
   it('makes act 1 wave 0 the smallest wave of the floor', () => {
-    const opener = floor4WaveBudget(authoredConfig, 1, 0);
+    const manifests = buildFloor4ActWaveManifests(authoredConfig, 1, 'budget', GATE_SLOT_COUNTS);
+    const opener = manifests[0]!.budget;
     expect(opener).toBeGreaterThan(0);
-    expect(opener).toBeLessThan(floor4WaveBudget(authoredConfig, 1, 1));
+    expect(opener).toBeLessThan(manifests[1]!.budget);
   });
 
   it('always yields a positive integer budget', () => {
@@ -39,7 +46,7 @@ describe('floor4 wave budget', () => {
       baseBudget: 1,
       openingWaveBudgetScale: 0.01,
     };
-    const budget = floor4WaveBudget(tiny, 1, 0);
+    const budget = buildFloor4ActWaveManifests(tiny, 1, 'budget', GATE_SLOT_COUNTS)[0]!.budget;
     expect(Number.isInteger(budget)).toBe(true);
     expect(budget).toBeGreaterThanOrEqual(1);
   });

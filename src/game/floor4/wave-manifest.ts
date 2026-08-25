@@ -20,7 +20,7 @@ import type {
 } from '../../shared/floor-types.js';
 
 /** The subset of the manifest `floor4.waves` block manifest generation needs. */
-export interface Floor4WaveConfig {
+interface Floor4WaveConfig {
   readonly wavesPerAct: number;
   readonly waveIntervalMs: number;
   readonly gateTelegraphMs: number;
@@ -39,7 +39,7 @@ export interface Floor4WaveConfig {
  * spend loop below works in whole threat units and can never drift by a
  * floating-point epsilon.
  */
-export function floor4WaveBudget(
+function floor4WaveBudget(
   config: Floor4WaveConfig,
   act: Floor4ActIndex,
   waveIndex: number,
