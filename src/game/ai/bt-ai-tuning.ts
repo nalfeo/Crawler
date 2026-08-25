@@ -867,9 +867,9 @@ export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 //   1. **Post-combat** (any time): only loot within LOOT_SWEEP_RADIUS_FT of the
 //      player, i.e. the drops from the fight that just ended. Bounded so the
 //      sweep is a local cleanup, never a cross-floor errand.
-//   2. **Pre-exit** (staircase unlocked, not yet descended): unbounded radius,
-//      because descending destroys every uncollected pickup (scene restart with
-//      a fresh entity world), so anything left behind is lost permanently.
+//   2. **Pre-exit** (staircase unlocked, not yet descended): bounded to the
+//      AI scan radius. It chains nearby drops while avoiding an unsafe cross-floor
+//      chase after the exit unlocks.
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep

@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
-import { LOOT_SWEEP_RADIUS_FT } from '../../../src/game/ai/bt-ai-tuning.js';
+import { DEFAULT_CONFIG, LOOT_SWEEP_RADIUS_FT } from '../../../src/game/ai/bt-ai-tuning.js';
 import { spawnEnemy, spawnPlayer } from '../../../src/core/spawners/combatants.js';
 import { spawnXpGem } from '../../../src/core/spawners/pickups.js';
 import {
@@ -71,7 +71,7 @@ function makeFloor1World() {
 }
 
 describe('BT — loot sweep (Priority 2.5)', () => {
-  describe('pre-exit (unbounded) window', () => {
+  describe('pre-exit (scan-radius) window', () => {
     it('targets the nearest XP gem when the floor is cleared and XP is on the ground', () => {
       const { world, x, y } = makeFloor1World();
       openSweepWindow(world);
@@ -94,6 +94,16 @@ describe('BT — loot sweep (Priority 2.5)', () => {
       expect(decision.state).toBe(AIState.COLLECT);
       expect(decision.targetEid).toBe(gemEid);
       expect(decision.reason.toLowerCase()).toContain('sweep');
+    });
+
+    it('does NOT chase loot beyond the scan radius', () => {
+      const { world, x, y } = makeFloor1World();
+      openSweepWindow(world);
+
+      spawnXpGem(world, x + DEFAULT_CONFIG.scanRadius + 5, y, 10);
+
+      const decision = pollDecision(world);
+      expect(decision.reason.toLowerCase()).not.toContain('sweep');
     });
 
     it('falls through to Progress when the floor is cleared but no loot remains', () => {
