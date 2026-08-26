@@ -24,7 +24,7 @@ on:
         default: 'crawler-feature-pr'
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -47,6 +47,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Set up Node
+        # The crawler-feature-pr workflow's local-ci task runs
+        # `npm run verify:fast` inside the goober workcopy, so the runner
+        # needs Node available before `goobers run` starts.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
 
       - name: Cache pinned Goobers binary
         id: cache-goobers
