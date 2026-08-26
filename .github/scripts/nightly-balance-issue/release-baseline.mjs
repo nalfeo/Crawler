@@ -128,8 +128,9 @@ function formatLegs(legs) {
  * published baseline happens to contain and asserts no required shape.
  */
 export function formatReleaseBaselineLine(baseline) {
+  const resolveInstruction = `Resolve it yourself from the \`${RELEASE_BASELINE_BRANCH}\` branch: read \`${RELEASE_BASELINE_INDEX_PATH}\` and take the newest entry.`;
   if (!baseline) {
-    return `- Resolve it yourself from the \`${RELEASE_BASELINE_BRANCH}\` branch: read \`${RELEASE_BASELINE_INDEX_PATH}\` and take the newest entry (this issue could not resolve it at filing time).`;
+    return `- ${resolveInstruction} (this issue could not resolve it at filing time).`;
   }
   const legs = formatLegs(baseline.legs);
   const details = [
@@ -144,5 +145,5 @@ export function formatReleaseBaselineLine(baseline) {
     baseline.funReportUrl ? `fun report ${baseline.funReportUrl}` : null,
     baseline.runUrl ? `release run ${baseline.runUrl}` : null,
   ].filter(Boolean);
-  return `- Newest published release baseline at filing time: ${details.join(', ')} (${links.join('; ')}). Re-resolve it before analysis in case a newer release landed since.`;
+  return `- ${resolveInstruction} Newest published release baseline at filing time: ${details.join(', ')} (${links.join('; ')}). Re-resolve it before analysis in case a newer release landed since.`;
 }

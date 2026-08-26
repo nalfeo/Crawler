@@ -507,6 +507,7 @@ test('issue body stamps the resolved release baseline when one is available', ()
     funReportUrl: null,
   };
   const body = buildIssueBody(77, baseline);
+  assert.match(body, /Resolve it yourself from the `baselines` branch/);
   assert.match(body, new RegExp(`commit \`${'c'.repeat(40)}\``));
   assert.match(body, /legs: floor1 300\/300, floor2 41\/150/);
   assert.match(body, /Re-resolve it before analysis/);

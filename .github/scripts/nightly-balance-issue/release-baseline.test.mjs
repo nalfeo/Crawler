@@ -139,6 +139,7 @@ test('the rendered provenance line reports the payload shape without requiring o
     payloadUrl: 'https://example.invalid/payload.json',
     funReportUrl: null,
   });
+  assert.match(line, /Resolve it yourself from the `baselines` branch/);
   assert.match(line, /legs: floor1 300\/300, floor2 41\/150/);
   assert.match(line, /300 runs/);
   assert.doesNotMatch(line, /seeds\/weapon/);
