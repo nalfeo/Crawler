@@ -116,6 +116,18 @@ text instead of a positive green delta. Its v0.2.7 capture is recorded alongside
 other lineage artifacts, with placement-only Azure commentary classified as advisory
 unless measured geometry proves a defect.
 
+### Bag-anchored mixed-delta comparison
+
+Generated-item delta comparison now takes the real hovered Bag-cell bounds through
+the same preview path as static Bag items. Its `CURRENT` and `CANDIDATE` cards stack
+on the Bag-facing side rather than reverting to the bottom Equipment inspector. Each
+card is declared independently in review geometry: card-to-card overlap, panel escape,
+text escape, and target occlusion are deterministic blockers. The real Phaser/Azure
+v0.3.1 capture passes with zero deterministic blockers and an anchored 80.0 score;
+Azure receives the zoomed card/Bag interaction plus labeled full-panel placement
+context. The e2e fixture asserts the generated Bag target, both card bounds, panel
+containment, non-occlusion, left-side proximity, pair separation, and topmost state.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

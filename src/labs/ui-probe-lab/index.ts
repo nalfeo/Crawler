@@ -130,6 +130,7 @@ export interface UiProbeApi {
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
+  getEquipmentTooltipCardBounds(): readonly ScreenBounds[];
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
   /** Render the same inspector content as hovering a paper-doll slot. */
@@ -142,6 +143,8 @@ export interface UiProbeApi {
   getEquipmentBagItemIds(): string[];
   /** Screen bounds of the bag cell at `index` (aligned to getEquipmentBagItemIds). */
   getEquipmentBagCellBounds(index: number): ScreenBounds | null;
+  /** Screen bounds of one generated-equipment bag cell. */
+  getGeneratedEquipmentBagCellBounds(instanceKey: string): ScreenBounds | null;
   /** Screen bounds of the whole integrated bag column (for wheel targeting). */
   getEquipmentBagColumnBounds(): ScreenBounds | null;
   /** Scroll the integrated bag column by whole rows (programmatic seam for wheel). */
@@ -612,6 +615,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentEmptySlotCue: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getEmptySlotCue(slotId) ?? null,
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
+        getEquipmentTooltipCardBounds: () => this.equipmentUI?.getTooltipCardScreenBounds() ?? [],
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
         previewEquipmentSlot: (slotId: EquipmentSlotId) => {
@@ -634,6 +638,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentBagItemIds: () => this.equipmentUI?.getBagItemIds() ?? [],
         getEquipmentBagCellBounds: (index: number) =>
           this.equipmentUI?.getBagCellScreenBounds(index) ?? null,
+        getGeneratedEquipmentBagCellBounds: (instanceKey: string) =>
+          this.equipmentUI?.getGeneratedBagCellScreenBounds(instanceKey) ?? null,
         getEquipmentBagColumnBounds: () => this.equipmentUI?.getBagColumnScreenBounds() ?? null,
         scrollEquipmentBag: (rows: number) => {
           this.equipmentUI?.scrollBag(rows);

@@ -27,6 +27,7 @@
     const candidateKey = probe?.addGeneratedChestReplacement?.();
     if (!candidateKey) throw new Error('Unable to seed the generated chest replacement.');
     probe?.previewGeneratedEquipmentBagItem?.(candidateKey);
+    window.__visualReviewGeneratedCandidateKey = candidateKey;
   } else {
     throw new Error(`Unknown equipment UX scenario: ${scenario ?? '<missing>'}`);
   }
@@ -116,10 +117,12 @@
   const hoveredBag =
     hoveredBagIndex !== undefined && hoveredBagIndex >= 0
       ? probe?.getEquipmentBagCellBounds?.(hoveredBagIndex)
-      : null;
+      : scenario === 'equipment-hover-mixed-delta'
+        ? probe?.getGeneratedEquipmentBagCellBounds?.(window.__visualReviewGeneratedCandidateKey)
+        : null;
   const hoverTarget = hoveredBag ?? hoveredSlot;
   const hoverTargetId = hoveredBag
-    ? 'hover-target:bag:leather-boots'
+    ? `hover-target:bag:${scenario === 'equipment-hover-empty-slot' ? 'leather-boots' : 'generated-chest'}`
     : hoveredSlotId
       ? `hover-target:${hoveredSlotId}`
       : null;
@@ -135,15 +138,29 @@
   }
   if (tooltip)
     regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip', parentId: 'hover-context' });
+  const tooltipCards = probe?.getEquipmentTooltipCardBounds?.() ?? [];
+  for (const [index, card] of tooltipCards.entries()) {
+    regions.push({
+      id: `tooltip-card:${index}`,
+      box: card,
+      kind: 'other',
+      parentId: 'equipment-panel',
+    });
+  }
   if (tooltip) {
     let tooltipTextIndex = 0;
     for (const run of probe?.getEquipmentTextRuns?.() ?? []) {
       if (run.region !== 'inspector') continue;
+      const cardIndex = tooltipCards.findIndex((card) => {
+        const x = run.bounds.x + run.bounds.width / 2;
+        const y = run.bounds.y + run.bounds.height / 2;
+        return x >= card.x && x <= card.x + card.width && y >= card.y && y <= card.y + card.height;
+      });
       regions.push({
         id: `tooltip-text:${tooltipTextIndex++}`,
         box: run.bounds,
         kind: 'text',
-        parentId: 'tooltip',
+        parentId: cardIndex >= 0 ? `tooltip-card:${cardIndex}` : 'tooltip',
       });
     }
   }

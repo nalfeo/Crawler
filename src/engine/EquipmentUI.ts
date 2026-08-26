@@ -354,6 +354,8 @@ export function createEquipmentUI(
   getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
   getTooltipScreenBounds(): ScreenBounds | null;
+  /** Bounds of each visible tooltip card, in render order. */
+  getTooltipCardScreenBounds(): readonly ScreenBounds[];
   isTooltipVisible(): boolean;
   isTooltipTopmost(): boolean;
   /** Static item ids in visible-bag order; excludes generated instances. */
@@ -448,6 +450,7 @@ export function createEquipmentUI(
   let lastWorld: GameWorld | null = null;
   let destroyed = false;
   let fontLoadState: EquipmentFontLoadState = 'loading';
+  const tooltipCardBounds: ScreenBounds[] = [];
 
   const container = scene.add.container(0, 0);
   container.setDepth(1000);
@@ -761,6 +764,7 @@ export function createEquipmentUI(
   function clearInspectorText(): void {
     clearPool(tooltipObjects);
     tooltipBounds = null;
+    tooltipCardBounds.length = 0;
   }
 
   function clearTooltip(): void {
@@ -1249,6 +1253,7 @@ export function createEquipmentUI(
         crispText,
       }),
     );
+    tooltipCardBounds.push({ ...placement });
     // Tooltips are an overlay, never background decoration. `renderItemTooltip`
     // creates several children; raise the backing panel first and every child
     // afterward so later panel elements cannot occlude the card.
@@ -1297,6 +1302,7 @@ export function createEquipmentUI(
     current: EquipmentItemDef,
     candidate: EquipmentItemDef,
     diffLines: readonly string[] = [],
+    sourceBounds: ScreenBounds | null = null,
   ): void {
     const gap = 8;
     const cardWidth = Math.floor((inspectorW - 16 - gap) / 2);
@@ -1306,9 +1312,18 @@ export function createEquipmentUI(
       getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(current), '').height,
       getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(candidate), '', diffLines).height,
     );
+    const stacked = sourceBounds !== null;
+    const pairHeight = stacked ? cardHeight * 2 + gap : cardHeight;
+    const pairX = stacked ? sourceBounds.x - 14 - cardWidth : inspectorX + 6;
+    const pairY = stacked
+      ? Math.max(
+          panelY + 8,
+          Math.min(sourceBounds.y - pairHeight / 2, panelY + panelHeight - pairHeight - 8),
+        )
+      : inspectorY + 7;
     renderEquipmentTooltipCard(
       current,
-      { x: inspectorX + 6, y: inspectorY + 7, width: cardWidth, height: cardHeight },
+      { x: pairX, y: pairY, width: cardWidth, height: cardHeight },
       'CURRENT',
       [],
       false,
@@ -1316,8 +1331,8 @@ export function createEquipmentUI(
     renderEquipmentTooltipCard(
       candidate,
       {
-        x: inspectorX + 6 + cardWidth + gap,
-        y: inspectorY + 7,
+        x: stacked ? pairX : pairX + cardWidth + gap,
+        y: stacked ? pairY + cardHeight + gap : pairY,
         width: cardWidth,
         height: cardHeight,
       },
@@ -1502,14 +1517,14 @@ export function createEquipmentUI(
         : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
     const candidate = getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name);
     const targetSlot = targets[0] ?? selectedSlotFilter;
+    const bagSource =
+      previewEntryIdentity === null
+        ? null
+        : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
     if (targetSlot && (isSlotEmpty(targetSlot) || selectedSlotFilter === targetSlot)) {
-      const bagSource =
-        previewEntryIdentity === null
-          ? null
-          : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
       showCandidateTooltip(candidate, targetSlot, bagSource);
     } else {
-      renderTooltipPair(current, candidate, diffLines);
+      renderTooltipPair(current, candidate, diffLines, bagSource);
     }
   }
 
@@ -1588,7 +1603,11 @@ export function createEquipmentUI(
       changed.length === 0
         ? ['No stat change']
         : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
-    renderTooltipPair(current, candidate, diffLines);
+    const bagSource =
+      previewEntryIdentity === null
+        ? null
+        : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
+    renderTooltipPair(current, candidate, diffLines, bagSource);
   }
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {
@@ -2654,6 +2673,7 @@ export function createEquipmentUI(
     getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
     getEmptySlotCue: (slotId: EquipmentSlotId) => emptySlotCues.get(slotId) ?? null,
     getTooltipScreenBounds: () => tooltipBounds,
+    getTooltipCardScreenBounds: () => tooltipCardBounds.map((bounds) => ({ ...bounds })),
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipTopmost,
     getBagItemIds: () => [...bagItemIds],

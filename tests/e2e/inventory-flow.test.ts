@@ -1067,6 +1067,50 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
+  it('anchors generated delta comparisons beside the hovered Bag item without geometry escapes', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const deltaPage = await context.newPage();
+    try {
+      await loadUiProbeLab(deltaPage);
+      await hideLabChrome(deltaPage);
+      const candidateKey = await deltaPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+        probe.equipInventoryItem('iron-breastplate');
+        return probe.addGeneratedChestReplacement();
+      });
+      if (candidateKey === null) {
+        throw new Error('Unable to seed generated chest replacement.');
+      }
+      await deltaPage.waitForTimeout(250);
+      await deltaPage.evaluate((instanceKey) => {
+        window.__uiProbe!.previewGeneratedEquipmentBagItem(instanceKey);
+      }, candidateKey);
+
+      const geometry = await deltaPage.evaluate((instanceKey) => {
+        const probe = window.__uiProbe!;
+        return {
+          panel: probe.getEquipmentPanelBounds(),
+          target: probe.getGeneratedEquipmentBagCellBounds(instanceKey),
+          cards: probe.getEquipmentTooltipCardBounds(),
+          topmost: probe.isEquipmentTooltipTopmost(),
+        };
+      }, candidateKey);
+      expect(geometry.target).not.toBeNull();
+      expect(geometry.cards).toHaveLength(2);
+      expect(geometry.topmost).toBe(true);
+      for (const card of geometry.cards) {
+        expect(containsWithin(geometry.panel, card, 1)).toBe(true);
+        expect(overlaps(geometry.target!, card)).toBe(false);
+        expect(card.x + card.width).toBeLessThanOrEqual(geometry.target!.x - 10);
+      }
+      expect(overlaps(geometry.cards[0]!, geometry.cards[1]!)).toBe(false);
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
   it('keeps rendered text contained, collision-free, and readable at every supported viewport', async () => {
     for (const viewport of [
       { width: 1280, height: 800 },
