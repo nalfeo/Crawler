@@ -158,4 +158,4 @@ spec:
           equals: 'true'
       branches:
         pass: close-out
-        fail: needs-remediation
+        fail: '@abort'
