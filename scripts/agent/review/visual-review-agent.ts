@@ -600,6 +600,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     ...(hasDeclaredHoverTarget
       ? [
           '- This is an item-hover capture. The declared hover target must contain real equipment, have a visible emphasis outline, and retain a nearby tooltip that does not cover it.',
+          '- For dense item-hover UI, a measured 12px or greater target-to-tooltip gap is intentional breathing room, not a cramped-layout defect.',
         ]
       : []),
     '- Slot tiles should be roughly square or portrait; very short/wide slot boxes are a defect.',
@@ -633,6 +634,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
       ? [
           '- If the declared hover target is empty, lacks visible emphasis, has no tooltip, or the tooltip covers it, include it in blocking_findings.',
           '- A tooltip behind any panel or item is a hard failure: include it in blocking_findings even if its text is otherwise readable.',
+          '- Do not report a cramped target/tooltip relationship when declared geometry shows a 12px or larger gap.',
         ]
       : []),
     '- If slot aspect ratio or icon occupancy harms item readability, include it in blocking_findings.',

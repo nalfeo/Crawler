@@ -210,7 +210,7 @@ export function renderItemTooltip(
   }
 
   const nameText = crispText(
-    tx + (compactLayout?.icon.x ?? (richIcon ? 42 : 8)),
+    tx + (compactLayout ? 8 : richIcon ? 42 : 8),
     ty + (compactLayout ? 12 : sectionLabel ? 18 : 8),
     def.name,
     {
@@ -221,7 +221,6 @@ export function renderItemTooltip(
       wordWrap: { width: compactLayout ? 80 : tooltipWidth - (richIcon ? 50 : 16) },
     },
   );
-  if (compactLayout) nameText.setOrigin(0.5, 0.5);
 
   const bodyX = tx + (richContent ? 8 : 8);
   const bodyY =

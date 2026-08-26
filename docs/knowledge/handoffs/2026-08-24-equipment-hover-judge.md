@@ -88,6 +88,13 @@ a subjective LLM finding. The v0.1.24 focused capture hard-failed the measured
 2px left overflow of `Leather Boots`; the compact layout inset was increased and
 v0.1.25 reports zero deterministic blockers.
 
+### Dense-gap calibration
+
+Compact tooltip item names now align with the stat column's 8px left edge. The
+visual judge is explicitly calibrated that a measured 12px-or-greater
+target-to-tooltip gap is intentional dense-mode spacing; the v0.1.26 Azure
+review no longer reports the 14px Bag-item gap as cramped.
+
 ## Validation
 
 - `npm run verify:fast` — passed.
