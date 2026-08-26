@@ -88,7 +88,7 @@ function recordSelection(
 }
 
 /** Cross-run generated-item identity excluding run IDs, ordinals, fingerprints, and rolled values. */
-function generatedEquipmentCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
+export function generatedEquipmentCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
   const slots = [...instance.frozen.slots].sort().join(',');
   const effects = instance.resolvedEffects
     .map((effect) => {
