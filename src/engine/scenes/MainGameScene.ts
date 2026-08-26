@@ -80,6 +80,9 @@ import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
+import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
+import { shouldShowFloor3Party } from '../floor3-party-state.js';
+import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
@@ -142,7 +145,12 @@ import {
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import { formForLevel, getPetSpecies } from '../../shared/data/floor3/species.js';
+import {
+  buildFloor3IntroModel,
+  buildFloor3PoachPickerModel,
+  buildFloor3StarterPickerModel,
+} from '../../shared/floor3-ux.js';
+import type { ModalPickerConfig } from '../../shared/modal-picker.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
@@ -541,6 +549,8 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+  /** True once the Floor 3 rules briefing (UX surface #1) has been acknowledged this floor. */
+  private floor3IntroAcknowledged = false;
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
@@ -732,12 +742,17 @@ export class MainGameScene extends Phaser.Scene {
   private keyAbilities?: Phaser.Input.Keyboard.Key;
 
   private keyAchievements?: Phaser.Input.Keyboard.Key;
+  private keyRoster?: Phaser.Input.Keyboard.Key;
+  private keyCommand?: Phaser.Input.Keyboard.Key;
+  private queuedRosterToggle = false;
+  private queuedCompanionCommand = false;
 
   private keyQuartermaster?: Phaser.Input.Keyboard.Key;
 
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
+  private floor3RosterUI?: ReturnType<typeof createFloor3RosterUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private shopPanelUI?: ReturnType<typeof createShopPanelUI>;
@@ -878,6 +893,10 @@ export class MainGameScene extends Phaser.Scene {
   private equipButton?: Phaser.GameObjects.Text;
 
   private achievementsButton?: Phaser.GameObjects.Text;
+
+  private floor3RosterButton?: Phaser.GameObjects.Text;
+
+  private floor3CommandButton?: Phaser.GameObjects.Text;
 
   /** Touch button for the abilities config modal. */
   private abilitiesButton?: Phaser.GameObjects.Text;
@@ -1051,6 +1070,8 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.keyRoster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1110,6 +1131,7 @@ export class MainGameScene extends Phaser.Scene {
       },
     });
     this.bossIntroUI = createBossIntroUI(this);
+    this.floor3RosterUI = createFloor3RosterUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onVisibilityChange: () => {
         this.clearPendingInteractionInput();
@@ -1326,6 +1348,8 @@ export class MainGameScene extends Phaser.Scene {
       this.equipmentUI = undefined;
       this.achievementsUI?.destroy();
       this.achievementsUI = undefined;
+      this.floor3RosterUI?.destroy();
+      this.floor3RosterUI = undefined;
       this.rewardOpeningUI?.destroy();
       this.rewardOpeningUI = undefined;
       this.shopPanelUI?.destroy();
@@ -1334,6 +1358,10 @@ export class MainGameScene extends Phaser.Scene {
       this.rewardAudioEngine = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
+      this.floor3RosterButton?.destroy();
+      this.floor3RosterButton = undefined;
+      this.floor3CommandButton?.destroy();
+      this.floor3CommandButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
       this.issueButton?.destroy();
@@ -1458,6 +1486,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.inventoryButton) ||
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
+      isCornerButtonHit(this.floor3RosterButton) ||
+      isCornerButtonHit(this.floor3CommandButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
       isCornerButtonHit(this.quartermasterButton) ||
       isCornerButtonHit(this.issueButton)
@@ -1488,6 +1518,8 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAchievements,
       this.keyAbilities,
       this.keyQuartermaster,
+      this.keyRoster,
+      this.keyCommand,
       this.keyEsc,
     ]) {
       if (key) {
@@ -1529,6 +1561,21 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.floor3RosterUI?.isOpen()) {
+      if (event.repeat) return;
+      if (event.code === 'KeyR' || event.code === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.closeFloor3Roster();
+      } else if (event.code === 'KeyW' || event.code === 'ArrowUp') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, -1);
+      } else if (event.code === 'KeyS' || event.code === 'ArrowDown') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, 1);
+      }
+      return;
+    }
     if (this.isBlockingSurfaceOpen()) {
       return;
     }
@@ -1556,6 +1603,37 @@ export class MainGameScene extends Phaser.Scene {
   public requestAchievementsToggle(): void {
     this.clearPendingInteractionInput();
     this.queuedAchievementsToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 roster overlay ([R]). */
+  public requestFloor3RosterToggle(): void {
+    this.clearPendingInteractionInput();
+    this.queuedRosterToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 companion command verb ([C]). */
+  public requestCompanionCommand(): void {
+    this.queuedCompanionCommand = true;
+  }
+
+  /** Read-back of the mounted Floor-3 roster overlay for labs/e2e probes. */
+  public getFloor3RosterState(): Floor3RosterState | null {
+    return this.floor3RosterUI?.getState() ?? null;
+  }
+
+  private closeFloor3Roster(): void {
+    this.floor3RosterUI?.close();
+    this.clearPendingInteractionInput();
+  }
+
+  private issueCompanionCommandFromInput(): void {
+    const result = this.hudUi?.issueFloor3Command(this.world, this.playerEid);
+    if (result === undefined) return;
+    if (result.accepted) {
+      this.flashHint(`${result.row.formName} uses ${result.abilityName}!`);
+      return;
+    }
+    this.flashHint(describeCompanionCommandRejection(result.rejection));
   }
 
   public requestQuartermasterToggle(): void {
@@ -1899,6 +1977,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
+      (this.floor3RosterUI?.isOpen() ?? false) ||
       (this.shopPanelUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
@@ -2003,6 +2082,19 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.floor3RosterUI?.isOpen()) {
+      this.updateDoorOverlay();
+      this.updateLightingOverlay();
+      this.floor3RosterUI.sync(this.world);
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateFeatureUnlocks();
+      return;
+    }
+
     // On level-up, open the stat-allocation screen so the player can spend the
     // points they earned. If there are no points to spend (or no allocation
     // callback is wired), just resume the run.
@@ -2033,6 +2125,13 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      if (this.world.state === 'loadout') {
+        this.openLoadoutModal();
+        if (this.modalPicker?.isOpen()) {
+          this.updateOverlayText();
+          return;
+        }
+      }
       this.updateDoorOverlay();
       this.updateLightingOverlay();
       this.bridge.sync(this.world);
@@ -2253,6 +2352,8 @@ export class MainGameScene extends Phaser.Scene {
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
     const quartermasterOpen = this.shopPanelUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
+    const rosterOpen = this.floor3RosterUI?.isOpen() ?? false;
+    const floor3PartyAvailable = shouldShowFloor3Party(this.world);
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
     // level-up, map overlay, or a non-abilities modal).
@@ -2271,7 +2372,8 @@ export class MainGameScene extends Phaser.Scene {
       !equipOpen &&
       !achievementsOpen &&
       !quartermasterOpen &&
-      !abilitiesOpen;
+      !abilitiesOpen &&
+      !rosterOpen;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
@@ -2281,6 +2383,10 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton?.setVisible(
       safeCtx && this.world.achievements.unlockedIds.size > 0 && (achievementsOpen || canOpenNew),
     );
+    this.floor3RosterButton
+      ?.setDepth(rosterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(floor3PartyAvailable && (rosterOpen || canOpenNew));
+    this.floor3CommandButton?.setVisible(floor3PartyAvailable && !rosterOpen && canOpenNew);
     this.abilitiesButton
       ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
@@ -2377,6 +2483,33 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         this.achievementsUI.toggle(this.world);
       }
+    }
+
+    const rosterToggleRequested =
+      this.queuedRosterToggle ||
+      Boolean(this.keyRoster && Phaser.Input.Keyboard.JustDown(this.keyRoster));
+    this.queuedRosterToggle = false;
+    if (rosterOpen) {
+      if (rosterToggleRequested) {
+        this.closeFloor3Roster();
+      } else if (floor3PartyAvailable) {
+        this.floor3RosterUI?.sync(this.world);
+      } else {
+        this.closeFloor3Roster();
+      }
+    } else if (rosterToggleRequested && floor3PartyAvailable && !isUiLockOpen()) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels();
+      this.clearPendingInteractionInput();
+      this.floor3RosterUI?.open(this.world);
+    }
+
+    const commandRequested =
+      this.queuedCompanionCommand ||
+      Boolean(this.keyCommand && Phaser.Input.Keyboard.JustDown(this.keyCommand));
+    this.queuedCompanionCommand = false;
+    if (commandRequested && !this.isBlockingSurfaceOpen() && floor3PartyAvailable) {
+      this.issueCompanionCommandFromInput();
     }
 
     // Boss chests now appear as physical in-world entities. Surface a one-time
@@ -2668,13 +2801,19 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.requestAchievementsToggle();
     });
-    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
+    this.floor3RosterButton = makeCornerButton(cornerButtonTop() + 168, '🐾 Roster', () => {
+      this.requestFloor3RosterToggle();
+    });
+    this.floor3CommandButton = makeCornerButton(cornerButtonTop() + 224, '⚡ Command', () => {
+      this.requestCompanionCommand();
+    });
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 280, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑ Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
@@ -2682,6 +2821,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
+      this.floor3RosterButton?.setScale(buttonScale);
+      this.floor3CommandButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
       this.issueButton?.setScale(buttonScale);
@@ -2692,6 +2833,8 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton,
         this.equipButton,
         this.achievementsButton,
+        this.floor3RosterButton,
+        this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
         this.issueButton,
@@ -2705,11 +2848,30 @@ export class MainGameScene extends Phaser.Scene {
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
       this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
+      this.floor3RosterButton?.setY(top + bagH + gearH + awardsH);
+      const rosterH = (this.floor3RosterButton?.height ?? 44) * buttonScale + 8;
+      this.floor3CommandButton?.setY(top + bagH + gearH + awardsH + rosterH);
+      const commandH = (this.floor3CommandButton?.height ?? 44) * buttonScale + 8;
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
       const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      this.issueButton?.setY(top + bagH + gearH + awardsH + skillsH + shopH);
+      if (buttonScale > 1) {
+        const firstColumnWidth = Math.max(
+          ...[
+            this.inventoryButton,
+            this.equipButton,
+            this.achievementsButton,
+            this.floor3RosterButton,
+            this.floor3CommandButton,
+            this.abilitiesButton,
+            this.quartermasterButton,
+          ].map((button) => button?.displayWidth ?? 0),
+        );
+        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
+      } else {
+        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      }
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -3361,7 +3523,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.world.floorId === 'floor3') {
-      this.openFloor3StarterModal();
+      this.openFloor3LoadoutSurface();
       return;
     }
 
@@ -3406,53 +3568,69 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
-   * Floor 3's starter-Companion pick (spec R5 §6.1) — the species-based
-   * counterpart to Floor 1's weapon loadout modal above. Sourced from
-   * `floorExtendedState.floor3StarterOffer` since Floor 3 intentionally
+   * Floor 3's `'loadout'` surfaces (spec slice 12, UX surfaces #1–#3). One
+   * resolver picks exactly one surface by priority so the rules briefing can
+   * never be skipped and a poach can never be masked by the starter offer:
+   *
+   * 1. the welcome + rules briefing, once per floor entry (non-cancellable);
+   * 2. the Trainer-poach picker, whenever a poach offer is pending;
+   * 3. the starter-Companion picker.
+   *
+   * Offers are sourced from `floorExtendedState` since Floor 3 intentionally
    * never populates `world.floorScenario` (see `initializeFloor3Scenario`).
    */
-  private openFloor3StarterModal(): void {
+  private openFloor3LoadoutSurface(): void {
     if (!this.modalPicker) return;
-    const offer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
-    if (offer.length === 0) return;
 
-    const options = offer.map((speciesId, index) => {
-      const species = getPetSpecies(speciesId);
-      if (!species) {
-        return { id: speciesId, label: `Option ${index + 1}`, description: speciesId };
-      }
-      const babyForm = formForLevel(species, 1);
-      const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
-      return {
-        id: speciesId,
-        label: babyForm.name,
-        description: `${capitalize(species.affinity)} · ${capitalize(species.fightingStyle)} · ${species.innateAbilityName}`,
-      };
+    if (!this.floor3IntroAcknowledged) {
+      this.modalPicker.open(buildFloor3IntroModel(), {
+        onConfirm: () => {
+          this.floor3IntroAcknowledged = true;
+          this.updateOverlayText();
+        },
+      });
+      return;
+    }
+
+    const poachOffer = this.world.floorExtendedState?.floor3PoachOffer;
+    if (poachOffer !== undefined) {
+      this.openFloor3PickerModal(
+        buildFloor3PoachPickerModel({
+          candidates: poachOffer.candidates,
+          slotsRemaining: poachOffer.slotsRemaining,
+          trainerName: poachOffer.encounterName,
+        }),
+        poachOffer.candidates.map((candidate) => candidate.speciesId),
+      );
+      return;
+    }
+
+    const starterOffer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
+    if (starterOffer.length === 0) return;
+    this.openFloor3PickerModal(buildFloor3StarterPickerModel(starterOffer), starterOffer);
+  }
+
+  /** Opens a Floor 3 species picker and routes the pick back through `selectLoadoutOption`. */
+  private openFloor3PickerModal(
+    config: ModalPickerConfig,
+    offerSpeciesIds: readonly string[],
+  ): void {
+    this.modalPicker?.open(config, {
+      onConfirm: ({ option }) => {
+        // An unmatched option id must still dispatch: `selectLoadoutOption`
+        // is the only thing that leaves `'loadout'`, so skipping it would
+        // strand the floor paused with no picker on screen. Index 0 is the
+        // same never-strand fallback the cancel path and the headless runner
+        // use.
+        const choiceIndex = offerSpeciesIds.indexOf(option.id);
+        this.options.selectLoadoutOption?.(this.world, Math.max(0, choiceIndex));
+        this.updateOverlayText();
+      },
+      onCancel: () => {
+        this.options.selectLoadoutOption?.(this.world, 0);
+        this.updateOverlayText();
+      },
     });
-
-    this.modalPicker.open(
-      {
-        title: 'Choose your starter Companion',
-        subtitle: 'Floor 3 is paused until you confirm a starter.',
-        body: 'Pick the Companion you want to begin the Companion League with.',
-        options,
-        allowCancel: true,
-        initialSelectedId: offer[0],
-      },
-      {
-        onConfirm: ({ option }) => {
-          const choiceIndex = offer.indexOf(option.id);
-          if (choiceIndex >= 0) {
-            this.options.selectLoadoutOption?.(this.world, choiceIndex);
-          }
-          this.updateOverlayText();
-        },
-        onCancel: () => {
-          this.options.selectLoadoutOption?.(this.world, 0);
-          this.updateOverlayText();
-        },
-      },
-    );
   }
 
   private openSpellSelectionModal(): void {

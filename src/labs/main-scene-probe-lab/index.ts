@@ -168,6 +168,12 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getFloor3RosterState?(): {
+    open: boolean;
+    cursor: number;
+    entries: readonly string[];
+    detailLines: readonly string[];
+  } | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
@@ -189,6 +195,16 @@ interface MainSceneInternals {
       visible: boolean;
       bounds: ScreenBounds | null;
       panelVisible: boolean;
+    };
+    getFloor3PartyState?(): {
+      visible: boolean;
+      rows: readonly {
+        name: string;
+        matchup: string | null;
+      }[];
+      notices: readonly string[];
+      commandCapacity: number;
+      commandsInUse: number;
     };
     /**
      * The currently-rendered announcement banner content (kind + exact
@@ -271,6 +287,8 @@ interface MainSceneInternals {
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
+  floor3RosterButton?: { visible: boolean; emit(eventName: string): boolean };
+  floor3CommandButton?: { visible: boolean; emit(eventName: string): boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
@@ -501,6 +519,8 @@ export interface MainSceneState {
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
+  readonly floor3RosterButtonVisible: boolean;
+  readonly floor3CommandButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   readonly issueButtonVisible: boolean;
@@ -529,6 +549,20 @@ export interface MainSceneState {
 export interface SafeAreaLayoutProbe {
   readonly insets: SafeAreaInsets;
   readonly surfaces: Array<{ readonly name: string; readonly bounds: ScreenBounds }>;
+}
+
+/** Mounted Floor-3 party-HUD + roster read-back (game-design §15 surfaces 4-8). */
+export interface Floor3PartyHudProbeState {
+  readonly hudVisible: boolean;
+  readonly rowNames: readonly string[];
+  readonly matchups: readonly (string | null)[];
+  readonly commandCapacity: number;
+  readonly commandsInUse: number;
+  readonly notices: readonly string[];
+  readonly rosterOpen: boolean;
+  readonly rosterCursor: number;
+  readonly rosterEntries: readonly string[];
+  readonly rosterDetailLineCount: number;
 }
 
 export interface FamilyHudProbeState {
@@ -772,6 +806,8 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
+  getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
   /**
@@ -933,6 +969,10 @@ export interface MainSceneProbeApi {
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
+  /** Emit a pointer tap on the Floor-3 roster corner button. */
+  tapFloor3RosterButton(): boolean;
+  /** Emit a pointer tap on the Floor-3 command corner button. */
+  tapFloor3CommandButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -1311,6 +1351,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
+        floor3RosterButtonVisible: scene?.floor3RosterButton?.visible ?? false,
+        floor3CommandButtonVisible: scene?.floor3CommandButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         issueButtonVisible: scene?.issueButton?.visible ?? false,
@@ -1488,6 +1530,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('floorTimer', encounter?.timerPanel);
       push('bossBar', encounter?.bossPanel);
       push('announcement', encounter?.announcementPanel);
+      const skillPanel = phaserScene?.children
+        .getChildren()
+        .flatMap((child) => (child instanceof Phaser.GameObjects.Container ? child.list : [child]))
+        .find(({ name }) => name === 'hud-skill-panel-bounds') as
+        | Phaser.GameObjects.Zone
+        | undefined;
+      push('skillPanel', skillPanel?.getBounds());
       push('interactionHint', scene?.getInteractionHintBounds?.());
       push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
       push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);
@@ -1555,6 +1604,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         sceneOptions.broker?.met(world);
         scene.setSimulationPaused(false);
       }
+    },
+
+    getFloor3PartyHudState: (): Floor3PartyHudProbeState => {
+      const scene = getScene();
+      const party = scene?.hudUi?.getFloor3PartyState?.();
+      const roster = scene?.getFloor3RosterState?.() ?? null;
+      return {
+        hudVisible: party?.visible ?? false,
+        rowNames: party?.rows.map((row) => row.name) ?? [],
+        matchups: party?.rows.map((row) => row.matchup) ?? [],
+        commandCapacity: party?.commandCapacity ?? 0,
+        commandsInUse: party?.commandsInUse ?? 0,
+        notices: party?.notices ?? [],
+        rosterOpen: roster?.open ?? false,
+        rosterCursor: roster?.cursor ?? -1,
+        rosterEntries: roster?.entries ?? [],
+        rosterDetailLineCount: roster?.detailLines.length ?? 0,
+      };
     },
 
     getFamilyHudState: (): FamilyHudProbeState => {
@@ -1964,6 +2031,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapFloor3RosterButton: () => {
+      const button = getScene()?.floor3RosterButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapFloor3CommandButton: () => {
+      const button = getScene()?.floor3CommandButton;
       if (!button?.visible) {
         return false;
       }

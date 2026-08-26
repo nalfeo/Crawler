@@ -85,6 +85,9 @@ export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
 /** Leading marker for issue-intake status comments. */
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
 
+/** Leading marker for recurring release baseline regression comments. */
+export const BASELINE_RECURRENCE_MARKER = '<!-- crawler-baseline-recurrence:v1 -->';
+
 /**
  * Leading marker for retroactive CI-recovery plan comments posted by the
  * reconciler when a linked issue has an intake requirement but no plan comment
@@ -191,6 +194,7 @@ export const MANAGED_COMMENT_MARKERS = [
   COORDINATOR_MARKER,
   COORDINATOR_DATA_PREFIX,
   ISSUE_INTAKE_MARKER,
+  BASELINE_RECURRENCE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
   FOLLOWUP_BACKLOG_MARKER,
   LOOP_INCIDENT_MARKER,

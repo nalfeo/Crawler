@@ -49,6 +49,8 @@ import {
 import {
   configureSpellBrokerPurchase,
   ensureSpellBrokerDecision,
+  getSpellBrokerIntent,
+  markSpellBrokerPurchased,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -88,7 +90,11 @@ import {
   LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
-import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+} from '../../src/shared/quest-types.js';
 import {
   FamilyMembership,
   AoeOnImpact,
@@ -2622,6 +2628,26 @@ describe('BehaviorTreeAI', () => {
     },
   );
 
+  it('keeps a healthy projectile user travelling toward an NPC while in a safe room, without engaging', () => {
+    // Companion regression test for the safe-room-flicker fix above: whether
+    // `playerInSafeRoom` is true or the equipped weapon is a healthy
+    // projectile weapon, the resulting decision for this frame must be the
+    // same (EXPLORE toward the NPC, never ENGAGE) — only the internal
+    // no-progress tracking differs between the two causes now that the
+    // safe-room branch no longer shares the projectile-weapon reset call.
+    const { world, shopkeeperNpcEid } = setupNpcApproachThreat('bow');
+    world.playerInSafeRoom = true;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(shopkeeperNpcEid);
+    expect(decision.targetX).toBe(38);
+    expect(decision.targetY).toBe(14);
+    expect(decision.reason).not.toContain('Clearing nearby threat');
+  });
+
   it('clears nearby NPC-approach threats for wounded projectile users', () => {
     const { world, player } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 20;
@@ -2906,6 +2932,38 @@ describe('BehaviorTreeAI', () => {
     expect(internals.engageBaselinesByEid.size).toBe(0);
   });
 
+  it('does not treat nearby enemy membership churn as boss-fight damage progress', () => {
+    const world = createTestWorld({ seed: 32 });
+    world.state = 'playing';
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+    const boss = spawnEnemy(world, 3, 0, 120);
+    const add = spawnEnemy(world, 10, 0, 60);
+
+    const ai = new BehaviorTreeAI({ seed: 32 });
+    const internals = ai as unknown as {
+      questProgressStallFrames: number;
+      questProgressNearbyEnemyHpByEid: Map<number, number>;
+      updateQuestProgressWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+
+    internals.updateQuestProgressWatchdog(world, 0, 0);
+    expect(internals.questProgressStallFrames).toBe(0);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(boss)).toBe(120);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(add)).toBe(60);
+
+    world.stores.position.x[add] = 1000;
+    world.stores.position.y[add] = 0;
+    internals.updateQuestProgressWatchdog(world, 0, 0);
+
+    expect(internals.questProgressStallFrames).toBe(1);
+    expect(internals.questProgressNearbyEnemyHpByEid.has(add)).toBe(false);
+    expect(internals.questProgressNearbyEnemyHpByEid.get(boss)).toBe(120);
+  });
+
   it('resets the ENGAGE progress baseline when the tracked target dies', () => {
     // Companion regression test for the per-eid baseline design: the death/
     // despawn branch removes the eid's entry from engageBaselinesByEid so that
@@ -2975,6 +3033,58 @@ describe('BehaviorTreeAI', () => {
 
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('preserves the NPC threat-clear no-progress count across a one-frame safe-room doorway flicker', () => {
+    // Regression test: `playerInSafeRoom` can flip true for a single frame at
+    // a doorway boundary while the tracked NPC-approach threat is still
+    // nearby (the enclosing guard no longer excludes this frame — see
+    // bt-ai-provider.ts "Set Progress State"). Pre-fix, that frame always
+    // called resetNpcApproachThreatTracking(), so the no-progress counter
+    // could never accumulate across a flicker and the bypass could never
+    // latch while ENGAGE and the safe-room fallback alternated at the
+    // boundary.
+    const { world, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    const internals = ai as unknown as { npcApproachThreatNoProgressFrames: number };
+
+    // Run the counter up to just short of the bypass threshold with normal
+    // (non-flicker) polls, confirming ENGAGE persists throughout.
+    for (let poll = 0; poll < NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES; poll += 1) {
+      ai.poll(createInputState(), world);
+    }
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+    const countBeforeFlicker = internals.npcApproachThreatNoProgressFrames;
+    expect(countBeforeFlicker).toBeGreaterThan(0);
+
+    // Simulate the doorway flicker: the enemy stays right where it is
+    // (still inside threat radius), only `playerInSafeRoom` toggles true
+    // for a single poll.
+    world.playerInSafeRoom = true;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+    expect(ai.getDecision().targetEid).toBe(shopkeeperNpcEid);
+    expect(internals.npcApproachThreatNoProgressFrames).toBe(countBeforeFlicker);
+
+    // Back to normal: the threat is still nearby, so ENGAGE resumes exactly
+    // where the counter left off instead of restarting from zero.
+    world.playerInSafeRoom = false;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+
+    // One more real (non-flicker) poll should be enough to cross the
+    // threshold and latch the bypass — proving the flicker frame above did
+    // not reset the counter, since a genuine reset would require the full
+    // NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES budget all over again.
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
+    expect(ai.getDecision().reason).not.toContain('Clearing nearby threat before NPC interaction');
+    expect(enemies.length).toBeGreaterThan(0);
   });
 
   it('clears NPC threat-clear bypass after higher-priority Progress preemption', () => {
@@ -4631,6 +4741,44 @@ describe('BehaviorTreeAI', () => {
 
       void player; // used in setup
       void brokerY; // declared above
+    });
+
+    it('routes a returning repeat spell intent to the stairs after accepting the leave-floor quest', () => {
+      const buySeed = findBuySeed();
+      const { world, brokerX } = setupPostBossBattleWorld(buySeed);
+      const staircaseX = 8;
+      const staircaseY = 4;
+      const objective = world.floorScenario!.objective;
+      objective.bossBattles.get('staircase')!.started = true;
+      objective.bossBattles.get('staircase')!.defeated = true;
+      world.floorScenario!.objective = {
+        ...objective,
+        staircaseUnlocked: true,
+        staircaseDiscovered: true,
+        staircasePos: { x: staircaseX, y: staircaseY },
+      };
+      acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+      expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+
+      configureSpellBrokerPurchase(world, true);
+      ensureSpellBrokerDecision(world);
+      markSpellBrokerPurchased(world);
+      world.playerGold = FLOOR1_SPELL_BROKER_COST + 1;
+      updateSpellBrokerIntent(world, null, 3_000);
+      expect(getSpellBrokerIntent(world)).toMatchObject({
+        purchaseCount: 1,
+        purchaseStatus: 'returning',
+      });
+      const ai = new BehaviorTreeAI({ seed: buySeed });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+      expect(decision.state).toBe(AIState.EXPLORE);
+      expect(decision.reason).toBe('Heading to the stairs to clear the floor');
+      expect(decision.targetX).toBeCloseTo(staircaseX, -1);
+      expect(decision.targetX).not.toBeCloseTo(brokerX, -1);
+      expect(decision.targetY).toBeCloseTo(staircaseY, -1);
     });
 
     it('farm-spell-broker-gold: resolver does not throw even with no gold or enemies nearby', () => {

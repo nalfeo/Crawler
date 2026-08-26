@@ -266,6 +266,27 @@ describe('spell skills', () => {
       expect(result.purchaseStatus).toBe('returning');
     });
 
+    it('does not revive an abandoned repeat spell after the final boss is defeated', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      world.playerGold = first.cost;
+      updateSpellBrokerIntent(world, null, 3_000);
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+
+      const repeat = getSpellBrokerIntent(world);
+      world.playerGold = 0;
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+
+      world.floorScenario!.objective.bossBattles.get('staircase')!.defeated = true;
+      world.playerGold = repeat.cost;
+
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+    });
+
     it('abandons a repeat spell that would consume a pending weapon reserve', () => {
       const world = createTestWorld({ seed: 13 });
       configureSpellBrokerPurchase(world, true);

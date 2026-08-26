@@ -66,6 +66,7 @@ import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type QuestState,
@@ -74,6 +75,7 @@ import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
+  AIDecisionMode,
   AIPathingMode,
   AIDecisionDebugState,
   AINpcInteractionAction,
@@ -345,7 +347,11 @@ import {
   type ScenarioAiOperation,
 } from './scenario-ai-tasks.js';
 import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
-import { planObjectiveRoute } from './objective-route-planner.js';
+import {
+  planObjectiveRoute,
+  type ObjectivePortfolioEntry,
+  type ObjectiveUtilityWeights,
+} from './objective-route-planner.js';
 import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
@@ -992,6 +998,8 @@ export class BehaviorTreeAI implements AIInputProvider {
   private globalDwellBestEnemyHp: number = Number.POSITIVE_INFINITY;
   private questProgressActive: boolean = false;
   private questProgressBestScore: number = 0;
+  private readonly nearbyEnemyHpScratch = new Map<number, number>();
+  private readonly questProgressNearbyEnemyHpByEid = new Map<number, number>();
   private questProgressStallFrames: number = 0;
   private readonly targetReachableCache = new Map<number, { frame: number; reachable: boolean }>();
   private readonly discoveredNpcDefs = new Set<string>();
@@ -1047,6 +1055,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     navEpoch: number;
     stateKey: string;
     goalId: string | null;
+    portfolio: readonly ObjectivePortfolioEntry[];
   } | null = null;
   /** Cached result of {@link planFloor1ObjectiveRoute}, keyed on quest-state + budget bucket + speed.
    * Exact timing and segment travel are recomputed per frame from the live snapshot. Cleared on {@link reset}. */
@@ -2203,10 +2212,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         // already inside engagement range, clear the threat first instead of
         // pathing straight through it toward the NPC.
         const tutorialAccepted = ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
+        // Note: deliberately does not gate on `!ctx.world.playerInSafeRoom` —
+        // that check moves inside so the no-progress tracking below can still
+        // run (and be preserved) on a safe-room doorway flicker frame. Actual
+        // engagement remains blocked while inside the safe room.
         if (
           targetIsNpc &&
           tutorialAccepted &&
-          !ctx.world.playerInSafeRoom &&
           !this.isFloor2IntroductionPending(ctx.world) &&
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
@@ -2224,13 +2236,12 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (ctx.world.playerInSafeRoom || (projectileWeapon && !woundedProjectile)) {
+            if (!ctx.world.playerInSafeRoom && projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
-              // direct-approach path below. Inside safe rooms, weapons are disabled,
-              // so threat-clearing cannot make progress until movement exits first.
+              // direct-approach path below.
               this.resetNpcApproachThreatTracking();
-            } else if (this.shouldClearThreatBeforeNpc(target)) {
+            } else if (!ctx.world.playerInSafeRoom && this.shouldClearThreatBeforeNpc(target)) {
               const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
               this.decision.state = AIState.ENGAGE;
               this.decision.targetEid = nearestEnemy.eid;
@@ -2239,7 +2250,19 @@ export class BehaviorTreeAI implements AIInputProvider {
               this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
               return BTStatus.SUCCESS;
             }
+            // else: either `ctx.world.playerInSafeRoom` is true (a
+            // doorway-flicker frame where the threat is still nearby but we
+            // can't act on it inside the safe room, weapons disabled) or the
+            // per-NPC bypass has already latched (shouldClearThreatBeforeNpc
+            // returned false). Either way, tracking is deliberately left
+            // untouched: the flicker frame must preserve it so the
+            // no-progress counter survives the boundary, and once the bypass
+            // has latched there is nothing left to reset — it stays latched
+            // until this outer `if` sees no nearby threat (the `else` below)
+            // or targets a different NPC (see `shouldClearThreatBeforeNpc`).
           } else {
+            // No threat within range: the gate genuinely exited, so reset
+            // unconditionally instead of leaving a stale bypass latched.
             this.resetNpcApproachThreatTracking();
           }
         } else {
@@ -3697,9 +3720,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * approached — or simply lets auto-fire mow the wave as it gives chase.
    */
   private updateGlobalDwellWatchdog(world: GameWorld, playerX: number, playerY: number): void {
-    // Inside a safe room the weapon is disabled and LeaveSafeRoom is actively
-    // walking the player out — not a deadlock. Reset so it cannot false-fire.
-    if (world.playerInSafeRoom) {
+    // While a safe-room egress waypoint is actively walking the player out, the
+    // weapon is disabled and stationary frames are not a deadlock. A raw
+    // playerInSafeRoom flag is insufficient: an unreachable objective can leave
+    // the player parked inside with no egress, where this watchdog must still run.
+    if (this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null) {
       this.globalDwellActive = false;
       this.globalDwellFrames = 0;
       return;
@@ -3836,33 +3861,72 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const score = this.computeFloorProgressFingerprint(world);
+    const nearbyEnemyHpByEid = this.collectNearbyEnemyHpByEid(
+      world,
+      playerX,
+      playerY,
+      this.nearbyEnemyHpScratch,
+    );
 
     if (!this.questProgressActive) {
       this.questProgressActive = true;
       this.questProgressBestScore = score;
+      this.questProgressNearbyEnemyHpByEid.clear();
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+      }
       this.questProgressStallFrames = 0;
       return;
     }
 
     if (score > this.questProgressBestScore) {
       this.questProgressBestScore = score;
+      this.questProgressNearbyEnemyHpByEid.clear();
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+      }
       this.questProgressStallFrames = 0;
-      return;
-    }
-
-    this.questProgressStallFrames++;
-    if (this.questProgressStallFrames <= QUEST_PROGRESS_STALL_FRAMES) {
       return;
     }
 
     // An active boss battle legitimately freezes the fingerprint (a single
     // binary "defeat the boss" objective, no add payouts) for the length of the
     // whittle. Relocating mid-fight would abandon the boss, so hold the timer
-    // while the boss quest is live and an enemy is actually in range.
+    // while the live HP pool is dropping. Add enter/exit churn only updates
+    // membership baselines; only same-entity HP loss resets the timer. A nearby
+    // but unreachable add with no HP delta still trips relocation instead of
+    // parking the run until timeout.
     const bossQuest = world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID);
     const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
-    if (bossQuest?.status === 'active' && nearestEnemy) {
+    const activeBossFight = bossQuest?.status === 'active' && nearestEnemy;
+    let damagingBossFight = false;
+    if (activeBossFight) {
+      for (const [eid, hp] of nearbyEnemyHpByEid) {
+        const baselineHp = this.questProgressNearbyEnemyHpByEid.get(eid);
+        if (baselineHp === undefined || hp > baselineHp + ENGAGE_PROGRESS_EPSILON_FT) {
+          this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+          continue;
+        }
+        if (hp < baselineHp - ENGAGE_PROGRESS_EPSILON_FT) {
+          damagingBossFight = true;
+          this.questProgressNearbyEnemyHpByEid.set(eid, hp);
+        }
+      }
+      for (const trackedEid of this.questProgressNearbyEnemyHpByEid.keys()) {
+        if (!nearbyEnemyHpByEid.has(trackedEid)) {
+          this.questProgressNearbyEnemyHpByEid.delete(trackedEid);
+        }
+      }
+    } else {
+      this.questProgressNearbyEnemyHpByEid.clear();
+    }
+    if (damagingBossFight) {
       this.questProgressStallFrames = 0;
+      return;
+    }
+
+    this.questProgressStallFrames++;
+    if (this.questProgressStallFrames <= QUEST_PROGRESS_STALL_FRAMES) {
       return;
     }
 
@@ -3907,6 +3971,32 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
     return sum;
+  }
+
+  private collectNearbyEnemyHpByEid(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: Map<number, number>,
+  ): Map<number, number> {
+    target.clear();
+    const engageRadius = this.getEngageRadius(world);
+    const radiusSq = engageRadius * engageRadius;
+    const enemies = query(world.ecs, [Enemy, Position, Health]);
+    for (const eid of enemies) {
+      if (eid === undefined) continue;
+      const hp = world.stores.health.current[eid] ?? 0;
+      if (hp <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const dx = ex - playerX;
+      const dy = ey - playerY;
+      if (dx * dx + dy * dy <= radiusSq) {
+        target.set(eid, hp);
+      }
+    }
+    return target;
   }
 
   private invalidateTransientDecisionForHostileEncounter(world: GameWorld): void {
@@ -4888,9 +4978,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
+    const portfolioWeights = this.strategicUtilityWeights();
     return {
       ...RUN_PLANNER_PARAMS,
       moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
+      ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
     };
   }
 
@@ -7230,7 +7322,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       nextGoalId = cache.goalId;
     } else {
       const rawGraph = buildFloor1GoalGraph(snapshot);
-      if (rawGraph.goals.length === 0) return null;
+      if (rawGraph.goals.length === 0) {
+        this.floor1MiddleChainCache = {
+          navEpoch: this.navEpoch,
+          stateKey,
+          goalId: null,
+          portfolio: [],
+        };
+        return null;
+      }
 
       const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
       const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
@@ -7244,18 +7344,21 @@ export class BehaviorTreeAI implements AIInputProvider {
         },
       });
 
+      const portfolioWeights = this.strategicUtilityWeights();
       const route = planObjectiveRoute({
         goals: graph.goals,
         startLocation: PLAYER_START_LOCATION,
         initialSatisfiedEffects: graph.initialSatisfiedEffects,
         budgetMs: Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs),
+        ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
         travelOracle: oracle,
       });
-      nextGoalId = route.nextActionableGoalId;
+      nextGoalId = route.activeObjectiveId;
       this.floor1MiddleChainCache = {
         navEpoch: this.navEpoch,
         stateKey,
         goalId: nextGoalId,
+        portfolio: route.portfolio,
       };
     }
     if (!nextGoalId) return null;
@@ -7468,15 +7571,32 @@ export class BehaviorTreeAI implements AIInputProvider {
     const spellBrokerIntent = getSpellBrokerIntent(world);
     const slimeRatBossDefeated = objective.bossBattles.get('slime-rat')?.defeated === true;
     const staircaseBossDefeated = objective.bossBattles.get('staircase')?.defeated === true;
+    const leaveFloorAccepted = world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID);
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
 
+    if (leaveFloorAccepted && staircaseBossDefeated && objective.staircaseUnlocked) {
+      const reason = 'Heading to the stairs to clear the floor';
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.staircasePos.x,
+          objective.staircasePos.y,
+          playerX,
+          playerY,
+          reason,
+        ),
+      );
+    }
+
+    // A repeat intent may already have been returning when the exit quest was
+    // accepted. Keep that stale lifecycle state from preempting the stairs.
     if (
       world.featureUnlocks.spells &&
       spellBrokerIntent.purchaseCount > 0 &&
       spellBrokerIntent.purchaseStatus === 'returning' &&
       slimeRatBossDefeated &&
       staircaseBossDefeated &&
+      !leaveFloorAccepted &&
       playerHealth / playerMaxHealth >= FARM_MIN_HEALTH_FRACTION
     ) {
       const spellQuestGiverNpcEid = floorScenario.spellQuestGiverNpcEid;
@@ -9590,6 +9710,28 @@ export class BehaviorTreeAI implements AIInputProvider {
     return this.config.decisionMode;
   }
 
+  /**
+   * Single gate for the `objectivePortfolio` A/B arm: the personality utility
+   * weights in flagged mode, `undefined` in LEGACY.
+   *
+   * EVERY Floor 1 planner entry point must go through this. The behavior tree's
+   * middle-chain route and {@link planFloor1ObjectiveRoute} (whose
+   * `includedOptionalBundleIds` drive merchant/Spell-Broker purchase-intent
+   * admission) build the same goal graph; if only one is weighted they can
+   * select different optional bundles under a contended budget and the agent
+   * farms gold for a purchase its own committed route already dropped.
+   */
+  private strategicUtilityWeights(): ObjectiveUtilityWeights | undefined {
+    return this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
+      ? this.config.strategicUtilityWeights
+      : undefined;
+  }
+
+  /** Current flagged Floor 1 agenda, including optional objectives not selected. */
+  getObjectivePortfolio(): readonly ObjectivePortfolioEntry[] {
+    return this.floor1MiddleChainCache?.portfolio ?? [];
+  }
+
   getNavigationDebug(): AINavigationDebug {
     return {
       pathWaypoints: this.pathWaypoints.map((waypoint) => ({ ...waypoint })),
@@ -9708,6 +9850,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.globalDwellBestEnemyHp = Number.POSITIVE_INFINITY;
     this.questProgressActive = false;
     this.questProgressBestScore = 0;
+    this.nearbyEnemyHpScratch.clear();
+    this.questProgressNearbyEnemyHpByEid.clear();
     this.questProgressStallFrames = 0;
     this.discoveredNpcDefs.clear();
     this.talkedNpcDefs.clear();

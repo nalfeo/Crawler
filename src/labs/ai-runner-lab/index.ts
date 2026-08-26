@@ -36,6 +36,7 @@ import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
 } from '../../game/ai/settlement-maintenance-planner.js';
+import { isSettlementReturnRoutingEnabled } from '../../game/ai/settlement-return-router.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import {
@@ -100,6 +101,7 @@ import {
   getAiRunnerScenarioPreset,
   type AiRunnerScenarioPresetId,
 } from './scenario-presets.js';
+import { syncAiRunnerSettlementReturnRouting } from './settlement-return-policy.js';
 
 const LAB_ID = 'ai-runner-lab';
 const AI_RUNNER_PANEL_STYLES = `
@@ -850,6 +852,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
+        syncAiRunnerSettlementReturnRouting(world, !manualControl);
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -910,7 +913,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureSpellBrokerPurchase(world, aiConfig.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
-    runEagerMaintenanceTick(world, playerEid);
+    runEagerMaintenanceTick(world, playerEid, {
+      skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
+    });
     runSettlementMaintenancePlanner(world);
   };
   let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
@@ -1365,7 +1370,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiModesFolder
-    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY])
+    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.OBJECTIVE_PORTFOLIO])
     .name('Decision')
     .onChange(() => {
       rebuildAiBrain();

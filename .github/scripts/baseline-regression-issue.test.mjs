@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { BASELINE_RECURRENCE_MARKER } from './ci-recovery/markers.mjs';
 import {
   BASELINE_REGRESSION_LABELS,
   fileBaselineRegressionIssue,
@@ -31,6 +32,10 @@ function signatureDecision(signatures, marker = 'abc123') {
   };
 }
 
+function copilotAssignees() {
+  return [{ login: 'copilot-swe-agent' }];
+}
+
 function harness(existingIssues = []) {
   const calls = [];
   const paginateFn = async (token, url) => {
@@ -42,6 +47,9 @@ function harness(existingIssues = []) {
     calls.push(['request', token, url, options]);
     if (options.method === 'POST' && url.endsWith('/issues')) {
       return { data: { number: 42, node_id: 'ISSUE_42', state: 'open' } };
+    }
+    if (options.method === 'POST' && url.endsWith('/comments')) {
+      return { data: { id: 99 } };
     }
     const number = Number(url.split('/').at(-1));
     return { data: { number, node_id: `ISSUE_${number}`, state: 'open' } };
@@ -67,11 +75,7 @@ test('creates one labeled issue with GITHUB_TOKEN then assigns through shared PA
     decision: decision(),
   });
 
-  assert.deepEqual(result, {
-    action: 'created',
-    issueNumber: 42,
-    assignee: 'copilot-swe-agent',
-  });
+  assert.deepEqual(result, [{ action: 'created', issueNumber: 42, assignee: 'copilot-swe-agent' }]);
   const create = h.calls.find(
     (call) => call[0] === 'request' && call[2] === '/repos/nalfeo/Crawler/issues',
   );
@@ -102,7 +106,7 @@ test('updates an open marker match instead of creating a duplicate', async () =>
     decision: decision(),
   });
 
-  assert.equal(result.action, 'updated');
+  assert.equal(result[0].action, 'updated');
   const patch = h.calls.find((call) => call[0] === 'request');
   assert.equal(patch[2], '/repos/nalfeo/Crawler/issues/7');
   assert.equal(patch[3].body.state, undefined);
@@ -139,8 +143,8 @@ test('collapses duplicate stable-marker issues onto the oldest and closes the re
     decision: decision(),
   });
 
-  assert.equal(result.action, 'updated');
-  assert.equal(result.issueNumber, 5);
+  assert.equal(result[0].action, 'updated');
+  assert.equal(result[0].issueNumber, 5);
   const patches = h.calls.filter((call) => call[0] === 'request');
   assert.equal(patches[0][2], '/repos/nalfeo/Crawler/issues/5');
   assert.equal(patches[0][3].body.state, undefined);
@@ -154,7 +158,7 @@ test('collapses duplicate stable-marker issues onto the oldest and closes the re
   );
 });
 
-test('updates an existing open issue when the failure signature repeats on a new release', async () => {
+test('comments on an existing issue when the same sweep configuration repeats', async () => {
   const signature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
   const h = harness([
@@ -162,6 +166,7 @@ test('updates an existing open issue when the failure signature repeats on a new
       number: 12,
       node_id: 'ISSUE_12',
       state: 'open',
+      assignees: copilotAssignees(),
       body: signatureDecision([signature]).issue.body,
     },
   ]);
@@ -176,16 +181,143 @@ test('updates an existing open issue when the failure signature repeats on a new
     repo: 'Crawler',
     decision: signatureDecision([signature], 'newer'),
   });
-  assert.deepEqual(result, [{ action: 'updated', issueNumber: 12, assignee: 'copilot-swe-agent' }]);
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 12 }]);
   const update = h.calls.find((call) => call[0] === 'request');
-  assert.equal(update[2], '/repos/nalfeo/Crawler/issues/12');
+  assert.equal(update[2], '/repos/nalfeo/Crawler/issues/12/comments');
+  assert.ok(update[3].body.body.startsWith(`${BASELINE_RECURRENCE_MARKER}\n`));
+  assert.match(update[3].body.body, /occurred again/);
+  assert.match(update[3].body.body, new RegExp(signature.replaceAll('|', '\\\\|')));
+});
+
+test('comments on the existing issue when only the failed seed changes', async () => {
+  const oldSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const newSignature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=sword';
+  const h = harness([
+    {
+      number: 15,
+      node_id: 'ISSUE_15',
+      state: 'open',
+      assignees: copilotAssignees(),
+      body: signatureDecision([oldSignature]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([newSignature], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 15 }]);
+  assert.equal(
+    h.calls.filter((call) => call[0] === 'request' && call[2].endsWith('/issues')).length,
+    0,
+  );
+  assert.equal(h.calls.filter((call) => call[0] === 'intake').length, 0);
+});
+
+test('keeps the oldest issue when historical duplicates share a configuration', async () => {
+  const signature = (seed) =>
+    `floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=${seed}|weapon=sword`;
+  const h = harness([
+    {
+      number: 18,
+      node_id: 'ISSUE_18',
+      state: 'open',
+      body: signatureDecision([signature(7)]).issue.body,
+    },
+    {
+      number: 11,
+      node_id: 'ISSUE_11',
+      state: 'open',
+      assignees: copilotAssignees(),
+      body: signatureDecision([signature(8)]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature(9)], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'commented', issueNumber: 11 }]);
+  const duplicateClose = h.calls.find(
+    (call) => call[0] === 'request' && call[2].endsWith('/issues/18'),
+  );
+  assert.equal(duplicateClose[3].body.state, 'closed');
+  assert.match(duplicateClose[3].body.body, /Superseded by #11/);
+});
+
+test('retries intake for existing matching issue when prior create succeeded but intake failed', async () => {
+  const signature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const first = harness();
+  first.intakeFn = async () => {
+    throw new Error('intake failed');
+  };
+  await assert.rejects(
+    fileBaselineRegressionIssue({
+      requestFn: first.requestFn,
+      paginateFn: first.paginateFn,
+      intakeFn: first.intakeFn,
+      graphqlFn: async () => ({}),
+      mutationToken: 'github-token',
+      intakeToken: 'pat-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      decision: signatureDecision([signature], 'newer'),
+    }),
+    /intake failed/,
+  );
+
+  const retry = harness([
+    {
+      number: 42,
+      node_id: 'ISSUE_42',
+      state: 'open',
+      assignees: [],
+      body: signatureDecision([signature]).issue.body,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: retry.requestFn,
+    paginateFn: retry.paginateFn,
+    intakeFn: retry.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature], 'newer'),
+  });
+
+  assert.deepEqual(result, [
+    { action: 'commented', issueNumber: 42, assignee: 'copilot-swe-agent' },
+  ]);
+  assert.deepEqual(
+    retry.calls.filter((call) => call[0] === 'intake'),
+    [['intake', 'pat-token', 42]],
+  );
 });
 
 test('creates an issue only for a new failure signature', async () => {
   const oldSignature =
     'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
   const newSignature =
-    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=sword';
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=8|weapon=bow';
   const h = harness([
     {
       number: 13,
@@ -266,7 +398,7 @@ test('does not treat a closed issue as an open duplicate', async () => {
     repo: 'Crawler',
     decision: decision(),
   });
-  assert.equal(result.action, 'created');
+  assert.equal(result[0].action, 'created');
   const create = h.calls.find((call) => call[0] === 'request');
   assert.equal(create[2], '/repos/nalfeo/Crawler/issues');
 });

@@ -189,7 +189,9 @@ export function updateSpellBrokerIntent(
   if (intent.purchaseStatus === 'abandoned') {
     if (
       !world.featureUnlocks.spells ||
-      spendableGold(world, repeatSpellMerchantReserve) < intent.cost
+      spendableGold(world, repeatSpellMerchantReserve) < intent.cost ||
+      (intent.purchaseCount > 0 &&
+        world.floorScenario?.objective.bossBattles.get('staircase')?.defeated === true)
     ) {
       return intent;
     }

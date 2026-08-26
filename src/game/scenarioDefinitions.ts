@@ -49,7 +49,8 @@ import {
   FLOOR3_VICTORY_GOAL_ID,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3KeptCompanion,
+  selectFloor3LoadoutOption,
 } from './floor3Scenario.js';
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
@@ -170,6 +171,17 @@ export interface ScenarioDefinition {
     options?: ScenarioInitializationOptions,
   ) => void;
   readonly selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
+  /**
+   * Overrides the auto-defaulted Floor 3 end-of-floor kept-companion pick
+   * (spec R7 §9.3, slice 11) with a specific live party Companion. Mirrors
+   * `selectLoadoutOption`'s shape: exposed here as the scenario-contract
+   * surface a future picker UI (slice 14) wires a real choice through, so the
+   * underlying selection hook (`selectFloor3KeptCompanion`) has a documented,
+   * discoverable production consumer ahead of that UI landing. Returns
+   * `false` (no-op) when the pick is rejected — see the floor3-specific
+   * implementation for the exact validation.
+   */
+  readonly selectKeptCompanion?: (world: GameWorld, partyEid: number) => boolean;
   /** Confirms a stair descend attempt; returns false when the floor is not clear. */
   readonly onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
@@ -552,7 +564,8 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor3',
       configureWorld: initializeFloor3Scenario,
-      selectLoadoutOption: selectFloor3StarterCompanion,
+      selectLoadoutOption: selectFloor3LoadoutOption,
+      selectKeptCompanion: selectFloor3KeptCompanion,
       onStairDescend: confirmFloor3StairDescend,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor3WildDirectorSystem],

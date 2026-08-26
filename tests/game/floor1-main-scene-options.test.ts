@@ -146,6 +146,15 @@ describe('createFloor1MainSceneOptions', () => {
     expect(options.lightingConfig?.ambient).toBe(0.2);
   });
 
+  it('installs run-event collection for browser run bundle item interactions', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+
+    createFloor1MainSceneOptions().configureWorld?.(world, player);
+
+    expect(world.runEvents).toBeDefined();
+  });
+
   it('wires spawnerSystem for floor1 immediately after spawnerArenaSystem', () => {
     // Floor 1 is spawner-free by config (empty static-spawner table in
     // floorScenario.ts), so spawnerSystem is wired uniformly and runs as a
