@@ -66,6 +66,17 @@ describe('item tooltip redesign', () => {
     expect(layout.height).toBe(layout.descriptionY + 2 * 13 + 10);
   });
 
+  it('reserves separate measured space for candidate differences', () => {
+    const layout = getEquipmentTooltipCardLayout(176, ['+2 Armor'], def.description, [
+      'No stat change',
+    ]);
+
+    expect(layout.diffStartY).toBeGreaterThanOrEqual(
+      layout.descriptionY + layout.descriptionHeight,
+    );
+    expect(layout.height).toBeGreaterThan(layout.diffStartY);
+  });
+
   it('renders icon, stats, flavor, and candidate differences inside the requested card', () => {
     const objects: StubObject[] = [];
     const scene = makeScene();

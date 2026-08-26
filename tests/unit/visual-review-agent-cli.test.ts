@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArgs } from '../../scripts/agent/review/visual-review-agent.js';
+import { buildPrompt, parseArgs } from '../../scripts/agent/review/visual-review-agent.js';
 
 describe('visual-review-agent viewport parsing', () => {
   it.each([
@@ -92,5 +92,27 @@ describe('visual-review-agent lineage capture flags', () => {
     expect(() => parseArgs(['--lineage-scenario', 'equipment'])).toThrow(
       /--lineage-scenario requires --lineage-state/,
     );
+  });
+});
+
+describe('visual-review-agent focused interaction prompt', () => {
+  it('distinguishes the detail frame from full-panel measured context', () => {
+    const opts = parseArgs([]);
+    const prompt = buildPrompt(opts, 'equipment-panel x=0 y=0 w=1280 h=720', {
+      expect: {
+        tooltipAfterHover: true,
+        statLabelsHumanReadable: false,
+        sectionDividers: false,
+      },
+      regionIds: ['equipment-panel', 'hover-target:bag:leather-boots', 'tooltip'],
+      focusedHover: true,
+    });
+
+    expect(prompt.user).toContain('DETAILED FOCUS FRAME');
+    expect(prompt.user).toContain('FULL-PANEL PLACEMENT CONTEXT');
+    expect(prompt.user).toContain('task_readiness');
+    expect(prompt.user).toContain('non_occlusion');
+    expect(prompt.user).toContain('Generic "cramped" / "needs padding" phrasing is advisory');
+    expect(prompt.system).toContain('Scenario-specific measured contracts are authoritative');
   });
 });

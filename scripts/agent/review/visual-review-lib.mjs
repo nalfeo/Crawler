@@ -22,6 +22,15 @@
  * @typedef {{ id: string, box: VisualReviewBox, kind?: VisualReviewRegionKind, parentId?: string }} VisualReviewRegion
  * @typedef {{ score: number, raw: unknown, normalized: boolean }} NormalizedScore
  * @typedef {{ new: string[], recurring: string[] }} FindingDiff
+ * @typedef {{
+ *   evidenceBackedBlockers: string[],
+ *   advisoryTasteNotes: string[]
+ * }} ClassifiedFindings
+ * @typedef {{
+ *   axisWeights?: Record<string, number>,
+ *   cleanScoreFloor?: number,
+ *   deterministicContractScoped?: boolean
+ * }} AnchoredScoreOptions
  */
 
 /** Kinds that are containers/overlays and must NOT participate in sibling overlap/touch. */
@@ -133,6 +142,30 @@ export function computeGeometryBlockers(regions) {
             `${overlapNoun(a, b)} touch with no breathing room: ${a.id} adjacent to ${b.id}.`,
           );
         }
+      }
+    }
+  }
+
+  // Focused hover contracts deliberately pair an overlay tooltip with its
+  // target under one synthetic parent. Tooltips are excluded from generic
+  // sibling checks, but this named interaction must hard-fail occlusion.
+  const tooltips = valid.filter((r) => r.kind === 'tooltip');
+  const hoverTargets = valid.filter((r) => /^hover-target:/.test(r.id));
+  for (const target of hoverTargets) {
+    for (const tooltip of tooltips) {
+      if ((target.parentId ?? '__root__') !== (tooltip.parentId ?? '__root__')) continue;
+      const overlapW = Math.max(
+        0,
+        Math.min(target.box.x + target.box.width, tooltip.box.x + tooltip.box.width) -
+          Math.max(target.box.x, tooltip.box.x),
+      );
+      const overlapH = Math.max(
+        0,
+        Math.min(target.box.y + target.box.height, tooltip.box.y + tooltip.box.height) -
+          Math.max(target.box.y, tooltip.box.y),
+      );
+      if (overlapW * overlapH > 0) {
+        blockers.push(`Hover tooltip occludes its target: ${tooltip.id} intersects ${target.id}.`);
       }
     }
   }
@@ -282,7 +315,7 @@ export function suppressUnsupportedAlignment(result, deterministicBlockers, regi
   const hasRealAlignmentDefect = deterministicBlockers.some((b) => /off its (row|column)/i.test(b));
   if (hasRealAlignmentDefect) return 0;
   const hasRealTouchDefect = deterministicBlockers.some((b) =>
-    /overlap|no breathing room|touch/i.test(b),
+    /overlap|occlud|no breathing room|touch/i.test(b),
   );
   const hasRealContainmentDefect = deterministicBlockers.some((b) =>
     /escapes|outside|crosses|overflow/i.test(b),
@@ -418,6 +451,27 @@ export const DETERMINISTIC_BLOCKER_PENALTY = 8;
 export const LLM_BLOCKER_PENALTY = 3;
 
 /**
+ * Focused hover captures exist to answer whether the interaction is ready to
+ * use, not whether unrelated panel chrome is beautiful. These weights keep the
+ * five interaction contracts dominant while retaining small contributions from
+ * the legacy visual axes for compatibility with older model responses.
+ */
+export const FOCUSED_HOVER_AXIS_WEIGHTS = Object.freeze({
+  task_readiness: 8,
+  target_identity: 8,
+  target_visibility: 8,
+  non_occlusion: 9,
+  readable_text: 8,
+  readability: 6,
+  typography_clarity: 3,
+  layout_consistency: 2,
+  visual_hierarchy: 2,
+  spacing_balance: 1,
+  icon_usage: 0.5,
+  thematic_fidelity: 0.25,
+});
+
+/**
  * Derive a reproducible `overall` score instead of trusting the number the model
  * invents.
  *
@@ -435,22 +489,34 @@ export const LLM_BLOCKER_PENALTY = 3;
  * surface that gains or loses defects MUST move.
  *
  * @param {unknown} result
+ * @param {AnchoredScoreOptions} [options]
  * @returns {AnchoredScore}
  */
-export function deriveAnchoredScore(result) {
+export function deriveAnchoredScore(result, options = {}) {
   const obj =
     result && typeof result === 'object' ? /** @type {Record<string, unknown>} */ (result) : {};
   const axesObj = obj.axes && typeof obj.axes === 'object' ? obj.axes : {};
-  const axisScores = Object.values(axesObj)
-    .map((a) =>
-      a && typeof a === 'object'
-        ? Number(/** @type {Record<string, unknown>} */ (a).score)
-        : Number.NaN,
-    )
-    .filter((s) => Number.isFinite(s) && s >= 0 && s <= 100);
+  const weightedAxes = Object.entries(axesObj)
+    .map(([name, a]) => {
+      const score =
+        a && typeof a === 'object'
+          ? Number(/** @type {Record<string, unknown>} */ (a).score)
+          : Number.NaN;
+      const configuredWeight = options.axisWeights?.[name];
+      const weight =
+        configuredWeight === undefined
+          ? 1
+          : Number.isFinite(configuredWeight) && configuredWeight >= 0
+            ? configuredWeight
+            : 0;
+      return { score, weight };
+    })
+    .filter(
+      ({ score, weight }) => Number.isFinite(score) && score >= 0 && score <= 100 && weight > 0,
+    );
 
   const modelScore = normalizeOverallScore(result);
-  if (axisScores.length === 0) {
+  if (weightedAxes.length === 0) {
     return {
       score: modelScore.score,
       axisMean: null,
@@ -462,7 +528,9 @@ export function deriveAnchoredScore(result) {
     };
   }
 
-  const axisMean = axisScores.reduce((sum, s) => sum + s, 0) / axisScores.length;
+  const totalWeight = weightedAxes.reduce((sum, axis) => sum + axis.weight, 0);
+  const axisMean =
+    weightedAxes.reduce((sum, axis) => sum + axis.score * axis.weight, 0) / totalWeight;
   const all = Array.isArray(obj.blocking_findings) ? obj.blocking_findings : [];
   const deterministicList = Array.isArray(obj.deterministic_blocking_findings)
     ? obj.deterministic_blocking_findings
@@ -478,7 +546,15 @@ export function deriveAnchoredScore(result) {
 
   const penalty =
     deterministicBlockers * DETERMINISTIC_BLOCKER_PENALTY + llmBlockers * LLM_BLOCKER_PENALTY;
-  const score = round1(Math.min(100, Math.max(0, axisMean - penalty)));
+  const unboundedScore = Math.min(100, Math.max(0, axisMean - penalty));
+  const cleanFloor =
+    options.deterministicContractScoped === true &&
+    deterministicBlockers === 0 &&
+    llmBlockers === 0 &&
+    Number.isFinite(options.cleanScoreFloor)
+      ? Math.min(100, Math.max(0, Number(options.cleanScoreFloor)))
+      : 0;
+  const score = round1(Math.max(cleanFloor, unboundedScore));
   return {
     score,
     axisMean: round1(axisMean),
@@ -487,6 +563,79 @@ export function deriveAnchoredScore(result) {
     llmBlockers,
     modelScore: modelScore.score,
     anchored: true,
+  };
+}
+
+const GEOMETRY_CLAIM =
+  /\b(overlap|occlud|cover(?:s|ed|ing)?|behind|layer(?:s|ed|ing)?|clip(?:s|ped|ping)?|overflow|outside|escape|cross(?:es|ed|ing)?|mis-?align|not aligned|off[- ]?center|touch(?:es|ed|ing)?|no breathing room|gap|padding|cramped|crowded|tight spacing)\b/i;
+const TEXT_SUBJECT = /\b(text|title|label|caption|glyph|word|value|stat|description)\b/i;
+const READABILITY_DEFECT =
+  /\b(clip(?:s|ped|ping)?|overflow|cut off|truncat|unreadable|illegible|obscur|cover|occlud|low contrast|cannot read|hard to read|blurry|fuzzy|soft)\b/i;
+const FOCUS_INTERACTION_EVIDENCE =
+  /\b(hover target|target|tooltip|item name|item identity|candidate|equipped)\b.*\b(missing|wrong|empty|invisible|not visible|unreadable|illegible|obscur|cover|overlap|occlud|behind|clip|no tooltip|lacks? (?:visible )?(?:emphasis|outline|highlight)|cannot (?:identify|read|see))\b/i;
+const GENERIC_TASTE =
+  /\b(cramped|crowded|needs? (?:more )?padding|add (?:more )?padding|insufficient padding|tight spacing|more breathing room|generic|sterile|thematic|theme|chrome|decorative|ornament|polish|dungeon mood|palette|material|delight)\b/i;
+
+/**
+ * Split model findings into concrete blockers and advisory taste notes.
+ *
+ * Measured scenario contracts are authoritative: geometry claims are never
+ * accepted as independent LLM blockers because the deterministic contract
+ * already reports the corresponding failure (or disproves it by staying clean).
+ * Generic density/padding language is advisory unless it names readable-text
+ * evidence. In a focused hover frame, only task/target/tooltip evidence remains
+ * blocking; unrelated panel chrome and theme critique is advisory.
+ *
+ * @param {{
+ *   llmFindings?: readonly unknown[],
+ *   llmAdvisories?: readonly unknown[],
+ *   deterministicBlockers?: readonly string[],
+ *   focusedHover?: boolean
+ * }} input
+ * @returns {ClassifiedFindings}
+ */
+export function classifyVisualFindings(input) {
+  const deterministicBlockers = dedupeFindings(
+    (input.deterministicBlockers ?? []).filter((finding) => typeof finding === 'string'),
+  );
+  const deterministicKeys = new Set(findingKeys(deterministicBlockers));
+  /** @type {string[]} */
+  const evidenceBackedBlockers = [];
+  /** @type {string[]} */
+  const advisoryTasteNotes = [];
+
+  for (const finding of dedupeFindings(
+    (input.llmFindings ?? []).filter((entry) => typeof entry === 'string'),
+  )) {
+    if (deterministicKeys.has(findingKey(finding))) continue;
+    const hasReadableTextEvidence = TEXT_SUBJECT.test(finding) && READABILITY_DEFECT.test(finding);
+    const hasFocusEvidence = FOCUS_INTERACTION_EVIDENCE.test(finding);
+
+    if (GEOMETRY_CLAIM.test(finding) && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    if (GENERIC_TASTE.test(finding) && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    if (input.focusedHover === true && !hasFocusEvidence && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    evidenceBackedBlockers.push(finding);
+  }
+  for (const note of dedupeFindings(
+    (input.llmAdvisories ?? []).filter((entry) => typeof entry === 'string'),
+  )) {
+    if (GENERIC_TASTE.test(note) || GEOMETRY_CLAIM.test(note)) {
+      advisoryTasteNotes.push(note);
+    }
+  }
+
+  return {
+    evidenceBackedBlockers: dedupeFindings(evidenceBackedBlockers),
+    advisoryTasteNotes: dedupeFindings(advisoryTasteNotes),
   };
 }
 

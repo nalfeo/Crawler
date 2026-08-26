@@ -6,6 +6,8 @@ import {
   suppressUnsupportedAlignment,
   normalizeOverallScore,
   deriveAnchoredScore,
+  classifyVisualFindings,
+  FOCUSED_HOVER_AXIS_WEIGHTS,
   findingKey,
   findingKeys,
   dedupeFindings,
@@ -83,6 +85,36 @@ test('computeGeometryBlockers: panel/tooltip container kinds are excluded from o
   const out = computeGeometryBlockers([
     region('panel', box(0, 0, 100, 100), { kind: 'panel' }),
     region('tooltip', box(50, 50, 100, 100), { kind: 'tooltip' }),
+  ]);
+  assert.deepEqual(out, []);
+});
+
+test('computeGeometryBlockers: focused hover tooltip occlusion is a measured failure', () => {
+  const out = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(150, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
+  ]);
+  assert.deepEqual(out, [
+    'Hover tooltip occludes its target: tooltip intersects hover-target:bag:leather-boots.',
+  ]);
+});
+
+test('computeGeometryBlockers: focused hover tooltip with a declared gap stays clean', () => {
+  const out = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(178, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
   ]);
   assert.deepEqual(out, []);
 });
@@ -398,6 +430,102 @@ test('deriveAnchoredScore: identical input is deterministic across calls', () =>
     deterministic_blocking_findings: ['x'],
   };
   assert.deepEqual(deriveAnchoredScore(input), deriveAnchoredScore(input));
+});
+
+test('calibration: clean focused tooltip contract is an >=80 positive anchor', () => {
+  const classified = classifyVisualFindings({
+    llmFindings: [
+      'The tooltip feels cramped and needs more padding.',
+      'The surrounding panel chrome lacks thematic dungeon detail.',
+    ],
+    deterministicBlockers: [],
+    focusedHover: true,
+  });
+  assert.deepEqual(classified.evidenceBackedBlockers, []);
+  assert.equal(classified.advisoryTasteNotes.length, 2);
+
+  const score = deriveAnchoredScore(
+    {
+      overall: { score: 64 },
+      axes: {
+        task_readiness: { score: 91 },
+        target_identity: { score: 92 },
+        target_visibility: { score: 94 },
+        non_occlusion: { score: 95 },
+        readable_text: { score: 90 },
+        readability: { score: 88 },
+        thematic_fidelity: { score: 42 },
+      },
+      blocking_findings: classified.evidenceBackedBlockers,
+      deterministic_blocking_findings: [],
+    },
+    {
+      axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS,
+      cleanScoreFloor: 80,
+      deterministicContractScoped: true,
+    },
+  );
+  assert.ok(score.score >= 80);
+  assert.equal(score.llmBlockers, 0);
+});
+
+test('calibration: old geometry failure remains deterministically failing', () => {
+  const [geometryFailure] = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(150, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
+  ]);
+  const classified = classifyVisualFindings({
+    llmFindings: ['The tooltip looks cramped.'],
+    deterministicBlockers: [geometryFailure],
+    focusedHover: true,
+  });
+  const score = deriveAnchoredScore(
+    {
+      axes: {
+        task_readiness: { score: 84 },
+        target_identity: { score: 88 },
+        target_visibility: { score: 88 },
+        non_occlusion: { score: 20 },
+        readable_text: { score: 82 },
+      },
+      blocking_findings: [geometryFailure, ...classified.evidenceBackedBlockers],
+      deterministic_blocking_findings: [geometryFailure],
+    },
+    {
+      axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS,
+      cleanScoreFloor: 80,
+      deterministicContractScoped: true,
+    },
+  );
+  assert.equal(score.deterministicBlockers, 1);
+  assert.ok(score.score < 80);
+});
+
+test('classifyVisualFindings: readable text evidence remains blocking while taste is advisory', () => {
+  const classified = classifyVisualFindings({
+    llmFindings: [
+      'The tooltip needs padding and feels cramped.',
+      'Tooltip title text is clipped and cannot be read.',
+      'The gold border feels generic.',
+    ],
+    llmAdvisories: ['Add more padding around the tooltip title.'],
+    deterministicBlockers: [],
+    focusedHover: true,
+  });
+  assert.deepEqual(classified.evidenceBackedBlockers, [
+    'Tooltip title text is clipped and cannot be read.',
+  ]);
+  assert.deepEqual(classified.advisoryTasteNotes, [
+    'The tooltip needs padding and feels cramped.',
+    'The gold border feels generic.',
+    'Add more padding around the tooltip title.',
+  ]);
 });
 
 // ---------------------------------------------------------------------------

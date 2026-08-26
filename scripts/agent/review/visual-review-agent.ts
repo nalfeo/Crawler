@@ -23,12 +23,14 @@ import {
 } from './text-raster-lib.mjs';
 import {
   computeGeometryBlockers,
+  classifyVisualFindings,
   deriveAnchoredScore,
   diffFindings,
   findingKeys,
   lacksPixelGroundedGeometry,
   suppressUnsupportedAlignment,
   DETERMINISTIC_BLOCKER_PENALTY,
+  FOCUSED_HOVER_AXIS_WEIGHTS,
   LLM_BLOCKER_PENALTY,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
@@ -158,6 +160,8 @@ interface VisualReviewResult {
     score?: number;
     /** Headline number the MODEL returned, kept only for provenance — it is anchored noise. */
     raw_score?: unknown;
+    raw_verdict?: string;
+    raw_summary?: string;
     verdict?: string;
     summary?: string;
   };
@@ -168,6 +172,8 @@ interface VisualReviewResult {
     deterministic_blockers: number;
     llm_blockers: number;
     model_reported_score: number;
+    clean_score_floor?: number;
+    focused_hover_weights?: boolean;
   };
   axes?: Record<string, VisualAxis>;
   blocking_findings?: string[];
@@ -205,6 +211,25 @@ interface VisualReviewResult {
   suppressed_text_raster_findings?: number;
   /** Azure-only slot-misalignment claims suppressed by the deterministic grid check. */
   suppressed_alignment_findings?: number;
+  /** Deterministic scenario-contract outcome, separate from model critique. */
+  deterministic_status?: 'pass' | 'fail' | 'unscoped';
+  /** Concrete model findings that remain after measured-contract reconciliation. */
+  evidence_backed_blockers?: string[];
+  /** Subjective or contract-disproved model notes retained without blocking/scoring. */
+  advisory_taste_notes?: string[];
+  /** Evidence quality, derived deterministically rather than requested from the model. */
+  confidence?: {
+    level: 'high' | 'medium' | 'low';
+    pixel_grounded: boolean;
+    focused_interaction: boolean;
+    basis: string;
+  };
+  /** Whether the image is a detail frame or the complete placement frame. */
+  capture_scope?: {
+    frame: 'focus' | 'full';
+    placement_context: 'full-panel-measured-regions' | 'same-as-image';
+    declared_clip?: ScreenClip;
+  };
 }
 
 interface TextRasterEntry {
@@ -294,6 +319,10 @@ interface CaptureResult {
   evidenceRegions: EvidenceRegionShot[];
   /** Pixel-grounded text-raster evidence for the legacy equipment surface. */
   textRaster: TextRasterReport | null;
+  /** Scenario-declared detail clip. CLI clips do not change scenario semantics. */
+  declaredFocusClip: ScreenClip | null;
+  /** True only when a declared detail clip contains a declared hover interaction. */
+  focusedHover: boolean;
 }
 
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 } as const;
@@ -556,12 +585,13 @@ Product constraints to enforce:
 ${constraints}`;
 }
 
-function buildPrompt(
+export function buildPrompt(
   opts: Pick<CliOptions, 'uxName' | 'uxGoal' | 'rebuttals'>,
   geometryText: string,
   context: {
     expect: SurfaceExpectations;
     regionIds: string[];
+    focusedHover: boolean;
     artReview?: boolean;
     ledgerAssets?: ArtLedgerEntry[];
   },
@@ -581,6 +611,16 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
 - End "overall.summary" with an explicit sentence: "FINAL VERDICT: <pass|needs-work|fail> — <count> findings withdrawn, <count> upheld with pixel evidence."`
       : '';
   const hasDeclaredHoverTarget = context.regionIds.some((id) => id.startsWith('hover-target:'));
+  const focusedHover = context.focusedHover && hasDeclaredHoverTarget;
+  const captureScopeBlock = focusedHover
+    ? `
+
+CAPTURE SCOPE (AUTHORITATIVE):
+- The attached screenshot is a DETAILED FOCUS FRAME of the declared hover target and tooltip.
+- The MEASURED LAYOUT GEOMETRY is the FULL-PANEL PLACEMENT CONTEXT, including regions outside this crop.
+- Score the focused interaction primarily. Do not penalize chrome or panel regions merely because they are outside the detail frame.
+- Full-panel geometry remains authoritative for target/tooltip placement, containment, spacing, and non-occlusion.`
+    : '';
   // UNIVERSAL readability/affordance rules are always asserted; three CONDITIONAL
   // rules are injected only when the surface opts in via `expect.*`. Legacy equipment
   // sets all three true, so this reproduces today's prompt byte-for-byte.
@@ -618,7 +658,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     'Hard requirements:',
     '- Name specific concrete defects (exact panel/slot/area) in issues.',
     '- If any overlap, clipping, misalignment, or unreadable text exists, include it in blocking_findings.',
-    '- If text appears cramped (insufficient top padding/line breathing room), include it in blocking_findings.',
+    '- Generic "cramped" / "needs padding" phrasing is advisory, not blocking. It may block only when tied to measured text overflow, a declared spacing-rule failure, or specific readable-text evidence.',
     ...(context.expect.statLabelsHumanReadable
       ? [
           '- If stat labels appear as code-style camelCase/PascalCase, include it in blocking_findings.',
@@ -646,7 +686,6 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
       : []),
     '- If placeholder punctuation is used as the primary empty-slot indicator, include it in blocking_findings.',
     '- If tooltip layering/clipping makes tooltip text hard to read, include it in blocking_findings.',
-    '- If visual theming feels generic and not like a pixel dungeon crawler, include it in blocking_findings.',
     '- recommended_fixes must be actionable and ordered by impact.',
   ].join('\n');
   const regionIdsBlock =
@@ -654,6 +693,22 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
       ? `\n\nDECLARED REGION IDS (reference these EXACT ids in precise_fixes.element and when citing elements): ${context.regionIds.join(', ')}.`
       : '';
   const inventoryLookbookBlock = formatInventoryLookbookRubric(INVENTORY_UX_LOOKBOOK_RUBRIC);
+  const focusedAxes = focusedHover
+    ? `
+- task_readiness
+- target_identity
+- target_visibility
+- non_occlusion
+- readable_text`
+    : '';
+  const focusedAxisSchema = focusedHover
+    ? `,
+    "task_readiness": { "score": number, "strengths": string[], "issues": string[] },
+    "target_identity": { "score": number, "strengths": string[], "issues": string[] },
+    "target_visibility": { "score": number, "strengths": string[], "issues": string[] },
+    "non_occlusion": { "score": number, "strengths": string[], "issues": string[] },
+    "readable_text": { "score": number, "strengths": string[], "issues": string[] }`
+    : '';
   // ART-REVIEW MODE (opt-in): critique the ART ASSETS themselves, maintain a
   // regen ledger, and suppress already-queued assets. These blocks are EMPTY
   // for non-art surfaces so equipment/inventory prompts stay byte-for-byte.
@@ -710,12 +765,13 @@ Calibration — these exact claim patterns have been screenshot-vs-geometry fals
 - "a panel or paper doll is not optically centered" — only valid when the named content group's measured midpoint differs from its named container midpoint by more than 2px on the relevant axis. Never infer this from surrounding whitespace alone.
 - "bag icons are off-center" — only valid when both the bag slot and its icon are declared in the geometry table and their measured centroids exceed the centering threshold above. Do not make this claim from a screenshot without icon geometry.
 - "gear bonuses lack emphasis" — only valid when the supplied semantic evidence identifies a non-zero, player-visible equipment bonus that has no visual emphasis. Do not infer the absence of a bonus from a neutral value, and do not criticize a value highlight without evidence that its displayed effective value differs from its displayed base value.
-If you cannot point to the specific geometry numbers that satisfy one of these thresholds, do not report the finding.`,
+If you cannot point to the specific geometry numbers that satisfy one of these thresholds, do not report the finding.
+Scenario-specific measured contracts are authoritative. You may not contradict a passing declared contract with visual intuition.`,
     user: `Review the attached screenshot of Crawler's "${opts.uxName}" UX surface.
 Design intent for this surface: ${opts.uxGoal}.
 
-MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
-${geometryText}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
+MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; relative positions and pixel deltas are exact and directly actionable):
+${geometryText}${captureScopeBlock}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
 
 ${inventoryLookbookBlock}
 
@@ -726,7 +782,7 @@ Score each axis 0-100 (0 = unacceptable, 100 = shippable quality):
 - readability
 - icon_usage
 - typography_clarity
-- thematic_fidelity
+- thematic_fidelity${focusedAxes}
 
 "overall.score" is a single 0-100 rating for the whole surface — never the sum or mean of the per-axis scores.
 
@@ -742,7 +798,7 @@ judgements and small fixes between rounds must be able to move the score. Calibr
 
 Typography spacing standard is strict:
 - Every text block must have visible top/bottom breathing room inside its container.
-- Flag cramped text when cap-height/ascenders sit too close to borders, dividers, or neighboring rows.
+- Treat generic cramped/padding taste as advisory. Put it in recommended_fixes, not blocking_findings, unless measured overflow, a declared spacing-rule failure, or specific readable-text evidence supports it.
 
 Panel-composition standard (these are recurring, human-reported defects on this project —
 check each one explicitly and report it in "precise_fixes" with a pixel delta):
@@ -755,17 +811,14 @@ check each one explicitly and report it in "precise_fixes" with a pixel delta):
   A pair whose two halves sit at different y is a defect.
 - CONTAINER OVERRUN: no child element may touch or cross its container's top/bottom/side edge.
   Report the exact overlap in pixels.
-- EXCESSIVE PADDING / OVER-WIDE LAYOUT: interior padding that dwarfs the content, or a surface
-  stretched to full viewport width when its content does not need it, is a defect — not neutral.
-  Say how many pixels to shrink and whether the content should be re-centred after.
+- EXCESSIVE PADDING / OVER-WIDE LAYOUT: treat this as advisory unless a declared spacing rule
+  fails. If measured evidence exists, cite exact pixels; otherwise keep it in recommended_fixes.
 - CENTERING: a focal cluster (paper doll, portrait, primary grid) must be optically centred in
   its pane both horizontally and vertically unless a deliberate alternative reads clearly.
 
 ${readabilityLines}
 
-Thematic standard is strict: this is a **pixel dungeon crawler** UX.
-If the UI reads as generic modern app chrome (flat/sterile panels, non-dungeon mood, weak pixel-art identity),
-score thematic_fidelity <= 40 and include it as a blocking finding.
+Thematic fidelity is a polish axis, not a blocker by itself. Generic/sterile/theme/chrome feedback belongs in recommended_fixes unless it concretely prevents the focused task.
 
 ${hardRequirementLines}
 ${assetIntegrityBlock}
@@ -790,7 +843,7 @@ Return ONLY this JSON schema:
     "readability": { "score": number, "strengths": string[], "issues": string[] },
     "icon_usage": { "score": number, "strengths": string[], "issues": string[] },
     "typography_clarity": { "score": number, "strengths": string[], "issues": string[] },
-    "thematic_fidelity": { "score": number, "strengths": string[], "issues": string[] }
+    "thematic_fidelity": { "score": number, "strengths": string[], "issues": string[] }${focusedAxisSchema}
   },
   "blocking_findings": string[],
   "recommended_fixes": string[],
@@ -905,6 +958,9 @@ async function captureScreenshot(
   if (harvest.source === 'declared') {
     const regions = normalizeHarvestedRegions(harvest.regions);
     const computed = computeGeometryBlockers(regions);
+    if (harvest.expect.tooltipAfterHover && !regions.some((region) => region.kind === 'tooltip')) {
+      computed.push('Declared hover contract failed: tooltip region is not present.');
+    }
     // Author-declared `flags` are treated as deterministic blockers alongside the
     // geometry the lib computes from the regions.
     const deterministicBlockers = [...new Set<string>([...computed, ...harvest.flags])];
@@ -918,6 +974,8 @@ async function captureScreenshot(
       expect: harvest.expect,
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
     };
   } else if (harvest.source === 'equipment-legacy') {
     // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
@@ -937,6 +995,8 @@ async function captureScreenshot(
       },
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
     };
   } else {
     // No declared contract and no equipment probe: no deterministic checks, no
@@ -955,6 +1015,8 @@ async function captureScreenshot(
       },
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
     };
   }
   const setupClip = normalizeClip(
@@ -964,6 +1026,9 @@ async function captureScreenshot(
     }),
   );
   const screenshotClip = opts.clip ?? setupClip;
+  captured.declaredFocusClip = setupClip;
+  captured.focusedHover =
+    setupClip !== null && captured.regions.some((region) => region.id.startsWith('hover-target:'));
   await page.screenshot({
     path: outPath,
     fullPage: false,
@@ -1638,6 +1703,15 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
       console.log(`  - ${fix}`);
     }
   }
+  console.log(
+    `[visual-review-agent] deterministic=${result.deterministic_status ?? 'unscoped'} ` +
+      `evidence-backed-blockers=${result.evidence_backed_blockers?.length ?? 0} ` +
+      `advisory-taste-notes=${result.advisory_taste_notes?.length ?? 0} ` +
+      `confidence=${result.confidence?.level ?? 'low'}`,
+  );
+  for (const note of result.advisory_taste_notes ?? []) {
+    console.log(`  - [advisory] ${note}`);
+  }
   console.log(`[visual-review-agent] screenshot: ${screenshotPath}`);
   console.log(`[visual-review-agent] report: ${reviewPath}`);
 }
@@ -2003,6 +2077,7 @@ async function main(): Promise<number> {
   const prompt = buildPrompt(opts, `${capture.geometryText}${textRasterText}`, {
     expect: capture.expect,
     regionIds: capture.regions.map((r) => r.id),
+    focusedHover: capture.focusedHover,
     artReview: opts.artReview,
     ledgerAssets: ledger?.assets.filter((a) => a.status === 'needs-regen') ?? [],
   });
@@ -2042,12 +2117,41 @@ async function main(): Promise<number> {
     capture.deterministicBlockers,
     capture.regions,
   );
+  const classified = classifyVisualFindings({
+    llmFindings: result.blocking_findings ?? [],
+    llmAdvisories: result.recommended_fixes ?? [],
+    deterministicBlockers: capture.deterministicBlockers,
+    focusedHover: capture.focusedHover,
+  });
   const mergedBlockers = new Set<string>([
-    ...(result.blocking_findings ?? []),
+    ...classified.evidenceBackedBlockers,
     ...capture.deterministicBlockers,
   ]);
   result.blocking_findings = [...mergedBlockers];
   result.deterministic_blocking_findings = capture.deterministicBlockers;
+  result.evidence_backed_blockers = classified.evidenceBackedBlockers;
+  result.advisory_taste_notes = classified.advisoryTasteNotes;
+  const pixelGrounded = !lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length);
+  result.deterministic_status = pixelGrounded
+    ? capture.deterministicBlockers.length === 0
+      ? 'pass'
+      : 'fail'
+    : 'unscoped';
+  result.confidence = {
+    level: pixelGrounded ? (capture.focusedHover ? 'high' : 'medium') : 'low',
+    pixel_grounded: pixelGrounded,
+    focused_interaction: capture.focusedHover,
+    basis: pixelGrounded
+      ? capture.focusedHover
+        ? 'Declared focus frame plus full-panel measured placement context.'
+        : 'Declared deterministic geometry contract.'
+      : 'Screenshot-only review without a valid measured geometry contract.',
+  };
+  result.capture_scope = {
+    frame: capture.focusedHover ? 'focus' : 'full',
+    placement_context: capture.focusedHover ? 'full-panel-measured-regions' : 'same-as-image',
+    ...(capture.declaredFocusClip ? { declared_clip: capture.declaredFocusClip } : {}),
+  };
   result.geometry = capture.geometry;
   result.harvest_source = capture.harvestSource;
   if (capture.surface) result.surface = capture.surface;
@@ -2057,10 +2161,32 @@ async function main(): Promise<number> {
   // byte-identical captures returned 72/72/72 while their blocker counts were
   // 2/0/3. Derive a reproducible composite from the axes + findings instead, and
   // keep the model's number only as provenance.
-  const anchored = deriveAnchoredScore(result);
+  const anchored = deriveAnchoredScore(result, {
+    ...(capture.focusedHover ? { axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS } : {}),
+    cleanScoreFloor: 80,
+    deterministicContractScoped: pixelGrounded,
+  });
   result.capture_hash = captureHash;
   result.capture_unchanged_from_prior = captureUnchanged;
-  result.overall = { ...result.overall, score: anchored.score };
+  const rawVerdict = result.overall?.verdict;
+  const rawSummary = result.overall?.summary;
+  const calibratedVerdict =
+    capture.deterministicBlockers.length > 0
+      ? 'fail'
+      : classified.evidenceBackedBlockers.length > 0 || anchored.score < opts.minScore
+        ? 'needs-work'
+        : 'pass';
+  result.overall = {
+    ...result.overall,
+    score: anchored.score,
+    raw_verdict: rawVerdict,
+    raw_summary: rawSummary,
+    verdict: calibratedVerdict,
+    summary:
+      `${result.deterministic_status === 'pass' ? 'Deterministic contract passes' : result.deterministic_status === 'fail' ? 'Deterministic contract fails' : 'Deterministic contract is unscoped'}. ` +
+      `${classified.evidenceBackedBlockers.length} evidence-backed blocker(s); ` +
+      `${classified.advisoryTasteNotes.length} advisory taste note(s).`,
+  };
   if (anchored.anchored) {
     result.overall.raw_score = anchored.modelScore;
     result.score_derivation = {
@@ -2069,6 +2195,13 @@ async function main(): Promise<number> {
       deterministic_blockers: anchored.deterministicBlockers,
       llm_blockers: anchored.llmBlockers,
       model_reported_score: anchored.modelScore,
+      clean_score_floor:
+        pixelGrounded &&
+        capture.deterministicBlockers.length === 0 &&
+        classified.evidenceBackedBlockers.length === 0
+          ? 80
+          : undefined,
+      focused_hover_weights: capture.focusedHover,
     };
   }
 

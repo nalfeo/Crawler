@@ -1222,6 +1222,7 @@ export function createEquipmentUI(
     placement: { x: number; y: number; width: number; height: number },
     sectionLabel: string,
     diffLines: readonly string[] = [],
+    includeFlavor = true,
   ): void {
     inspectorBg.setVisible(true);
     inspectorPlaceholder.setVisible(false);
@@ -1242,7 +1243,7 @@ export function createEquipmentUI(
         sectionLabel,
         iconTextureKey: tooltipIconKey(def),
         statLines: tooltipStatLines(def),
-        flavorText: itemTooltipDef(def).description || undefined,
+        flavorText: includeFlavor ? itemTooltipDef(def).description || undefined : '',
         diffLines,
         placement,
         crispText,
@@ -1315,6 +1316,7 @@ export function createEquipmentUI(
       },
       'CANDIDATE',
       diffLines,
+      false,
     );
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }

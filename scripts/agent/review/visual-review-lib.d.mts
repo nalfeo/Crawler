@@ -59,8 +59,27 @@ export interface AnchoredScore {
 
 export const DETERMINISTIC_BLOCKER_PENALTY: number;
 export const LLM_BLOCKER_PENALTY: number;
+export const FOCUSED_HOVER_AXIS_WEIGHTS: Readonly<Record<string, number>>;
 
-export function deriveAnchoredScore(result: unknown): AnchoredScore;
+export interface AnchoredScoreOptions {
+  axisWeights?: Record<string, number>;
+  cleanScoreFloor?: number;
+  deterministicContractScoped?: boolean;
+}
+
+export function deriveAnchoredScore(result: unknown, options?: AnchoredScoreOptions): AnchoredScore;
+
+export interface ClassifiedFindings {
+  evidenceBackedBlockers: string[];
+  advisoryTasteNotes: string[];
+}
+
+export function classifyVisualFindings(input: {
+  llmFindings?: readonly unknown[];
+  llmAdvisories?: readonly unknown[];
+  deterministicBlockers?: readonly string[];
+  focusedHover?: boolean;
+}): ClassifiedFindings;
 
 export function normalizeOverallScore(result: unknown): NormalizedScore;
 

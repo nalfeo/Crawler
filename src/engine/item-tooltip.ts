@@ -23,6 +23,8 @@ export interface EquipmentTooltipCardLayout {
   readonly icon: { readonly x: number; readonly y: number; readonly size: number };
   readonly statStartY: number;
   readonly descriptionY: number;
+  readonly descriptionHeight: number;
+  readonly diffStartY: number;
 }
 
 /**
@@ -34,6 +36,7 @@ export function getEquipmentTooltipCardLayout(
   width: number,
   statLines: readonly string[],
   flavorText?: string,
+  diffLines: readonly string[] = [],
 ): EquipmentTooltipCardLayout {
   const descriptionColumns = Math.max(12, Math.floor((width - 20) / 6));
   const descriptionLines =
@@ -42,15 +45,17 @@ export function getEquipmentTooltipCardLayout(
       : 0;
   const descriptionY =
     EQUIPMENT_CARD_STAT_START_Y + statLines.length * 14 + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
+  const descriptionHeight = descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT;
+  const visibleDiffLines = Math.min(3, diffLines.length);
+  const diffStartY = descriptionY + descriptionHeight + (visibleDiffLines > 0 ? 10 : 0);
   return {
-    height:
-      descriptionY +
-      descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT +
-      EQUIPMENT_CARD_BOTTOM_PADDING,
+    height: diffStartY + visibleDiffLines * 14 + EQUIPMENT_CARD_BOTTOM_PADDING,
     headerCenterY: 12,
     icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
     descriptionY,
+    descriptionHeight,
+    diffStartY,
   };
 }
 
@@ -127,7 +132,12 @@ export function renderItemTooltip(
   const isCompactEquipmentCard =
     placement !== undefined && (sectionLabel === 'EQUIPPED' || sectionLabel === 'CANDIDATE');
   const compactLayout = isCompactEquipmentCard
-    ? getEquipmentTooltipCardLayout(tooltipWidth, statLines, flavorText ?? def.description)
+    ? getEquipmentTooltipCardLayout(
+        tooltipWidth,
+        statLines,
+        flavorText ?? def.description,
+        diffLines,
+      )
     : null;
   const tooltipHeight =
     placement?.height ??
@@ -223,7 +233,10 @@ export function renderItemTooltip(
       wordWrap: { width: compactLayout ? 80 : tooltipWidth - (richIcon ? 50 : 16) },
     },
   );
-  if (compactLayout) nameText.setOrigin(0, 0.5);
+  if (compactLayout) {
+    nameText.setOrigin(0, 0);
+    nameText.y = snap(nameText.y - nameText.height / 2);
+  }
 
   const bodyX = tx + (richContent ? 8 : 8);
   const bodyY =
@@ -246,7 +259,10 @@ export function renderItemTooltip(
   // are visually clipped. Give the description a real text box so both pixels
   // and probe geometry stay inside the tooltip card.
   if ('setFixedSize' in descText) {
-    descText.setFixedSize(tooltipWidth - 16, Math.max(0, tooltipHeight - (bodyY - ty) - 10));
+    descText.setFixedSize(
+      tooltipWidth - 16,
+      compactLayout?.descriptionHeight ?? Math.max(0, tooltipHeight - (bodyY - ty) - 10),
+    );
   }
 
   const showMeta = placement === undefined;
@@ -320,7 +336,8 @@ export function renderItemTooltip(
   }
 
   if (diffLines.length > 0) {
-    const diffStartY = ty + tooltipHeight - 12 - Math.min(3, diffLines.length) * 14;
+    const diffStartY =
+      ty + (compactLayout?.diffStartY ?? tooltipHeight - 12 - Math.min(3, diffLines.length) * 14);
     diffLines.slice(0, 3).forEach((line, index) => {
       const diffText = crispText(tx + 8, diffStartY + index * 14, line, {
         fontFamily,
