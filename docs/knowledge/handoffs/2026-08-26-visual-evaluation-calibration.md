@@ -18,6 +18,14 @@
 - Calibration tests lock the clean tooltip scenario at `>=80` and preserve target-tooltip
   occlusion as a deterministic failure.
 
+### Dual-image focus follow-up
+
+Focused hover runs now capture a second, uncropped full-panel image under
+`files/visual-review/context/`. Azure receives that full-panel placement context first and
+the detail focus frame second, with explicit labels in both the request inputs and prompt.
+Non-focused reviews retain the original single-image request. The focused path fails closed
+if its context image is unavailable.
+
 ## Coupled runtime repair
 
 The required deterministic visual suite exposed two stable tooltip defects already present
@@ -33,6 +41,7 @@ After: the real Phaser equipment decision gate passes at both supported viewport
 
 - `node --test scripts/agent/review/visual-review-lib.test.mjs` — 58 passed.
 - `npx vitest run tests/unit/visual-review-agent-cli.test.ts` — 20 passed.
+- Follow-up focused run — 23 passed.
 - `npx vitest run tests/unit/item-tooltip.test.ts` — 4 passed.
 - `npm run review:visual:deterministic` — 31 passed.
 - `npm run typecheck` — passed.

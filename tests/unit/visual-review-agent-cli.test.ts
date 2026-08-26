@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildPrompt, parseArgs } from '../../scripts/agent/review/visual-review-agent.js';
+import {
+  buildEvaluationImages,
+  buildPrompt,
+  parseArgs,
+} from '../../scripts/agent/review/visual-review-agent.js';
 
 describe('visual-review-agent viewport parsing', () => {
   it.each([
@@ -108,11 +112,37 @@ describe('visual-review-agent focused interaction prompt', () => {
       focusedHover: true,
     });
 
-    expect(prompt.user).toContain('DETAILED FOCUS FRAME');
+    expect(prompt.user).toContain('DETAIL FOCUS FRAME');
     expect(prompt.user).toContain('FULL-PANEL PLACEMENT CONTEXT');
+    expect(prompt.user).toContain('Two images are attached in this exact labeled order');
     expect(prompt.user).toContain('task_readiness');
     expect(prompt.user).toContain('non_occlusion');
     expect(prompt.user).toContain('Generic "cramped" / "needs padding" phrasing is advisory');
     expect(prompt.system).toContain('Scenario-specific measured contracts are authoritative');
+  });
+
+  it('sends labeled full-panel context before the detail focus image', () => {
+    const detail = Buffer.from('detail');
+    const context = Buffer.from('context');
+
+    const images = buildEvaluationImages('equipment hover', detail, true, context);
+
+    expect(images).toEqual([
+      { label: 'equipment hover — FULL-PANEL PLACEMENT CONTEXT', png: context },
+      { label: 'equipment hover — DETAIL FOCUS FRAME', png: detail },
+    ]);
+  });
+
+  it('fails closed when a focused capture has no full-panel context image', () => {
+    expect(() =>
+      buildEvaluationImages('equipment hover', Buffer.from('detail'), true, null),
+    ).toThrow(/requires a full-panel context image/);
+  });
+
+  it('keeps non-focused reviews on the existing single-image path', () => {
+    const screenshot = Buffer.from('full');
+    expect(buildEvaluationImages('equipment', screenshot, false, null)).toEqual([
+      { label: 'equipment', png: screenshot },
+    ]);
   });
 });

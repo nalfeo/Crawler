@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 import type { Page } from 'playwright';
 import { PNG } from 'pngjs';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
+import type { VisionImageInput } from '../../sprites/provider/vision-types.js';
 import {
   evaluateTextRasterRuns,
   measureCropCrispness,
@@ -229,6 +230,7 @@ interface VisualReviewResult {
     frame: 'focus' | 'full';
     placement_context: 'full-panel-measured-regions' | 'same-as-image';
     declared_clip?: ScreenClip;
+    azure_images: string[];
   };
 }
 
@@ -323,6 +325,8 @@ interface CaptureResult {
   declaredFocusClip: ScreenClip | null;
   /** True only when a declared detail clip contains a declared hover interaction. */
   focusedHover: boolean;
+  /** Full viewport capture paired with a focused hover detail frame. */
+  fullPanelContextPath: string | null;
 }
 
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 } as const;
@@ -338,6 +342,22 @@ function parseViewport(value: string | undefined): { width: number; height: numb
     throw new Error(`invalid --viewport "${value}" (dimensions exceed safe integer range)`);
   }
   return { width, height };
+}
+
+export function buildEvaluationImages(
+  uxName: string,
+  detailPng: Buffer,
+  focusedHover: boolean,
+  fullPanelContextPng: Buffer | null,
+): VisionImageInput[] {
+  if (!focusedHover) return [{ label: uxName, png: detailPng }];
+  if (!fullPanelContextPng) {
+    throw new Error('focused hover review requires a full-panel context image');
+  }
+  return [
+    { label: `${uxName} — FULL-PANEL PLACEMENT CONTEXT`, png: fullPanelContextPng },
+    { label: `${uxName} — DETAIL FOCUS FRAME`, png: detailPng },
+  ];
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -616,7 +636,9 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     ? `
 
 CAPTURE SCOPE (AUTHORITATIVE):
-- The attached screenshot is a DETAILED FOCUS FRAME of the declared hover target and tooltip.
+- Two images are attached in this exact labeled order: (1) FULL-PANEL PLACEMENT CONTEXT, then (2) DETAIL FOCUS FRAME.
+- Use the FULL-PANEL image for placement and surrounding-panel context.
+- Use the DETAIL image for target identity, visibility, non-occlusion, and readable text.
 - The MEASURED LAYOUT GEOMETRY is the FULL-PANEL PLACEMENT CONTEXT, including regions outside this crop.
 - Score the focused interaction primarily. Do not penalize chrome or panel regions merely because they are outside the detail frame.
 - Full-panel geometry remains authoritative for target/tooltip placement, containment, spacing, and non-occlusion.`
@@ -860,6 +882,7 @@ async function captureScreenshot(
     'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport' | 'probeTimeoutMs'
   >,
   outPath: string,
+  fullPanelContextPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
@@ -976,6 +999,7 @@ async function captureScreenshot(
       textRaster: null,
       declaredFocusClip: null,
       focusedHover: false,
+      fullPanelContextPath: null,
     };
   } else if (harvest.source === 'equipment-legacy') {
     // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
@@ -997,6 +1021,7 @@ async function captureScreenshot(
       textRaster: null,
       declaredFocusClip: null,
       focusedHover: false,
+      fullPanelContextPath: null,
     };
   } else {
     // No declared contract and no equipment probe: no deterministic checks, no
@@ -1017,6 +1042,7 @@ async function captureScreenshot(
       textRaster: null,
       declaredFocusClip: null,
       focusedHover: false,
+      fullPanelContextPath: null,
     };
   }
   const setupClip = normalizeClip(
@@ -1029,6 +1055,11 @@ async function captureScreenshot(
   captured.declaredFocusClip = setupClip;
   captured.focusedHover =
     setupClip !== null && captured.regions.some((region) => region.id.startsWith('hover-target:'));
+  if (captured.focusedHover) {
+    mkdirSync(resolve(fullPanelContextPath, '..'), { recursive: true });
+    await page.screenshot({ path: fullPanelContextPath, fullPage: false });
+    captured.fullPanelContextPath = fullPanelContextPath;
+  }
   await page.screenshot({
     path: outPath,
     fullPage: false,
@@ -2000,6 +2031,11 @@ async function main(): Promise<number> {
   const stamp = nowStamp();
   const isoNow = new Date().toISOString();
   const screenshotPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.png`);
+  const fullPanelContextPath = resolve(
+    opts.outputDir,
+    'context',
+    `${opts.screenshotName}-${stamp}.context.png`,
+  );
   const reviewPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.review.json`);
 
   // Art-review mode: resolve the ledger + evidence-corpus paths, and the raw
@@ -2017,7 +2053,7 @@ async function main(): Promise<number> {
   const rawCropsDir = evidenceBundleDir ? resolve(evidenceBundleDir, 'crops', '_raw') : null;
   const ledger = artLedgerPath ? loadArtLedger(artLedgerPath) : null;
 
-  const capture = await captureScreenshot(opts, screenshotPath, rawCropsDir);
+  const capture = await captureScreenshot(opts, screenshotPath, fullPanelContextPath, rawCropsDir);
   if (lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length)) {
     // Either no contract at all ('none') or a declared-but-empty (misconfigured)
     // surface. Both silently degrade to screenshot-only, non-pixel-grounded
@@ -2082,6 +2118,12 @@ async function main(): Promise<number> {
     ledgerAssets: ledger?.assets.filter((a) => a.status === 'needs-regen') ?? [],
   });
   const png = readFileSync(screenshotPath);
+  const evaluationImages = buildEvaluationImages(
+    opts.uxName,
+    png,
+    capture.focusedHover,
+    capture.fullPanelContextPath ? readFileSync(capture.fullPanelContextPath) : null,
+  );
   const priorCapture = loadPriorCaptureHash(
     opts.outputDir,
     opts.screenshotName,
@@ -2099,7 +2141,7 @@ async function main(): Promise<number> {
   const evaluation = await provider.evaluate({
     systemInstructions: prompt.system,
     userPrompt: prompt.user,
-    images: [{ label: opts.uxName, png }],
+    images: evaluationImages,
     temperature: 0,
     maxTokens: 1800,
   });
@@ -2151,6 +2193,7 @@ async function main(): Promise<number> {
     frame: capture.focusedHover ? 'focus' : 'full',
     placement_context: capture.focusedHover ? 'full-panel-measured-regions' : 'same-as-image',
     ...(capture.declaredFocusClip ? { declared_clip: capture.declaredFocusClip } : {}),
+    azure_images: evaluationImages.map((image) => image.label),
   };
   result.geometry = capture.geometry;
   result.harvest_source = capture.harvestSource;
