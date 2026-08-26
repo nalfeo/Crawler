@@ -175,6 +175,21 @@
     if (id) regions.push({ id, box: run.bounds, kind: 'header' });
   }
   const flags = [];
+  if (scenario === 'equipment-hover-empty-slot') {
+    const tooltipRuns = (probe?.getEquipmentTextRuns?.() ?? []).filter(
+      (run) => run.region === 'inspector',
+    );
+    const title = tooltipRuns.find((run) => run.text === 'Leather Boots');
+    const state = tooltipRuns.find((run) => run.text === 'CANDIDATE');
+    if (title && state) {
+      const titleCenter = title.bounds.y + title.bounds.height / 2;
+      const stateCenter = state.bounds.y + state.bounds.height / 2;
+      const delta = Math.abs(titleCenter - stateCenter);
+      if (delta > 1) {
+        flags.push(`Tooltip title and state label centers differ by ${delta.toFixed(1)}px.`);
+      }
+    }
+  }
   if (hoveredSlotId && !probe?.isEquipmentTooltipTopmost?.()) {
     flags.push('Tooltip is behind another equipment-panel element.');
   }

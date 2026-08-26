@@ -95,6 +95,13 @@ visual judge is explicitly calibrated that a measured 12px-or-greater
 target-to-tooltip gap is intentional dense-mode spacing; the v0.1.26 Azure
 review no longer reports the 14px Bag-item gap as cramped.
 
+### Header baseline contract
+
+Compact item titles and their `CANDIDATE`/`EQUIPPED` state labels now use one
+shared vertical center. The Empty Slot scenario hard-fails any title/state center
+delta above 1px. The real Phaser v0.1.27 focused capture reports zero
+deterministic blockers for this contract.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

@@ -19,6 +19,7 @@ const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 13;
 
 export interface EquipmentTooltipCardLayout {
   readonly height: number;
+  readonly headerCenterY: number;
   readonly icon: { readonly x: number; readonly y: number; readonly size: number };
   readonly statStartY: number;
   readonly descriptionY: number;
@@ -46,6 +47,7 @@ export function getEquipmentTooltipCardLayout(
       descriptionY +
       descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT +
       EQUIPMENT_CARD_BOTTOM_PADDING,
+    headerCenterY: 12,
     icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
     descriptionY,
@@ -211,7 +213,7 @@ export function renderItemTooltip(
 
   const nameText = crispText(
     tx + (compactLayout ? 8 : richIcon ? 42 : 8),
-    ty + (compactLayout ? 12 : sectionLabel ? 18 : 8),
+    ty + (compactLayout ? compactLayout.headerCenterY : sectionLabel ? 18 : 8),
     def.name,
     {
       fontFamily,
@@ -221,6 +223,7 @@ export function renderItemTooltip(
       wordWrap: { width: compactLayout ? 80 : tooltipWidth - (richIcon ? 50 : 16) },
     },
   );
+  if (compactLayout) nameText.setOrigin(0, 0.5);
 
   const bodyX = tx + (richContent ? 8 : 8);
   const bodyY =
@@ -258,7 +261,7 @@ export function renderItemTooltip(
   if (sectionLabel !== undefined && sectionLabel.length > 0) {
     const labelText = crispText(
       compactLayout ? tx + tooltipWidth - 8 : tx + 8,
-      ty + (compactLayout ? 12 : 4),
+      ty + (compactLayout ? compactLayout.headerCenterY : 4),
       sectionLabel,
       {
         fontFamily,

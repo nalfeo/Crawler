@@ -60,6 +60,7 @@ describe('item tooltip redesign', () => {
     const layout = getEquipmentTooltipCardLayout(176, ['+2 Armor', '+1 Strength'], def.description);
     const iconBottom = layout.icon.y + layout.icon.size / 2;
 
+    expect(layout.headerCenterY).toBe(12);
     expect(layout.statStartY).toBeGreaterThan(iconBottom);
     expect(layout.descriptionY - (layout.statStartY + 2 * 14)).toBe(12);
     expect(layout.height).toBe(layout.descriptionY + 2 * 13 + 10);
