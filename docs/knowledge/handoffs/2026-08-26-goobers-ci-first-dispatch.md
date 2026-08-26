@@ -41,7 +41,13 @@ from being relabeled as remediation.
 ## Files touched
 
 - `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml` — fixed the
-  `pr-opened-gate` schema (the only net change on this branch vs `main`).
+  `pr-opened-gate` schema (`output-equals` params moved under `params:`, dead
+  `infra` branch removed).
+- `.github/workflows/goobers-run.yml` — reuse the existing `CRAWLER_CI_PAT`
+  repository secret instead of requiring a new `GOOBERS_GITHUB_TOKEN`.
+- `README.md` — document `CRAWLER_CI_PAT` as the repo credential and keep
+  `COPILOT_GITHUB_TOKEN` documented separately for model auth.
+- `docs/knowledge/handoffs/2026-08-26-goobers-ci-first-dispatch.md` — this file.
 
 Also done outside the repo diff:
 
@@ -64,11 +70,13 @@ This is a real before/after on the actual artifact, not a local-only check.
 ## Unresolved issues
 
 - **`goobers-run.yml` has never completed a live run.** Only the validate
-  workflow is proven. The run workflow requires a `GOOBERS_GITHUB_TOKEN` secret
-  (a PAT/App token with Contents/Issues/Pull-requests read-write) which is not
-  yet configured; `COPILOT_GITHUB_TOKEN` is configured. The workflow fails fast
-  with a clear message when the token is absent, so this is a clean blocker
-  rather than a deep mid-run failure.
+  workflow is proven. The run workflow now reuses the **existing**
+  `CRAWLER_CI_PAT` repository secret for issue/branch/PR operations, so no
+  additional token needs to be created — do **not** add a
+  `GOOBERS_GITHUB_TOKEN` secret. `COPILOT_GITHUB_TOKEN` stays separate because
+  it authenticates Copilot's model backend, not repo access. The workflow still
+  fails fast with a clear message if `CRAWLER_CI_PAT` is absent, so a missing
+  credential is a clean blocker rather than a deep mid-run failure.
 - The deliberate design choice in `goobers-run.yml` is to require a PAT rather
   than widen `permissions: contents: write` on the built-in `github.token`,
   because a `GITHUB_TOKEN`-authored push does not trigger the normal CI
@@ -77,8 +85,8 @@ This is a real before/after on the actual artifact, not a local-only check.
 
 ## Recommended next steps
 
-1. Configure the `GOOBERS_GITHUB_TOKEN` secret, then dispatch
-   `goobers-run.yml` to exercise the full claim → plan → implement → review →
+1. Dispatch `goobers-run.yml` (the credential is already in place via
+   `CRAWLER_CI_PAT`) to exercise the full claim → plan → implement → review →
    PR loop against issue #3639.
 2. Expect further schema/runtime findings on that first run — the validate pass
    only proves the config parses, not that every task's runtime contract holds.
