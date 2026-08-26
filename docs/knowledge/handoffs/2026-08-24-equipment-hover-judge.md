@@ -102,6 +102,20 @@ shared vertical center. The Empty Slot scenario hard-fails any title/state cente
 delta above 1px. The real Phaser v0.1.27 focused capture reports zero
 deterministic blockers for this contract.
 
+### Calibrated all-scenario evidence
+
+The v0.2.4 refreshed Phaser/Azure captures cover equipped, duplicate, empty-slot,
+and mixed-delta hover states through the same `renderItemTooltip()` implementation.
+Focused hover reviews now send both a labeled full-panel context image and a target/card
+detail image to Azure; declared geometry remains the deterministic source for overflow,
+target occlusion, containment, and title/state alignment. Equipped, Empty Slot, and
+Mixed Delta report a clean deterministic contract and an anchored 80.0+ score. The
+duplicate comparison also has a clean deterministic contract after its content-aware
+pair height grows to fit all delta rows; `No stat change` uses neutral high-contrast
+text instead of a positive green delta. Its v0.2.7 capture is recorded alongside the
+other lineage artifacts, with placement-only Azure commentary classified as advisory
+unless measured geometry proves a defect.
+
 ## Validation
 
 - `npm run verify:fast` — passed.

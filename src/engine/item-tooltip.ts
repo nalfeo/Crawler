@@ -15,7 +15,22 @@ const EQUIPMENT_CARD_ICON_CENTER_Y = 38;
 const EQUIPMENT_CARD_STAT_START_Y = 60;
 const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
 const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
-const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 13;
+const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
+
+function countWrappedDescriptionLines(text: string, columns: number): number {
+  let lines = 1;
+  let lineLength = 0;
+  for (const word of text.trim().split(/\s+/)) {
+    const nextLength = lineLength === 0 ? word.length : lineLength + word.length + 1;
+    if (lineLength > 0 && nextLength > columns) {
+      lines += 1;
+      lineLength = word.length;
+    } else {
+      lineLength = nextLength;
+    }
+  }
+  return lines;
+}
 
 export interface EquipmentTooltipCardLayout {
   readonly height: number;
@@ -41,15 +56,23 @@ export function getEquipmentTooltipCardLayout(
   const descriptionColumns = Math.max(12, Math.floor((width - 20) / 6));
   const descriptionLines =
     flavorText && flavorText.length > 0
-      ? Math.min(3, Math.ceil(flavorText.length / descriptionColumns))
+      ? Math.min(3, countWrappedDescriptionLines(flavorText, descriptionColumns))
+      : 0;
+  const statBlockHeight =
+    statLines.length > 0
+      ? (statLines.length - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
       : 0;
   const descriptionY =
-    EQUIPMENT_CARD_STAT_START_Y + statLines.length * 14 + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
+    EQUIPMENT_CARD_STAT_START_Y + statBlockHeight + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
   const descriptionHeight = descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT;
   const visibleDiffLines = Math.min(3, diffLines.length);
   const diffStartY = descriptionY + descriptionHeight + (visibleDiffLines > 0 ? 10 : 0);
+  const diffBlockHeight =
+    visibleDiffLines > 0
+      ? (visibleDiffLines - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
+      : 0;
   return {
-    height: diffStartY + visibleDiffLines * 14 + EQUIPMENT_CARD_BOTTOM_PADDING,
+    height: diffStartY + diffBlockHeight + EQUIPMENT_CARD_BOTTOM_PADDING,
     headerCenterY: 12,
     icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
@@ -339,10 +362,12 @@ export function renderItemTooltip(
     const diffStartY =
       ty + (compactLayout?.diffStartY ?? tooltipHeight - 12 - Math.min(3, diffLines.length) * 14);
     diffLines.slice(0, 3).forEach((line, index) => {
-      const diffText = crispText(tx + 8, diffStartY + index * 14, line, {
+      const diffColor =
+        line === 'No stat change' ? '#d9e2ef' : line.includes('-') ? '#e8695b' : '#49d06f';
+      const diffText = crispText(tx + 8, diffStartY + index * TOOLTIP_LINE_SPACING, line, {
         fontFamily,
         fontSize: '11px',
-        color: line.includes('-') ? '#e8695b' : '#49d06f',
+        color: diffColor,
       });
       container.add(diffText);
       objects.push(diffText);

@@ -513,6 +513,9 @@ test('classifyVisualFindings: readable text evidence remains blocking while tast
       'The tooltip needs padding and feels cramped.',
       'Tooltip title text is clipped and cannot be read.',
       'The gold border feels generic.',
+      'Tooltip placement is too far from the relevant slot, requiring unnecessary eye travel.',
+      'Tooltip alignment is not centered relative to the paper doll or bag panel.',
+      "The tooltip's proximity to the bottom of the equipment panel creates a visual imbalance.",
     ],
     llmAdvisories: ['Add more padding around the tooltip title.'],
     deterministicBlockers: [],
@@ -524,6 +527,9 @@ test('classifyVisualFindings: readable text evidence remains blocking while tast
   assert.deepEqual(classified.advisoryTasteNotes, [
     'The tooltip needs padding and feels cramped.',
     'The gold border feels generic.',
+    'Tooltip placement is too far from the relevant slot, requiring unnecessary eye travel.',
+    'Tooltip alignment is not centered relative to the paper doll or bag panel.',
+    "The tooltip's proximity to the bottom of the equipment panel creates a visual imbalance.",
     'Add more padding around the tooltip title.',
   ]);
 });

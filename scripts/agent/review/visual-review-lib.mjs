@@ -567,7 +567,7 @@ export function deriveAnchoredScore(result, options = {}) {
 }
 
 const GEOMETRY_CLAIM =
-  /\b(overlap|occlud|cover(?:s|ed|ing)?|behind|layer(?:s|ed|ing)?|clip(?:s|ped|ping)?|overflow|outside|escape|cross(?:es|ed|ing)?|mis-?align|not aligned|off[- ]?center|touch(?:es|ed|ing)?|no breathing room|gap|padding|cramped|crowded|tight spacing)\b/i;
+  /\b(overlap|occlud|cover(?:s|ed|ing)?|behind|layer(?:s|ed|ing)?|clip(?:s|ped|ping)?|overflow|outside|escape|cross(?:es|ed|ing)?|mis-?align(?:ment)?|alignment|not aligned|off[- ]?center|touch(?:es|ed|ing)?|no breathing room|gap|padding|cramped|crowded|tight spacing|too far|far from|eye travel|proximity|visual imbalance)\b/i;
 const TEXT_SUBJECT = /\b(text|title|label|caption|glyph|word|value|stat|description)\b/i;
 const READABILITY_DEFECT =
   /\b(clip(?:s|ped|ping)?|overflow|cut off|truncat|unreadable|illegible|obscur|cover|occlud|low contrast|cannot read|hard to read|blurry|fuzzy|soft)\b/i;

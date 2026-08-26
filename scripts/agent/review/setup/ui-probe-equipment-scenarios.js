@@ -147,7 +147,7 @@
       });
     }
   }
-  if (scenario === 'equipment-hover-empty-slot' && hoverTarget && tooltip) {
+  if (hoverTarget && tooltip) {
     const padding = 16;
     const left = Math.max(0, Math.min(hoverTarget.x, tooltip.x) - padding);
     const top = Math.max(0, Math.min(hoverTarget.y, tooltip.y) - padding);
@@ -155,8 +155,8 @@
     const bottom =
       Math.max(hoverTarget.y + hoverTarget.height, tooltip.y + tooltip.height) + padding;
     // Hover reviews inspect this interaction at readable scale. The full panel
-    // remains in declared geometry for placement context, while Azure receives
-    // the target-and-card crop as the detailed inspection frame.
+    // remains in declared geometry for placement context while Azure receives
+    // the target-and-card crop as its detailed inspection frame.
     window.__visualReviewClip = { x: left, y: top, width: right - left, height: bottom - top };
   }
   const doll = probe?.getEquipmentDollBounds?.();

@@ -1300,11 +1300,18 @@ export function createEquipmentUI(
   ): void {
     const gap = 8;
     const cardWidth = Math.floor((inspectorW - 16 - gap) / 2);
-    const cardHeight = INSPECTOR_H - 14;
+    // Comparison cards share a baseline but take their height from the most
+    // content-heavy card so multi-line deltas never spill out of the border.
+    const cardHeight = Math.max(
+      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(current), '').height,
+      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(candidate), '', diffLines).height,
+    );
     renderEquipmentTooltipCard(
       current,
       { x: inspectorX + 6, y: inspectorY + 7, width: cardWidth, height: cardHeight },
       'CURRENT',
+      [],
+      false,
     );
     renderEquipmentTooltipCard(
       candidate,

@@ -62,8 +62,8 @@ describe('item tooltip redesign', () => {
 
     expect(layout.headerCenterY).toBe(12);
     expect(layout.statStartY).toBeGreaterThan(iconBottom);
-    expect(layout.descriptionY - (layout.statStartY + 2 * 14)).toBe(12);
-    expect(layout.height).toBe(layout.descriptionY + 2 * 13 + 10);
+    expect(layout.descriptionY - (layout.statStartY + 18 + 14)).toBe(12);
+    expect(layout.height).toBe(layout.descriptionY + 2 * 14 + 10);
   });
 
   it('reserves separate measured space for candidate differences', () => {
@@ -75,6 +75,17 @@ describe('item tooltip redesign', () => {
       layout.descriptionY + layout.descriptionHeight,
     );
     expect(layout.height).toBeGreaterThan(layout.diffStartY);
+  });
+
+  it('sizes flavor space from word wrapping rather than raw character count', () => {
+    const layout = getEquipmentTooltipCardLayout(
+      176,
+      ['+2 Armor', '+1 Constitution'],
+      'A dented pot with eyeholes. Surprisingly reassuring.',
+    );
+
+    expect(layout.descriptionHeight).toBe(42);
+    expect(layout.height).toBe(layout.descriptionY + layout.descriptionHeight + 10);
   });
 
   it('renders icon, stats, flavor, and candidate differences inside the requested card', () => {
