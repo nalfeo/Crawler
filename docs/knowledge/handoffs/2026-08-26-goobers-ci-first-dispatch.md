@@ -33,8 +33,10 @@ ERROR Workflow/crawler-feature-pr: gate "pr-opened-gate": branch "infra" is not 
    producible outcome for its evaluator, so a dead `infra` branch is an error,
    not a warning.
 
-Routed `fail` → `needs-remediation` (rather than the previous `@abort`) so a
-failed PR-open escalates for remediation instead of silently aborting the run.
+The `fail` route remains `@abort`. In Goobers v0.2.2, `opened=false` means the
+claimed issue closed or was superseded mid-flight; a provider failure ends the
+stage before this gate runs. Aborting prevents normal stale-work cancellation
+from being relabeled as remediation.
 
 ## Files touched
 
