@@ -1,5 +1,39 @@
 [
   {
+    "commit": "8132e87d0f86c6e11af6d4543da882e78deb6c93",
+    "commitDate": "2026-08-25T23:27:14Z",
+    "commitSubject": "[WIP] Fix player AI decision to return to base on Floor2 (#3617)",
+    "capturedAt": "2026-08-26T00:34:06.056Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32912421796",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/8132e87d0f86c6e11af6d4543da882e78deb6c93.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/8132e87d0f86c6e11af6d4543da882e78deb6c93.fun-report.json"
+    }
+  },
+  {
     "commit": "db981ec27ce8ad1dd3e9b8d63fb0b398c76ba267",
     "commitDate": "2026-08-25T22:39:58Z",
     "commitSubject": "Prevent Issue button overlap with skill HUD on small screens (#3613)",
