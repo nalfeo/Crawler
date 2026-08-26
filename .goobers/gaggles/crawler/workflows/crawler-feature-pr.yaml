@@ -153,9 +153,9 @@ spec:
       evaluator: automated
       automated:
         check: output-equals
-        output: opened
-        equals: 'true'
+        params:
+          key: opened
+          equals: 'true'
       branches:
         pass: close-out
-        fail: '@abort'
-        infra: needs-remediation
+        fail: needs-remediation
