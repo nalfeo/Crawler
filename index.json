@@ -1,5 +1,39 @@
 [
   {
+    "commit": "babe9960d3515f9a6d3cd926e40b07912f3d1f89",
+    "commitDate": "2026-08-26T00:09:51Z",
+    "commitSubject": "[WIP] Fix dev build performance drop issue (#3619)",
+    "capturedAt": "2026-08-26T01:15:31.442Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32915463817",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/babe9960d3515f9a6d3cd926e40b07912f3d1f89.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/babe9960d3515f9a6d3cd926e40b07912f3d1f89.fun-report.json"
+    }
+  },
+  {
     "commit": "8132e87d0f86c6e11af6d4543da882e78deb6c93",
     "commitDate": "2026-08-25T23:27:14Z",
     "commitSubject": "[WIP] Fix player AI decision to return to base on Floor2 (#3617)",
