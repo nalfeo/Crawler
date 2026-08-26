@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1b7ac67b1c87c4f71fe5eea7e6d8851db23609ba",
+    "commitDate": "2026-08-26T21:11:39Z",
+    "commitSubject": "fix(goobers): correct unreachable branch and misplaced params in crawler-feature-pr gate (#3640)",
+    "capturedAt": "2026-08-26T22:16:28.341Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33015959032",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/1b7ac67b1c87c4f71fe5eea7e6d8851db23609ba.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/1b7ac67b1c87c4f71fe5eea7e6d8851db23609ba.fun-report.json"
+    }
+  },
+  {
     "commit": "babe9960d3515f9a6d3cd926e40b07912f3d1f89",
     "commitDate": "2026-08-26T00:09:51Z",
     "commitSubject": "[WIP] Fix dev build performance drop issue (#3619)",
