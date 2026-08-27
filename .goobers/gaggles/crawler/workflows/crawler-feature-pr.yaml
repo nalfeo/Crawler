@@ -34,21 +34,24 @@ spec:
       next: hydrate-requirements
     - name: hydrate-requirements
       type: deterministic
-      contextFrom:
-        - query-backlog
+      inputsFrom:
+        claimedItem: query-backlog.claimed-item
       goal: Fetch the full claimed issue body into deterministic requirements context.
       run:
         script: |
           set -eu
-          context_dir=".goobers/context"
           repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
-          issue="$(
-            grep -RhoE 'claimed [0-9]+|issues/[0-9]+|"number"[[:space:]]*:[[:space:]]*[0-9]+' "$context_dir" |
-              sed -E 's/.*claimed ([0-9]+).*/\1/; s#.*issues/([0-9]+).*#\1#; s/.*"number"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/' |
-              head -n 1
-          )"
+          claimed_item="${GOOBERS_INPUT_CLAIMEDITEM:-}"
+          export GH_TOKEN="${GH_TOKEN:-${GOOBERS_CRED_GITHUB_ISSUES_WRITE:-}}"
+          issue="$(printf '%s\n' "$claimed_item" |
+            sed -nE 's/.*#([0-9]+).*/\1/p; s#.*issues/([0-9]+).*#\1#; s/.*"number"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p; s/^([0-9]+)$/\1/p' |
+            head -n 1)"
           if [ -z "$issue" ]; then
-            echo "could not find a claimed issue number in ${context_dir}" >&2
+            echo "could not find a claimed issue number in claimed-item output: ${claimed_item}" >&2
+            exit 1
+          fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "missing GitHub token for requirements hydration" >&2
             exit 1
           fi
 
@@ -84,6 +87,8 @@ spec:
           cat requirements.md
       inputs:
         resultFile: 'requirements-result.json'
+      capabilities:
+        - github:issues:write
       expectedOutputs:
         - issueNumber
         - issueTitle
