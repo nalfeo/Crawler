@@ -7,6 +7,7 @@ import type { ImageProvider } from './provider/types.js';
 import { runWorker, type WorkerStatus } from './worker.js';
 import { createDrainOnStatus } from './worker-cli-lib.js';
 
+// Historical reference captured at commit b06d80611; not a live baseline.
 const MEASURED_BASELINE_MS = 13_926;
 const MAX_TAIL_MS = 2_000;
 
