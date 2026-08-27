@@ -1946,6 +1946,11 @@ const CLIENT_SCRIPT = String.raw`
       }
     });
     create.addEventListener('click', function () {
+      var categoryOverride = normalizeCategoryOverride(
+        categoryInjection.value,
+        type.value,
+        categoryDesignLanguage
+      );
       workflowPost('/api/workflow/request', {
         name: name.value,
         brief: brief.value,
@@ -1958,7 +1963,7 @@ const CLIENT_SCRIPT = String.raw`
         injectionOverrides: {
           floor: floorInjection.value,
           family: familyInjection.value,
-          category: categoryInjection.value
+          category: categoryOverride
         },
         priority: priority.value,
         requester: requester.value
@@ -2224,12 +2229,11 @@ const CLIENT_SCRIPT = String.raw`
         title: 'Persist these request fields to the shared Azure-backed workflow'
         });
         saveEdit.addEventListener('click', function () {
-        var canonicalEditCategory = editType.value === 'auto'
-          ? ''
-          : (categoryDesignLanguage[editType.value] || '');
-        var categoryOverride = editCategoryInjection.value === canonicalEditCategory
-          ? ''
-          : editCategoryInjection.value;
+        var categoryOverride = normalizeCategoryOverride(
+          editCategoryInjection.value,
+          editType.value,
+          categoryDesignLanguage
+        );
         workflowPost('/api/workflow/edit', {
           itemId: selected.id,
           patch: {

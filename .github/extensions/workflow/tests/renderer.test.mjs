@@ -9,8 +9,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { renderHtml } from '../renderer.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 test('renderHtml returns a complete standalone document', () => {
   const html = renderHtml('workflow-1');
@@ -133,6 +138,24 @@ test('Briefs provides a multiline direction editor, full request template previe
     html,
     /Crawler uses a classic RPG 3\/4 orthographic perspective to present a dark-fantasy/,
   );
+  const canonicalSource = readFileSync(
+    path.resolve(HERE, '../../../../scripts/sprites/content-direction.ts'),
+    'utf8',
+  );
+  const canonicalBlock = canonicalSource
+    .split('export const CRAWLER_DESIGN_LANGUAGE = [')[1]
+    .split("].join('\\n');")[0];
+  const canonicalDesignLanguage = [...canonicalBlock.matchAll(/'([^']*)'/g)]
+    .map((match) => match[1])
+    .join('\n');
+  const rendererSource = readFileSync(path.resolve(HERE, '../renderer.mjs'), 'utf8');
+  const rendererBlock = rendererSource
+    .split('var CRAWLER_DESIGN_LANGUAGE = [')[1]
+    .split("].join('\\n');")[0];
+  const rendererDesignLanguage = [...rendererBlock.matchAll(/'([^']*)'/g)]
+    .map((match) => match[1])
+    .join('\n');
+  assert.equal(rendererDesignLanguage, canonicalDesignLanguage);
   assert.match(html, /Sprite category design-language injection/);
   assert.match(html, /Reference examples/);
   assert.match(html, /\/api\/workflow\/reference-preview/);
@@ -141,7 +164,8 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.doesNotMatch(html, /previewName \|\| '\[not-entered\]'/);
   assert.match(html, /categoryDraftByType\[selected\.requestedType\]/);
   assert.match(html, /text: selected\.injectionOverrides\?\.category \|\| ''/);
-  assert.match(html, /editCategoryInjection\.value === canonicalEditCategory/);
+  assert.match(html, /normalizeCategoryOverride\(\s+editCategoryInjection\.value/);
+  assert.match(html, /normalizeCategoryOverride\(\s+categoryInjection\.value/);
   assert.match(html, /var parseRequestTemplate = function parseRequestTemplate/);
   assert.match(html, /categoryDraftByType\[previousCategoryType\] = categoryInjection\.value/);
   assert.match(html, /categoryDraftByType: Object\.assign\(\{\}, categoryDraftByType\)/);

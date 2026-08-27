@@ -85,3 +85,9 @@ export function parseRequestTemplate(text) {
     ]),
   };
 }
+
+export function normalizeCategoryOverride(value, type, categoryDesignLanguage) {
+  var normalized = String(value || '').trim();
+  var canonical = type === 'auto' ? '' : String(categoryDesignLanguage[type] || '').trim();
+  return normalized === canonical ? '' : normalized;
+}

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseRequestTemplate, renderRequestTemplate } from '../lib/request-template.mjs';
+import {
+  normalizeCategoryOverride,
+  parseRequestTemplate,
+  renderRequestTemplate,
+} from '../lib/request-template.mjs';
 
 const BASE = {
   name: '',
@@ -74,4 +78,14 @@ test('heading-like prose inside the brief does not terminate unless line-anchore
     }),
   );
   assert.equal(parsed.brief, 'Discuss Sprite type: only as prose, not as a field heading.');
+});
+
+test('canonical category text is display guidance, not a persisted request override', () => {
+  const designLanguage = { enemy: 'canonical enemy language' };
+  assert.equal(normalizeCategoryOverride('canonical enemy language', 'enemy', designLanguage), '');
+  assert.equal(
+    normalizeCategoryOverride('custom enemy language', 'enemy', designLanguage),
+    'custom enemy language',
+  );
+  assert.equal(normalizeCategoryOverride('', 'auto', designLanguage), '');
 });

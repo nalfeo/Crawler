@@ -14,6 +14,7 @@ import {
   rewindItem,
   updateItem,
 } from '../lib/authoring-state.mjs';
+import { normalizeCategoryOverride } from '../lib/request-template.mjs';
 
 function item(seq, patch = {}) {
   return {
@@ -265,6 +266,57 @@ test('editing metadata-only fields preserves synthesized state', () => {
   assert.equal(edited.run.runId, 'run-1');
   assert.equal(edited.priority, 'high');
   assert.equal(edited.requester, 'Ada');
+});
+
+test('unchanged edit after concrete-type creation preserves generated and approved state', () => {
+  const categoryDesignLanguage = { character: 'canonical character language' };
+  const created = addRequest(
+    { items: [], selectedId: null, nextSeq: 1 },
+    {
+      name: 'main player',
+      brief: 'Facing south.',
+      type: 'character',
+      injectionOverrides: {
+        category: normalizeCategoryOverride(
+          'canonical character language',
+          'character',
+          categoryDesignLanguage,
+        ),
+      },
+    },
+  ).item;
+  const completed = {
+    ...created,
+    stage: 'done',
+    candidates: [{ id: 'main-player', yamlPath: 'briefs/draft/main-player.yaml' }],
+    chosenCandidatePath: 'briefs/draft/main-player.yaml',
+    briefPath: 'briefs/main-player.yaml',
+    run: { briefId: 'main-player', runId: 'run-1', candidates: [] },
+    approvedAssetPath: 'public/assets/generated/main-player.png',
+  };
+
+  const edited = editRequestItem(completed, {
+    name: completed.name,
+    brief: completed.brief,
+    requestedType: completed.requestedType,
+    sizeVariant: completed.sizeVariant,
+    floor: completed.floor,
+    floorId: completed.floorId,
+    familyId: completed.familyId,
+    mobRole: completed.mobRole,
+    injectionOverrides: {
+      category: normalizeCategoryOverride(
+        'canonical character language',
+        'character',
+        categoryDesignLanguage,
+      ),
+    },
+  });
+
+  assert.equal(edited.stage, 'done');
+  assert.equal(edited.run.runId, 'run-1');
+  assert.equal(edited.approvedAssetPath, 'public/assets/generated/main-player.png');
+  assert.equal(edited.candidates.length, 1);
 });
 
 test('editing an auto-typed request preserves its canonical unclassified type', () => {
