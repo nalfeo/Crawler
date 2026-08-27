@@ -15,15 +15,26 @@ import type { CollisionResult } from './collisionSystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
 import { pushFloaterEvent } from '../../shared/floater-events.js';
-import { PICKUP_SPARKLE_COLORS, pushVfxEvent, type PickupKind } from '../../shared/vfx-events.js';
+import {
+  PICKUP_SPARKLE_COLORS,
+  pushVfxEvent,
+  type PickupAudioKind,
+  type PickupKind,
+} from '../../shared/vfx-events.js';
 
 /** Queue a cosmetic collect-sparkle at a pickup's position (render-only). */
-function emitPickupSparkle(world: GameWorld, eid: number, kind: PickupKind): void {
+function emitPickupSparkle(
+  world: GameWorld,
+  eid: number,
+  kind: PickupKind,
+  pickupAudioKind?: PickupAudioKind,
+): void {
   pushVfxEvent(world.vfxEvents, {
     kind: 'pickupSparkle',
     x: world.stores.position.x[eid] ?? 0,
     y: world.stores.position.y[eid] ?? 0,
     color: PICKUP_SPARKLE_COLORS[kind],
+    pickupAudioKind,
   });
 }
 
@@ -52,7 +63,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       world.playerGold += goldValue;
       world.lootLedger.goldCollected += goldValue;
       world.goldLedger.earnedFromDrops += goldValue;
-      emitPickupSparkle(world, otherEid, 'gold');
+      emitPickupSparkle(world, otherEid, 'gold', 'gold');
       removeEntity(world.ecs, otherEid);
       continue;
     }
@@ -64,7 +75,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       world.stores.broadcastScore.current[playerEid] = currentScore + gemValue;
       world.playerLevel.xp += gemValue;
       world.lootLedger.xpCollected += gemValue;
-      emitPickupSparkle(world, otherEid, 'gem');
+      emitPickupSparkle(world, otherEid, 'gem', 'xp');
       removeEntity(world.ecs, otherEid);
       continue;
     }
@@ -91,7 +102,12 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
           });
         }
       }
-      emitPickupSparkle(world, otherEid, 'item');
+      emitPickupSparkle(
+        world,
+        otherEid,
+        'item',
+        def?.tags.includes('Materials') ? 'material' : undefined,
+      );
       removeEntity(world.ecs, otherEid);
     }
   }
