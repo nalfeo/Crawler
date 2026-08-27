@@ -32,6 +32,7 @@ const SPRITE_TYPES = new Set([
   'tile',
   'vfx',
   'character',
+  'icon',
 ]);
 const SIZE_VARIANTS = new Set(['default', 'wide', 'tall', 'large']);
 const MOB_ROLES = new Set(['normal', 'elite', 'boss']);

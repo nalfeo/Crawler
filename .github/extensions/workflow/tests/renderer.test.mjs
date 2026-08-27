@@ -129,7 +129,10 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.match(html, /function fullRequestTemplate\(/);
   assert.match(html, /FULL SYNTHESIS REQUEST/);
   assert.match(html, /Crawler design-language injection \(always applied\)/);
-  assert.match(html, /classic RPG 3\/4 orthographic perspective/);
+  assert.match(
+    html,
+    /Crawler uses a classic RPG 3\/4 orthographic perspective to present a dark-fantasy/,
+  );
   assert.match(html, /Sprite category design-language injection/);
   assert.match(html, /Reference examples/);
   assert.match(html, /\/api\/workflow\/reference-preview/);

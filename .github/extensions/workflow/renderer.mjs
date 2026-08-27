@@ -281,8 +281,8 @@ const CLIENT_SCRIPT = String.raw`
   ];
   // Keep this human-readable copy aligned with scripts/sprites/content-direction.ts.
   var CRAWLER_DESIGN_LANGUAGE = [
-    'Crawler uses classic RPG 3/4 orthographic perspective in a dark-fantasy dungeon',
-    'rebuilt as deranged reality-show spectacle.',
+    'Crawler uses a classic RPG 3/4 orthographic perspective to present a dark-fantasy',
+    'dungeon rebuilt as deranged reality-show spectacle.',
     'Its design language combines expressive, offbeat RPG characters; retro-futurist salvage',
     'and corporate decay; and brutal improvised machinery, vehicles, armor, and contraptions.',
     '',

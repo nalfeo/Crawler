@@ -278,6 +278,19 @@ test('editing validates durable request fields at the state boundary', () => {
   assert.throws(() => editRequestItem(original, { floor: 21 }), /integer from 1 through 20/);
 });
 
+test('icon requests remain icon requests through creation and editing', () => {
+  const created = addRequest(
+    { items: [], selectedId: null, nextSeq: 1 },
+    { name: 'status icon', type: 'icon' },
+  ).item;
+  assert.equal(created.requestedType, 'icon');
+  assert.equal(created.resolvedType, 'icon');
+
+  const edited = editRequestItem(item(1), { requestedType: 'icon' });
+  assert.equal(edited.requestedType, 'icon');
+  assert.equal(edited.resolvedType, 'icon');
+});
+
 test('metadata completion preserves durable status honestly', () => {
   const result = metadataDonePatch(
     {
