@@ -84,6 +84,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
     sliced,
     attempts,
     identity,
+    timing,
   } = core;
 
   const nowIso = (options.now ?? (() => new Date()))().toISOString();
@@ -96,21 +97,23 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
   const postprocessOptions: PostprocessOptions = {
     disabledModules: frameSequenceDisabledModules(brief),
   };
-  await writePostprocessProfile(
-    store,
-    `${identity.brief}/${identity.runId}`,
-    postprocessOptions,
-    nowIso,
-  );
-  await writeEffectivePipelineSnapshot({
-    store,
-    baseKey: `${identity.brief}/${identity.runId}`,
-    brief,
-    options: postprocessOptions,
-    manualAnchor: null,
-    manualWeaponAnchor: null,
-    facing: null,
-    nowIso,
+  await timing.measure('candidatePersistence', async () => {
+    await writePostprocessProfile(
+      store,
+      `${identity.brief}/${identity.runId}`,
+      postprocessOptions,
+      nowIso,
+    );
+    await writeEffectivePipelineSnapshot({
+      store,
+      baseKey: `${identity.brief}/${identity.runId}`,
+      brief,
+      options: postprocessOptions,
+      manualAnchor: null,
+      manualWeaponAnchor: null,
+      facing: null,
+      nowIso,
+    });
   });
 
   // For frame-sequence briefs: compute the union opaque bbox across all raw
@@ -143,6 +146,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
         overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
         effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
       },
+      timing,
     });
     sensorEntries.push(variant);
     processedBuffers.push(variant.processed);
@@ -160,21 +164,23 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
   }
   // Sensor + judge gating lives in `runJudgePass`; folding both fresh runs and
   // re-runs through it keeps the judge eligibility rules in exactly one place.
-  const { judgePlan, judgeSkipReason } = await runJudgePass({
-    variants: sensorEntries,
-    judgeEnabled,
-    brief,
-    referencePngs,
-    styleGuide,
-    visionProvider: options.visionProvider ?? null,
-    store,
-    storeKey,
-    ...(options.judgeBudget ? { judgeBudget: options.judgeBudget } : {}),
-    ...(options.judgeCache ? { judgeCache: options.judgeCache } : {}),
-    ...(options.now ? { now: options.now } : {}),
-    ...(options.env ? { env: options.env } : {}),
-    ...(options.warn ? { warn: options.warn } : {}),
-  });
+  const { judgePlan, judgeSkipReason } = await timing.measure('judging', () =>
+    runJudgePass({
+      variants: sensorEntries,
+      judgeEnabled,
+      brief,
+      referencePngs,
+      styleGuide,
+      visionProvider: options.visionProvider ?? null,
+      store,
+      storeKey,
+      ...(options.judgeBudget ? { judgeBudget: options.judgeBudget } : {}),
+      ...(options.judgeCache ? { judgeCache: options.judgeCache } : {}),
+      ...(options.now ? { now: options.now } : {}),
+      ...(options.env ? { env: options.env } : {}),
+      ...(options.warn ? { warn: options.warn } : {}),
+    }),
+  );
 
   const entries = assembleSummaryEntries({
     variants: sensorEntries,
@@ -231,6 +237,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
         total: orientationTotal,
       },
     },
+    timing: timing.snapshot(),
   };
   const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));
