@@ -38,7 +38,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "claude-sonnet-5",
-      "head_sha": "ae99f552a0cc21ba0c7515a1ad215e4eeb3ad679",
+      "head_sha": "7cf1aa0eb530fb3014237dd41bce232c2a43b309",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -49,7 +49,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "Inspected the complete diff between the merge base and HEAD across all touched files. The implementation for epic-reprocess staleness accurately identifies abandoned or quarantined PRs, and correctly forces an unassign/reassign sequence to trigger the issue-intake webhook. The quarantine-repair logic is defensively written, checking original markers, handling concurrent races gracefully, and strictly verifying ancestry before touching branches. Test coverage is thorough, directly verifying the new logic and the workflow integrations. Overall, a robust and policy-compliant resolution."
+      "notes": "Inspected the complete file-by-file diff between the merge base and the current HEAD across all changed scripts, tests, and workflows after the pre-publish rebase. The epic-reprocess staleness detection correctly identifies abandoned or merge-train-blocked PRs and forces an unassign/reassign sequence to reliably restart stalled issue intake. The quarantine repair logic robustly verifies branch ancestry for unmerged replacement PRs while idempotently handling merged terminal states, safely avoiding branch collisions and correctly applying the supersede marker. Test coverage in epic-reprocess.test.mjs, quarantine-repair.test.mjs, and workflow unit tests is exceptional, covering pagination, bot-identity matching, and error cases, in full compliance with repo automation rules."
     }
   }
 }
