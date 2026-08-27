@@ -4,11 +4,12 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *purchasable* item ids: a weapon from
+ * Archetype entries reference *purchasable and usable* item ids: a weapon from
  * `weapons.json` that a weapon-equipment def activates, an inventory item slug
  * from `items.ts`, or the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
  * The loader validates that invariant at load-time (through the same resolver
- * the purchase path uses) so stock a player could never buy can't ship.
+ * the purchase path uses) so stock a player could never buy — or could buy but
+ * never equip — can't ship.
  *
  * Prices are the *base* per-item price. Runtime price is
  * `basePrice * archetype.priceMultiplier * (tuning.shopPricing.tierMultiplier ?? 1)`.
@@ -66,9 +67,10 @@ const shopArchetypePackSchema = z
 
 /**
  * Item ids a shop archetype may stock: every id the merchant purchase path can
- * resolve onto a bag item. A weapon from `weapons.json` only qualifies once a
- * weapon-equipment def activates it — otherwise the offer would render with a
- * name and price but refuse the purchase as `unknown-item`.
+ * resolve onto a bag item. A weapon from `weapons.json` only qualifies once an
+ * equipment def activates it — otherwise the offer would render with a name and
+ * price but refuse the purchase as `unknown-item` (or, for a weapon-tagged
+ * catalog item with no def, sell an unequippable one).
  */
 export function knownShopItemIds(): ReadonlySet<string> {
   const ids = new Set<string>();

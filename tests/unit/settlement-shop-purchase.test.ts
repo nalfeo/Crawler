@@ -6,8 +6,9 @@ import {
 } from '../../src/core/settlement-shop-purchase.js';
 import type { Floor2SettlementSnapshot } from '../../src/shared/floor-types.js';
 import { knownShopItemIds, loadShopArchetypes } from '../../src/shared/data/shop-archetypes.js';
+import { isEquippableItem } from '../../src/shared/equipmentDefs.js';
 import { listStaticInventorySlots } from '../../src/shared/inventory.js';
-import { getItemById } from '../../src/shared/items.js';
+import { resolveShopCatalogItem } from '../../src/shared/shop-catalog.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 type TestWorld = ReturnType<typeof createTestWorld>;
@@ -134,12 +135,12 @@ describe('Settlement shop purchase', () => {
   });
   /**
    * Regression for #3693 ("why is bowling ball not purchasable"): shop stock is
-   * rolled from the archetype entries, so every stocked id must resolve through
-   * the purchase path. `bowling-ball` previously existed only in `weapons.json`,
-   * so the offer rendered with its weapon name but refused the sale as
-   * `unknown-item`.
+   * rolled from the archetype entries, so every stocked id must both resolve
+   * through the purchase path and land an item the player can actually equip.
+   * `bowling-ball` was stocked while existing only in `weapons.json`, so the
+   * offer rendered with its weapon name but refused the sale as `unknown-item`.
    */
-  it('can purchase every id the Floor 2 shop archetypes stock', () => {
+  it('can purchase and equip every id the Floor 2 shop archetypes stock', () => {
     const world = createTestWorld({ seed: 42, floor: 2 });
     const playerEid = spawnPlayer(world, 0, 0);
     const shopNpcEid = 11;
@@ -175,25 +176,50 @@ describe('Settlement shop purchase', () => {
     };
     world.playerGold = 10 * stockedIds.length;
 
-    expect(stockedIds).toContain('bowling-ball');
     for (const offer of getSettlementShopOfferViews(world, playerEid, shopNpcEid)) {
       expect({ id: offer.itemId, canPurchase: offer.canPurchase }).toEqual({
         id: offer.itemId,
         canPurchase: true,
       });
       expect(offer.displayName).not.toBeNull();
+      // Selling a weapon the player could never equip is the same defect wearing
+      // a different hat: gold leaves the purse and an inert bag entry arrives.
+      const resolved = resolveShopCatalogItem(offer.itemId);
+      expect({ id: offer.itemId, equippable: isEquippableItem(resolved!.itemId) }).toEqual({
+        id: offer.itemId,
+        equippable: true,
+      });
     }
 
+    const buyable = stockedIds[0]!;
     expect(
       purchaseSettlementShopOffer(world, playerEid, shopNpcEid, {
-        itemId: 'bowling-ball',
+        itemId: buyable,
         quantity: 1,
       }),
     ).toMatchObject({ ok: true, goldSpent: 10 });
     const bag = world.inventories.get(playerEid);
     expect(bag).toBeDefined();
-    expect(listStaticInventorySlots(bag!)).toContainEqual({ itemId: 'bowling-ball', quantity: 1 });
-    expect(getItemById('bowling-ball')?.name).toBe('Bowling Ball');
+    expect(listStaticInventorySlots(bag!)).toContainEqual({
+      itemId: resolveShopCatalogItem(buyable)!.itemId,
+      quantity: 1,
+    });
+  });
+
+  /**
+   * The five ids that triggered #3693 stay rejected until an equipment def (and
+   * the art `check:equipment-art-coverage` demands before one may be wired)
+   * lands, so the loader can never ship them as an unbuyable — or unequippable —
+   * shop row again.
+   */
+  it('refuses to stock weapons with no equipment def', () => {
+    const stockable = knownShopItemIds();
+    for (const weaponId of ['bowling-ball', 'hammer', 'crossbow', 'knife', 'boomerang']) {
+      expect({ weaponId, stockable: stockable.has(weaponId) }).toEqual({
+        weaponId,
+        stockable: false,
+      });
+    }
   });
 
   it('only advertises stockable ids the purchase path can resolve', () => {
