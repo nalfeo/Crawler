@@ -1,5 +1,39 @@
 [
   {
+    "commit": "5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06",
+    "commitDate": "2026-08-27T07:09:01Z",
+    "commitSubject": "ci(goobers): trial hosted progress from private draft (#3650)",
+    "capturedAt": "2026-08-27T10:04:25.498Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33050805362",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06.fun-report.json"
+    }
+  },
+  {
     "commit": "e37f75b29cf1e20220bcf1de0b52010590561511",
     "commitDate": "2026-08-27T04:38:06Z",
     "commitSubject": "Automate Goobers issue dispatch and recovery (#3647)",
