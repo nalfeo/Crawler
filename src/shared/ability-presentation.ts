@@ -239,6 +239,16 @@ export const ABILITY_PRESENTATION_BY_ID = {
     passiveEffectSummary: 'Damage +10%',
     passiveRequirementSummary: 'a spellcraft weapon',
   },
+  'spellcraft-bolt-base': {
+    id: 'spellcraft-bolt-base',
+    name: 'Spellcraft Bolt',
+    shortLabel: 'BOLT',
+    description: 'Gain accuracy while wielding a spellcraft weapon.',
+    category: 'utility',
+    kind: 'passive',
+    passiveEffectSummary: 'Accuracy +0.1',
+    passiveRequirementSummary: 'a spellcraft weapon',
+  },
   fireball: {
     id: 'fireball',
     name: 'Fireball',
