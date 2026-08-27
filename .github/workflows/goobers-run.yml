@@ -152,7 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$GOOBERS_INSTANCE"
-          mkdir -p "$GOOBERS_INSTANCE"
+          mkdir -p "$GOOBERS_INSTANCE/config"
 
       - name: Materialize checked-in source into the instance
         # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
