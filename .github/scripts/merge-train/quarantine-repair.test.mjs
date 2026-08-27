@@ -242,6 +242,9 @@ function stubGithub({
       comments.push({ body: options.body.body, performed_via_github_app: {} });
       return { data: { id: comments.length } };
     }
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588` && options?.method === 'PATCH') {
+      return { data: { ...originalPr(), state: options.body.state } };
+    }
     throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
   };
   const paginateFn = async (_token, path) => {
@@ -292,6 +295,12 @@ test('repairQuarantinedPr creates the branch and replacement PR from scratch, th
 
   assert.equal(comments.length, 2);
   assert.match(comments[1].body, /Replacement PR #3700/);
+  assert.deepEqual(
+    calls.find(
+      (call) => call.path === `/repos/${OWNER}/${REPO}/pulls/3588` && call.method === 'PATCH',
+    ).body,
+    { state: 'closed' },
+  );
 });
 
 test('repairQuarantinedPr is idempotent: re-running does not recreate the branch, PR, or comment', async () => {
@@ -678,6 +687,9 @@ test('repairQuarantinedPr accepts an OPEN replacement whose branch legitimately 
     }
     if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments` && options?.method === 'POST') {
       return { data: { id: 1 } };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588` && options?.method === 'PATCH') {
+      return { data: { state: 'closed' } };
     }
     throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
   };

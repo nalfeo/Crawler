@@ -30,10 +30,9 @@
  *      `Fixes #N` trailer still closes the same issue) plus a machine- and
  *      human-readable supersede marker naming the exact source SHA.
  *   4. Post a one-time linking comment on the ORIGINAL PR pointing at the
- *      replacement, for audit provenance. The original is left open and its
- *      commits are never touched -- nothing is lost; a separate,
- *      already-quarantined PR simply gains a live sibling that can actually
- *      be advanced by the train.
+ *      replacement, then close the rejected original. Its commits are never
+ *      touched -- nothing is lost; the writable replacement is the only PR
+ *      left for the train to advance.
  *
  * Idempotency / concurrency safety: every step re-derives its own "already
  * done?" check from a REAL GitHub object (an existing ref, an existing PR for
@@ -260,7 +259,7 @@ export function buildSupersedeNoticeBody({ replacementPrNumber, headSha }) {
       `(repeated update-branch 403 -- \`${BLOCKED_LABEL}\`).`,
     `Replacement PR #${replacementPrNumber} carries the exact same commits ` +
       `(head \`${headSha}\`) on a writable branch against \`main\`.`,
-    `This PR is left open for audit; land the work via #${replacementPrNumber}.`,
+    `This PR is closed after repair; land the work via #${replacementPrNumber}.`,
   ].join('\n');
 }
 
@@ -467,7 +466,7 @@ async function postSupersedeNoticeOnce({
  * assuming "open" is the only possibility:
  *
  *   - open: the normal steady state -- ensure the one-time linking notice is
- *     posted on the original, same as always.
+ *     posted, then close the rejected original.
  *   - merged: the replacement already landed the work on `main`. This is
  *     terminal -- there is nothing left to repair, and the branch's tip
  *     almost always no longer equals the original's `headSha` (the merge
@@ -520,6 +519,7 @@ async function finalizeExistingReplacement({
     replacementPrNumber: replacement.number,
     headSha,
   });
+  await closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber });
 
   return {
     action: state === 'merged' ? 'already-repaired' : 'linked-existing',
@@ -529,6 +529,13 @@ async function finalizeExistingReplacement({
     headSha,
     noticePosted,
   };
+}
+
+async function closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber }) {
+  await requestFn(token, `/repos/${owner}/${repo}/pulls/${originalPrNumber}`, {
+    method: 'PATCH',
+    body: { state: 'closed' },
+  });
 }
 
 /**
@@ -674,6 +681,7 @@ export async function repairQuarantinedPr({
     replacementPrNumber: replacement.number,
     headSha,
   });
+  await closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber });
 
   return {
     action: created ? 'repaired' : 'linked-existing',
