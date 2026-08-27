@@ -127,6 +127,7 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
   }, 30_000);
 
   it('dispatches distinct typed pickup cues through the real vfxEvents pipeline', async () => {
+    const typedPickupCooldownClearFrames = 8;
     const expected = [
       ['xp', 'combat:pickup-xp'],
       ['gold', 'combat:pickup-gold'],
@@ -136,7 +137,7 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
     for (const [pickupAudioKind, label] of expected) {
       await mainSceneProbe.clearCombatAudioCueLog(page);
       await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle', pickupAudioKind });
-      await mainSceneProbe.advanceSimulationFrames(page, 4);
+      await mainSceneProbe.advanceSimulationFrames(page, typedPickupCooldownClearFrames);
 
       const log = await mainSceneProbe.getCombatAudioCueLog(page);
       expect(log.some((entry) => entry.label === label)).toBe(true);
