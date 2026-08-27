@@ -33,7 +33,7 @@ import type {
   StaircaseMarkerRenderInfo,
   VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
-import type { CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
+import type { _CornerButtonProbe as CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';

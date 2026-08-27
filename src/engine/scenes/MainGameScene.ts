@@ -446,8 +446,12 @@ export interface RewardAudioCueLogEntry {
   readonly gain: number;
 }
 
-/** One on-screen corner button's live label, visibility and rendered bounds. */
-export interface CornerButtonProbe {
+/**
+ * One on-screen corner button's live label, visibility and rendered bounds.
+ * Underscore-prefixed: test/automation scaffolding consumed by the probe lab
+ * and e2e helpers, with no production caller outside this file.
+ */
+export interface _CornerButtonProbe {
   readonly id: string;
   readonly label: string;
   readonly visible: boolean;
@@ -1463,7 +1467,7 @@ export class MainGameScene extends Phaser.Scene {
    * Bounds are reported regardless of the per-button visibility gating, which
    * only depends on unlocks/safe context and never on layout.
    */
-  getCornerButtonLayout(): readonly CornerButtonProbe[] {
+  getCornerButtonLayout(): readonly _CornerButtonProbe[] {
     const entries: ReadonlyArray<readonly [string, Phaser.GameObjects.Text | undefined]> = [
       ['inventory', this.inventoryButton],
       ['equip', this.equipButton],
@@ -1474,7 +1478,7 @@ export class MainGameScene extends Phaser.Scene {
       ['quartermaster', this.quartermasterButton],
       ['issue', this.issueButton],
     ];
-    const layout: CornerButtonProbe[] = [];
+    const layout: _CornerButtonProbe[] = [];
     for (const [id, button] of entries) {
       if (!button) {
         continue;

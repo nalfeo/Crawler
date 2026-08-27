@@ -62,7 +62,7 @@ import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
-import type { CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
+import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
