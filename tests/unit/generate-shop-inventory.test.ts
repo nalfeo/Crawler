@@ -12,6 +12,7 @@ import {
   getShopArchetype,
   _resetShopArchetypeCache,
 } from '../../src/shared/data/shop-archetypes.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
 import tuning from '../../src/shared/data/tuning.json';
 
 const TIER_MULTIPLIER = tuning.shopPricing.floor2TierMultiplier;
@@ -48,6 +49,15 @@ describe('generateShopInventory · item invariants', () => {
         for (const item of inv.items) {
           expect(known.has(item.itemId), `unknown itemId ${item.itemId}`).toBe(true);
         }
+      }
+    }
+  });
+
+  it("never references the merchant's-charm (unique to the Floor 1 merchant's fetch-quest)", () => {
+    expect(knownShopItemIds().has(SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+    for (const arch of loadShopArchetypes()) {
+      for (const entry of arch.entries) {
+        expect(entry.itemId).not.toBe(SHOPKEEPER_EQUIPMENT_ITEM_ID);
       }
     }
   });
