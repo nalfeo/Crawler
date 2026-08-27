@@ -344,10 +344,16 @@ describe('MainGameScene UI exclusivity', () => {
       label: 'NPC click opened dialogue',
     });
     await page.keyboard.press('Escape');
+    await waitForState(page, (state) => !state.conversationOpen, {
+      label: 'NPC dialogue closed',
+    });
 
+    const reopenedTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    expect(reopenedTalkBounds, 'Talk button should reappear after dialogue closes').not.toBeNull();
+    if (!reopenedTalkBounds) return;
     await clickDesignPoint({
-      x: talkBounds.x + talkBounds.width / 2,
-      y: talkBounds.y + talkBounds.height / 2,
+      x: reopenedTalkBounds.x + reopenedTalkBounds.width / 2,
+      y: reopenedTalkBounds.y + reopenedTalkBounds.height / 2,
     });
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
