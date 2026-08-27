@@ -54,6 +54,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(workflow.on.issues?.types).toEqual(['labeled']);
     expect(workflow.on.schedule).toEqual([{ cron: '37 * * * *' }]);
     expect(workflow.on.workflow_dispatch).toBeDefined();
+    expect(workflow.jobs.run?.if).toContain("github.event_name != 'issues'");
     expect(workflow.jobs.run?.if).toContain("github.event.label.name == 'goobers:approved'");
     expect(workflow.jobs.run?.if).toContain("github.event.issue.state == 'open'");
     expect(workflow.concurrency).toEqual({
@@ -102,7 +103,14 @@ describe('Goobers automatic dispatch and recovery', () => {
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
-    for (const name of ['query-backlog', 'push-branch', 'open-pr', 'close-out']) {
+    for (const name of [
+      'query-backlog',
+      'push-branch',
+      'open-pr',
+      'close-out',
+      'park-needs-human',
+      'needs-remediation',
+    ]) {
       expect(tasks.get(name)?.retry).toBeUndefined();
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
