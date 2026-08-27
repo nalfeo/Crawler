@@ -14,8 +14,24 @@
       "notes": "Adopted static cross-event defaults for every inputs.* use, exact expression assertions, trusted default-branch checkout, and updates to both READMEs. Rejected full Actions-level reruns because terminal replay can duplicate side effects; retries stay within the same Goobers run via maxRepasses=2 plus maxAttempts=2 only on plan, implement, and review, while hourly scheduling provides cross-run rediscovery."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Added exact non-issues pass-through and terminal-sink assertions. Rejected replay/injection, self-context, and unbounded-loop claims after verifying quoted argv, pre-existing intentional context, and v0.2.2 maxRepasses semantics. Round-2 action-version concern was pre-existing outside the diff and invalid for the repository date; no validated findings remain."
     },
     "independent_grade": {
       "completed": false,
