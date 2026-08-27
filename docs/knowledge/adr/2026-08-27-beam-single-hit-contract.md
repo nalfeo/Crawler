@@ -27,8 +27,8 @@ equipment valuation must remain consistent across the core and game layers.
 
 ## Decision
 
-- Each beam entity keeps a world-local set of target entity IDs it has already
-  attempted to damage.
+- Each beam entity keeps a world-local map from target entity ID to the target's
+  entity generation when it was damaged.
 - `beamSystem` continues its configured periodic scans but skips targets already
   recorded for that beam. A target entering later is absent from the set and can
   be hit once.
@@ -45,6 +45,8 @@ equipment valuation must remain consistent across the core and game layers.
   enemy.
 - Enemies entering an active beam can still be hit.
 - New beam entities start with empty hit state and can damage prior targets.
+- A new enemy that recycles an already-hit target EID has a new generation and
+  can be hit by the still-active beam.
 - Runtime, tooltip, and AI equipment scoring share the same hit-count contract.
 
 ### Negative
@@ -57,8 +59,8 @@ equipment valuation must remain consistent across the core and game layers.
 ### Risks
 
 - Removing a beam outside `lifetimeSystem` must also clear its hit state. The
-  beam spawner defensively clears recycled EIDs, preventing stale state from
-  crossing activations.
+  beam spawner defensively clears recycled beam EIDs, and target generations
+  prevent stale target entries from suppressing replacement enemies.
 - Fewer `applyDamage` calls change the seeded RNG stream for laser runs. The
   grid/full-scan headless determinism guard verifies both real pipeline paths
   remain equivalent.

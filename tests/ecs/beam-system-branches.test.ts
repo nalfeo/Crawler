@@ -84,6 +84,26 @@ describe('beamSystem branch coverage', () => {
     expect(world.stores.health.current[enemy]).toBe(50);
   });
 
+  it('hits a replacement enemy that recycles an already-hit target EID', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 30, 0, 50);
+    world.elapsedMs = 1000;
+    spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 100, player, TeamId.PLAYER);
+
+    beamSystem(world);
+    const previousGeneration = world.entityRenderGeneration[enemy];
+    removeEntity(world.ecs, enemy);
+    const replacement = spawnEnemy(world, 30, 0, 50);
+    expect(replacement).toBe(enemy);
+    expect(world.entityRenderGeneration[replacement]).not.toBe(previousGeneration);
+
+    world.elapsedMs += 100;
+    beamSystem(world);
+
+    expect(world.stores.health.current[replacement]).toBe(35);
+  });
+
   it('ignores removed beam entities without throwing', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

@@ -25,7 +25,8 @@ and a later firing can damage the same enemies again.
 
 ## Implementation
 
-- Added world-local, per-beam target hit sets to `beamSystem`.
+- Added world-local, per-beam target hit maps keyed by target EID and generation
+  to `beamSystem`.
 - Clear beam hit state when a beam EID is spawned/reused and when its lifetime
   expires.
 - Updated theoretical single-target DPS and AI equipment valuation from four
@@ -34,7 +35,7 @@ and a later firing can damage the same enemies again.
   `docs/knowledge/adr/2026-08-27-beam-single-hit-contract.md`.
 - Replaced the repeated-hit test contract with deterministic coverage for
   same-beam deduplication, late entrants, later firings, and skill-event
-  deduplication.
+  deduplication, including replacement enemies that recycle a hit target's EID.
 
 ## Observe before/after
 

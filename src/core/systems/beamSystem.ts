@@ -65,9 +65,9 @@ let beamRankGen = 0;
 let beamRankStamp = new Uint32Array(0);
 let beamRankIdx = new Int32Array(0);
 const beamCandidateScratch: number[] = [];
-const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
+const hitSets = new WeakMap<GameWorld, Map<number, Map<number, number>>>();
 
-function getHitSet(world: GameWorld, eid: number): Set<number> {
+function getHitSet(world: GameWorld, eid: number): Map<number, number> {
   let worldHits = hitSets.get(world);
   if (worldHits === undefined) {
     worldHits = new Map();
@@ -75,7 +75,7 @@ function getHitSet(world: GameWorld, eid: number): Set<number> {
   }
   let hits = worldHits.get(eid);
   if (hits === undefined) {
-    hits = new Set();
+    hits = new Map();
     worldHits.set(eid, hits);
   }
   return hits;
@@ -246,7 +246,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
         continue;
       }
 
-      if (hitSet.has(target)) {
+      if (hitSet.get(target) === world.entityRenderGeneration[target]) {
         continue;
       }
 
@@ -274,7 +274,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
             sourceEid: ownerEid >= 0 ? ownerEid : undefined,
           },
         );
-        hitSet.add(target);
+        hitSet.set(target, world.entityRenderGeneration[target] ?? 0);
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
         }
