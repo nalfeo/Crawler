@@ -861,7 +861,7 @@ describe('equipment decision gate (e2e)', () => {
       ).toBeNull();
 
       const text = (await probe.getEquipmentTextRuns(layoutPage)).map((run) => run.text);
-      expect(text).toContain('Cooldown Reduction');
+      expect(text).toContain('CD Reduction');
       expect(text).not.toContain('green = gear bonus');
       expect(text).not.toContain('Current totals');
       expect(text).not.toContain('Hover a slot for details');
@@ -1146,7 +1146,16 @@ describe('equipment decision gate (e2e)', () => {
         probe.previewEquipmentBagItem('bone-club');
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
-      expect(handRows).toEqual(expect.arrayContaining(['DPS: 22.2', '(-2.8)', 'Armor', '(-3)']));
+      expect(handRows).toEqual(
+        expect.arrayContaining([
+          'DPS: 22.2',
+          '(-2.8)',
+          'Knockback: 5 ft',
+          'AoE Range: 5.5 ft',
+          'Armor',
+          '(-3)',
+        ]),
+      );
     } finally {
       await closeQuietly(context);
     }

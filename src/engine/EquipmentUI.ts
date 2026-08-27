@@ -266,7 +266,10 @@ function formatStatLabel(statId: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
-  return label.replace(/\bXp\b/g, 'XP').replace(/\bHp\b/g, 'HP');
+  return label
+    .replace(/\bXp\b/g, 'XP')
+    .replace(/\bHp\b/g, 'HP')
+    .replace('Cooldown Reduction', 'CD Reduction');
 }
 
 function formatWeightLb(value: number): string {
@@ -1227,7 +1230,7 @@ export function createEquipmentUI(
   }
 
   function formatTooltipStatLabel(statId: StatId): string {
-    return formatStatLabel(statId).replace('Cooldown Reduction', 'CD Reduction');
+    return formatStatLabel(statId);
   }
 
   function weaponSingleTargetDps(def: EquipmentItemDef): number | null {
@@ -1237,6 +1240,19 @@ export function createEquipmentUI(
 
   function formatDps(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
+  function formatFeet(value: number): string {
+    return `${Number.isInteger(value) ? value : value.toFixed(1)} ft`;
+  }
+
+  function weaponEffectTooltipLines(def: EquipmentItemDef): TooltipStatLine[] {
+    const weapon = def.weaponId ? getWeaponDef(def.weaponId) : undefined;
+    if (!weapon) return [];
+    const lines: TooltipStatLine[] = [];
+    if (weapon.knockback > 0) lines.push(`Knockback: ${formatFeet(weapon.knockback)}`);
+    if (weapon.aoeRadius > 0) lines.push(`AoE Range: ${formatFeet(weapon.aoeRadius)}`);
+    return lines;
   }
 
   function comparisonTooltipStatLines(
@@ -1278,9 +1294,10 @@ export function createEquipmentUI(
       (total, def) => total + (weaponSingleTargetDps(def) ?? 0),
       0,
     );
+    const weaponLines: TooltipStatLine[] = [];
     if (candidateDps !== 0 || replacedDps !== 0) {
       const delta = candidateDps - replacedDps;
-      lines.push(
+      weaponLines.push(
         delta === 0
           ? `DPS: ${formatDps(candidateDps)}`
           : {
@@ -1290,14 +1307,14 @@ export function createEquipmentUI(
             },
       );
     }
-    return lines;
+    return [...weaponLines, ...weaponEffectTooltipLines(candidate), ...lines];
   }
 
   function tooltipStatLinesWithDps(def: EquipmentItemDef): TooltipStatLine[] {
     const dps = weaponSingleTargetDps(def);
     return dps === null
       ? tooltipStatLines(def)
-      : [`DPS: ${formatDps(dps)}`, ...tooltipStatLines(def)];
+      : [`DPS: ${formatDps(dps)}`, ...weaponEffectTooltipLines(def), ...tooltipStatLines(def)];
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {
@@ -1449,7 +1466,10 @@ export function createEquipmentUI(
     const columns = isDualRingComparison ? 2 : cards.length;
     const rows = Math.ceil(cards.length / columns);
     const availableWidth = sourceBounds ? sourceBounds.x - 14 - (panelX + 8) : inspectorW - 12;
-    const cardWidth = Math.min(176, Math.floor((availableWidth - gap * (columns - 1)) / columns));
+    const cardWidth = Math.min(
+      columns === 2 ? 184 : 176,
+      Math.floor((availableWidth - gap * (columns - 1)) / columns),
+    );
     const cardHeight = Math.max(
       ...cards.map(
         ({ statLines }) => getEquipmentTooltipCardLayout(cardWidth, statLines, '').height,

@@ -329,7 +329,7 @@ export function renderItemTooltip(
         : richContent
           ? ty + 50
           : ty + statY;
-    statLines.slice(0, 3).forEach((line, index) => {
+    statLines.slice(0, 5).forEach((line, index) => {
       const text = typeof line === 'string' ? line : line.text;
       const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
         fontFamily,
