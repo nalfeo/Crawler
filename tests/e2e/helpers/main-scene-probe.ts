@@ -31,7 +31,9 @@ import type {
   TerrainRenderSummary,
   DoorRenderSummary,
   StaircaseMarkerRenderInfo,
+  VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
+import type { CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
@@ -183,6 +185,12 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   getIssueButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getIssueButtonBounds()),
+  getCornerButtonLayout: (page: Page): Promise<readonly CornerButtonProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCornerButtonLayout()),
+  getVitalsStackBounds: (page: Page): Promise<VitalsStackProbe> =>
+    page.evaluate(() => window.__mainSceneProbe!.getVitalsStackBounds()),
+  unlockExperienceBar: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.unlockExperienceBar()),
   requestInventoryToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
   requestEquipToggle: (page: Page): Promise<void> =>

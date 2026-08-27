@@ -41,9 +41,14 @@ styling and size the same"):
    `🎒`/`🏆`/`🔮` which are always-emoji Supplementary-Plane characters. That
    renders the Gear icon visibly smaller/monochrome next to the others. Fixed
    by appending the emoji variation selector (U+FE0F) to force emoji
-   presentation: `⚔` → `⚔️`. Applied the same fix to the Issue button's `⚑`
-   (U+2691 BLACK FLAG, same "Emoji but not Emoji_Presentation" bug class) for
-   consistency, since it shares the exact same code path.
+   presentation: `⚔` → `⚔️`. The Issue button's `⚑` (U+2691 BLACK FLAG) is a
+   _different_ bug class and was initially mis-fixed the same way: U+2691 has
+   no `Emoji` property and no standardized emoji-variation sequence, so U+FE0F
+   is inert on it and the glyph stays platform-dependent. It was replaced with
+   a real emoji code point instead: `⚑` → `🚩` (U+1F6A9, `Emoji_Presentation`).
+   The Quartermaster button's `✕` is deliberately left as a text glyph — that
+   button only shows while the shop panel is open, where it reads as a close
+   affordance rather than an icon.
    Note: Phaser's `Text` height (`GetTextSize.js`) is computed purely from
    configured `fontSize`/line count, not measured glyph bounds, so the
    per-button _vertical spacing_ math (`top + height + 8`) was already correct
@@ -55,6 +60,37 @@ Observed in `npm run lab -- --port 5199` (`?lab=hud-lab`, with
 reverted before commit): **before** — the currency pill top-left panel sat with
 a large empty gap above the XP bar; **after** — the two panels are flush with
 the same 2px gutter used between the XP bar and health bar.
+
+3. **Deterministic real-artifact coverage.** The first round of this work was
+   only guarded by a source-string import assertion, which could not observe
+   either regression. Added
+   `tests/e2e/hud-vitals-stack-corner-buttons.deterministic.test.ts`, which
+   boots the **real MainGameScene** (`main-scene-probe-lab`, shipped floor
+   bootstrap — not a HUD lab) at 1280×720 and 960×540 and measures the live
+   rendered bounds of every vitals row plus every corner button. To make that
+   possible the XP and health bars gained the same invisible named measurement
+   zone the loot/skill panels already used (`hud-xp-panel-bounds`,
+   `hud-health-panel-bounds`), and `MainGameScene` gained
+   `getCornerButtonLayout()` (label + visibility + rendered bounds per button).
+   Icon _presentation_ is guarded separately and deterministically by
+   `tests/unit/main-game-scene-corner-button-icons.test.ts`, which asserts each
+   corner icon carries `Emoji_Presentation` (with `✕` as the one documented
+   text-glyph exception) and that U+FE0F is never appended to a code point
+   lacking the `Emoji` property — the exact mistake made on `⚑`.
+
+Before/after evidence for the vitals gap, from the new e2e run against the real
+scene at both viewports:
+
+- **before** (pre-fix `HudLootCounter`/`HudSkillTracker`/`HudVitalsLayout`
+  restored from `82ca094`): `loot→XP gap (issue #3681): expected
+38.399999141693115 to be less than or equal to 5.759999871253967` — a full
+  extra row height of empty space, matching the reported screenshot.
+- **after** (shipped fix): both viewports pass; the loot pill sits within the
+  authored 2px lower-stack gutter of the XP bar.
+
+Negative-tested the icon guard the same way: restoring `'⚑️ Issue'` fails with
+`U+FE0F on a non-emoji base glyph`, and reintroducing a bare `⚔` fails with
+`expected [ '✕', '⚔' ] to deeply equal [ '✕' ]`.
 
 ## Key Decisions Made
 
@@ -69,10 +105,12 @@ the same 2px gutter used between the XP bar and health bar.
 
 ## What's Next / Blockers
 
-None. Change is self-contained and covered by an added regression test
-(`tests/unit/hud-ui-layout.test.ts`) asserting `HudLootCounter.ts` /
-`HudSkillTracker.ts` stay wired to the shared `VITALS_PANEL_Y` module instead
-of drifting back to hardcoded offsets.
+None. Change is self-contained and covered by deterministic real-artifact e2e
+coverage (`tests/e2e/hud-vitals-stack-corner-buttons.deterministic.test.ts`)
+plus a Unicode-property icon guard
+(`tests/unit/main-game-scene-corner-button-icons.test.ts`). The earlier
+source-string import assertion was removed: it pinned the implementation
+without ever rendering the regression.
 
 ## Retrospective
 
@@ -91,9 +129,15 @@ drawnLines`, not from actual rendered glyph metrics — so visually
 
 ### Mistakes Made
 
-- None of note; verified the real root cause with the Unicode `emoji-data.txt`
-  Emoji_Presentation property before touching code, rather than guessing at a
-  spacing-algorithm bug.
+- Assumed `⚑` (U+2691) was the same "Emoji but not Emoji_Presentation" class as
+  `⚔` (U+2694) and appended U+FE0F to both. U+2691 has neither the `Emoji`
+  property nor a standardized emoji-variation sequence, so the selector was
+  inert and the button stayed platform-dependent. Check `emoji-data.txt` **and**
+  `emoji-variation-sequences.txt` per code point before reaching for U+FE0F;
+  when a glyph is not in either, swap in a real emoji code point (`🚩`).
+- Shipped the first round with only a source-string import assertion for a
+  purely visual regression. A source assertion cannot fail when the geometry
+  breaks; the fix needed rendered bounds from the real scene.
 
 ### Opportunities for Future Improvement
 

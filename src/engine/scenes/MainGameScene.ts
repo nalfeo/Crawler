@@ -446,6 +446,14 @@ export interface RewardAudioCueLogEntry {
   readonly gain: number;
 }
 
+/** One on-screen corner button's live label, visibility and rendered bounds. */
+export interface CornerButtonProbe {
+  readonly id: string;
+  readonly label: string;
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds;
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -1445,6 +1453,41 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Screen-space bounds + label of every on-screen corner button, in stacking
+   * order. Test/automation affordance so e2e probes can assert the shipped
+   * buttons stay uniformly sized and evenly spaced (the corner buttons are
+   * canvas text, so their real geometry is only observable from a live scene).
+   * Bounds are reported regardless of the per-button visibility gating, which
+   * only depends on unlocks/safe context and never on layout.
+   */
+  getCornerButtonLayout(): readonly CornerButtonProbe[] {
+    const entries: ReadonlyArray<readonly [string, Phaser.GameObjects.Text | undefined]> = [
+      ['inventory', this.inventoryButton],
+      ['equip', this.equipButton],
+      ['achievements', this.achievementsButton],
+      ['floor3Roster', this.floor3RosterButton],
+      ['floor3Command', this.floor3CommandButton],
+      ['abilities', this.abilitiesButton],
+      ['quartermaster', this.quartermasterButton],
+      ['issue', this.issueButton],
+    ];
+    const layout: CornerButtonProbe[] = [];
+    for (const [id, button] of entries) {
+      if (!button) {
+        continue;
+      }
+      const bounds = button.getBounds();
+      layout.push({
+        id,
+        label: button.text,
+        visible: button.visible,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      });
+    }
+    return layout;
   }
 
   getIssueButtonBounds(): ScreenBounds | null {
@@ -2813,7 +2856,7 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑️ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
