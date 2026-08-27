@@ -24,7 +24,7 @@ if (RAT_TEXTURE_ID === undefined || SLIME_TEXTURE_ID === undefined) {
 
 // --- Rats Nest mobs ---------------------------------------------------------
 
-const RAT: MobTemplate = {
+export const RAT: MobTemplate = {
   id: 'rat',
   name: 'Rat',
   aiType: AI_TYPE.CHASE,
