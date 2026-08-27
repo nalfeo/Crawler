@@ -10,9 +10,10 @@
  * safe space (collapse timer paused, customization open) once the boss is dead.
  */
 
-import { removeEntity } from 'bitecs';
+import { entityExists, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { XpGem } from '../../src/core/components.js';
 import {
   floorObjectiveSystem,
   initializeFloor1Scenario,
@@ -116,5 +117,23 @@ describe('floor1 cleared boss arena becomes a safe room', () => {
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
     expect(isPointInSafeSpace(world, x, y)).toBe(true);
+  });
+
+  it('explodes remaining enemies in the cleared arena without spawning XP', () => {
+    const { world } = startedSlimeRatWorld(123);
+    const objective = world.floorScenario!.objective;
+    const { x, y } = objective.slimeRatRoomPos;
+    const trappedEnemy = spawnEnemy(world, x, y, 20);
+    const outsideEnemy = spawnEnemy(world, -10_000, -10_000, 20);
+
+    removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
+    floorObjectiveSystem(world);
+
+    expect(entityExists(world.ecs, trappedEnemy)).toBe(false);
+    expect(entityExists(world.ecs, outsideEnemy)).toBe(true);
+    expect(world.combatEvents).toContainEqual(
+      expect.objectContaining({ type: 'corpseExplode', targetEid: trappedEnemy, x, y }),
+    );
+    expect(query(world.ecs, [XpGem])).toHaveLength(0);
   });
 });
