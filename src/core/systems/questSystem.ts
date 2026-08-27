@@ -292,7 +292,8 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   const merchantQuestComplete =
     merchantCharmGatesEquipment !== null &&
     isQuestComplete(world, merchantCharmGatesEquipment.prerequisiteQuestId);
-  // On merchant-gated floors, inventory waits for the errand to be complete.
+  // Floors without the merchant gate retain fetch-item inventory unlocks; gated
+  // floors wait for the merchant errand to be complete.
   if (
     !world.featureUnlocks.inventory &&
     (merchantCharmGatesEquipment === null
