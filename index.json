@@ -1,5 +1,39 @@
 [
   {
+    "commit": "78f168399099db4ed635fa4fe2f3e7def47e3614",
+    "commitDate": "2026-08-27T20:17:31Z",
+    "commitSubject": "Clarify and activate Spellcraft Bolt passive (#3672)",
+    "capturedAt": "2026-08-27T21:56:40.187Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33114972445",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/78f168399099db4ed635fa4fe2f3e7def47e3614.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/78f168399099db4ed635fa4fe2f3e7def47e3614.fun-report.json"
+    }
+  },
+  {
     "commit": "9f3947fd18beb36d250f9d756ee7a2fda43e4a97",
     "commitDate": "2026-08-27T19:07:32Z",
     "commitSubject": "Sort unopened reward boxes to top of Awards panel (#3696)",
