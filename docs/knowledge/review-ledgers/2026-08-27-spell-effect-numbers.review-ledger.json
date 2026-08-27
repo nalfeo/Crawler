@@ -27,13 +27,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "86a6aeb5be60ffa633b2a8fdaa4ddc529fabb8ee",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly derives spell statistics from the ability registry without duplicating data. The logic to handle dynamic modal heights is well-implemented with a solid two-pass approach that cleanly shifts contents. Layer boundaries are perfectly respected via the scene options callback, and both unit and E2E coverage provide strong confidence."
     }
   }
 }
