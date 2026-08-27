@@ -701,7 +701,6 @@ async function applyWorkflowPollSnapshot(entry, snapshot, { source, isCurrent })
   if (source) {
     if (entry.workflow.etag !== snapshot.etag) return;
   } else {
-    if (!isCurrent()) return;
     adoptWorkflowState(entry, snapshot.state, snapshot.etag, { invalidate: false });
   }
   if (previousEtag === snapshot.etag && !snapshot.changed) return;

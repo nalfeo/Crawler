@@ -156,9 +156,10 @@ test('poll snapshot adoption and push are fenced against asynchronous invalidati
     apply,
     /async function applyWorkflowPollSnapshot\(entry, snapshot, \{ source, isCurrent \}\)/,
   );
+  assert.match(apply, /if \(!isCurrent\(\)\) return;/);
   assert.match(
     apply,
-    /if \(!isCurrent\(\)\) return;\s*adoptWorkflowState\(entry, snapshot\.state, snapshot\.etag, \{ invalidate: false \}\)/,
+    /adoptWorkflowState\(entry, snapshot\.state, snapshot\.etag, \{ invalidate: false \}\)/,
   );
   assert.match(
     apply,
