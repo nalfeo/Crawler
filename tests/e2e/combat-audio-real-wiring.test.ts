@@ -20,8 +20,8 @@
  *   2. a combat event pushed onto the real `world.combatEvents` queue (the
  *      same queue the real damage/weapon systems push onto) dispatches a
  *      `combat:damage-taken` cue on the next real render frame;
- *   3. a pickup VFX event pushed onto the real `world.vfxEvents` queue
- *      dispatches a `combat:pickup` cue on the next real render frame.
+ *   3. typed pickup VFX events pushed onto the real `world.vfxEvents` queue
+ *      dispatch distinct XP, gold, and material cues.
  *
  * Determinism: fixed world seed, simulation frozen except for explicitly
  * requested fixed steps; assertions are on cue labels/frequencies actually
@@ -124,12 +124,22 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
       undefined,
       { timeout: 10_000 },
     );
+  }, 30_000);
 
-    await mainSceneProbe.clearCombatAudioCueLog(page);
-    await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle' });
-    await mainSceneProbe.advanceSimulationFrames(page, 2);
+  it('dispatches distinct typed pickup cues through the real vfxEvents pipeline', async () => {
+    const expected = [
+      ['xp', 'combat:pickup-xp'],
+      ['gold', 'combat:pickup-gold'],
+      ['material', 'combat:pickup-material'],
+    ] as const;
 
-    const log = await mainSceneProbe.getCombatAudioCueLog(page);
-    expect(log.some((entry) => entry.label === 'combat:pickup')).toBe(true);
+    for (const [pickupAudioKind, label] of expected) {
+      await mainSceneProbe.clearCombatAudioCueLog(page);
+      await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle', pickupAudioKind });
+      await mainSceneProbe.advanceSimulationFrames(page, 4);
+
+      const log = await mainSceneProbe.getCombatAudioCueLog(page);
+      expect(log.some((entry) => entry.label === label)).toBe(true);
+    }
   }, 30_000);
 });
