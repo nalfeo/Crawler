@@ -32,6 +32,28 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
+async function installAudioContextStateProbe(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      AudioContext?: typeof AudioContext;
+      __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+    };
+    if (typeof w.AudioContext !== 'function') return;
+    const NativeAudioContext = w.AudioContext;
+    const contexts: AudioContext[] = [];
+    class TrackingAudioContext extends NativeAudioContext {
+      constructor(...args: ConstructorParameters<typeof NativeAudioContext>) {
+        super(...args);
+        contexts.push(this);
+      }
+    }
+    w.AudioContext = TrackingAudioContext;
+    w.__audioContextStateProbe = {
+      getStates: () => contexts.map((ctx) => ctx.state),
+    };
+  });
+}
+
 describe('combat/loot audio cues fire through the real scene + bridge wiring', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -41,6 +63,7 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     page = await context.newPage();
+    await installAudioContextStateProbe(page);
     await loadMainSceneProbeLab(page);
     await mainSceneProbe.resolveLoadout(page);
     await mainSceneProbe.setSimulationPaused(page, true);
@@ -77,7 +100,31 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
     expect(log.some((entry) => entry.label === 'combat:damage-taken')).toBe(true);
   }, 30_000);
 
-  it('dispatches a pickup cue for a real vfxEvents pickupSparkle entry', async () => {
+  it('activates Web Audio from a trusted gesture before pickup playback assertions', async () => {
+    expect(await mainSceneProbe.primeMagicMissileLightProbe(page)).toBe(true);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+    const beforeGestureStates = await page.evaluate(() => {
+      const w = window as unknown as {
+        __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+      };
+      return w.__audioContextStateProbe?.getStates() ?? [];
+    });
+    expect(beforeGestureStates.length).toBeGreaterThan(0);
+
+    await page.keyboard.press('Space');
+    await page.waitForFunction(
+      () =>
+        (
+          (
+            window as unknown as {
+              __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+            }
+          ).__audioContextStateProbe?.getStates() ?? []
+        ).includes('running'),
+      undefined,
+      { timeout: 10_000 },
+    );
+
     await mainSceneProbe.clearCombatAudioCueLog(page);
     await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle' });
     await mainSceneProbe.advanceSimulationFrames(page, 2);
