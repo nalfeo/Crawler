@@ -10,6 +10,8 @@ spec:
     - type: manual
   readiness:
     maxConcurrentRuns: 1
+  runControls:
+    maxRepasses: 2
   start: query-backlog
   tasks:
     - name: query-backlog
@@ -37,6 +39,9 @@ spec:
       capabilities:
         - repo:read
         - agent:model
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
       expectedOutputs:
         - implementation-plan
       next: implement
@@ -58,6 +63,9 @@ spec:
         - agent:model
       policyActions:
         - modify-repository
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
       next: review
     - name: push-branch
       type: deterministic
@@ -135,6 +143,9 @@ spec:
       evaluator: agentic
       agentic:
         goober: reviewer
+        retry:
+          maxAttempts: 2
+          backoffSeconds: 30
       maxRepasses: 6
       branches:
         pass: push-branch

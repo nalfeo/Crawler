@@ -12,7 +12,7 @@ on:
       goobers_version:
         description: 'Goobers release tag to pin (see https://github.com/Agent-Clubhouse/Goobers/releases)'
         type: string
-        default: 'v0.2.2'
+        default: 'v0.3.3'
 
 permissions:
   contents: read
@@ -38,8 +38,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${GOOBERS_VERSION}" in
-            v0.2.2)
-              echo "GOOBERS_SHA256=82f636c7b4451e500081ca4b2fdd498c4be27d0d6e619e412faaac57b064dafa" >> "$GITHUB_ENV"
+            v0.3.3)
+              echo "GOOBERS_SHA256=47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82" >> "$GITHUB_ENV"
               ;;
             *)
               echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-run.yml) after independently verifying the release artifact." >&2

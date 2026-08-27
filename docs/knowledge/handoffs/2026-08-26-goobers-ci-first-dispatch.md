@@ -41,7 +41,14 @@ from being relabeled as remediation.
 ## Files touched
 
 - `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml` — fixed the
-  `pr-opened-gate` schema (the only net change on this branch vs `main`).
+  `pr-opened-gate` schema (`output-equals` params moved under `params:`, dead
+  `infra` branch removed). **Landed separately on `main` via PR #3640**, so it
+  is no longer a net change on this branch.
+- `.github/workflows/goobers-run.yml` — reuse the existing `CRAWLER_CI_PAT`
+  repository secret instead of requiring a new `GOOBERS_GITHUB_TOKEN`.
+- `README.md` — document `CRAWLER_CI_PAT` as the repo credential and keep
+  `COPILOT_GITHUB_TOKEN` documented separately for model auth.
+- `docs/knowledge/handoffs/2026-08-26-goobers-ci-first-dispatch.md` — this file.
 
 Also done outside the repo diff:
 
@@ -68,12 +75,13 @@ This is a real before/after on the actual artifact, not a local-only check.
 ## Unresolved issues
 
 - **`goobers-run.yml` has never completed a live run.** Only the validate
-  workflow is proven. The run workflow now reuses `CRAWLER_CI_PAT` for
-  repo-write operations and `COPILOT_GITHUB_TOKEN` for Copilot model auth.
-  The first live run after token reuse failed earlier, while validating the
-  throwaway instance, because the workflow wrote only a root `instance.yaml`
-  and did not materialize the checked-in source into the runtime `config/`
-  directory Goobers v0.2.2 expects.
+  workflow is proven. The run workflow now reuses the **existing**
+  `CRAWLER_CI_PAT` repository secret for issue/branch/PR operations, so no
+  additional token needs to be created — do **not** add a
+  `GOOBERS_GITHUB_TOKEN` secret. `COPILOT_GITHUB_TOKEN` stays separate because
+  it authenticates Copilot's model backend, not repo access. The workflow still
+  fails fast with a clear message if `CRAWLER_CI_PAT` is absent, so a missing
+  credential is a clean blocker rather than a deep mid-run failure.
 - The deliberate design choice in `goobers-run.yml` is to require a PAT rather
   than widen `permissions: contents: write` on the built-in `github.token`,
   because a `GITHUB_TOKEN`-authored push does not trigger the normal CI
@@ -82,8 +90,9 @@ This is a real before/after on the actual artifact, not a local-only check.
 
 ## Recommended next steps
 
-1. Dispatch `goobers-run.yml` to exercise the full claim → plan → implement →
-   review → PR loop against issue #3639.
+1. Dispatch `goobers-run.yml` (the credential is already in place via
+   `CRAWLER_CI_PAT`) to exercise the full claim → plan → implement → review →
+   PR loop against issue #3639.
 2. Expect further schema/runtime findings on that first run — the validate pass
    only proves the config parses, not that every task's runtime contract holds.
 3. Consider making `goobers-validate.yml` a PR-triggered check on

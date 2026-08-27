@@ -73,11 +73,15 @@ See [`.goobers/README.md`](.goobers/README.md) for the full runtime-boundary and
 
 ### Running Goobers in GitHub Actions
 
-Two manual (`workflow_dispatch`-only) workflows run Goobers on a GitHub-hosted runner
-without a Go build step — they download a pinned, checksum-verified release binary instead:
+Two workflows run Goobers on a GitHub-hosted runner without a Go build step — they
+download a pinned, checksum-verified release binary instead:
 
 - [`.github/workflows/goobers-validate.yml`](.github/workflows/goobers-validate.yml) — validates `.goobers/` only.
-- [`.github/workflows/goobers-run.yml`](.github/workflows/goobers-run.yml) — actually triggers `crawler-feature-pr` end to end.
+- [`.github/workflows/goobers-run.yml`](.github/workflows/goobers-run.yml) — runs
+  `crawler-feature-pr` when an open issue receives `goobers:approved`, hourly at
+  minute 37 to recover missed events or failed eligible work, or by manual
+  dispatch. Goobers bounds plan/implementation/review retries to two attempts
+  and bounds gate repasses to two.
 
 `goobers-run.yml` needs two repository secrets configured (**Settings → Secrets and
 variables → Actions**) before it can succeed:
