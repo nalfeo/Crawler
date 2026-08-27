@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "safe-room-floor-timer-credit",
+  "task_title": "Boss-arena safe rooms stop no timer; entrance rooms after Floor 1 do",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review before any code. Blocking: (1) Floor 4 must keep its RAW stall backstop and opt out of credit; (2) RunStats.safeRoomMs must key on the new time-stopping flag or active-time win budgets gain unearned credit. Non-blocking: align Floor 2 AI hunt-urgency window to the credited deadline, use credit for human collectHumanRunStats, confirm per-floor credit reset, leave raw-time systems (door locks, cooldowns) untouched. All six adopted; reviewer endorsed the per-manifest opt-in flag (alternative 3) over the chosen implicit-role approach, which is the minor divergence."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
