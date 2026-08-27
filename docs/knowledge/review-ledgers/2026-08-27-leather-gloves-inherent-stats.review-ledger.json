@@ -18,7 +18,8 @@
       "rounds": [
         {
           "round": 1,
-          "reviewer_model": "gemini-3.1-pro-preview",
+          "clean": true,
+          "models": ["gemini-3.1-pro-preview"],
           "concerns_count": 0,
           "resolved_count": 0,
           "notes": "code-review agent on the full commit diff, briefed on double-counting, illegal-enhancement, encumbrance, quartermaster pricing and the Common reward contract: No significant issues found."
@@ -26,13 +27,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.6",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "e2f54b77a15324c9d93689e99fc0fe6be9d8d116",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly restores inherent non-armor stat lines for non-weapon bases, fixing issue #3697 where eight shipped bases (leather-gloves, merchant-sandals, charms, etc.) generated empty-stat Common items. The generator's new `inherentNonArmorStatBonuses` helper correctly excludes weapons and filters armor/zero entries. The legality invariant now checks affix-driven stats via `resolvedEffects` rather than diffing the full stat map, which is semantically precise. Test coverage is comprehensive: a new regression guard checks every shipped base at Common, a Quartermaster dead-item sweep covers 12 seeds × 2 epochs, existing tests are updated to assert inherent lines, and a specific leather-gloves identity test pins the exact stats. The three additional documentation files (handoff, apples metric, review ledger) are well-formed and consistent with repo policy for a 3-apple session. No determinism violations, no layer boundary violations, no dead code."
     }
   }
 }
