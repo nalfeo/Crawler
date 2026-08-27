@@ -18,6 +18,7 @@ Estimated: 4🍎 — rescored: 3🍎 — actual: 3🍎. This tooling-only canvas
 - Added deterministic previews of the exact approved reference sprites generation would currently attach. Preview and generation now share one selector, including quality gates, dislike filtering, concept collapse, seeded selection, safe-path checks, and on-disk file checks.
 - Prompt-affecting request edits now invalidate stale synthesized candidates and return the request to Draft; metadata-only edits preserve downstream state.
 - Fixed synthesized-candidate editing so the guarded save endpoint accepts durable `generated/brief-candidates/**/*.yaml` files before promotion, while continuing to reject arbitrary repository paths.
+- Made chosen-brief state persistent and unmistakable in Briefs: a summary names the selected candidate, its card receives a green highlight and badge, and its chosen control is disabled while the other candidates remain selectable.
 
 ## Verification
 
@@ -42,6 +43,10 @@ After the workflow/UX expansion: the real Workflow canvas serves the unified Bac
 Before the durable candidate-save fix: clicking **Save YAML** for a synthesized candidate failed with `yamlPath must be a briefs/**/*.yaml file`, because candidates remain under `generated/brief-candidates/` until promotion.
 
 After: the reloaded real Workflow canvas saved the selected `crawler-male-south-neutral-v1` candidate successfully; the sidecar request returned HTTP 200 and the guarded endpoint still limits writes to the two intended YAML namespaces.
+
+Before the chosen-state UX fix: selection was represented only by changing one action button's label, so it was easy to miss which candidate would be promoted.
+
+After: the real refreshed Workflow canvas showed `✓ Chosen brief: crawler-male-south-neutral-v2`, a highlighted v2 card with a persistent `✓ CHOSEN` badge, and a disabled chosen control. The sidecar remained healthy; a transient `Failed to fetch` came from an older canvas URL invalidated by the extension reload.
 
 ## Review
 

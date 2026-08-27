@@ -109,6 +109,13 @@ const STYLES = `
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .card { border: 1px solid rgba(148,163,184,0.25); border-radius: 8px; padding: 10px; background: #0b1220;
     display: flex; flex-direction: column; gap: 6px; }
+  .brief-candidate.chosen { border-color: rgba(134,239,172,0.75); background: rgba(22,101,52,0.16);
+    box-shadow: 0 0 0 1px rgba(134,239,172,0.18); }
+  .chosen-brief-summary { margin-top: 10px; border-color: rgba(134,239,172,0.55);
+    background: rgba(22,101,52,0.2); color: #dcfce7; }
+  .chosen-brief-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #86efac; border: 1px solid rgba(134,239,172,0.5); background: rgba(22,101,52,0.3);
+    border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
   .card .thumb { width: 96px; height: 96px; image-rendering: pixelated; align-self: center;
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -2282,9 +2289,33 @@ const CLIENT_SCRIPT = String.raw`
           onclick: function () { workflowPost('/api/workflow/synthesize', { itemId: selected.id, candidates: 3 }, 'Synthesizing briefs…'); } }));
       }
       if (selected.candidates && selected.candidates.length) {
+        var chosenCandidate = selected.candidates.find(function (candidate) {
+          return candidate.yamlPath === selected.chosenCandidatePath;
+        });
+        if (chosenCandidate) {
+          detail.appendChild(h('div', {
+            class: 'panel chosen-brief-summary',
+            title: 'This brief will be promoted when Generate sprite is clicked'
+          }, [
+            h('strong', { text: '✓ Chosen brief: ' + chosenCandidate.id }),
+            h('div', {
+              class: 'muted',
+              text: 'This brief will be promoted when you generate the sprite.'
+            })
+          ]));
+        }
         selected.candidates.forEach(function (candidate) {
-          var candidatePanel = h('div', { class: 'card', style: { marginTop: '10px' } }, [
-            h('div', { class: 'between' }, [h('strong', { text: candidate.id }), h('code', { text: candidate.yamlPath })]),
+          var isChosen = selected.chosenCandidatePath === candidate.yamlPath;
+          var candidatePanel = h('div', {
+            class: 'card brief-candidate' + (isChosen ? ' chosen' : ''),
+            style: { marginTop: '10px' },
+            title: isChosen ? 'Chosen brief; this candidate will be promoted' : 'Synthesized brief candidate'
+          }, [
+            h('div', { class: 'between' }, [
+              h('strong', { text: candidate.id }),
+              isChosen ? h('span', { class: 'chosen-brief-pill', text: '✓ Chosen' }) : null
+            ]),
+            h('code', { text: candidate.yamlPath }),
             h('div', { class: 'muted', text: candidate.description || '' })
           ]);
           var draftKey = yamlDraftKey(selected.id, candidate.yamlPath);
@@ -2304,9 +2335,20 @@ const CLIENT_SCRIPT = String.raw`
             });
           };
           candidatePanel.appendChild(yaml);
+          var chooseBrief = h('button', {
+            class: 'accept-button',
+            text: isChosen ? '✓ Chosen brief' : 'Choose this brief',
+            title: isChosen ? 'This brief is selected for sprite generation' : 'Select this brief for sprite generation',
+            onclick: function () { saveBrief(true, 'Choosing brief…'); }
+          });
+          chooseBrief.disabled = isChosen;
           candidatePanel.appendChild(h('div', { class: 'row' }, [
-            h('button', { text: 'Save YAML', onclick: function () { saveBrief(false, 'Saving brief…'); } }),
-            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () { saveBrief(true, 'Choosing brief…'); } })
+            h('button', {
+              text: 'Save YAML',
+              title: 'Save edits to this synthesized brief',
+              onclick: function () { saveBrief(false, 'Saving brief…'); }
+            }),
+            chooseBrief
           ]));
           detail.appendChild(candidatePanel);
         });

@@ -280,6 +280,18 @@ test('the Generate sprite button never dereferences selected.candidates without 
   );
 });
 
+test('a chosen synthesized brief has persistent summary, card, badge, and button states', () => {
+  const html = renderHtml('x');
+  assert.match(html, /class: 'panel chosen-brief-summary'/);
+  assert.match(html, /text: '✓ Chosen brief: ' \+ chosenCandidate\.id/);
+  assert.match(html, /class: 'card brief-candidate' \+ \(isChosen \? ' chosen' : ''\)/);
+  assert.match(html, /class: 'chosen-brief-pill', text: '✓ Chosen'/);
+  assert.match(html, /text: isChosen \? '✓ Chosen brief' : 'Choose this brief'/);
+  assert.match(html, /chooseBrief\.disabled = isChosen/);
+  assert.match(html, /\.brief-candidate\.chosen \{/);
+  assert.match(html, /\.chosen-brief-summary \{/);
+});
+
 test('Briefs workflow mutations serialize duplicate clicks until the state refresh settles', () => {
   const html = renderHtml('x');
   assert.match(html, /var workflowMutationInFlight = false/);
