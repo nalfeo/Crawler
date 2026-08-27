@@ -17,6 +17,7 @@ Estimated: 4🍎 — rescored: 3🍎 — actual: 3🍎. This tooling-only canvas
 - Added canonical design language for all nine sprite categories. The global contract now names the classic RPG 3/4 orthographic perspective; enemy defaults specify the screen-right orthographic turn while explicit facing requests override direction without weakening orthographic construction.
 - Added deterministic previews of the exact approved reference sprites generation would currently attach. Preview and generation now share one selector, including quality gates, dislike filtering, concept collapse, seeded selection, safe-path checks, and on-disk file checks.
 - Prompt-affecting request edits now invalidate stale synthesized candidates and return the request to Draft; metadata-only edits preserve downstream state.
+- Fixed synthesized-candidate editing so the guarded save endpoint accepts durable `generated/brief-candidates/**/*.yaml` files before promotion, while continuing to reject arbitrary repository paths.
 
 ## Verification
 
@@ -28,6 +29,7 @@ Estimated: 4🍎 — rescored: 3🍎 — actual: 3🍎. This tooling-only canvas
 - Final `npm run verify:fast` — 79 files / 1,293 tests passing, plus all data-contract, integrity, and coverage checks.
 - Live Workflow canvas observation confirmed mixed-case and kebab names resolve the same three deterministic references, reference PNGs load, custom category text survives type switching, and unsaved composer values survive full-template modal rerenders.
 - Final lifecycle hardening: 133 Workflow extension tests and 213 focused sprite tests passed; `npm run typecheck`, `npm run verify:fast`, and `npm run verify:pr-prereqs` passed after synchronization with main.
+- Durable candidate-save regression: the focused sidecar suite passed 133 tests, `npm run typecheck` and `npm run verify:fast` passed, and the reloaded Workflow canvas saved `generated/brief-candidates/crawler-male-south-neutral/crawler-male-south-neutral-v1.yaml` through the UI with HTTP 200.
 
 ## Observe before done
 
@@ -36,6 +38,10 @@ Before: the canvas exposed browsing/review and approval only; operators could no
 After: the real Workflow canvas serves the Author tab with the complete sidecar-backed lifecycle and a visible `Refresh Azure workflow` control.
 
 After the workflow/UX expansion: the real Workflow canvas serves the unified Backlog → Briefs → Sprites flow. The Briefs composer exposes the complete editable synthesis template and current approved reference examples; operators can move backward to edit requests, while prompt edits deterministically invalidate stale synthesis output.
+
+Before the durable candidate-save fix: clicking **Save YAML** for a synthesized candidate failed with `yamlPath must be a briefs/**/*.yaml file`, because candidates remain under `generated/brief-candidates/` until promotion.
+
+After: the reloaded real Workflow canvas saved the selected `crawler-male-south-neutral-v1` candidate successfully; the sidecar request returned HTTP 200 and the guarded endpoint still limits writes to the two intended YAML namespaces.
 
 ## Review
 

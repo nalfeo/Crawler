@@ -2799,12 +2799,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: 'yamlPath must be a repo-relative path inside the repo',
       };
     }
-    // Restrict edits to brief YAML files so this endpoint can never overwrite
-    // arbitrary repo files.
+    // Restrict edits to authored briefs and synthesized candidates so this
+    // endpoint can never overwrite arbitrary repo files. The synthesized
+    // candidate namespace is durable workflow state and is intentionally
+    // outside briefs/ until the operator promotes a candidate.
     const relPosix = toRepoRelativePath(deps.repoRoot, abs);
-    if (!relPosix.startsWith('briefs/') || !relPosix.endsWith('.yaml')) {
+    const editableYaml =
+      relPosix.endsWith('.yaml') &&
+      (relPosix.startsWith('briefs/') || relPosix.startsWith('generated/brief-candidates/'));
+    if (!editableYaml) {
       reply.code(400);
-      return { error: 'bad-request', message: 'yamlPath must be a briefs/**/*.yaml file' };
+      return {
+        error: 'bad-request',
+        message: 'yamlPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+      };
     }
     // Validate BEFORE persisting durably: write the candidate text, then run it
     // through the full brief loader (YAML parse + per-type defaults merge + Zod

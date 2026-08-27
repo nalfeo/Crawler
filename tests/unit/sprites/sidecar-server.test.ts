@@ -962,7 +962,9 @@ describe('PUT /api/workflow/brief (manual brief edit)', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('bad-request');
-    expect(res.json().message).toBe('yamlPath must be a briefs/**/*.yaml file');
+    expect(res.json().message).toBe(
+      'yamlPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+    );
     // The unrelated file was never touched.
     expect(existsSync(path.join(root, 'src', 'devtools-main.ts'))).toBe(false);
   });
@@ -1015,6 +1017,22 @@ describe('PUT /api/workflow/brief (manual brief edit)', () => {
     expect(body.yamlPath).toBe(rel);
     expect(body.description).toContain('An iron sword');
     expect(body.yaml).toBe(validBriefYaml);
+    expect(readFileSync(abs, 'utf8')).toBe(validBriefYaml);
+  });
+
+  it('accepts edits to synthesized candidates in the durable workflow namespace', async () => {
+    const rel = 'generated/brief-candidates/iron-sword/iron-sword-v1.yaml';
+    const abs = path.join(root, ...rel.split('/'));
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yamlPath: rel, yaml: validBriefYaml },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ yamlPath: rel });
     expect(readFileSync(abs, 'utf8')).toBe(validBriefYaml);
   });
 });
