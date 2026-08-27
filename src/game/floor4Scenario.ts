@@ -1,11 +1,13 @@
 /**
- * Floor 4 — "The Main Event" scenario, slice 2 (venue + deterministic rehearsal).
+ * Floor 4 — "The Main Event" scenario, slice 3 (venue + deterministic waves).
  *
- * This slice boots the authored venue and runs the empty-arena rehearsal
- * timeline via `arenaDirectorSystem`: COUNTDOWN → five WAVES/HEADLINE/
- * INTERMISSION acts → VICTORY. Combat waves, Headliners, Green Room
- * transactions and shops still land in later slices; today's goal is proving the
- * broadcast clock/phase plumbing in both game and headless paths.
+ * Slice 2 booted the authored venue and ran an empty-arena rehearsal timeline.
+ * Slice 3 makes the wave windows physical: each act arms immutable, seeded wave
+ * manifests, `arenaDirectorSystem` releases them at the fixed feed gates on the
+ * act clock, a live-enemy cap and bounded FIFO spawn debt bound the arena, and
+ * the wave-window boundary *cuts* whatever survived. Headliners, the Green Room
+ * transaction and shops remain later slices, so the rehearsal hand-off (headline
+ * windows auto-clear, intermissions auto-advance) is retained underneath.
  *
  * Key contracts:
  *
@@ -17,19 +19,43 @@
  * - **Rehearsal intermissions auto-advance.** Until Green Room/shop slices ship,
  *   intermissions hold briefly then advance automatically, with final act
  *   intermission auto-transitioning to VICTORY.
+ * - **Waves never touch `world.rng` (FR3.2/FR7.1/FR7.4).** Manifests come from
+ *   per-wave derived streams in `src/shared/floor4-waves.ts`; releasing,
+ *   debting and cutting consume no randomness at all, so cap pressure and
+ *   player skill cannot shift a seed's downstream draws.
  */
-import { addComponent, hasComponent, setComponent, set } from 'bitecs';
-import { BroadcastScore, Health, Position, type GameWorld } from '../core/index.js';
+import { addComponent, entityExists, hasComponent, removeEntity, setComponent, set } from 'bitecs';
+import {
+  BloodColor,
+  BroadcastScore,
+  DeathTimer,
+  Enemy,
+  Health,
+  Position,
+  Size,
+  Sprite,
+  type GameWorld,
+} from '../core/index.js';
+import { clearEntityStores } from '../core/helpers.js';
+import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
+import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import {
   computeShowcaseArenaLayout,
   showcaseArenaOptionsFromConfig,
 } from '../core/map/generators/ShowcaseArenaGenerator.js';
 import { getGenerator } from '../core/map/generators/registry.js';
+import { getFloorEnemyPack, type EnemyArchetypeDef } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
-import { BiomeType, type MapConfig } from '../shared/map-types.js';
+import {
+  buildFloor4ActWaveManifests,
+  type Floor4WaveScheduleConfig,
+} from '../shared/floor4-waves.js';
+import { BiomeType, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
+import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import { AI_TYPE } from './enemyAISystem.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -39,6 +65,10 @@ import type {
   Floor4ArenaPhase,
   Floor4ArenaRunStats,
   Floor4ArenaState,
+  Floor4PendingWaveSpawn,
+  Floor4WaveSpawnEntry,
+  Floor4WaveTelemetry,
+  Floor4WaveWindowState,
 } from '../shared/floor-types.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 
@@ -118,12 +148,31 @@ function cloneFloor4Phase(phase: Floor4ArenaPhase): Floor4ArenaPhase {
   return { ...phase };
 }
 
+function createFloor4WaveTelemetry(): Floor4WaveTelemetry {
+  return {
+    wavesReleased: 0,
+    enemiesSpawned: 0,
+    enemiesCut: 0,
+    debtDiscarded: 0,
+    gateTelegraphsArmed: 0,
+  };
+}
+
 function recordFloor4PhaseTransition(
   world: GameWorld,
   state: Floor4ArenaState,
   phase: Floor4ArenaPhase,
   reason: string,
 ): void {
+  // Every transition is a hard boundary for wave release state: the surviving
+  // trash is cut when the wave window ends (FR3.6), and outstanding spawn debt
+  // plus armed gate telegraphs are discarded at EVERY boundary (FR3.5) so no
+  // act can leak pressure into the headline window or the next act.
+  if (state.phase.kind === 'WAVES') {
+    cutFloor4WaveEnemies(world, state);
+  }
+  state.waves = undefined;
+
   state.phase = cloneFloor4Phase(phase);
   state.phaseElapsedMs = 0;
   state.timeline.push({
@@ -133,6 +182,10 @@ function recordFloor4PhaseTransition(
     phase: cloneFloor4Phase(phase),
     reason,
   });
+
+  if (phase.kind === 'WAVES') {
+    state.waves = armFloor4ActWaves(world, phase.act);
+  }
 }
 
 function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
@@ -142,6 +195,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     phaseElapsedMs: 0,
     lastWorldElapsedMs: world.elapsedMs,
     timeline: [],
+    waveTelemetry: createFloor4WaveTelemetry(),
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;
@@ -165,6 +219,376 @@ function floor4WaveEndMs(act: Floor4ActIndex): number {
   return phase.actDurationMs * (act - 1) + phase.waveWindowMs;
 }
 
+function floor4ActStartMs(act: Floor4ActIndex): number {
+  return getFloor4Config().phase.actDurationMs * (act - 1);
+}
+
+/** Authored wave schedule (FR8.2). Every wave number the director reads. */
+function getFloor4WaveConfig(): Floor4WaveScheduleConfig {
+  return getFloor4Config().waves;
+}
+
+/**
+ * The venue's fixed, indexed feed gates (FR3.4/FR9.2). Read from the generated
+ * `FloorMap` — never re-derived here, because two derivations of gate geometry
+ * is exactly how a manifest's `gateIndex` silently stops meaning what it meant.
+ */
+function floor4FeedGates(world: GameWorld): readonly ArenaFeedGate[] {
+  return world.floorMap?.feedGates ?? [];
+}
+
+/**
+ * Arm an act's wave window: build its immutable manifests once (FR3.2), and
+ * start it with an empty cursor/debt/ownership set.
+ */
+function armFloor4ActWaves(world: GameWorld, act: Floor4ActIndex): Floor4WaveWindowState {
+  const gates = floor4FeedGates(world);
+  if (gates.length === 0) {
+    throw new Error('Floor 4 wave window armed on a map with no feed gates');
+  }
+  return {
+    act,
+    manifests: buildFloor4ActWaveManifests(getFloor4WaveConfig(), world.seed, act, gates.length),
+    releaseCursor: 0,
+    debt: [],
+    armedTelegraphs: [],
+    ownedEnemies: new Map(),
+  };
+}
+
+/**
+ * A wave enemy that still counts against the concurrency cap: it exists, is
+ * still an enemy, has HP, and is not already lingering as a corpse
+ * (`DeathTimer`) after a normal, fully-rewarded death.
+ *
+ * The `Enemy` check is load-bearing, not defensive noise: bitECS recycles
+ * entity ids, so a removed wave enemy's id can come back as a projectile or a
+ * pickup with stale `health` store bytes. Without it, the cap could count a
+ * gem — and the cut could delete one.
+ */
+function isLiveFloor4WaveEnemy(world: GameWorld, eid: number): boolean {
+  return (
+    entityExists(world.ecs, eid) &&
+    hasComponent(world.ecs, eid, Enemy) &&
+    !hasComponent(world.ecs, eid, DeathTimer) &&
+    (world.stores.health.current[eid] ?? 0) > 0
+  );
+}
+
+/** Drop stale entities from the ownership map and report the live count. */
+function pruneFloor4OwnedEnemies(world: GameWorld, waves: Floor4WaveWindowState): number {
+  let live = 0;
+  for (const eid of [...waves.ownedEnemies.keys()]) {
+    if (!entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Enemy)) {
+      waves.ownedEnemies.delete(eid);
+      continue;
+    }
+    if (isLiveFloor4WaveEnemy(world, eid)) {
+      live += 1;
+    }
+  }
+  return live;
+}
+
+function floor4ArchetypeAiType(archetype: EnemyArchetypeDef): number {
+  switch (archetype.aiType) {
+    case 'ranged':
+      return AI_TYPE.RANGED;
+    case 'leaper':
+      return AI_TYPE.LEAPER;
+    case 'guardian':
+      return AI_TYPE.GUARDIAN;
+    case 'support':
+      return AI_TYPE.SUPPORT;
+    default:
+      return AI_TYPE.CHASE;
+  }
+}
+
+function floor4WaveArchetype(archetypeId: string): EnemyArchetypeDef {
+  const packId = getFloor4WaveConfig().enemyPackId;
+  const archetype = getFloorEnemyPack(packId)?.archetypes.find(
+    (candidate) => candidate.id === archetypeId,
+  );
+  if (!archetype) {
+    // Unreachable in practice: the manifest schema validates every roster
+    // archetype against this pack at load. Loud here beats a silent no-spawn.
+    throw new Error(`Floor 4 wave archetype "${archetypeId}" missing from pack "${packId}"`);
+  }
+  return archetype;
+}
+
+/**
+ * Where an entry enters the arena: its gate tile, nudged inward by a stagger
+ * derived from the entry's own index inside the wave manifest.
+ *
+ * The stagger is deliberately content-derived rather than rolled or searched
+ * (FR3.4): a retry/jitter search would make RNG consumption and placement
+ * path-dependent, so the same manifest would stop reproducing. An offset that
+ * would land in geometry falls back to the (always passable) gate tile.
+ */
+function resolveFloor4GateSpawnPosition(
+  world: GameWorld,
+  gate: ArenaFeedGate,
+  slot: number,
+): { x: number; y: number } {
+  const floorMap = world.floorMap!;
+  const center = floorMap.tileToWorld(gate.x, gate.y);
+  const stepFt = floorMap.config.tileSizeFt * 0.5;
+  const inwardSteps = slot % 3;
+  if (inwardSteps === 0) {
+    return center;
+  }
+  const inward =
+    gate.direction === 'north'
+      ? { x: 0, y: 1 }
+      : gate.direction === 'south'
+        ? { x: 0, y: -1 }
+        : gate.direction === 'west'
+          ? { x: 1, y: 0 }
+          : { x: -1, y: 0 };
+  const candidate = {
+    x: center.x + inward.x * stepFt * inwardSteps,
+    y: center.y + inward.y * stepFt * inwardSteps,
+  };
+  return floorMap.isPassableAt(candidate.x, candidate.y) ? candidate : center;
+}
+
+/** Spawn one manifest entry at its fixed gate. Consumes no RNG stream. */
+function spawnFloor4WaveEnemy(
+  world: GameWorld,
+  entry: Floor4WaveSpawnEntry,
+  slot: number,
+): number | null {
+  const gate = floor4FeedGates(world)[entry.gateIndex];
+  if (!gate || !world.floorMap) {
+    return null;
+  }
+  const archetype = floor4WaveArchetype(entry.archetypeId);
+  const spawn = resolveFloor4GateSpawnPosition(world, gate, slot);
+  const isRanged = archetype.aiType === 'ranged' || archetype.aiType === 'support';
+  const eid = spawnBehaviorEnemy(
+    world,
+    spawn.x,
+    spawn.y,
+    archetype.hp,
+    floor4ArchetypeAiType(archetype),
+    archetype.speed,
+    archetype.detectRange,
+    isRanged ? archetype.detectRange * 0.65 : 0,
+  );
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, archetype.id);
+  return eid;
+}
+
+/** Light a gate for an imminent wave (design §4). Cosmetic + readable state. */
+function pushFloor4GateTelegraphVfx(world: GameWorld, gate: ArenaFeedGate): void {
+  const position = world.floorMap?.tileToWorld(gate.x, gate.y);
+  if (!position) {
+    return;
+  }
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'spawnerPulse',
+    x: position.x,
+    y: position.y,
+    intensity: 1,
+  });
+}
+
+/**
+ * Arm gate telegraphs for every wave whose release is within the authored lead
+ * time. Idempotent per wave: a wave is telegraphed once, then disarmed when it
+ * releases (or discarded at the next phase boundary, FR3.5).
+ */
+function armFloor4GateTelegraphs(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  waves: Floor4WaveWindowState,
+  actRelativeMs: number,
+): void {
+  const leadMs = getFloor4WaveConfig().gates.telegraphLeadMs;
+  for (let index = waves.releaseCursor; index < waves.manifests.length; index += 1) {
+    const manifest = waves.manifests[index]!;
+    if (manifest.releaseAtActMs - leadMs > actRelativeMs) {
+      // Manifests are in release order, so nothing further is due either.
+      break;
+    }
+    if (waves.armedTelegraphs.some((armed) => armed.waveIndex === manifest.waveIndex)) {
+      continue;
+    }
+    const gateIndexes = [...new Set(manifest.entries.map((entry) => entry.gateIndex))].sort(
+      (left, right) => left - right,
+    );
+    for (const gateIndex of gateIndexes) {
+      waves.armedTelegraphs.push({
+        gateIndex,
+        waveIndex: manifest.waveIndex,
+        firesAtArenaMs: floor4ActStartMs(waves.act) + manifest.releaseAtActMs,
+      });
+      state.waveTelemetry.gateTelegraphsArmed += 1;
+      const gate = floor4FeedGates(world)[gateIndex];
+      if (gate) {
+        pushFloor4GateTelegraphVfx(world, gate);
+      }
+    }
+  }
+}
+
+/**
+ * Bank a released wave's entries as spawn debt, in manifest order, bounded by
+ * the authored debt cap. Overflow beyond the cap is DISCARDED, never banked
+ * (FR3.5) — an act must not be able to accumulate a lethal post-boss burst.
+ */
+function enqueueFloor4WaveDebt(
+  state: Floor4ArenaState,
+  waves: Floor4WaveWindowState,
+  entries: readonly Floor4WaveSpawnEntry[],
+  waveIndex: number,
+): void {
+  const debtCap = getFloor4WaveConfig().concurrency.debtCap;
+  for (const [slot, entry] of entries.entries()) {
+    if (waves.debt.length >= debtCap) {
+      state.waveTelemetry.debtDiscarded += 1;
+      continue;
+    }
+    waves.debt.push({ waveIndex, slot, entry });
+  }
+}
+
+/**
+ * Release banked entries in FIFO manifest order while the live cap allows.
+ * Consumes no RNG (FR3.5): the entry was already composed, so cap pressure
+ * cannot shift a seed's downstream draws.
+ */
+function drainFloor4SpawnDebt(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  waves: Floor4WaveWindowState,
+): void {
+  const liveCap = getFloor4WaveConfig().concurrency.liveCap;
+  let live = pruneFloor4OwnedEnemies(world, waves);
+  while (waves.debt.length > 0 && live < liveCap) {
+    const pending = waves.debt.shift() as Floor4PendingWaveSpawn;
+    const eid = spawnFloor4WaveEnemy(world, pending.entry, pending.slot);
+    if (eid === null) {
+      continue;
+    }
+    waves.ownedEnemies.set(eid, pending.waveIndex);
+    state.waveTelemetry.enemiesSpawned += 1;
+    live += 1;
+  }
+}
+
+/** Release every wave whose act-relative mark has arrived. */
+function releaseFloor4DueWaves(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  waves: Floor4WaveWindowState,
+  actRelativeMs: number,
+): void {
+  while (waves.releaseCursor < waves.manifests.length) {
+    const manifest = waves.manifests[waves.releaseCursor]!;
+    if (manifest.releaseAtActMs > actRelativeMs) {
+      return;
+    }
+    waves.releaseCursor += 1;
+    state.waveTelemetry.wavesReleased += 1;
+    waves.armedTelegraphs = waves.armedTelegraphs.filter(
+      (armed) => armed.waveIndex !== manifest.waveIndex,
+    );
+    // Drain first so older debt keeps its place at the head of the queue, then
+    // bank this wave and release as much of it as the cap allows right now.
+    drainFloor4SpawnDebt(world, state, waves);
+    enqueueFloor4WaveDebt(state, waves, manifest.entries, manifest.waveIndex);
+    drainFloor4SpawnDebt(world, state, waves);
+  }
+}
+
+/** One wave-window tick: telegraph, release, then release what the cap freed. */
+function serviceFloor4WaveWindow(world: GameWorld, state: Floor4ArenaState): void {
+  const waves = state.waves;
+  if (!waves || state.phase.kind !== 'WAVES') {
+    return;
+  }
+  const actRelativeMs = state.arenaElapsedMs - floor4ActStartMs(waves.act);
+  armFloor4GateTelegraphs(world, state, waves, actRelativeMs);
+  releaseFloor4DueWaves(world, state, waves, actRelativeMs);
+  drainFloor4SpawnDebt(world, state, waves);
+}
+
+/**
+ * The cut (FR3.6): at the wave-window boundary every surviving wave enemy is
+ * pulled off camera.
+ *
+ * Deliberately NOT a death: health is never zeroed, so `dropSystem` never runs
+ * for these entities and they award no XP, no gold, no drops, emit no `death`
+ * combat event, and count as neither a kill nor a death in telemetry. They do
+ * get the standard death-style pop VFX so the removal reads as intentional
+ * rather than as entities blinking out.
+ *
+ * Enemies that are already dead this frame (zero HP, or lingering on a
+ * `DeathTimer`) are left alone — those were real, fully-rewarded kills and the
+ * normal death path owns them.
+ */
+function cutFloor4WaveEnemies(world: GameWorld, state: Floor4ArenaState): void {
+  const waves = state.waves;
+  if (!waves) {
+    return;
+  }
+  for (const eid of waves.ownedEnemies.keys()) {
+    if (!isLiveFloor4WaveEnemy(world, eid)) {
+      continue;
+    }
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const bloodColor = hasComponent(world.ecs, eid, BloodColor)
+      ? (world.stores.bloodColor.r[eid]! << 16) |
+        (world.stores.bloodColor.g[eid]! << 8) |
+        world.stores.bloodColor.b[eid]!
+      : undefined;
+    pushVfxEvent(world.vfxEvents, {
+      kind: 'deathPop',
+      x,
+      y,
+      ...(bloodColor === undefined ? {} : { color: bloodColor }),
+      intensity: 0.75,
+    });
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+    state.waveTelemetry.enemiesCut += 1;
+  }
+  waves.ownedEnemies.clear();
+  waves.debt.length = 0;
+  waves.armedTelegraphs.length = 0;
+}
+
+/** Live wave-owned enemies right now — lab/telemetry read-only helper. */
+export function getFloor4LiveWaveEnemyCount(world: GameWorld): number {
+  const waves = floor4ArenaState(world)?.waves;
+  if (!waves) {
+    return 0;
+  }
+  let live = 0;
+  for (const eid of waves.ownedEnemies.keys()) {
+    if (isLiveFloor4WaveEnemy(world, eid)) {
+      live += 1;
+    }
+  }
+  return live;
+}
+
 export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | undefined {
   const state = floor4ArenaState(world);
   if (!state) {
@@ -177,6 +601,7 @@ export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | 
       ...entry,
       phase: cloneFloor4Phase(entry.phase),
     })),
+    waveTelemetry: { ...state.waveTelemetry },
   };
 }
 
@@ -185,8 +610,13 @@ export function isFloor4ArenaVictory(world: GameWorld): boolean {
 }
 
 /**
- * Floor 4 slice 2 phase authority. It advances only the arena clock and phase
- * timeline; waves, Headliners, Green Room shops and HUD are later slices.
+ * Floor 4 phase authority (FR8.1) and, as of slice 3, the wave window's only
+ * driver. It advances the arena clock, owns every phase transition, and while
+ * `WAVES` is live it telegraphs gates, releases scheduled waves, honours the
+ * concurrency cap/spawn debt, and cuts survivors at the boundary.
+ *
+ * Deliberately one system: Headliners, Green Room shops and HUD are later
+ * slices and will hang off this same slot rather than a parallel director.
  */
 export function arenaDirectorSystem(world: GameWorld): void {
   if (world.floorId !== 'floor4' || world.state !== 'playing') {
@@ -216,12 +646,16 @@ export function arenaDirectorSystem(world: GameWorld): void {
       state.arenaElapsedMs += elapsedDeltaMs;
       if (state.arenaElapsedMs >= floor4WaveEndMs(state.phase.act)) {
         state.arenaElapsedMs = floor4WaveEndMs(state.phase.act);
+        // Transition cuts the survivors; servicing this tick would only spawn
+        // enemies that the same tick immediately cuts.
         recordFloor4PhaseTransition(
           world,
           state,
           { kind: 'HEADLINE', act: state.phase.act, cleared: true },
           'slice2-empty-headline',
         );
+      } else {
+        serviceFloor4WaveWindow(world, state);
       }
       break;
     case 'HEADLINE':
