@@ -24,6 +24,7 @@ interface WorkflowDoc {
         uses?: string;
         env?: Record<string, string>;
         with?: Record<string, string>;
+        run?: string;
       }>;
     };
   };
@@ -187,6 +188,28 @@ describe('merge-train workflow wake-ups', () => {
         (step) => !Object.values(step.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}'),
       ),
     ).toBe(true);
+  });
+
+  it('repairs merge-train-quarantined restricted-branch PRs after reconcile, gated on the train being enabled', () => {
+    const steps = loadWorkflow().jobs.reconcile?.steps ?? [];
+    const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    const repairStep = steps.find(
+      (step) => step.name === 'Repair merge-train-quarantined restricted-branch PRs',
+    );
+    expect(repairStep).toBeDefined();
+    expect(repairStep?.if).toBe("steps.train-gate.outputs.enabled == 'true'");
+    expect(repairStep?.run).toBe('node .github/scripts/merge-train/quarantine-repair.mjs');
+    expect(repairStep?.env?.MERGE_TRAIN_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
+    // Must run after reconcile so a PR quarantined earlier in the SAME pass is
+    // repaired that cycle, not one cycle late.
+    const reconcileIdx = steps.indexOf(reconcileStep!);
+    const repairIdx = steps.indexOf(repairStep!);
+    expect(reconcileIdx).toBeGreaterThanOrEqual(0);
+    expect(repairIdx).toBeGreaterThan(reconcileIdx);
+    // Same PAT-exposure guard as every other step in this job.
+    expect(Object.values(repairStep?.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}')).toBe(
+      false,
+    );
   });
 
   it('subscribes to all required pull_request_target event types', () => {
