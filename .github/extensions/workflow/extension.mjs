@@ -95,6 +95,7 @@ import { loadBacklog } from './lib/workflow-model.mjs';
 import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
 import { workflowErrorStatus } from './lib/workflow-errors.mjs';
+import { createWorkflowStatePoller, runWorkflowStatePoll } from './lib/workflow-state-poller.mjs';
 import {
   addRequest,
   approvalPatch,
@@ -203,6 +204,7 @@ let sessionRef = null;
  *     revalidatingKeys: Set<string>,
  *     sseClients: Set<import('node:http').ServerResponse>,
  *   },
+ *   onSnapshot: (snapshot: object, context: { source: boolean }) => Promise<void>,
  *   pushState: (state?: unknown) => Promise<unknown>,
  *   close: () => Promise<void>,
  * }>}
@@ -246,6 +248,18 @@ function log(message, level = 'info') {
     // logging must never take down a handler
   }
 }
+
+const workflowStatePoller = createWorkflowStatePoller({
+  poll: (entry) =>
+    runWorkflowStatePoll(entry, (source, remote) =>
+      refreshQueuedWorkflowItems(source, {
+        initialRemote: remote,
+        invalidate: false,
+        retryOnConflict: false,
+      }),
+    ),
+  log,
+});
 
 /**
  * Shared, outside-of-worktree image cache. Sidecar runs are timestamped +
@@ -525,22 +539,25 @@ function composeState(entry, stat, view) {
   };
 }
 
-async function hydrateWorkflow(entry, { force = false } = {}) {
+async function hydrateWorkflow(entry, { force = false, invalidate = true } = {}) {
   if (entry.workflow.loaded && !force) return entry.workflow.state;
   const remote = await entry.client.getWorkflowState();
   // Recovery is a load-time view transform only; it must never reach a write
   // (see `recoverQueue`), so the merge path below re-reads the raw remote queue.
-  adoptWorkflowState(entry, recoverQueue(normalizeQueue(remote.state)), remote.etag);
+  adoptWorkflowState(entry, recoverQueue(normalizeQueue(remote.state)), remote.etag, {
+    invalidate,
+  });
   return entry.workflow.state;
 }
 
 /** Adopt a freshly-read/written queue as this instance's local view. */
-function adoptWorkflowState(entry, state, etag) {
+function adoptWorkflowState(entry, state, etag, { invalidate = true } = {}) {
   entry.workflow.state = state;
   entry.workflow.etag = etag;
   entry.workflow.loaded = true;
   entry.workflow.lastRefreshAt = new Date().toISOString();
   entry.workflow.error = null;
+  if (invalidate) workflowStatePoller.invalidate();
   return state;
 }
 
@@ -552,8 +569,10 @@ function adoptWorkflowState(entry, state, etag) {
 async function saveWorkflowItem(entry, localState, itemId, changedFields = null, options = {}) {
   let state = localState;
   let targetId = itemId;
+  let initialRemote = options.initialRemote ?? null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const remote = await entry.client.getWorkflowState();
+    const remote = initialRemote ?? (await entry.client.getWorkflowState());
+    initialRemote = null;
     const remoteState = normalizeQueue(remote.state);
     const remoteItem = remoteState.items.find((item) => item.id === targetId);
     if (
@@ -561,7 +580,9 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
       (options.requireRemoteGenerationRequestedAt &&
         remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt)
     ) {
-      return adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag);
+      return adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag, {
+        invalidate: options.invalidate,
+      });
     }
     if (options.create && remoteState.items.some((item) => item.id === targetId)) {
       const created = state.items.find((item) => item.id === targetId);
@@ -579,9 +600,12 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
     const merged = mergeChangedItem(remoteState, state, targetId, changedFields, options);
     try {
       const saved = await entry.client.putWorkflowState(merged, remote.etag);
-      return adoptWorkflowState(entry, recoverQueue(normalizeQueue(merged)), saved.etag);
+      return adoptWorkflowState(entry, recoverQueue(normalizeQueue(merged)), saved.etag, {
+        invalidate: options.invalidate,
+      });
     } catch (error) {
-      if (error?.code !== 'etag-conflict' || attempt === 2) throw error;
+      if (error?.code !== 'etag-conflict' || options.retryOnConflict === false || attempt === 2)
+        throw error;
       // The next iteration fetches again and re-applies only this item's patch.
     }
   }
@@ -601,8 +625,14 @@ async function replaceWorkflowItem(entry, itemId, updater) {
   return saveWorkflowItem(entry, next, itemId, changedFields);
 }
 
-async function refreshQueuedWorkflowItems(entry) {
-  await hydrateWorkflow(entry, { force: true });
+async function refreshQueuedWorkflowItems(
+  entry,
+  { initialRemote = null, invalidate = true, retryOnConflict = true } = {},
+) {
+  const previousEtag = entry.workflow.etag;
+  const remote = initialRemote ?? (await entry.client.getWorkflowState());
+  const remoteState = normalizeQueue(remote.state);
+  adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag, { invalidate });
   let state = entry.workflow.state;
   let changed = false;
   for (const item of state.items) {
@@ -643,12 +673,30 @@ async function refreshQueuedWorkflowItems(entry) {
       {
         requireRemoteStage: 'generating',
         requireRemoteGenerationRequestedAt: item.generationRequestedAt,
+        initialRemote: remote,
+        invalidate,
+        retryOnConflict,
       },
     );
     const saved = state.items.find((candidate) => candidate.id === item.id);
     changed ||= saved?.stage === 'sheet' && saved.run?.runId === matched.runId;
+    // One completion write per tick keeps the durable-state read budget at one;
+    // additional completed items are picked up by following intervals.
+    break;
   }
-  return { state, changed };
+  return { state, etag: entry.workflow.etag, previousEtag, changed };
+}
+
+async function applyWorkflowPollSnapshot(entry, snapshot, { source }) {
+  const previousEtag = source ? snapshot.previousEtag : entry.workflow.etag;
+  if (source) {
+    if (entry.workflow.etag !== snapshot.etag) return;
+  } else {
+    adoptWorkflowState(entry, snapshot.state, snapshot.etag, { invalidate: false });
+  }
+  if (previousEtag === snapshot.etag && !snapshot.changed) return;
+  const state = await forceLiveState(entry.instanceId);
+  await entry.pushState(state);
 }
 
 function workflowMutationAllowed(req, entry) {
@@ -2155,7 +2203,7 @@ async function startServerForInstance(ctx) {
       lastRefreshAt: null,
       error: null,
     },
-    workflowPoll: null,
+    stopWorkflowPoll: null,
     acceptance: new Map(),
     unapproval: new Map(),
     selectionVersion: 0,
@@ -2171,6 +2219,7 @@ async function startServerForInstance(ctx) {
       sseClients: new Set(),
     },
     sidecarStartup: { state: 'starting', error: null, logPath: null },
+    onSnapshot: async () => {},
     pushState: async () => {},
     close: async () => {},
   };
@@ -2190,13 +2239,8 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early /api/state request degrades cleanly rather than
   // observing a half-initialized entry.
   instances.set(ctx.instanceId, entry);
-  entry.workflowPoll = setInterval(() => {
-    refreshQueuedWorkflowItems(entry)
-      .then(({ changed }) => (changed ? forceLiveState(ctx.instanceId) : null))
-      .then((state) => (state ? entry.pushState(state) : null))
-      .catch((error) => log(`workflow Azure refresh failed: ${error?.message ?? error}`, 'warn'));
-  }, 10_000);
-  entry.workflowPoll.unref?.();
+  entry.onSnapshot = (snapshot, context) => applyWorkflowPollSnapshot(entry, snapshot, context);
+  entry.stopWorkflowPoll = workflowStatePoller.subscribe(ctx.instanceId, entry);
   beginSpriteSidecarStartup(entry, {
     rebindClients: (url) => {
       entry.client = createSidecarClient({ baseUrl: url, workspaceRoot });
@@ -2482,7 +2526,7 @@ const canvas = createCanvas({
   onClose: async (ctx) => {
     const entry = instances.get(ctx.instanceId);
     if (!entry) return;
-    if (entry.workflowPoll) clearInterval(entry.workflowPoll);
+    entry.stopWorkflowPoll?.();
     instances.delete(ctx.instanceId);
     try {
       await entry.close();

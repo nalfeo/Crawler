@@ -109,8 +109,23 @@ test('Azure polling pushes an iframe update only when a queued generation comple
     source,
     /changed \|\|= saved\?\.stage === 'sheet' && saved\.run\?\.runId === matched\.runId/,
   );
-  assert.match(source, /\.then\(\(\{ changed \}\) => \(changed \? forceLiveState/);
-  assert.match(source, /\.then\(\(state\) => \(state \? entry\.pushState\(state\) : null\)\)/);
+  assert.match(source, /async function applyWorkflowPollSnapshot\(/);
+  assert.match(source, /if \(previousEtag === snapshot\.etag && !snapshot\.changed\) return/);
+  assert.match(source, /await entry\.pushState\(state\)/);
+});
+
+test('Azure polling is process-wide, reuses one fresh read, and unsubscribes closed instances', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /const workflowStatePoller = createWorkflowStatePoller\(/);
+  assert.match(source, /runWorkflowStatePoll\(entry,/);
+  assert.match(source, /initialRemote: remote,\s*invalidate: false,\s*retryOnConflict: false/);
+  assert.match(
+    source,
+    /entry\.onSnapshot = \(snapshot, context\) => applyWorkflowPollSnapshot\(entry, snapshot, context\)/,
+  );
+  assert.match(source, /workflowStatePoller\.subscribe\(ctx\.instanceId, entry\)/);
+  assert.match(source, /entry\.stopWorkflowPoll\?\.\(\)/);
+  assert.doesNotMatch(source, /entry\.workflowPoll = setInterval/);
 });
 
 test('Azure polling drops a completed run when the remote item was rewound or regenerated', () => {
