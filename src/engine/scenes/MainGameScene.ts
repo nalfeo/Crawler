@@ -2795,7 +2795,7 @@ export class MainGameScene extends Phaser.Scene {
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.requestInventoryToggle();
     });
-    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔️ Gear', () => {
       this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
@@ -2813,7 +2813,7 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑️ Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
