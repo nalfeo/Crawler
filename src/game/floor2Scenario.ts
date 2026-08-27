@@ -1584,7 +1584,7 @@ function collectGlobalFallbackZoneWeights(world: GameWorld): Map<string, number>
   return weights;
 }
 
-function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
+export function isProtectedFloor2AmbientSpawn(world: GameWorld, x: number, y: number): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) {
     return false;
@@ -1594,7 +1594,8 @@ function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
   if (roomId < 0) {
     return false;
   }
-  return floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN;
+  const role = floorMap.roomGraph.get(roomId)?.role;
+  return role === RoomRole.BOSS_DEN || role === RoomRole.SPAWN;
 }
 
 function findNearestPassableTile(
@@ -1847,7 +1848,7 @@ export function floor2EnemyDirectorSystem(world: GameWorld): void {
       if (!candidate) {
         break;
       }
-      if (isBossDenSpawn(world, candidate.x, candidate.y)) {
+      if (isProtectedFloor2AmbientSpawn(world, candidate.x, candidate.y)) {
         continue;
       }
       spawnPoint = candidate;
