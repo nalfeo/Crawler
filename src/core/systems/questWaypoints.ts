@@ -208,7 +208,9 @@ function normalizeSharedRoomTargets(
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
-  const activeQuests = getActiveQuests(world).slice(0, MAX_ACTIVE_QUESTS);
+  const activeQuests = getActiveQuests(world)
+    .filter((quest) => !getQuestDef(quest.questId)?.hidden)
+    .slice(0, MAX_ACTIVE_QUESTS);
 
   // Build a map from completion-goal-flag → questId for every currently-active
   // quest.  A quest's `goal` objective is "blocked" when another active quest
@@ -226,7 +228,7 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
   const waypoints: QuestWaypoint[] = [];
   for (const quest of activeQuests) {
     const def = getQuestDef(quest.questId);
-    if (!def || def.hidden || quest.showArrow === false) {
+    if (!def || quest.showArrow === false) {
       continue;
     }
     const activeView = getQuestObjectiveViews(world, quest, playerEid).find((view) => view.active);
