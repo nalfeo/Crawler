@@ -21,6 +21,7 @@ interface GoobersActionsWorkflow {
       env?: Record<string, string>;
       steps?: Array<{
         name?: string;
+        if?: string;
         uses?: string;
         env?: Record<string, string>;
         run?: string;
