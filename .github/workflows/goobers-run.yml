@@ -94,6 +94,10 @@ jobs:
             echo "::error::GOOBERS_GITHUB_TOKEN secret is required before recovery lookup; see README.md#goobers." >&2
             exit 1
           fi
+          if [ "${ABANDON_EXISTING}" = "true" ] && [ -z "${ISSUE_NUMBER}" ]; then
+            echo "::error::abandon_existing=true requires an explicit issue_number; refusing to close an arbitrary recovered PR." >&2
+            exit 1
+          fi
           if [ -z "${ISSUE_NUMBER}" ]; then
             for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
               --state open --label 'goobers/status:in-review' --json number --jq '.[].number'); do

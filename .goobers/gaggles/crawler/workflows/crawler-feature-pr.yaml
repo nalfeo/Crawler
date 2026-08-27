@@ -222,15 +222,19 @@ spec:
       next: local-ci
     - name: checkpoint-branch
       type: deterministic
-      goal: Persist implementation commits immediately before review.
+      goal: Persist implementation commits and open the recovery PR immediately before review.
       run:
         script: |
           set -eu
+          npm ci
           goobers push-branch
+          goobers open-pr
       capabilities:
         - repo:push
+        - provider:pr:write
       policyActions:
         - push-repository-branch
+        - open-or-update-pr
       next: review
     - name: local-ci
       type: deterministic

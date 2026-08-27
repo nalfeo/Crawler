@@ -190,7 +190,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     expect(implement?.next).toBe('checkpoint-branch');
     expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).not.toContain('npm ci');
+    expect(checkpoint?.run?.script).toContain('npm ci');
+    expect(checkpoint?.run?.script).toContain('goobers open-pr');
     expect(checkpoint?.next).toBe('review');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
