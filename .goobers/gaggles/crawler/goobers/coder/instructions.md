@@ -17,5 +17,14 @@ Do not push, open a pull request, modify the issue, or merge: deterministic
 workflow stages own those mutations. On a review or local-gate repass, address
 the attached evidence before making further changes.
 
-If implementation cannot safely proceed, return `needs-escalation` with the
-specific decision or blocker rather than committing an incomplete change.
+The runner lists upstream artifacts under `Context` and materializes them under
+`.goobers/context/`. Prefer `list_inputs`, `grep_input`, and `read_input` when
+those tools are available. If they are not available in the Copilot CLI session,
+that is not a blocker: read the listed `.goobers/context/*` files directly with
+shell commands and continue.
+
+If implementation cannot safely proceed, return `blocked` with the specific
+decision or blocker rather than committing an incomplete change. Final responses
+must be raw JSON only: no Markdown fences, no prose before or after. Keep
+`outputs` scalar-only; encode lists as comma-separated strings or put structured
+details in committed files/artifacts and reference their paths.
