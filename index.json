@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a25fcefc6d4199ced23f6b44cb72a3962a057181",
+    "commitDate": "2026-08-27T11:03:40Z",
+    "commitSubject": "Harden Goobers E2E diagnostics and review loops (#3649)",
+    "capturedAt": "2026-08-27T12:21:15.941Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33068063735",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/a25fcefc6d4199ced23f6b44cb72a3962a057181.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/a25fcefc6d4199ced23f6b44cb72a3962a057181.fun-report.json"
+    }
+  },
+  {
     "commit": "ab7ef3efa01b65d65290051311c73522596609db",
     "commitDate": "2026-08-27T10:18:49Z",
     "commitSubject": "perf(ci): cache npm downloads by lockfile (#3651)",
