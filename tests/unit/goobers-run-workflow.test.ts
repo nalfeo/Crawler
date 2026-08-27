@@ -29,6 +29,18 @@ interface GoobersActionsWorkflow {
   };
 }
 
+interface GoobersValidateWorkflow {
+  on: { workflow_dispatch?: { inputs?: { goobers_version?: { default?: string } } } };
+  jobs: {
+    validate?: {
+      steps?: Array<{
+        name?: string;
+        run?: string;
+      }>;
+    };
+  };
+}
+
 interface GoobersDefinition {
   spec: {
     runControls?: { maxRepasses?: number };
@@ -45,6 +57,14 @@ interface GoobersDefinition {
 
 function loadYaml<T>(...segments: string[]): T {
   return parse(readFileSync(path.join(REPO_ROOT, ...segments), 'utf8')) as T;
+}
+
+function extractPinnedSha(script: string | null | undefined): string | null {
+  if (!script) {
+    return null;
+  }
+  const match = script.match(/GOOBERS_SHA256=([0-9a-f]{64})/);
+  return match?.[1] ?? null;
 }
 
 describe('Goobers automatic dispatch and recovery', () => {
@@ -72,7 +92,7 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(job?.name).toContain("inputs.workflow || 'crawler-feature-pr'");
     expect(job?.env).toMatchObject({
-      GOOBERS_VERSION: "${{ inputs.goobers_version || 'v0.2.2' }}",
+      GOOBERS_VERSION: "${{ inputs.goobers_version || 'v0.3.3' }}",
       GOOBERS_WORKFLOW: "${{ inputs.workflow || 'crawler-feature-pr' }}",
     });
     expect(checkout?.with).toEqual({
@@ -115,5 +135,30 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
+  });
+
+  it('pins the same non-v0.2.2 Goobers checksum in run and validate workflows', () => {
+    const runWorkflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const validateWorkflow = loadYaml<GoobersValidateWorkflow>(
+      '.github',
+      'workflows',
+      'goobers-validate.yml',
+    );
+    const runShaScript = runWorkflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Resolve pinned archive checksum',
+    )?.run;
+    const validateShaScript = validateWorkflow.jobs.validate?.steps?.find(
+      (step) => step.name === 'Resolve pinned archive checksum',
+    )?.run;
+    const runDefault = runWorkflow.jobs.run?.env?.GOOBERS_VERSION;
+    const validateDefault = validateWorkflow.on.workflow_dispatch?.inputs?.goobers_version?.default;
+    const expectedSha = '47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82';
+
+    expect(runDefault).toBe("${{ inputs.goobers_version || 'v0.3.3' }}");
+    expect(validateDefault).toBe('v0.3.3');
+    expect(runDefault).not.toContain('v0.2.2');
+    expect(validateDefault).not.toBe('v0.2.2');
+    expect(extractPinnedSha(runShaScript)).toBe(expectedSha);
+    expect(extractPinnedSha(validateShaScript)).toBe(expectedSha);
   });
 });
