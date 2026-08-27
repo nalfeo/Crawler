@@ -1,5 +1,39 @@
 [
   {
+    "commit": "9973788c1996174a13b7fed759e943c9b1b515cc",
+    "commitDate": "2026-08-27T12:54:41Z",
+    "commitSubject": "Add monotonic sprite generation timing attribution (#3709)",
+    "capturedAt": "2026-08-27T14:02:06.916Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33076060035",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/9973788c1996174a13b7fed759e943c9b1b515cc.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/9973788c1996174a13b7fed759e943c9b1b515cc.fun-report.json"
+    }
+  },
+  {
     "commit": "fd550be833786486fbff8334aa4d4103a538b34d",
     "commitDate": "2026-08-27T12:11:16Z",
     "commitSubject": "perf(workflow): deduplicate canvas state polling (#3685)",
