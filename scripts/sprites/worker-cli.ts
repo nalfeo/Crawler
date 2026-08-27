@@ -20,6 +20,7 @@
  * | SPRITES_WORKER_CONCURRENCY         | 1               | Queue requests processed concurrently                |
  * | SPRITES_WORKER_DRAIN              | (unset)         | When truthy, exit after N consecutive empty polls    |
  * | SPRITES_WORKER_MAX_EMPTY_POLLS    | 3               | N for drain-mode (only used when DRAIN is truthy)    |
+ * | SPRITES_WORKER_PRODUCER_COMPLETE_FILE | (unset)     | Exit after a confirmed post-marker empty poll        |
  * | AZURE_STORAGE_ACCOUNT             | —               | Required for Azure queue / blob                      |
  * | AZURE_STORAGE_KEY                 | —               | Required for Azure queue / blob                      |
  * | AZURE_STORAGE_CONNECTION_STRING   | —               | Alternative to account+key                           |
@@ -49,6 +50,7 @@
  *   ...creds... npm run sprites:worker
  */
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAssetQueue } from './queue/index.js';
@@ -90,6 +92,7 @@ const concurrency = parsePositiveIntegerEnv(
   1,
   'SPRITES_WORKER_CONCURRENCY',
 );
+const producerCompleteFile = process.env['SPRITES_WORKER_PRODUCER_COMPLETE_FILE']?.trim();
 
 // Graceful shutdown on SIGINT / SIGTERM.
 const abortController = new AbortController();
@@ -128,11 +131,22 @@ const onStatus = drainMode
       base: baseOnStatus,
       maxEmptyPolls,
       abort: shutdown,
-      onDrain: () => logger.info(`drain mode: queue empty for ${maxEmptyPolls} polls, exiting`),
+      ...(producerCompleteFile
+        ? { isProducerComplete: () => existsSync(producerCompleteFile) }
+        : {}),
+      onDrain: () =>
+        logger.info(
+          producerCompleteFile
+            ? 'drain mode: producer complete and queue confirmed empty, exiting'
+            : `drain mode: queue empty for ${maxEmptyPolls} polls, exiting`,
+        ),
     })
   : baseOnStatus;
 
 async function main(): Promise<number> {
+  if (producerCompleteFile && !drainMode) {
+    throw new Error('SPRITES_WORKER_PRODUCER_COMPLETE_FILE requires SPRITES_WORKER_DRAIN=true');
+  }
   const queue = createAssetQueue();
   const store = createRunStore({ repoRoot });
   const provider = createImageProvider();
@@ -149,7 +163,11 @@ async function main(): Promise<number> {
 
   logger.info(
     `worker started (queue=${queue.backend}, store=${store.backend}, pollMs=${pollMs}, concurrency=${concurrency}${
-      drainMode ? `, drain=true, maxEmptyPolls=${maxEmptyPolls}` : ''
+      drainMode
+        ? producerCompleteFile
+          ? `, drain=true, producerCompleteFile=${producerCompleteFile}`
+          : `, drain=true, maxEmptyPolls=${maxEmptyPolls}`
+        : ''
     })`,
   );
 
