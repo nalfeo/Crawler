@@ -42,7 +42,8 @@ from being relabeled as remediation.
 
 - `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml` — fixed the
   `pr-opened-gate` schema (`output-equals` params moved under `params:`, dead
-  `infra` branch removed).
+  `infra` branch removed). **Landed separately on `main` via PR #3640**, so it
+  is no longer a net change on this branch.
 - `.github/workflows/goobers-run.yml` — reuse the existing `CRAWLER_CI_PAT`
   repository secret instead of requiring a new `GOOBERS_GITHUB_TOKEN`.
 - `README.md` — document `CRAWLER_CI_PAT` as the repo credential and keep
