@@ -131,7 +131,7 @@ const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
 const PLAYER_WALK_SPEED_EPSILON = 0.05;
 const PLAYER_WALK_SPEED_EPSILON_SQ = PLAYER_WALK_SPEED_EPSILON ** 2;
 /** Fallback sprite footprint when a status-affected enemy has no measurable display size. */
-const STATUS_AURA_FALLBACK_WIDTH_PX = 16;
+const STATUS_AURA_FALLBACK_SIZE_PX = 16;
 /** Fraction of sprite height below its centre where the ground aura is drawn (the feet). */
 const STATUS_AURA_FOOT_OFFSET_RATIO = 0.42;
 /** Aura radius as a fraction of the sprite's half-width, so it reads as a footprint ring. */
@@ -2177,11 +2177,11 @@ export function createPhaserBridge(
               const displayWidth =
                 typeof img.displayWidth === 'number' && Number.isFinite(img.displayWidth)
                   ? img.displayWidth
-                  : STATUS_AURA_FALLBACK_WIDTH_PX;
+                  : STATUS_AURA_FALLBACK_SIZE_PX;
               const displayHeight =
                 typeof img.displayHeight === 'number' && Number.isFinite(img.displayHeight)
                   ? img.displayHeight
-                  : STATUS_AURA_FALLBACK_WIDTH_PX;
+                  : STATUS_AURA_FALLBACK_SIZE_PX;
               statusAuraTargets.push({
                 x,
                 y: y + displayHeight * STATUS_AURA_FOOT_OFFSET_RATIO,
