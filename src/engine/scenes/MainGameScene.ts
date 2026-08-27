@@ -5071,8 +5071,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction || this.queuedInteraction;
     const tappedNpcEid = this.tappedNpcEid;
+    // A pointer tap latches onto the exact NPC whose footprint was clicked, but
+    // the simulation step runs before this code and can move that NPC out of
+    // interaction range. Cancel such a tap instead of letting it retarget a
+    // different nearby NPC.
+    const tappedNpcInvalidated =
+      tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;
+    const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;
     const interactionInputRequested =
       tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE));
     const interactionRequested =
@@ -5183,9 +5189,7 @@ export class MainGameScene extends Phaser.Scene {
         stairMarker.radiusFt;
 
     const selectedNpcEid =
-      tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer
-        ? tappedNpcEid
-        : nearNpcEid;
+      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
     if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
