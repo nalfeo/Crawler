@@ -25,6 +25,8 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { spawnerArenaSystem, spawnerSystem } from '../../src/game/index.js';
+import { enemyAISystem } from '../../src/game/enemyAISystem.js';
+import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { GAME } from '../../src/shared/constants.js';
 import { pxToFt } from '../../src/shared/units.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
@@ -123,6 +125,19 @@ describe('attackWaveSystem', () => {
         world.stores.position.y[rat]! - world.stores.position.y[playerEid]!,
       );
       expect(startDist).toBeGreaterThan(0);
+
+      for (let frame = 0; frame < 30; frame += 1) {
+        world.frameCount += 1;
+        world.elapsedMs += 16;
+        enemyAISystem(world);
+        movementSystem(world);
+      }
+
+      const endDist = Math.hypot(
+        world.stores.position.x[rat]! - world.stores.position.x[playerEid]!,
+        world.stores.position.y[rat]! - world.stores.position.y[playerEid]!,
+      );
+      expect(endDist).toBeLessThan(startDist);
     });
   });
 
