@@ -17,7 +17,9 @@ const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
 const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
 const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
 
-export type TooltipStatLine = string | { readonly text: string; readonly color: string };
+export type TooltipStatLine =
+  | string
+  | { readonly text: string; readonly deltaText: string; readonly deltaColor: string };
 
 function countWrappedDescriptionLines(text: string, columns: number): number {
   let lines = 1;
@@ -245,9 +247,10 @@ export function renderItemTooltip(
     iconObjects.push(icon);
   }
 
+  const compactHeaderTopY = ty + 6;
   const nameText = crispText(
-    tx + (compactLayout ? 8 : richIcon ? 42 : 8),
-    ty + (compactLayout ? compactLayout.headerCenterY : sectionLabel ? 18 : 8),
+    compactLayout ? tx + 8 : tx + (richIcon ? 42 : 8),
+    compactLayout ? compactHeaderTopY : ty + (sectionLabel ? 18 : 8),
     def.name,
     {
       fontFamily,
@@ -259,10 +262,6 @@ export function renderItemTooltip(
       },
     },
   );
-  if (compactLayout) {
-    nameText.setOrigin(0, 0);
-    nameText.y = snap(nameText.y - nameText.height / 2);
-  }
 
   const bodyX = tx + (richContent ? 8 : 8);
   const bodyY =
@@ -303,7 +302,7 @@ export function renderItemTooltip(
   if (sectionLabel !== undefined && sectionLabel.length > 0) {
     const labelText = crispText(
       compactLayout ? tx + tooltipWidth - 8 : tx + 8,
-      ty + (compactLayout ? compactLayout.headerCenterY : 4),
+      compactLayout ? compactHeaderTopY : ty + 4,
       sectionLabel,
       {
         fontFamily,
@@ -311,7 +310,7 @@ export function renderItemTooltip(
         color: '#e9c46a',
       },
     );
-    if (compactLayout) labelText.setOrigin(1, 0.5);
+    if (compactLayout) labelText.setOrigin(1, 0);
     container.add(labelText);
     iconObjects.push(labelText);
   }
@@ -331,14 +330,28 @@ export function renderItemTooltip(
           : ty + statY;
     statLines.slice(0, 3).forEach((line, index) => {
       const text = typeof line === 'string' ? line : line.text;
-      const color = typeof line === 'string' ? '#d9e2ef' : line.color;
       const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
         fontFamily,
         fontSize: '11px',
-        color,
+        color: '#d9e2ef',
       });
       container.add(statText);
       objects.push(statText);
+      if (typeof line !== 'string') {
+        const deltaText = crispText(
+          tx + 8 + statText.width,
+          statStartY + index * TOOLTIP_LINE_SPACING,
+          line.deltaText,
+          {
+            fontFamily,
+            fontSize: '11px',
+            fontStyle: 'bold',
+            color: line.deltaColor,
+          },
+        );
+        container.add(deltaText);
+        objects.push(deltaText);
+      }
     });
   }
 

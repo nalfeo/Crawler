@@ -137,6 +137,24 @@ into the hovered Bag item's 14px clearance. The e2e fixture asserts the generate
 target, both card bounds, panel containment, non-occlusion, side-by-side baseline,
 pair separation, and topmost state.
 
+### Final compact comparison polish
+
+The obsolete fixed inspector backing rectangle is hidden whenever the shared floating
+cards render, removing the empty outlined panel behind the Bag-anchored pair. Both
+item names now use the same 8px left inset as their stat rows; `CURRENT` and
+`CANDIDATE` remain right-aligned on the shared top edge. Direct stat comparisons use
+two text spans: the base value (for example, `+6 Armor`) remains neutral while only
+the parenthesized direct delta (for example, `(+2)`) is bold and green/red. The
+geometry declaration recognizes that delta as part of its parent stat row, so it
+cannot be misclassified as a zero-gap sibling label while independent text remains
+hard-checked.
+
+`files/visual-review/after/v0.3.8/equipment-hover-mixed-delta.{png,review.json}` is
+the final real Phaser/Azure artifact. It reports zero deterministic and
+evidence-backed blockers with an anchored 80.0 score. Focused real-game tests confirm
+the floating cards remain topmost, contained, aligned, non-occluding, and
+integer-rasterized.
+
 ## Validation
 
 - `npm run verify:fast` — passed.
@@ -146,6 +164,9 @@ pair separation, and topmost state.
 - `npm run typecheck` — passed.
 - `npm run review:visual:deterministic` — 32 passed.
 - `npm run test:e2e -- -t "anchors generated delta comparisons"` — passed.
+- `npm run test:unit -- tests/unit/item-tooltip.test.ts` — 5 passed.
+- `npm run test:e2e -- tests/e2e/inventory-flow.test.ts -t "anchors generated delta comparisons|keeps rendered text contained"` — 2 passed.
+- `npm run review:visual:llm -- ... --lineage-state v0.3.8` — anchored 80.0, zero deterministic/evidence-backed blockers.
 
 ## Systems touched
 

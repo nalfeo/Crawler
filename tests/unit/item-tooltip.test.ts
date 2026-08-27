@@ -5,6 +5,7 @@ import { ItemRarity, type ItemDef } from '../../src/shared/items.js';
 interface StubObject {
   text?: string;
   strokeColor?: number;
+  style?: Phaser.Types.GameObjects.Text.TextStyle;
   width: number;
   height: number;
   x: number;
@@ -39,7 +40,16 @@ function makeScene(): unknown {
       rectangle: (x: number, y: number, width: number, height: number) =>
         object(x, y, width, height),
       image: (x: number, y: number) => object(x, y, 32, 32),
-      text: (x: number, y: number, text: string) => object(x, y, text.length * 6, 14, text),
+      text: (
+        x: number,
+        y: number,
+        text: string,
+        style?: Phaser.Types.GameObjects.Text.TextStyle,
+      ) => {
+        const result = object(x, y, text.length * 6, 14, text);
+        result.style = style;
+        return result;
+      },
     },
     textures: { exists: (key: string) => key === 'charm-icon' },
     game: { registry: { get: () => undefined } },
@@ -110,16 +120,29 @@ describe('item tooltip redesign', () => {
       fontFamily: 'Arial',
       sectionLabel: 'CANDIDATE',
       iconTextureKey: 'charm-icon',
-      statLines: ['+1 Charisma'],
+      statLines: [
+        {
+          text: '+1 Charisma',
+          deltaText: ' (+1)',
+          deltaColor: '#49d06f',
+        },
+      ],
       flavorText: def.description,
       diffLines: ['Charisma +1', 'Armor -2'],
       placement: { x: 24, y: 36, width: 220, height: 136 },
-      crispText: (x, y, text) =>
-        (scene as { add: { text: (x: number, y: number, text: string) => StubObject } }).add.text(
-          x,
-          y,
-          text,
-        ) as never,
+      crispText: (x, y, text, style) =>
+        (
+          scene as {
+            add: {
+              text: (
+                x: number,
+                y: number,
+                text: string,
+                style?: Phaser.Types.GameObjects.Text.TextStyle,
+              ) => StubObject;
+            };
+          }
+        ).add.text(x, y, text, style) as never,
     });
 
     const text = objects.flatMap((entry) => (entry.text ? [entry.text] : []));
@@ -136,6 +159,13 @@ describe('item tooltip redesign', () => {
     const background = tooltipObjects[0] as unknown as StubObject;
     expect(background.getBounds()).toMatchObject({ x: 24, y: 36, width: 220, height: 136 });
     expect(background.strokeColor).toBe(0xe9c46a);
+    const title = objects.find((entry) => entry.text === "Merchant's Charm");
+    const stat = objects.find((entry) => entry.text === '+1 Charisma');
+    const delta = objects.find((entry) => entry.text === ' (+1)');
+    expect(title?.x).toBe(32);
+    expect(stat?.x).toBe(32);
+    expect(delta?.x).toBe(98);
+    expect(delta?.style).toMatchObject({ color: '#49d06f', fontStyle: 'bold' });
   });
 
   it('keeps current and candidate cards in separate, stable placements', () => {

@@ -849,11 +849,8 @@ export function createEquipmentUI(
     // later rendering may append a sibling after the card, so require the
     // overlay depth rather than treating hidden/structural siblings as visible
     // occluders.
-    return (
-      inspectorBg.visible &&
-      tooltipObjects.every(
-        (object) => object.active && isVisibleGameObject(object) && object.visible,
-      )
+    return tooltipObjects.every(
+      (object) => object.active && isVisibleGameObject(object) && object.visible,
     );
   }
 
@@ -1214,9 +1211,13 @@ export function createEquipmentUI(
           Math.abs(delta) > 1e-9
             ? ` (${delta > 0 ? '+' : '-'}${formatStatValue(typedStatId, Math.abs(delta))})`
             : '';
-        const text = `${value! > 0 ? '+' : ''}${formatStatValue(typedStatId, value!)} ${formatStatLabel(typedStatId)}${inlineDelta}`;
+        const text = `${value! > 0 ? '+' : ''}${formatStatValue(typedStatId, value!)} ${formatStatLabel(typedStatId)}`;
         if (Math.abs(delta) <= 1e-9) return text;
-        return { text, color: delta > 0 ? '#49d06f' : '#e8695b' };
+        return {
+          text,
+          deltaText: inlineDelta,
+          deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
+        };
       });
   }
 
@@ -1243,7 +1244,9 @@ export function createEquipmentUI(
     includeFlavor = true,
     statLines: readonly TooltipStatLine[] = tooltipStatLines(def),
   ): void {
-    inspectorBg.setVisible(true);
+    // Floating tooltip cards render their own backgrounds. Leaving the fixed
+    // inspector backdrop visible here creates an unrelated empty rectangle.
+    inspectorBg.setVisible(false);
     inspectorPlaceholder.setVisible(false);
     tooltipObjects.push(
       ...renderItemTooltip({
@@ -1272,8 +1275,6 @@ export function createEquipmentUI(
     // Tooltips are an overlay, never background decoration. `renderItemTooltip`
     // creates several children; raise the backing panel first and every child
     // afterward so later panel elements cannot occlude the card.
-    container.bringToTop(inspectorBg);
-    inspectorBg.setDepth(20_000);
     for (const object of tooltipObjects) {
       if (isDepthGameObject(object)) object.setDepth(20_001);
       container.bringToTop(object);
@@ -2708,10 +2709,11 @@ export function createEquipmentUI(
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
     getInspectorScreenBounds: (): ScreenBounds | null => {
-      if (!inspectorBg.visible) return null;
+      if (!inspectorBg.visible && !tooltipBounds) return null;
       const b = inspectorBg.getBounds();
       const inspectorBounds = { x: b.x, y: b.y, width: b.width, height: b.height };
       if (!tooltipBounds) return inspectorBounds;
+      if (!inspectorBg.visible) return { ...tooltipBounds };
       const left = Math.min(inspectorBounds.x, tooltipBounds.x);
       const top = Math.min(inspectorBounds.y, tooltipBounds.y);
       const right = Math.max(

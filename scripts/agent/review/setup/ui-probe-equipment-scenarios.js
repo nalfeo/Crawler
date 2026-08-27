@@ -157,11 +157,18 @@
         const y = run.bounds.y + run.bounds.height / 2;
         return x >= card.x && x <= card.x + card.width && y >= card.y && y <= card.y + card.height;
       });
+      // A parenthesized delta is an intentionally adjacent styled span of the
+      // preceding stat row, not an independently spaced label.
+      const isInlineDelta = /^\([+-]/.test(run.text);
       regions.push({
         id: `tooltip-text:${tooltipTextIndex++}`,
         box: run.bounds,
         kind: 'text',
-        parentId: cardIndex >= 0 ? `tooltip-card:${cardIndex}` : 'tooltip',
+        parentId: isInlineDelta
+          ? `tooltip-inline-delta:${tooltipTextIndex}`
+          : cardIndex >= 0
+            ? `tooltip-card:${cardIndex}`
+            : 'tooltip',
       });
     }
   }
@@ -193,6 +200,18 @@
       if (horizontalGap < 8) {
         flags.push(
           `Stats-delta comparison cards overlap or lack separation; horizontal gap is ${horizontalGap.toFixed(1)}px.`,
+        );
+      }
+      const tooltipRuns = probe?.getEquipmentTextRuns?.() ?? [];
+      const candidateTitle = tooltipRuns.find((run) => run.text === 'Runed Chain Hauberk');
+      const candidateLabel = tooltipRuns.find((run) => run.text === 'CANDIDATE');
+      if (
+        candidateTitle &&
+        candidateLabel &&
+        Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y) > 1
+      ) {
+        flags.push(
+          `Stats-delta candidate title and state label must share a top edge; vertical delta is ${Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y).toFixed(1)}px.`,
         );
       }
       if (
