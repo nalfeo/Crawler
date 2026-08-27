@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import {
@@ -8,6 +10,20 @@ import {
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { GAME_H, GAME_W } from './e2e-constants.js';
+
+/**
+ * Optional screenshot capture for manual visual review of the relocated
+ * tracker + per-row toggles (Rule 9). No-op unless
+ * `QUEST_TRACKER_EVIDENCE_DIR` is set; never runs in CI.
+ */
+async function captureQuestTrackerEvidence(page: Page, phase: string): Promise<void> {
+  const evidenceDir = process.env.QUEST_TRACKER_EVIDENCE_DIR;
+  if (!evidenceDir) {
+    return;
+  }
+  await mkdir(evidenceDir, { recursive: true });
+  await page.screenshot({ path: join(evidenceDir, `${phase}.png`) });
+}
 
 describe('quest waypoint arrows deterministic guard', () => {
   let browser: Browser;
@@ -74,6 +90,7 @@ describe('quest waypoint arrows deterministic guard', () => {
       (surface) => surface.name === `questArrowToggle:${FLOOR1_SHOP_QUEST_ID}`,
     )!.bounds;
     expect(tracker.y).toBeGreaterThanOrEqual(minimap.y + minimap.height);
+    await captureQuestTrackerEvidence(page, 'tracker-below-minimap-both-arrows-on');
 
     const canvasRect = await page.locator('#lab-canvas canvas').boundingBox();
     expect(canvasRect).not.toBeNull();
@@ -88,6 +105,7 @@ describe('quest waypoint arrows deterministic guard', () => {
     await expect
       .poll(() => mainSceneProbe.getMinimapRadarWaypointArrowIds(page).then((ids) => ids.sort()))
       .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID]);
+    await captureQuestTrackerEvidence(page, 'shop-quest-arrow-toggled-off');
 
     await page.mouse.click(
       canvasRect!.x + (shopToggle.x + shopToggle.width / 2) * (canvasRect!.width / GAME_W),

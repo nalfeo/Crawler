@@ -57,13 +57,27 @@ function writeCollapsedPref(collapsed: boolean): void {
   }
 }
 
-export function fitQuestTrackerLines(
+/**
+ * Result of wrapping+truncating raw quest-tracker lines: the rendered body
+ * lines plus, for every raw (pre-wrap) line, the render-row it starts on —
+ * or -1 when that raw line was truncated away entirely. Callers that must
+ * position per-row UI (e.g. arrow toggles) against the *rendered* body need
+ * this mapping instead of the raw line index, since wrapping/truncation can
+ * both shift and drop rows.
+ */
+interface QuestTrackerLineFit {
+  readonly visible: string[];
+  readonly rawLineRenderRow: number[];
+}
+
+function fitQuestTrackerLinesWithRowMap(
   lines: readonly string[],
   maxChars = MAX_LINE_CHARS,
   maxLines = MAX_BODY_LINES,
-): string[] {
+): QuestTrackerLineFit {
   const wrapped: string[] = [];
-  for (const rawLine of lines) {
+  const wrappedSourceIndex: number[] = [];
+  lines.forEach((rawLine, rawIndex) => {
     const indent = rawLine.match(/^\s*/)?.[0] ?? '';
     const contIndent = `${indent}  `;
     // Use the tighter continuation budget so every pre-split chunk fits on
@@ -85,19 +99,33 @@ export function fitQuestTrackerLines(
         continue;
       }
       wrapped.push(current);
+      wrappedSourceIndex.push(rawIndex);
       current = `${contIndent}${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
+      wrappedSourceIndex.push(rawIndex);
     }
+  });
+  const truncated = wrapped.length > maxLines;
+  const visible = truncated ? wrapped.slice(0, maxLines) : wrapped;
+  if (truncated) {
+    visible[maxLines - 1] =
+      `${visible[maxLines - 1]!.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
   }
-  if (wrapped.length <= maxLines) {
-    return wrapped;
-  }
-  const visible = wrapped.slice(0, maxLines);
-  visible[maxLines - 1] =
-    `${visible[maxLines - 1]!.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
-  return visible;
+  const rawLineRenderRow = lines.map((_, rawIndex) => {
+    const row = wrappedSourceIndex.indexOf(rawIndex);
+    return row === -1 || row >= visible.length ? -1 : row;
+  });
+  return { visible, rawLineRenderRow };
+}
+
+export function fitQuestTrackerLines(
+  lines: readonly string[],
+  maxChars = MAX_LINE_CHARS,
+  maxLines = MAX_BODY_LINES,
+): string[] {
+  return fitQuestTrackerLinesWithRowMap(lines, maxChars, maxLines).visible;
 }
 
 export function createHudQuestTracker(
@@ -247,6 +275,7 @@ export function createHudQuestTracker(
     applyVisibility();
 
     const lines: string[] = [];
+    const titleRawIndexByQuestId = new Map<string, number>();
     const visibleQuestIds = new Set(active.map((quest) => quest.questId));
     for (const [questId, toggle] of arrowToggles) {
       if (!visibleQuestIds.has(questId)) {
@@ -260,8 +289,33 @@ export function createHudQuestTracker(
         continue;
       }
       const marker = quest.tracked ? '◆' : '◇';
-      const lineIndex = lines.length;
+      titleRawIndexByQuestId.set(quest.questId, lines.length);
       lines.push(`${marker} ${def.title}`);
+      if (quest.tracked) {
+        const views = getQuestObjectiveViews(world, quest, playerEid);
+        for (const view of views) {
+          if (view.hidden) {
+            continue;
+          }
+          lines.push(formatObjective(view));
+        }
+      }
+    }
+    const fit = fitQuestTrackerLinesWithRowMap(lines);
+    body.setText(fit.visible.join('\n'));
+
+    for (const quest of active) {
+      const rawIndex = titleRawIndexByQuestId.get(quest.questId);
+      const renderRow = rawIndex === undefined ? -1 : fit.rawLineRenderRow[rawIndex]!;
+      if (renderRow === -1) {
+        // The quest's title row was truncated out of the rendered body —
+        // never show or wire up a toggle whose row doesn't exist.
+        const stale = arrowToggles.get(quest.questId);
+        if (stale) {
+          stale.setVisible(false);
+        }
+        continue;
+      }
       let toggle = arrowToggles.get(quest.questId);
       if (!toggle) {
         toggle = scene.add
@@ -285,19 +339,9 @@ export function createHudQuestTracker(
       }
       toggle
         .setText(quest.showArrow === false ? '↑ OFF' : '↑ ON')
-        .setPosition(NAV_QUEST_WIDTH - PAD, TITLE_H + 14 + lineIndex * 17)
+        .setPosition(NAV_QUEST_WIDTH - PAD, TITLE_H + 14 + renderRow * 17)
         .setVisible(masterVisible && activeVisible && !collapsed);
-      if (quest.tracked) {
-        const views = getQuestObjectiveViews(world, quest, playerEid);
-        for (const view of views) {
-          if (view.hidden) {
-            continue;
-          }
-          lines.push(formatObjective(view));
-        }
-      }
     }
-    body.setText(fitQuestTrackerLines(lines).join('\n'));
 
     panelHeight = collapsed
       ? TITLE_H + PAD

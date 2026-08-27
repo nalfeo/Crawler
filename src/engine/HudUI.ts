@@ -33,7 +33,6 @@ import type { CommandResult } from './floor3-ability-command-state.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
-import { toggleQuestArrow } from '../core/systems/questSystem.js';
 
 export interface HudEncounterProbeBounds {
   timerPanel: ScreenBounds;
@@ -91,6 +90,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
   getMinimapRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   getBottomCenterBounds(): ScreenBounds;
+  /**
+   * Drain quest-arrow-toggle click requests captured since the last call.
+   * HUD widgets only capture input — the caller (the scene's input pipeline)
+   * is responsible for applying each request to `GameWorld` simulation-side.
+   */
+  consumeQuestArrowToggleRequests(): string[];
   destroy(): void;
 } {
   const depth = 1000;
@@ -112,13 +117,15 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  let currentWorld: GameWorld | null = null;
+  // Quest-arrow toggle clicks are captured here, not applied here: this HUD
+  // facade renders sim state and reads input, but must not mutate `GameWorld`
+  // (see .github/instructions/engine.instructions.md). Requests queue up and
+  // are drained by the scene's input pipeline via
+  // `consumeQuestArrowToggleRequests()`, which applies them to the sim.
+  const pendingQuestArrowToggles: string[] = [];
   const questTracker = createHudQuestTracker(scene, {
     onToggleArrow: (questId) => {
-      if (currentWorld) {
-        toggleQuestArrow(currentWorld, questId);
-        questTracker.sync(currentWorld);
-      }
+      pendingQuestArrowToggles.push(questId);
     },
   });
   // Minimap manages its own dynamic children/overlay and screen-space layout,
@@ -211,7 +218,6 @@ export function createHudUI(scene: Phaser.Scene): {
   }
 
   function sync(world: GameWorld, playerEid: number): void {
-    currentWorld = world;
     syncFamilyRelationshipsVisibility();
     if (hidden) {
       return;
@@ -338,6 +344,7 @@ export function createHudUI(scene: Phaser.Scene): {
       const b = bottomCenter.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    consumeQuestArrowToggleRequests: () => pendingQuestArrowToggles.splice(0),
     destroy,
   };
 }

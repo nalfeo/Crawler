@@ -79,6 +79,7 @@ import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
+import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
 import { shouldShowFloor3Party } from '../floor3-party-state.js';
@@ -4348,6 +4349,12 @@ export class MainGameScene extends Phaser.Scene {
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     const issueOpen = this.issueReportPausedState !== undefined;
+    // Quest-arrow toggle clicks are captured HUD-side (input only); apply
+    // them to the sim here, in the scene's own input pipeline, before the
+    // HUD re-renders from the updated quest log.
+    for (const questId of this.hudUi?.consumeQuestArrowToggleRequests() ?? []) {
+      toggleQuestArrow(this.world, questId);
+    }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
