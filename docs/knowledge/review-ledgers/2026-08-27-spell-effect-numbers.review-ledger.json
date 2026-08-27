@@ -14,8 +14,17 @@
       "notes": "Blocking: (1) base-only numbers mislead -> every summary now ends with an explicit \"Base — scales with INT & mastery\" suffix; (2) fireball radiusTiles is both reach and blast -> labelled \"Target & blast radius\". Non-blocking, all adopted: abilities-lab tooltip wired too; drift tests assert exact per-spell strings; callback named getAbilityEffectSummary; tileSizeFt passed explicitly from floorMap config; e2e observe-before-done via main-scene-probe on the real modals at 1280x720 and 960x540."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Full-diff review incl. the ModalPickerUI fit-to-content change (hit areas, bevels, backdrop, uiScale, node translation, grow-only reset per rerender), formatter coverage of all 8 CatalogEffect spell variants, percent-vs-flat parity with foldLegacyStatModifier, engine->game layer boundary, and test coverage. No findings."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
