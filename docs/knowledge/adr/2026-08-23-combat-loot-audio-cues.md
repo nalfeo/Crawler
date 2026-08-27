@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; amended 2026-08-27
 
 ## Date
 
@@ -56,6 +56,9 @@ Mirror ADR 0071's three-module shape exactly:
    `weaponMiss`, `damageTaken`, `blocked`, `dodge`, `enemyDeath`, `spellCast`,
    `spellImpact`, `abilityActivate`, `pickup`) plus a damage-derived intensity
    (`intensityForDamage`, floored at 0.3, scaling to 1.0 at 40 damage).
+   Pickup cues may additionally carry an explicit `pickupAudioKind`
+   (`xp`/`gold`/`material`) from their producer; untyped pickup events retain
+   the generic fallback.
    Non-player hits are classified from the event's own authoritative source
    metadata rather than `targetType`: `CombatEvent.fromActiveAbility` (set by
    `apply-damage.ts` for player active/spell damage) routes to `spellImpact`,
@@ -176,14 +179,26 @@ All 4 assertions pass against the actual booted scene.
 - **Positive**: the priority-ranked per-frame cue budget is a reusable
   arbitration pattern for any future feature that reads from multiple
   independently-populated event queues in the same frame.
-- **Trade-off**: `pickup` is a single generic cue, not differentiated by loot
-  type (gem/gold/item) — accepted because the only differentiation signal
-  available (`vfxEvents.color`) is unreliable in practice; a future iteration
-  could add a proper typed pickup signal if finer-grained pickup audio is
-  wanted.
+- **Positive**: pickup producers now provide explicit semantics for XP, gold,
+  and materials, enabling distinct tones without inferring type from unreliable
+  VFX tint. Other pickup producers retain the generic fallback.
 - **Trade-off**: `MAX_CUES_PER_FRAME = 4` and the specific `CUE_PRIORITY`
   ordering are initial tuning values, not derived from playtesting; expect
   follow-up tuning once the feature is played.
+
+## 2026-08-27 Amendment: Typed Pickup Tones
+
+Issue #3659 requested distinct tones for XP gems, gold, and crafting materials.
+`VfxEvent` now carries optional `pickupAudioKind` metadata supplied by the
+authoritative acquisition sites (`itemPickupSystem` and `harvestSystem`).
+`cueForVfxEvent` copies that metadata onto the existing `pickup` cue, and
+`combatSynthSpecForCue` selects three pairwise-distinct synth signatures.
+
+The cue kind remains `pickup` rather than splitting into three arbitration
+kinds. This preserves the existing 50 ms shared pickup cooldown and same-frame
+coalescing, preventing a mixed loot cluster from creating three simultaneous
+voices. Sparkle tint remains a separate visual concern, and untyped producers
+such as boss chests continue to receive the generic pickup tone.
 
 ## Alternatives Considered
 

@@ -144,6 +144,38 @@ describe('createCombatAudio', () => {
     ]);
   });
 
+  it('prioritizes typed pickup tones over the generic fallback', () => {
+    const engine = createFakeEngine();
+    const audio = createCombatAudio(engine);
+    const world = createTestWorld();
+
+    world.vfxEvents.push(
+      { kind: 'pickupSparkle', x: 0, y: 0 },
+      { kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'material' },
+    );
+    audio.update(world, 0);
+    expect(engine.specs.map((spec) => spec.label)).toEqual(['combat:pickup-material']);
+
+    const crossFrameEngine = createFakeEngine();
+    const crossFrameAudio = createCombatAudio(crossFrameEngine);
+    const crossFrameWorld = createTestWorld();
+    crossFrameWorld.vfxEvents.push({ kind: 'pickupSparkle', x: 0, y: 0 });
+    crossFrameAudio.update(crossFrameWorld, 0);
+    crossFrameWorld.vfxEvents.length = 0;
+    crossFrameWorld.vfxEvents.push({
+      kind: 'pickupSparkle',
+      x: 0,
+      y: 0,
+      pickupAudioKind: 'gold',
+    });
+    crossFrameAudio.update(crossFrameWorld, 10);
+
+    expect(crossFrameEngine.specs.map((spec) => spec.label)).toEqual([
+      'combat:pickup',
+      'combat:pickup-gold',
+    ]);
+  });
+
   it('does NOT drain any of the three source queues', () => {
     const engine = createFakeEngine();
     const audio = createCombatAudio(engine);
