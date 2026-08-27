@@ -65,6 +65,7 @@ interface GoobersDefinition {
     gates: Array<{
       name: string;
       agentic?: { retry?: { maxAttempts?: number; backoffSeconds?: number } };
+      branches?: Record<string, string>;
     }>;
   };
 }

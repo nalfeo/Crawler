@@ -30,13 +30,21 @@
       "completed": true
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.6-luna",
+      "implementer_model": "gpt-5.3-codex",
+      "head_sha": "ad529c6a48e21593813598a850875e43cdbdf9f6",
+      "findings": [],
+      "criteria": {
+        "correctness": 3,
+        "scope_discipline": 4,
+        "test_coverage": 3,
+        "policy_compliance": 5,
+        "maintainability": 3
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Accepted Crawler-side deterministic recovery wrapper: issue timeline PR discovery + guarded branch checkout + early checkpoint push/open-pr + explicit abandon path. No validated blocker remains in current repo diff."
     }
   }
 }
