@@ -46,7 +46,7 @@ interface GoobersDefinition {
     runControls?: { maxRepasses?: number };
     tasks: Array<{
       name: string;
-      run?: { script?: string };
+      run?: { command?: string[]; script?: string };
       inputsFrom?: Record<string, string>;
       capabilities?: string[];
       expectedOutputs?: string[];
@@ -142,6 +142,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(hydrate?.run?.script).toContain('requirements-result.json');
     expect(hydrate?.capabilities).toBeUndefined();
     expect(hydrate?.retry).toBeUndefined();
+    expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
+    expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }

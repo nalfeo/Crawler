@@ -132,7 +132,10 @@ spec:
       type: deterministic
       goal: Push the implemented change as a branch.
       run:
-        command: ['goobers', 'push-branch']
+        script: |
+          set -eu
+          npm ci
+          goobers push-branch
       capabilities:
         - repo:push
       policyActions:
