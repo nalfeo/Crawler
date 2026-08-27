@@ -58,10 +58,8 @@ describe('EquipmentUI bag-scroll architectural guard', () => {
     expect(source).toContain('getItemById(swapped.id)?.name ?? swapped.name');
   });
 
-  it('keeps comparison deltas in the candidate tooltip instead of the stats pane', () => {
-    expect(source).toContain('renderTooltipPair');
+  it('shows comparison deltas via the "Current totals"/"vs <item>" stats-pane banner', () => {
     expect(source).toContain("'Current totals'");
-    expect(source).not.toContain('value + delta');
-    expect(source).not.toContain('(${delta > 0 ?');
+    expect(source).toContain('compare.statsKnown');
   });
 });
