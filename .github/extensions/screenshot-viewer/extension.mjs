@@ -34,6 +34,9 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 /** Sub-directories inside the workspace to scan for screenshots. */
 const SCAN_SUBDIRS = ['files/visual-review', 'files'];
+const SCENARIO_MANIFEST = 'docs/knowledge/ux-baselines/manifest.json';
+const LIVE_DEV_VERSION = 'live-dev';
+const SEMVER_VERSION = /^v\d+\.\d+\.\d+$/;
 const FEEDBACK_DIR = 'files/visual-review/feedback';
 const FEEDBACK_FILE = 'before-after-feedback.jsonl';
 const PROMOTION_DIR = 'docs/knowledge/ux-feedback';
@@ -43,6 +46,25 @@ const FEEDBACK_TARGETS = new Set([
   'deterministic-eval',
   'workflow',
 ]);
+
+const AXIS_LABELS = {
+  layout_consistency: 'Layout consistency',
+  spacing_balance: 'Spacing balance',
+  visual_hierarchy: 'Visual hierarchy',
+  readability: 'Readability',
+  icon_usage: 'Icon usage',
+  typography_clarity: 'Typography clarity',
+  thematic_fidelity: 'Thematic fidelity',
+  task_readiness: 'Task readiness',
+  decision_delta: 'Decision delta',
+  legibility: 'Legibility',
+  semantic_grammar: 'Semantic grammar',
+  workspace_use: 'Workspace use',
+  whitespace_quality: 'Whitespace quality',
+  visible_input_affordance: 'Visible input affordance',
+  ownership_context: 'Ownership and context',
+  accessibility_robustness: 'Accessibility robustness',
+};
 
 /** Maximum depth when scanning a directory (1 = immediate children only). */
 const SCAN_MAX_DEPTH = 5;
@@ -121,6 +143,56 @@ function readFeedback() {
     });
 }
 
+function cleanStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => typeof entry === 'string' && entry.trim().length > 0);
+}
+
+function reviewDetails(review, isWrappedReview, scale) {
+  const overall = isWrappedReview
+    ? { verdict: review.verdict ?? null, summary: review.summary ?? null, rawScore: null }
+    : {
+        verdict: review.overall?.verdict ?? null,
+        summary: review.overall?.summary ?? null,
+        rawScore: review.overall?.raw_score ?? null,
+      };
+  const axes = Object.entries(review?.axes ?? {})
+    .filter(([, axis]) => axis && typeof axis === 'object')
+    .map(([id, axis]) => ({
+      id,
+      label: AXIS_LABELS[id] ?? id.replaceAll('_', ' '),
+      score: Number.isFinite(Number(axis.score)) ? Number(axis.score) : null,
+      strengths: cleanStringList(axis.strengths),
+      issues: cleanStringList(axis.issues),
+    }));
+  const preciseFixes = Array.isArray(review?.precise_fixes)
+    ? review.precise_fixes
+        .filter((fix) => fix && typeof fix === 'object')
+        .map((fix) => ({
+          element: typeof fix.element === 'string' ? fix.element : '',
+          action: typeof fix.action === 'string' ? fix.action : '',
+          dx: Number.isFinite(Number(fix.dx)) ? Number(fix.dx) : null,
+          dy: Number.isFinite(Number(fix.dy)) ? Number(fix.dy) : null,
+          dw: Number.isFinite(Number(fix.dw)) ? Number(fix.dw) : null,
+          dh: Number.isFinite(Number(fix.dh)) ? Number(fix.dh) : null,
+          reason: typeof fix.reason === 'string' ? fix.reason : '',
+        }))
+    : [];
+  return {
+    scale,
+    verdict: overall.verdict,
+    summary: overall.summary,
+    rawScore: overall.rawScore,
+    axes,
+    scoreDerivation: review.score_derivation ?? null,
+    deterministicFindings: cleanStringList(review.deterministic_blocking_findings),
+    blockingFindings: cleanStringList(review.blocking_findings),
+    recommendedFixes: cleanStringList(review.recommended_fixes),
+    preciseFixes,
+    rawReview: review,
+  };
+}
+
 function reviewResults() {
   const workspacePath = getWorkspacePath();
   if (!workspacePath) return new Map();
@@ -137,9 +209,21 @@ function reviewResults() {
         const isWrappedReview = review?.schemaVersion === 1 && typeof review.image === 'string';
         const isRawAzureReview =
           Number.isFinite(review?.overall?.score) &&
-          review.overall.score >= 1 &&
-          review.overall.score <= 5;
+          review.overall.score >= 0 &&
+          review.overall.score <= 100;
         if (!isWrappedReview && !isRawAzureReview) continue;
+        // Legacy raw reviews were scored 1-5; current ones are 0-100. Axis scores
+        // disambiguate the two, since a genuine 0-100 surface scoring <=5 on every
+        // axis is indistinguishable from a legacy review by the overall score alone.
+        const axisScores = Object.values(review?.axes ?? {})
+          .map((axis) => Number(axis?.score))
+          .filter((value) => Number.isFinite(value));
+        const isLegacyFiveScale =
+          !isWrappedReview &&
+          review.overall.score <= 5 &&
+          axisScores.length > 0 &&
+          axisScores.every((value) => value <= 5);
+        const rawScale = isLegacyFiveScale ? 5 : 100;
         const imagePath = isWrappedReview
           ? review.image
           : join(resolve(path, '..'), entry.name.replace(/\.review\.json$/, '.png'));
@@ -156,10 +240,11 @@ function reviewResults() {
         results.set(normalize(resolve(imagePath)), {
           path,
           score,
-          scale: isWrappedReview ? 100 : 5,
+          scale: isWrappedReview ? 100 : rawScale,
           coverage: isWrappedReview ? review.coverage : 100,
           hardFailures: Array.isArray(review.hardFailures) ? review.hardFailures : [],
           findings,
+          details: reviewDetails(review, isWrappedReview, isWrappedReview ? 100 : rawScale),
         });
       } catch {
         // A partially-written optional review artifact must not break screenshot browsing.
@@ -170,40 +255,80 @@ function reviewResults() {
   return results;
 }
 
-function pairs(reviews = reviewResults()) {
+/**
+ * A|B scenarios are deliberately declared, never inferred from capture paths.
+ * Files whose basename is not an enabled manifest id stay in All Screenshots.
+ */
+function scenarioRegistry() {
+  const workspacePath = getWorkspacePath();
+  if (!workspacePath) return new Map();
+  try {
+    const entries = JSON.parse(readFileSync(join(workspacePath, SCENARIO_MANIFEST), 'utf8'));
+    if (!Array.isArray(entries)) return new Map();
+    return new Map(
+      entries
+        .filter(
+          (entry) =>
+            entry?.enabled === true &&
+            typeof entry.id === 'string' &&
+            typeof entry.label === 'string',
+        )
+        .map((entry) => [entry.id, { id: entry.id, label: entry.label }]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function isLineageVersion(value) {
+  return value === LIVE_DEV_VERSION || SEMVER_VERSION.test(value);
+}
+
+function compareLineageVersions(left, right) {
+  if (left === LIVE_DEV_VERSION) return right === LIVE_DEV_VERSION ? 0 : -1;
+  if (right === LIVE_DEV_VERSION) return 1;
+  const leftParts = left.slice(1).split('.').map(Number);
+  const rightParts = right.slice(1).split('.').map(Number);
+  return (
+    leftParts[0] - rightParts[0] || leftParts[1] - rightParts[1] || leftParts[2] - rightParts[2]
+  );
+}
+
+function pairs(reviews = reviewResults(), scenarios = scenarioRegistry()) {
   const byKey = new Map();
   for (const screenshot of sortedScreenshots()) {
     const normalized = screenshot.path.replaceAll('\\', '/');
     if (/(^|\/)archive(\/|$)/i.test(normalized)) continue;
-    const match = normalized.match(
-      /\/(before|after)\/(?:(main|iteration-[^/]+|[^/]+)\/)?([^/]+)$/i,
-    );
+    const match = normalized.match(/\/(before|after)\/(?:([^/]+)\/)?([^/]+)$/i);
     if (!match) continue;
     const side = match[1].toLowerCase();
-    const state = match[2] ?? (side === 'before' ? 'main' : 'current');
-    const key = match[3].replace(/\.[^.]+$/, '');
-    const group = byKey.get(key) ?? { before: new Map(), after: new Map() };
+    const state = match[2] ?? (side === 'before' ? LIVE_DEV_VERSION : null);
+    if (!state || !isLineageVersion(state)) continue;
+    const scenarioId = match[3].replace(/\.[^.]+$/, '');
+    const scenario = scenarios.get(scenarioId);
+    if (!scenario) continue;
+    const group = byKey.get(scenarioId) ?? { scenario, before: new Map(), after: new Map() };
     const review = reviews.get(normalize(resolve(screenshot.path))) ?? null;
     group[side].set(state.toLowerCase(), { screenshot, review, state });
-    byKey.set(key, group);
+    byKey.set(scenarioId, group);
   }
 
   const result = [];
-  for (const [key, group] of byKey) {
-    const afterStates = [...group.after.keys()].sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    );
+  for (const [scenarioId, group] of byKey) {
+    const afterStates = [...group.after.keys()].sort(compareLineageVersions);
     const beforeOnlyStates = [...group.before.keys()].filter(
-      (state) => !group.after.has(state) && !(state === 'main' && afterStates.length > 0),
+      (state) => !group.after.has(state) && !(state === LIVE_DEV_VERSION && afterStates.length > 0),
     );
     for (const [index, state] of afterStates.entries()) {
       const before =
         index > 0
           ? (group.after.get(afterStates[index - 1]) ?? null)
-          : (group.before.get(state) ?? group.before.get('main') ?? null);
+          : (group.before.get(state) ?? group.before.get(LIVE_DEV_VERSION) ?? null);
       const after = group.after.get(state) ?? null;
       result.push({
-        key: `${key} (${state})`,
+        key: `${group.scenario.label} · ${state}`,
+        scenarioId,
+        scenarioLabel: group.scenario.label,
         before: before?.screenshot ?? null,
         after: after?.screenshot ?? null,
         states: { before: before?.state ?? null, after: after?.state ?? null },
@@ -216,7 +341,9 @@ function pairs(reviews = reviewResults()) {
     for (const state of beforeOnlyStates) {
       const before = group.before.get(state) ?? null;
       result.push({
-        key: `${key} (${state})`,
+        key: `${group.scenario.label} · ${state}`,
+        scenarioId,
+        scenarioLabel: group.scenario.label,
         before: before?.screenshot ?? null,
         after: null,
         states: { before: before?.state ?? null, after: null },
@@ -224,7 +351,34 @@ function pairs(reviews = reviewResults()) {
       });
     }
   }
-  return result;
+  // Emit newest-first, with a live-dev-to-latest overview leading each scenario, so
+  // display order is authoritative here rather than a client-side concern.
+  const ordered = [];
+  const comparable = result.filter((pair) => pair.before && pair.after);
+  const takenTime = (shot) => {
+    const parsed = shot?.takenAt ? new Date(shot.takenAt).getTime() : NaN;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const scenarioOf = (pair) => pair.scenarioId;
+  for (const scenario of [...new Set(comparable.map(scenarioOf))]) {
+    const lineage = comparable
+      .filter((pair) => scenarioOf(pair) === scenario)
+      .sort((a, b) => takenTime(a.after) - takenTime(b.after));
+    const first = lineage[0];
+    const last = lineage[lineage.length - 1];
+    if (lineage.length > 1 && first.states.before === LIVE_DEV_VERSION) {
+      ordered.push({
+        ...last,
+        key: `${last.scenarioLabel} · ${last.states.after}`,
+        before: first.before,
+        states: { before: first.states.before, after: last.states.after },
+        reviews: { before: first.reviews.before, after: last.reviews.after },
+      });
+    }
+    ordered.push(...lineage.reverse());
+  }
+  ordered.push(...result.filter((pair) => !(pair.before && pair.after)));
+  return ordered;
 }
 
 // ── live tool-use tracking ─────────────────────────────────────────────────
@@ -331,6 +485,13 @@ async function scanWorkspace(workspacePath) {
       });
     }
   }
+  // Drop registry entries whose file no longer exists, so a deleted capture
+  // stops producing a phantom before/after state in the pair lineage.
+  const seen = new Set(found.map((p) => normalize(resolve(p))));
+  for (const [path, entry] of screenshotRegistry) {
+    if (entry.source === 'scanned' && !seen.has(path)) screenshotRegistry.delete(path);
+  }
+
   lastScannedAt = new Date().toISOString();
 }
 
@@ -342,6 +503,7 @@ function buildState(instanceId) {
     instanceId,
     workspacePath: workspacePath ?? null,
     screenshots: sortedScreenshots(),
+    scenarios: [...scenarioRegistry().values()],
     pairs: pairs(),
     feedback: readFeedback(),
     liveTracking: true,
@@ -645,10 +807,10 @@ await joinSession({
   },
   canvases: [
     createCanvas({
-      id: 'screenshot-viewer',
-      displayName: 'Screenshot Viewer',
+      id: 'ab-ux-testing',
+      displayName: 'A|B UX Testing',
       description:
-        'Gallery of screenshots taken by agents in this session. Tracks Playwright screenshots live and scans common directories (files/visual-review/, workspace root) on demand.',
+        'Compare tracked UX screenshot lineages, evaluator results, and review feedback alongside the complete screenshot gallery.',
       actions: [
         {
           name: 'list_screenshots',
@@ -698,7 +860,7 @@ await joinSession({
 
         const count = screenshotRegistry.size;
         return {
-          title: 'Screenshot Viewer',
+          title: 'A|B UX Testing',
           status:
             count === 0 ? 'no screenshots yet' : `${count} screenshot${count === 1 ? '' : 's'}`,
           url: entry.url + `?token=${entry.token}`,

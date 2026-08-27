@@ -8,12 +8,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { Page } from 'playwright';
 import { PNG } from 'pngjs';
 import { AzureOpenAIVisionProvider } from '../../sprites/provider/azure-vision.js';
+import type { VisionImageInput } from '../../sprites/provider/vision-types.js';
 import {
   evaluateTextRasterRuns,
   measureCropCrispness,
@@ -22,10 +24,15 @@ import {
 } from './text-raster-lib.mjs';
 import {
   computeGeometryBlockers,
+  classifyVisualFindings,
+  deriveAnchoredScore,
   diffFindings,
   findingKeys,
   lacksPixelGroundedGeometry,
-  normalizeOverallScore,
+  suppressUnsupportedAlignment,
+  DETERMINISTIC_BLOCKER_PENALTY,
+  FOCUSED_HOVER_AXIS_WEIGHTS,
+  LLM_BLOCKER_PENALTY,
 } from './visual-review-lib.mjs';
 import type { VisualReviewBox, VisualReviewRegion } from './visual-review-lib.mjs';
 import {
@@ -78,6 +85,24 @@ export interface CliOptions {
   artLedger: string | null;
   /** Root dir for the labeled evidence corpus (art-review mode). Defaults under outputDir. */
   evidenceDir: string | null;
+  /**
+   * Deterministic A|B iteration lineage capture (opt-in). When `lineageScenario`
+   * is set, this run is an explicit iteration step in a tracked A|B comparison
+   * (not a one-off speculative screenshot): in addition to the usual timestamped
+   * raw capture, the screenshot + review are ALSO copied into
+   * `outputDir/<lineageSide>/<lineageState>/<lineageScenario>.png` (and
+   * `.review.json`), which is the exact filename/state contract the Screenshot
+   * Viewer's `pairs()` lineage grouping requires. This removes the manual
+   * copy/rename step that has twice caused broken lineage chains (missing
+   * iterations never copied in, and a filename mismatch that orphaned a state
+   * from its lineage). Omit these flags for a speculative/exploratory capture
+   * that should NOT be tracked as a scored iteration step.
+   */
+  lineageScenario: string | null;
+  /** Lineage state label, e.g. "main", "v1", "v2". Required when lineageScenario is set. */
+  lineageState: string | null;
+  /** Which side of the lineage this capture belongs to. Defaults to "after". */
+  lineageSide: 'before' | 'after';
 }
 
 type ScreenClip = { x: number; y: number; width: number; height: number };
@@ -134,10 +159,22 @@ interface EvidenceRegionShot {
 interface VisualReviewResult {
   overall?: {
     score?: number;
-    /** Raw model-returned score, preserved when `score` was normalized (defect #4). */
+    /** Headline number the MODEL returned, kept only for provenance — it is anchored noise. */
     raw_score?: unknown;
+    raw_verdict?: string;
+    raw_summary?: string;
     verdict?: string;
     summary?: string;
+  };
+  /** How `overall.score` was derived from axes + findings, so a reader can audit it. */
+  score_derivation?: {
+    axis_mean: number | null;
+    penalty: number;
+    deterministic_blockers: number;
+    llm_blockers: number;
+    model_reported_score: number;
+    clean_score_floor?: number;
+    focused_hover_weights?: boolean;
   };
   axes?: Record<string, VisualAxis>;
   blocking_findings?: string[];
@@ -153,6 +190,10 @@ interface VisualReviewResult {
   regions_declared?: string[];
   /** NEW vs RECURRING split of blocking findings against the most recent prior review. */
   finding_trajectory?: { new: string[]; recurring: string[] };
+  /** SHA-256 of the captured PNG, so an unchanged "iteration" is detectable after the fact. */
+  capture_hash?: string;
+  /** True when this capture is byte-identical to the prior one — any score delta is noise. */
+  capture_unchanged_from_prior?: boolean;
   /** Art-asset-level defects (art-review mode). Layout defects stay in blocking_findings. */
   asset_findings?: AssetFinding[];
   /** Assets suppressed this run because they are already on the art-regen ledger. */
@@ -169,6 +210,28 @@ interface VisualReviewResult {
   text_raster?: TextRasterReport;
   /** Azure-only fuzzy-text claims suppressed by text-raster evidence. */
   suppressed_text_raster_findings?: number;
+  /** Azure-only slot-misalignment claims suppressed by the deterministic grid check. */
+  suppressed_alignment_findings?: number;
+  /** Deterministic scenario-contract outcome, separate from model critique. */
+  deterministic_status?: 'pass' | 'fail' | 'unscoped';
+  /** Concrete model findings that remain after measured-contract reconciliation. */
+  evidence_backed_blockers?: string[];
+  /** Subjective or contract-disproved model notes retained without blocking/scoring. */
+  advisory_taste_notes?: string[];
+  /** Evidence quality, derived deterministically rather than requested from the model. */
+  confidence?: {
+    level: 'high' | 'medium' | 'low';
+    pixel_grounded: boolean;
+    focused_interaction: boolean;
+    basis: string;
+  };
+  /** Whether the image is a detail frame or the complete placement frame. */
+  capture_scope?: {
+    frame: 'focus' | 'full';
+    placement_context: 'full-panel-measured-regions' | 'same-as-image';
+    declared_clip?: ScreenClip;
+    azure_images: string[];
+  };
 }
 
 interface TextRasterEntry {
@@ -217,6 +280,20 @@ interface GeometrySnapshot {
 
 type HarvestSource = 'declared' | 'equipment-legacy' | 'none';
 
+interface LookbookDimension {
+  id: string;
+  label: string;
+  weight: number;
+  visibleQuestion: string;
+}
+
+interface LookbookRubric {
+  source: string;
+  dimensions: LookbookDimension[];
+  hardFailureCaps: string[];
+  constraints: string[];
+}
+
 /**
  * Which conditional (surface-specific) hard requirements the prompt should assert.
  * Legacy equipment sets all three true so its prompt matches today's byte-for-byte;
@@ -244,6 +321,12 @@ interface CaptureResult {
   evidenceRegions: EvidenceRegionShot[];
   /** Pixel-grounded text-raster evidence for the legacy equipment surface. */
   textRaster: TextRasterReport | null;
+  /** Scenario-declared detail clip. CLI clips do not change scenario semantics. */
+  declaredFocusClip: ScreenClip | null;
+  /** True only when a declared detail clip contains a declared hover interaction. */
+  focusedHover: boolean;
+  /** Full viewport capture paired with a focused hover detail frame. */
+  fullPanelContextPath: string | null;
 }
 
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 } as const;
@@ -261,11 +344,27 @@ function parseViewport(value: string | undefined): { width: number; height: numb
   return { width, height };
 }
 
+export function buildEvaluationImages(
+  uxName: string,
+  detailPng: Buffer,
+  focusedHover: boolean,
+  fullPanelContextPng: Buffer | null,
+): VisionImageInput[] {
+  if (!focusedHover) return [{ label: uxName, png: detailPng }];
+  if (!fullPanelContextPng) {
+    throw new Error('focused hover review requires a full-panel context image');
+  }
+  return [
+    { label: `${uxName} — FULL-PANEL PLACEMENT CONTEXT`, png: fullPanelContextPng },
+    { label: `${uxName} — DETAIL FOCUS FRAME`, png: detailPng },
+  ];
+}
+
 export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     labUrl: 'http://127.0.0.1:4176/lab.html?lab=ui-probe-lab',
     outputDir: resolve(process.cwd(), 'files', 'visual-review'),
-    minScore: 4,
+    minScore: 80,
     uxName: 'equipment + inventory character panel',
     uxGoal:
       'clear slot layout, readable typography, strong hierarchy, coherent spacing, icon-first item representation',
@@ -282,6 +381,9 @@ export function parseArgs(argv: string[]): CliOptions {
     artReview: false,
     artLedger: null,
     evidenceDir: null,
+    lineageScenario: null,
+    lineageState: null,
+    lineageSide: 'after',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -299,8 +401,8 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--min-score' && next) {
       const score = Number(next);
-      if (!Number.isFinite(score) || score < 1 || score > 5) {
-        throw new Error(`invalid --min-score "${next}" (expected 1..5)`);
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        throw new Error(`invalid --min-score "${next}" (expected 0..100)`);
       }
       opts.minScore = score;
       i += 1;
@@ -361,6 +463,29 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+    if (arg === '--lineage-scenario' && next) {
+      opts.lineageScenario = next.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
+      i += 1;
+      continue;
+    }
+    if (arg === '--lineage-state' && next) {
+      // Keep dots so semantic versions (v0.1.0) retain their canonical form.
+      opts.lineageState = next
+        .trim()
+        .replace(/[^a-zA-Z0-9_.-]+/g, '-')
+        .replace(/(?:^|-)\.\.(?=-|$)/g, '-')
+        .replace(/-{2,}/g, '-');
+      i += 1;
+      continue;
+    }
+    if (arg === '--lineage-side' && next) {
+      if (next !== 'before' && next !== 'after') {
+        throw new Error(`invalid --lineage-side "${next}" (expected "before" or "after")`);
+      }
+      opts.lineageSide = next;
+      i += 1;
+      continue;
+    }
     if ((arg === '--viewport-width' || arg === '--viewport-height') && next) {
       const value = Number(next);
       if (!Number.isInteger(value) || value < 320 || value > 7680) {
@@ -405,6 +530,9 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+  }
+  if (opts.lineageScenario && !opts.lineageState) {
+    throw new Error('--lineage-scenario requires --lineage-state (e.g. "live-dev", "v0.1.0")');
   }
   return opts;
 }
@@ -451,12 +579,39 @@ function nowStamp(): string {
   return iso.replace(/[:.]/g, '-');
 }
 
-function buildPrompt(
+const INVENTORY_UX_LOOKBOOK_RUBRIC = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('./rpg-inventory-ux-lookbook-rubric.json', import.meta.url)),
+    'utf-8',
+  ),
+) as LookbookRubric;
+
+function formatInventoryLookbookRubric(rubric: LookbookRubric): string {
+  const dimensions = rubric.dimensions
+    .map((d) => `- ${d.label} (${d.weight}): ${d.visibleQuestion}`)
+    .join('\n');
+  const caps = rubric.hardFailureCaps.map((cap) => `- ${cap}`).join('\n');
+  const constraints = rubric.constraints.map((constraint) => `- ${constraint}`).join('\n');
+  return `RPG INVENTORY UX LOOKBOOK REFERENCE (${rubric.source})
+Use this when the surface is equipment, inventory, item tooltip, loot triage, or build inspection. Judge the screenshot by the player decision it supports, not by whether the chrome looks polished.
+
+Weighted decision rubric:
+${dimensions}
+
+Hard-failure caps:
+${caps}
+
+Product constraints to enforce:
+${constraints}`;
+}
+
+export function buildPrompt(
   opts: Pick<CliOptions, 'uxName' | 'uxGoal' | 'rebuttals'>,
   geometryText: string,
   context: {
     expect: SurfaceExpectations;
     regionIds: string[];
+    focusedHover: boolean;
     artReview?: boolean;
     ledgerAssets?: ArtLedgerEntry[];
   },
@@ -475,6 +630,19 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
 - Do NOT introduce brand-new positional nitpicks below a 3px threshold; sub-3px "misalignment" on 60px-in-64px icons is intended centering inset, not a defect.
 - End "overall.summary" with an explicit sentence: "FINAL VERDICT: <pass|needs-work|fail> — <count> findings withdrawn, <count> upheld with pixel evidence."`
       : '';
+  const hasDeclaredHoverTarget = context.regionIds.some((id) => id.startsWith('hover-target:'));
+  const focusedHover = context.focusedHover && hasDeclaredHoverTarget;
+  const captureScopeBlock = focusedHover
+    ? `
+
+CAPTURE SCOPE (AUTHORITATIVE):
+- Two images are attached in this exact labeled order: (1) FULL-PANEL PLACEMENT CONTEXT, then (2) DETAIL FOCUS FRAME.
+- Use the FULL-PANEL image for placement and surrounding-panel context.
+- Use the DETAIL image for target identity, visibility, non-occlusion, and readable text.
+- The MEASURED LAYOUT GEOMETRY is the FULL-PANEL PLACEMENT CONTEXT, including regions outside this crop.
+- Score the focused interaction primarily. Do not penalize chrome or panel regions merely because they are outside the detail frame.
+- Full-panel geometry remains authoritative for target/tooltip placement, containment, spacing, and non-occlusion.`
+    : '';
   // UNIVERSAL readability/affordance rules are always asserted; three CONDITIONAL
   // rules are injected only when the surface opts in via `expect.*`. Legacy equipment
   // sets all three true, so this reproduces today's prompt byte-for-byte.
@@ -489,6 +657,12 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     ...(context.expect.tooltipAfterHover
       ? [
           '- Empty slots must expose slot identity/help affordance (in this capture an empty-slot tooltip should be visible).',
+        ]
+      : []),
+    ...(hasDeclaredHoverTarget
+      ? [
+          '- This is an item-hover capture. The declared hover target must contain real equipment, have a visible emphasis outline, and retain a nearby tooltip that does not cover it.',
+          '- For dense item-hover UI, a measured 12px or greater target-to-tooltip gap is intentional breathing room, not a cramped-layout defect.',
         ]
       : []),
     '- Slot tiles should be roughly square or portrait; very short/wide slot boxes are a defect.',
@@ -506,7 +680,7 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
     'Hard requirements:',
     '- Name specific concrete defects (exact panel/slot/area) in issues.',
     '- If any overlap, clipping, misalignment, or unreadable text exists, include it in blocking_findings.',
-    '- If text appears cramped (insufficient top padding/line breathing room), include it in blocking_findings.',
+    '- Generic "cramped" / "needs padding" phrasing is advisory, not blocking. It may block only when tied to measured text overflow, a declared spacing-rule failure, or specific readable-text evidence.',
     ...(context.expect.statLabelsHumanReadable
       ? [
           '- If stat labels appear as code-style camelCase/PascalCase, include it in blocking_findings.',
@@ -518,6 +692,13 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
           '- If empty-slot tooltip affordance is missing/unclear in the capture, include it in blocking_findings.',
         ]
       : []),
+    ...(hasDeclaredHoverTarget
+      ? [
+          '- If the declared hover target is empty, lacks visible emphasis, has no tooltip, or the tooltip covers it, include it in blocking_findings.',
+          '- A tooltip behind any panel or item is a hard failure: include it in blocking_findings even if its text is otherwise readable.',
+          '- Do not report a cramped target/tooltip relationship when declared geometry shows a 12px or larger gap.',
+        ]
+      : []),
     '- If slot aspect ratio or icon occupancy harms item readability, include it in blocking_findings.',
     '- If slot boxes touch each other with no breathing room, include it in blocking_findings.',
     ...(context.expect.sectionDividers
@@ -527,13 +708,29 @@ How to handle each rebuttal (do this rigorously, it is the point of this pass):
       : []),
     '- If placeholder punctuation is used as the primary empty-slot indicator, include it in blocking_findings.',
     '- If tooltip layering/clipping makes tooltip text hard to read, include it in blocking_findings.',
-    '- If visual theming feels generic and not like a pixel dungeon crawler, include it in blocking_findings.',
     '- recommended_fixes must be actionable and ordered by impact.',
   ].join('\n');
   const regionIdsBlock =
     context.regionIds.length > 0
       ? `\n\nDECLARED REGION IDS (reference these EXACT ids in precise_fixes.element and when citing elements): ${context.regionIds.join(', ')}.`
       : '';
+  const inventoryLookbookBlock = formatInventoryLookbookRubric(INVENTORY_UX_LOOKBOOK_RUBRIC);
+  const focusedAxes = focusedHover
+    ? `
+- task_readiness
+- target_identity
+- target_visibility
+- non_occlusion
+- readable_text`
+    : '';
+  const focusedAxisSchema = focusedHover
+    ? `,
+    "task_readiness": { "score": number, "strengths": string[], "issues": string[] },
+    "target_identity": { "score": number, "strengths": string[], "issues": string[] },
+    "target_visibility": { "score": number, "strengths": string[], "issues": string[] },
+    "non_occlusion": { "score": number, "strengths": string[], "issues": string[] },
+    "readable_text": { "score": number, "strengths": string[], "issues": string[] }`
+    : '';
   // ART-REVIEW MODE (opt-in): critique the ART ASSETS themselves, maintain a
   // regen ledger, and suppress already-queued assets. These blocks are EMPTY
   // for non-art surfaces so equipment/inventory prompts stay byte-for-byte.
@@ -580,33 +777,70 @@ Treat each listed asset as if it WILL be replaced. Do NOT mention it in any axis
 Evaluate ONLY what is visible in the screenshot and output strict JSON.
 Do not excuse prototype quality. Call out spacing, overlap, alignment, hierarchy, typography, icon usage, text breathing-room, and readability defects explicitly.
 You are given the exact measured pixel geometry of every element. Use it to make positional feedback concrete and numeric — never vague.
-The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap, or alignment conflicts with the geometry numbers, trust the numbers, not your visual impression.`,
+The measured geometry is AUTHORITATIVE: when a claim about a pixel gap, overlap, or alignment conflicts with the geometry numbers, trust the numbers, not your visual impression.
+For equipment/inventory/item-tooltip surfaces, apply the checked-in RPG inventory UX lookbook rubric. Favor task readiness, decision delta, stable state/candidate/delta separation, visible constraints, expert throughput, and text safety over decorative polish.
+Calibration — these exact claim patterns have been screenshot-vs-geometry false positives before; before making one of them, compute the actual delta from the geometry table and only report it if the number itself crosses the stated threshold:
+- "slots touch" / "no breathing room" — only valid if the measured gap between the two boxes is <= 1px. A visible seam of several pixels is NOT touching.
+- "tooltip overlaps the panel" — only valid if the tooltip box's edge coordinates actually exceed the panel box's edge coordinates. A tooltip fully inside the panel bounds is not an overlap, however close it looks.
+- "icon is off-center in its slot" — only valid if the icon's centroid offset from its parent slot's centroid exceeds a few px both axes; a dx/dy of 0-1px is intentional centering, not a defect.
+- "ring1/ring2 (or any named pair) are misaligned" — two elements are only "misaligned" if they share the same row or column in the geometry table; elements that are intentionally on different rows are not misaligned with each other.
+- "a panel or paper doll is not optically centered" — only valid when the named content group's measured midpoint differs from its named container midpoint by more than 2px on the relevant axis. Never infer this from surrounding whitespace alone.
+- "bag icons are off-center" — only valid when both the bag slot and its icon are declared in the geometry table and their measured centroids exceed the centering threshold above. Do not make this claim from a screenshot without icon geometry.
+- "gear bonuses lack emphasis" — only valid when the supplied semantic evidence identifies a non-zero, player-visible equipment bonus that has no visual emphasis. Do not infer the absence of a bonus from a neutral value, and do not criticize a value highlight without evidence that its displayed effective value differs from its displayed base value.
+If you cannot point to the specific geometry numbers that satisfy one of these thresholds, do not report the finding.
+Scenario-specific measured contracts are authoritative. You may not contradict a passing declared contract with visual intuition.`,
     user: `Review the attached screenshot of Crawler's "${opts.uxName}" UX surface.
 Design intent for this surface: ${opts.uxGoal}.
 
-MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; this is the SAME layout shown in the screenshot, so relative positions and pixel deltas are exact and directly actionable):
-${geometryText}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
+MEASURED LAYOUT GEOMETRY (layout pixels, origin top-left; relative positions and pixel deltas are exact and directly actionable):
+${geometryText}${captureScopeBlock}${rebuttalBlock}${regionIdsBlock}${ledgerSuppressBlock}
 
-Score each axis 1-5 (1 = unacceptable, 5 = shippable quality):
+${inventoryLookbookBlock}
+
+Score each axis 0-100 (0 = unacceptable, 100 = shippable quality):
 - layout_consistency
 - spacing_balance
 - visual_hierarchy
 - readability
 - icon_usage
 - typography_clarity
-- thematic_fidelity
+- thematic_fidelity${focusedAxes}
 
-"overall.score" is a single 1-5 rating for the whole surface — never the sum of the per-axis scores.
+"overall.score" is a single 0-100 rating for the whole surface — never the sum or mean of the per-axis scores.
+
+Use the FULL 0-100 range with real granularity. Do NOT round to multiples of 10, and do
+not cluster every axis on the same number: a 62 and a 68 are meaningfully different
+judgements and small fixes between rounds must be able to move the score. Calibration:
+- 0-39 broken: a defect blocks the user from reading state or completing the task.
+- 40-59 poor: usable but with obvious defects a player would notice immediately.
+- 60-74 mediocre: no blocking defect, several visible polish problems remain.
+- 75-84 good: solid, with minor refinements outstanding.
+- 85-94 very good: shippable; only subjective or nice-to-have items remain.
+- 95-100 exemplary: reserved for surfaces you cannot suggest a concrete improvement for.
 
 Typography spacing standard is strict:
 - Every text block must have visible top/bottom breathing room inside its container.
-- Flag cramped text when cap-height/ascenders sit too close to borders, dividers, or neighboring rows.
+- Treat generic cramped/padding taste as advisory. Put it in recommended_fixes, not blocking_findings, unless measured overflow, a declared spacing-rule failure, or specific readable-text evidence supports it.
+
+Panel-composition standard (these are recurring, human-reported defects on this project —
+check each one explicitly and report it in "precise_fixes" with a pixel delta):
+- HEADING PLACEMENT CONSISTENCY: sibling section headings must share one convention. If one
+  heading sits ABOVE its bounding box, every peer heading must too. A heading rendered inside
+  its box while a sibling sits above it is a defect, even if each panel looks fine alone.
+- PAIRED-SLOT ALIGNMENT: assess only pairs that are intended to share a measured row or
+  column. The ten-slot paper doll deliberately places Ring 1 and Ring 2 on different
+  anatomical rows; their different y-coordinates are correct and must not be reported.
+  A pair whose two halves sit at different y is a defect.
+- CONTAINER OVERRUN: no child element may touch or cross its container's top/bottom/side edge.
+  Report the exact overlap in pixels.
+- EXCESSIVE PADDING / OVER-WIDE LAYOUT: treat this as advisory unless a declared spacing rule
+  fails. If measured evidence exists, cite exact pixels; otherwise keep it in recommended_fixes.
+- CENTERING: a focal cluster (paper doll, portrait, primary grid) must be optically centred in
+  its pane both horizontally and vertically unless a deliberate alternative reads clearly.
 
 ${readabilityLines}
 
-Thematic standard is strict: this is a **pixel dungeon crawler** UX.
-If the UI reads as generic modern app chrome (flat/sterile panels, non-dungeon mood, weak pixel-art identity),
-score thematic_fidelity <= 2 and include it as a blocking finding.
+Thematic fidelity is a polish axis, not a blocker by itself. Generic/sterile/theme/chrome feedback belongs in recommended_fixes unless it concretely prevents the focused task.
 
 ${hardRequirementLines}
 ${assetIntegrityBlock}
@@ -631,7 +865,7 @@ Return ONLY this JSON schema:
     "readability": { "score": number, "strengths": string[], "issues": string[] },
     "icon_usage": { "score": number, "strengths": string[], "issues": string[] },
     "typography_clarity": { "score": number, "strengths": string[], "issues": string[] },
-    "thematic_fidelity": { "score": number, "strengths": string[], "issues": string[] }
+    "thematic_fidelity": { "score": number, "strengths": string[], "issues": string[] }${focusedAxisSchema}
   },
   "blocking_findings": string[],
   "recommended_fixes": string[],
@@ -648,6 +882,7 @@ async function captureScreenshot(
     'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport' | 'probeTimeoutMs'
   >,
   outPath: string,
+  fullPanelContextPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
@@ -725,9 +960,17 @@ async function captureScreenshot(
 
   const harvest = await harvestSurface(page);
   if (harvest.source === 'equipment-legacy') {
+    // A surface that predates the text-raster probe (e.g. an older commit being
+    // baselined) has no font-load state to wait on. Treat a missing probe as
+    // "nothing to wait for" rather than hanging until the timeout, so older
+    // revisions remain reviewable for A/B comparison.
     await page.waitForFunction(
       () => {
-        const state = window.__uiProbe?.getEquipmentTextRasterMetadata?.()?.fontLoadState;
+        const probe = window.__uiProbe;
+        if (typeof probe?.getEquipmentTextRasterMetadata !== 'function') {
+          return document.readyState === 'complete';
+        }
+        const state = probe.getEquipmentTextRasterMetadata()?.fontLoadState;
         return state === 'loaded' || state === 'unavailable';
       },
       undefined,
@@ -738,6 +981,9 @@ async function captureScreenshot(
   if (harvest.source === 'declared') {
     const regions = normalizeHarvestedRegions(harvest.regions);
     const computed = computeGeometryBlockers(regions);
+    if (harvest.expect.tooltipAfterHover && !regions.some((region) => region.kind === 'tooltip')) {
+      computed.push('Declared hover contract failed: tooltip region is not present.');
+    }
     // Author-declared `flags` are treated as deterministic blockers alongside the
     // geometry the lib computes from the regions.
     const deterministicBlockers = [...new Set<string>([...computed, ...harvest.flags])];
@@ -751,6 +997,9 @@ async function captureScreenshot(
       expect: harvest.expect,
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
+      fullPanelContextPath: null,
     };
   } else if (harvest.source === 'equipment-legacy') {
     // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
@@ -770,6 +1019,9 @@ async function captureScreenshot(
       },
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
+      fullPanelContextPath: null,
     };
   } else {
     // No declared contract and no equipment probe: no deterministic checks, no
@@ -788,6 +1040,9 @@ async function captureScreenshot(
       },
       evidenceRegions: [],
       textRaster: null,
+      declaredFocusClip: null,
+      focusedHover: false,
+      fullPanelContextPath: null,
     };
   }
   const setupClip = normalizeClip(
@@ -797,6 +1052,14 @@ async function captureScreenshot(
     }),
   );
   const screenshotClip = opts.clip ?? setupClip;
+  captured.declaredFocusClip = setupClip;
+  captured.focusedHover =
+    setupClip !== null && captured.regions.some((region) => region.id.startsWith('hover-target:'));
+  if (captured.focusedHover) {
+    mkdirSync(resolve(fullPanelContextPath, '..'), { recursive: true });
+    await page.screenshot({ path: fullPanelContextPath, fullPage: false });
+    captured.fullPanelContextPath = fullPanelContextPath;
+  }
   await page.screenshot({
     path: outPath,
     fullPage: false,
@@ -1341,9 +1604,8 @@ async function harvestEquipment(
     (() => {
       const probe = window.__uiProbe;
       const ids = [
-        'head','face','neck','shoulders','chest','back','leftArm','rightArm',
-        'leftWrist','rightWrist','mainHand','offHand','gloves','ringLeft','ringRight',
-        'belt','legs','feet'
+        'head','neck','mainHand','chest','offHand',
+        'gloves','legs','ring1','feet','ring2'
       ];
       const norm = (b) => (b && typeof b === 'object' && Number.isFinite(b.x))
         ? { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) }
@@ -1363,15 +1625,43 @@ async function harvestEquipment(
       };
     })();
   `)) as GeometrySnapshot;
+  // Run the shared declared-surface geometry checks over the legacy equipment
+  // snapshot too, so containment and paired-slot alignment are measured rather
+  // than left to the LLM (which reported them inconsistently). The in-page
+  // checks above stay byte-for-byte intact; these are additive and deduped.
+  const regions: VisualReviewRegion[] = [];
+  if (geometry.panel) regions.push({ id: 'panel', box: geometry.panel, kind: 'panel' });
+  for (const slot of geometry.slots ?? []) {
+    if (slot.box) {
+      regions.push({
+        id: `slot:${slot.id}`,
+        box: slot.box,
+        kind: 'slot',
+        ...(geometry.panel ? { parentId: 'panel' } : {}),
+      });
+    }
+    if (slot.icon && slot.box) {
+      regions.push({
+        id: `slot:${slot.id}.icon`,
+        box: slot.icon,
+        kind: 'icon',
+        parentId: `slot:${slot.id}`,
+      });
+    }
+  }
+  for (const blocker of computeGeometryBlockers(regions)) {
+    if (!deterministicBlockers.includes(blocker)) deterministicBlockers.push(blocker);
+  }
   return { deterministicBlockers, geometry };
 }
 
 function printResult(result: VisualReviewResult, screenshotPath: string, reviewPath: string): void {
   const score = result.overall?.score ?? 0;
   const rawScore = result.overall?.raw_score;
+  const derivation = result.score_derivation;
   const normalizedNote =
     rawScore !== undefined && rawScore !== score
-      ? ` (normalized from raw ${JSON.stringify(rawScore)})`
+      ? ` (anchored; model self-reported ${JSON.stringify(rawScore)})`
       : '';
   const verdict = result.overall?.verdict ?? 'fail';
   const summary = result.overall?.summary ?? 'no summary returned';
@@ -1384,9 +1674,26 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
       `${result.surface ? ` surface=${result.surface}` : ''}`,
   );
   console.log(
-    `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/5${normalizedNote}`,
+    `[visual-review-agent] verdict=${verdict} score=${score.toFixed(1)}/100${normalizedNote}`,
   );
   console.log(`[visual-review-agent] summary: ${summary}`);
+  if (derivation) {
+    console.log(
+      `[visual-review-agent] score = axisMean ${derivation.axis_mean} - penalty ${derivation.penalty}` +
+        ` (${derivation.deterministic_blockers} deterministic x${DETERMINISTIC_BLOCKER_PENALTY}` +
+        ` + ${derivation.llm_blockers} llm x${LLM_BLOCKER_PENALTY})`,
+    );
+    console.log(
+      "[visual-review-agent] NOTE: the model's own headline score is anchored noise " +
+        '(byte-identical captures scored 72/72/72 with 2/0/3 blockers) and is NOT used.',
+    );
+  }
+  if (result.capture_unchanged_from_prior) {
+    console.log(
+      '[visual-review-agent] CAPTURE UNCHANGED: byte-identical to the prior capture. Do not ' +
+        'report any score/finding movement from this run as an improvement.',
+    );
+  }
   if (blockers.length > 0) {
     console.log('[visual-review-agent] blocking findings:');
     for (const finding of blockers) {
@@ -1427,6 +1734,15 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
       console.log(`  - ${fix}`);
     }
   }
+  console.log(
+    `[visual-review-agent] deterministic=${result.deterministic_status ?? 'unscoped'} ` +
+      `evidence-backed-blockers=${result.evidence_backed_blockers?.length ?? 0} ` +
+      `advisory-taste-notes=${result.advisory_taste_notes?.length ?? 0} ` +
+      `confidence=${result.confidence?.level ?? 'low'}`,
+  );
+  for (const note of result.advisory_taste_notes ?? []) {
+    console.log(`  - [advisory] ${note}`);
+  }
   console.log(`[visual-review-agent] screenshot: ${screenshotPath}`);
   console.log(`[visual-review-agent] report: ${reviewPath}`);
 }
@@ -1459,6 +1775,41 @@ function loadPriorFindingKeys(
   try {
     const raw = JSON.parse(readFileSync(resolve(outputDir, latest), 'utf-8')) as VisualReviewResult;
     return findingKeys(raw.blocking_findings ?? []);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hash of the most recent prior capture for this surface, so an "iteration" that
+ * changed no pixels can be flagged instead of being re-judged and mistaken for
+ * progress. This is not hypothetical: in one 12-round iteration loop, six
+ * captures were byte-identical to their predecessor (iter01≡02, 03≡04, 09≡10,
+ * 11≡12) yet the judge returned different scores and blocker counts for them,
+ * and that noise was read as a real regression-then-fix.
+ */
+function loadPriorCaptureHash(
+  outputDir: string,
+  screenshotName: string,
+  currentScreenshotFile: string,
+): { file: string; hash: string } | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(outputDir);
+  } catch {
+    return null;
+  }
+  const prefix = `${screenshotName}-`;
+  const latest = entries
+    .filter(
+      (name) => name.startsWith(prefix) && name.endsWith('.png') && name !== currentScreenshotFile,
+    )
+    .sort()
+    .at(-1);
+  if (!latest) return null;
+  try {
+    const buf = readFileSync(resolve(outputDir, latest));
+    return { file: latest, hash: createHash('sha256').update(buf).digest('hex') };
   } catch {
     return null;
   }
@@ -1680,6 +2031,11 @@ async function main(): Promise<number> {
   const stamp = nowStamp();
   const isoNow = new Date().toISOString();
   const screenshotPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.png`);
+  const fullPanelContextPath = resolve(
+    opts.outputDir,
+    'context',
+    `${opts.screenshotName}-${stamp}.context.png`,
+  );
   const reviewPath = resolve(opts.outputDir, `${opts.screenshotName}-${stamp}.review.json`);
 
   // Art-review mode: resolve the ledger + evidence-corpus paths, and the raw
@@ -1697,7 +2053,7 @@ async function main(): Promise<number> {
   const rawCropsDir = evidenceBundleDir ? resolve(evidenceBundleDir, 'crops', '_raw') : null;
   const ledger = artLedgerPath ? loadArtLedger(artLedgerPath) : null;
 
-  const capture = await captureScreenshot(opts, screenshotPath, rawCropsDir);
+  const capture = await captureScreenshot(opts, screenshotPath, fullPanelContextPath, rawCropsDir);
   if (lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length)) {
     // Either no contract at all ('none') or a declared-but-empty (misconfigured)
     // surface. Both silently degrade to screenshot-only, non-pixel-grounded
@@ -1757,14 +2113,35 @@ async function main(): Promise<number> {
   const prompt = buildPrompt(opts, `${capture.geometryText}${textRasterText}`, {
     expect: capture.expect,
     regionIds: capture.regions.map((r) => r.id),
+    focusedHover: capture.focusedHover,
     artReview: opts.artReview,
     ledgerAssets: ledger?.assets.filter((a) => a.status === 'needs-regen') ?? [],
   });
   const png = readFileSync(screenshotPath);
+  const evaluationImages = buildEvaluationImages(
+    opts.uxName,
+    png,
+    capture.focusedHover,
+    capture.fullPanelContextPath ? readFileSync(capture.fullPanelContextPath) : null,
+  );
+  const priorCapture = loadPriorCaptureHash(
+    opts.outputDir,
+    opts.screenshotName,
+    basename(screenshotPath),
+  );
+  const captureHash = createHash('sha256').update(png).digest('hex');
+  const captureUnchanged = priorCapture !== null && priorCapture.hash === captureHash;
+  if (captureUnchanged) {
+    console.warn(
+      `[visual-review-agent] WARNING: this capture is BYTE-IDENTICAL to the prior capture ` +
+        `(${priorCapture.file}). Nothing you changed affected these pixels, so any score or ` +
+        `finding difference from the previous run is model noise, not progress.`,
+    );
+  }
   const evaluation = await provider.evaluate({
     systemInstructions: prompt.system,
     userPrompt: prompt.user,
-    images: [{ label: opts.uxName, png }],
+    images: evaluationImages,
     temperature: 0,
     maxTokens: 1800,
   });
@@ -1777,22 +2154,98 @@ async function main(): Promise<number> {
       capture.textRaster,
     );
   }
+  result.suppressed_alignment_findings = suppressUnsupportedAlignment(
+    result,
+    capture.deterministicBlockers,
+    capture.regions,
+  );
+  const classified = classifyVisualFindings({
+    llmFindings: result.blocking_findings ?? [],
+    llmAdvisories: result.recommended_fixes ?? [],
+    deterministicBlockers: capture.deterministicBlockers,
+    focusedHover: capture.focusedHover,
+  });
   const mergedBlockers = new Set<string>([
-    ...(result.blocking_findings ?? []),
+    ...classified.evidenceBackedBlockers,
     ...capture.deterministicBlockers,
   ]);
   result.blocking_findings = [...mergedBlockers];
   result.deterministic_blocking_findings = capture.deterministicBlockers;
+  result.evidence_backed_blockers = classified.evidenceBackedBlockers;
+  result.advisory_taste_notes = classified.advisoryTasteNotes;
+  const pixelGrounded = !lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length);
+  result.deterministic_status = pixelGrounded
+    ? capture.deterministicBlockers.length === 0
+      ? 'pass'
+      : 'fail'
+    : 'unscoped';
+  result.confidence = {
+    level: pixelGrounded ? (capture.focusedHover ? 'high' : 'medium') : 'low',
+    pixel_grounded: pixelGrounded,
+    focused_interaction: capture.focusedHover,
+    basis: pixelGrounded
+      ? capture.focusedHover
+        ? 'Declared focus frame plus full-panel measured placement context.'
+        : 'Declared deterministic geometry contract.'
+      : 'Screenshot-only review without a valid measured geometry contract.',
+  };
+  result.capture_scope = {
+    frame: capture.focusedHover ? 'focus' : 'full',
+    placement_context: capture.focusedHover ? 'full-panel-measured-regions' : 'same-as-image',
+    ...(capture.declaredFocusClip ? { declared_clip: capture.declaredFocusClip } : {}),
+    azure_images: evaluationImages.map((image) => image.label),
+  };
   result.geometry = capture.geometry;
   result.harvest_source = capture.harvestSource;
   if (capture.surface) result.surface = capture.surface;
   if (capture.regions.length > 0) result.regions_declared = capture.regions.map((r) => r.id);
 
-  // Repair a non-1..5 overall.score (e.g. the model returned the SUM of the axes).
-  const normalized = normalizeOverallScore(result);
-  result.overall = { ...result.overall, score: normalized.score };
-  if (normalized.normalized) {
-    result.overall.raw_score = normalized.raw;
+  // The model's own `overall.score` is anchored noise: three judge runs over
+  // byte-identical captures returned 72/72/72 while their blocker counts were
+  // 2/0/3. Derive a reproducible composite from the axes + findings instead, and
+  // keep the model's number only as provenance.
+  const anchored = deriveAnchoredScore(result, {
+    ...(capture.focusedHover ? { axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS } : {}),
+    cleanScoreFloor: 80,
+    deterministicContractScoped: pixelGrounded,
+  });
+  result.capture_hash = captureHash;
+  result.capture_unchanged_from_prior = captureUnchanged;
+  const rawVerdict = result.overall?.verdict;
+  const rawSummary = result.overall?.summary;
+  const calibratedVerdict =
+    capture.deterministicBlockers.length > 0
+      ? 'fail'
+      : classified.evidenceBackedBlockers.length > 0 || anchored.score < opts.minScore
+        ? 'needs-work'
+        : 'pass';
+  result.overall = {
+    ...result.overall,
+    score: anchored.score,
+    raw_verdict: rawVerdict,
+    raw_summary: rawSummary,
+    verdict: calibratedVerdict,
+    summary:
+      `${result.deterministic_status === 'pass' ? 'Deterministic contract passes' : result.deterministic_status === 'fail' ? 'Deterministic contract fails' : 'Deterministic contract is unscoped'}. ` +
+      `${classified.evidenceBackedBlockers.length} evidence-backed blocker(s); ` +
+      `${classified.advisoryTasteNotes.length} advisory taste note(s).`,
+  };
+  if (anchored.anchored) {
+    result.overall.raw_score = anchored.modelScore;
+    result.score_derivation = {
+      axis_mean: anchored.axisMean,
+      penalty: anchored.penalty,
+      deterministic_blockers: anchored.deterministicBlockers,
+      llm_blockers: anchored.llmBlockers,
+      model_reported_score: anchored.modelScore,
+      clean_score_floor:
+        pixelGrounded &&
+        capture.deterministicBlockers.length === 0 &&
+        classified.evidenceBackedBlockers.length === 0
+          ? 80
+          : undefined,
+      focused_hover_weights: capture.focusedHover,
+    };
   }
 
   // NEW vs RECURRING trajectory against the most recent prior review for this surface.
@@ -1870,6 +2323,18 @@ async function main(): Promise<number> {
   writeFileSync(reviewPath, `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
   printResult(result, screenshotPath, reviewPath);
 
+  if (opts.lineageScenario && opts.lineageState) {
+    const lineageDir = resolve(opts.outputDir, opts.lineageSide, opts.lineageState);
+    mkdirSync(lineageDir, { recursive: true });
+    const lineagePng = resolve(lineageDir, `${opts.lineageScenario}.png`);
+    const lineageJson = resolve(lineageDir, `${opts.lineageScenario}.review.json`);
+    copyFileSync(screenshotPath, lineagePng);
+    copyFileSync(reviewPath, lineageJson);
+    console.log(
+      `[visual-review-agent] lineage: ${opts.lineageSide}/${opts.lineageState}/${opts.lineageScenario}.{png,review.json}`,
+    );
+  }
+
   if (opts.artReview && evidenceBundleDir) {
     const dir = writeEvidenceBundle({
       bundleDir: evidenceBundleDir,
@@ -1878,14 +2343,14 @@ async function main(): Promise<number> {
       uxName: opts.uxName,
       uxGoal: opts.uxGoal,
       screenshotPath,
-      score: normalized.score,
+      score: anchored.score,
       result,
       regions: capture.evidenceRegions,
     });
     console.log(`[visual-review-agent] evidence bundle: ${dir}`);
   }
 
-  const score = normalized.score;
+  const score = anchored.score;
   const blockers = result.blocking_findings ?? [];
   if (score < opts.minScore || blockers.length > 0) {
     console.error(

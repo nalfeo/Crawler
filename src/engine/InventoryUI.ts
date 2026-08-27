@@ -54,7 +54,7 @@ import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
-import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
+import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -68,7 +68,7 @@ const CELL_SIZE = 64;
 const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
-const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+const FONT_FAMILY = UI_FONT_FAMILY;
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -420,15 +420,9 @@ export function createInventoryUI(
     padding: { top: 4, bottom: 2 },
   });
   container.add(title);
-  // Header chip behind the title. Sized to hug the title text rather than
-  // reusing EquipmentUI's absolute 296px frame: that value was tuned for
-  // Equipment's 1240px panel and spans ~57% of this 520px panel, leaving a large
-  // dead gap to the right of "INVENTORY". Derived from the fixed title string at
-  // 16px (Press Start 2P advance ~16.5px/char) so the chip stays correctly
-  // proportioned regardless of async pixel-font load timing — a runtime
-  // title.width read can measure the narrower fallback font before Press Start
-  // 2P finishes loading.
-  const titleChipTextW = Math.round(TITLE_TEXT.length * 16.5);
+  // Header chip hugs the measured title so the sans face can use its natural
+  // word width without leaving a theme-driven dead band.
+  const titleChipTextW = Math.ceil(title.width);
   const titleFrame = scene.add.rectangle(
     snap(panelX + PANEL_PADDING + titleChipTextW / 2),
     panelY + PANEL_PADDING + 10,
@@ -936,6 +930,21 @@ export function createInventoryUI(
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
     const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
+    const equipmentDef =
+      entry.kind === 'stackable-static-item' ? getEquipmentDefForItem(entry.itemId) : undefined;
+    const generatedInstance =
+      entry.kind === 'generated-instance' && currentWorld
+        ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
+        : undefined;
+    const statLines = Object.entries(
+      generatedInstance?.frozen.statBonuses ?? equipmentDef?.statBonuses ?? {},
+    )
+      .filter(([, value]) => typeof value === 'number' && value !== 0)
+      .map(([stat, value]) => `${value! > 0 ? '+' : ''}${value} ${stat}`);
+    const iconTextureKey =
+      generatedInstance?.frozen.artKey && scene.textures?.exists(generatedInstance.frozen.artKey)
+        ? generatedInstance.frozen.artKey
+        : selectGeneratedEntry(generatedInstance?.baseId ?? def.id)?.textureKey;
     tooltipObjects.push(
       ...renderItemTooltip({
         scene,
@@ -952,6 +961,9 @@ export function createInventoryUI(
         fontFamily: FONT_FAMILY,
         footerHint,
         statLine: dpsLine,
+        statLines,
+        flavorText: statLines.length > 0 ? def.description || undefined : undefined,
+        iconTextureKey,
         crispText,
       }),
     );

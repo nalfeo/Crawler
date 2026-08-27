@@ -45,7 +45,8 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 1. `bash scripts/agent/preflight.sh`.
 2. **Capture the broken state before you change anything** — invoke the `visual-review` skill or an existing `tests/e2e/helpers/ui-probe.ts` probe. A UX fix with no "before" screenshot or probe reading is unverifiable.
 3. Read `.github/instructions/engine.instructions.md`.
-4. **Declare an apple estimate.**
+4. For equipment/inventory/item-tooltip work, read `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`. It is the durable extracted RPG inventory UX lookbook; do not rely on session-local PDF attachments.
+5. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -60,24 +61,42 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 ## Screenshot evidence contract
 
 Use the real Phaser lab renderer for Crawler captures; code inspection or a
-different rendering pipeline is not visual evidence. Store artifacts under the
-session-local `files/visual-review/` tree:
+different rendering pipeline is not visual evidence.
 
-- `files/visual-review/before/<task>.png`
-- `files/visual-review/after/<task>.png`
-- `<task>.review.json`
-- feedback JSONL files
-- review JSON files under the reviews subdirectory
+**Default to a tracked A|B lineage scenario, every time.** Any task that
+reviews or updates a UX surface — not just multi-round iteration — MUST use
+`--lineage-scenario`/`--lineage-state`/`--lineage-side` on
+`review:visual:llm` from the very first capture, per the `visual-review`
+skill. Pick one stable `--lineage-scenario` name for the surface (e.g.
+`equipment`, `inventory-tooltip`), capture the pre-change state as
+`--lineage-state main --lineage-side before`, and capture every subsequent
+change as `--lineage-state v1`/`v2`/... (`--lineage-side` defaults to
+`after`). This is the ONLY way a capture is grouped into a `before/<state>/`
 
-Open the `screenshot-viewer` canvas after capture. It pairs matching filenames
-under `before/` and `after/`, shows the pair beside the individual gallery,
-shows the evaluator results, and records feedback as either task-specific or
-reusable guidance. Reusable feedback must name the agent, skill, deterministic
-eval, or workflow it should change; it writes a durable proposal under the
-UX feedback knowledge directory, which must be turned into a real change before
-being considered promoted. Task-specific feedback stays attached to the
-current task. Upload the final before/after images for PR review; `files/` is
-session-local and not durable.
+- `after/<state>/` pair the Screenshot Viewer can render side-by-side with
+  its evaluator score attached — the flat `files/visual-review/before/<task>.png`
+- `after/<task>.png` form is a legacy fallback, not the default, and produces
+  an ungrouped, unscored screenshot if used for tracked work. Do not skip this
+  because the change is small, because you are a delegated/background
+  sub-agent, or because you plan to run a manual before/after later — capture
+  lineage inline as part of the change itself.
+
+Artifacts land at:
+
+- `files/visual-review/before/<state>/<scenario>.png` (+ `.review.json`)
+- `files/visual-review/after/<state>/<scenario>.png` (+ `.review.json`)
+- `files/visual-review/feedback/*.jsonl`
+- `files/visual-review/reviews/*.review.json`
+
+Open the `screenshot-viewer` canvas after capture. It pairs matching lineage
+states under `before/` and `after/`, shows each pair beside the individual
+gallery, shows the evaluator results, and records feedback as either
+task-specific or reusable guidance. Reusable feedback must name the agent,
+skill, deterministic eval, or workflow it should change; it writes a durable
+proposal under `docs/knowledge/ux-feedback/`, which must be turned into a
+real change before being considered promoted. Task-specific feedback stays
+attached to the current task. Upload the final before/after images for PR
+review; `files/` is session-local and not durable.
 
 ## Non-negotiable behaviors
 
@@ -91,7 +110,7 @@ session-local and not durable.
 ## Definition of done
 
 - [ ] Before/after captures (screenshot or probe output) are stated, at the affected resolution(s).
-- [ ] Before/after screenshots are stored in the canonical paths and reviewed in the screenshot viewer.
+- [ ] Before/after screenshots use a tracked `--lineage-scenario`/`--lineage-state` A|B capture (not the flat legacy form) and are reviewed in the screenshot viewer.
 - [ ] Feedback is recorded and classified as task-specific or reusable.
 - [ ] HUD remains readable at all supported resolutions; accessibility defaults intact or improved.
 - [ ] Controls are responsive and predictable, and the pause menu still works.
@@ -103,6 +122,7 @@ session-local and not durable.
 
 - Persona: `docs/agent-os/personas/ux-designer.md`
 - Visual review skill: `.github/skills/visual-review/SKILL.md`
+- Inventory UX lookbook: `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`
 - Arbitrary screenshots: `.github/skills/screenshot-evaluation/SKILL.md`
 - Browser tooling: `.github/skills/chrome-devtools/SKILL.md`
 - Test generation: `.github/skills/playwright-generate-test/SKILL.md`

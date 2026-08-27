@@ -1,14 +1,90 @@
 import type Phaser from 'phaser';
 import { type ItemDef, RARITY_COLORS } from '../shared/items.js';
+import { fitScaleForBox } from './ui-scale.js';
 
 const TOOLTIP_BG = 0x0a0a16;
-const TOOLTIP_BORDER = 0x444466;
+const TOOLTIP_BORDER = 0xe9c46a;
 const TOOLTIP_WIDTH = 200;
 const TOOLTIP_BASE_HEIGHT = 110;
 const TOOLTIP_STAT_HEIGHT_BONUS = 18;
 const TOOLTIP_META_OFFSET = 16;
 const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
 const TOOLTIP_LINE_SPACING = 18;
+const EQUIPMENT_CARD_ICON_SIZE = 28;
+const EQUIPMENT_CARD_ICON_CENTER_Y = 48;
+const EQUIPMENT_CARD_STAT_START_Y = 70;
+const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
+const EQUIPMENT_CARD_BOTTOM_PADDING = 14;
+const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
+
+export type TooltipStatLine =
+  | string
+  | { readonly text: string; readonly deltaText: string; readonly deltaColor: string };
+
+function countWrappedDescriptionLines(text: string, columns: number): number {
+  let lines = 1;
+  let lineLength = 0;
+  for (const word of text.trim().split(/\s+/)) {
+    const nextLength = lineLength === 0 ? word.length : lineLength + word.length + 1;
+    if (lineLength > 0 && nextLength > columns) {
+      lines += 1;
+      lineLength = word.length;
+    } else {
+      lineLength = nextLength;
+    }
+  }
+  return lines;
+}
+
+export interface EquipmentTooltipCardLayout {
+  readonly height: number;
+  readonly headerCenterY: number;
+  readonly icon: { readonly x: number; readonly y: number; readonly size: number };
+  readonly statStartY: number;
+  readonly descriptionY: number;
+  readonly descriptionHeight: number;
+  readonly diffStartY: number;
+}
+
+/**
+ * The compact equipped-item card is content-sized. Keeping its icon and stat
+ * rows in this pure layout contract makes their collision impossible to hide
+ * behind a screenshot-only review.
+ */
+export function getEquipmentTooltipCardLayout(
+  width: number,
+  statLines: readonly TooltipStatLine[],
+  flavorText?: string,
+  diffLines: readonly string[] = [],
+): EquipmentTooltipCardLayout {
+  const descriptionColumns = Math.max(12, Math.floor((width - 20) / 6));
+  const descriptionLines =
+    flavorText && flavorText.length > 0
+      ? Math.min(3, countWrappedDescriptionLines(flavorText, descriptionColumns))
+      : 0;
+  const statBlockHeight =
+    statLines.length > 0
+      ? (statLines.length - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
+      : 0;
+  const descriptionY =
+    EQUIPMENT_CARD_STAT_START_Y + statBlockHeight + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
+  const descriptionHeight = descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT;
+  const visibleDiffLines = Math.min(3, diffLines.length);
+  const diffStartY = descriptionY + descriptionHeight + (visibleDiffLines > 0 ? 10 : 0);
+  const diffBlockHeight =
+    visibleDiffLines > 0
+      ? (visibleDiffLines - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
+      : 0;
+  return {
+    height: Math.max(110, diffStartY + diffBlockHeight + EQUIPMENT_CARD_BOTTOM_PADDING),
+    headerCenterY: 12,
+    icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
+    statStartY: EQUIPMENT_CARD_STAT_START_Y,
+    descriptionY,
+    descriptionHeight,
+    diffStartY,
+  };
+}
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -27,6 +103,18 @@ export interface ItemTooltipRenderParams {
   footerHint?: string;
   /** Optional stat callout rendered above the footer/meta lines. */
   statLine?: string;
+  /** Equipment stat rows shown in the item body. */
+  statLines?: readonly TooltipStatLine[];
+  /** Optional flavor copy. It is deliberately secondary to stats. */
+  flavorText?: string;
+  /** Net comparison rows. These always render at the bottom of the candidate card. */
+  diffLines?: readonly string[];
+  /** Optional section label such as EQUIPPED or CANDIDATE. */
+  sectionLabel?: string;
+  /** Approved generated art key. Falls back to a readable two-letter icon. */
+  iconTextureKey?: string;
+  /** Explicit card placement used by the equipment inspector. */
+  placement?: { x: number; y: number; width: number; height: number };
   crispText: (
     x: number,
     y: number,
@@ -53,13 +141,40 @@ export function renderItemTooltip(
     fontFamily,
     footerHint,
     statLine,
+    statLines = [],
+    flavorText,
+    diffLines = [],
+    sectionLabel,
+    iconTextureKey,
+    placement,
     crispText,
   } = params;
 
+  const richContent =
+    statLines.length > 0 ||
+    (flavorText !== undefined && flavorText.length > 0) ||
+    diffLines.length > 0 ||
+    sectionLabel !== undefined;
+  const tooltipWidth = placement?.width ?? TOOLTIP_WIDTH;
+  const isCompactEquipmentCard = placement !== undefined && sectionLabel !== undefined;
+  const compactLayout = isCompactEquipmentCard
+    ? getEquipmentTooltipCardLayout(
+        tooltipWidth,
+        statLines,
+        flavorText ?? def.description,
+        diffLines,
+      )
+    : null;
   const tooltipHeight =
-    statLine !== undefined && statLine.length > 0
+    placement?.height ??
+    (statLine !== undefined && statLine.length > 0
       ? TOOLTIP_BASE_HEIGHT + TOOLTIP_STAT_HEIGHT_BONUS
-      : TOOLTIP_BASE_HEIGHT;
+      : richContent
+        ? TOOLTIP_BASE_HEIGHT +
+          Math.min(3, statLines.length) * 14 +
+          (flavorText !== undefined && flavorText.length > 0 ? 14 : 0) +
+          Math.min(3, diffLines.length) * 14
+        : TOOLTIP_BASE_HEIGHT);
   const metaY = tooltipHeight - TOOLTIP_META_OFFSET;
   const footerY = metaY - TOOLTIP_FOOTER_OFFSET_FROM_META;
   const nextLineY = footerHint !== undefined && footerHint.length > 0 ? footerY : metaY;
@@ -67,18 +182,19 @@ export function renderItemTooltip(
   const snap = (value: number): number => Math.round(value);
   const panelInset = 8;
   const rightCandidateX = anchorX + anchorSize / 2 + 8;
-  const leftCandidateX = anchorX - anchorSize / 2 - TOOLTIP_WIDTH - 8;
+  const leftCandidateX = anchorX - anchorSize / 2 - tooltipWidth - 8;
   const rightSpace = panelX + panelWidth - panelInset - rightCandidateX;
-  const leftSpace = leftCandidateX + TOOLTIP_WIDTH - (panelX + panelInset);
-  const preferRight = rightSpace >= TOOLTIP_WIDTH || rightSpace >= leftSpace;
+  const leftSpace = leftCandidateX + tooltipWidth - (panelX + panelInset);
+  const preferRight = rightSpace >= tooltipWidth || rightSpace >= leftSpace;
   const tx = snap(
-    Math.max(
-      panelX + panelInset,
-      Math.min(
-        preferRight ? rightCandidateX : leftCandidateX,
-        panelX + panelWidth - TOOLTIP_WIDTH - panelInset,
+    placement?.x ??
+      Math.max(
+        panelX + panelInset,
+        Math.min(
+          preferRight ? rightCandidateX : leftCandidateX,
+          panelX + panelWidth - tooltipWidth - panelInset,
+        ),
       ),
-    ),
   );
 
   const aboveCandidateY = anchorY - anchorSize / 2 - tooltipHeight - 8;
@@ -86,19 +202,20 @@ export function renderItemTooltip(
   const aboveFits = aboveCandidateY >= panelY + panelInset;
   const belowFits = belowCandidateY <= panelY + panelHeight - tooltipHeight - panelInset;
   const ty = snap(
-    Math.max(
-      panelY + panelInset,
-      Math.min(
-        aboveFits ? aboveCandidateY : belowFits ? belowCandidateY : aboveCandidateY,
-        panelY + panelHeight - tooltipHeight - panelInset,
+    placement?.y ??
+      Math.max(
+        panelY + panelInset,
+        Math.min(
+          aboveFits ? aboveCandidateY : belowFits ? belowCandidateY : aboveCandidateY,
+          panelY + panelHeight - tooltipHeight - panelInset,
+        ),
       ),
-    ),
   );
 
   const tooltipBg = scene.add.rectangle(
-    tx + TOOLTIP_WIDTH / 2,
+    tx + tooltipWidth / 2,
     ty + tooltipHeight / 2,
-    TOOLTIP_WIDTH,
+    tooltipWidth,
     tooltipHeight,
     TOOLTIP_BG,
     0.95,
@@ -106,36 +223,138 @@ export function renderItemTooltip(
   tooltipBg.setStrokeStyle(1, TOOLTIP_BORDER);
 
   const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
-  const nameText = crispText(tx + 8, ty + 8, def.name, {
-    fontFamily,
-    fontSize: '15px',
-    color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-    wordWrap: { width: TOOLTIP_WIDTH - 16 },
-  });
+  container.add(tooltipBg);
+  const richIcon = richContent || iconTextureKey !== undefined;
+  const iconX = tx + (compactLayout?.icon.x ?? (richIcon ? 22 : tooltipWidth - 22));
+  const iconY = ty + (compactLayout?.icon.y ?? (sectionLabel ? 36 : 22));
+  const iconObjects: Phaser.GameObjects.GameObject[] = [];
+  if (iconTextureKey !== undefined && scene.textures?.exists(iconTextureKey)) {
+    const icon = scene.add.image(iconX, iconY, iconTextureKey);
+    icon.setOrigin(0.5, 0.5);
+    icon.setScale(
+      fitScaleForBox(icon.width, icon.height, compactLayout?.icon.size ?? (richContent ? 28 : 24)),
+    );
+    container.add(icon);
+    iconObjects.push(icon);
+  } else if (richIcon) {
+    const icon = crispText(iconX, iconY, def.name.substring(0, 2).toUpperCase(), {
+      fontFamily,
+      fontSize: '12px',
+      color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+    });
+    icon.setOrigin(0.5, 0.5);
+    container.add(icon);
+    iconObjects.push(icon);
+  }
 
-  const descText = crispText(tx + 8, ty + 26, def.description, {
-    fontFamily,
-    fontSize: '12px',
-    color: '#9ca3af',
-    wordWrap: { width: TOOLTIP_WIDTH - 16 },
-  });
-
-  const metaText = crispText(
-    tx + 8,
-    ty + metaY,
-    `${def.rarity} · x${quantity} · [${def.tags.join(', ')}]`,
+  const compactHeaderTopY = ty + 6;
+  const compactHeaderFontSize = compactLayout && statLines.length === 0 ? '14px' : '12px';
+  const nameText = crispText(
+    compactLayout ? tx + 8 : tx + (richIcon ? 42 : 8),
+    compactLayout ? compactHeaderTopY : ty + (sectionLabel ? 18 : 8),
+    def.name,
     {
       fontFamily,
-      fontSize: '11px',
-      color: '#666688',
+      fontSize: compactLayout ? compactHeaderFontSize : richContent ? '13px' : '15px',
+      fontStyle: compactLayout ? 'bold' : undefined,
+      color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+      wordWrap: {
+        width: compactLayout ? tooltipWidth - 76 : tooltipWidth - (richIcon ? 50 : 16),
+      },
     },
   );
 
-  container.add(tooltipBg);
+  const bodyX = tx + (richContent ? 8 : 8);
+  const bodyY =
+    compactLayout !== null
+      ? ty + compactLayout.descriptionY
+      : placement !== undefined
+        ? ty + (statLines.length > 0 ? 76 : 50)
+        : richContent
+          ? ty + 50 + Math.min(3, statLines.length) * 14
+          : ty + 26;
+  const bodyText = flavorText ?? def.description;
+  const descText = crispText(bodyX, bodyY, bodyText, {
+    fontFamily,
+    fontSize: richContent ? '11px' : '12px',
+    fontStyle: compactLayout ? 'italic' : undefined,
+    color: '#9ca3af',
+    wordWrap: { width: tooltipWidth - 16 },
+  });
+  // Phaser's wrapped-text bounds can remain unconstrained even when its glyphs
+  // are visually clipped. Give the description a real text box so both pixels
+  // and probe geometry stay inside the tooltip card.
+  if ('setFixedSize' in descText) {
+    descText.setFixedSize(
+      tooltipWidth - 16,
+      compactLayout?.descriptionHeight ?? Math.max(0, tooltipHeight - (bodyY - ty) - 10),
+    );
+  }
+
+  const showMeta = placement === undefined;
+  const metaText = showMeta
+    ? crispText(tx + 8, ty + metaY, `${def.rarity} · x${quantity} · [${def.tags.join(', ')}]`, {
+        fontFamily,
+        fontSize: '10px',
+        color: '#666688',
+      })
+    : null;
+
+  if (sectionLabel !== undefined && sectionLabel.length > 0) {
+    const labelText = crispText(
+      compactLayout ? tx + tooltipWidth - 8 : tx + 8,
+      compactLayout ? compactHeaderTopY : ty + 4,
+      sectionLabel,
+      {
+        fontFamily,
+        fontSize: compactLayout && statLines.length === 0 ? '12px' : compactLayout ? '10px' : '9px',
+        color: '#e9c46a',
+      },
+    );
+    if (compactLayout) labelText.setOrigin(1, 0);
+    container.add(labelText);
+    iconObjects.push(labelText);
+  }
   container.add(nameText);
   container.add(descText);
-  container.add(metaText);
-  const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, nameText, descText, metaText];
+  if (metaText) container.add(metaText);
+  const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, ...iconObjects, nameText, descText];
+  if (metaText) objects.push(metaText);
+
+  if (statLines.length > 0) {
+    const statStartY = compactLayout
+      ? ty + compactLayout.statStartY
+      : placement !== undefined
+        ? ty + 44
+        : richContent
+          ? ty + 50
+          : ty + statY;
+    statLines.slice(0, 5).forEach((line, index) => {
+      const text = typeof line === 'string' ? line : line.text;
+      const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
+        fontFamily,
+        fontSize: compactLayout ? '14px' : '11px',
+        color: '#d9e2ef',
+      });
+      container.add(statText);
+      objects.push(statText);
+      if (typeof line !== 'string') {
+        const deltaText = crispText(
+          tx + 8 + statText.width,
+          statStartY + index * TOOLTIP_LINE_SPACING,
+          line.deltaText,
+          {
+            fontFamily,
+            fontSize: compactLayout ? '14px' : '11px',
+            fontStyle: 'bold',
+            color: line.deltaColor,
+          },
+        );
+        container.add(deltaText);
+        objects.push(deltaText);
+      }
+    });
+  }
 
   if (statLine !== undefined && statLine.length > 0) {
     const statText = crispText(tx + 8, ty + statY, statLine, {
@@ -156,6 +375,22 @@ export function renderItemTooltip(
     });
     container.add(hintText);
     objects.push(hintText);
+  }
+
+  if (diffLines.length > 0) {
+    const diffStartY =
+      ty + (compactLayout?.diffStartY ?? tooltipHeight - 12 - Math.min(3, diffLines.length) * 14);
+    diffLines.slice(0, 3).forEach((line, index) => {
+      const diffColor =
+        line === 'No stat change' ? '#d9e2ef' : line.includes('-') ? '#e8695b' : '#49d06f';
+      const diffText = crispText(tx + 8, diffStartY + index * TOOLTIP_LINE_SPACING, line, {
+        fontFamily,
+        fontSize: '11px',
+        color: diffColor,
+      });
+      container.add(diffText);
+      objects.push(diffText);
+    });
   }
 
   return objects;
