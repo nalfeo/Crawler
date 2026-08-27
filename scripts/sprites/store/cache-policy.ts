@@ -51,7 +51,10 @@
  */
 
 import { WORKFLOW_STATE_KEY } from '../sidecar/workflow-state.js';
-import { ISSUE_STATUS_KEY_PREFIX } from '../sidecar/issue-status-key.js';
+import {
+  ASSET_REQUEST_READY_INDEX_KEY,
+  ISSUE_STATUS_KEY_PREFIX,
+} from '../sidecar/issue-status-key.js';
 import { INGEST_STATE_KEY } from '../sidecar/ingest-state-key.js';
 
 /**
@@ -78,6 +81,9 @@ const COORDINATION_KEY_PREDICATES: readonly ((key: string) => boolean)[] = [
   // Per-issue pipeline checkpoints: rewritten before and after every stage,
   // then read back to decide whether a stage may be skipped or resumed.
   (key) => key.startsWith(`${ISSUE_STATUS_KEY_PREFIX}/`),
+  // Publisher ready index: CAS-maintained coordination state. A stale cached
+  // copy could hide a newly-ready checkpoint or repeatedly expose a terminal one.
+  (key) => key === ASSET_REQUEST_READY_INDEX_KEY,
 ];
 
 /**

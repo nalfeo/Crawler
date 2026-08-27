@@ -282,6 +282,27 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(state.appliedPassiveAbilityIds.has(abilityId)).toBe(true);
   });
 
+  it('applies Spellcraft Bolt only while a spellcraft weapon is equipped', () => {
+    const { world, player } = setupPlayerWithSkills();
+    const fireball = WEAPON_DEFS.get('fireball')!;
+    const pistol = WEAPON_DEFS.get('pistol')!;
+    const abilityId = 'spellcraft-bolt-base';
+
+    grantPassiveAbility(world, player, abilityId);
+
+    setActiveWeaponDef(world, fireball);
+    abilitySystem(world);
+    expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
+      true,
+    );
+
+    setActiveWeaponDef(world, pistol);
+    abilitySystem(world);
+    expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
+      false,
+    );
+  });
+
   it('does NOT apply a weapon-prereq passive when wrong weapon is equipped', () => {
     const { world, player } = setupPlayerWithSkills();
     const pistol = WEAPON_DEFS.get('pistol')!;
