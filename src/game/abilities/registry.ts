@@ -932,13 +932,9 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
 
   // Spellcraft type abilities
   {
-    id: 'spellcraft-bolt-base',
-    name: 'Spellcraft Bolt',
-    shortLabel: 'BOLT',
-    description: 'Basic spell bolt',
-    category: 'utility',
-    kind: 'passive',
-    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+    ...ABILITY_PRESENTATION_BY_ID['spellcraft-bolt-base'],
+    weaponPrerequisite: 'spellcraft',
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
   },
   {
     id: 'spellcraft-cascade',
