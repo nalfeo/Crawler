@@ -1,5 +1,39 @@
 [
   {
+    "commit": "6941aea0efe91c8b80b93923891429c726f09c01",
+    "commitDate": "2026-08-27T01:22:37Z",
+    "commitSubject": "fix(goobers): reuse existing crawler CI token (#3643)",
+    "capturedAt": "2026-08-27T02:28:43.605Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33031081563",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/6941aea0efe91c8b80b93923891429c726f09c01.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/6941aea0efe91c8b80b93923891429c726f09c01.fun-report.json"
+    }
+  },
+  {
     "commit": "1b7ac67b1c87c4f71fe5eea7e6d8851db23609ba",
     "commitDate": "2026-08-26T21:11:39Z",
     "commitSubject": "fix(goobers): correct unreachable branch and misplaced params in crawler-feature-pr gate (#3640)",
