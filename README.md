@@ -94,7 +94,7 @@ variables → Actions**) before it can succeed:
 
 The two tokens are deliberately different credentials with different scopes — never
 reuse one PAT for both. See the Goobers repo's
-[`docs/guides/github-token-scopes.md`](https://github.com/Agent-Clubhouse/Goobers/blob/main/docs/guides/github-token-scopes.md)
+[Goobers GitHub token-scopes guide](https://github.com/Agent-Clubhouse/Goobers/blob/main/docs/guides/github-token-scopes.md)
 for the full capability-to-token mapping and the cross-org rationale for keeping
 `agent:model` on its own personal token.
 

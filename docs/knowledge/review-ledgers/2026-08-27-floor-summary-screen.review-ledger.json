@@ -18,21 +18,38 @@
       "rounds": [
         {
           "round": 1,
-          "reviewer_model": "gpt-5.6-sol",
+          "models": ["gpt-5.6-sol"],
+          "clean": false,
           "concerns_count": 1,
           "resolved_count": 1,
-          "notes": "Medium finding: the auto-driven timed advance was covered only by a source-string guard, so a broken timer/transition callback would still pass. Fixed by adding a probe seam (setAutoDrivenForProbe) and a second deterministic e2e case that completes Floor 1 with isAutoDriven() true and asserts the scene reaches Floor 2 with no acknowledgement. No correctness, determinism, layering, security, or performance findings."
+          "notes": "Medium finding: the auto-driven timed advance was covered only by a source-string guard. Fixed by adding a probe seam (setAutoDrivenForProbe) and a deterministic e2e case that completes Floor 1 with isAutoDriven() true and asserts the scene reaches Floor 2 with no acknowledgement."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Re-review of the auto-driven coverage fix: no remaining concerns across correctness, determinism, layering, security, performance, and regression coverage."
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "3b091e72275ab44f291361aadcd245bebdfb62cc",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The PR correctly implements the between-floor summary screen, properly handling both human and AI-driven runs without breaking the loop or hanging. It correctly tracks floor kills per simulation step to avoid double-counting, provides complete deterministic test coverage including e2e timeout and acknowledge testing, and respects the required determinism and layer boundary policies."
     }
   }
 }

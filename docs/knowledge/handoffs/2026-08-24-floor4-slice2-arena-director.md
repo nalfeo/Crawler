@@ -93,3 +93,12 @@ rehearsal**:
 - `npm run format -- --write <files>` still ran the repo's broad format globs before the
   explicit file list. It happened to touch only intended files this time, but use
   `npx prettier --write <files>` for surgical formatting.
+
+### Opportunities for Future Improvement
+
+- The Floor-4 RunStats surface has two write sites (crash path and success path); a single
+  builder used by both would make the "added to one, forgot the other" mistake above
+  structurally impossible for the remaining slices.
+- Surgical formatting is easy to get wrong (`npm run format -- --write <files>` still runs
+  the repo globs). A `format:files` script wrapping `npx prettier --write` would remove the
+  footgun for every future session.
