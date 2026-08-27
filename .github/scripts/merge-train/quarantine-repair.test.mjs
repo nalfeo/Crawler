@@ -13,7 +13,6 @@ import {
   buildSupersedeNoticeBody,
   hasLabelNamed,
   isConfirmedRestrictedBranchQuarantine,
-  isRestrictedCopilotBranch,
   isSameRepository,
   parseRepairMarker,
   renderRepairMarker,
@@ -51,13 +50,6 @@ function originalPr(overrides = {}) {
     ...overrides,
   };
 }
-
-test('isRestrictedCopilotBranch matches only the copilot/* namespace', () => {
-  assert.equal(isRestrictedCopilotBranch('copilot/floor-4-slice-3-waves'), true);
-  assert.equal(isRestrictedCopilotBranch('nalfeo-repair-asset-queue'), false);
-  assert.equal(isRestrictedCopilotBranch(''), false);
-  assert.equal(isRestrictedCopilotBranch(undefined), false);
-});
 
 test('hasLabelNamed is case-insensitive and tolerant of missing labels', () => {
   assert.equal(hasLabelNamed({ labels: [{ name: 'Merge-Train-Blocked' }] }, BLOCKED_LABEL), true);
@@ -118,7 +110,7 @@ test('QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX uses the managed crawler- prefix th
   assert.ok(QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX.startsWith(MANAGED_COMMENT_PREFIX));
 });
 
-test('repairEligibility: only open, quarantined, same-repo, restricted-branch PRs are eligible', () => {
+test('repairEligibility: only open, quarantined, same-repo PRs with valid heads are eligible', () => {
   const repository = `${OWNER}/${REPO}`;
   assert.equal(repairEligibility(originalPr(), repository).eligible, true);
   assert.equal(repairEligibility(originalPr({ state: 'closed' }), repository).eligible, false);
@@ -135,11 +127,15 @@ test('repairEligibility: only open, quarantined, same-repo, restricted-branch PR
   assert.equal(
     repairEligibility(
       originalPr({
-        head: { ref: 'nalfeo-repair-asset-queue', sha: HEAD_SHA, repo: { full_name: repository } },
+        head: {
+          ref: 'goobers/crawler/crawler-feature-pr/4fbe2dffa13a86d955b03348158dd082',
+          sha: HEAD_SHA,
+          repo: { full_name: repository },
+        },
       }),
       repository,
     ).eligible,
-    false,
+    true,
   );
   assert.equal(
     repairEligibility(

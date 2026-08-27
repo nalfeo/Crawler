@@ -96,12 +96,7 @@ import { BLOCKED_LABEL, STATUS_MARKER, hasLeadingMarker } from './state.mjs';
 
 export const REPAIR_BRANCH_PREFIX = 'crawler-quarantine-repair/';
 const REPAIR_MARKER_PREFIX = '<!-- crawler:quarantine-repair-of:';
-const RESTRICTED_BRANCH_PATTERN = /^copilot\//i;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
-
-export function isRestrictedCopilotBranch(ref) {
-  return RESTRICTED_BRANCH_PATTERN.test(String(ref || ''));
-}
 
 export function hasLabelNamed(pr, labelName) {
   return (pr?.labels || []).some(
@@ -147,12 +142,13 @@ export function parseRepairMarker(body) {
  * `BLOCKED_LABEL` (`merge-train-blocked`) is NOT specific to the restricted-
  * branch 403 quarantine this module repairs -- `reconcile.mjs` applies the
  * SAME label to a validation failure (`blockEntry`) and to a no-op diff
- * de-admit (`deAdmitNoop`), both of which commonly also carry a `copilot/*`
- * head ref. This function checks only the label/repo/branch/sha shape;
+ * de-admit (`deAdmitNoop`). This function checks only the label/repo/sha shape;
  * callers MUST additionally call `isConfirmedRestrictedBranchQuarantine`
  * (which reads the authoritative `evaluateUnadvanceableStrike` marker) before
  * treating a PR as eligible, or a validation-failure/no-op PR would get a
- * pointless sibling PR carrying the same bad diff.
+ * pointless sibling PR carrying the same bad diff. The branch name is
+ * intentionally not used as a proxy for restricted ownership: GitHub can
+ * restrict same-repository branches outside the `copilot/*` namespace.
  */
 export function repairEligibility(pr, repositoryFullName) {
   if (String(pr?.state || '').toLowerCase() !== 'open') {
@@ -166,12 +162,6 @@ export function repairEligibility(pr, repositoryFullName) {
   }
   if (!isSameRepository(pr, repositoryFullName)) {
     return { eligible: false, reason: `PR #${pr?.number} head is a fork; not eligible for repair` };
-  }
-  if (!isRestrictedCopilotBranch(pr?.head?.ref)) {
-    return {
-      eligible: false,
-      reason: `PR #${pr?.number} head \`${pr?.head?.ref}\` is not a restricted copilot/* branch`,
-    };
   }
   if (!SHA_PATTERN.test(String(pr?.head?.sha || ''))) {
     return { eligible: false, reason: `PR #${pr?.number} returned an invalid head sha` };
@@ -227,7 +217,7 @@ export function buildReplacementBody({ original, headSha }) {
   return [
     `Automated quarantine repair for #${original.number}.`,
     '',
-    `#${original.number}'s head branch \`${original.head.ref}\` is a restricted Copilot ` +
+    `#${original.number}'s head branch \`${original.head.ref}\` is a restricted ` +
       'coding-agent branch that the merge train cannot push to (repeated update-branch ' +
       '403; see the merge-train-blocked status comment on that PR). This PR carries the ' +
       `exact same commits (head \`${headSha}\`) on a writable branch against \`main\` so ` +
