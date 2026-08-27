@@ -8,3 +8,4 @@
  * constant for backward-compatible imports.
  */
 export const ISSUE_STATUS_KEY_PREFIX = 'workflow-state/asset-request-jobs';
+export const ASSET_REQUEST_READY_INDEX_KEY = 'workflow-state/asset-request-publisher/ready-v1.json';
