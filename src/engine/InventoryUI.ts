@@ -337,9 +337,11 @@ export function createInventoryUI(
     if (!currentWorld) return undefined;
     const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
     if (!instance) return undefined;
-    const stats = Object.entries(instance.frozen.statBonuses)
-      .filter(([, value]) => value != null && value !== 0)
-      .map(([stat, value]) => `${value >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
+    const stats = Object.entries(instance.frozen.statBonuses).flatMap(([stat, value]) =>
+      value == null || value === 0
+        ? []
+        : [`${value >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`],
+    );
     const summary = [
       instance.frozen.slots.map(getSlotLabel).join(' / '),
       stats.join(', '),
