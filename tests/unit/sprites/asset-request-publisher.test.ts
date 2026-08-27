@@ -12,7 +12,17 @@ import {
 import type { CheckinAsset, Exec } from '../../../scripts/sprites/checkin.js';
 import { shardPathForKey } from '../../../scripts/sprites/generated-shards.js';
 import { issueCheckpointKey } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
-import type { RunStore } from '../../../scripts/sprites/store/types.js';
+import {
+  createLogCursor,
+  getGlobalLogLevel,
+  readLogsSince,
+  setGlobalLogLevel,
+} from '../../../src/shared/logger.js';
+import {
+  ASSET_REQUEST_READY_INDEX_KEY,
+  ISSUE_STATUS_KEY_PREFIX,
+} from '../../../scripts/sprites/sidecar/issue-status-key.js';
+import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
 
 function makeStore(): RunStore & { mem: Map<string, Buffer> } {
   const mem = new Map<string, Buffer>();
@@ -24,7 +34,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
     },
     async get(key) {
       const value = mem.get(key);
-      if (!value) throw new Error(`Missing ${key}`);
+      if (!value) throw new StoreNotFoundError(key);
       return value;
     },
     async has(key) {
@@ -38,6 +48,36 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
     },
     resolve(key) {
       return key;
+    },
+  };
+}
+
+function makeMeasuredStore(): RunStore & {
+  mem: Map<string, Buffer>;
+  getKeys: string[];
+  listCalls: number;
+  resetCounts(): void;
+} {
+  const base = makeStore();
+  const getKeys: string[] = [];
+  let listCalls = 0;
+  return {
+    ...base,
+    getKeys,
+    get listCalls() {
+      return listCalls;
+    },
+    async get(key) {
+      getKeys.push(key);
+      return base.get(key);
+    },
+    async list(prefix, options) {
+      listCalls++;
+      return base.list(prefix, options);
+    },
+    resetCounts() {
+      getKeys.length = 0;
+      listCalls = 0;
     },
   };
 }
@@ -138,6 +178,143 @@ describe('asset-request publication discovery', () => {
     );
 
     await expect(discoverReadyCheckpoints(store)).resolves.toEqual([]);
+  });
+
+  it('rebuilds a malformed ready index from the authoritative checkpoint listing', async () => {
+    const store = makeStore();
+    await store.put(ASSET_REQUEST_READY_INDEX_KEY, Buffer.from('{"version":999}'));
+    await store.put(
+      issueCheckpointKey(31, 'fingerprint-31'),
+      checkpoint(31, 'selected-pending-publish'),
+    );
+
+    await expect(discoverReadyCheckpoints(store)).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 31 }),
+    ]);
+    expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual({
+      version: 1,
+      legacyBackfillComplete: true,
+      keys: [issueCheckpointKey(31, 'fingerprint-31')],
+    });
+  });
+
+  it('backfills 232 legacy-invalid checkpoints once, then serves byte-equivalent discovery from a compact index', async () => {
+    const originalLogLevel = getGlobalLogLevel();
+
+    try {
+      setGlobalLogLevel('error');
+      const store = makeMeasuredStore();
+      for (let index = 0; index < 232; index++) {
+        await store.put(
+          issueCheckpointKey(index + 1, `legacy-${index}`),
+          Buffer.from(
+            JSON.stringify({
+              issueNumber: index + 1,
+              fingerprint: `legacy-${index}`,
+              stage: 'completed',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            }),
+          ),
+        );
+      }
+      await store.put(
+        issueCheckpointKey(998, 'fingerprint-998'),
+        checkpoint(998, 'selected-pending-publish'),
+      );
+      await store.put(issueCheckpointKey(999, 'fingerprint-999'), checkpoint(999, 'published'));
+      store.resetCounts();
+
+      const expected = await discoverReadyCheckpoints(store);
+      expect(expected.map((item) => item.issueNumber)).toEqual([998]);
+      expect(store.listCalls).toBe(1);
+      expect(
+        store.getKeys.filter((key) => key.startsWith(`${ISSUE_STATUS_KEY_PREFIX}/`)),
+      ).toHaveLength(234);
+      expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual(
+        {
+          version: 1,
+          legacyBackfillComplete: true,
+          keys: [issueCheckpointKey(998, 'fingerprint-998')],
+        },
+      );
+
+      // Warm runs must be byte-equivalent while touching only the index and the
+      // single ready checkpoint it references — the operation counts, not wall
+      // time, are the deterministic performance contract.
+      store.resetCounts();
+      for (let sample = 0; sample < 5; sample++) {
+        const discovered = await discoverReadyCheckpoints(store);
+        expect(Buffer.from(JSON.stringify(discovered))).toEqual(
+          Buffer.from(JSON.stringify(expected)),
+        );
+      }
+
+      expect(store.listCalls).toBe(0);
+      expect(store.getKeys).toEqual(
+        Array.from({ length: 5 }).flatMap(() => [
+          ASSET_REQUEST_READY_INDEX_KEY,
+          issueCheckpointKey(998, 'fingerprint-998'),
+        ]),
+      );
+    } finally {
+      setGlobalLogLevel(originalLogLevel);
+    }
+  });
+
+  it('recovers an unindexed ready checkpoint through a bounded --reconcile re-listing', async () => {
+    const store = makeMeasuredStore();
+    await store.put(
+      issueCheckpointKey(40, 'fingerprint-40'),
+      checkpoint(40, 'selected-pending-publish'),
+    );
+    await discoverReadyCheckpoints(store);
+
+    // A build that predates ready-key registration writes a ready checkpoint
+    // without touching the index, so index-only discovery cannot see it.
+    await store.put(
+      issueCheckpointKey(41, 'fingerprint-41'),
+      checkpoint(41, 'selected-pending-publish'),
+    );
+    await expect(discoverReadyCheckpoints(store)).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 40 }),
+    ]);
+
+    store.resetCounts();
+    await expect(discoverReadyCheckpoints(store, { reconcile: true })).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 40 }),
+      expect.objectContaining({ issueNumber: 41 }),
+    ]);
+    expect(store.listCalls).toBe(1);
+    expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual({
+      version: 1,
+      legacyBackfillComplete: true,
+      keys: [issueCheckpointKey(40, 'fingerprint-40'), issueCheckpointKey(41, 'fingerprint-41')],
+    });
+
+    // The union is durable: the next index-only run sees both.
+    await expect(discoverReadyCheckpoints(store)).resolves.toHaveLength(2);
+  });
+
+  it('logs a stale ready-index entry as coordination drift, not checkpoint corruption', async () => {
+    const originalLogLevel = getGlobalLogLevel();
+    try {
+      setGlobalLogLevel('debug');
+      const store = makeStore();
+      await store.put(
+        issueCheckpointKey(50, 'fingerprint-50'),
+        checkpoint(50, 'selected-pending-publish'),
+      );
+      await discoverReadyCheckpoints(store);
+      await store.remove(issueCheckpointKey(50, 'fingerprint-50'));
+
+      const cursor = createLogCursor();
+      await expect(discoverReadyCheckpoints(store)).resolves.toEqual([]);
+      const logs = readLogsSince(cursor);
+      expect(logs.some((line) => line.startsWith('[debug]') && line.includes('stale'))).toBe(true);
+      expect(logs.some((line) => line.includes('malformed'))).toBe(false);
+    } finally {
+      setGlobalLogLevel(originalLogLevel);
+    }
   });
 });
 

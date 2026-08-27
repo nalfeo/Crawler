@@ -9,6 +9,8 @@ import {
   resetExhaustedTransientStage,
   runCheckpointStage,
 } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
+import { readAssetRequestReadyIndex } from '../../../scripts/sprites/asset-request-ready-index.js';
+import { ASSET_REQUEST_READY_INDEX_KEY } from '../../../scripts/sprites/sidecar/issue-status-key.js';
 import { QueueCommitError } from '../../../scripts/sprites/queue-commit.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 
@@ -226,6 +228,46 @@ describe('issue pipeline checkpoints', () => {
       details: {
         outcome: 'selected-pending-publish',
       },
+    });
+    await expect(readAssetRequestReadyIndex(store)).resolves.toEqual({
+      status: 'valid',
+      index: {
+        version: 1,
+        legacyBackfillComplete: false,
+        keys: [checkpoint.key],
+      },
+    });
+
+    await markIssuePipelineTerminal(checkpoint, 'published', { publishedAt: 'now' });
+    await expect(readAssetRequestReadyIndex(store)).resolves.toEqual({
+      status: 'valid',
+      index: {
+        version: 1,
+        legacyBackfillComplete: false,
+        keys: [],
+      },
+    });
+  });
+
+  it('keeps a durable terminal checkpoint successful when ready-index cleanup fails', async () => {
+    const store = makeStore();
+    const checkpoint = controller(store);
+    await markIssuePipelineTerminal(checkpoint, 'selected-pending-publish', {
+      runId: 'run-1',
+      selectedIndexes: [0],
+    });
+    const put = store.put.bind(store);
+    store.put = async (key, data) => {
+      if (key === ASSET_REQUEST_READY_INDEX_KEY) throw new Error('index unavailable');
+      await put(key, data);
+    };
+
+    await expect(
+      markIssuePipelineTerminal(checkpoint, 'published', { publishedAt: 'now' }),
+    ).resolves.toBeUndefined();
+    await expect(loadIssueCheckpoint(checkpoint)).resolves.toMatchObject({
+      stage: 'completed',
+      details: { outcome: 'published' },
     });
   });
 
