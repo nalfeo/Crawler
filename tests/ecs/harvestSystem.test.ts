@@ -116,6 +116,7 @@ describe('harvestSystem', () => {
     tick(world, neededTicks);
     const sparkles = world.vfxEvents.filter((e) => e.kind === 'pickupSparkle');
     expect(sparkles.length).toBeGreaterThanOrEqual(1);
+    expect(sparkles[0]).toMatchObject({ pickupAudioKind: 'material' });
   });
 
   it('emits a material-gain floater on harvest completion', () => {

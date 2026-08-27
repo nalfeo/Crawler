@@ -107,6 +107,7 @@ describe('itemPickupSystem', () => {
         x: 100,
         y: 100,
         color: PICKUP_SPARKLE_COLORS.gold,
+        pickupAudioKind: 'gold',
       });
     });
 
@@ -120,6 +121,7 @@ describe('itemPickupSystem', () => {
       expect(world.vfxEvents[0]).toMatchObject({
         kind: 'pickupSparkle',
         color: PICKUP_SPARKLE_COLORS.gem,
+        pickupAudioKind: 'xp',
       });
     });
 
@@ -161,6 +163,11 @@ describe('itemPickupSystem', () => {
         x: 100,
         y: 100,
         label: `+1 ${materialDef!.name}`,
+      });
+      expect(world.vfxEvents[0]).toMatchObject({
+        kind: 'pickupSparkle',
+        color: PICKUP_SPARKLE_COLORS.item,
+        pickupAudioKind: 'material',
       });
     });
 
