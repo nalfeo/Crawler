@@ -1,5 +1,39 @@
 [
   {
+    "commit": "fd550be833786486fbff8334aa4d4103a538b34d",
+    "commitDate": "2026-08-27T12:11:16Z",
+    "commitSubject": "perf(workflow): deduplicate canvas state polling (#3685)",
+    "capturedAt": "2026-08-27T13:22:31.770Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33072416858",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/fd550be833786486fbff8334aa4d4103a538b34d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/fd550be833786486fbff8334aa4d4103a538b34d.fun-report.json"
+    }
+  },
+  {
     "commit": "a25fcefc6d4199ced23f6b44cb72a3962a057181",
     "commitDate": "2026-08-27T11:03:40Z",
     "commitSubject": "Harden Goobers E2E diagnostics and review loops (#3649)",
