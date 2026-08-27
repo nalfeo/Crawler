@@ -28,4 +28,8 @@ If the context identifies a claimed issue but does not include its body, fetch
 the full issue with `gh issue view <number> --repo nalfeo/Crawler --json
 number,title,body,labels,url` and continue from that.
 
+For Crawler kickoff ceremony in Goobers, record the verdict and apple estimate
+inside your implementation plan, handoff, and final scalar JSON outputs. Do not
+block on the absence of an interactive chat preamble.
+
 Return the final completion as raw JSON only, with scalar-only `outputs`.

@@ -40,6 +40,12 @@ If a context file names issue #3639 or another claimed issue but omits the full
 body, fetch it directly with `gh issue view <number> --repo nalfeo/Crawler
 --json number,title,body,labels,url` and use that issue body as requirements.
 
+Crawler's kickoff declarations still apply in this non-interactive run, but
+they are satisfied by including the recommended/risky/not recommended verdict
+and apple estimate in your local implementation plan, commit/handoff evidence,
+and final scalar JSON outputs. Do not return `PROCESS_CONFLICT` just because a
+normal chat preamble is unavailable.
+
 If implementation cannot safely proceed, return `blocked` with the specific
 decision or blocker rather than committing an incomplete change. Final responses
 must be raw JSON only: no Markdown fences, no prose before or after. Keep

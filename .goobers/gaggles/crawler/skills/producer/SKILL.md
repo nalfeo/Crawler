@@ -25,5 +25,9 @@ issue explicitly asks the implementer to propose defaults for tunables, make
 bounded engineering defaults and document them in the plan instead of blocking
 for maintainer input.
 
+Because this is a non-interactive Goobers run, put the Crawler kickoff verdict
+and apple estimate in the plan artifact and scalar outputs. Do not block merely
+because there is no chat preamble channel.
+
 Return the final completion as raw JSON only. Do not wrap it in Markdown. Keep
 `outputs` scalar-only; put structured details in the plan artifact.
