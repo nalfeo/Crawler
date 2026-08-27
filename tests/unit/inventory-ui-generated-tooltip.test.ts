@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { generatedEquipmentTooltipDescription } from '../../src/engine/InventoryUI.js';
+import { getItemById } from '../../src/shared/items.js';
 
 describe('generatedEquipmentTooltipDescription', () => {
   it('uses authored item catalog flavor when the generated base maps to a known item', () => {
     expect(generatedEquipmentTooltipDescription({ baseId: 'iron-sword' })).toBe(
-      'Serviceable. Boring. Gets the job done.',
+      getItemById('iron-sword')?.description,
     );
   });
 
