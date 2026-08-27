@@ -218,6 +218,24 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     expect(createdContexts[0]!.resume).toHaveBeenCalled();
   });
 
+  it('unlocks the context from a user gesture before a later cue is played', () => {
+    const listeners = new Map<string, EventListener>();
+    (globalThis as { window?: unknown }).window = {
+      AudioContext: class SuspendedAudioContext extends FakeAudioContext {
+        state: 'running' | 'suspended' | 'closed' = 'suspended';
+      },
+      addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type),
+    };
+    const engine = createAudioCueEngine();
+
+    listeners.get('keydown')!(new Event('keydown'));
+    expect(createdContexts[0]!.resume).toHaveBeenCalled();
+
+    engine.play(CUE);
+    expect(createdOscillators).toHaveLength(1);
+  });
+
   it('play() drops the cue (no scheduling) when the context is closed', () => {
     class ClosedAudioContext extends FakeAudioContext {
       state: 'running' | 'suspended' | 'closed' = 'closed';
