@@ -65,6 +65,10 @@ Also done outside the repo diff:
   `33008113986`.
 - `Goobers Validate` on this branch after the fix → **success**, run
   `33008634629`.
+- Follow-up after PR #3643: Producer, Coder, and Reviewer model selection was
+  restored to `model: auto` after the maintainer objected to hard-pinning
+  Goobers to `gpt-5.6-luna`; `Goobers Validate` passed on commit `f719a2567`,
+  run `33044287447`.
 
 This is a real before/after on the actual artifact, not a local-only check.
 
