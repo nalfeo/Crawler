@@ -58,6 +58,7 @@ export class SpritePipelineTimingCollector {
 
   private invalidSamples = 0;
   private readonly runStartedAt: number | null;
+  private snapshotValue: SpritePipelineTimingSnapshot | undefined;
 
   constructor(private readonly nowMs: MonotonicNow = () => performance.now()) {
     this.runStartedAt = this.start();
@@ -101,6 +102,7 @@ export class SpritePipelineTimingCollector {
   }
 
   snapshot(): SpritePipelineTimingSnapshot {
+    if (this.snapshotValue) return this.snapshotValue;
     const stages = { ...this.durations };
     const completedAt = this.start();
     const measuredStagesMs = SPRITE_PIPELINE_TIMING_STAGES.filter(
@@ -114,11 +116,12 @@ export class SpritePipelineTimingCollector {
         this.invalidSamples++;
       }
     }
-    return {
+    this.snapshotValue = {
       scope: 'initial-run',
       totalMs: SPRITE_PIPELINE_TIMING_STAGES.reduce((total, stage) => total + stages[stage], 0),
       stages,
       invalidSamples: this.invalidSamples,
     };
+    return this.snapshotValue;
   }
 }
