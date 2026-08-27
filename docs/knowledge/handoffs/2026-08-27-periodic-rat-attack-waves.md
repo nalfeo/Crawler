@@ -6,7 +6,7 @@
 
 ## Persona
 
-Producer
+Implementer
 
 ## Systems touched
 
@@ -28,11 +28,15 @@ map. Spawn positions stay at the configured off-screen radius, which is now
 
 Focused attack-wave tests now run spawned rats through the real
 `enemyAISystem` -> `movementSystem` pipeline and assert distance decreases.
-Source typecheck, fast verification, and the sim-side orphaned-system wiring
-check passed. The prior implementation's real pipeline harness observed a
-10-rat wave spawning through `createFloorMainSceneOptions('floor1')`; this
-repass preserves that wiring.
+Source typecheck, focused tests, formatting, and the sim-side orphaned-system
+wiring check passed. The repass adds an ECS ownership tag safe against recycled
+entity IDs, a Floor 1 behavior gate, deterministic fallback placement so valid
+waves reach their full pack size, and tests for cache reuse/invalidation and
+non-Floor-1 inertness. The prior implementation's real pipeline harness
+observed a 10-rat wave spawning through
+`createFloorMainSceneOptions('floor1')`; this repass preserves that wiring.
 
 ## What's Next / Blockers
 
-No blockers.
+`npm run verify:fast` reached 3,394 passing tests but failed two unrelated
+`tests/unit/baseline-regression-check.test.ts` CLI assertions.
