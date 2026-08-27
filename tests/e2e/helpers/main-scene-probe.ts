@@ -313,6 +313,11 @@ export const mainSceneProbe = {
     ),
   isRewardOpeningAutoDrivenForProbe: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.isRewardOpeningAutoDrivenForProbe()),
+
+  setAutoDrivenForProbe: (page: Page, enabled: boolean): Promise<void> =>
+    page.evaluate((value) => {
+      window.__mainSceneProbe!.setAutoDrivenForProbe(value);
+    }, enabled),
   tickRewardOpening: (page: Page, deltaMs: number): Promise<void> =>
     page.evaluate((ms) => window.__mainSceneProbe!.tickRewardOpening(ms), deltaMs),
   skipRewardOpening: (page: Page): Promise<void> =>

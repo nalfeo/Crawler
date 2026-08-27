@@ -1088,6 +1088,11 @@ export interface MainSceneProbeApi {
   };
   /** Current probe-controlled value returned by MainGameSceneOptions.isAutoDriven. */
   isRewardOpeningAutoDrivenForProbe(): boolean;
+  /**
+   * Latch the scene's auto-driven signal, so an e2e can exercise the paths the
+   * shipped AI/headless runners take (e.g. the timed between-floor advance).
+   */
+  setAutoDrivenForProbe(enabled: boolean): void;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
   tickRewardOpening(deltaMs: number): void;
   /** Jump the open reward-opening sequence straight to `summary`. */
@@ -2580,6 +2585,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     isRewardOpeningAutoDrivenForProbe: () => autoDrivenForProbe,
+
+    setAutoDrivenForProbe: (enabled: boolean) => {
+      autoDrivenForProbe = enabled;
+    },
 
     tickRewardOpening: (deltaMs: number) => {
       getScene()?.rewardOpeningUI?.tick(deltaMs);

@@ -77,4 +77,25 @@ describe('Between-floor summary screen', () => {
     });
     expect(new URL(page.url()).searchParams.get('floor')).toBe('floor2');
   });
+
+  it('keeps the timed auto-advance for an auto-driven run', async () => {
+    await loadMainSceneProbeLab(page);
+    await mainSceneProbe.resolveLoadout(page);
+    // The shipped AI/headless runners drive the scene with isAutoDriven() true;
+    // they have no player to press a key, so the summary must never block them.
+    await mainSceneProbe.setAutoDrivenForProbe(page, true);
+    await mainSceneProbe.primeFloor1StairTransition(page);
+
+    await mainSceneProbe.queueInteraction(page);
+    await waitForState(page, (s) => s.modalOpen, { label: 'descend confirmation modal' });
+    await page.keyboard.press('Enter');
+
+    // No acknowledgement is ever sent: the floor must advance on its own.
+    await waitForState(page, (s) => s.settlementRoomCount > 0 && s.displayObjectCount > 0, {
+      timeoutMs: 20_000,
+      label: 'Floor 2 scene after the timed auto-advance',
+    });
+    expect(new URL(page.url()).searchParams.get('floor')).toBe('floor2');
+    expect((await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement).toBe(false);
+  });
 });
