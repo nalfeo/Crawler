@@ -22,8 +22,11 @@ runs:
         node-version: ${{ inputs.node-version }}
         # Cache npm's content-addressed download store, never node_modules.
         # npm ci remains authoritative and rebuilds node_modules from the lockfile.
-        cache: 'npm'
-        cache-dependency-path: 'package-lock.json'
+        # Only enabled when this job actually installs dependencies, so the
+        # docs-only path (install-dependencies: false) never pays for a cache
+        # restore/save it has no npm ci to make use of.
+        cache: ${{ inputs.install-dependencies == 'true' && 'npm' || '' }}
+        cache-dependency-path: ${{ inputs.install-dependencies == 'true' && 'package-lock.json' || '' }}
 
     - name: Install dependencies
       if: ${{ inputs.install-dependencies == 'true' }}

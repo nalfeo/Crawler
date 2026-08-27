@@ -33,20 +33,38 @@ type ActionStep = {
 const action = parse(actionYml) as { runs: { steps: ActionStep[] } };
 
 describe('setup-node dependency caching', () => {
-  it('keys the npm download cache from package-lock.json', () => {
+  it('keys the npm download cache from package-lock.json, gated on install-dependencies', () => {
     const setupNode = action.runs.steps.find((step) => step.uses === 'actions/setup-node@v4');
 
     expect(setupNode?.with).toMatchObject({
-      cache: 'npm',
-      'cache-dependency-path': 'package-lock.json',
+      cache: "${{ inputs.install-dependencies == 'true' && 'npm' || '' }}",
+      'cache-dependency-path':
+        "${{ inputs.install-dependencies == 'true' && 'package-lock.json' || '' }}",
     });
   });
 
   it('never caches node_modules and keeps npm ci authoritative', () => {
     const install = action.runs.steps.find((step) => step.name === 'Install dependencies');
-    const cachesNodeModules = action.runs.steps.some(
-      (step) => step.uses === 'actions/cache@v4' && step.with?.path === 'node_modules',
-    );
+
+    // Normalize every configured `actions/cache*` path (any major version),
+    // splitting multiline path lists, and reject any entry whose segments
+    // include `node_modules` in any relative form (`node_modules`,
+    // `./node_modules`, `**/node_modules`, etc.).
+    const cachesNodeModules = action.runs.steps.some((step) => {
+      if (!step.uses?.startsWith('actions/cache@')) return false;
+      const rawPath = step.with?.path;
+      if (!rawPath) return false;
+      return rawPath
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .some((entry) =>
+          entry
+            .split('/')
+            .map((segment) => segment.trim())
+            .includes('node_modules'),
+        );
+    });
 
     expect(cachesNodeModules).toBe(false);
     expect(install).toMatchObject({
