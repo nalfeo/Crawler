@@ -13,12 +13,12 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { query, removeEntity } from 'bitecs';
+import { hasComponent, query, removeEntity } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
+import { makeMapWithSafeRoom, makePathMap } from '../helpers/map-fixtures.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { attackWaveSystem } from '../../src/game/attack-wave-system.js';
-import { Enemy } from '../../src/core/components.js';
+import { AttackWaveRat, Damage, Enemy } from '../../src/core/components.js';
 import { RoomRole, TilePresets, BiomeType, type MapConfig } from '../../src/shared/map-types.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -139,6 +139,11 @@ describe('attackWaveSystem', () => {
           Math.max(ratTemplate.spriteWidth, ratTemplate.spriteHeight) * 0.5,
         );
         expect(world.enemyAppearanceKeys.get(eid)).toBe(ratTemplate.id);
+        expect(hasComponent(world.ecs, eid, AttackWaveRat)).toBe(true);
+        expect(hasComponent(world.ecs, eid, Damage)).toBe(ratTemplate.contactDamage > 0);
+        if (ratTemplate.contactDamage > 0) {
+          expect(world.stores.damage.amount[eid]).toBe(ratTemplate.contactDamage);
+        }
       }
 
       // Force aggro to be active immediately (past any stagger delay) and
@@ -291,6 +296,26 @@ describe('attackWaveSystem', () => {
       // Pathable distance goes all the way around through x=18 — far greater
       // than the suppression threshold — so the wave must NOT be suppressed.
       expect(enemyCount(world)).toBeGreaterThan(0);
+    });
+
+    it('suppresses through a closed but auto-openable door (door-aware pathing)', () => {
+      const world = createTestWorld();
+      world.floorId = 'floor1';
+      const floorMap = makePathMap(false, { tileSizeFt: 4 });
+      floorMap.roomGraph.add({ x: 2, y: 3, width: 2, height: 2 }, [], [], RoomRole.SAFE);
+      world.floorMap = floorMap;
+      // Place the player on the opposite side of the door wall.
+      spawnPlayer(world, 9 * 4 + 2, 4 * 4 + 2);
+      world.attackWaveFlags.attackWaves = true;
+      const originalThreshold = TUNING.attackWaves.safeRoomSuppressionTiles;
+      TUNING.attackWaves.safeRoomSuppressionTiles = 32;
+      try {
+        world.elapsedMs = TUNING.attackWaves.intervalMs;
+        attackWaveSystem(world);
+        expect(enemyCount(world)).toBe(0);
+      } finally {
+        TUNING.attackWaves.safeRoomSuppressionTiles = originalThreshold;
+      }
     });
 
     it('reuses the cached field and invalidates it for map and cleared-room ownership changes', () => {

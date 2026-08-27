@@ -87,6 +87,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'floor4-arena-lab': '/src/labs/floor4-arena-lab/index.ts',
   'hud-family-relationships-lab': '/src/labs/hud-family-relationships-lab/index.ts',
   'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
+  'attack-wave-lab': '/src/labs/attack-wave-lab/index.ts',
   'bosschestrewards-lab': '/src/labs/bosschestrewards-lab/index.ts',
   'bosschestpickup-lab': '/src/labs/bosschestpickup-lab/index.ts',
   'settlement-maintenance-planner-lab': '/src/labs/settlement-maintenance-planner-lab/index.ts',

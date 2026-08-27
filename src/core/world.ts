@@ -936,6 +936,8 @@ export interface GameWorld {
     aliveWaveRatCount: number;
     /** Snapshot of cleared safe room IDs for cache invalidation */
     clearedSafeRoomIdsSnapshot?: string;
+    /** Snapshot of door-navigation blocker state for cache invalidation */
+    safeRoomDoorSnapshot?: string;
   };
 }
 
