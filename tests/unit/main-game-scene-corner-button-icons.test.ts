@@ -43,12 +43,28 @@ function iconOf(label: string): string {
   return second === '\uFE0F' ? `${first}${second}` : (first ?? '');
 }
 
+/**
+ * The canonical shipped column, pinned so a button added/renamed with a label
+ * this file's extraction cannot see (a constant, a template literal, double
+ * quotes) fails loudly instead of silently escaping the icon checks below.
+ */
+const EXPECTED_LABELS = [
+  '🎒 Bag',
+  '⚔️ Gear',
+  '🏆 Awards',
+  '🐾 Roster',
+  '⚡ Command',
+  '🔮 Skills',
+  '✕ Shop',
+  '🚩 Issue',
+];
+
 describe('MainGameScene corner-button icons', () => {
   const labels = cornerButtonLabels();
 
   it('finds every corner button label', () => {
-    expect(labels.length).toBeGreaterThanOrEqual(8);
-    expect(labels.every((label) => label.includes(' '))).toBe(true);
+    expect(labels).toEqual(EXPECTED_LABELS);
+    expect(SOURCE.match(/makeCornerButton\(/g)?.length).toBe(EXPECTED_LABELS.length);
   });
 
   it('renders every icon as colour emoji except the documented close glyph', () => {

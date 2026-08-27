@@ -72,7 +72,12 @@ the same 2px gutter used between the XP bar and health bar.
    zone the loot/skill panels already used (`hud-xp-panel-bounds`,
    `hud-health-panel-bounds`), and `MainGameScene` gained
    `getCornerButtonLayout()` (label + visibility + rendered bounds per button).
-   Icon _presentation_ is guarded separately and deterministically by
+   The corner-button pass arranges the shipped unlock path
+   (`resolveLoadout` + `unlockSafeRoomSurfaces`) so the buttons really render,
+   then asserts on-canvas bounds, uniform rendered height across all eight
+   buttons (Issue included), uniform column spacing, and — read off the _live_
+   scene's own label strings — that every rendered icon is a colour-emoji code
+   point. Icon presentation is additionally guarded at unit level by
    `tests/unit/main-game-scene-corner-button-icons.test.ts`, which asserts each
    corner icon carries `Emoji_Presentation` (with `✕` as the one documented
    text-glyph exception) and that U+FE0F is never appended to a code point
@@ -88,9 +93,10 @@ scene at both viewports:
 - **after** (shipped fix): both viewports pass; the loot pill sits within the
   authored 2px lower-stack gutter of the XP bar.
 
-Negative-tested the icon guard the same way: restoring `'⚑️ Issue'` fails with
-`U+FE0F on a non-emoji base glyph`, and reintroducing a bare `⚔` fails with
-`expected [ '✕', '⚔' ] to deeply equal [ '✕' ]`.
+Negative-tested the icon guards the same way: restoring `'⚑️ Issue'` fails the
+unit guard with `U+FE0F on a non-emoji base glyph` **and** the real-artifact
+e2e with `issue icon "⚑️" must render as colour emoji`; reintroducing a bare
+`⚔` fails with `expected [ '✕', '⚔' ] to deeply equal [ '✕' ]`.
 
 ## Key Decisions Made
 

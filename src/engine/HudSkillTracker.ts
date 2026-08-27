@@ -238,6 +238,7 @@ export function createHudSkillTracker(
 
   function setAllVisible(visible: boolean): void {
     panel.setVisible(visible);
+    panelBounds.setVisible(visible);
     titleStrip.setVisible(visible);
     titleText.setVisible(visible);
     overflowText.setVisible(visible);

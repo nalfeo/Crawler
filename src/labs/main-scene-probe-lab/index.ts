@@ -1973,6 +1973,19 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           }
         }
       }
+      const isRendered = (
+        object: Phaser.GameObjects.GameObject & { visible: boolean },
+      ): boolean => {
+        let current: Phaser.GameObjects.Container | null =
+          (object as Phaser.GameObjects.Zone).parentContainer ?? null;
+        while (current) {
+          if (!current.visible) {
+            return false;
+          }
+          current = current.parentContainer ?? null;
+        }
+        return object.visible;
+      };
       const read = (name: string): VitalsRowProbe | null => {
         const zone = zones.get(name);
         if (!zone) {
@@ -1980,7 +1993,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         }
         const bounds = zone.getBounds();
         return {
-          visible: zone.visible,
+          // Ancestor visibility matters: the whole vitals cluster is hidden as
+          // a group whenever a full-screen panel is open.
+          visible: isRendered(zone),
           bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         };
       };

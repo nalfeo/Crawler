@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
-import { GAME_H } from './e2e-constants.js';
+import { GAME_H, GAME_W } from './e2e-constants.js';
 
 const VIEWPORTS = [
   { width: 1280, height: 720 },
@@ -57,6 +57,10 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         context = await browser.newContext({ viewport });
         const page: Page = await context.newPage();
         await loadMainSceneProbeLab(page);
+        // Resolve the starter-weapon loadout through the shipped path (the
+        // skill tracker only renders once a weapon is equipped) and unlock the
+        // drops flag the XP row is gated on.
+        await mainSceneProbe.resolveLoadout(page);
         await mainSceneProbe.unlockExperienceBar(page);
         await page.waitForTimeout(300);
 
@@ -115,8 +119,57 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         // Probe bounds are design space (the scene keeps 1280x720 under FIT).
         expect(health.bounds.y + health.bounds.height).toBeLessThanOrEqual(GAME_H);
 
+        // Unlock the shipped safe-room surfaces so the corner buttons are
+        // actually shown by the real visibility gating, then read them back.
+        await mainSceneProbe.unlockSafeRoomSurfaces(page);
+        await page.waitForTimeout(300);
         const buttons = await mainSceneProbe.getCornerButtonLayout(page);
         expect(buttons.length, 'corner buttons must exist in the real scene').toBeGreaterThan(3);
+
+        const shown = buttons.filter((button) => button.visible);
+        expect(
+          shown.map((button) => button.id),
+          'the unlocked corner buttons must actually render',
+        ).toEqual(expect.arrayContaining(['inventory', 'equip', 'abilities']));
+
+        // Every rendered button stays fully on-canvas.
+        for (const button of shown) {
+          expect(button.bounds.x, `${button.id} left edge`).toBeGreaterThanOrEqual(0);
+          expect(button.bounds.y, `${button.id} top edge`).toBeGreaterThanOrEqual(0);
+          expect(
+            button.bounds.x + button.bounds.width,
+            `${button.id} right edge`,
+          ).toBeLessThanOrEqual(GAME_W);
+          expect(
+            button.bounds.y + button.bounds.height,
+            `${button.id} bottom edge`,
+          ).toBeLessThanOrEqual(GAME_H);
+        }
+
+        // Presentation, read off the *live* scene rather than source: every
+        // rendered icon must be a colour-emoji code point, so no button falls
+        // back to a smaller monochrome text glyph beside its neighbours. The
+        // Quartermaster `✕` is a deliberate close affordance, not an icon.
+        for (const button of buttons) {
+          const [first, second] = [...button.label];
+          const icon = second === '\uFE0F' ? `${first}${second}` : (first ?? '');
+          if (icon === '✕') {
+            continue;
+          }
+          const base = [...icon][0]!;
+          expect(
+            /\p{Emoji_Presentation}/u.test(base) ||
+              (icon.endsWith('\uFE0F') && /\p{Emoji}/u.test(base)),
+            `${button.id} icon "${icon}" must render as colour emoji`,
+          ).toBe(true);
+        }
+
+        // Rendered heights are uniform across every button, Issue included.
+        const allHeights = buttons.map((button) => button.bounds.height);
+        expect(
+          Math.max(...allHeights) - Math.min(...allHeights),
+          'every corner button must render at the same height',
+        ).toBeLessThanOrEqual(1);
 
         // Identical text styling must produce identical rendered height and a
         // shared left edge for every first-column button.
