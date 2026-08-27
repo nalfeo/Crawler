@@ -160,6 +160,7 @@ test('request creation rejects a name that cannot become a consumer id', () => {
 test('request creation persists the local counterpart of GitHub request context fields', () => {
   const { item } = addRequest(normalizeQueue({ items: [], selectedId: null, nextSeq: 1 }), {
     name: 'floor-two-goblin',
+    type: 'enemy',
     floor: 2,
     floorId: 'floor2',
     familyId: 'goblins',
@@ -332,6 +333,27 @@ test('editing an auto-typed request preserves its canonical unclassified type', 
   assert.equal(edited.resolvedType, null);
   assert.equal(edited.priority, 'high');
   assert.equal(edited.stage, 'draft');
+});
+
+test('auto-typed requests cannot persist category guidance before classification', () => {
+  const created = addRequest(
+    { items: [], selectedId: null, nextSeq: 1 },
+    {
+      name: 'unclassified asset',
+      injectionOverrides: { floor: 'floor guidance', category: 'enemy guidance' },
+    },
+  ).item;
+  assert.deepEqual(created.injectionOverrides, { floor: 'floor guidance' });
+
+  const edited = editRequestItem(
+    item(1, {
+      requestedType: 'enemy',
+      injectionOverrides: { category: 'enemy guidance' },
+    }),
+    { requestedType: 'auto' },
+  );
+  assert.equal(edited.requestedType, 'auto');
+  assert.deepEqual(edited.injectionOverrides, {});
 });
 
 test('editing validates durable request fields at the state boundary', () => {

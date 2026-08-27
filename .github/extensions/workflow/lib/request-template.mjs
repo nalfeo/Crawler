@@ -87,7 +87,8 @@ export function parseRequestTemplate(text) {
 }
 
 export function normalizeCategoryOverride(value, type, categoryDesignLanguage) {
+  if (type === 'auto') return '';
   var normalized = String(value || '').trim();
-  var canonical = type === 'auto' ? '' : String(categoryDesignLanguage[type] || '').trim();
+  var canonical = String(categoryDesignLanguage[type] || '').trim();
   return normalized === canonical ? '' : normalized;
 }

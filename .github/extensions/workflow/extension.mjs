@@ -1890,7 +1890,13 @@ const jsonRoutes = [
         if (typeof body.itemId !== 'string' || !body.patch || typeof body.patch !== 'object') {
           throw new CanvasError('bad-request', 'itemId and patch are required.');
         }
-        await replaceWorkflowItem(entry, body.itemId, (item) => editRequestItem(item, body.patch));
+        await replaceWorkflowItem(entry, body.itemId, (item) => {
+          try {
+            return editRequestItem(item, body.patch);
+          } catch (error) {
+            throw new CanvasError('bad-request', error?.message ?? String(error));
+          }
+        });
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },

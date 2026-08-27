@@ -112,6 +112,19 @@ test('invalid Author request input returns the established bad-request error typ
   );
 });
 
+test('invalid request edits return the established bad-request error type', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf("path: '/api/workflow/edit'");
+  const end = source.indexOf("path: '/api/workflow/synthesize'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /return editRequestItem\(item, body\.patch\)/);
+  assert.match(
+    route,
+    /catch \(error\) \{\s*throw new CanvasError\('bad-request', error\?\.message \?\? String\(error\)\);/,
+  );
+});
+
 test('Azure polling pushes an iframe update only when a queued generation completes', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /let changed = false/);

@@ -245,6 +245,8 @@ export function createRequestItem(state, input) {
   if (!slugify(name)) throw new Error('A short asset name must contain letters or numbers.');
   const seq = state.nextSeq;
   const requestedType = SPRITE_TYPES.has(input.type) ? input.type : 'auto';
+  const injectionOverrides = normalizeInjectionOverrides(input.injectionOverrides);
+  if (requestedType === 'auto') delete injectionOverrides.category;
   return {
     id: `item-${seq}`,
     seq,
@@ -256,7 +258,7 @@ export function createRequestItem(state, input) {
     floorId: optionalTrimmedString(input.floorId),
     familyId: optionalTrimmedString(input.familyId),
     mobRole: MOB_ROLES.has(input.mobRole) ? input.mobRole : null,
-    injectionOverrides: normalizeInjectionOverrides(input.injectionOverrides),
+    injectionOverrides,
     priority: REQUEST_PRIORITIES.has(input.priority) ? input.priority : 'normal',
     requester: optionalTrimmedString(input.requester),
     assetRequestContext: null,
@@ -386,6 +388,13 @@ export function editRequestItem(item, patch) {
   }
   if (typeof edited.injectionOverrides === 'object' && edited.injectionOverrides !== null) {
     edited.injectionOverrides = normalizeInjectionOverrides(edited.injectionOverrides);
+  }
+  const nextRequestedType = edited.requestedType ?? item.requestedType;
+  if (nextRequestedType === 'auto') {
+    edited.injectionOverrides = normalizeInjectionOverrides(
+      edited.injectionOverrides ?? item.injectionOverrides,
+    );
+    delete edited.injectionOverrides.category;
   }
   const promptChanged = Object.keys(edited).some((key) => {
     if (!PROMPT_AFFECTING_FIELDS.has(key)) return false;

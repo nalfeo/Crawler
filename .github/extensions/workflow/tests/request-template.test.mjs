@@ -88,4 +88,8 @@ test('canonical category text is display guidance, not a persisted request overr
     'custom enemy language',
   );
   assert.equal(normalizeCategoryOverride('', 'auto', designLanguage), '');
+  assert.equal(
+    normalizeCategoryOverride('premature category language', 'auto', designLanguage),
+    '',
+  );
 });
