@@ -154,8 +154,13 @@ jobs:
           fi
 
           if [ "${ABANDON_EXISTING}" = "true" ]; then
+            branch="$(
+              gh pr view "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
+                --json headRefName --jq '.headRefName'
+            )"
             gh pr close "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
               --comment "Goobers recovery instructed to abandon this partial-progress PR; a fresh run will start from the issue."
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"
             echo "Abandoned open Goobers PR #${pr_number} by explicit instruction; starting over."
             exit 0
           fi

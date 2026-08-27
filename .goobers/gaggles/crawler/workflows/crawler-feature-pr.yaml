@@ -213,6 +213,8 @@ spec:
       run:
         script: |
           set -eu
+          # Recovery branches are agent-authored; skip lifecycle scripts while
+          # installing the dependencies needed by the pre-push verification.
           npm ci --ignore-scripts
           goobers push-branch
       capabilities:
@@ -226,6 +228,8 @@ spec:
       run:
         script: |
           set -eu
+          # The checkpoint runs before review, so dependency installation must
+          # not execute lifecycle scripts from the unreviewed branch.
           npm ci --ignore-scripts
           goobers push-branch
           goobers open-pr
@@ -329,4 +333,4 @@ spec:
           equals: 'true'
       branches:
         pass: close-out
-        fail: '@abort'
+        fail: close-out

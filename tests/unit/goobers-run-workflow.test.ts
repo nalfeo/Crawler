@@ -323,6 +323,18 @@ describe('Goobers automatic dispatch and recovery', () => {
       workflow.jobs.run?.steps?.find((step) => step.name === 'Checkout recovered Goobers branch')
         ?.run,
     ).toContain('gh pr checkout "${GOOBERS_RESUME_PR}"');
+    const definition = loadYaml<GoobersDefinition>(
+      '.goobers',
+      'gaggles',
+      'crawler',
+      'workflows',
+      'crawler-feature-pr.yaml',
+    );
+    expect(
+      definition.spec.gates.find((gate) => gate.name === 'pr-opened-gate')?.branches,
+    ).toMatchObject({
+      fail: 'close-out',
+    });
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Preserve trusted Goobers source')
         ?.run,
