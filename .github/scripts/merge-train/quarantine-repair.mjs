@@ -178,6 +178,17 @@ export function repairEligibility(pr, repositoryFullName) {
  * record left over from a PREVIOUS head sha (the branch moved since
  * quarantine -- e.g. a human force-pushed a fix -- and may no longer be
  * un-advanceable at all).
+ *
+ * The status comment is matched to a TRUSTED author (`isTrustedNoticeAuthor`
+ * -- the same GitHub App / bot-login / association allowlist already used for
+ * the repair-notice comment below) before its strike record is trusted at
+ * all. Without that check, any public commenter could pre-seed a leading
+ * `STATUS_MARKER` comment carrying a threshold-reaching strike record for the
+ * PR's visible head sha; if the PR were later given `BLOCKED_LABEL` for an
+ * unrelated reason (a validation failure or no-op de-admit), this function
+ * would otherwise treat the forged comment as proof of a restricted-branch
+ * quarantine it never actually underwent, and repair would open a live
+ * sibling PR carrying that same untrusted diff.
  */
 export async function isConfirmedRestrictedBranchQuarantine({
   paginateFn,
@@ -187,7 +198,9 @@ export async function isConfirmedRestrictedBranchQuarantine({
   pr,
 }) {
   const comments = await paginateFn(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
-  const statusComment = comments.find((comment) => hasLeadingMarker(comment.body, STATUS_MARKER));
+  const statusComment = comments.find(
+    (comment) => hasLeadingMarker(comment.body, STATUS_MARKER) && isTrustedNoticeAuthor(comment),
+  );
   const strike = parseUnadvanceableStrike(statusComment?.body || '');
   if (strike.strikes < UNADVANCEABLE_STRIKE_THRESHOLD) {
     return {

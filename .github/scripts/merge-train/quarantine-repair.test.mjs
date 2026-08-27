@@ -29,9 +29,17 @@ const REPO = 'Crawler';
 const HEAD_SHA = '3a4a769647904d9a32f449bee658a241d0c4a748';
 const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 
-function quarantineStatusComment(headSha = HEAD_SHA, strikes = UNADVANCEABLE_STRIKE_THRESHOLD) {
+function quarantineStatusComment(
+  headSha = HEAD_SHA,
+  strikes = UNADVANCEABLE_STRIKE_THRESHOLD,
+  { trusted = true } = {},
+) {
   return {
     body: `${STATUS_MARKER}\n## Merge train\n\n${renderUnadvanceableStrike({ headSha, strikes, attempts: strikes })}`,
+    // The real status comment is always posted/patched by the merge-train
+    // automation identity; `performed_via_github_app` simulates that, the
+    // same signal `isTrustedNoticeAuthor` checks in production.
+    ...(trusted ? { performed_via_github_app: {} } : {}),
   };
 }
 
@@ -169,6 +177,31 @@ test('isConfirmedRestrictedBranchQuarantine confirms only a live, threshold-reac
   );
   // Stale record: the branch moved since the strike was recorded.
   assert.equal((await confirmedFor([quarantineStatusComment('f'.repeat(40))])).confirmed, false);
+  // Untrusted marker: a public commenter pre-seeded a threshold-reaching
+  // strike record for the CURRENT head sha, but never through the
+  // automation identity. This must never be treated as a confirmed
+  // restricted-branch quarantine, even though the marker and strike count
+  // otherwise look legitimate -- see PR review discussion on
+  // `isConfirmedRestrictedBranchQuarantine`.
+  assert.equal(
+    (
+      await confirmedFor([
+        quarantineStatusComment(HEAD_SHA, UNADVANCEABLE_STRIKE_THRESHOLD, { trusted: false }),
+      ])
+    ).confirmed,
+    false,
+  );
+  // A trusted marker must still win even if an untrusted forged one was
+  // posted first (or second) in the comment thread.
+  assert.equal(
+    (
+      await confirmedFor([
+        quarantineStatusComment(HEAD_SHA, UNADVANCEABLE_STRIKE_THRESHOLD, { trusted: false }),
+        quarantineStatusComment(),
+      ])
+    ).confirmed,
+    true,
+  );
 });
 
 function stubGithub({
