@@ -243,6 +243,29 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     expect(createdOscillators).toHaveLength(1);
   });
 
+  it('keeps activation listeners when resume does not start the context', async () => {
+    const listeners = new Map<string, { listener: EventListener; capture: boolean }>();
+    (globalThis as { window?: unknown }).window = {
+      AudioContext: class StillSuspendedAudioContext extends FakeAudioContext {
+        state: 'running' | 'suspended' | 'closed' = 'suspended';
+        resume = vi.fn(async () => {});
+      },
+      addEventListener: (type: string, listener: EventListener, capture: boolean) =>
+        listeners.set(type, { listener, capture }),
+      removeEventListener: (type: string, listener: EventListener, capture: boolean) => {
+        const registered = listeners.get(type);
+        if (registered?.listener === listener && registered.capture === capture)
+          listeners.delete(type);
+      },
+    };
+    createAudioCueEngine();
+
+    listeners.get('keydown')!.listener(new Event('keydown'));
+    await Promise.resolve();
+
+    expect(listeners.size).toBe(3);
+  });
+
   it('drops cues and removes activation listeners when the context is closed', () => {
     class ClosedAudioContext extends FakeAudioContext {
       state: 'running' | 'suspended' | 'closed' = 'closed';

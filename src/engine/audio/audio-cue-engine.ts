@@ -139,7 +139,9 @@ export function createAudioCueEngine(): AudioCueEngine {
     }
     void audioCtx
       .resume()
-      .then(removeActivationListeners)
+      .then(() => {
+        if (audioCtx.state === 'running') removeActivationListeners();
+      })
       .catch(() => {
         // Autoplay-blocked contexts retry on the next genuine user gesture.
       });
