@@ -30,6 +30,8 @@ and a later firing can damage the same enemies again.
   expires.
 - Updated theoretical single-target DPS and AI equipment valuation from four
   same-target ticks to one hit per target.
+- Recorded the cross-layer contract in
+  `docs/knowledge/adr/2026-08-27-beam-single-hit-contract.md`.
 - Replaced the repeated-hit test contract with deterministic coverage for
   same-beam deduplication, late entrants, later firings, and skill-event
   deduplication.
