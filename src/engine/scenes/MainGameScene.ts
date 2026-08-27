@@ -68,6 +68,7 @@ import {
   areLightingRectsEqual,
   canFileLiveIssue,
   extrapolateRenderPosition,
+  findClickedNearbyNpc,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getLightingViewRect,
@@ -873,8 +874,10 @@ export class MainGameScene extends Phaser.Scene {
   /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
   private activeConversationLines: readonly string[] | null = null;
 
-  /** One-frame latch set by pointer tap/click to advance or start dialogue. */
+  /** One-frame latch set by a pointer tap on an NPC or during active dialogue. */
   private tappedInteraction = false;
+  /** NPC selected by this frame's pointer tap, when dialogue is not yet open. */
+  private tappedNpcEid: number | null = null;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -1406,6 +1409,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid = null;
       this.activeConversationLines = null;
       this.tappedInteraction = false;
+      this.tappedNpcEid = null;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1455,6 +1459,14 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  getAchievementsButtonBounds(): ScreenBounds | null {
+    if (!this.achievementsButton?.visible) {
+      return null;
+    }
+    const bounds = this.achievementsButton.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
   /**
    * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
    * home-indicator band on notched devices (zero inset elsewhere).
@@ -1494,7 +1506,24 @@ export class MainGameScene extends Phaser.Scene {
     ) {
       return;
     }
-    this.tappedInteraction = true;
+    if (this.conversationNpcEid !== null) {
+      this.tappedInteraction = true;
+      return;
+    }
+    pointer.updateWorldPoint(this.cameras.main);
+    const npcEid = findClickedNearbyNpc(
+      pxToFt(pointer.worldX),
+      pxToFt(pointer.worldY),
+      this.world.npcs,
+      this.world.stores.position.x,
+      this.world.stores.position.y,
+      this.world.stores.size.halfWidth,
+      this.world.stores.size.halfHeight,
+    );
+    if (npcEid >= 0) {
+      this.tappedNpcEid = npcEid;
+      this.tappedInteraction = true;
+    }
   }
 
   private handleKeyboardE(): void {
@@ -1507,6 +1536,7 @@ export class MainGameScene extends Phaser.Scene {
   private clearPendingInteractionInput(): void {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -5041,7 +5071,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction || this.queuedInteraction;
+    const tappedNpcEid = this.tappedNpcEid;
+    // A pointer tap latches onto the exact NPC whose footprint was clicked, but
+    // the simulation step runs before this code and can move that NPC out of
+    // interaction range. Cancel such a tap instead of letting it retarget a
+    // different nearby NPC.
+    const tappedNpcInvalidated =
+      tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;
+    const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;
     const interactionInputRequested =
       tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE));
     const interactionRequested =
@@ -5050,6 +5087,7 @@ export class MainGameScene extends Phaser.Scene {
         : interactionInputRequested && !this.isBlockingSurfaceOpen();
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
@@ -5150,15 +5188,17 @@ export class MainGameScene extends Phaser.Scene {
       Math.hypot(playerX - stairMarker.positionFt.x, playerY - stairMarker.positionFt.y) <=
         stairMarker.radiusFt;
 
-    if (nearNpcEid >= 0) {
+    const selectedNpcEid =
+      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+    if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
-        if (this.tryQueueSettlementShopOpenFromNpc(nearNpcEid)) {
+        if (this.tryQueueSettlementShopOpenFromNpc(selectedNpcEid)) {
           return;
         }
-        const instance = this.world.npcs.get(nearNpcEid);
+        const instance = this.world.npcs.get(selectedNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
           // Shopkeeper errand: advance the merchant's multistep flow on talk.
@@ -5182,10 +5222,10 @@ export class MainGameScene extends Phaser.Scene {
               spellQuestGiver: this.options.spellQuestGiver,
               shopkeeperJustReturned: this.shopkeeperJustReturned,
             },
-            nearNpcEid,
+            selectedNpcEid,
           );
           if (def && activeDialogue.length > 0) {
-            this.conversationNpcEid = nearNpcEid;
+            this.conversationNpcEid = selectedNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
               this.options.tutorialGoon.meet(this.world);
             }
