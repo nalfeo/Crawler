@@ -218,19 +218,26 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     expect(createdContexts[0]!.resume).toHaveBeenCalled();
   });
 
-  it('unlocks the context from a user gesture before a later cue is played', () => {
-    const listeners = new Map<string, EventListener>();
+  it('unlocks the context from a user gesture before a later cue is played', async () => {
+    const listeners = new Map<string, { listener: EventListener; capture: boolean }>();
     (globalThis as { window?: unknown }).window = {
       AudioContext: class SuspendedAudioContext extends FakeAudioContext {
         state: 'running' | 'suspended' | 'closed' = 'suspended';
       },
-      addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
-      removeEventListener: (type: string) => listeners.delete(type),
+      addEventListener: (type: string, listener: EventListener, capture: boolean) =>
+        listeners.set(type, { listener, capture }),
+      removeEventListener: (type: string, listener: EventListener, capture: boolean) => {
+        const registered = listeners.get(type);
+        if (registered?.listener === listener && registered.capture === capture)
+          listeners.delete(type);
+      },
     };
     const engine = createAudioCueEngine();
 
-    listeners.get('keydown')!(new Event('keydown'));
+    listeners.get('keydown')!.listener(new Event('keydown'));
     expect(createdContexts[0]!.resume).toHaveBeenCalled();
+    await Promise.resolve();
+    expect(listeners).toHaveLength(0);
 
     engine.play(CUE);
     expect(createdOscillators).toHaveLength(1);

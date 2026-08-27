@@ -125,7 +125,10 @@ export function createAudioCueEngine(): AudioCueEngine {
 
   function unlockFromUserGesture(): void {
     const audioCtx = ensureContext();
-    if (!audioCtx) return;
+    if (!audioCtx) {
+      removeActivationListeners();
+      return;
+    }
     if (audioCtx.state === 'running') {
       removeActivationListeners();
       return;
