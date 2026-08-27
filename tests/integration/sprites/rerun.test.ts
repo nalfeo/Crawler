@@ -144,6 +144,7 @@ describe('repostprocessRun', () => {
     expect(result.summary.runId).toBe(before.runId);
     expect(result.summary.briefPath).toBe(before.briefPath);
     expect(result.summary.createdAt).toBe(before.createdAt);
+    expect(result.summary.timing).toEqual(before.timing);
   });
 
   it('honours tweaked post-processing options', async () => {
@@ -312,6 +313,7 @@ describe('rejudgeRun', () => {
       expect(c.judgeScorecard).not.toBeNull();
       expect(c.combinedPassed).toBe(true);
     }
+    expect(result.summary.timing).toEqual(before.timing);
   });
 
   it('merges a partial re-judge over prior verdicts', async () => {

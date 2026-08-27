@@ -26,6 +26,7 @@ import type { RunStore } from './store/types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { createLogger } from '../../src/shared/logger.js';
 import { ANCHOR_CENTER_OF_MASS_SENSOR, ANCHOR_DERIVABLE_SENSOR } from './score-candidate.js';
+import type { SpritePipelineTimingCollector } from './pipeline-timing.js';
 
 const logger = createLogger('infra:run-pipeline');
 
@@ -78,6 +79,8 @@ export interface ProcessVariantArgs {
     readonly overrideProfilePath?: string | null;
     readonly effectivePipelineSnapshotPath?: string | null;
   };
+  /** Initial-run timing collector. Omit for operator-driven reprocess runs. */
+  readonly timing?: SpritePipelineTimingCollector;
 }
 
 /**
@@ -93,6 +96,7 @@ export async function postprocessScoreAndStoreVariant(
   args: ProcessVariantArgs,
 ): Promise<ProcessedVariant> {
   const { store, storeKey, index, raw, brief, palette } = args;
+  const processingStartedAt = args.timing?.start() ?? null;
   const traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
   const manualAnchorForVariant =
     args.manualAnchor &&
@@ -105,7 +109,9 @@ export async function postprocessScoreAndStoreVariant(
     manualAnchorForVariant,
   );
   const id = pad2(index);
+  args.timing?.finish('slicingAndPostprocess', processingStartedAt);
 
+  const persistenceStartedAt = args.timing?.start() ?? null;
   await store.put(storeKey(`raw/${id}.png`), raw);
   await store.put(storeKey(`processed/${id}.png`), processed);
   await store.put(
@@ -283,7 +289,7 @@ export async function postprocessScoreAndStoreVariant(
     }),
   );
 
-  return {
+  const result: ProcessedVariant = {
     index,
     score: scorecard.score,
     outOf: scorecard.outOf,
@@ -299,6 +305,8 @@ export async function postprocessScoreAndStoreVariant(
     anchorOverlayPath: store.resolve(overlayKey),
     processed,
   };
+  args.timing?.finish('candidatePersistence', persistenceStartedAt);
+  return result;
 }
 
 export interface JudgePassArgs {

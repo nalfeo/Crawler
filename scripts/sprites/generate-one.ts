@@ -72,6 +72,7 @@ import {
   selectReferences,
   SELECTOR_VERSION,
 } from './reference-selector.js';
+import { SpritePipelineTimingCollector, type MonotonicNow } from './pipeline-timing.js';
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
 import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
@@ -107,6 +108,8 @@ export interface GenerateOneOptions {
   readonly maxAttempts?: number;
   /** Clock injection for deterministic tests. */
   readonly now?: () => Date;
+  /** Monotonic clock injection used only for duration telemetry. */
+  readonly monotonicNow?: MonotonicNow;
   /** Reference PNG loader injection; defaults to `fs.readFileSync`. */
   readonly readReference?: (absolutePath: string) => Buffer;
   /**
@@ -231,6 +234,7 @@ export interface GenerateSheetCoreResult {
    */
   readonly expected: number;
   readonly identity: RunSummaryIdentity;
+  readonly timing: SpritePipelineTimingCollector;
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
@@ -303,6 +307,7 @@ export async function generateSheetCore(
   const maxAttempts = options.maxAttempts ?? 2;
   const now = options.now ?? (() => new Date());
   const createdAt = now();
+  const timing = new SpritePipelineTimingCollector(options.monotonicNow);
   const readReference = options.readReference ?? ((p) => readFileSync(p));
   const resolveRealpath = options.realpath ?? realpathSync;
   // Default to a local store rooted at <outputRoot>/runs — same layout as before.
@@ -318,11 +323,13 @@ export async function generateSheetCore(
   // Graceful degradation: when no text provider is configured or the
   // call fails, we use the author's seed unchanged — the run still
   // produces sprites, just without the LLM-brainstormed extras.
-  const expansion = await expandVariations({
-    brief,
-    provider: options.textProvider ?? null,
-    ...(options.warn ? { warn: options.warn } : {}),
-  });
+  const expansion = await timing.measure('variationExpansion', () =>
+    expandVariations({
+      brief,
+      provider: options.textProvider ?? null,
+      ...(options.warn ? { warn: options.warn } : {}),
+    }),
+  );
   // Shallow brief copy with the resolved variations list so downstream
   // pure code (build-prompt, run-summary) doesn't need to know an
   // expansion step happened. Original brief object stays untouched.
@@ -394,6 +401,7 @@ export async function generateSheetCore(
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
+  const referencesStartedAt = timing.start();
   if (supportsReferenceImages) {
     const presentCandidates = loadReferenceCandidates().filter(
       (entry) =>
@@ -506,6 +514,7 @@ export async function generateSheetCore(
     });
     referencePngs = [...seedPngs, ...referencePngs];
   }
+  timing.finish('referenceSelectionAndPngReads', referencesStartedAt);
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
@@ -519,15 +528,21 @@ export async function generateSheetCore(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++;
     try {
-      const sheet = await options.provider.generateSheet({
-        brief: effectiveBrief,
-        prompt,
-        singleVariantPrompt,
-        referencePngs,
-        variants: expected,
-      });
-      await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
+      const sheet = await timing.measure('provider', () =>
+        options.provider.generateSheet({
+          brief: effectiveBrief,
+          prompt,
+          singleVariantPrompt,
+          referencePngs,
+          variants: expected,
+        }),
+      );
+      await timing.measure('initialSheetPersistence', () =>
+        store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet),
+      );
+      const slicingStartedAt = timing.start();
       const slice = sliceSheetFromBrief(sheet, brief);
+      timing.finish('slicingAndPostprocess', slicingStartedAt);
       // Structural-only gate (ADR 0052): the slicer
       // is data-driven and never invents cuts, so it emits the sheet's HONEST
       // grid at its real count — which may differ from the brief's commanded
@@ -621,6 +636,7 @@ export async function generateSheetCore(
     attempts,
     expected,
     identity,
+    timing,
   };
 }
 
@@ -636,7 +652,7 @@ export async function generateSheetCore(
  */
 export async function generateOne(options: GenerateOneOptions): Promise<GenerateOneResult> {
   const core = await generateSheetCore(options);
-  const { store, storeKey, runDir, brief, attempts, identity } = core;
+  const { store, storeKey, runDir, brief, attempts, identity, timing } = core;
 
   const summary: RunSummary = {
     ...identity,
@@ -645,6 +661,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     chosen: null,
     judgeBudget: null,
     judgeCache: null,
+    timing: timing.snapshot(),
   };
 
   const summaryKey = storeKey('summary.json');
