@@ -14,7 +14,7 @@
  */
 import type { CatalogEffect, TimedBuffModifier } from './progression-effects.js';
 import { STAT_DISPLAY } from './stat-display.js';
-import type { StatKey } from './stats.js';
+import type { ScalableOutput, StatKey } from './stats.js';
 import { GAME } from './constants.js';
 
 /**
@@ -64,7 +64,7 @@ function formatModifier(modifier: TimedBuffModifier): string {
   const label = STAT_DISPLAY[stat].label;
   const value = modifier.value.base;
   // `damage` splits by op: `add` is flat damage, `multiply` is a percentage.
-  if (FRACTION_STATS.has(stat) || modifier.op === 'multiply') {
+  if (FRACTION_STATS.has(stat) || (stat === 'damage' && modifier.op === 'multiply')) {
     return `${label} +${formatNumber(value * 100)}%`;
   }
   return `${label} +${formatNumber(value, 2)}`;
@@ -121,22 +121,35 @@ function summarizeEffect(effect: CatalogEffect, tileSizeFt: number): string[] {
 }
 
 /** True when any of the spell's outputs grows with Intelligence. */
+function anyScalesWithIntelligence(...outputs: readonly ScalableOutput[]): boolean {
+  return outputs.some((output) => output.scalesWithIntelligence);
+}
+
 function scalesWithIntelligence(effect: CatalogEffect): boolean {
   switch (effect.type) {
     case 'spell_fireball':
-    case 'spell_frost_nova':
+      return anyScalesWithIntelligence(effect.damage, effect.radiusTiles);
     case 'spell_magic_missile':
-      return effect.damage.scalesWithIntelligence;
-    case 'spell_life_drain':
-      return effect.damage.scalesWithIntelligence || effect.heal.scalesWithIntelligence;
-    case 'spell_heal':
-      return effect.heal.scalesWithIntelligence;
-    case 'spell_pulse_shield':
-      return (
-        effect.knockbackForce.scalesWithIntelligence || effect.radiusTiles.scalesWithIntelligence
+      return anyScalesWithIntelligence(effect.damage, effect.rangeTiles);
+    case 'spell_frost_nova':
+      return anyScalesWithIntelligence(
+        effect.damage,
+        effect.radiusTiles,
+        effect.slowMultiplier,
+        effect.slowDurationMs,
       );
+    case 'spell_life_drain':
+      return anyScalesWithIntelligence(effect.damage, effect.rangeTiles, effect.heal);
+    case 'spell_heal':
+      return anyScalesWithIntelligence(effect.heal);
+    case 'spell_pulse_shield':
+      return anyScalesWithIntelligence(effect.knockbackForce, effect.radiusTiles);
     case 'spell_enemy_slow_burst':
-      return effect.radiusTiles.scalesWithIntelligence;
+      return anyScalesWithIntelligence(
+        effect.radiusTiles,
+        effect.slowMultiplier,
+        effect.slowDurationMs,
+      );
     case 'spell_timed_buff':
       return (
         effect.durationFrames.scalesWithIntelligence ||

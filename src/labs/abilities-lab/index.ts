@@ -287,6 +287,12 @@ interface AbilityLoadoutProbe {
   getPanelScreenBounds(): ScreenBounds;
   getListViewportScreenBounds(): ScreenBounds;
   getVisibleRowScreenBounds(): ScreenBounds[];
+  getVisibleRowLayouts(): {
+    readonly id: string;
+    readonly row: ScreenBounds;
+    readonly details: ScreenBounds;
+    readonly description: ScreenBounds;
+  }[];
   getVisibleAbilityIds(): string[];
   getFooterScreenBounds(): ScreenBounds;
   getSelectedAbilityId(): string | null;
@@ -310,6 +316,12 @@ export interface AbilitiesProbeSnapshot {
   readonly panel: ScreenBounds | null;
   readonly listViewport: ScreenBounds | null;
   readonly visibleRows: readonly ScreenBounds[];
+  readonly visibleRowLayouts: readonly {
+    readonly id: string;
+    readonly row: ScreenBounds;
+    readonly details: ScreenBounds;
+    readonly description: ScreenBounds;
+  }[];
   readonly visibleAbilityIds: readonly string[];
   readonly footer: ScreenBounds | null;
   readonly hotbar: ScreenBounds | null;
@@ -723,6 +735,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         panel: open ? (loadout?.getPanelScreenBounds() ?? null) : null,
         listViewport: open ? (loadout?.getListViewportScreenBounds() ?? null) : null,
         visibleRows: open ? (loadout?.getVisibleRowScreenBounds() ?? []) : [],
+        visibleRowLayouts: open ? (loadout?.getVisibleRowLayouts() ?? []) : [],
         visibleAbilityIds: open ? (loadout?.getVisibleAbilityIds() ?? []) : [],
         footer: open ? (loadout?.getFooterScreenBounds() ?? null) : null,
         hotbar: scene?.hudUi?.getAbilityBarBounds() ?? null,
