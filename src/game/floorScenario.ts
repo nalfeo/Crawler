@@ -2932,17 +2932,17 @@ function explodeEnemiesInClearedBossRoom(world: GameWorld, room: RoomData | null
   }
 
   for (const eid of query(world.ecs, [Enemy, Position])) {
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
     // Preserve a boss's death animation and spawner death handshakes.
     if (
       hasComponent(world.ecs, eid, DeathTimer) ||
       hasComponent(world.ecs, eid, Spawner) ||
-      !isInRoom(world, world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0, room)
+      !isInRoom(world, x, y, room)
     ) {
       continue;
     }
 
-    const x = world.stores.position.x[eid] ?? 0;
-    const y = world.stores.position.y[eid] ?? 0;
     world.combatEvents.push({
       type: 'corpseExplode',
       x,
