@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "floor2-wiggle-stuck-repair",
+  "task_title": "Floor 2 wiggle/stuck telemetry redefinition + territory-boundary fix",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "Plan sound: reuse/refine existing event-summary machinery, narrow always-on RunStats.movementQuality contract. Residual concern (manual seed spot-checks are weak evidence for a distribution-wide win-rate claim on the territory-hysteresis tuning change) resolved during code review by running a Floor 2 win-rate sweep (see docs/knowledge/handoffs/2026-08-21-floor2-wiggle-stuck-repair.md) instead of relying on the original 4 spot-checked seeds."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "98edd45be4467043df404186fa9d6f20c7543474",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "findings": [],
+      "notes": "Historical ledger repair: record tool can only bind current HEAD, so this stage records an independent grade of commit 98edd45be4467043df404186fa9d6f20c7543474 against parent ecc57dd349475c8dd32cde2fdadae5be7b25bc1e."
+    }
+  }
+}

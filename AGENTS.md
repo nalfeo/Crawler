@@ -14,7 +14,8 @@
 
 - **Synchronize before publishing:** Preflight runs `npm run sync:main -- --reason session-start`. Run `npm run sync:main -- --reason pre-publish` before final validation and PR publication; if it changes HEAD, rerun affected validation. Sync it manually at any point with `npm run sync:main -- --reason periodic` (it defers cleanly on a dirty worktree). Synchronization never pushes, and missing/stale sync evidence never blocks publication.
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
-- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+- **Plans stay in session chat and PR context:** When giving a plan, write the full plan in session chat and preserve it in the progress summary / PR description via the progress-report tool. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+- **Never block on posting a comment:** Do **not** try to satisfy a plan/status requirement by writing an issue or PR comment with `gh issue comment`, `gh pr comment`, or a comment API — cloud sessions have no credentials for that, and stopping to ask for comment access throws away the whole session. If an issue asks for a "plan comment", publish that exact content through the progress-report tool (progress summary and PR description) and keep working; CI recovery mirrors it back onto the issue. The only exception is replying in an existing PR **review thread** with the `✅ Addressed in <sha>` / `✅ Not applicable:` markers, which uses the dedicated reply tool.
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Sweep Results Viewer deep links are required:** Whenever you discuss, start, check, check the status of, or report results for any sweep (weapon-sweep **or** AI Sweep Eval), you **MUST** include an app-native Sweep Results Viewer reference in your response. Use the canvas `runId` input: `project:sweep-results-viewer runId=<run-id>`. A raw GitHub Actions URL may appear as a **secondary** fallback only — never as the sole navigation path. This applies to every mention of a sweep run id, workflow dispatch confirmation, status update, and results summary.
@@ -33,7 +34,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 2. **Converge on a bounded, single-metric ask.** Continue until the request has one hard, measurable success gate (a number or checkable condition) plus a ranked list of soft tiebreakers. Open-ended "make it good/better/faster" directives are not ready to start.
 3. **Reflect it back before coding.** Restate the ask in bounded form and get an explicit yes/no before writing code.
 4. **Push back on drift.** If an ask has no measurable done-state, say so and ask the narrowing question instead of guessing or silently scoping it yourself.
-5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session chat.
+5. **Say whether it's a good idea.** Be vocal about whether the ask is sound, and output plans directly in the session response (and in the PR description for cloud/coding-agent sessions).
 
 ## Commands
 
@@ -114,6 +115,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | AI gen configs            | `npm run ai:gen-configs`                                                                                                                    |
 | AI sweep eval             | `npm run ai:sweep-eval`                                                                                                                     |
 | AI aggregate shards       | `npm run ai:aggregate-shards`                                                                                                               |
+| Asset request refs        | `npm run sprites:asset-request`                                                                                                             |
 | Sprite check-in           | `npm run sprites:checkin`                                                                                                                   |
 | Sprite asset PR           | `npm run sprites:asset-pr`                                                                                                                  |
 | Sprite normalize names    | `npm run sprites:normalize-names`                                                                                                           |
@@ -272,14 +274,25 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 ## Merge Policy
 
 - **Always create PRs as ready for review — never as draft.** When using the `create_pull_request` tool, always pass `draft: false` or omit the draft parameter entirely. The CI pipeline and review + fix automation are only triggered on non-draft PRs, so draft PRs stall the whole pipeline.
-- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
+- **The merge train is the ONLY thing that merges a PR. Do not arm auto-merge.** `merge-train` is itself a **required status check** (repo ruleset `Merge Train Required Checks`, alongside `ci`). Nothing but the train's own promotion loop ever reports that context, so `gh pr merge --auto --squash` can **never** land a PR here no matter how green it is. On top of that, `.github/scripts/merge-train/reconcile.mjs` calls `disableAutoMerge()` on every PR it admits and blocks promotion if auto-merge is re-armed mid-flight. Arming auto-merge is therefore not a harmless fallback: it is a no-op that produces false confidence and hides the real blocker. **Do not run `gh pr merge --auto` as a way to unstick a PR.** To get a PR merged: make required checks pass and review threads resolve; CI Recovery applies the `merge-train` label itself (`QUEUE_MERGE_TRAIN` dispatch action), and the train admits → validates → promotes it in sequence.
+- **How the train actually lands a PR** (the mental model to reason from):
+  1. Queue membership is the `merge-train` **label**. The train reconciles on a ~30-minute schedule plus PR events.
+  2. Queued PRs are admitted in **FIFO order** (oldest first). A `behind` PR is fast-forwarded via the update-branch API, and the train then **holds the FIFO line** so newer PRs cannot leapfrog it.
+  3. Admitted PRs are built into a **validated candidate** commit, which must pass `Merge Train Validation` before anything merges.
+  4. Only then does the promotion loop merge the batch and apply the `merge-train-landed` signal.
+  - Consequence: a fully green PR routinely sits at `mergeStateStatus: BLOCKED` for a while. That means **"waiting for the train"**, not "needs a human" and not "auto-merge wasn't armed."
+- **A stalled train usually means the head of the FIFO queue can't advance.** Because the train holds the line for a `behind` head entry, one un-advanceable PR can starve everything behind it. Reconcile still exits `0` and the workflow still reports `success`, so **a green Merge Train run is not evidence that anything merged.** Read the reconcile step output: `No admitted PR is ready for candidate construction` with a non-empty queue is the signature of a stalled head. The train now self-heals this (see below), but when diagnosing by hand, check the **oldest** queued PR first, not the one you care about.
+- Diagnose a stuck PR by checking its actual queue state, not just CI status:
+  1. `gh pr view <pr-number> --json mergeStateStatus,mergeable,autoMergeRequest,labels` — confirm it carries the `merge-train` label and isn't `BEHIND`/`DIRTY`.
+  2. `gh api repos/<owner>/<repo>/issues/<pr-number>/events` — check for label churn (the `merge-train` label being added/removed repeatedly is a sign the reconciler is dequeuing it every cycle, not that it's simply unqueued).
+  3. Check the latest `Merge Train` workflow run logs for this PR number for `update-branch`, `dequeu`, `quarantine`, or `blocked promotion` messages — these explain _why_ the train rejects it, which `gh pr checks` alone will never show. Also check the **oldest** queued PR: the train holds the FIFO line, so your PR may be fine and simply starved behind a stuck head entry.
 - **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.
   2. Run `gh run list --branch <branch>` then `gh run view <run-id> --log-failed` to read actual error output.
-  3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
+  3. Fix the underlying CI failure; if checks are green but the PR still isn't landing, follow the merge-train diagnosis steps above. **Never** re-arm auto-merge as the remedy — it cannot satisfy the required `merge-train` context.
 - Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
-- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Rely on the armed `--auto --squash` merge; do not add manual poll/wait loops.
+- **Batch review fixes into one push per round.** Each push re-triggers the full merge-gate CI (~4.7 runs/branch historically). Accumulate all fixes for a review round, run `verify:fast` once, then push once — don't push per-fix. Do not add manual poll/wait loops; let CI Recovery and the merge-train pick the PR back up.
 
 ### Resolving addressed review comments
 
@@ -294,6 +307,8 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   forever. Fix: push one commit under a **human or a different GitHub App
   identity** (an empty no-op commit — `git commit --allow-empty -m "chore: retrigger CI"` — is fine) to re-trigger the runs.
   <!-- Source handoff: 2026-06-24-safe-room-zoom-shepherd.md -->
+- **A `copilot/*` head branch that stays BEHIND may need a manual local push, not a re-queue.** GitHub restricts pushes to Copilot coding-agent branches to the Copilot App/branch owner, so the merge-train's bot token (`CRAWLER_CI_PAT`/`GITHUB_TOKEN`) gets a 403 on `update-branch` for these PRs even though they are same-repo, not forks. `reconcile.mjs` now leaves such PRs queued and dispatches recovery instead of dequeuing them as "fork" (fixed 2026-08-17; see PR #3027 incident), but the branch still won't actually update itself — from a session with push rights to that branch, run `git fetch origin main && git merge origin/main --no-edit && git push origin HEAD` to clear BEHIND manually if the PR sits stalled.
+  <!-- Source handoff: 2026-08-17-nightly-perf-collision-clear.md -->
 
 ## Known Environment Quirks
 

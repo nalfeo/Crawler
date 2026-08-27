@@ -148,7 +148,7 @@ describe('run bundle upload delivery', () => {
     expect(body.survey).toBeUndefined();
   });
 
-  it('emits a survey payload with the same top-level shape plus survey', async () => {
+  it('emits a runId-based survey append payload', async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, status: 202 }) as Response);
     Object.defineProperty(globalThis, 'window', {
       value: {
@@ -179,10 +179,10 @@ describe('run bundle upload delivery', () => {
     expect(calls.length).toBeGreaterThan(0);
     const [, init] = (calls[0] ?? []) as [unknown, { body?: string }];
     const body = JSON.parse(String(init?.body));
-    expect(body.runStats).toEqual(bundle.runStats);
-    expect(body.recorderJsonl).toBe(bundle.recorderJsonl);
-    expect(body.logs).toEqual(bundle.logs);
-    expect(body.meta).toEqual(bundle.meta);
+    expect(body.runStats).toBeUndefined();
+    expect(body.recorderJsonl).toBeUndefined();
+    expect(body.logs).toBeUndefined();
+    expect(body.meta).toEqual({ runId: bundle.meta.runId });
     expect(body.survey).toEqual({ ...payload, comment: payload.comment.trim() });
   });
 
@@ -207,7 +207,7 @@ describe('run bundle upload delivery', () => {
     );
   });
 
-  it('drops keepalive for oversized survey uploads', async () => {
+  it('keeps survey append uploads unload-safe even when the original bundle was oversized', async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, status: 201 }) as Response);
     Object.defineProperty(globalThis, 'window', {
       value: { __CRAWLER_RUN_BUNDLE_ENDPOINT__: 'https://example.test/uploads/run-bundle' },
@@ -224,7 +224,7 @@ describe('run bundle upload delivery', () => {
     expect(result.ok).toBe(true);
     const calls = (fetchSpy as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     const [, init] = (calls[0] ?? []) as [unknown, { keepalive?: boolean }];
-    expect(init?.keepalive).toBe(false);
+    expect(init?.keepalive).toBe(true);
   });
 
   it('uses fetch instead of sendBeacon when a quit bundle exceeds the keepalive quota', async () => {

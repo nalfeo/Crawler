@@ -1,5 +1,7 @@
+import { hasComponent } from 'bitecs';
 import type { GameWorld, LootLedger } from '../core/world.js';
 import { createLootLedger } from '../core/world.js';
+import { Companion } from '../core/components.js';
 import {
   addGeneratedEquipmentToBag,
   clearEquipmentState,
@@ -9,8 +11,8 @@ import {
   initializeBaseStats,
 } from '../core/systems/equipmentSystem.js';
 import { statSystem } from '../core/systems/statSystem.js';
-import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
-import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
+import { SLOT_REGISTRY, isValidSlotId, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { getEquipmentDefForItem, RETIRED_EQUIPMENT_ITEM_IDS } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
@@ -39,6 +41,14 @@ import {
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
+import { AFFINITY_RING, type Affinity } from '../shared/data/floor3/affinity.js';
+import { FIGHTING_STYLES, type FightingStyle } from '../shared/data/floor3/styles.js';
+import {
+  KEPT_COMPANION_CONTRACT_SCHEMA_VERSION,
+  buildKeptCompanionContract,
+  type KeptCompanionContract,
+} from '../shared/data/floor3/kept-companion-contract.js';
+import { getPetSpecies, speciesForToken } from '../shared/data/floor3/species.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
@@ -170,7 +180,10 @@ export interface PlayerCarryoverSnapshot {
   readonly playerSkills: readonly (readonly [string, SkillStateSnapshot])[];
   readonly abilityState?: AbilityStateSnapshot;
   readonly persistentStatModifiers: readonly StatModifierSnapshot[];
-  readonly featureUnlocks: Readonly<GameWorld['featureUnlocks']>;
+  readonly featureUnlocks: Readonly<Omit<GameWorld['featureUnlocks'], 'equipmentPanel'>> & {
+    /** Optional: absent on snapshots written before the Gear-panel reveal split. */
+    readonly equipmentPanel?: boolean;
+  };
   readonly achievements: {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
@@ -193,6 +206,14 @@ export interface PlayerCarryoverSnapshot {
    * a zeroed ledger so the ratio stays well-defined).
    */
   readonly lootLedger?: Readonly<LootLedger>;
+  /**
+   * Floor 3 Slice 11 (spec R7 §9.3, ADR 0071 D6): the single party Companion
+   * the player kept on winning Floor 3, carried at its ultimate form.
+   * Producer-only — Floor 4+ consuming this to re-host the Companion is a
+   * separate, out-of-scope epic concern. Absent on every non-Floor-3-win
+   * snapshot (including snapshots created before this field existed).
+   */
+  readonly keptCompanion?: KeptCompanionContract;
 }
 
 type LegacyPlayerCarryoverSnapshot = Omit<
@@ -423,6 +444,88 @@ function assertResolvedRewardPresentation(
   );
 }
 
+/**
+ * Fail-closed structural validation for a persisted {@link KeptCompanionContract}
+ * (Floor 3 Slice 11, spec R7 §9.3). Never repairs a malformed value — always
+ * throws, matching {@link assertResolvedRewardPresentation}'s contract.
+ */
+function assertKeptCompanionContract(
+  value: unknown,
+  path: string,
+): asserts value is KeptCompanionContract {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new PlayerCarryoverSnapshotError(`Expected object at ${path}`);
+  }
+  const record = value as Record<string, unknown>;
+  if (record.schemaVersion !== KEPT_COMPANION_CONTRACT_SCHEMA_VERSION) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unsupported kept-companion contract schema version at ${path}.schemaVersion: ` +
+        `${String(record.schemaVersion)}`,
+    );
+  }
+  if (typeof record.speciesId !== 'string' || record.speciesId.length === 0) {
+    throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}.speciesId`);
+  }
+  if (typeof record.affinity !== 'string' || !AFFINITY_RING.includes(record.affinity as Affinity)) {
+    throw new PlayerCarryoverSnapshotError(`Invalid affinity at ${path}.affinity`);
+  }
+  if (
+    typeof record.fightingStyle !== 'string' ||
+    !FIGHTING_STYLES.includes(record.fightingStyle as FightingStyle)
+  ) {
+    throw new PlayerCarryoverSnapshotError(`Invalid fightingStyle at ${path}.fightingStyle`);
+  }
+  if (record.form !== 2) {
+    throw new PlayerCarryoverSnapshotError(`Expected form === 2 at ${path}.form`);
+  }
+  if (record.levelBand !== 'floor3-graduate') {
+    throw new PlayerCarryoverSnapshotError(
+      `Expected levelBand 'floor3-graduate' at ${path}.levelBand`,
+    );
+  }
+  assertArray(record.learnedAbilityIds, `${path}.learnedAbilityIds`);
+  assertUniqueStrings(record.learnedAbilityIds as readonly string[], `${path}.learnedAbilityIds`);
+
+  // Resolve speciesId through the canonical roster and compare every
+  // denormalized field plus the ordered ability list against the contract
+  // `buildKeptCompanionContract` would produce for that species. This is the
+  // only way to catch a structurally valid but semantically wrong contract
+  // (e.g. a speciesId paired with another species' affinity/style, or an
+  // ability list that isn't the species' full ordered ultimate-form set) —
+  // a future Floor 4+ consumer cannot faithfully re-host anything else.
+  const canonicalSpecies = getPetSpecies(record.speciesId);
+  if (canonicalSpecies === undefined) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unknown Floor 3 speciesId at ${path}.speciesId: ${record.speciesId}`,
+    );
+  }
+  const expected = buildKeptCompanionContract(canonicalSpecies);
+  if (record.affinity !== expected.affinity) {
+    throw new PlayerCarryoverSnapshotError(
+      `Affinity at ${path}.affinity does not match species '${record.speciesId}': ` +
+        `expected ${expected.affinity}, got ${String(record.affinity)}`,
+    );
+  }
+  if (record.fightingStyle !== expected.fightingStyle) {
+    throw new PlayerCarryoverSnapshotError(
+      `FightingStyle at ${path}.fightingStyle does not match species '${record.speciesId}': ` +
+        `expected ${expected.fightingStyle}, got ${String(record.fightingStyle)}`,
+    );
+  }
+  const learnedAbilityIds = record.learnedAbilityIds as readonly string[];
+  const expectedAbilityIds = expected.learnedAbilityIds;
+  if (
+    learnedAbilityIds.length !== expectedAbilityIds.length ||
+    !learnedAbilityIds.every((id, index) => id === expectedAbilityIds[index])
+  ) {
+    throw new PlayerCarryoverSnapshotError(
+      `learnedAbilityIds at ${path}.learnedAbilityIds does not match species ` +
+        `'${record.speciesId}' ultimate-form ability set: expected ` +
+        `[${expectedAbilityIds.join(', ')}], got [${learnedAbilityIds.join(', ')}]`,
+    );
+  }
+}
+
 function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapshot {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     throw new PlayerCarryoverSnapshotError('Player carryover snapshot must be an object');
@@ -514,24 +617,268 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     });
   };
 
+  const retiredGeneratedInstanceKeys = new Set<string>();
+  const legacyGeneratedSlotIds: Readonly<Record<string, EquipmentSlotId>> = {
+    ringLeft: 'ring1',
+    ringRight: 'ring2',
+  };
+  const generatedRegistry = partial.generatedEquipmentRegistry;
+  const migratedGeneratedRegistry =
+    typeof generatedRegistry === 'object' &&
+    generatedRegistry !== null &&
+    !Array.isArray(generatedRegistry) &&
+    Array.isArray((generatedRegistry as { instances?: unknown }).instances)
+      ? {
+          ...(generatedRegistry as unknown as Record<string, unknown>),
+          instances: (
+            generatedRegistry as unknown as { instances: readonly unknown[] }
+          ).instances.flatMap((instance) => {
+            if (typeof instance !== 'object' || instance === null || Array.isArray(instance)) {
+              return [instance];
+            }
+            const record = instance as Record<string, unknown>;
+            const frozen = record.frozen;
+            const slots =
+              typeof frozen === 'object' && frozen !== null && !Array.isArray(frozen)
+                ? (frozen as { slots?: unknown }).slots
+                : undefined;
+            if (!Array.isArray(slots)) return [instance];
+            const migratedSlots = slots.map((slot) =>
+              typeof slot === 'string' ? (legacyGeneratedSlotIds[slot] ?? slot) : slot,
+            );
+            const isRetired = migratedSlots.some(
+              (slot) => typeof slot !== 'string' || !isValidSlotId(slot),
+            );
+            if (isRetired && typeof record.instanceId === 'string') {
+              retiredGeneratedInstanceKeys.add(record.instanceId);
+            }
+            if (isRetired) return [];
+            return [
+              migratedSlots.some((slot, index) => slot !== slots[index])
+                ? { ...record, frozen: { ...(frozen as object), slots: migratedSlots } }
+                : instance,
+            ];
+          }),
+        }
+      : generatedRegistry;
+  const withoutRetiredGeneratedKeys = (entries: unknown[]): unknown[] =>
+    Array.isArray(entries)
+      ? entries.filter(
+          (entry) => typeof entry !== 'string' || !retiredGeneratedInstanceKeys.has(entry),
+        )
+      : entries;
+  const retiredAchievementIds = new Set<string>();
+  const rawRewardBundles = readArrayField('generatedEquipmentRewardBundles');
+  const migratedRewardBundles = (
+    Array.isArray(rawRewardBundles)
+      ? migrateBundleBossChestTier(rawRewardBundles).filter((entry) => {
+          if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return true;
+          const bundle = entry as { achievementId?: unknown; instanceKeys?: unknown };
+          if (
+            typeof bundle.achievementId !== 'string' ||
+            !Array.isArray(bundle.instanceKeys) ||
+            !bundle.instanceKeys.some(
+              (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+            )
+          ) {
+            return true;
+          }
+          if (!bundle.achievementId.startsWith(BOSS_CHEST_ID_PREFIX)) {
+            retiredAchievementIds.add(bundle.achievementId);
+          }
+          return false;
+        })
+      : rawRewardBundles
+  ) as unknown[];
+  const rawBossChests = readArrayField('bossChests');
+  const migratedBossChests = (
+    Array.isArray(rawBossChests)
+      ? migrateBossChestTier(rawBossChests).filter((entry) => {
+          if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return true;
+          const chest = entry as {
+            chestId?: unknown;
+            revealedGrant?: { instanceKeys?: unknown };
+          };
+          const hasRetiredReveal =
+            chest.revealedGrant !== undefined &&
+            Array.isArray(chest.revealedGrant.instanceKeys) &&
+            chest.revealedGrant.instanceKeys.some(
+              (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+            );
+          const hasRetiredAvailableBundle =
+            typeof chest.chestId === 'string' &&
+            migratedRewardBundles.some(
+              (bundle) =>
+                typeof bundle === 'object' &&
+                bundle !== null &&
+                !Array.isArray(bundle) &&
+                (bundle as { achievementId?: unknown }).achievementId === chest.chestId,
+            ) === false &&
+            readArrayField('generatedEquipmentRewardBundles').some(
+              (bundle) =>
+                typeof bundle === 'object' &&
+                bundle !== null &&
+                !Array.isArray(bundle) &&
+                (bundle as { achievementId?: unknown; instanceKeys?: unknown }).achievementId ===
+                  chest.chestId &&
+                Array.isArray((bundle as { instanceKeys?: unknown }).instanceKeys) &&
+                (bundle as { instanceKeys: unknown[] }).instanceKeys.some(
+                  (key) => typeof key === 'string' && retiredGeneratedInstanceKeys.has(key),
+                ),
+            );
+          return !hasRetiredReveal && !hasRetiredAvailableBundle;
+        })
+      : rawBossChests
+  ) as unknown[];
+  // A claimed equipment reward keeps an unacknowledged presentation snapshot so
+  // the reward-opening UI can redisplay it after a reload. Those snapshots only
+  // hold instance-key strings, so a retired instance would otherwise be
+  // redisplayed as an unresolvable item: drop the retired keys, and drop the
+  // whole presentation once nothing grantable is left in it.
+  const migratePendingPresentations = (entries: unknown): unknown => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.flatMap((entry) => {
+      if (!Array.isArray(entry) || entry.length !== 2) return [entry];
+      const presentation: unknown = entry[1];
+      if (
+        typeof presentation !== 'object' ||
+        presentation === null ||
+        Array.isArray(presentation) ||
+        (presentation as { kind?: unknown }).kind !== 'equipment' ||
+        !Array.isArray((presentation as { instanceKeys?: unknown }).instanceKeys)
+      ) {
+        return [entry];
+      }
+      const instanceKeys = (presentation as { instanceKeys: readonly unknown[] }).instanceKeys;
+      const survivingKeys = instanceKeys.filter(
+        (key) => typeof key !== 'string' || !retiredGeneratedInstanceKeys.has(key),
+      );
+      if (survivingKeys.length === instanceKeys.length) return [entry];
+      if (survivingKeys.length === 0) return [];
+      return [[entry[0], { ...presentation, instanceKeys: survivingKeys }]];
+    });
+  };
+  const migratedAchievements = {
+    ...legacy.achievements,
+    claimedIds: Array.isArray(legacy.achievements?.claimedIds)
+      ? [...new Set([...legacy.achievements.claimedIds, ...retiredAchievementIds])]
+      : legacy.achievements?.claimedIds,
+    pendingPresentations: migratePendingPresentations(
+      legacy.achievements?.pendingPresentations,
+    ) as PlayerCarryoverSnapshot['achievements']['pendingPresentations'],
+  };
+  const isRetiredGeneratedGrantSourceId = (sourceId: unknown): boolean => {
+    if (typeof sourceId !== 'string' || !sourceId.startsWith('equipment:')) return false;
+    const lastColon = sourceId.lastIndexOf(':');
+    if (lastColon <= 'equipment:'.length) return false;
+    return retiredGeneratedInstanceKeys.has(sourceId.slice('equipment:'.length, lastColon));
+  };
+  const removeRetiredGeneratedSources = (state: unknown): unknown => {
+    if (typeof state !== 'object' || state === null || Array.isArray(state)) return state;
+    const filterSources = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map((entry) => {
+            if (!Array.isArray(entry) || entry.length !== 2 || !Array.isArray(entry[1]))
+              return entry;
+            return [
+              entry[0],
+              entry[1].filter(
+                (source) =>
+                  typeof source !== 'object' ||
+                  source === null ||
+                  (source as { kind?: unknown; instanceId?: unknown }).kind !==
+                    'generated-equipment' ||
+                  !retiredGeneratedInstanceKeys.has(
+                    (source as { instanceId?: string }).instanceId ?? '',
+                  ),
+              ),
+            ];
+          })
+        : value;
+    // `grantOwnership` is the authoritative ownership record; the legacy
+    // grant-source objects above are only a mirror. A retired instance's
+    // `equipment:<instanceId>:<ordinal>` id must go from both, or restore
+    // either resurrects the ability forever or fails closed on a stale source.
+    // Independent `learned:`/`skill:` sources for the same ability survive.
+    const filterOwnershipSources = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.flatMap((entry) => {
+            if (!Array.isArray(entry) || entry.length !== 2 || !Array.isArray(entry[1]))
+              return [entry];
+            const sources = entry[1].filter(
+              (sourceId) => !isRetiredGeneratedGrantSourceId(sourceId),
+            );
+            if (sources.length === (entry[1] as readonly unknown[]).length) return [entry];
+            if (sources.length === 0) return [];
+            return [[entry[0], sources]];
+          })
+        : value;
+    const abilityState = state as Record<string, unknown>;
+    const grantOwnership = abilityState.grantOwnership;
+    return {
+      ...abilityState,
+      activeAbilityGrantSources: filterSources(abilityState.activeAbilityGrantSources),
+      passiveAbilityGrantSources: filterSources(abilityState.passiveAbilityGrantSources),
+      ...(typeof grantOwnership === 'object' &&
+      grantOwnership !== null &&
+      !Array.isArray(grantOwnership)
+        ? {
+            grantOwnership: {
+              ...(grantOwnership as Record<string, unknown>),
+              activeSourcesByAbilityId: filterOwnershipSources(
+                (grantOwnership as { activeSourcesByAbilityId?: unknown }).activeSourcesByAbilityId,
+              ),
+              passiveSourcesByAbilityId: filterOwnershipSources(
+                (grantOwnership as { passiveSourcesByAbilityId?: unknown })
+                  .passiveSourcesByAbilityId,
+              ),
+            },
+          }
+        : {}),
+    };
+  };
+
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
-    generatedInventoryInstanceKeys: readArrayField(
-      'generatedInventoryInstanceKeys',
+    achievements: migratedAchievements,
+    inventorySlots: Array.isArray(legacy.inventorySlots)
+      ? legacy.inventorySlots.filter(
+          (slot) =>
+            typeof slot !== 'object' ||
+            slot === null ||
+            !RETIRED_EQUIPMENT_ITEM_IDS.has((slot as { itemId?: string }).itemId ?? ''),
+        )
+      : legacy.inventorySlots,
+    equippedItemIds: Array.isArray(legacy.equippedItemIds)
+      ? legacy.equippedItemIds.filter(
+          (itemId) => typeof itemId !== 'string' || !RETIRED_EQUIPMENT_ITEM_IDS.has(itemId),
+        )
+      : legacy.equippedItemIds,
+    generatedInventoryInstanceKeys: withoutRetiredGeneratedKeys(
+      readArrayField('generatedInventoryInstanceKeys'),
     ) as PlayerCarryoverSnapshot['generatedInventoryInstanceKeys'],
-    generatedEquippedInstanceKeys: readArrayField(
-      'generatedEquippedInstanceKeys',
+    generatedEquippedInstanceKeys: withoutRetiredGeneratedKeys(
+      readArrayField('generatedEquippedInstanceKeys'),
     ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
-    generatedEquipmentRewardBundles: migrateBundleBossChestTier(
-      readArrayField('generatedEquipmentRewardBundles'),
-    ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
-    bossChests: migrateBossChestTier(
-      readArrayField('bossChests'),
-    ) as PlayerCarryoverSnapshot['bossChests'],
+    generatedEquipmentRegistry:
+      migratedGeneratedRegistry as PlayerCarryoverSnapshot['generatedEquipmentRegistry'],
+    generatedEquipmentRewardBundles:
+      migratedRewardBundles as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
+    bossChests: migratedBossChests as PlayerCarryoverSnapshot['bossChests'],
     lootBoxRewardBundles: readArrayField(
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
+    disabledEquipmentSlots: Array.isArray(legacy.disabledEquipmentSlots)
+      ? legacy.disabledEquipmentSlots
+          .map((slotId) =>
+            typeof slotId === 'string' ? (legacyGeneratedSlotIds[slotId] ?? slotId) : slotId,
+          )
+          .filter((slotId) => typeof slotId !== 'string' || isValidSlotId(slotId))
+      : legacy.disabledEquipmentSlots,
+    abilityState: removeRetiredGeneratedSources(
+      legacy.abilityState,
+    ) as PlayerCarryoverSnapshot['abilityState'],
   };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
@@ -651,6 +998,9 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
       ast.passiveAbilityGrantSources,
       'abilityState.passiveAbilityGrantSources',
     );
+  }
+  if (normalized.keptCompanion !== undefined) {
+    assertKeptCompanionContract(normalized.keptCompanion, 'keptCompanion');
   }
   return normalized;
 }
@@ -1153,7 +1503,9 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       generationPolicy: world.generatedEquipmentRegistry.generationPolicy,
     }),
   };
-  restoreGeneratedEquipmentRegistry(validationWorld, snapshot.generatedEquipmentRegistry);
+  restoreGeneratedEquipmentRegistry(validationWorld, snapshot.generatedEquipmentRegistry, {
+    allowSparseOrdinals: true,
+  });
   const instances = listGeneratedEquipmentInstances(validationWorld);
   const instancesByKey = new Map(instances.map((instance) => [instance.instanceId, instance]));
 
@@ -1486,6 +1838,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       );
     }
     for (const slotId of def.slots) {
+      if (!isValidSlotId(slotId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Equipped item ${itemId} references retired equipment slot ${slotId}`,
+        );
+      }
       const existing = occupiedSlots.get(slotId);
       if (existing) {
         throw new PlayerCarryoverSnapshotError(
@@ -1502,6 +1859,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       throw new PlayerCarryoverSnapshotError(`Dangling generated equipped reference: ${key}`);
     }
     for (const slotId of instance.frozen.slots) {
+      if (!isValidSlotId(slotId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Generated equipment ${key} references retired equipment slot ${slotId}`,
+        );
+      }
       const existing = occupiedSlots.get(slotId);
       if (existing) {
         throw new PlayerCarryoverSnapshotError(
@@ -1683,6 +2045,23 @@ function remapModifierHolder(
   return parts.join(':');
 }
 
+/**
+ * Resolves the Floor 3 kept-companion pick (spec R7 §9.3, slice 11) into its
+ * persisted {@link KeptCompanionContract}, or `undefined` when there is
+ * nothing to carry (no Floor 3 state, no pick made yet, or the picked entity
+ * is no longer a live Companion / has an unresolvable species token —
+ * defensive, should never happen given `latchFloor3Victory`'s auto-default
+ * and `selectFloor3KeptCompanion`'s validation, but must never throw here).
+ */
+function resolveFloor3KeptCompanionContract(world: GameWorld): KeptCompanionContract | undefined {
+  const keptEid = world.floorExtendedState?.floor3Studios?.keptCompanionEid;
+  if (keptEid === undefined || !hasComponent(world.ecs, keptEid, Companion)) return undefined;
+  const speciesToken = world.stores.companion.speciesToken[keptEid] ?? 0;
+  const species = speciesForToken(speciesToken);
+  if (!species) return undefined;
+  return buildKeptCompanionContract(species);
+}
+
 export function capturePlayerCarryover(
   world: GameWorld,
   playerEid: number,
@@ -1736,6 +2115,7 @@ export function capturePlayerCarryover(
     world.generatedEquipmentRegistry.runKey === null
       ? undefined
       : snapshotGeneratedEquipmentRegistry(world);
+  const keptCompanion = resolveFloor3KeptCompanionContract(world);
 
   const snapshot: PlayerCarryoverSnapshot = {
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
@@ -1832,6 +2212,7 @@ export function capturePlayerCarryover(
       pendingPresentations: [...world.achievements.pendingPresentations.entries()],
     },
     lootLedger: { ...world.lootLedger },
+    ...(keptCompanion ? { keptCompanion } : {}),
   };
 
   validateGeneratedCarryover(world, snapshot);
@@ -1851,6 +2232,10 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   world.featureUnlocks = {
     inventory: world.featureUnlocks.inventory || snapshot.featureUnlocks.inventory,
     equipment: world.featureUnlocks.equipment || snapshot.featureUnlocks.equipment,
+    // Absent on snapshots created before this field existed → default to false
+    // and let the current floor's own latch decide.
+    equipmentPanel:
+      world.featureUnlocks.equipmentPanel || (snapshot.featureUnlocks.equipmentPanel ?? false),
     spells: world.featureUnlocks.spells || snapshot.featureUnlocks.spells,
   };
   world.achievements = {
@@ -1908,7 +2293,9 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   }
 
   if (snapshot.generatedEquipmentRegistry) {
-    restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry);
+    restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry, {
+      allowSparseOrdinals: true,
+    });
   }
   // Rebuild the reward-bundle map immediately after the registry restore and
   // BEFORE any bag/equipped restore. Bundles are registry owners, so having them

@@ -1,0 +1,63 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-18",
+  "session_slug": "unified-den-boss-telemetry",
+  "task_title": "Unify den-boss telemetry across headless, AI-runner, and player sessions",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Blockers: (1) bossEid nulled on defeat -> transitions now carry before/after snapshots + lastKnownBossEid; (2) DenBossDiagnostics rollup fully specified and accumulated independently of the optional recordEvent sink; (3) contract tests must cover both real factories (labs session-recorder-controls + bootstrap floor-main-scene-options), not one impl twice. Non-blocking: per-frame allocation -> scratch-based diff, snapshots materialized only on transition/cadence; EID reuse -> hasComponent validation for boss + doors; reset/baseline semantics -> baseline transition on first observation and after reset. Also: iterate presentFamilies for deterministic order, aggregate periodic den record instead of per-family, and use a fast deterministic seed-42 fixture instead of a second full Floor 2 headless run."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Per-frame allocation in the hot loop: poll() built a fresh DenBossSnapshot per den per frame and classify() allocated a Set + array. Fixed with a reused per-den scratch snapshot, in-place refresh on quiet frames, durable clones only when a transition fires, and a lazily-built ordered kinds array."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Follow-on of the same root cause: writeSnapshot still used Object.assign(target, {...}), which allocates and discards the literal every frame. Fixed with direct field assignment plus a blankSnapshot() factory so all snapshots share one object shape."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirmation round: no significant issues found. Aliasing/mutation hazards from the scratch refactor explicitly checked and pinned by two new regression tests (transition order, emitted-snapshot immutability)."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.6",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "ec52d020dfd20afd19ba153ef8ec75e3072823d1",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Well-structured telemetry unification. The collector is deterministic (no Math.random/Date.now, iterates presentFamilies for stable order), respects layer boundaries (shared types in leaf layer, game/ai collector imports only from core/shared), avoids per-frame allocation via scratch buffers with durable clones only on transitions, and is thoroughly tested across all three surfaces with a shared fixture. The Object.assign on quiet frames is intentional (refreshes the mutable previous in place). Scope is slightly broad (15 files, docs, types, collector, wiring, tests, contract doc) but every file serves the stated task directly. No blockers found."
+    }
+  }
+}

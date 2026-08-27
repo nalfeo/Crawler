@@ -15,7 +15,7 @@ import {
 } from '../../src/core/systems/questSystem.js';
 import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { addItem, createInventoryBag } from '../../src/shared/inventory.js';
-import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+import { MERCHANTS_CHARM_DEF, getEquippableItemIds } from '../../src/shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
@@ -138,6 +138,70 @@ describe('questSystem', () => {
     world.inventories.set(player, createInventoryBag());
     questSystem(world);
     expect(shop.done['buy-gear']).toBe(true);
+  });
+
+  it('does not unlock Floor 1 equipment from non-merchant equippable loot', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    const bag = world.inventories.get(player)!;
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    const nonMerchantEquippable = getEquippableItemIds().find(
+      (itemId) => itemId !== SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+    expect(nonMerchantEquippable).toBeDefined();
+    addItem(bag, nonMerchantEquippable!, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(false);
+  });
+
+  it('still unlocks equipment once the merchant charm is acquired', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    addItem(world.inventories.get(player)!, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipment).toBe(true);
+  });
+
+  it('does not reveal the Floor 1 Gear panel from loot picked up before the errand exists', () => {
+    // Issue #3310: the Gear reveal must be gated for the whole of Floor 1, not
+    // only once `FLOOR1_SHOP_QUEST_ID` is in the log — the quest is added only
+    // after the shopkeeper conversation, so anything equippable held earlier
+    // (the starter weapon, a chest or enemy drop) used to open Gear early.
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+    const nonMerchantEquippable = getEquippableItemIds().find(
+      (itemId) => itemId !== SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+    expect(nonMerchantEquippable).toBeDefined();
+    addItem(world.inventories.get(player)!, nonMerchantEquippable!, 1);
+
+    questSystem(world);
+    expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
+    expect(world.featureUnlocks.equipmentPanel).toBe(false);
+
+    // The merchant charm is what reveals it.
+    addItem(world.inventories.get(player)!, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+    questSystem(world);
+    expect(world.featureUnlocks.equipmentPanel).toBe(true);
+  });
+
+  it('reveals the Gear panel off any equippable on floors without the merchant gate', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor2';
+    const player = spawnPlayer(world, 0, 0);
+    const nonMerchantEquippable = getEquippableItemIds().find(
+      (itemId) => itemId !== SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    );
+    addItem(world.inventories.get(player)!, nonMerchantEquippable!, 1);
+
+    questSystem(world);
+    expect(world.featureUnlocks.equipmentPanel).toBe(true);
   });
 
   it('setTrackedQuest focuses a single active quest', () => {

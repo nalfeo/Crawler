@@ -7,6 +7,7 @@ import {
   DeathTimer,
   BloodColor,
   Spawner,
+  Companion,
 } from './components.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
@@ -306,6 +307,24 @@ export function applyDamage(
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
+    }
+
+    // Floor 3 Companion League: attribute damage-weighted combat XP credit.
+    // Only Companion-sourced hits on a non-player Enemy target count — player
+    // weapon damage and environment damage never feed Companion XP (R7).
+    if (
+      dealt > 0 &&
+      !isPlayerTarget &&
+      hasComponent(world.ecs, target, Enemy) &&
+      options.sourceEid !== undefined &&
+      hasComponent(world.ecs, options.sourceEid, Companion)
+    ) {
+      let byCompanion = world.companionDamageContribution.get(target);
+      if (byCompanion === undefined) {
+        byCompanion = new Map();
+        world.companionDamageContribution.set(target, byCompanion);
+      }
+      byCompanion.set(options.sourceEid, (byCompanion.get(options.sourceEid) ?? 0) + dealt);
     }
 
     // Floor 2 Slice 3 ally-defend: record who last hit the player into a

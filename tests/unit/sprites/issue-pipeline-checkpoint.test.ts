@@ -5,18 +5,24 @@ import {
   IssuePipelineCheckpointError,
   loadIssueCheckpoint,
   markIssuePipelineTerminal,
+  readCheckpointTiming,
   resetExhaustedTransientStage,
   runCheckpointStage,
 } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
+import { readAssetRequestReadyIndex } from '../../../scripts/sprites/asset-request-ready-index.js';
+import { ASSET_REQUEST_READY_INDEX_KEY } from '../../../scripts/sprites/sidecar/issue-status-key.js';
 import { QueueCommitError } from '../../../scripts/sprites/queue-commit.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 
-function makeStore(): RunStore & { mem: Map<string, Buffer> } {
+function makeStore(advance?: (operation: 'has' | 'put') => void): RunStore & {
+  mem: Map<string, Buffer>;
+} {
   const mem = new Map<string, Buffer>();
   return {
     mem,
     backend: 'local',
     async put(key, data) {
+      advance?.('put');
       mem.set(key, data);
     },
     async get(key) {
@@ -25,6 +31,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
       return value;
     },
     async has(key) {
+      advance?.('has');
       return mem.has(key);
     },
     async list(prefix) {
@@ -39,12 +46,13 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
   };
 }
 
-function controller(store: RunStore) {
+function controller(store: RunStore, monotonicNow?: () => number) {
   return createIssueCheckpointController({
     store,
     issueNumber: 42,
     fingerprint: 'request-fingerprint',
     now: () => new Date('2026-07-24T12:00:00.000Z'),
+    ...(monotonicNow ? { monotonicNow } : {}),
   });
 }
 
@@ -90,6 +98,77 @@ describe('issue pipeline checkpoints', () => {
 
     expect(resumed).toEqual({ output: { runId: 'run-1' }, resumed: true });
     expect(resumedOperation).not.toHaveBeenCalled();
+  });
+
+  it('persists exact retry operation and checkpoint orchestration timing', async () => {
+    let elapsedMs = 0;
+    const store = makeStore((operation) => {
+      elapsedMs += operation === 'has' ? 1 : 2;
+    });
+    const operation = vi
+      .fn<() => Promise<{ value: string }>>()
+      .mockImplementationOnce(async () => {
+        elapsedMs += 3;
+        throw new Error('temporary one');
+      })
+      .mockImplementationOnce(async () => {
+        elapsedMs += 3;
+        throw new Error('temporary two');
+      })
+      .mockImplementationOnce(async () => {
+        elapsedMs += 3;
+        return { value: 'done' };
+      });
+    const checkpoint = controller(store, () => elapsedMs);
+
+    await runCheckpointStage(
+      checkpoint,
+      'generate',
+      z.object({ value: z.string() }).strict(),
+      operation,
+    );
+
+    const timing = readCheckpointTiming(await loadIssueCheckpoint(checkpoint));
+    expect(timing.stages.generate).toEqual({
+      operationMs: 9,
+      orchestrationMs: 7,
+      totalMs: 16,
+    });
+    expect(timing.totalMs).toBe(16);
+    expect(operation).toHaveBeenCalledTimes(3);
+  });
+
+  it('accepts v1 checkpoints without timing and does not charge resumed operation work', async () => {
+    let elapsedMs = 0;
+    const store = makeStore((operation) => {
+      elapsedMs += operation === 'has' ? 1 : 2;
+    });
+    const checkpoint = controller(store, () => elapsedMs);
+    const schema = z.object({ runId: z.string() }).strict();
+    await runCheckpointStage(checkpoint, 'generate', schema, async () => ({ runId: 'run-1' }));
+    const beforeResume = readCheckpointTiming(await loadIssueCheckpoint(checkpoint));
+    const resumedOperation = vi.fn(async () => ({ runId: 'run-2' }));
+
+    const resumed = await runCheckpointStage(checkpoint, 'generate', schema, resumedOperation);
+
+    expect(resumed.resumed).toBe(true);
+    expect(resumedOperation).not.toHaveBeenCalled();
+    expect(readCheckpointTiming(await loadIssueCheckpoint(checkpoint))).toEqual(beforeResume);
+
+    const legacy = {
+      version: 1,
+      issueNumber: 42,
+      fingerprint: 'request-fingerprint',
+      stage: 'queued',
+      updatedAt: '2026-07-24T12:00:00.000Z',
+      stages: {},
+    };
+    store.mem.set(checkpoint.key, Buffer.from(JSON.stringify(legacy)));
+    expect(readCheckpointTiming(await loadIssueCheckpoint(checkpoint))).toEqual({
+      totalMs: 0,
+      stages: {},
+      invalidSamples: 0,
+    });
   });
 
   it('does not consume transient retries for permanent failures', async () => {
@@ -149,6 +228,46 @@ describe('issue pipeline checkpoints', () => {
       details: {
         outcome: 'selected-pending-publish',
       },
+    });
+    await expect(readAssetRequestReadyIndex(store)).resolves.toEqual({
+      status: 'valid',
+      index: {
+        version: 1,
+        legacyBackfillComplete: false,
+        keys: [checkpoint.key],
+      },
+    });
+
+    await markIssuePipelineTerminal(checkpoint, 'published', { publishedAt: 'now' });
+    await expect(readAssetRequestReadyIndex(store)).resolves.toEqual({
+      status: 'valid',
+      index: {
+        version: 1,
+        legacyBackfillComplete: false,
+        keys: [],
+      },
+    });
+  });
+
+  it('keeps a durable terminal checkpoint successful when ready-index cleanup fails', async () => {
+    const store = makeStore();
+    const checkpoint = controller(store);
+    await markIssuePipelineTerminal(checkpoint, 'selected-pending-publish', {
+      runId: 'run-1',
+      selectedIndexes: [0],
+    });
+    const put = store.put.bind(store);
+    store.put = async (key, data) => {
+      if (key === ASSET_REQUEST_READY_INDEX_KEY) throw new Error('index unavailable');
+      await put(key, data);
+    };
+
+    await expect(
+      markIssuePipelineTerminal(checkpoint, 'published', { publishedAt: 'now' }),
+    ).resolves.toBeUndefined();
+    await expect(loadIssueCheckpoint(checkpoint)).resolves.toMatchObject({
+      stage: 'completed',
+      details: { outcome: 'published' },
     });
   });
 
@@ -299,6 +418,38 @@ describe('issue pipeline checkpoints', () => {
         ok: true,
       }));
       expect(result).toEqual({ output: { ok: true }, resumed: false });
+    });
+
+    it('preserves cumulative stage timing across a control-flow reset', async () => {
+      let elapsedMs = 0;
+      const store = makeStore((operation) => {
+        elapsedMs += operation === 'has' ? 1 : 2;
+      });
+      const checkpoint = controller(store, () => elapsedMs);
+      const failingOperation = vi.fn(async () => {
+        elapsedMs += 3;
+        throw new QueueCommitError('push-retries-exhausted', 'push loop exhausted');
+      });
+
+      await expect(
+        runCheckpointStage(checkpoint, 'publish', schema, failingOperation),
+      ).rejects.toThrow('push loop exhausted');
+      const beforeReset = readCheckpointTiming(await loadIssueCheckpoint(checkpoint));
+
+      expect(await resetExhaustedTransientStage(checkpoint, 'publish')).toBe(true);
+      elapsedMs += 5;
+      await runCheckpointStage(checkpoint, 'publish', schema, async () => {
+        elapsedMs += 3;
+        return { ok: true };
+      });
+      const afterRetry = readCheckpointTiming(await loadIssueCheckpoint(checkpoint));
+
+      expect(afterRetry.stages.publish?.operationMs).toBeGreaterThan(
+        beforeReset.stages.publish?.operationMs ?? 0,
+      );
+      expect(afterRetry.stages.publish?.totalMs).toBeGreaterThan(
+        beforeReset.stages.publish?.totalMs ?? 0,
+      );
     });
   });
 

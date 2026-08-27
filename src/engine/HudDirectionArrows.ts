@@ -253,6 +253,10 @@ export function resolveDirectionArrowStates(
   const states: DirectionArrowState[] = [];
 
   for (const waypoint of waypoints) {
+    // Off-screen culling and the displayed distance always use the precise
+    // target so they stay accurate per-quest; only the angle is normalized
+    // to the shared room anchor (`dirX`/`dirY`) so co-located arrows agree
+    // on direction without misreporting visibility or range.
     const dx = waypoint.x - playerX;
     const dy = waypoint.y - playerY;
     const targetScreenX = CX + dx * scale;
@@ -266,7 +270,9 @@ export function resolveDirectionArrowStates(
       continue;
     }
 
-    const targetAngle = Math.atan2(dy, dx);
+    const angleDx = waypoint.dirX - playerX;
+    const angleDy = waypoint.dirY - playerY;
+    const targetAngle = Math.atan2(angleDy, angleDx);
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
     const edgePoint = rectEdgePt(targetAngle);
@@ -278,31 +284,49 @@ export function resolveDirectionArrowStates(
           readonly label: ReturnType<typeof labelLayout>;
         }
       | undefined;
+    let labelOverlapFallback:
+      | {
+          readonly screenX: number;
+          readonly screenY: number;
+          readonly label: ReturnType<typeof labelLayout>;
+        }
+      | undefined;
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
-      const avoidsHud = forbiddenRegions.every(
+      const arrowAvoidsHud = forbiddenRegions.every(
         (region) =>
-          !boundsOverlap(arrowBounds(candidateX, candidateY), region, LABEL_COLLISION_PADDING) &&
-          !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
+          !boundsOverlap(arrowBounds(candidateX, candidateY), region, LABEL_COLLISION_PADDING),
       );
-      const clear =
-        states.every(
-          (state) =>
-            Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
-              MIN_ARROW_SEPARATION &&
-            !labelsOverlap(candidateLabel, {
-              x: state.labelScreenX,
-              y: state.labelScreenY,
-              width: state.labelWidth,
-              height: state.labelHeight,
-            }),
-        ) && avoidsHud;
-      if (clear) {
+      if (!arrowAvoidsHud) {
+        continue;
+      }
+      const clear = states.every(
+        (state) =>
+          Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
+            MIN_ARROW_SEPARATION &&
+          !labelsOverlap(candidateLabel, {
+            x: state.labelScreenX,
+            y: state.labelScreenY,
+            width: state.labelWidth,
+            height: state.labelHeight,
+          }),
+      );
+      if (!clear) {
+        continue;
+      }
+      const labelAvoidsHud = forbiddenRegions.every(
+        (region) => !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
+      );
+      if (labelAvoidsHud) {
         placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
         break;
       }
+      if (!labelOverlapFallback) {
+        labelOverlapFallback = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
+      }
     }
+    placement ??= labelOverlapFallback;
 
     if (!placement) {
       continue;

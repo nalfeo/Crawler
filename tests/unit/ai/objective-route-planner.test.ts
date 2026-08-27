@@ -244,6 +244,303 @@ describe('planObjectiveRoute', () => {
     expect(route.droppedOptionalBundleIds).toEqual(['expensive']);
   });
 
+  it('uses personality utility to choose an optional subset while retaining the full portfolio', () => {
+    const oracle = makeGraphOracle({
+      start: { required: 1, optimize: 1, explore: 1 },
+      required: { optimize: 1, explore: 1 },
+      optimize: { explore: 1 },
+    });
+    const goals: GoalNode[] = [
+      {
+        id: 'required',
+        location: 'required',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: true,
+      },
+      {
+        id: 'optimize',
+        location: 'optimize',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: false,
+        utility: { optimization: 10 },
+      },
+      {
+        id: 'explore',
+        location: 'explore',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: false,
+        utility: { exploration: 10 },
+      },
+    ];
+
+    const optimizer = planObjectiveRoute({
+      goals,
+      startLocation: 'start',
+      travelOracle: oracle,
+      budgetMs: 2,
+      utilityWeights: {
+        completion: 0,
+        optimization: 2,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0,
+      },
+    });
+
+    expect(optimizer.includedOptionalBundleIds).toEqual(['optimize']);
+    expect(optimizer.portfolio).toEqual([
+      {
+        goalId: 'explore',
+        required: false,
+        optionalBundleId: 'explore',
+        selected: false,
+        weightedUtility: 0,
+      },
+      {
+        goalId: 'optimize',
+        required: false,
+        optionalBundleId: 'optimize',
+        selected: true,
+        weightedUtility: 20,
+      },
+      {
+        goalId: 'required',
+        required: true,
+        optionalBundleId: null,
+        selected: true,
+        weightedUtility: 0,
+      },
+    ]);
+  });
+
+  it('charges the optional-overhead penalty linearly, not rounded up to whole seconds', () => {
+    // Cheapest required-only route is 100ms; adding the detour makes it 400ms,
+    // so the optional overhead is exactly 300ms. At costPerSecond=10 that is a
+    // 3-point linear penalty — a 6-point bundle survives, a 2-point one does
+    // not. A `ceil`-to-whole-seconds penalty would instead charge the full 10
+    // points and wrongly drop BOTH.
+    const oracle = makeGraphOracle({
+      start: { required: 100, optional: 300 },
+      required: { optional: 300 },
+    });
+    const plan = (optimization: number) =>
+      planObjectiveRoute({
+        goals: [
+          {
+            id: 'a-required',
+            location: 'required',
+            workCost: 0,
+            prerequisiteIds: [],
+            required: true,
+          },
+          {
+            id: 'b-optional',
+            location: 'optional',
+            workCost: 0,
+            prerequisiteIds: [],
+            required: false,
+            utility: { optimization },
+          },
+        ],
+        startLocation: 'start',
+        travelOracle: oracle,
+        utilityWeights: {
+          completion: 0,
+          optimization: 1,
+          safety: 0,
+          exploration: 0,
+          costPerSecond: 10,
+        },
+      });
+
+    const worthIt = plan(6);
+    expect(worthIt.includedOptionalBundleIds).toEqual(['b-optional']);
+    expect(worthIt.selectedUtilityScore).toBeCloseTo(3, 10);
+
+    const notWorthIt = plan(2);
+    expect(notWorthIt.includedOptionalBundleIds).toEqual([]);
+    expect(notWorthIt.selectedUtilityScore).toBe(0);
+  });
+
+  it('breaks an exact utility tie on cost, then on stable goal-id order', () => {
+    // Both optional bundles are worth the same; only the travel cost differs.
+    const oracle = makeGraphOracle({
+      start: { required: 1, near: 2, far: 40 },
+      required: { near: 2, far: 40 },
+      near: { far: 40 },
+    });
+    const route = planObjectiveRoute({
+      goals: [
+        {
+          id: 'a-required',
+          location: 'required',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: true,
+        },
+        {
+          id: 'b-far',
+          location: 'far',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          utility: { optimization: 5 },
+        },
+        {
+          id: 'c-near',
+          location: 'near',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          utility: { optimization: 5 },
+        },
+      ],
+      startLocation: 'start',
+      // Only one detour fits.
+      budgetMs: 6,
+      travelOracle: oracle,
+      utilityWeights: {
+        completion: 0,
+        optimization: 1,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0,
+      },
+    });
+    expect(route.includedOptionalBundleIds).toEqual(['c-near']);
+  });
+
+  it('accepts fractional utility values and weights', () => {
+    const oracle = makeGraphOracle({
+      start: { required: 1, optional: 1 },
+      required: { optional: 1 },
+    });
+    const route = planObjectiveRoute({
+      goals: [
+        {
+          id: 'a-required',
+          location: 'required',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: true,
+        },
+        {
+          id: 'b-optional',
+          location: 'optional',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          utility: { optimization: 2.5 },
+        },
+      ],
+      startLocation: 'start',
+      travelOracle: oracle,
+      utilityWeights: {
+        completion: 0,
+        optimization: 0.5,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0.25,
+      },
+    });
+    expect(route.includedOptionalBundleIds).toEqual(['b-optional']);
+    expect(route.portfolio.find((e) => e.goalId === 'b-optional')?.weightedUtility).toBeCloseTo(
+      1.25,
+      10,
+    );
+  });
+
+  it('rejects a partially populated weights object instead of scoring NaN', () => {
+    const oracle = makeGraphOracle({ start: { required: 1 } });
+    const goals: GoalNode[] = [
+      { id: 'a-required', location: 'required', workCost: 0, prerequisiteIds: [], required: true },
+    ];
+    const partial = { completion: 1, optimization: 1 } as unknown as Parameters<
+      typeof planObjectiveRoute
+    >[0]['utilityWeights'];
+    expect(() =>
+      planObjectiveRoute({
+        goals,
+        startLocation: 'start',
+        travelOracle: oracle,
+        utilityWeights: partial,
+      }),
+    ).toThrow(ObjectiveRoutePlannerError);
+    try {
+      planObjectiveRoute({
+        goals,
+        startLocation: 'start',
+        travelOracle: oracle,
+        utilityWeights: partial,
+      });
+    } catch (error) {
+      expect((error as ObjectiveRoutePlannerError).code).toBe('invalid-utility');
+    }
+  });
+
+  it('rejects a negative or non-finite utility weight', () => {
+    const oracle = makeGraphOracle({ start: { required: 1 } });
+    const goals: GoalNode[] = [
+      { id: 'a-required', location: 'required', workCost: 0, prerequisiteIds: [], required: true },
+    ];
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        planObjectiveRoute({
+          goals,
+          startLocation: 'start',
+          travelOracle: oracle,
+          utilityWeights: {
+            completion: 0,
+            optimization: bad,
+            safety: 0,
+            exploration: 0,
+            costPerSecond: 0,
+          },
+        }),
+      ).toThrow(ObjectiveRoutePlannerError);
+    }
+  });
+
+  it('treats required completion as a budget constraint instead of utility', () => {
+    const oracle = makeGraphOracle({ start: { required: 10, optional: 1 } });
+    const route = planObjectiveRoute({
+      goals: [
+        {
+          id: 'required',
+          location: 'required',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: true,
+        },
+        {
+          id: 'optional',
+          location: 'optional',
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          utility: { optimization: 1_000_000 },
+        },
+      ],
+      startLocation: 'start',
+      travelOracle: oracle,
+      budgetMs: 5,
+      utilityWeights: {
+        completion: 0,
+        optimization: 100,
+        safety: 0,
+        exploration: 0,
+        costPerSecond: 0,
+      },
+    });
+
+    expect(route.requiredOverBudget).toBe(true);
+    expect(route.steps.map((step) => step.goalId)).toEqual(['required']);
+    expect(route.includedOptionalBundleIds).toEqual([]);
+  });
+
   it('never drops a required goal to fit budget; reports requiredOverBudget with negative slack', () => {
     const oracle = makeGraphOracle({ start: { A: 500 } });
     const goals: GoalNode[] = [

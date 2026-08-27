@@ -497,6 +497,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     world.featureUnlocks.spells = true;
     world.featureUnlocks.inventory = true;
     world.featureUnlocks.equipment = true;
+    world.featureUnlocks.equipmentPanel = true;
 
     // 3. Weapon.
     const weapon = WEAPON_DEFS.get(settings.activeWeapon);

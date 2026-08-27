@@ -1,0 +1,68 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "magic-missile-vfx",
+  "task_title": "Magic Missile VFX: homing arc + light source",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review (gpt-5.4, high effort) rejected the initial plan with 3 blocking + 3 non-blocking concerns + 1 suggestion. All resolved via code changes: (1) BLOCKING damage-bonus overlap: getSpellSkillEfficacyMultiplier now skips SPELL_SKILL_BREAKPOINT_BONUSES for magic-missile specifically since those breakpoints are redirected into extra missiles instead; added a level4-vs-level5 per-hit-damage ratio regression test proving no double-dip. (2) BLOCKING wall-clip risk from forced non-zero launch offset: shrank MAGIC_MISSILE_ARC_OUT_FRAMES 10->6 and MAGIC_MISSILE_ARC_STEP_RAD 0.55->0.35 rad, cutting the off-axis excursion from ~11ft to ~6.6ft, small enough to clear typical corridor/doorway geometry while still reading as a visible arc. (3) BLOCKING fromActiveAbility loss through tagDamageMeta: added fromActiveAbility?:boolean to PersistedDamageMeta/FAIL_CLOSED_DAMAGE_META/tagDamageMeta/readDamageMeta (optional, defaults false, zero new call-site churn), wired castMagicMissile's tagDamageMeta call to pass it through so ability-vs-weapon damage attribution telemetry stays correct; added damage-meta.test.ts round-trip coverage. (4) NON-BLOCKING no retarget-on-death: implemented full retarget-to-nearest-living-enemy in homingSystem when the assigned target dies/is removed, with new regression tests, rather than leaving it as an accepted gap. (5) NON-BLOCKING VFX identity coupled to generic Homing tag: damageSystem now derives the arcaneBoltImpact color from the projectile's own Glowing light instead of a hardcoded Homing-implies-purple constant, decoupling color from the tag; added a color assertion regression test. (6) NON-BLOCKING target-splitting design: confirmed intentional (issue only requires extra missiles, not single-target-only behavior; round-robin spread is classic Magic Missile design); documented explicitly in code comment. (7) SUGGESTION deterministic same-side arc for solo casts: accepted as-is per the repo's no-Math.random()/determinism constraint (rule 3). Alternatives argued by the reviewer (separate Magic-Missile-specific controller; a ProjectileBehavior enum instead of tag components; a scripted deterministic curve instead of physical homing) were considered and rejected: they would duplicate the existing generic projectile/collision/damage pipeline that every other weapon/spell already relies on, at higher long-term maintenance cost. plan_divergence=minor because the core architecture (reuse generic projectile pipeline + new Homing/Glowing tag components + homingSystem) was not overturned -- only parameter tuning and two data-model extensions (fromActiveAbility field, retarget-on-death) were added on top of the original plan."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-sol",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "4d035a4c165a6976645bc0a95f774a253591ed99",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "tests/game/ability-system.test.ts",
+          "detail": "The real Magic Missile cast test verifies eventual impact but not the defining launch arc or slow speed; zeroing the arc offset/delay would still pass. Assert that a spawned missile initially travels off the target bearing at the intended speed and only begins steering after its activation frame."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "The implementation correctly replaces instant damage with deterministic, sim-wired homing projectiles, preserves damage and skill attribution, adds milestone missile counts, and integrates dynamic lighting and impact VFX. Targeted unit, typecheck, lint, wiring, and real-scene lighting tests pass. Coverage is strong, but the cast-level arc and speed contract lacks a direct regression assertion."
+    }
+  }
+}

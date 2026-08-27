@@ -120,6 +120,96 @@ export function queuePositionAfterRecovery(index, recovery) {
 
 export const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
 
+// Safeguard (2), 2026-08-21 deadlock. The empty-queue liveness detector above
+// only fires when `queued.length === 0`, so it structurally cannot see the
+// inverse failure that actually deadlocked the train: a FULL queue that admits
+// nothing, pass after pass, while reconcile exits 0 and the workflow reports
+// success. Treat "queue non-empty AND zero admitted" as a stall as soon as it
+// persists past this many consecutive reconcile passes.
+export const STALLED_QUEUE_PASS_THRESHOLD = 3;
+
+// Safeguard (3), 2026-08-21 deadlock. A queued PR that the train provably
+// cannot advance (same-repo restricted-branch 403 on update-branch) is left
+// queued on purpose, to avoid the #3027 label-churn livelock. But leaving it
+// queued forever means the head of the queue is permanently un-advanceable.
+// After this many consecutive reconcile passes failing on the SAME head SHA,
+// eject it from the queue and quarantine it with BLOCKED_LABEL, which
+// `router.mjs` already treats as dispatch-blocked -- so quarantine is sticky
+// and CI Recovery will not immediately re-queue it into the same 403 loop.
+export const UNADVANCEABLE_STRIKE_THRESHOLD = 3;
+
+// Safeguard (3), churn guard. Strikes reset on a new head SHA so an out-of-band
+// rebase (the intended recovery) is never penalized -- but that alone lets a bot
+// pushing ineffective commits reset the counter forever and evade quarantine
+// while still failing every update. This cumulative ceiling never resets on head
+// movement, so persistent un-advanceability is always eventually quarantined.
+export const UNADVANCEABLE_ATTEMPT_CEILING = 10;
+
+/**
+ * Decides whether a reconcile pass that ended with a non-empty queue and zero
+ * admitted entries has stalled long enough to raise an incident.
+ *
+ * Pure over the observed pass counters so the caller owns all IO. `passes` is
+ * the number of *consecutive* prior passes already observed in this condition,
+ * including the current one.
+ */
+export function evaluateStalledQueue({
+  queuedCount,
+  admittedCount,
+  passes,
+  threshold = STALLED_QUEUE_PASS_THRESHOLD,
+}) {
+  const queued = Number(queuedCount);
+  const admitted = Number(admittedCount);
+  const observed = Number(passes);
+  const limit = Number(threshold);
+  const stalled =
+    Number.isFinite(queued) && queued > 0 && Number.isFinite(admitted) && admitted === 0;
+  if (!stalled) return { stalled: false, alarm: false, passes: 0 };
+  const nextPasses = Number.isFinite(observed) && observed > 0 ? observed : 1;
+  return {
+    stalled: true,
+    alarm: Number.isFinite(limit) && limit > 0 && nextPasses >= limit,
+    passes: nextPasses,
+  };
+}
+
+/**
+ * Decides whether a queued PR the train cannot advance has accumulated enough
+ * consecutive strikes on the same head SHA to be ejected and quarantined.
+ *
+ * Strikes reset whenever the head SHA changes, so a PR that gets rebased
+ * out-of-band (the intended recovery for a restricted-branch 403) is never
+ * penalized for its earlier failures.
+ */
+export function evaluateUnadvanceableStrike({
+  headSha,
+  recordedSha,
+  recordedStrikes,
+  recordedAttempts,
+  threshold = UNADVANCEABLE_STRIKE_THRESHOLD,
+  ceiling = UNADVANCEABLE_ATTEMPT_CEILING,
+}) {
+  const sha = String(headSha || '').trim();
+  const priorSha = String(recordedSha || '').trim();
+  const prior = Number(recordedStrikes);
+  const limit = Number(threshold);
+  const carried = sha && sha === priorSha && Number.isFinite(prior) && prior > 0 ? prior : 0;
+  const strikes = carried + 1;
+  const priorAttempts = Number(recordedAttempts);
+  const attempts =
+    (Number.isFinite(priorAttempts) && priorAttempts > 0 ? priorAttempts : carried) + 1;
+  const cap = Number(ceiling);
+  const hitStrikes = Number.isFinite(limit) && limit > 0 && strikes >= limit;
+  const hitCeiling = Number.isFinite(cap) && cap > 0 && attempts >= cap;
+  return {
+    headSha: sha,
+    strikes,
+    attempts,
+    quarantine: Boolean(sha) && (hitStrikes || hitCeiling),
+  };
+}
+
 function stallAnchorMs(pull) {
   const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
   if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;
@@ -147,6 +237,67 @@ export function stalledAdmissionEligiblePulls({
     .sort(
       (left, right) => stallAnchorMs(left) - stallAnchorMs(right) || left.number - right.number,
     );
+}
+
+/**
+ * Serializes an unadvanceable-strike record for embedding in a PR's merge-train
+ * status comment, so strike state survives across reconcile passes without new
+ * storage. Kept as a single greppable HTML comment line.
+ */
+export const UNADVANCEABLE_STRIKE_PREFIX = '<!-- crawler-merge-train-unadvanceable:';
+
+export function renderUnadvanceableStrike({ headSha, strikes, attempts }) {
+  const sha = String(headSha || '').trim();
+  const count = Number(strikes);
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  const total = Number(attempts);
+  const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : safeCount;
+  return `${UNADVANCEABLE_STRIKE_PREFIX}${sha}:${safeCount}:${safeTotal} -->`;
+}
+
+export function parseUnadvanceableStrike(body) {
+  const text = String(body || '');
+  const index = text.indexOf(UNADVANCEABLE_STRIKE_PREFIX);
+  if (index === -1) return { headSha: '', strikes: 0, attempts: 0 };
+  const rest = text.slice(index + UNADVANCEABLE_STRIKE_PREFIX.length);
+  const end = rest.indexOf('-->');
+  if (end === -1) return { headSha: '', strikes: 0, attempts: 0 };
+  const [sha, count, total] = rest.slice(0, end).trim().split(':');
+  const parsed = Number.parseInt(String(count || ''), 10);
+  const parsedTotal = Number.parseInt(String(total || ''), 10);
+  const strikes = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  return {
+    headSha: String(sha || '').trim(),
+    strikes,
+    // Older markers predate the cumulative field; fall back to the per-SHA
+    // count so an in-flight PR is never credited with fewer attempts than
+    // strikes already observed.
+    attempts: Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : strikes,
+  };
+}
+
+/**
+ * Serializes/parses the consecutive stalled-pass counter carried in the managed
+ * merge-train incident issue body, so safeguard (2) can tell a one-off empty
+ * admission pass from a genuine multi-pass stall without new storage.
+ */
+export const STALLED_QUEUE_PASS_PREFIX = '<!-- crawler-merge-train-stalled-passes:';
+
+export function renderStalledQueuePasses(passes) {
+  const count = Number(passes);
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  return `${STALLED_QUEUE_PASS_PREFIX}${safeCount} -->`;
+}
+
+export function parseStalledQueuePasses(body) {
+  const text = String(body || '');
+  const index = text.indexOf(STALLED_QUEUE_PASS_PREFIX);
+  if (index === -1) return 0;
+  const rest = text.slice(index + STALLED_QUEUE_PASS_PREFIX.length);
+  const end = rest.indexOf('-->');
+  if (end === -1) return 0;
+  const parsed = Number.parseInt(rest.slice(0, end).trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 /**
@@ -218,7 +369,7 @@ function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
 
-function sameRepository(pr, repository) {
+export function sameRepository(pr, repository) {
   return pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase();
 }
 
@@ -910,6 +1061,7 @@ export async function promoteExactBatch({
       expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
+      stack: postSlotPr.stack ?? null,
     });
     if (!merge.ok) {
       if (merge.retryable) {
@@ -1314,6 +1466,28 @@ export function createMergePullRequest({
           reason: `merge API rejected the merge (${status}): ${error?.message ?? String(error)}`,
         };
       }
+      // Defense-in-depth: `eligible` (via evaluateAdmission's `stacked-pr`
+      // reason) rejects a PR with a `stack` object at admission, so this
+      // should never be reached in the normal path. But a PR can become
+      // stacked (another PR opened against its head branch) in the narrow
+      // window between admission and this PUT, and GitHub 403s the classic
+      // synchronous merge endpoint for ANY stacked PR: "Merging stacked PRs
+      // via this endpoint is not supported. Use the asynchronous merge
+      // endpoint instead." Nothing merged, so treat it exactly like the
+      // other definitively-nothing-landed statuses above: retryable, not a
+      // hard throw. The next reconcile's admission check now dequeues the PR
+      // via `stacked-pr` instead of looping on this same 403 forever. Prior
+      // to this fix this fell through to the ambiguous 5xx/network branch,
+      // which throws a MergeTrainPromotionError and aborts the ENTIRE batch --
+      // blocking every other queued PR behind it (incident: PR #3027 stacked
+      // under #3033 parked the train for 24h+).
+      if (status === 403 && /stacked pr/i.test(String(error?.message ?? ''))) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge API rejected the merge (403 stacked PR): ${error?.message ?? String(error)}`,
+        };
+      }
       // 5xx/network failures are AMBIGUOUS: GitHub may have merged the PR before
       // the response was lost. Disambiguate by re-reading the PR -- if it is now
       // merged with a real merge commit, return that SHA as success so the
@@ -1354,6 +1528,134 @@ export function createMergePullRequest({
       };
     }
     return { ok: true, sha: String(data.sha) };
+  };
+}
+
+/**
+ * Create a merge function for a BOTTOM-of-stack PR (`stack.position === 1`)
+ * using GitHub's async merge-stack endpoint instead of the classic PUT.
+ *
+ * Calling `PUT /pulls/{n}/merge-async` on PR X merges every PR in the stack
+ * from the base up through and including X, atomically. Calling it on the
+ * bottom-most PR therefore merges ONLY that PR: there is nothing below it in
+ * the stack to pull in. GitHub then automatically rebases the PR(s) above it
+ * directly onto `main`, dissolving the stack so they become ordinary,
+ * independently-mergeable PRs. Never call this on a non-bottom PR -- that
+ * would force-merge everything below it too, defeating the purpose of
+ * stacking (see evaluateAdmission's `stacked-pr` reason, which rejects any
+ * non-bottom stacked PR precisely so this function is never reached for one).
+ *
+ * The async endpoint is fire-and-poll: the initial PUT returns a pending
+ * status plus a uuid, and the actual merge result must be polled via
+ * `GET /pulls/{n}/merge-async/{uuid}`.
+ */
+export function createMergeBottomOfStackPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs = [1000, 2000, 3000, 5000, 8000, 12000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  return async function mergeBottomOfStackPr(
+    entry,
+    { expectedHeadSha, commitTitle, commitMessage },
+  ) {
+    let submitted;
+    let resumedUuid = null;
+    try {
+      submitted = (
+        await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge-async`, {
+          method: 'PUT',
+          body: {
+            sha: expectedHeadSha,
+            merge_method: 'squash',
+            merge_action: 'direct_merge',
+            commit_title: commitTitle,
+            commit_message: commitMessage,
+          },
+        })
+      ).data;
+    } catch (error) {
+      resumedUuid = String(error?.data?.details?.uuid || error?.details?.uuid || '').trim() || null;
+      if (error?.status === 409 && resumedUuid) {
+        // GitHub reports an already-running async merge with HTTP 409 and its
+        // operation UUID. Resume polling that operation instead of repeatedly
+        // re-submitting and receiving the same 409.
+        submitted = { status: 'pending', details: { uuid: resumedUuid } };
+      } else {
+        // Nothing merged if the submit itself failed -- retryable, never throw
+        // (this function shares createMergePullRequest's never-throws contract).
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async submit failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
+        };
+      }
+    }
+
+    if (submitted.status === 'merged') {
+      return { ok: true, sha: String(submitted.details?.expected_head_sha || expectedHeadSha) };
+    }
+
+    const uuid = submitted.details?.uuid || resumedUuid;
+    if (!uuid) {
+      return {
+        ok: false,
+        retryable: true,
+        reason: `merge-async submit returned no uuid to poll (status: ${submitted.status})`,
+      };
+    }
+
+    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+      let polled;
+      try {
+        polled = (
+          await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge-async/${uuid}`)
+        ).data;
+      } catch (error) {
+        // Transient poll-GET failure; keep polling within the bounded budget.
+        if (attempt < pollDelaysMs.length) {
+          await sleep(pollDelaysMs[attempt]);
+          continue;
+        }
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async poll failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
+        };
+      }
+      if (polled.status === 'merged') {
+        // Re-read the PR to obtain the real merge commit SHA for the caller's
+        // post-merge proof, mirroring createMergePullRequest's contract.
+        const after = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+        if (
+          after?.merged === true &&
+          /^[0-9a-f]{40}$/i.test(String(after.merge_commit_sha || ''))
+        ) {
+          return { ok: true, sha: String(after.merge_commit_sha) };
+        }
+        return { ok: true, sha: String(polled.details?.expected_head_sha || expectedHeadSha) };
+      }
+      if (polled.status === 'failed') {
+        return {
+          ok: false,
+          retryable: false,
+          reason: `merge-async failed: ${polled.details?.message ?? 'unknown reason'}`,
+        };
+      }
+      // 'pending' or 'enqueued': keep polling within the bounded budget.
+      if (attempt < pollDelaysMs.length) {
+        await sleep(pollDelaysMs[attempt]);
+      } else {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge-async still pending after polling (uuid: ${uuid})`,
+        };
+      }
+    }
+    return { ok: false, retryable: true, reason: 'merge-async polling exhausted' };
   };
 }
 

@@ -416,18 +416,10 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   // Slug mirrors an EquipmentItemDef in equipmentDefs.ts (same id) so the
   // item round-trips bag → equip → unequip → bag. Tagged only 'Gear'.
   gear('iron-helm', 'Iron Helm', 'A dented pot with eyeholes. Surprisingly reassuring.', C),
-  gear('iron-visor', 'Iron Visor', 'A slitted faceplate. You see less, you flinch less.', C),
-  gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
-  gear('travelers-cloak', "Traveler's Cloak", 'Frayed at the hem, quick on the feet.', U),
-  gear('sturdy-belt', 'Sturdy Belt', 'Cinches the gut and steadies the nerves.', C),
   gear('iron-greaves', 'Iron Greaves', 'Shin plates that have met many shins.', U),
   gear('leather-boots', 'Leather Boots', 'Well-worn and quiet. Good for sprinting away.', C),
   gear('leather-gloves', 'Leather Gloves', 'Supple grip for a faster swing.', C),
-  gear('bronze-vambrace', 'Bronze Vambrace', 'A left-arm guard, green with age.', C),
-  gear('iron-armguard', 'Iron Armguard', 'A right-arm plate that adds bite to a blow.', C),
-  gear('leather-bracer', 'Leather Bracer', 'Snug wrist wrap. Helps you slip a hit.', C),
-  gear('beaded-bracelet', 'Beaded Bracelet', 'Lucky beads that rattle before a crit.', U),
   gear('band-of-fortune', 'Band of Fortune', 'A left-hand ring humming with dumb luck.', R),
   gear('signet-of-focus', 'Signet of Focus', 'A right-hand signet that sharpens the mind.', R),
 ];

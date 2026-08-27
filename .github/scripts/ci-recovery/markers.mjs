@@ -85,12 +85,21 @@ export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
 /** Leading marker for issue-intake status comments. */
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
 
+/** Leading marker for recurring release baseline regression comments. */
+export const BASELINE_RECURRENCE_MARKER = '<!-- crawler-baseline-recurrence:v1 -->';
+
 /**
  * Leading marker for retroactive CI-recovery plan comments posted by the
  * reconciler when a linked issue has an intake requirement but no plan comment
  * exists yet. Used as an idempotency key.
  */
 export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
+
+/**
+ * Leading prefix for CI-recovery-created follow-up backlog issues. Full format:
+ * `<!-- crawler-ci-followup-backlog:v1 sourceIssue=<n> pr=<n> thread=<id> -->`.
+ */
+export const FOLLOWUP_BACKLOG_MARKER = '<!-- crawler-ci-followup-backlog:v1';
 
 // ---------------------------------------------------------------------------
 // CI-conflict-coordinator comment
@@ -131,6 +140,58 @@ export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 
 export const STALE_BASE_RETARGET_MARKER = '<!-- crawler-ci-stale-base-retarget:v1';
 
 // ---------------------------------------------------------------------------
+// Quarantine-repair (merge-train) notice comment
+// ---------------------------------------------------------------------------
+
+/**
+ * Leading prefix for the quarantine-repair supersede-notice comment that
+ * `merge-train/quarantine-repair.mjs` posts on the ORIGINAL quarantined PR
+ * once a writable replacement PR exists for it. Full format:
+ * `<!-- crawler-quarantine-repair-notice:v1 replacement=<prNumber> -->`.
+ *
+ * This MUST be the first thing written in the comment body (see
+ * `buildSupersedeNoticeBody`), not merely present somewhere inside it: the
+ * `ci-recovery-router` workflow's job-level `if:` filters `issue_comment`
+ * events by `startsWith(comment.body, MANAGED_COMMENT_PREFIX)`, and a marker
+ * that isn't the leading text does not satisfy `startsWith` -- which would
+ * otherwise let this automation's own notice comment trigger an unnecessary
+ * CI-recovery run every time a repair notice is posted.
+ */
+export const QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX = '<!-- crawler-quarantine-repair-notice:v1';
+export const LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX =
+  '<!-- crawler-quarantine-repair-notice:';
+
+export function quarantineRepairNoticeMarker(replacementPrNumber) {
+  return `${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX} replacement=${replacementPrNumber} -->`;
+}
+
+export function hasQuarantineRepairNoticeMarker(body, replacementPrNumber) {
+  const expected = quarantineRepairNoticeMarker(replacementPrNumber);
+  if (String(body || '').includes(expected)) return true;
+  return String(body || '').includes(
+    `${LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}${replacementPrNumber} -->`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Epic-create issue markers
+// ---------------------------------------------------------------------------
+
+/** Leading prefix for epic-create human-review issues. */
+export const EPIC_REVIEW_MARKER_PREFIX = '<!-- crawler-epic-review:';
+
+/** Leading prefix for epic-create materialized node issues. */
+export const EPIC_NODE_MARKER_PREFIX = '<!-- crawler-epic-node:';
+
+export function epicReviewMarker(epicId, hash) {
+  return `${EPIC_REVIEW_MARKER_PREFIX}${epicId}:${hash} -->`;
+}
+
+export function epicNodeMarker(epicId, hash, nodeId) {
+  return `${EPIC_NODE_MARKER_PREFIX}${epicId}:${hash}:${nodeId} -->`;
+}
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -167,9 +228,15 @@ export const MANAGED_COMMENT_MARKERS = [
   COORDINATOR_MARKER,
   COORDINATOR_DATA_PREFIX,
   ISSUE_INTAKE_MARKER,
+  BASELINE_RECURRENCE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
+  FOLLOWUP_BACKLOG_MARKER,
   LOOP_INCIDENT_MARKER,
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,
   STALE_BASE_RETARGET_MARKER,
+  QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
+  LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
+  EPIC_REVIEW_MARKER_PREFIX,
+  EPIC_NODE_MARKER_PREFIX,
 ];

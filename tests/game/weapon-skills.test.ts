@@ -514,7 +514,7 @@ describe('weapon skill hit gate', () => {
     // Verify the production path registered the projectile in the per-attack map.
     expect(world.attackWeaponSkillsByEntity.size).toBeGreaterThanOrEqual(1);
     const bowEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
-      ([, skills]) => skills.classSkillId === bowDef.weaponClassSkillId,
+      ([, skills]) => skills?.classSkillId === bowDef.weaponClassSkillId,
     );
     expect(bowEntry).toBeDefined();
     const [projectileEid] = bowEntry!;

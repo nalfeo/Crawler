@@ -426,8 +426,25 @@ describe('inventory flow (e2e)', () => {
     await probe.openEquipment(page);
     await page.waitForTimeout(300);
 
-    expect(await probe.getEquipmentEmptySlotCue(page, 'ring1')).toBe('ring1');
-    expect(await probe.getEquipmentEmptySlotCue(page, 'ring2')).toBe('ring2');
+    for (const ringSlot of ['ring1', 'ring2'] as const) {
+      const cue = await probe.getEquipmentEmptySlotCue(page, ringSlot);
+      expect(cue, `expected an empty-slot cue for "${ringSlot}"`).not.toBeNull();
+      // The ring placeholder branch must actually have drawn (not the generic
+      // fallback), and the caption must be parented by the panel container so
+      // it inherits panel visibility/scale and is cleaned up on rerender.
+      expect(cue!.glyph, `wrong placeholder glyph for "${ringSlot}"`).toBe('ring');
+      expect(cue!.captionText).toBe('Empty');
+      expect(cue!.captionInPanel, `"${ringSlot}" cue is not parented by the panel`).toBe(true);
+      expect(cue!.captionBounds.width).toBeGreaterThan(0);
+      expect(cue!.captionBounds.height).toBeGreaterThan(0);
+
+      const slotBounds = await probe.getEquipmentSlotBounds(page, ringSlot);
+      expect(slotBounds).not.toBeNull();
+      expect(cue!.captionBounds.x).toBeGreaterThanOrEqual(slotBounds!.x - 2);
+      expect(cue!.captionBounds.x + cue!.captionBounds.width).toBeLessThanOrEqual(
+        slotBounds!.x + slotBounds!.width + 2,
+      );
+    }
   });
 
   it('double-clicks an inventory item to equip it onto the paper-doll', async () => {
@@ -824,6 +841,16 @@ describe('equipment decision gate (e2e)', () => {
     const { context, page: layoutPage } = await openDecisionState({ width: 1280, height: 800 });
     try {
       await probe.previewEquipmentBagItem(layoutPage, null);
+      // The Ten-Slot contract retired several placeholder gear defs (see
+      // RETIRED_EQUIPMENT_ITEM_IDS), so the decision-state auto-equip (first 4
+      // bag items) can now land on gear that indirectly buffs Move Speed via
+      // Dexterity (iron-greaves/leather-gloves) or directly (leather-boots).
+      // Unequip those slots so this test's baseline -> "equip boots" assertions
+      // below observe a real neutral -> buffed transition instead of racing
+      // whatever the auto-equip happened to select.
+      await probe.unequipEquipmentSlot(layoutPage, 'legs');
+      await probe.unequipEquipmentSlot(layoutPage, 'gloves');
+      await probe.unequipEquipmentSlot(layoutPage, 'feet');
       await layoutPage.waitForTimeout(100);
 
       for (const slot of EQUIPMENT_UI_SLOTS) {

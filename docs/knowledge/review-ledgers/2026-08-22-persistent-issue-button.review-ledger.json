@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "persistent-issue-button",
+  "task_title": "Keep dev issue reporting available across active UX",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Dedicated picker retained; review added explicit depth above 6100 and an early report-open update branch. Availability now depends only on report-open/submitting safety, while real-scene tests cover clickability and state restoration."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "ce7a7b306dbdaf2d7de2f3f984c41cb9ffed10dd",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly extracts the issue report picker into its own instance with dedicated keyboard capture and depth above active gameplay UX. Test coverage is thorough, proving the exclusive input behavior, depth overlap, state restoration, and terminal state exclusion (via durable run outcome logic) correctly handle edge cases. The changes are surgical, strictly fulfilling the stated task without over-broad rewrites, and comply with repository standards and layers."
+    }
+  }
+}

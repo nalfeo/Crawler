@@ -855,6 +855,13 @@ describe('floor1Scenario', () => {
     expect(world.stores.position.x[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.x);
     expect(world.stores.position.y[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.y);
     expect(expectedSlimeRatPlacement.preferredMinimumSatisfied).toBe(true);
+    const slimeRatDeathX = expectedSlimeRatPlacement.position.x;
+    const slimeRatDeathY = expectedSlimeRatPlacement.position.y;
+    addComponent(world.ecs, slimeRatBossEid, DeathTimer);
+    floorObjectiveSystem(world);
+    world.stores.position.x[slimeRatBossEid] = slimeRatDeathX + 3;
+    world.stores.position.y[slimeRatBossEid] = slimeRatDeathY;
+    floorObjectiveSystem(world);
     clearEntityStores(world, slimeRatBossEid);
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
@@ -863,8 +870,10 @@ describe('floor1Scenario', () => {
     expect(world.bossChests.has(slimeRatChestId)).toBe(true);
     const slimeRatChestEid = world.bossChestEids.get(slimeRatChestId);
     expect(slimeRatChestEid).toBeTypeOf('number');
-    expect(world.stores.position.x[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.x);
-    expect(world.stores.position.y[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.y);
+    // The chest drops off the body: the boss's last sampled position, not the
+    // authored room anchor it used to teleport to (issue #3275 item 3).
+    expect(world.stores.position.x[slimeRatChestEid!]).toBe(slimeRatDeathX);
+    expect(world.stores.position.y[slimeRatChestEid!]).toBe(slimeRatDeathY);
     expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&
@@ -968,8 +977,19 @@ describe('floor1Scenario', () => {
       throw new Error('Expected staircase boss to exist');
     }
 
-    // Simulate the killing blow: attach DeathTimer (what dropSystem does at HP 0)
-    // WITHOUT removing the entity — the body is still alive in ECS.
+    const initialBossX = world.stores.position.x[bossEid];
+    const initialBossY = world.stores.position.y[bossEid];
+    if (initialBossX === undefined || initialBossY === undefined) {
+      throw new Error('Expected staircase boss position to exist');
+    }
+    const deathX = initialBossX + 1;
+    const deathY = initialBossY;
+    world.stores.position.x[bossEid] = deathX;
+    world.stores.position.y[bossEid] = deathY;
+
+    // Simulate the killing blow after movement: attach DeathTimer (what
+    // dropSystem does at HP 0) WITHOUT removing the entity — the body is still
+    // alive in ECS on the lethal frame.
     addComponent(world.ecs, bossEid, DeathTimer);
 
     // Entity must still exist (death animation linger period).
@@ -980,6 +1000,10 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseUnlocked).toBe(true);
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.bossBattles.get('staircase')!.defeated).toBe(true);
+    const chestEid = world.bossChestEids.get(createBossChestId('floor1-rat-slime-boss'));
+    expect(chestEid).toBeTypeOf('number');
+    expect(world.stores.position.x[chestEid!]).toBe(deathX);
+    expect(world.stores.position.y[chestEid!]).toBe(deathY);
 
     // Entity is still present in ECS (body not yet purged).
     expect(entityExists(world.ecs, bossEid)).toBe(true);
@@ -1314,6 +1338,46 @@ describe('floor1Scenario', () => {
   });
 
   describe('shopkeeper errand questline', () => {
+    it('keeps the Gear panel locked on Floor 1 until the merchant charm is bought', () => {
+      // Regression (issue #3310): `selectFloor1StarterWeapon` routes the
+      // starter through `equip()`, so the player has a non-null `mainHand`
+      // from frame one. The Gear reveal used to be keyed on a gate that only
+      // applied once the merchant errand was already in the quest log — which
+      // only happens after the shopkeeper conversation — so the starter
+      // weapon (or any earlier chest/enemy drop) opened Gear on the very first
+      // simulated frame, ahead of the merchant beat.
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+
+      // Unrelated equippable loot picked up before the errand exists must not
+      // reveal Gear either.
+      addItem(world.inventories.get(player)!, 'throwing-knife', 1);
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
+
+      // Buying the charm is the intended reveal, and it still works.
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
+      meetShopkeeper(world);
+      questSystem(world);
+      addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      questSystem(world);
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(false);
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+
+      questSystem(world);
+      expect(world.featureUnlocks.equipmentPanel).toBe(true);
+    });
+
     it('starts the player on the find-welcome quest and gates NPC quests', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);

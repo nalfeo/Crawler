@@ -5,7 +5,7 @@
  * and FOV visibility bitmap into a single object attached to GameWorld.
  */
 
-import type { MapConfig, FloorMapData, TerritoryZone } from '../../shared/map-types';
+import type { ArenaFeedGate, MapConfig, FloorMapData, TerritoryZone } from '../../shared/map-types';
 import { RoomRole } from '../../shared/map-types';
 import { TileMap } from './TileMap';
 import { RoomGraph } from './RoomGraph';
@@ -103,6 +103,12 @@ export class FloorMap implements FloorMapData {
   readonly playerSpawn: { readonly x: number; readonly y: number };
   /** Floor 2 family spawn-influence zones (empty on other floors). */
   readonly territoryZones: ReadonlyArray<TerritoryZone>;
+  /**
+   * Floor 4 arena feed gates in fixed index order (empty on other floors).
+   * Published by the generator so wave scheduling reads the gates of the map it
+   * is actually running on instead of re-deriving geometry.
+   */
+  readonly feedGates: ReadonlyArray<ArenaFeedGate>;
 
   /**
    * Bounding box of sub-tile cells set by the most recent FOV pass (sub-tile
@@ -125,6 +131,7 @@ export class FloorMap implements FloorMapData {
     playerSpawn: { x: number; y: number },
     subFactor: number = DEFAULT_FOV_SUB_FACTOR,
     territoryZones: ReadonlyArray<TerritoryZone> = [],
+    feedGates: ReadonlyArray<ArenaFeedGate> = [],
   ) {
     this.config = config;
     this.tileMap = tileMap;
@@ -138,6 +145,7 @@ export class FloorMap implements FloorMapData {
     this.tileDiscovered = new Uint8Array(config.widthTiles * config.heightTiles);
     this.playerSpawn = playerSpawn;
     this.territoryZones = territoryZones;
+    this.feedGates = feedGates;
   }
 
   /** Delegate to TileMap for FloorMapData interface. */

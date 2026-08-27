@@ -1,0 +1,108 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "improve-win-rates",
+  "task_title": "Diagnose and fix floor1-2 chain/floor2 win-rate failures",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged: (1) whether the nightly-balance-issue automation counts as the release workflow vs deploy.yml itself -- resolved: nightly-balance-issue runs on a schedule and always resolves the newest published release baseline, so it effectively re-checks after every release without needing deploy.yml changes; (2) post-fix re-measurement should use canonical legs, not local smoke -- resolved: per explicit maintainer instruction, diagnosis and before/after evidence use the already-published real release baseline RunStats (baselines branch), not a freshly dispatched sweep; the next automatic release sweep is the canonical re-measurement and the new nightly ask self-corrects if it has not improved; (3) chain-failure diagnosis should use progression-runner leg/carryover data, not just flattened final RunStats -- adopted, background agent instructed to analyze legs[\"floor1-chain\"].runs and legs.floor2.runs separately; (4) telemetry set should include progression/den/combat fields, not just movementQuality, for non-movement failure modes -- adopted, real baseline analysis showed movementQuality.stuckPct + aiTelemetry.decisionStateMs already sufficiently explains the dominant timeout bucket (stuck/wiggle during ENGAGE), with family/den completion spread thin across many families ruling out a single mapgen lockout; (5) spell out concrete ledger/verify steps -- adopted into this session checklist."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged non-null assertions in settlement-return cycle index handling; resolved by adding explicit cycle guard and structured status-index lookup."
+        },
+        {
+          "round": 2,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged positional magic constants for armed/cooldown indexes; resolved by deriving indexes by status label."
+        },
+        {
+          "round": 3,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged seed-rationale comments; resolved by documenting behavioral fixture selection rather than balance sampling."
+        },
+        {
+          "round": 4,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged exact frame numbers in comments; resolved by keeping only stable behavioral criteria."
+        },
+        {
+          "round": 5,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flagged assertion structure and silent return risk; resolved by removing the silent return and asserting named telemetry/status indexes."
+        },
+        {
+          "round": 6,
+          "models": ["code_review"],
+          "concerns_count": 1,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Final clean re-review could not be obtained: the code_review tool timed out and instructed not to rerun. No known actionable code-review concern remains after the latest fix; escalated for human confirmation per the bounded-loop policy."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 6,
+        "reason": "Automated code_review did not produce a clean terminal round after repeated addressed low-level test-assertion findings, then timed out with an instruction not to rerun. Human confirmation is required for the final assertion shape.",
+        "unresolved_concerns": 1
+      }
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "aeb446253cb6bf4c94ed2a0f2c72c097cadc9634",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/review-ledgers/2026-08-22-improve-win-rates.review-ledger.json",
+          "detail": "For a declared 3\ud83c\udf4e change the ledger's code_review stage is incomplete. Complete the code-review loop before PR finalization."
+        },
+        {
+          "severity": "minor",
+          "file": ".github/workflows/deploy.yml",
+          "detail": "The release-path nightly balance automation is cohesive around the win-rate theme and tested, but could have been a sibling automation change."
+        },
+        {
+          "severity": "minor",
+          "file": "tests/headless/settlement-return-routing.test.ts",
+          "detail": "The deterministic AI behavior change required updating one settlement-return fixture seed; verify affected headless coverage remains green."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "The core fix is sound: it closes a real Floor 2 stall where updateEngageWatchdog's ignoredEnemyUntilFrame blacklist was ignored by findNearestFloor2HuntEnemy/findNearestFloor2Boss, letting the AI immediately re-select the same unreachable target and loop forever, plus an ENGAGE-abandon guard mirroring the existing COLLECT/EXPLORE pattern. The logic is deterministic, stays within src/game/ai layer boundaries, self-heals via time-bounded ignore with expiry cleanup, and is backed by a headless regression that asserts victory, kill count, stuckPct<25, and replay determinism. The automation half is unit-tested and documented. No blocker was found, so this passes while the ledger is completed before PR."
+    }
+  }
+}

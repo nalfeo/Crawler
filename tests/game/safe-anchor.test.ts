@@ -54,6 +54,45 @@ describe('resolveNearestSafeAnchor', () => {
     expect(resolveNearestSafeAnchor(world, far.x, far.y)).toEqual(map.tileToWorld(2, 2));
   });
 
+  it('anchors on a cleared boss arena, which is safe without carrying the SAFE role', () => {
+    // Issue #3275 item 5: retreating to equip should use the arena the player
+    // just cleared next door, not walk back across the floor to the authored
+    // safe room. The cleared room keeps its BOSS_STAIR role on purpose.
+    const world = createTestWorld({ seed: 3 });
+    const map = makeMapWithSafeRoom();
+    const bossRoomId = map.roomGraph.add(
+      { x: 14, y: 14, width: 4, height: 4 },
+      [],
+      [],
+      RoomRole.BOSS_STAIR,
+    );
+    world.floorMap = map;
+
+    const near = map.tileToWorld(15, 15);
+    expect(resolveNearestSafeAnchor(world, near.x, near.y)).toEqual(map.tileToWorld(2, 2));
+
+    world.clearedSafeRoomIds.add(bossRoomId);
+    world.clearedSafeRoomMap = map;
+    expect(resolveNearestSafeAnchor(world, near.x, near.y)).toEqual(map.tileToWorld(15, 15));
+  });
+
+  it('ignores cleared room ids recorded against a different floor', () => {
+    const world = createTestWorld({ seed: 3 });
+    const map = makeMapWithSafeRoom();
+    const bossRoomId = map.roomGraph.add(
+      { x: 14, y: 14, width: 4, height: 4 },
+      [],
+      [],
+      RoomRole.BOSS_STAIR,
+    );
+    world.floorMap = map;
+    world.clearedSafeRoomIds.add(bossRoomId);
+    world.clearedSafeRoomMap = null;
+
+    const near = map.tileToWorld(15, 15);
+    expect(resolveNearestSafeAnchor(world, near.x, near.y)).toEqual(map.tileToWorld(2, 2));
+  });
+
   it('is deterministic for equidistant safe rooms', () => {
     const world = createTestWorld({ seed: 3 });
     const map = makeMapWithSafeRoom();

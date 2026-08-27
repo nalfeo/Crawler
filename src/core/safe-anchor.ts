@@ -57,6 +57,18 @@ export function resolveNearestSafeAnchor(
       rooms.push(room);
     }
   }
+  // Arenas that became safe during the run (a cleared boss room) are real safe
+  // destinations too, so retreat routing must be able to pick the one next
+  // door instead of walking back to the authored safe room. Kept in sync with
+  // `isPointInSafeSpace`, including the per-floor id scoping.
+  if (world.clearedSafeRoomMap === floorMap) {
+    for (const roomId of world.clearedSafeRoomIds) {
+      const room = floorMap.roomGraph.get(roomId);
+      if (room && !rooms.includes(room)) {
+        rooms.push(room);
+      }
+    }
+  }
   if (rooms.length === 0) {
     return null;
   }

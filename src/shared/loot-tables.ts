@@ -172,6 +172,14 @@ export const LOOT_TABLES = {
     id: 'floor_2',
     entries: [{ type: 'xp' as const, value: 3, chance: 1.0, min: 1, max: 1 }],
   } satisfies LootTable,
+
+  // Floor 3 reuses Floor 2's simple XP-only floor bonus for the wild-spawn slice.
+  // Keeping a distinct id lets later slices retune Floor 3 drops without mutating
+  // the Floor 2 manifest contract.
+  FLOOR_3: {
+    id: 'floor_3',
+    entries: [{ type: 'xp' as const, value: 3, chance: 1.0, min: 1, max: 1 }],
+  } satisfies LootTable,
 } as const;
 
 /**

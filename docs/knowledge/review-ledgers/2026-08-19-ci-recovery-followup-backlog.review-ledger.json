@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-19",
+  "session_slug": "ci-recovery-followup-backlog",
+  "task_title": "CI recovery follow-up backlog issue handling",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "rubber-duck agent",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Plan review found the core design sound but flagged unguarded GitHub mutations and extra labels as a blocking reliability risk. The implementation was updated to catch/log issue/reply/resolve failures, continue without synthetic resolution on failed mutations, and create the follow-up issue with only the automation label."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["code_review tool"],
+          "clean": true,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Automated code_review found no code defects; it flagged the in-progress 3🍎 ledger as incomplete. This is resolved by completing and validating the ledger before publication."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.6-flash",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "88710ba47bf45cb1c5bba4e6a240de07e21ae8d6",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change cleanly implements automated detection and handling for review threads requesting unassigned follow-up backlog issues within the CI recovery reconciler. Detection logic in issue-intake-lib.mjs validates reviewer trust, requires explicit unassigned Copilot wording, and fails closed on unmatched issue references. Reconcile logic safely reuses existing automation issues, enforces optimism fences prior to mutations, posts the required marker reply, and resolves review threads via GraphQL. The change is surgical, fully tested across unit and live integration flows, and fully compliant with repository policies."
+    }
+  }
+}

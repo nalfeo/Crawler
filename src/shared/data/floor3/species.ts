@@ -141,6 +141,27 @@ export function getPetSpecies(speciesId: string): PetSpeciesDef | undefined {
   return loadPetSpecies().find((species) => species.speciesId === speciesId);
 }
 
+/**
+ * Stable numeric token for `speciesId`, for the ECS `companion.speciesToken`
+ * store (`Uint16Array`, see `src/core/components.ts`). Tokens are the
+ * species' 1-based index in the static, load-order-stable roster array — `0`
+ * is reserved to mean "unset". Deterministic across headless/real runs
+ * because the roster is static content, not runtime-generated.
+ */
+export function speciesTokenForId(speciesId: string): number {
+  const index = loadPetSpecies().findIndex((species) => species.speciesId === speciesId);
+  if (index === -1) {
+    throw new Error(`Unknown Floor 3 speciesId: ${speciesId}`);
+  }
+  return index + 1;
+}
+
+/** Reverse lookup of {@link speciesTokenForId}; `undefined` for token `0`/unknown. */
+export function speciesForToken(token: number): PetSpeciesDef | undefined {
+  if (token <= 0) return undefined;
+  return loadPetSpecies()[token - 1];
+}
+
 /** All species of one affinity (7 grid species plus any signature lines). */
 export function petSpeciesByAffinity(affinity: Affinity): readonly PetSpeciesDef[] {
   return loadPetSpecies().filter((species) => species.affinity === affinity);

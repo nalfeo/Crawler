@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "floor3-overworld-biomes",
+  "task_title": "Floor 3 Slice 7 — overworld biomes + wild spawns",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Resolved reviewer concerns before coding: kept TerritoryZone legacy familyIndex contract intact (Floor 3 will interpret the numeric zone index in scenario code rather than optionalizing the type), kept AI_TYPE numeric mapping in src/game rather than leaking it into shared, will use a dedicated Floor 3 biome-overworld generator path/helper instead of a giant in-place CaveSystem mode branch, defined neutral wilds strictly as multiplier===1 and affinity!=biome affinity, and added negative/wiring tests for no Floor-2-only room state plus canonical createFloorMainSceneOptions(\"floor3\") pipeline wiring."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "131bdc986a4cc7405f97db8f5bb902f573ec582e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation successfully delivers the biome-overworld map generation and affinity-weighted wild spawn director exactly as planned. The generator correctly branches without breaking Floor 2's base, and the weighting math robustly handles biome-matching and neutral fallbacks. The code respects all layer and determinism boundaries (no Math.random or Date.now) and is backed by excellent test coverage validating exact room roles, determinism invariants, and the new ECS pipeline stages."
+    }
+  }
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestWorld } from '../helpers/world-factory';
 import { getWorldFloorBehavior, getWorldFloorManifest } from '../../src/core/floor-behavior';
 import { DEFAULT_FLOOR_BEHAVIOR } from '../../src/shared/floor-behavior';
-import { floor1Manifest, floor2Manifest } from '../../src/shared/floor-manifest';
+import { floor1Manifest, floor2Manifest, floor3Manifest } from '../../src/shared/floor-manifest';
 
 describe('floor behavior config', () => {
   it('ships Floor 1 safe-room and boss-chest semantics in the manifest', () => {
@@ -12,7 +12,10 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: true,
       lineOfSightAggro: false,
       equipmentEconomy: true,
+      carriedMainHandWeapon: false,
       bossChests: true,
+      merchantCharmGatesEquipment: { prerequisiteQuestId: 'floor1-shopkeeper-errand' },
+      settlementEquipmentEconomy: false,
     });
   });
 
@@ -23,7 +26,24 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: true,
       equipmentEconomy: true,
+      carriedMainHandWeapon: false,
       bossChests: true,
+      merchantCharmGatesEquipment: null,
+      settlementEquipmentEconomy: true,
+    });
+  });
+
+  it('ships Floor 3 overworld wild-spawn semantics in the manifest', () => {
+    expect(floor3Manifest.behavior).toEqual({
+      spawnRoomIsSafe: true,
+      safeRoomWeaponImmunity: false,
+      safeRoomDoorsAutoClose: false,
+      lineOfSightAggro: true,
+      equipmentEconomy: true,
+      carriedMainHandWeapon: false,
+      bossChests: false,
+      merchantCharmGatesEquipment: null,
+      settlementEquipmentEconomy: false,
     });
   });
 
@@ -34,7 +54,10 @@ describe('floor behavior config', () => {
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: false,
       equipmentEconomy: false,
+      carriedMainHandWeapon: false,
       bossChests: false,
+      merchantCharmGatesEquipment: null,
+      settlementEquipmentEconomy: false,
     });
   });
 
@@ -62,7 +85,7 @@ describe('floor behavior config', () => {
 
   it('does not fall back by floor number when a non-empty floor id is unregistered', () => {
     const world = createTestWorld({ floor: 1 });
-    world.floorId = 'floor3';
+    world.floorId = 'floor-does-not-exist';
     expect(getWorldFloorManifest(world)).toBeUndefined();
     expect(getWorldFloorBehavior(world)).toBe(DEFAULT_FLOOR_BEHAVIOR);
   });

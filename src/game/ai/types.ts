@@ -7,6 +7,10 @@ import type { GameWorld } from '../../core/world.js';
 import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
+import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
+import type { EventSummary } from './event-log.js';
+import type { ObjectiveUtilityWeights } from './objective-route-planner.js';
 
 /**
  * AI behavioral state machine states.
@@ -47,12 +51,14 @@ export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMo
 /**
  * A/B axis 2 — how the AI decides which Track A goal is eligible.
  *
- * `LEGACY` is the sole current member (fixed-priority ladder, time-blind).
- * Additional arms may be added for future floor tuning.
+ * `LEGACY` preserves the fixed-priority control. `OBJECTIVE_PORTFOLIO` is the
+ * opt-in personality-weighted strategic scheduler for declarative floor goals.
  */
 export const AIDecisionMode = {
   /** Fixed-priority Track A ladder, time-blind. The 2026-07-21 AI Sweep winner. */
   LEGACY: 'legacy',
+  /** Personality-weighted global objective portfolio with required deadline constraints. */
+  OBJECTIVE_PORTFOLIO: 'objectivePortfolio',
 } as const;
 export type AIDecisionModeValue = (typeof AIDecisionMode)[keyof typeof AIDecisionMode];
 
@@ -183,6 +189,18 @@ export interface AIConfig {
    */
   farmPullWeight?: number;
   /**
+   * Multiplier applied to {@link collectPullWeight} and {@link farmPullWeight}
+   * while the collapse clock is *not* yet applying any pressure.
+   *
+   * The panic profile already scales both pulls **down** as the deadline
+   * approaches. The reverse was missing: with the whole floor budget still
+   * ahead, a confident player detours for loot and XP on the way to an
+   * objective rather than walking the shortest line to it. `1` = no boost
+   * (behavior identical to before this knob existed). Only ever applies at
+   * `panic === 0`, so it can never trade exit safety for loot.
+   */
+  calmFarmPullBoost?: number;
+  /**
    * A/B axis 1: how a Track A goal becomes a heading. Defaults to
    * {@link AIPathingMode.RISK_REWARD_FUSED} — the 2026-07-21 AI Sweep winner
    * (294/300 vs 286/300).
@@ -193,6 +211,8 @@ export interface AIConfig {
    * {@link AIDecisionMode.LEGACY} — fixed-priority Track A ladder, time-blind.
    */
   decisionMode?: AIDecisionModeValue;
+  /** Personality-specific strategic values used only by objectivePortfolio mode. */
+  strategicUtilityWeights?: ObjectiveUtilityWeights;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -320,6 +340,28 @@ export interface AIDecisionTelemetryMetrics {
   /** Simulated time classified as suppressed progress navigation. */
   suppressedProgressNavMs: number;
 }
+
+/**
+ * Wasted-motion rollup attached to `RunStats` (see `movementQuality` there).
+ * A pass-through of the fields from `EventSummary` that the win-rate/quality
+ * gates and CLI actually consume — keeps `RunStats` decoupled from the full
+ * episode-list shape (`wiggleEpisodes`/`stuckEpisodes`), which remains
+ * available via the richer `--event-summary` CLI output when needed.
+ */
+export type MovementQualityMetrics = Pick<
+  EventSummary,
+  | 'wiggleMs'
+  | 'wigglePct'
+  | 'idleMs'
+  | 'idlePct'
+  | 'stuckMs'
+  | 'stuckPct'
+  | 'excludedMs'
+  | 'excludedPct'
+  | 'travelEfficiency'
+  | 'totalPathTravel'
+  | 'totalNetDisp'
+>;
 
 /**
  * Spawner Battle-Arena rollup — captured once at the end of a headless run so
@@ -746,12 +788,42 @@ export interface RunStats {
   floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
+  /** Floor 4 arena clock and phase timeline evidence. */
+  floor4Arena?: Floor4ArenaRunStats;
+  /**
+   * Shared den-boss diagnostic rollup — the SAME contract emitted as `den`
+   * telemetry records by the player / AI Runner session recorder, so a headless
+   * run and an interactive recording can be compared field-for-field. Carries
+   * boss position relative to its den, visibility, health, den-door lock state,
+   * the active encounter goal flag, and the discrete transition log; join it to
+   * a recording's `den` event stream on `familyId` + `frame`.
+   *
+   * Set by BOTH `runHeadless` and the human `collectHumanRunStats` path.
+   * Undefined when the run never observed a den floor. See
+   * `src/shared/den-boss-telemetry-types.ts` and
+   * `docs/knowledge/telemetry/den-boss-telemetry-contract.md`.
+   */
+  denBoss?: DenBossDiagnostics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
   /** Optional evaluator cohort that produced this run. */
   playerPersona?: PlayerPersona;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
+  /**
+   * Wasted-motion rollup for this run — how much time the AI spent wiggling
+   * (moving a lot, going nowhere), idle (barely moving), or genuinely stuck
+   * (sustained failure to escape a small anchor radius), with safe-room and
+   * vendor-interaction time excluded per the "except when buying stuff or
+   * working in a safe room" carve-out (issue #3198). This is the SAME
+   * `summarizeEvents()` rollup the `--event-log`/`--event-summary` CLI flags
+   * print, but always computed by `runHeadless` — no extra flags required —
+   * so any headless run or gate can read `stuckPct`/`wigglePct` directly.
+   * Optional only because pre-existing test fixtures construct RunStats
+   * manually; `runHeadless` always sets it. See `src/game/ai/event-log.ts`
+   * for the exact stuck/wiggle/idle/excluded definitions.
+   */
+  movementQuality?: MovementQualityMetrics;
   /**
    * Spawner battle-arena rollup captured once at run end. Optional because
    * pre-existing test fixtures for other metrics (e.g. fun-score, ai-scoring)

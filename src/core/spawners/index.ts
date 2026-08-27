@@ -7,6 +7,7 @@
  */
 export * from './entity-core.js';
 export * from './combatants.js';
+export * from './companions.js';
 export * from './pickups.js';
 export * from './projectiles.js';
 export * from './melee.js';

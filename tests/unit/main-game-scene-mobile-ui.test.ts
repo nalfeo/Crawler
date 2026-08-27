@@ -46,7 +46,9 @@ describe('HUD panel UX consistency', () => {
       'unlocks.inventory && safeCtx && !isUiLockOpen() && inventoryToggleRequested',
     );
     // Equipment
-    expect(source).toContain('unlocks.equipment && safeCtx && !isUiLockOpen() && equipRequested');
+    expect(source).toContain(
+      'unlocks.equipmentPanel && safeCtx && !isUiLockOpen() && equipRequested',
+    );
     // Abilities — must now also require safeCtx
     expect(source).toContain(
       'unlocks.spells && safeCtx && !isUiLockOpen() && abilitiesToggleRequested',
@@ -105,7 +107,7 @@ describe('HUD panel UX consistency', () => {
     expect(source).toContain('this.equipmentUI?.destroy();');
     expect(source).toContain('this.achievementsUI?.destroy();');
     expect(source).toContain('this.rewardOpeningUI?.destroy();');
-    expect(source).toContain('this.quartermasterUI?.destroy();');
+    expect(source).toContain('this.shopPanelUI?.destroy();');
     expect(source).toContain('this.rewardAudioEngine?.dispose();');
   });
 

@@ -1468,6 +1468,7 @@ function validateSnapshotEnvelope(
 export function restoreGeneratedEquipmentRegistry(
   world: GeneratedEquipmentRegistryWorld,
   value: unknown,
+  options: { readonly allowSparseOrdinals?: boolean } = {},
 ): void {
   const registry = world.generatedEquipmentRegistry;
   const state = getRegistryState(registry);
@@ -1477,8 +1478,9 @@ export function restoreGeneratedEquipmentRegistry(
 
   const snapshot = validateSnapshotEnvelope(value, registry);
   const restored = new Map<GeneratedEquipmentInstanceId, GeneratedEquipmentInstanceV1>();
-  for (let ordinal = 0; ordinal < snapshot.rawInstances.length; ordinal += 1) {
-    const instance = validateGeneratedEquipmentInstanceV1(snapshot.rawInstances[ordinal], {
+  let largestOrdinal = -1;
+  for (let index = 0; index < snapshot.rawInstances.length; index += 1) {
+    const instance = validateGeneratedEquipmentInstanceV1(snapshot.rawInstances[index], {
       expectedRunKey: snapshot.runKey,
       expectedPolicy: registry.generationPolicy,
       expectedPolicyFingerprint: registry.generationPolicyFingerprint,
@@ -1488,29 +1490,50 @@ export function restoreGeneratedEquipmentRegistry(
       fail(
         'invalid-payload',
         'Generated equipment instance is missing generation metadata',
-        `$.snapshot.instances[${ordinal}].generation`,
+        `$.snapshot.instances[${index}].generation`,
       );
     }
-    if (generation.ordinal !== ordinal) {
+    if (
+      generation.ordinal >= snapshot.nextOrdinal ||
+      (!options.allowSparseOrdinals && generation.ordinal !== index)
+    ) {
       fail(
         'ordinal-gap',
-        `Expected ordinal ${ordinal}; received ${generation.ordinal}`,
-        `$.snapshot.instances[${ordinal}].generation.ordinal`,
+        options.allowSparseOrdinals
+          ? `Generated ordinal ${generation.ordinal} must be below nextOrdinal ${snapshot.nextOrdinal}`
+          : `Expected ordinal ${index}; received ${generation.ordinal}`,
+        `$.snapshot.instances[${index}].generation.ordinal`,
+      );
+    }
+    // Sparse mode tolerates GAPS (retired instances were filtered out) but not
+    // REORDERING: restore preserves array insertion order, so a reordered
+    // payload would silently change deterministic registry iteration order.
+    if (options.allowSparseOrdinals && generation.ordinal <= largestOrdinal) {
+      fail(
+        'ordinal-gap',
+        `Generated ordinal ${generation.ordinal} must be greater than the preceding ordinal ${largestOrdinal}`,
+        `$.snapshot.instances[${index}].generation.ordinal`,
       );
     }
     if (restored.has(instance.instanceId)) {
       fail(
         'duplicate-instance',
         `Duplicate instance ${instance.instanceId}`,
-        `$.snapshot.instances[${ordinal}].instanceId`,
+        `$.snapshot.instances[${index}].instanceId`,
       );
     }
+    largestOrdinal = Math.max(largestOrdinal, generation.ordinal);
     restored.set(instance.instanceId, instance);
   }
-  if (snapshot.nextOrdinal !== restored.size) {
+  if (
+    (!options.allowSparseOrdinals && snapshot.nextOrdinal !== restored.size) ||
+    (options.allowSparseOrdinals && snapshot.nextOrdinal < largestOrdinal + 1)
+  ) {
     fail(
       'ordinal-gap',
-      `Snapshot nextOrdinal ${snapshot.nextOrdinal} does not match contiguous instance count ${restored.size}`,
+      options.allowSparseOrdinals
+        ? `Snapshot nextOrdinal ${snapshot.nextOrdinal} must exceed largest instance ordinal ${largestOrdinal}`
+        : `Snapshot nextOrdinal ${snapshot.nextOrdinal} does not match contiguous instance count ${restored.size}`,
       '$.snapshot.nextOrdinal',
     );
   }

@@ -9,6 +9,7 @@ import {
 import {
   floor1Manifest,
   floor2Manifest,
+  floor3Manifest,
   type FloorManifestDef,
 } from '../../src/shared/floor-manifest';
 
@@ -45,6 +46,12 @@ describe('floor-registry', () => {
   it('lists available floor ids including the built-in floor', () => {
     expect(getAvailableFloorIds()).toContain('floor1');
     expect(getAvailableFloorIds()).toContain('floor2');
+    expect(getAvailableFloorIds()).toContain('floor3');
+  });
+
+  it('resolves the built-in floor3 manifest', () => {
+    expect(getFloorManifest('floor3')).toBe(floor3Manifest);
+    expect(hasFloorManifest('floor3')).toBe(true);
   });
 
   it('registers a new manifest and makes it discoverable', () => {

@@ -64,15 +64,16 @@
 
 ## World objects
 
-| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                                                                   |
-| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | --------------------------------------------------------------------------------------- |
-| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                                                             |
-| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.                                                           |
-| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                                                             |
-| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit.                                             |
-| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.75  | 100         |    yes    | Sprite 1.5×1.5 today; not a knockback target, `weight` is nominal for the sync sheet.   |
-| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                                                                         |
-| Boss chest           | `spawners/world-objects.ts`              | circle | r = 1.0   | 10 000      |    yes    | Immovable; opened by proximity not collision. Proximity trigger is BOSS_CHEST_RANGE_FT. |
+| Entity               | Spawner                                  | Shape  | Size (ft) | Weight (lb) | Immovable | Notes                                                                                                                                              |
+| -------------------- | ---------------------------------------- | ------ | --------- | ----------- | :-------: | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wall segment         | `spawners/world-objects.ts` (varies)     | box    | 1 × 1     | 10 000      |    yes    | Match tile.                                                                                                                                        |
+| Door                 | `spawners/world-objects.ts`              | box    | 1 × 1     | 500         |    yes    | Not in Knockback query today.                                                                                                                      |
+| Prop — small (torch) | `spawners/world-objects.ts` (decoration) | circle | r = 0.375 | 30          |    yes    | Uses `decorationDef.scale`.                                                                                                                        |
+| Prop — barrel        | `spawners/world-objects.ts`              | circle | r = 0.75  | 60          |    no     | Optional Slice-2 goal: barrels punt on hit.                                                                                                        |
+| Trap                 | `spawners/world-objects.ts`              | circle | r = 0.75  | 100         |    yes    | Sprite 1.5×1.5 today; not a knockback target, `weight` is nominal for the sync sheet.                                                              |
+| Harvestable node     | `spawners/world-objects.ts`              | circle | r = 0.5   | 50          |    yes    |                                                                                                                                                    |
+| Boss chest           | `spawners/world-objects.ts`              | circle | r = 1.0   | 10 000      |    yes    | Immovable; opened by proximity not collision. Proximity trigger is BOSS_CHEST_RANGE_FT.                                                            |
+| Rally Point          | `spawners/world-objects.ts`              | circle | r = 1.0   | 10 000      |    yes    | Immovable; Floor 3 Companion recovery node, triggered by proximity not collision. Proximity trigger is `tuning.floor3Companion.rallyPointRangeFt`. |
 
 ## Knockback baseline math
 

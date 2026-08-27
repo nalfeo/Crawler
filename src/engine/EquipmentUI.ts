@@ -139,8 +139,8 @@ const EQUIPMENT_UI_SLOT_LABELS: Readonly<Record<(typeof EQUIPMENT_UI_SLOT_IDS)[n
 };
 
 const LEGACY_RING_SLOT_IDS: Readonly<Record<string, EquipmentSlotId>> = {
-  ring1: 'ringLeft',
-  ring2: 'ringRight',
+  ringLeft: 'ring1',
+  ringRight: 'ring2',
 };
 
 const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
@@ -344,6 +344,21 @@ export interface EquipmentTextRasterMetadata {
   readonly fractionalTextBounds: number;
 }
 
+/**
+ * What an EMPTY equipment slot actually rendered, captured from the live
+ * display objects so a probe can distinguish "the ring placeholder drew" from
+ * "the slot exists". Never derived from the slot id.
+ */
+export interface EmptySlotCue {
+  /** Placeholder silhouette branch that ran (e.g. `ring`, `helm`, `unknown`). */
+  readonly glyph: string;
+  /** Caption text on the rendered Text object. */
+  readonly captionText: string;
+  /** True only when the caption is parented by the panel container. */
+  readonly captionInPanel: boolean;
+  readonly captionBounds: ScreenBounds;
+}
+
 export function createEquipmentUI(
   scene: Phaser.Scene,
   config: EquipmentUIConfig = {},
@@ -360,7 +375,7 @@ export function createEquipmentUI(
   getDollScreenBounds(): ScreenBounds;
   getSlotScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getSlotIconScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
-  getEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
+  getEmptySlotCue(slotId: EquipmentSlotId): EmptySlotCue | null;
   getTooltipScreenBounds(): ScreenBounds | null;
   /** Bounds of each visible tooltip card, in render order. */
   getTooltipCardScreenBounds(): readonly ScreenBounds[];
@@ -703,7 +718,16 @@ export function createEquipmentUI(
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
   const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
   const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
-  const emptySlotCues = new Map<EquipmentSlotId, EquipmentSlotId>();
+  /**
+   * Per-slot record of the placeholder actually drawn for an EMPTY slot: the
+   * glyph branch that ran plus whether the "Empty" caption was attached to the
+   * panel container. Deliberately NOT the slot id — echoing the key back would
+   * make every probe assertion pass even if the placeholder never rendered.
+   */
+  const emptySlotCues = new Map<
+    EquipmentSlotId,
+    { readonly glyph: string; readonly caption: Phaser.GameObjects.Text }
+  >();
   /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
   const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
@@ -950,14 +974,19 @@ export function createEquipmentUI(
     };
     icon.lineStyle(2, light, 0.82);
     useLight();
+    // Records which silhouette branch actually ran, so the empty-slot probe
+    // reports the glyph that was DRAWN rather than echoing the slot id back.
+    let glyph = 'unknown';
     switch (slotId) {
       case 'head': // helm
+        glyph = 'helm';
         icon.fillRect(sx - 15, sy - 15, 30, 20);
         icon.fillRect(sx - 13, sy + 5, 26, 7);
         useDark();
         icon.fillRect(sx - 12, sy - 3, 24, 5);
         break;
       case 'face': // mask
+        glyph = 'mask';
         icon.fillRect(sx - 15, sy - 11, 30, 22);
         useDark();
         icon.fillRect(sx - 9, sy - 4, 6, 6);
@@ -965,6 +994,7 @@ export function createEquipmentUI(
         icon.fillRect(sx - 6, sy + 5, 12, 3);
         break;
       case 'neck': // amulet
+        glyph = 'amulet';
         icon.lineStyle(3, light, 0.9);
         icon.beginPath();
         icon.moveTo(sx - 14, sy - 14);
@@ -977,17 +1007,20 @@ export function createEquipmentUI(
         icon.fillCircle(sx, sy + 8, 3);
         break;
       case 'shoulders': // pauldrons
+        glyph = 'pauldrons';
         icon.fillRect(sx - 18, sy - 4, 12, 12);
         icon.fillRect(sx + 6, sy - 4, 12, 12);
         icon.fillRect(sx - 16, sy - 8, 8, 5);
         icon.fillRect(sx + 8, sy - 8, 8, 5);
         break;
       case 'back': // cloak
+        glyph = 'cloak';
         icon.fillRect(sx - 7, sy - 15, 14, 6);
         icon.fillTriangle(sx - 8, sy - 10, sx + 8, sy - 10, sx + 12, sy + 14);
         icon.fillTriangle(sx - 8, sy - 10, sx + 12, sy + 14, sx - 12, sy + 14);
         break;
       case 'chest': // breastplate
+        glyph = 'breastplate';
         icon.fillTriangle(sx - 13, sy - 12, sx + 13, sy - 12, sx + 13, sy + 4);
         icon.fillTriangle(sx - 13, sy - 12, sx + 13, sy + 4, sx, sy + 14);
         icon.fillTriangle(sx - 13, sy - 12, sx, sy + 14, sx - 13, sy + 4);
@@ -996,6 +1029,7 @@ export function createEquipmentUI(
         break;
       case 'leftArm':
       case 'rightArm': // vambrace
+        glyph = 'vambrace';
         icon.fillTriangle(sx - 8, sy - 14, sx + 8, sy - 14, sx + 6, sy + 13);
         icon.fillTriangle(sx - 8, sy - 14, sx + 6, sy + 13, sx - 6, sy + 13);
         useDark();
@@ -1003,11 +1037,13 @@ export function createEquipmentUI(
         break;
       case 'leftWrist':
       case 'rightWrist': // bracelet
+        glyph = 'bracelet';
         icon.lineStyle(4, light, 0.9);
         icon.strokeCircle(sx, sy, 12);
         break;
       case 'mainHand':
       case 'offHand': // sword
+        glyph = 'sword';
         icon.fillRect(sx - 3, sy - 16, 6, 24);
         icon.fillRect(sx - 11, sy + 6, 22, 4);
         icon.fillRect(sx - 2, sy + 10, 4, 6);
@@ -1015,11 +1051,13 @@ export function createEquipmentUI(
         icon.fillRect(sx - 1, sy - 14, 2, 18);
         break;
       case 'belt':
+        glyph = 'belt';
         icon.fillRect(sx - 17, sy - 5, 34, 10);
         useDark();
         icon.fillRect(sx - 5, sy - 5, 10, 10);
         break;
       case 'gloves': // gauntlet
+        glyph = 'gauntlet';
         icon.fillRect(sx - 10, sy - 5, 20, 15);
         icon.fillRect(sx - 9, sy - 13, 14, 9);
         icon.fillRect(sx + 6, sy - 8, 5, 9);
@@ -1028,6 +1066,7 @@ export function createEquipmentUI(
       case 'ring2':
       case 'ringLeft':
       case 'ringRight': // ring + gem
+        glyph = 'ring';
         icon.lineStyle(4, light, 0.9);
         icon.strokeCircle(sx, sy + 4, 11);
         useLight();
@@ -1035,11 +1074,13 @@ export function createEquipmentUI(
         icon.fillTriangle(sx, sy - 16, sx, sy - 2, sx - 7, sy - 9);
         break;
       case 'legs': // greaves
+        glyph = 'greaves';
         icon.fillRect(sx - 11, sy - 14, 22, 7);
         icon.fillRect(sx - 11, sy - 7, 9, 21);
         icon.fillRect(sx + 2, sy - 7, 9, 21);
         break;
       case 'feet': // boot
+        glyph = 'boot';
         icon.fillRect(sx - 6, sy - 14, 11, 20);
         icon.fillRect(sx - 14, sy + 4, 22, 8);
         break;
@@ -1048,6 +1089,7 @@ export function createEquipmentUI(
         icon.fillCircle(sx, sy, 4);
         break;
     }
+    icon.setData('placeholderGlyph', glyph);
     return icon;
   }
 
@@ -1423,8 +1465,8 @@ export function createEquipmentUI(
     const equipped = replaced.length > 0 ? replaced : [emptyComparisonDef('slot')];
     const isDualRingComparison =
       equipped.length === 2 &&
-      candidate.slots.includes('ringLeft') &&
-      candidate.slots.includes('ringRight');
+      candidate.slots.includes('ring1') &&
+      candidate.slots.includes('ring2');
     const cards = isDualRingComparison
       ? [
           {
@@ -2063,9 +2105,16 @@ export function createEquipmentUI(
         : instance
           ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 16)
           : createSlotPlaceholder(slot.id, cx, cy + 2);
-      const emptyCue = null;
-      if (!instance) emptySlotCues.set(slot.id, slot.id);
-      else emptySlotCues.delete(slot.id);
+      const emptyCue = instance
+        ? null
+        : crispText(snap(cx), snap(cy + 18), 'Empty', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '9px',
+            color: hex(COLORS.textSecondary),
+            padding: { top: 1, bottom: 2 },
+          });
+      emptySlotCues.delete(slot.id);
+      if (emptyCue) centerTextOnPixels(emptyCue, cx, cy + 18);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -2124,10 +2173,6 @@ export function createEquipmentUI(
       }
       container.add(iconObject);
       slotObjects.push(iconObject);
-      if (emptyCue) {
-        container.add(emptyCue);
-        slotObjects.push(emptyCue);
-      }
       if ('getBounds' in iconObject && typeof iconObject.getBounds === 'function') {
         const ib = iconObject.getBounds();
         slotIconBounds.set(slot.id, { x: ib.x, y: ib.y, width: ib.width, height: ib.height });
@@ -2154,6 +2199,18 @@ export function createEquipmentUI(
       centerTextOnPixels(slotLabel, cx, cy + SLOT_H / 2 + SLOT_LABEL_BAND / 2);
       container.add(slotLabel);
       slotObjects.push(slotLabel);
+
+      // The "Empty" cue must live in the panel container and the slot cleanup
+      // pool like every other per-slot object: otherwise it ignores the panel's
+      // visibility/scale and survives each rerender as an orphan.
+      if (emptyCue) {
+        container.add(emptyCue);
+        slotObjects.push(emptyCue);
+        emptySlotCues.set(slot.id, {
+          glyph: (iconObject.getData('placeholderGlyph') as string | undefined) ?? 'unknown',
+          caption: emptyCue,
+        });
+      }
     }
   }
 
@@ -2828,7 +2885,25 @@ export function createEquipmentUI(
     },
     getSlotScreenBounds: (slotId: EquipmentSlotId) => slotBounds.get(slotId) ?? null,
     getSlotIconScreenBounds: (slotId: EquipmentSlotId) => slotIconBounds.get(slotId) ?? null,
-    getEmptySlotCue: (slotId: EquipmentSlotId) => emptySlotCues.get(slotId) ?? null,
+    getEmptySlotCue: (slotId: EquipmentSlotId): EmptySlotCue | null => {
+      // Resolved from the live Text object at probe time, not snapshotted at
+      // render time: an orphaned or destroyed caption reports the truth here,
+      // where a value captured immediately after `container.add` could not.
+      const cue = emptySlotCues.get(slotId);
+      if (!cue) return null;
+      const bounds = cue.caption.getBounds();
+      return {
+        glyph: cue.glyph,
+        captionText: cue.caption.text,
+        captionInPanel: container.exists(cue.caption),
+        captionBounds: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        },
+      };
+    },
     getTooltipScreenBounds: () => tooltipBounds,
     getTooltipCardScreenBounds: () => tooltipCardBounds.map((bounds) => ({ ...bounds })),
     isTooltipVisible: () => tooltipObjects.length > 0,

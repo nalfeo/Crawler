@@ -36,3 +36,16 @@ test('resolveNodeModules follows a relative gitdir pointer for linked worktrees'
   writeFileSync(path.join(worktreeRoot, '.git'), 'gitdir: ../main/.git/worktrees/wt\n');
   assert.equal(resolveNodeModules(worktreeRoot), expected);
 });
+
+test('resolveNodeModules prefers a worktree-local install over the main checkout', () => {
+  const root = tempRoot('node-modules-resolver-worktree-local-');
+  const mainRoot = path.join(root, 'main');
+  const worktreeRoot = path.join(root, 'worktree');
+  const localModules = path.join(worktreeRoot, 'node_modules');
+  mkdirSync(localModules, { recursive: true });
+  mkdirSync(path.join(mainRoot, 'node_modules'), { recursive: true });
+  mkdirSync(path.join(mainRoot, '.git', 'worktrees', 'wt'), { recursive: true });
+  writeFileSync(path.join(worktreeRoot, '.git'), 'gitdir: ../main/.git/worktrees/wt\n');
+
+  assert.equal(resolveNodeModules(worktreeRoot), localModules);
+});

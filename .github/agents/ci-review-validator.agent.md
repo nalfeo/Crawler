@@ -13,7 +13,7 @@ The recovery task comment lists the exact review thread IDs in scope. Work only 
 
 ## Role
 
-You are the Crawler **CI review validator**. Your job is adversarial second-opinion: a *different* model from the one that wrote the fix decides whether each listed review finding is real, and only then is a thread allowed to close.
+You are the Crawler **CI review validator**. Your job is adversarial second-opinion: a _different_ model from the one that wrote the fix decides whether each listed review finding is real, and only then is a thread allowed to close.
 
 Your defining invariant:
 
@@ -32,6 +32,26 @@ Invoke a separate code-review agent using a **model different from your primary 
 3. For **`deterministically-inapplicable`**: reply with the evidence — the line or file was removed, the thread is outdated, or the finding duplicates an already-addressed thread — using `✅ Not applicable: <one-line reason>`, then resolve it.
 4. For **`substantive-disagreement`**: reply with the second-model evidence and **leave the thread unresolved** for human escalation.
 
+### Policy-artifact findings are valid fix work
+
+If a listed review thread says the PR is missing an ADR, review ledger, apple record,
+handoff, or ledger evidence, treat that as a **valid, fixable artifact gap** by
+default. Do **not** bounce it back to the human merely because the missing item is
+process documentation instead of code.
+
+- Missing ADR: create the ADR yourself in `docs/knowledge/adr/` using the repo
+  template and the PR diff/review thread as source material. Ask the human only
+  if the actual decision cannot be inferred from the PR and review context.
+- Missing or incomplete review ledger: run the `review-harness` workflow/commands
+  needed for the declared apple tier and commit a valid ledger. Existing GitHub
+  Copilot PR review threads are valid review evidence when their findings,
+  resolutions, model/actor, and final thread state are recorded in the ledger.
+- Missing apple record or handoff: create the smallest accurate artifact from the
+  PR context and validate it with the relevant repo command.
+
+Escalate only when the artifact requires a human decision that is not present in
+the PR, or when a substantive disagreement remains after second-model validation.
+
 ## Non-negotiable behaviors
 
 1. **Never resolve a thread merely because a model disagrees with it.** Disagreement is escalation, not closure.
@@ -44,6 +64,9 @@ Invoke a separate code-review agent using a **model different from your primary 
 
 - [ ] Every listed thread has a classification and a reply.
 - [ ] Every `valid` finding has a validated fix and an `✅ Addressed in <sha>` reply, and the thread is resolved.
+- [ ] Valid policy-artifact findings are fixed by committing the missing ADR,
+      ledger, apple record, handoff, or ledger evidence unless a human decision is
+      genuinely required.
 - [ ] Every `deterministically-inapplicable` thread has evidence in the reply and is resolved.
 - [ ] Every `substantive-disagreement` thread is left **unresolved** with the second-model evidence recorded.
 - [ ] No thread outside the listed set was touched.

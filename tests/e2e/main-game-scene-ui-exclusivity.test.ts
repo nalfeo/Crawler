@@ -3,29 +3,91 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 
+interface CdpSession {
+  send(method: string, params: unknown): Promise<unknown>;
+  detach(): Promise<void>;
+}
+
+/** Dispatches a single touch tap (touchstart + touchend, no move) via CDP. */
+async function tapTouch(page: Page, point: { x: number; y: number }): Promise<void> {
+  const context = page.context() as BrowserContext & {
+    newCDPSession(page: Page): Promise<CdpSession>;
+  };
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: point.x, y: point.y, id: 1 }],
+    });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.detach();
+  }
+}
+
+async function withHeldTouch(
+  page: Page,
+  run: (session: CdpSession) => Promise<void>,
+): Promise<void> {
+  const context = page.context() as BrowserContext & {
+    newCDPSession(page: Page): Promise<CdpSession>;
+  };
+  const session = await context.newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: 200, y: 300, id: 1 }],
+    });
+    await run(session);
+  } finally {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await session.detach();
+  }
+}
+
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
+    Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
+  );
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
   let page: Page;
+  // Dedicated touch-enabled context for the backdrop-tap coverage below —
+  // the shared `page` above stays mouse-only so unrelated tests in this file
+  // keep exercising `page.mouse.click`.
+  let touchContext: BrowserContext;
+  let touchPage: Page;
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     page = await context.newPage();
+    touchContext = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 1600, height: 900 },
+    });
+    touchPage = await touchContext.newPage();
   });
 
   afterAll(async () => {
     await closeQuietly(browser);
   });
 
-  async function bootPlayingSafeScene(): Promise<void> {
-    await loadMainSceneProbeLab(page);
-    await mainSceneProbe.resolveLoadout(page);
-    await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+  async function bootPlayingSafeScene(targetPage: Page = page): Promise<void> {
+    await loadMainSceneProbeLab(targetPage);
+    await mainSceneProbe.resolveLoadout(targetPage);
+    await waitForState(targetPage, (s) => s.worldState === 'playing' && s.simulationPaused, {
       label: 'loadout resolved + simulation paused',
     });
-    await mainSceneProbe.unlockSafeRoomSurfaces(page);
-    await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
+    await mainSceneProbe.unlockSafeRoomSurfaces(targetPage);
+    await waitForState(targetPage, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
   }
 
   it('pauses for the issue picker and restores the exact prior pause state', async () => {
@@ -35,23 +97,168 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (s) => !s.simulationPaused, {
       label: 'simulation running before report',
     });
+
     await page.keyboard.press('F8');
-    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker opened with simulation paused',
     });
     await page.keyboard.press('Escape');
-    await waitForState(page, (s) => !s.modalOpen && !s.simulationPaused, {
+    await waitForState(page, (s) => !s.issueReportOpen && !s.simulationPaused, {
       label: 'issue picker restored running simulation',
     });
 
     await mainSceneProbe.setSimulationPaused(page, true);
     await page.keyboard.press('F8');
-    await waitForState(page, (s) => s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker opened from an already paused scene',
     });
     await page.keyboard.press('Escape');
-    await waitForState(page, (s) => !s.modalOpen && s.simulationPaused, {
+    await waitForState(page, (s) => !s.issueReportOpen && s.simulationPaused, {
       label: 'issue picker preserved pre-existing pause',
+    });
+  });
+
+  it('keeps the Issue button clickable over inventory without closing the underlying UX', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    const inventoryState = await waitForState(
+      page,
+      (s) => s.inventoryOpen && s.issueButtonVisible,
+      {
+        label: 'inventory opened with Issue button visible',
+      },
+    );
+    expect(
+      inventoryState.simulationPaused,
+      'safe-room inventory should preserve the paused state',
+    ).toBe(true);
+
+    const issueBounds = await mainSceneProbe.getIssueButtonBounds(page);
+    expect(issueBounds, 'visible Issue button should expose screen-space bounds').not.toBeNull();
+    const canvas = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(canvas, 'main-scene probe canvas should exist').not.toBeNull();
+    if (!issueBounds || !canvas) return;
+    await page.mouse.click(
+      canvas.x + (issueBounds.x + issueBounds.width / 2) * (canvas.width / 1280),
+      canvas.y + (issueBounds.y + issueBounds.height / 2) * (canvas.height / 720),
+    );
+
+    await waitForState(page, (s) => s.issueReportOpen && s.inventoryOpen, {
+      label: 'issue picker opened above inventory',
+    });
+
+    await page.keyboard.press('Escape');
+    const restored = await waitForState(
+      page,
+      (s) => !s.issueReportOpen && s.inventoryOpen && s.simulationPaused,
+      {
+        label: 'issue picker closed with inventory and pause state preserved',
+      },
+    );
+    expect(
+      restored.issueButtonVisible,
+      'Issue button should return after cancelling a report',
+    ).toBe(true);
+  });
+
+  it('keeps the Issue button clear of the skill HUD on small screens', async () => {
+    const smallContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+    const smallPage = await smallContext.newPage();
+    try {
+      await bootPlayingSafeScene(smallPage);
+      const issueBounds = await mainSceneProbe.getIssueButtonBounds(smallPage);
+      const skillBounds = (await mainSceneProbe.getSafeAreaLayout(smallPage)).surfaces.find(
+        ({ name }) => name === 'skillPanel',
+      )?.bounds;
+
+      expect(issueBounds, 'Issue button should remain visible on small screens').not.toBeNull();
+      expect(skillBounds, 'skill HUD bounds should be available').toBeDefined();
+      if (!issueBounds || !skillBounds) return;
+      expect(overlaps(issueBounds, skillBounds), 'Issue button must not cover the skill HUD').toBe(
+        false,
+      );
+    } finally {
+      await closeQuietly(smallContext);
+    }
+  });
+
+  it('gives the issue picker exclusive keyboard ownership over loadout and Skills UX', async () => {
+    await loadMainSceneProbeLab(page);
+    await waitForState(page, (s) => s.worldState === 'loadout' && s.issueButtonVisible, {
+      label: 'starter loadout opened with Issue available',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.issueReportOpen, {
+      label: 'issue picker opened above starter loadout',
+    });
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await page.keyboard.press('Enter');
+    const loadoutState = await waitForState(
+      page,
+      (s) => s.issueReportOpen && s.worldState === 'loadout',
+      {
+        label: 'Enter handled only by issue picker',
+      },
+    );
+    expect(loadoutState.modalOpen, 'starter picker should remain open behind Issue').toBe(true);
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.issueReportOpen && s.modalOpen, {
+      label: 'starter picker restored after issue cancellation',
+    });
+
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    await waitForState(page, (s) => s.abilityLoadoutOpen && s.issueButtonVisible, {
+      label: 'Skills opened with Issue available',
+    });
+    await page.keyboard.press('F8');
+    await waitForState(page, (s) => s.issueReportOpen && s.abilityLoadoutOpen, {
+      label: 'issue picker opened above Skills',
+    });
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.issueReportOpen && s.abilityLoadoutOpen, {
+      label: 'Escape closed only Issue and preserved Skills',
+    });
+  });
+
+  it('dismisses the issue picker by tapping its backdrop', async () => {
+    await bootPlayingSafeScene(touchPage);
+
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    await waitForState(touchPage, (s) => !s.simulationPaused, {
+      label: 'simulation running before touch report dismissal',
+    });
+    await touchPage.keyboard.press('F8');
+    await waitForState(touchPage, (s) => s.issueReportOpen && s.simulationPaused, {
+      label: 'issue picker opened before touch dismissal',
+    });
+
+    // The panel itself must not be treated as its backdrop.
+    await tapTouch(touchPage, { x: 800, y: 350 });
+    await waitForState(touchPage, (s) => s.issueReportOpen && s.simulationPaused, {
+      label: 'issue picker stayed open after an in-panel tap',
+    });
+
+    // This point is inside the game canvas but outside the centered picker.
+    await tapTouch(touchPage, { x: 200, y: 120 });
+    await waitForState(touchPage, (s) => !s.issueReportOpen && !s.simulationPaused, {
+      label: 'touch backdrop dismissal restored running simulation',
+    });
+  });
+
+  it('ignores a backdrop tap on a non-cancellable picker', async () => {
+    await bootPlayingSafeScene(touchPage);
+
+    await mainSceneProbe.openBossRewardPicker(touchPage);
+    await waitForState(touchPage, (s) => s.modalOpen, {
+      label: 'non-cancellable spell-reward picker opened',
+    });
+
+    // Same outside-the-panel point that dismisses a cancellable picker above.
+    await tapTouch(touchPage, { x: 200, y: 120 });
+    await waitForState(touchPage, (s) => s.modalOpen, {
+      label: 'non-cancellable picker stayed open after a backdrop tap',
     });
   });
 
@@ -126,6 +333,123 @@ describe('MainGameScene UI exclusivity', () => {
         `${interaction} input inside the abilities loadout must not start NPC dialogue after close`,
       ).toBe(false);
     }
+  });
+
+  it('suppresses held touch input while inventory and equipment surfaces transition', async () => {
+    for (const surface of [
+      {
+        label: 'inventory',
+        isOpen: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => state.inventoryOpen,
+        toggle: mainSceneProbe.requestInventoryToggle,
+      },
+      {
+        label: 'equipment',
+        isOpen: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => state.equipmentOpen,
+        toggle: mainSceneProbe.requestEquipToggle,
+      },
+    ]) {
+      await bootPlayingSafeScene(touchPage);
+      await mainSceneProbe.setSimulationPaused(touchPage, false);
+      const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(touchPage);
+      expect(npcTarget, 'probe should expose an NPC interaction target').not.toBeNull();
+
+      await surface.toggle(touchPage);
+      const opened = await waitForState(touchPage, surface.isOpen, {
+        label: `${surface.label} opened before held-touch check`,
+      });
+      expect(opened.conversationOpen).toBe(false);
+
+      await withHeldTouch(touchPage, async (session) => {
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: 800, y: 700, id: 1 }],
+        });
+        await touchPage.waitForTimeout(100);
+        const whileOpen = await mainSceneProbe.getState(touchPage);
+
+        expect(whileOpen.playerFeet).toEqual(opened.playerFeet);
+        expect(whileOpen.conversationOpen).toBe(false);
+
+        await surface.toggle(touchPage);
+        await waitForState(touchPage, (state) => !surface.isOpen(state), {
+          label: `${surface.label} closed while touch remains held`,
+        });
+        await touchPage.waitForTimeout(100);
+      });
+
+      const afterClose = await mainSceneProbe.getState(touchPage);
+      expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+      expect(afterClose.conversationOpen).toBe(false);
+    }
+  });
+
+  it('clears held touch input after dialogue closes', async () => {
+    await bootPlayingSafeScene(touchPage);
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(touchPage);
+    expect(npcTarget, 'probe should expose an NPC interaction target').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(touchPage);
+    const opened = await waitForState(touchPage, (state) => state.conversationOpen, {
+      label: 'dialogue opened before held-touch close check',
+    });
+
+    await withHeldTouch(touchPage, async (session) => {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 800, y: 700, id: 1 }],
+      });
+      for (let line = 0; line < 4; line += 1) {
+        await mainSceneProbe.queueInteraction(touchPage);
+        await touchPage.waitForTimeout(100);
+        if (!(await mainSceneProbe.getState(touchPage)).conversationOpen) {
+          break;
+        }
+      }
+      await waitForState(touchPage, (state) => !state.conversationOpen, {
+        label: 'dialogue closed while touch remains held',
+      });
+      await touchPage.waitForTimeout(100);
+    });
+
+    const afterClose = await mainSceneProbe.getState(touchPage);
+    expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+    expect(afterClose.conversationOpen).toBe(false);
+  });
+
+  it('suppresses held touch input while the quartermaster surface closes', async () => {
+    await loadMainSceneProbeLab(touchPage, { floor: 'floor2' });
+    await mainSceneProbe.resolveLoadout(touchPage);
+    await mainSceneProbe.unlockSafeRoomSurfaces(touchPage);
+    await mainSceneProbe.setSimulationPaused(touchPage, false);
+    const quartermaster = (await mainSceneProbe.getNpcRenderInfo(touchPage)).find(
+      (npc) => npc.defId === 'shop-the-quartermaster',
+    );
+    expect(quartermaster, 'Floor 2 should expose a quartermaster NPC').toBeDefined();
+
+    await mainSceneProbe.setPlayerFeet(touchPage, quartermaster!.feet.x, quartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(touchPage, 1);
+    await mainSceneProbe.queueInteraction(touchPage);
+    const opened = await waitForState(touchPage, (state) => state.quartermasterOpen, {
+      label: 'quartermaster panel opened before held-touch check',
+    });
+
+    await withHeldTouch(touchPage, async (session) => {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 800, y: 700, id: 1 }],
+      });
+      await touchPage.waitForTimeout(100);
+      await mainSceneProbe.requestQuartermasterToggle(touchPage);
+      await waitForState(touchPage, (state) => !state.quartermasterOpen, {
+        label: 'quartermaster panel closed while touch remains held',
+      });
+      await touchPage.waitForTimeout(100);
+    });
+
+    const afterClose = await mainSceneProbe.getState(touchPage);
+    expect(afterClose.playerFeet).toEqual(opened.playerFeet);
+    expect(afterClose.conversationOpen).toBe(false);
   });
 
   it('keeps the Skills dismiss shortcut visible above the abilities loadout and closes on tap', async () => {
@@ -305,6 +629,29 @@ describe('MainGameScene UI exclusivity', () => {
     } finally {
       await page.keyboard.up('s');
     }
+  });
+
+  it('hides the Gear shortcut and refuses [G] while the Gear panel reveal is still locked', async () => {
+    // Issue #3310: Gear must stay hidden on Floor 1 until the merchant's charm
+    // is in hand, even though the equipment *capability* latch is already set
+    // by the starter weapon the player spawns holding.
+    await bootPlayingSafeScene();
+    await mainSceneProbe.setEquipmentPanelUnlocked(page, false);
+    await waitForState(page, (s) => !s.equipButtonVisible, { label: 'gear shortcut hidden' });
+
+    await mainSceneProbe.requestEquipToggle(page);
+    await page.waitForTimeout(250);
+
+    const locked = await mainSceneProbe.getState(page);
+    expect(locked.equipButtonVisible, 'Gear shortcut must stay hidden pre-charm').toBe(false);
+    expect(locked.equipmentOpen, '[G] must not open Gear pre-charm').toBe(false);
+    expect(locked.inventoryButtonVisible, 'the Bag shortcut is a separate unlock').toBe(true);
+
+    // Acquiring the charm reveals it, and [G] works again.
+    await mainSceneProbe.setEquipmentPanelUnlocked(page, true);
+    await waitForState(page, (s) => s.equipButtonVisible, { label: 'gear shortcut revealed' });
+    await mainSceneProbe.requestEquipToggle(page);
+    await waitForState(page, (s) => s.equipmentOpen, { label: 'gear panel opened after charm' });
   });
 
   it('blocks character-surface toggles and hides corner shortcuts while NPC dialogue is open', async () => {

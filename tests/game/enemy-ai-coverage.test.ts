@@ -8,6 +8,8 @@ import { movementSystem, spawnBehaviorEnemy, spawnPlayer } from '../../src/core/
 import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { AI_TYPE, PATH_PERSONA, enemyAISystem } from '../../src/game/index.js';
 import { makeFlankTargets } from '../../src/game/enemyAISystem.js';
+import { asFamilyId } from '../../src/core/faction-relations.js';
+import { getWorldFloorBehavior } from '../../src/core/floor-behavior.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const TILE = 4;
@@ -610,3 +612,199 @@ describe('enemyAISystem — out-of-aggro enemy still wanders', () => {
     expect(Math.hypot(vx, vy)).toBeGreaterThan(0.05);
   });
 });
+
+describe('enemyAISystem — Floor 2 boss gating', () => {
+  /** Floor-2 family state carrying a single boss encounter for `bossEid`. */
+  function withBossEncounter(
+    world: ReturnType<typeof createTestWorld>,
+    bossEid: number | null,
+    started: boolean,
+  ): void {
+    const familyId = asFamilyId('imps');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: -1,
+              doorEids: [],
+              activeGoalId: 'floor2-den-imps-boss-active',
+              started,
+              bossEid,
+              defeated: false,
+              displayName: 'Imp Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+  }
+
+  it('freezes a den boss whose encounter has not started', () => {
+    // A den boss stands dormant in its den until the player triggers the
+    // encounter. Without this gate the boss would chase the player through the
+    // den door the moment it entered aggro range, before the intro ever ran.
+    const world = createTestWorld({ floor: 2 });
+    world.floorMap = openArena(24, 18);
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    const boss = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(6, 4)),
+      200,
+      AI_TYPE.CHASE,
+      0.25,
+      200, // aggro range easily covers the player
+      2,
+    );
+    withBossEncounter(world, boss, false);
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+
+    expect(speedOf(world, boss)).toBe(0);
+  });
+
+  it('lets the same den boss move once its encounter has started', () => {
+    const world = createTestWorld({ floor: 2 });
+    world.floorMap = openArena(24, 18);
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    const boss = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(6, 4)),
+      200,
+      AI_TYPE.CHASE,
+      0.25,
+      200,
+      2,
+    );
+    withBossEncounter(world, boss, true);
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+
+    expect(speedOf(world, boss)).toBeGreaterThan(0);
+  });
+
+  it('ignores an unstarted encounter that has no spawned boss entity', () => {
+    // `bossEid: null` means the boss was never spawned; the freeze set must
+    // stay empty so ordinary mobs keep acting instead of being frozen by a
+    // null entry colliding with a real eid.
+    const world = createTestWorld({ floor: 2 });
+    world.floorMap = openArena(24, 18);
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(6, 4)),
+      20,
+      AI_TYPE.CHASE,
+      0.25,
+      200,
+      2,
+    );
+    withBossEncounter(world, null, false);
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+
+    expect(speedOf(world, enemy)).toBeGreaterThan(0);
+  });
+});
+
+describe('enemyAISystem — line-of-sight aggro (Floor 2 opt-in)', () => {
+  /**
+   * Arena holding a sealed-door room (tiles x 8..14) the enemy stands in, so
+   * `hasOpenRoomDoor` and `playerSharesRoom` are both false and only the
+   * line-of-sight check can grant detection. `blockingWallX`, when given, adds a
+   * full-height wall column between the player and that room.
+   */
+  function sealedRoomArena(blockingWallX?: number): FloorMap {
+    const width = 24;
+    const height = 18;
+    const tileMap = new TileMap(width, height);
+    tileMap.fill(TilePresets.FLOOR);
+    for (let x = 0; x < width; x += 1) {
+      tileMap.setFlags(x, 0, TilePresets.WALL);
+      tileMap.setFlags(x, height - 1, TilePresets.WALL);
+    }
+    for (let y = 0; y < height; y += 1) {
+      tileMap.setFlags(0, y, TilePresets.WALL);
+      tileMap.setFlags(width - 1, y, TilePresets.WALL);
+      if (blockingWallX !== undefined) {
+        tileMap.setFlags(blockingWallX, y, TilePresets.WALL);
+      }
+    }
+    // The room's only door is walled off, so isEnemyRoomDoorOpen() is false.
+    tileMap.setFlags(8, 12, TilePresets.WALL);
+    const roomGraph = new RoomGraph();
+    roomGraph.add({ x: 8, y: 1, width: 7, height: 16 }, [{ x: 8, y: 12, connectsTo: -1 }]);
+    return new FloorMap(
+      mkConfig(width, height),
+      tileMap,
+      roomGraph,
+      new Uint8Array(width * height),
+      {
+        x: 2,
+        y: 2,
+      },
+    );
+  }
+
+  it('is enabled on Floor 2 and disabled on Floor 1', () => {
+    expect(getWorldFloorBehavior(createTestWorld({ floor: 2 })).lineOfSightAggro).toBe(true);
+    expect(getWorldFloorBehavior(createTestWorld({ floor: 1 })).lineOfSightAggro).toBe(false);
+  });
+
+  it('aggroes an in-range enemy with clear sight but no shared room', () => {
+    // A detected ranged mob fires; an undetected one only wanders, so the
+    // projectile is an unambiguous detection signal (unlike a wander velocity,
+    // which can point at the player by chance).
+    const world = createTestWorld({ floor: 2 });
+    world.floorMap = sealedRoomArena();
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    spawnBehaviorEnemy(world, ...spread(tileCenter(9, 4)), 20, AI_TYPE.RANGED, 0.25, 200, 40);
+    world.elapsedMs = 10_000;
+
+    expect(firesWithin(world, 12)).toBe(true);
+  });
+
+  it('does not aggro through a wall that blocks line of sight', () => {
+    const world = createTestWorld({ floor: 2 });
+    world.floorMap = sealedRoomArena(7);
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    spawnBehaviorEnemy(world, ...spread(tileCenter(9, 4)), 20, AI_TYPE.RANGED, 0.25, 200, 40);
+    world.elapsedMs = 10_000;
+
+    expect(firesWithin(world, 12)).toBe(false);
+  });
+
+  it('ignores line of sight on Floor 1, where the opt-in is off', () => {
+    const world = createTestWorld({ floor: 1 });
+    world.floorMap = sealedRoomArena();
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    spawnBehaviorEnemy(world, ...spread(tileCenter(9, 4)), 20, AI_TYPE.RANGED, 0.25, 200, 40);
+    world.elapsedMs = 10_000;
+
+    expect(firesWithin(world, 12)).toBe(false);
+  });
+});
+
+/** Tick the AI up to `frames` times, reporting whether any enemy projectile spawned. */
+function firesWithin(world: ReturnType<typeof createTestWorld>, frames: number): boolean {
+  for (let i = 0; i < frames; i += 1) {
+    enemyAISystem(world);
+    if (query(world.ecs, [EnemyProjectile]).length > 0) {
+      return true;
+    }
+    world.frameCount += 1;
+    world.elapsedMs += 500;
+  }
+  return false;
+}

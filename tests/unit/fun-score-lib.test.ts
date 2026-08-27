@@ -85,6 +85,49 @@ describe('scoreFunSessions', () => {
     expect(report.confidence).toBeLessThanOrEqual(1);
   });
 
+  it('lowers the pacing dimension when movementQuality reports sustained stuck/wiggle time (issue #3198)', () => {
+    const goodMovement = makeRun({
+      movementQuality: {
+        wiggleMs: 0,
+        wigglePct: 0,
+        idleMs: 0,
+        idlePct: 0,
+        stuckMs: 0,
+        stuckPct: 0,
+        excludedMs: 0,
+        excludedPct: 0,
+        travelEfficiency: 0.95,
+        totalPathTravel: 1000,
+        totalNetDisp: 950,
+      },
+    });
+    const badMovement = makeRun({
+      movementQuality: {
+        wiggleMs: 96_000,
+        wigglePct: 30,
+        idleMs: 0,
+        idlePct: 0,
+        stuckMs: 32_000,
+        stuckPct: 10,
+        excludedMs: 0,
+        excludedPct: 0,
+        travelEfficiency: 0.2,
+        totalPathTravel: 1000,
+        totalNetDisp: 200,
+      },
+    });
+
+    const goodReport = scoreFunSessions([{ id: 'a', run: goodMovement }]);
+    const badReport = scoreFunSessions([{ id: 'a', run: badMovement }]);
+
+    expect(badReport.dimensions.pacing).toBeLessThan(goodReport.dimensions.pacing);
+
+    // Runs without movementQuality (e.g. pre-existing fixtures/recordings)
+    // must be scored neutrally rather than crashing or being penalized.
+    const noMovementReport = scoreFunSessions([{ id: 'a', run: makeRun() }]);
+    expect(noMovementReport.dimensions.pacing).toBe(goodReport.dimensions.pacing);
+  });
+
   it('reports and penalizes tutorial-phase deaths', () => {
     const healthyReport = scoreFunSessions([
       { id: 'a', run: makeRun({ outcome: 'victory' }) },

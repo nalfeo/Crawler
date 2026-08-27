@@ -1,0 +1,56 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-23",
+  "session_slug": "floor4-slice1-plumbing-arena",
+  "task_title": "Floor 4 slice 1: floor plumbing + authored arena map",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial plan review before any code. 4 alternatives enumerated and argued against (generic ArenaGenerator reuse, hand-authored tile JSON, deferring the Green Room to slice 5, generating the venue from RNG like other floors). 4 BLOCKER + 5 MAJOR + 2 MINOR. Design forked on: slice-1 done-when vs FR9.4 (ship the tunnel open + amend the spec), generator config path (new MapConfig.showcaseArena block), feed-gate ownership (publish ordered FloorMap.feedGates instead of re-deriving in slice 3), FR8.4 backstop is not a countdown (hideFloorTimer + own goal flag), and dropping the planned placeholder enemy pack in favour of an optional enemyPackId."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Exhaustive pass over the branch diff. Zero code findings (correctness, determinism, layer boundaries, runtime wiring, security and regression coverage all reported clean). The single finding was process-level: this ledger was still unfilled at review time, which is resolved by recording these stages."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "gemini-3.1-pro-preview",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra", "claude-opus-4.7"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Adjudicator (gemini-3.1-pro-preview) upheld 3 concerns not raised by either reviewer: (1) the floor4 superRefine omits the tunnel-mouth vs east-feed-gate collision check it claims to cover, so a bad manifest passes load validation and throws at generation; (2) no unit coverage for initializeFloor4Scenario (hideFloorTimer, spawn, stat modifiers) or floor4ObjectiveTick (stall backstop); (3) no unit coverage asserting the new superRefine rules actually reject invalid geometry. UNRESOLVED — session hit its time limit before round 2. Next session must fix all three, run round 2, then the independent grade."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

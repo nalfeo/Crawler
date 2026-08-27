@@ -1093,6 +1093,30 @@ describe('workflow-state endpoints (GET/PUT /api/workflow/state)', () => {
     expect(onExisting.statusCode).toBe(200);
   });
 
+  it('treats If-None-Match:* as a create-only write so two first writers cannot race', async () => {
+    const created = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-none-match': '*' },
+      payload: { state: sampleState },
+    });
+    expect(created.statusCode).toBe(200);
+
+    // A second client that also read "no state yet" must lose, not clobber.
+    const raced = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-none-match': '*' },
+      payload: { state: { items: [], selectedId: null, nextSeq: 42 } },
+    });
+    expect(raced.statusCode).toBe(409);
+    expect(raced.json().error).toBe('etag-conflict');
+    expect(raced.json().etag).toBe(created.json().etag);
+
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.json().state).toEqual(sampleState);
+  });
+
   it('does an unconditional last-writer-wins overwrite when If-Match is omitted', async () => {
     await app.inject({
       method: 'PUT',

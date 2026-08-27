@@ -12,9 +12,12 @@ import {
   Sprite,
 } from '../core/components.js';
 import { getActiveWeaponDef } from '../core/active-weapon.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
+import { createAudioCueEngine } from './audio/audio-cue-engine.js';
+import { createCombatAudio } from './combat-audio.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
@@ -61,6 +64,7 @@ import { MINI_SLIME_SPAWN_ANIM_MS } from '../shared/spawn-anim.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
 import {
   ENTITY_DEPTH,
+  PLAYER_DEPTH,
   PROP_DEPTH,
   TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
@@ -214,6 +218,19 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
   }
   return null;
 }
+
+/**
+ * Reference footprint in feet for a floor-decoration `Prop` at
+ * `DecorationDef.scale === 1.0`. `scale` is documented as a "size multiplier
+ * relative to base (1.0 = 100%)", so the Prop render pass multiplies by this
+ * constant rather than treating `scale` as an absolute feet value (see the
+ * Prop render pass below for the bug this fixes). `3` reads as a "normal
+ * sized" hand-placed prop (e.g. a barrel at `scale: 0.9` → 2.7 ft, close to a
+ * real barrel's footprint). Exported (with a leading underscore) only so the
+ * regression test can assert against the production value instead of
+ * duplicating the magic number; it has no production caller outside this file.
+ */
+export const _PROP_VISUAL_BASE_SIZE_FT = 3;
 
 /**
  * On-floor render scale for a harvestable node's generated sprite. The art is
@@ -618,7 +635,10 @@ function multiplyTint(left: number, right: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
-export function createPhaserBridge(scene: Phaser.Scene): {
+export function createPhaserBridge(
+  scene: Phaser.Scene,
+  options?: { combatAudioEngine?: ReturnType<typeof createAudioCueEngine> },
+): {
   sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
   destroy(): void;
 } {
@@ -675,6 +695,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
+  const combatAudio = createCombatAudio(options?.combatAudioEngine ?? createAudioCueEngine());
   const mobAbilityVfx = createMobAbilityVfx(scene);
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
@@ -884,8 +905,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
       /**
        * Draw (or hide) the player's equipped main-hand weapon as a persistent
-       * carried sprite, so the weapon is visible between swings and for weapon
-       * types that never spawn a swing entity at all.
+       * carried sprite when the floor enables `carriedMainHandWeapon`. When
+       * disabled, this path only hides any existing carried sprite.
+       *
+       * With the flag enabled, the weapon stays visible between swings and for
+       * weapon types that never spawn a swing entity at all.
        *
        * Art resolution mirrors the swing branch's preference order: approved
        * generated art first, then the Kenney placeholder for melee weapons,
@@ -905,6 +929,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         };
         if (typeof scene.add.image !== 'function') {
+          return;
+        }
+        if (!getWorldFloorBehavior(world).carriedMainHandWeapon) {
+          hideCarried();
           return;
         }
         const weaponDef = getActiveWeaponDef(world);
@@ -1013,8 +1041,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         img.setVisible(true);
         if (typeof img.setDepth === 'function') {
           // Just above the entity plane so the weapon reads as held in front of
-          // the body without escaping the world-space camera.
-          img.setDepth(ENTITY_DEPTH + 0.002);
+          // the player body without escaping the world-space camera.
+          img.setDepth(PLAYER_DEPTH + 0.002);
         }
       };
 
@@ -1326,6 +1354,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             arcGraphics.set(eid, ag);
             arcSpawnMs.set(eid, renderElapsedMs);
           }
+          // The swing replaces the (hidden) carried weapon, so it must read in
+          // front of the player body and the set-piece foreground props the
+          // player walks past. The arc trail sits just under the weapon sprite.
+          if (typeof ag.setDepth === 'function') {
+            ag.setDepth(PLAYER_DEPTH + 0.001);
+          }
           ag.clear();
 
           const bladeLen = ftToPx(meleeSwing.bladeLength[eid] ?? 0);
@@ -1527,6 +1561,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setPosition(handX, handY);
             // +π/2 aligns local-up (blade tip) with tipAngle (away from player)
             img.setRotation(tipAngle + Math.PI / 2);
+            if (typeof img.setDepth === 'function') {
+              // Matches the carried-weapon depth: in front of the player body
+              // (and of foreground props) while staying in world space.
+              img.setDepth(PLAYER_DEPTH + 0.002);
+            }
           }
           continue;
         }
@@ -1824,6 +1863,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                 arcGraphics.set(eid, ag);
                 arcSpawnMs.set(eid, renderElapsedMs);
               }
+              // Explicit reset: a recycled eid may carry a melee-swing arc that
+              // was raised above the player plane.
+              if (typeof ag.setDepth === 'function') {
+                ag.setDepth(ENTITY_DEPTH);
+              }
               ag.clear();
 
               // Calculate sweep progress (0→1 over the swing duration)
@@ -2019,14 +2063,18 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   }
                 }
                 playPlayerWalkAnimation(img, eid);
-                // The equipped main-hand weapon is always carried, not just
-                // drawn for the duration of a swing.
+                // The equipped main-hand weapon is carried between swings only
+                // when floor behavior enables persistent carry rendering.
                 updateCarriedWeapon(eid, x, y, img.visible !== false);
               } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
             }
             break;
+        }
+
+        if (entityType === 'player' && typeof img.setDepth === 'function') {
+          img.setDepth(PLAYER_DEPTH);
         }
 
         if (entityType === 'npc') {
@@ -2291,7 +2339,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
         const defId = DECORATION_INDEX_TO_ID[defIdIndex];
         const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
-        const scalePx = ftToPx(decorationDef?.scale ?? 1.0);
+        // `DecorationDef.scale` is documented as a "size multiplier relative to
+        // base (1.0 = 100%)", NOT a feet value — but this line used to feed it
+        // straight into `ftToPx()`, so a torch authored at `scale: 1.2` rendered
+        // at 1.2 ft (~10 px), comically small next to the 3 ft player. Multiply
+        // by a reference footprint (a "normal-sized" prop, matching the
+        // `prop-torch` asset brief's "reads clearly at gameplay scale") to
+        // restore the intended multiplier semantics.
+        const scalePx = ftToPx(_PROP_VISUAL_BASE_SIZE_FT * (decorationDef?.scale ?? 1.0));
         const depth =
           decorationDef?.depthLayer === 'back'
             ? PROP_DEPTH.back
@@ -2655,6 +2710,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           for (const opts of pendingShatter) corpseShatterVfx.explode(opts);
         }
       }
+      // Combat/loot SFX. Reads combatEvents, abilityActivations, AND
+      // vfxEvents BEFORE effectsVfx/combatVfx drain them (must run first).
+      combatAudio.update(world, renderElapsedMs);
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
@@ -2668,6 +2726,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     },
 
     destroy(): void {
+      combatAudio.destroy();
       for (const visual of visuals.values()) {
         visual.obj.destroy();
       }

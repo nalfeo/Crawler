@@ -18,6 +18,7 @@ import {
   IN_PLACE_LOCATION,
   planObjectiveRoute,
   type ObjectiveRoute,
+  type ObjectiveUtilityWeights,
 } from './objective-route-planner.js';
 import {
   applyFloor1WorkCosts,
@@ -115,6 +116,7 @@ export interface RunPlannerParams {
   readonly minorBossKillMs: number;
   readonly finalBossKillMs: number;
   readonly stairsInteractMs: number;
+  readonly utilityWeights?: ObjectiveUtilityWeights;
 }
 
 /**
@@ -202,8 +204,11 @@ const EMPTY_OBJECTIVE_ROUTE: ObjectiveRoute = {
   totalMs: 0,
   includedOptionalBundleIds: [],
   droppedOptionalBundleIds: [],
+  portfolio: [],
+  selectedUtilityScore: null,
   requiredOverBudget: false,
   routeHeadId: null,
+  activeObjectiveId: null,
   nextActionableGoalId: null,
 };
 
@@ -294,6 +299,7 @@ export function planFloor1ObjectiveRoute(
     initialSatisfiedEffects: effectiveInitialEffects,
     completedGoalIds: effectiveCompletedGoalIds,
     budgetMs: planBudgetMs,
+    utilityWeights: params.utilityWeights,
     travelOracle,
   });
 }
@@ -444,6 +450,11 @@ export function buildRunPlanCacheKey(
     snapshot.merchantWeaponIntent?.cost ?? 0,
     snapshot.spellBrokerIntent?.status ?? 'none',
     snapshot.spellBrokerIntent?.cost ?? 0,
+    params.utilityWeights?.completion ?? 'legacy',
+    params.utilityWeights?.optimization ?? 'legacy',
+    params.utilityWeights?.safety ?? 'legacy',
+    params.utilityWeights?.exploration ?? 'legacy',
+    params.utilityWeights?.costPerSecond ?? 'legacy',
     speedKey,
     budgetBucket,
   ].join('|');

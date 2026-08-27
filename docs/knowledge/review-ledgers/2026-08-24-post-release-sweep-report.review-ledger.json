@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-24",
+  "session_slug": "post-release-sweep-report",
+  "task_title": "Expand post-release sweep report",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Resolved six plan-review concerns: use a first-party Pages shell at release-baseline-report.html?commit=<sha> rather than an HTML blob/artifact; load current/previous full baselines and optional fun reports; gate loot/DPS comparisons by matching sweep revision and top-level Floor-1 cohort; use compareFunReports for cohort-aware fun comparison; cover workflow wiring; retain existing idempotent comment semantics."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

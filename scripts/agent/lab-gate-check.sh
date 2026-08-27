@@ -13,6 +13,10 @@ declare -A SHARED_LAB_MAP=(
   [aoeonimpact]="weapon-lab"
   [areadamage]="weapon-lab"
   [returningprojectile]="weapon-lab"
+  # Homing steers Magic Missile bolts (issue #3248), cast via the real
+  # ability pipeline that abilities-lab boots (MainGameScene + shared
+  # simulation step), so casting magic-missile there genuinely exercises it.
+  [homing]="abilities-lab"
   # DeathTimer is post-death cleanup (counts down before removeEntity),
   # exercised through the health-lab death-flow scenarios.
   [deathtimer]="health-lab"
@@ -26,6 +30,16 @@ declare -A SHARED_LAB_MAP=(
   # The family-relationship drain/decay system is exercised by the
   # family-territory-lab (its delta buttons queue + drain relationship deltas).
   [familyrelationship]="family-territory-lab"
+  # Floor 3 Companion League combat-XP/evolution/ability-unlock system (slice
+  # 5) is exercised by the floor3-companion-lab's "attack rival" action, which
+  # drives the real applyDamage -> companionProgressionSystem path and
+  # displays the resulting level/form/ability changes.
+  [companionprogression]="floor3-companion-lab"
+  # Floor 3 Companion League KO/recovery state machine + Rally Point recovery
+  # (slice 6) is exercised by the same floor3-companion-lab's "KO companion
+  # now" / "Advance frames" / "Place Rally Point" actions, which drive the
+  # real companionKOSystem and display knockedOut/idle/party-wipe state.
+  [companionko]="floor3-companion-lab"
   # enemyTelegraph.ts is a shared resolver/state module (not a per-frame
   # System), called from enemyAISystem's real fire path. enemy-ai-lab already
   # spawns AI_TYPE.RANGED enemy groups, ticks the real enemyAISystem every

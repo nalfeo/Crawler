@@ -25,6 +25,11 @@ import path from 'node:path';
  * @returns {string | null}  absolute path to the node_modules dir, or null
  */
 export function resolveNodeModules(repoRoot) {
+  // npm ci may install dependencies directly in a worktree. Prefer that local
+  // copy so extensions don't require an unrelated main checkout to be installed.
+  const direct = path.join(repoRoot, 'node_modules');
+  if (existsSync(direct)) return direct;
+
   const gitPath = path.join(repoRoot, '.git');
   try {
     const stat = statSync(gitPath);
@@ -44,9 +49,6 @@ export function resolveNodeModules(repoRoot) {
   } catch {
     // ignore — fall through to the direct check below
   }
-  // Non-worktree checkout: node_modules sits directly in the repo root
-  const direct = path.join(repoRoot, 'node_modules');
-  if (existsSync(direct)) return direct;
   return null;
 }
 

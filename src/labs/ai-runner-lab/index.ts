@@ -12,7 +12,7 @@ import Phaser from 'phaser';
 import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { getAvailableFloorIds } from '../../shared/floor-registry.js';
+import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import {
   AIState,
   AIDecisionMode,
@@ -36,6 +36,7 @@ import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
 } from '../../game/ai/settlement-maintenance-planner.js';
+import { isSettlementReturnRoutingEnabled } from '../../game/ai/settlement-return-router.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import {
@@ -100,6 +101,7 @@ import {
   getAiRunnerScenarioPreset,
   type AiRunnerScenarioPresetId,
 } from './scenario-presets.js';
+import { syncAiRunnerSettlementReturnRouting } from './settlement-return-policy.js';
 
 const LAB_ID = 'ai-runner-lab';
 const AI_RUNNER_PANEL_STYLES = `
@@ -591,7 +593,13 @@ export interface AiRunnerDebugSnapshot {
   conversationNpcEid: number | null;
   modalOpen: boolean;
   runOutcome: string | null;
-  effectiveFloor: 'floor1' | 'floor2' | 'unknown';
+  /**
+   * The floor the live world is actually on, or `'unknown'` before a world
+   * exists / when the world reports a floor with no registered manifest.
+   * Derived from the floor registry rather than a hardcoded union so a newly
+   * registered floor (Floor 3) is reported as itself instead of `'unknown'`.
+   */
+  effectiveFloor: string;
   scenarioPreset: AiRunnerScenarioPresetId;
   /** Player-persona preset currently driving the AI brain. */
   playerPersona: PlayerPersona;
@@ -844,6 +852,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
+        syncAiRunnerSettlementReturnRouting(world, !manualControl);
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -904,7 +913,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureSpellBrokerPurchase(world, aiConfig.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
-    runEagerMaintenanceTick(world, playerEid);
+    runEagerMaintenanceTick(world, playerEid, {
+      skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
+    });
     runSettlementMaintenancePlanner(world);
   };
   let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
@@ -1359,7 +1370,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiModesFolder
-    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY])
+    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.OBJECTIVE_PORTFOLIO])
     .name('Decision')
     .onChange(() => {
       rebuildAiBrain();
@@ -2720,7 +2731,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       (reason) => typeof reason === 'string' && reason.length > 0,
     ).length;
     const effectiveFloor =
-      world?.floorId === 'floor1' || world?.floorId === 'floor2' ? world.floorId : 'unknown';
+      world?.floorId !== undefined && hasFloorManifest(world.floorId) ? world.floorId : 'unknown';
     return {
       frame: world?.frameCount ?? null,
       polls: pollCount,

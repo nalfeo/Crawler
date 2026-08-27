@@ -39,7 +39,11 @@ import {
 import { createGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
-import type { EquipmentTextRasterMetadata, EquipmentTextRun } from '../../engine/EquipmentUI.js';
+import type {
+  EmptySlotCue,
+  EquipmentTextRasterMetadata,
+  EquipmentTextRun,
+} from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -130,7 +134,7 @@ export interface UiProbeApi {
   getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
-  getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EquipmentSlotId | null;
+  getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EmptySlotCue | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
   getEquipmentTooltipCardBounds(): readonly ScreenBounds[];
   isEquipmentTooltipVisible(): boolean;
@@ -562,7 +566,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
           displayName: 'Polished Fortune Band',
           artKey: 'equipment/ui-probe-chain-hauberk',
-          slots: ['ringLeft', 'ringRight'],
+          slots: ['ring1', 'ring2'],
           tags: ['accessory'],
           weightLb: 0.25,
           statBonuses: { luck: 2 },

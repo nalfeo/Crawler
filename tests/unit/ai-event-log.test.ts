@@ -45,15 +45,18 @@ function fixtureEvents(): SimEvent[] {
   return [
     // s0: moving efficiently — not wiggle, not idle, not stuck.
     mk('sample', 0, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 2.25 }),
-    // s1+s2: moving a lot but going nowhere — wiggle (eff 0.1 < 0.35).
+    // s1: moving a lot but going nowhere — wiggle (eff 0.1 < 0.35). Anchors
+    // the stuck window at (100,200).
     mk('sample', 250, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 0.25, px: 100, py: 200 }),
-    mk('sample', 500, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 0.25 }),
-    // s3: barely moving — idle (pathTravel 0.125 < 0.1875).
-    mk('sample', 750, { state: 'ENGAGE', pathTravel: 0.125, netDisp: 0.125 }),
-    // s4: not moving + stuckFrames high — idle AND stuck.
-    mk('sample', 1000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, stuckFrames: 50 }),
-    // s5: final sample (dt = 0, contributes no time).
-    mk('sample', 1250, { state: 'ENGAGE', pathTravel: 3.75, netDisp: 3.75 }),
+    // s2: still wiggling, 1.4ft from the anchor (within the 12ft radius).
+    mk('sample', 500, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 0.25, px: 101, py: 201 }),
+    // s3: barely moving — idle (pathTravel 0.125 < 0.1875), still near anchor.
+    mk('sample', 750, { state: 'ENGAGE', pathTravel: 0.125, netDisp: 0.125, px: 101, py: 201 }),
+    // s4: not moving at all — idle, still near anchor.
+    mk('sample', 1000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 101, py: 201 }),
+    // s5: final sample (dt = 0, contributes no time). Far away, but doesn't
+    // matter since it contributes no time.
+    mk('sample', 1250, { state: 'ENGAGE', pathTravel: 3.75, netDisp: 3.75, px: 140, py: 201 }),
     // Kills used for cadence metrics (not time attribution).
     mk('kill', 500, { note: 'kill 1' }),
     mk('kill', 1000, { note: 'kill 2' }),
@@ -72,7 +75,7 @@ describe('summarizeEvents', () => {
     expect(summary.statePct.ENGAGE).toBe(40);
   });
 
-  it('flags wiggle, idle, and stuck windows independently', () => {
+  it('flags wiggle and idle windows independently', () => {
     const summary = summarizeEvents(fixtureEvents());
     // Wiggle: s1 + s2 = 500ms.
     expect(summary.wiggleMs).toBe(500);
@@ -80,9 +83,95 @@ describe('summarizeEvents', () => {
     // Idle: s3 + s4 = 500ms.
     expect(summary.idleMs).toBe(500);
     expect(summary.idlePct).toBe(40);
-    // Stuck: s4 only = 250ms.
-    expect(summary.stuckMs).toBe(250);
-    expect(summary.stuckPct).toBe(20);
+  });
+
+  it('accumulates stuck time across a contiguous wiggle+idle run that never escapes the anchor radius', () => {
+    // Override stuckSustainedMs to 0 so this fixture's short run (well under
+    // the default 2s "couple of seconds" grace period) still exercises the
+    // anchor-radius union logic in isolation.
+    const summary = summarizeEvents(fixtureEvents(), {
+      ...DEFAULT_SUMMARY_THRESHOLDS,
+      stuckSustainedMs: 0,
+    });
+    // Stuck candidacy is gated only on exclusion, not on the per-sample
+    // wiggle/idle flags (see the module doc comment), so s0's efficient
+    // move opens its own (too-short-to-report) window before escaping past
+    // the anchor at s1. s1..s4 are then a contiguous, non-excluded run, all
+    // within 12ft of the anchor set at s1 (100,200) — the union is one
+    // reported stuck episode, not just the samples that individually look
+    // "idle". Total stuckMs (1250) = s0's own window (250) + s1..s4's union
+    // (1000) + s5's zero-duration final window (0).
+    expect(summary.stuckMs).toBe(1250);
+    expect(summary.stuckPct).toBe(100);
+    expect(summary.stuckEpisodes).toHaveLength(1);
+    expect(summary.stuckEpisodes[0]!.durationMs).toBe(1000);
+  });
+
+  it('does not count a short wiggle/idle blip toward stuckMs at all (grace period)', () => {
+    // With the default stuckSustainedMs (2000ms), fixtureEvents()'s 1000ms
+    // wiggle+idle run never reaches the "couple of seconds" threshold, so it
+    // contributes nothing to stuckMs — a brief combat-positioning pause is
+    // normal play, not a defect.
+    const summary = summarizeEvents(fixtureEvents());
+    expect(summary.stuckMs).toBe(0);
+    expect(summary.stuckPct).toBe(0);
+    expect(summary.stuckEpisodes).toHaveLength(0);
+  });
+
+  it('closes a stuck episode once the player escapes the anchor radius', () => {
+    const events = [
+      mk('sample', 0, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 0, py: 0 }),
+      mk('sample', 250, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 0, py: 0 }),
+      // Jumps 50ft away — well past the 12ft anchor radius: genuine progress,
+      // not stuck, even though this single sample also reads "idle".
+      mk('sample', 500, { state: 'ENGAGE', pathTravel: 0.1, netDisp: 0.1, px: 50, py: 0 }),
+      mk('sample', 750, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 50, py: 0 }),
+    ];
+    const summary = summarizeEvents(events, {
+      ...DEFAULT_SUMMARY_THRESHOLDS,
+      minEpisodeMs: 0,
+      stuckSustainedMs: 0,
+    });
+    // Two separate stuck episodes: 0..500ms parked near (0,0), then a fresh
+    // 500..750ms episode anchored at (50,0) after the jump — not one
+    // continuous 750ms episode.
+    expect(summary.stuckEpisodes).toHaveLength(2);
+    expect(summary.stuckEpisodes[0]!.durationMs).toBe(500);
+    expect(summary.stuckEpisodes[1]!.durationMs).toBe(250);
+  });
+
+  it('commits the full grace period once a stuck window reaches stuckSustainedMs', () => {
+    // Player parked in one spot for the whole run — well past the default 2s
+    // sustained threshold. The ENTIRE window should count, not just the
+    // portion after crossing the threshold.
+    const events = [
+      mk('sample', 0, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 10, py: 10 }),
+      mk('sample', 1000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 10, py: 10 }),
+      mk('sample', 2000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 10, py: 10 }),
+      mk('sample', 3000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 10, py: 10 }),
+      mk('sample', 4000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, px: 10, py: 10 }),
+    ];
+    const summary = summarizeEvents(events);
+    expect(summary.stuckMs).toBe(4000);
+    expect(summary.stuckEpisodes).toHaveLength(1);
+    expect(summary.stuckEpisodes[0]!.durationMs).toBe(4000);
+    expect(summary.stuckEpisodes[0]!.startMs).toBe(0);
+  });
+
+  it('excludes safe-room and vendor-interaction time from wiggle/idle/stuck', () => {
+    const events = [
+      // Idle-looking samples that are legitimately stationary should not
+      // count against the "stuck or wiggle" budget at all.
+      mk('sample', 0, { state: 'IDLE', pathTravel: 0, netDisp: 0, inSafe: true }),
+      mk('sample', 250, { state: 'INTERACT', pathTravel: 0, netDisp: 0 }),
+      mk('sample', 500, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 2.25 }),
+    ];
+    const summary = summarizeEvents(events);
+    expect(summary.stuckMs).toBe(0);
+    expect(summary.wiggleMs).toBe(0);
+    expect(summary.idleMs).toBe(0);
+    expect(summary.excludedMs).toBe(500);
+    expect(summary.excludedPct).toBe(100);
   });
 
   it('computes kill cadence metrics from kill events', () => {

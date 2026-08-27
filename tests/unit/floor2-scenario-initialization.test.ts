@@ -161,6 +161,8 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(getQuestWaypoints(world, playerEid)).toEqual([
       {
         ...settlementAnchor!,
+        dirX: settlementAnchor!.x,
+        dirY: settlementAnchor!.y,
         questId: FLOOR2_FIND_SETTLEMENT_QUEST_ID,
         label: 'Find the settlement',
         kind: 'npc',

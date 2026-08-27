@@ -99,3 +99,27 @@ export function etagPreconditionFails(
   if (ifMatch === '*') return currentEtag === null;
   return ifMatch !== currentEtag;
 }
+
+/**
+ * Create-only precondition for `PUT /api/workflow/state`.
+ *
+ * A client that has never seen any state has no ETag to send, so an
+ * `If-Match`-only contract would let two first writers silently overwrite each
+ * other. `If-None-Match: *` closes that hole:
+ *   - absent/empty     → no create-only requirement, never rejected.
+ *   - `*`              → requires the resource to NOT exist yet.
+ *   - any other value  → standard HTTP: rejected when it equals the current ETag.
+ */
+export function ifNoneMatchPreconditionFails(
+  ifNoneMatch: string | undefined | null,
+  currentEtag: string | null,
+): boolean {
+  if (ifNoneMatch == null || ifNoneMatch === '') return false;
+  if (ifNoneMatch === '*') return currentEtag !== null;
+  return ifNoneMatch === currentEtag;
+}
+
+/** True when the caller asked for create-only (`If-None-Match: *`) semantics. */
+export function isCreateOnlyWrite(ifNoneMatch: string | undefined | null): boolean {
+  return ifNoneMatch === '*';
+}

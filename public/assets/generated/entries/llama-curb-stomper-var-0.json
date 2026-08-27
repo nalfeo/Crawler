@@ -2,27 +2,27 @@
   "briefId": "llama-curb-stomper",
   "spriteName": "llama-curb-stomper-var-0",
   "assetPath": "generated/llama-curb-stomper-var-0.png",
-  "approvedAt": "2026-08-01T00:11:14.651Z",
-  "sourceRun": "generated/runs/llama-curb-stomper-v1/2026-08-01T00-08-28-1b668e97",
+  "approvedAt": "2026-08-01T18:14:36.110Z",
+  "sourceRun": "generated/runs/llama-curb-stomper/2026-08-01T18-11-28-51e57ee5",
   "variantIndex": 0,
   "anchor": {
-    "x": 125,
-    "y": 193,
+    "x": 122,
+    "y": 174,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 125,
-      "y": 193,
+      "x": 122,
+      "y": 174,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 125,
-      "y": 193,
+      "x": 122,
+      "y": 174,
       "source": "derived"
     }
   },
-  "sensorScore": "6/7",
+  "sensorScore": "7/7",
   "judgeScore": "4",
   "sensorBreakdown": [
     {
@@ -46,116 +46,49 @@
       "sensor": "opaque-ratio"
     },
     {
-      "ok": false,
-      "sensor": "interior-transparency-holes",
-      "reason": "found 1213 enclosed transparent interior pixels (max 0)",
-      "pixels": [
-        {
-          "x": 106,
-          "y": 257
-        },
-        {
-          "x": 107,
-          "y": 257
-        },
-        {
-          "x": 108,
-          "y": 257
-        },
-        {
-          "x": 109,
-          "y": 257
-        },
-        {
-          "x": 110,
-          "y": 257
-        },
-        {
-          "x": 111,
-          "y": 257
-        },
-        {
-          "x": 112,
-          "y": 257
-        },
-        {
-          "x": 113,
-          "y": 257
-        },
-        {
-          "x": 114,
-          "y": 257
-        },
-        {
-          "x": 115,
-          "y": 257
-        },
-        {
-          "x": 116,
-          "y": 257
-        },
-        {
-          "x": 117,
-          "y": 257
-        },
-        {
-          "x": 118,
-          "y": 257
-        },
-        {
-          "x": 119,
-          "y": 257
-        },
-        {
-          "x": 120,
-          "y": 257
-        },
-        {
-          "x": 121,
-          "y": 257
-        }
-      ]
+      "ok": true,
+      "sensor": "interior-transparency-holes"
     },
     {
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 125,
-        "y": 193
+        "x": 122,
+        "y": 174
       }
     }
   ],
   "judgeScorecard": {
     "variantIndex": 0,
     "modelDeployment": "gpt-4o",
-    "judgedAt": "2026-08-01T00:09:35.370Z",
+    "judgedAt": "2026-08-01T18:12:41.343Z",
     "designLanguage": {
       "score": 5,
-      "rationale": "The concept of a stocky llama with an oversized boot and a dull expression is both humorous and strange, fitting the Crawler aesthetic. The contrast between the mundane and the absurd is well-executed."
+      "rationale": "The concept of a heavy, thuggish llama with oversized stomping boots is well-executed and fits the darkly humorous and absurd tone of Crawler. The combination of a llama with comically large, stylish boots is a strong collision of familiar elements."
     },
     "referenceStyleMatch": {
       "score": 4,
-      "rationale": "The sprite matches the reference style in terms of outline, shading, and palette. However, the boot's highlights are slightly over-polished compared to the subtler highlights in the references."
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the shading on the boots could be slightly more refined to match the level of detail in the references."
     },
     "styleMatch": {
       "score": 4,
-      "rationale": "The sprite matches the reference style in terms of outline, shading, and palette. However, the boot's highlights are slightly over-polished compared to the subtler highlights in the references."
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. However, the shading on the boots could be slightly more refined to match the level of detail in the references."
     },
     "briefMatch": {
       "score": 5,
-      "rationale": "The sprite clearly depicts a llama in a sleeveless undershirt and suspenders, with a raised boot featuring steel studs. The dull expression and thick neck are also present, aligning perfectly with the brief."
+      "rationale": "The sprite clearly depicts a llama with a thick neck, a minimal outfit, and oversized, reinforced stomping boots. The aggressive posture and expression align with the brief."
     },
     "readability": {
       "score": 5,
-      "rationale": "The silhouette is clear and the raised boot is immediately recognizable, making the sprite's identity and action obvious at game scale."
+      "rationale": "The silhouette is clear and easily readable at game scale. The raised leg and oversized boots are immediately recognizable, and the figure stands out well against the dark floor tile."
     },
-    "poseOrientation": {
+    "figureFraming": {
       "score": 5,
-      "rationale": "The character is oriented at a one-third turn, with the raised boot and body position creating a dynamic and engaging pose."
+      "rationale": "The entire figure is fully framed, with all parts of the body visible, including the raised leg and boots. The pose is dynamic and well-composed."
     },
     "themeAdherence": {
       "score": 4,
-      "rationale": "The llama's attire and oversized boots align with the theme's focus on absurd fantasy and cartel pageantry. However, the lack of more explicit references to the Spit Syndicate's specific iconography (e.g., saliva-powered elements or vineyard motifs) prevents a perfect score."
+      "rationale": "The sprite incorporates the llama, oversized boots, and minimal outfit as described in the brief. The boots are stylish and well-crafted, fitting the cartel-dungeon tone. However, the suspenders mentioned in the brief are not clearly visible, which slightly detracts from full adherence."
     },
     "passed": true,
     "minScore": 4,
@@ -166,21 +99,39 @@
     "hardBlockRationale": null,
     "confidence": 0.92,
     "usage": {
-      "promptTokens": 3966,
-      "completionTokens": 402,
-      "totalTokens": 4368
+      "promptTokens": 4446,
+      "completionTokens": 426,
+      "totalTokens": 4872
     }
   },
   "type": "enemy",
-  "contentHash": "6f5e3fa50c49d0947839649f3aa12ba2e3720495b92e3b3565189d5ca692ec3c",
+  "contentHash": "13bda2976b31d95daaa59ef93dfa6b4075e89992e14b7c4018e0647a231dcb9c",
   "opaqueBounds": {
-    "x": 18,
-    "y": 18,
-    "width": 220,
-    "height": 305,
+    "x": 17,
+    "y": 17,
+    "width": 222,
+    "height": 285,
     "canvasWidth": 256,
-    "canvasHeight": 341
+    "canvasHeight": 319
   },
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "enemy",
+      "fantasy",
+      "medieval",
+      "dungeon",
+      "horror",
+      "arcane",
+      "large",
+      "dark",
+      "asymmetric",
+      "boss-room",
+      "cave",
+      "magic",
+      "weapon",
+      "pristine"
+    ]
+  }
 }

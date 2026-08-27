@@ -34,6 +34,11 @@ export interface ValidatedBundle {
   readonly shouldFileIssue: boolean;
 }
 
+export interface ValidatedSurveyAppend {
+  readonly runId: string;
+  readonly survey: PlaytestSurvey;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -143,6 +148,40 @@ export function validateRunBundle(value: unknown, serializedBytes: number): Vali
       : {}),
     shouldFileIssue,
   };
+}
+
+export function validateRunSurveyAppend(
+  value: unknown,
+  serializedBytes: number,
+): ValidatedSurveyAppend {
+  if (serializedBytes > MAX_REQUEST_BYTES) {
+    throw new Error(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
+  }
+  if (!isRecord(value)) throw new Error('request body must be a JSON object');
+  if (!isRecord(value.meta)) throw new Error('meta must be an object');
+  const runId = value.meta.runId;
+  if (typeof runId !== 'string' || !/^[A-Za-z0-9._-]{1,128}$/.test(runId)) {
+    throw new Error('meta.runId must contain only letters, numbers, dots, underscores, or hyphens');
+  }
+  if (!isRecord(value.survey)) throw new Error('survey must be an object');
+  const survey: Record<string, unknown> = {};
+  for (const dimension of SURVEY_DIMENSIONS) {
+    const score = value.survey[dimension];
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 5) {
+      throw new Error(`survey.${dimension} must be an integer from 1 to 5`);
+    }
+    survey[dimension] = score;
+  }
+  if (value.survey.comment !== undefined) {
+    if (
+      typeof value.survey.comment !== 'string' ||
+      value.survey.comment.length > MAX_COMMENT_CHARS
+    ) {
+      throw new Error(`survey.comment must be at most ${MAX_COMMENT_CHARS} characters`);
+    }
+    survey.comment = value.survey.comment;
+  }
+  return { runId, survey: survey as unknown as PlaytestSurvey };
 }
 
 export function decodePngBase64(value: string): Buffer {

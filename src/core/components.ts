@@ -72,6 +72,19 @@ export const AoeOnImpact = {};
 export const Returning = {};
 /** Projectile that can bounce off arena bounds before despawning. */
 export const Bouncing = {};
+/**
+ * Projectile that arcs away from its origin, then steers onto a stored target
+ * once its arc-out delay elapses (Magic Missile — issue #3248). Driven by
+ * `homingSystem`, which runs before `movementSystem` each tick.
+ */
+export const Homing = {};
+/**
+ * Generic dynamic light emitter, independent of `Prop`/`PropLight` (which are
+ * tied to static decoration entities). Any moving or transient entity — e.g. a
+ * homing Magic Missile bolt — can carry this to register as a light source in
+ * `MainGameScene.updateLightingOverlay`.
+ */
+export const Glowing = {};
 /** Continuous beam/line damage from this entity's position. */
 export const LineDamage = {};
 /** Placed trap that arms and triggers on proximity. */
@@ -143,6 +156,34 @@ export const Harvestable = {};
  * the single boss per family. Introduced by Floor 2 Slice 1 (ADR 0040 · D1).
  */
 export const FamilyMembership = {};
+
+/**
+ * Floor 3 tag: marks an allied auto-battler companion.
+ *
+ * `speciesToken` is an opaque numeric key for the species line (string species
+ * ids live in higher-level data registries), `form` is 0/1/2 (baby/adolescent/adult),
+ * `level`/`xp` track floor-scoped creature progression, `ownerTeam` mirrors the
+ * owning handler/wrangler team id, `knockedOut` is the in-engagement KO flag,
+ * and `defeatRewarded` latches once a defeated rival has paid out the player's
+ * persistent reward track.
+ */
+export const Companion = {};
+
+/**
+ * Floor 3 party slot metadata on the player entity.
+ *
+ * `slot` is the ordered party index (0-based) and `locked` latches once the
+ * party reaches its floor cap so recruiting can be gated without mutating
+ * existing slots.
+ */
+export const PartySlot = {};
+
+/**
+ * Floor 3 world-object tag: a safe node where knocked-out party Companions
+ * instantly recover (spec R5/R11, slice 6). Pure position-based proximity
+ * trigger (`companionKOSystem`) — no per-entity data needed.
+ */
+export const RallyPoint = {};
 
 /**
  * Marks an entity as a physical boss chest world-object. Proximity-opened by
@@ -323,6 +364,31 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     bouncing: {
       remainingBounces: new Uint8Array(maxEntities),
     },
+    homing: {
+      /** Target entity id to steer toward once active. Only meaningful while
+       * the target still exists and has Health > 0 — checked every frame by
+       * `homingSystem` rather than relying on a sentinel "no target" value. */
+      targetEid: new Uint32Array(maxEntities),
+      /** Constant travel speed (ft/frame) maintained while steering. */
+      speed: new Float32Array(maxEntities),
+      /** Maximum heading change per frame, in radians, once active. */
+      turnRateRadPerFrame: new Float32Array(maxEntities),
+      /** `world.frameCount` at which steering begins; before it, the
+       * projectile keeps its initial arc-out velocity untouched. */
+      activateFrame: new Float32Array(maxEntities),
+    },
+    glowing: {
+      /** Emission radius in render pixels. */
+      radiusPx: new Float32Array(maxEntities),
+      /** Light intensity 0–1. */
+      intensity: new Float32Array(maxEntities),
+      /** Red channel 0–255. */
+      colorR: new Uint8Array(maxEntities),
+      /** Green channel 0–255. */
+      colorG: new Uint8Array(maxEntities),
+      /** Blue channel 0–255. */
+      colorB: new Uint8Array(maxEntities),
+    },
     lineDamage: {
       dirX: new Float32Array(maxEntities),
       dirY: new Float32Array(maxEntities),
@@ -473,14 +539,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     /**
      * Fail-closed damage-scaling metadata for delayed damage-bearing entities.
      * Numeric zero decodes to the fail-closed default in every field: origin=
-     * environment, affinity=unscaled, scaleWithPrimary=false, canCrit=false.
-     * See `core/damage-meta.ts` for the encode/decode helpers.
+     * environment, affinity=unscaled, scaleWithPrimary=false, canCrit=false,
+     * fromActiveAbility=false. See `core/damage-meta.ts` for the encode/decode
+     * helpers.
      */
     damageMeta: {
       origin: new Uint8Array(maxEntities),
       affinity: new Uint8Array(maxEntities),
       scaleWithPrimary: new Uint8Array(maxEntities),
       canCrit: new Uint8Array(maxEntities),
+      fromActiveAbility: new Uint8Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.
@@ -520,6 +588,29 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       familyId: new Uint8Array(maxEntities),
       /** 1 for the family boss, 0 for regular members. */
       isBoss: new Uint8Array(maxEntities),
+    },
+    companion: {
+      /** Opaque numeric species key (string species ids stay in higher-level registries). */
+      speciesToken: new Uint16Array(maxEntities),
+      /** Form tier: 0 baby, 1 adolescent, 2 adult. */
+      form: new Uint8Array(maxEntities),
+      level: new Uint8Array(maxEntities),
+      xp: new Float32Array(maxEntities),
+      ownerTeam: new Uint16Array(maxEntities),
+      /** 1 when this companion is KO'd for the active engagement. */
+      knockedOut: new Uint8Array(maxEntities),
+      /**
+       * 1 once this companion's defeat has already paid the player's
+       * persistent reward track (Floor 3, spec R7). Latched so the generic
+       * engagement-end revival cannot be farmed by re-KO'ing the same rival.
+       */
+      defeatRewarded: new Uint8Array(maxEntities),
+    },
+    partySlot: {
+      /** Ordered 0-based slot index in the player's floor-scoped party. */
+      slot: new Uint8Array(maxEntities),
+      /** 1 once party recruitment has locked; 0 while still recruitable. */
+      locked: new Uint8Array(maxEntities),
     },
   };
 }

@@ -63,6 +63,45 @@ describe('clearEntityStores', () => {
     expect(world.setPieceProps).toHaveLength(1);
     expect(world.setPieceProps[0]?.render).toBe(render);
   });
+
+  it('purges a cleared entity as a companionDamageContribution target', () => {
+    const world = createTestWorld();
+    const target = spawnEnemy(world, 5, 5, 10);
+    const contributor = spawnEnemy(world, 6, 6, 10);
+    world.companionDamageContribution.set(target, new Map([[contributor, 15]]));
+
+    clearEntityStores(world, target);
+
+    // The recycled target eid must not resurface as a tracked kill: a
+    // recycled EID whose Health.current happens to read <= 0 could otherwise
+    // be misread by companionProgressionSystem as this stale target's death.
+    expect(world.companionDamageContribution.has(target)).toBe(false);
+    // The contributor's own ledger entry (as a target) is untouched.
+    expect(world.companionDamageContribution.has(contributor)).toBe(false);
+  });
+
+  it('purges a cleared entity as a companionDamageContribution contributor without dropping other contributors', () => {
+    const world = createTestWorld();
+    const target = spawnEnemy(world, 5, 5, 10);
+    const staleContributor = spawnEnemy(world, 6, 6, 10);
+    const liveContributor = spawnEnemy(world, 7, 7, 10);
+    world.companionDamageContribution.set(
+      target,
+      new Map([
+        [staleContributor, 15],
+        [liveContributor, 20],
+      ]),
+    );
+
+    clearEntityStores(world, staleContributor);
+
+    // A recycled contributor eid must not inherit stale XP credit for damage
+    // it never dealt, but the target's entry and the other contributor's
+    // credit must survive.
+    const contributions = world.companionDamageContribution.get(target);
+    expect(contributions?.has(staleContributor)).toBe(false);
+    expect(contributions?.get(liveContributor)).toBe(20);
+  });
 });
 
 describe('setBloodColor', () => {

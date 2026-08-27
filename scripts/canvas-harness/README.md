@@ -150,8 +150,10 @@ for `plans/**/*.art.yaml` + `briefs/**/*.yaml`, replacing the monolith's build-t
    instance with your `buildState` + route table, keep a per-instance `Map`, make `open`
    idempotent, and clean up in `onClose`. **Log via `session.log`, never `console.log`
    (stdout is JSON-RPC).**
-5. Add a drift test that calls `checkHarness()` (copy `workflow/tests/harness-drift.test.mjs`)
-   and append your `tests/*.test.mjs` glob to the `test:guards` script in `package.json`.
+5. Add a drift test that calls `checkHarness()` (copy `workflow/tests/harness-drift.test.mjs`).
+   Any `*.test.mjs` under `.github/extensions/` is discovered automatically by
+   `npm run test:guards` — **do not** add it to `package.json`, which used to be the
+   repo's worst merge-conflict hot spot when every new canvas edited the same line.
 
 > **REPO_ROOT trap (bites every slice).** In the CLI worktree runtime,
 > `session.workspacePath` resolves to the **session-state dir, not the git worktree** —

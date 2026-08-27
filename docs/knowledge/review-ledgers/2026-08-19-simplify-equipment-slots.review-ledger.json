@@ -1,0 +1,77 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-19",
+  "session_slug": "simplify-equipment-slots",
+  "task_title": "Simplify equipment slots and redesign equipment UX",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review identified migration, authored-content, ring-cue, and durable-evidence gaps; all were addressed in subsequent commits."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "7004597c67d7db49281191a2bbe0d7080d2ccfc8",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly handles the migration of older carryover snapshots with retired equipment slots by safely dropping obsolete inventory/equip references and safely restoring sparse ordinals in the registry. Test coverage effectively verifies the migration paths, including the ring slot alias remapping. The changes cleanly remove legacy mirror-pair logic from prompts and fully obey the strict /tmp file-writing policy."
+    }
+  }
+}

@@ -985,7 +985,12 @@ jobs:
   test-e2e-game:
     name: E2E Visual — Game/UI
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30, not 20: the e2e-game suite (45 files / 164 tests) now takes ~19.5 min of
+    # test time alone, so with checkout + Playwright install it overshot the old
+    # 20-minute budget and was killed as `cancelled` *after* every test passed —
+    # which the merge gate then reported as a failure. This is headroom for a
+    # suite that grew, not a relaxed assertion; no test is skipped or shortened.
+    timeout-minutes: 30
     needs: [changes]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:

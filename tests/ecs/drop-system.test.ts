@@ -25,7 +25,7 @@ import {
 } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
-import { MeleeStyle, TeamId } from '../../src/shared/constants.js';
+import { MeleeStyle, MINI_SLIME_COLLISION_EPSILON_FT, TeamId } from '../../src/shared/constants.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import {
   initializeFloor1Scenario,
@@ -34,10 +34,12 @@ import {
 } from '../../src/game/floorScenario.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeMapWithSafeRoom, makeWalledMap } from '../helpers/map-fixtures.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
+import { SeededRandom } from '../../src/shared/random.js';
 
 // 64 deterministic seeds gives ample headroom to find at least one 35% split roll
 // without making the regression test search unbounded.
@@ -46,6 +48,24 @@ const babySlimeTextureId = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).enem
   ?.textureId;
 if (babySlimeTextureId === undefined) {
   throw new Error('Missing enemy_baby_slime texture id in entity sprite mappings fixture.');
+}
+
+class ScriptedRandom extends SeededRandom {
+  private drawIndex = 0;
+
+  constructor(private readonly draws: ReadonlyArray<{ label: string; value: number }>) {
+    super(42);
+  }
+
+  override next(): number {
+    const draw = this.draws[this.drawIndex];
+    if (draw === undefined) {
+      const consumed = this.draws.map(({ label }) => label).join(', ');
+      throw new Error(`Unexpected extra RNG draw while splitting slime after: ${consumed}`);
+    }
+    this.drawIndex += 1;
+    return draw.value;
+  }
 }
 
 function setupSplitBabySlimeWorld(unlockedDrops = false): {
@@ -340,6 +360,111 @@ describe('dropSystem', () => {
       expect(world.stores.spawnAnim.totalMs[miniEid]).toBe(MINI_SLIME_SPAWN_ANIM_MS);
     }
     expect(query(world.ecs, [EnemyBehavior])).toContain(slainSlime);
+  });
+
+  it('never spawns a split baby slime with its footprint inside a wall', () => {
+    // Regression test for a dev-build report of a baby slime spawning stuck in
+    // a wall: place the parent slime immediately east of a wall column so the
+    // unclamped ~1.5-3.5 ft ejection offset can land a baby inside it. Some
+    // seeds roll an ejection angle/distance that never reaches the wall, so we
+    // must check several seeds (not just the first split) to exercise the
+    // footprint-avoidance retry — this reproduces on the un-fixed code at
+    // seeds 2 and 3 within this small budget.
+    const WALL_ADJACENT_SEED_ATTEMPTS = 10;
+    let sawAnySplit = false;
+
+    for (let seed = 1; seed <= WALL_ADJACENT_SEED_ATTEMPTS; seed += 1) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const wallMap = makeWalledMap();
+      world.floorMap = wallMap;
+      const tileSizeFt = wallMap.config.tileSizeFt;
+      // Wall column sits at tile x=5 ([160, 192) ft); spawn just east of it in
+      // the adjacent floor tile so babies can be ejected toward the wall.
+      const slimeX = 6 * tileSizeFt + 1;
+      const slimeY = 4 * tileSizeFt + tileSizeFt / 2;
+
+      const slime = spawnBehaviorEnemy(world, slimeX, slimeY, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+      world.floorScenario?.enemyArchetypes.set(slime, 'slime');
+      setComponent(world.ecs, slime, Damage, { amount: 7 });
+      setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
+
+      dropSystem(world, { spawnLoot: false });
+
+      const miniSlimes = Array.from(query(world.ecs, [Enemy, Health])).filter(
+        (eid) => eid !== slime && !hasComponent(world.ecs, eid, Spawner),
+      );
+      if (miniSlimes.length === 0) continue;
+      sawAnySplit = true;
+
+      for (const miniEid of miniSlimes) {
+        const mx = world.stores.position.x[miniEid] ?? 0;
+        const my = world.stores.position.y[miniEid] ?? 0;
+        const halfWidth = (world.stores.sprite.width[miniEid] ?? 0) / 2;
+        const halfHeight = (world.stores.sprite.height[miniEid] ?? 0) / 2;
+        expect(wallMap.isPassableAt(mx, my)).toBe(true);
+        // Mirror the exact inset `isMiniSlimeSpawnPassable` applies so this
+        // assertion checks the same invariant the production code enforces.
+        const left = mx - halfWidth + MINI_SLIME_COLLISION_EPSILON_FT;
+        const right = mx + halfWidth - MINI_SLIME_COLLISION_EPSILON_FT;
+        const top = my - halfHeight + MINI_SLIME_COLLISION_EPSILON_FT;
+        const bottom = my + halfHeight - MINI_SLIME_COLLISION_EPSILON_FT;
+        expect(wallMap.isPassableAt(left, top)).toBe(true);
+        expect(wallMap.isPassableAt(right, top)).toBe(true);
+        expect(wallMap.isPassableAt(left, bottom)).toBe(true);
+        expect(wallMap.isPassableAt(right, bottom)).toBe(true);
+      }
+    }
+
+    expect(sawAnySplit).toBe(true);
+  });
+
+  it('rejects split baby slime candidates whose center is blocked by point-precision barriers', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const slimeX = 100;
+    const slimeY = 120;
+    const blockedCandidateX = slimeX + 2;
+    const blockedCandidateY = slimeY;
+    const centerBlockRadiusFt = 0.01;
+    const floorMap = makeMapWithSafeRoom();
+    floorMap.setBarrierPointLookup(
+      (x, y) => Math.hypot(x - blockedCandidateX, y - blockedCandidateY) <= centerBlockRadiusFt,
+    );
+    world.floorMap = floorMap;
+    const rngDraws = [
+      { label: 'split chance roll', value: 0 },
+      { label: 'baby 1 attempt 1 angle => 0 rad', value: 0 },
+      { label: 'baby 1 attempt 1 distance => 2 ft, center (102, 120)', value: 0.25 },
+      { label: 'baby 1 retry angle => π rad', value: 0.5 },
+      { label: 'baby 1 retry distance => 2 ft, center (98, 120)', value: 0.25 },
+      { label: 'baby 2 attempt 1 angle => π/2 rad', value: 0.25 },
+      { label: 'baby 2 attempt 1 distance => 2 ft, center (100, 122)', value: 0.25 },
+    ];
+    world.rng = new ScriptedRandom(rngDraws);
+
+    const slime = spawnBehaviorEnemy(world, slimeX, slimeY, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+    world.floorScenario?.enemyArchetypes.set(slime, 'slime');
+    setComponent(world.ecs, slime, Damage, { amount: 7 });
+    setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
+
+    dropSystem(world, { spawnLoot: false });
+
+    const miniSlimes = Array.from(query(world.ecs, [Enemy, Health])).filter(
+      (eid) => eid !== slime && !hasComponent(world.ecs, eid, Spawner),
+    );
+    expect(miniSlimes).toHaveLength(2);
+    for (const miniEid of miniSlimes) {
+      const mx = world.stores.position.x[miniEid] ?? 0;
+      const my = world.stores.position.y[miniEid] ?? 0;
+      expect(floorMap.isPassableAt(mx, my)).toBe(true);
+    }
   });
 
   it('baby slimes survive the melee swing that killed their parent, then die to a fresh swing', () => {

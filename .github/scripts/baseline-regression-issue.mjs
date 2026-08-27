@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 import { graphql, paginate, request } from './ci-recovery/github.mjs';
 import { runIssueIntake } from './ci-recovery/issue-intake-lib.mjs';
+import { BASELINE_RECURRENCE_MARKER } from './ci-recovery/markers.mjs';
 
 export const BASELINE_REGRESSION_LABELS = Object.freeze(['bug', 'automation', 'ai']);
 
@@ -25,11 +26,43 @@ function issueSignaturesFromBody(body) {
     .filter((signature) => signature.includes('|seed=') && signature.includes('|weapon='));
 }
 
+function signatureConfiguration(signature) {
+  return signature.replace(/\|seed=[^|]*/, '');
+}
+
+function groupSignaturesByConfiguration(signatures) {
+  const groups = new Map();
+  for (const signature of signatures) {
+    const configuration = signatureConfiguration(signature);
+    const group = groups.get(configuration) || [];
+    group.push(signature);
+    groups.set(configuration, group);
+  }
+  return groups;
+}
+
 function isManagedReleaseRegressionIssue(issue) {
   const body = String(issue?.body || '');
   return (
     body.includes('<!-- release-baseline-regression:') && body.includes('### Failure signatures')
   );
+}
+
+function recurrenceComment(body, signatures) {
+  return [
+    BASELINE_RECURRENCE_MARKER,
+    '',
+    '## Recurring Floor 1 release sweep loss',
+    '',
+    'The same sweep configuration occurred again in a later release. The original issue remains the canonical tracker for this configuration.',
+    '',
+    ...bodyForSignatures(body, signatures).split('\n'),
+  ].join('\n');
+}
+
+function isCopilotAssignee(issue) {
+  const assignees = Array.isArray(issue?.assignees) ? issue.assignees : [];
+  return assignees.some((assignee) => /copilot/i.test(String(assignee?.login || '')));
 }
 
 function bodyForSignatures(body, signatures) {
@@ -79,51 +112,91 @@ export async function fileBaselineRegressionIssue({
   const openIssues = issues.filter((issue) => !issue.pull_request && isOpen(issue));
   const signatures = issueSignatures(decision.issue);
   if (signatures.length > 0) {
-    const managedOpenIssues = openIssues.filter(isManagedReleaseRegressionIssue);
+    const managedOpenIssues = openIssues
+      .filter(isManagedReleaseRegressionIssue)
+      .slice()
+      .sort((left, right) => Number(left.number) - Number(right.number));
     const outcomes = [];
-    for (const signature of signatures) {
-      const existing = managedOpenIssues.find((issue) =>
-        issueSignaturesFromBody(issue.body).includes(signature),
+    for (const [configuration, configurationSignatures] of groupSignaturesByConfiguration(
+      signatures,
+    )) {
+      const matchingIssues = managedOpenIssues.filter((issue) =>
+        issueSignaturesFromBody(issue.body).some(
+          (signature) => signatureConfiguration(signature) === configuration,
+        ),
       );
+      const existing = matchingIssues[0];
+      const superseded = matchingIssues.slice(1);
+      for (const duplicate of superseded) {
+        await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${duplicate.number}`, {
+          method: 'PATCH',
+          body: {
+            state: 'closed',
+            body: `${String(duplicate.body || '')}\n\nSuperseded by #${existing.number}, which now tracks this sweep configuration.`,
+          },
+        });
+      }
       const response = existing
-        ? await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${existing.number}`, {
-            method: 'PATCH',
-            body: {
-              title,
-              body: bodyForSignatures(body, [signature]),
-              labels: BASELINE_REGRESSION_LABELS,
+        ? await requestFn(
+            mutationToken,
+            `/repos/${owner}/${repo}/issues/${existing.number}/comments`,
+            {
+              method: 'POST',
+              body: {
+                body: recurrenceComment(body, configurationSignatures),
+              },
             },
-          })
+          )
         : await requestFn(mutationToken, `/repos/${owner}/${repo}/issues`, {
             method: 'POST',
             body: {
               title,
-              body: bodyForSignatures(body, [signature]),
+              body: bodyForSignatures(body, configurationSignatures),
               labels: BASELINE_REGRESSION_LABELS,
             },
           });
       const issue = response.data;
-      const action = existing ? 'updated' : 'created';
-      if (!issue?.number || !issue?.node_id) {
-        throw new Error(`GitHub ${action} response did not include an issue number and node_id`);
+      const action = existing ? 'commented' : 'created';
+      if (existing) {
+        if (!issue?.id) {
+          throw new Error('GitHub commented response did not include a comment id');
+        }
+      } else if (!issue?.number || !issue?.node_id) {
+        throw new Error(`GitHub created response did not include an issue number and node_id`);
       }
-      const intake = await intakeFn({
-        graphql: graphqlFn,
-        paginate: paginateFn,
-        request: requestFn,
-        token: intakeToken,
-        owner,
-        repo,
-        issue,
-      });
-      outcomes.push({ action, issueNumber: issue.number, assignee: intake.assignee });
+      const issueNumber = existing ? existing.number : issue.number;
+      if (!issueNumber) {
+        throw new Error(`GitHub ${action} response did not identify an issue`);
+      }
+      if (existing && isCopilotAssignee(existing)) {
+        outcomes.push({ action, issueNumber });
+      } else {
+        const intake = await intakeFn({
+          graphql: graphqlFn,
+          paginate: paginateFn,
+          request: requestFn,
+          token: intakeToken,
+          owner,
+          repo,
+          issue: existing || issue,
+        });
+        outcomes.push({ action, issueNumber, assignee: intake.assignee });
+      }
     }
     return outcomes;
   }
 
-  const markerMatches = openIssues.filter((issue) => String(issue.body || '').includes(marker));
+  // A stable (non-commit-scoped) marker is long-lived, and the release workflow
+  // is only serialized per head SHA, so two overlapping releases can each see
+  // "no open marker match" and each create one. Converge deterministically on
+  // the lowest-numbered (oldest) match and close the rest as duplicates, so the
+  // race self-heals on the next release instead of leaving parallel issues.
+  const markerMatches = openIssues
+    .filter((issue) => String(issue.body || '').includes(marker))
+    .sort((left, right) => Number(left.number) - Number(right.number));
   const existingOpen = markerMatches[0];
   const existing = existingOpen;
+  const superseded = markerMatches.slice(1);
 
   let issue;
   let action;
@@ -158,6 +231,15 @@ export async function fileBaselineRegressionIssue({
   if (!issue?.number || !issue?.node_id) {
     throw new Error(`GitHub ${action} response did not include an issue number and node_id`);
   }
+  for (const duplicate of superseded) {
+    await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${duplicate.number}`, {
+      method: 'PATCH',
+      body: {
+        state: 'closed',
+        body: `${String(duplicate.body || '')}\n\nSuperseded by #${issue.number}, which now tracks this release-sweep finding.`,
+      },
+    });
+  }
   const intake = await intakeFn({
     graphql: graphqlFn,
     paginate: paginateFn,
@@ -167,7 +249,7 @@ export async function fileBaselineRegressionIssue({
     repo,
     issue,
   });
-  return { action, issueNumber: issue.number, assignee: intake.assignee };
+  return [{ action, issueNumber: issue.number, assignee: intake.assignee }];
 }
 
 async function main() {
@@ -193,9 +275,10 @@ async function main() {
     repo,
     decision,
   });
-  for (const issue of Array.isArray(outcome) ? outcome : [outcome]) {
+  for (const issue of outcome) {
+    const assignment = issue.assignee ? `; assigned @${issue.assignee}` : '';
     process.stdout.write(
-      `${issue.action} release regression issue #${issue.issueNumber}; assigned @${issue.assignee}\n`,
+      `${issue.action} release regression issue #${issue.issueNumber}${assignment}\n`,
     );
   }
 }

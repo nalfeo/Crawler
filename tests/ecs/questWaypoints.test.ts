@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { acceptQuest, setTrackedQuest } from '../../src/core/systems/questSystem.js';
-import {
-  getQuestWaypoints,
-  getTrackedQuestWaypoint,
-} from '../../src/core/systems/questWaypoints.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -16,6 +13,7 @@ import {
 } from '../../src/shared/quest-types.js';
 import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import type { GameWorld } from '../../src/core/world.js';
 
 const POS = {
@@ -213,6 +211,29 @@ describe('getQuestWaypoints', () => {
     expect(wps[0]).toMatchObject({ x: 64, y: 48, kind: 'npc' });
   });
 
+  it('uses one room anchor for active quest NPCs in the same room', () => {
+    const world = withFloor1(createTestWorld());
+    world.floorMap = makeMapWithSafeRoom({ tileSizeFt: 4, withNormalRoom: true });
+    spawnPlayer(world, 0, 0);
+    const guide = spawnPlayer(world, 46, 46);
+    const shopkeeper = spawnPlayer(world, 50, 46);
+    world.floorScenario!.guideNpcEid = guide;
+    world.floorScenario!.shopkeeperNpcEid = shopkeeper;
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+
+    const wps = getQuestWaypoints(world);
+
+    expect(wps).toHaveLength(2);
+    // Precise positions are preserved (e.g. for the minimap tracked dot)...
+    expect(wps[0]).toMatchObject({ x: 46, y: 46 });
+    expect(wps[1]).toMatchObject({ x: 50, y: 46 });
+    // ...while the direction fields used by the multi-arrow HUD are
+    // normalized to a shared room anchor so the arrows agree.
+    expect(wps[0]!.dirX).toBe(wps[1]!.dirX);
+    expect(wps[0]!.dirY).toBe(wps[1]!.dirY);
+  });
+
   it('returns one waypoint for every active quest that has a directional target', () => {
     const world = withFloor1(createTestWorld());
     spawnPlayer(world, 0, 0);
@@ -243,20 +264,6 @@ describe('getQuestWaypoints', () => {
       FLOOR1_SHOP_QUEST_ID,
       FLOOR1_BOSS_BATTLE_QUEST_ID,
     ]);
-    expect(getTrackedQuestWaypoint(world)?.questId).toBe(FLOOR1_BOSS_BATTLE_QUEST_ID);
-  });
-
-  it('returns no tracked waypoint when the tracked objective has no fixed target', () => {
-    const world = withFloor1(createTestWorld());
-    spawnPlayer(world, 0, 0);
-    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
-    acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-
-    expect(getQuestWaypoints(world).map((wp) => wp.questId)).toEqual([
-      FLOOR1_FIND_WELCOME_QUEST_ID,
-    ]);
-    expect(getTrackedQuestWaypoint(world)).toBeUndefined();
   });
 
   it('does not return waypoints for completed quests', () => {

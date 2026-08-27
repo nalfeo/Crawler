@@ -48,6 +48,13 @@ export {
   FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
 } from './floor2Scenario.js';
 export {
+  initializeFloor3Scenario,
+  floor3WildDirectorSystem,
+  floor3ObjectiveTick,
+  FLOOR3_TIMEOUT_GOAL_ID,
+} from './floor3Scenario.js';
+export { arenaDirectorSystem, initializeFloor4Scenario } from './floor4Scenario.js';
+export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,
   getBossRewardSpellOptions,
@@ -126,6 +133,21 @@ export {
 } from './systems/emergentEventSystem.js';
 export { initializeFloor2Settlement } from './floor2Settlement.js';
 export type { InitializeFloor2SettlementOptions } from './floor2Settlement.js';
+export {
+  companionAISystem,
+  getCompanionAIDecision,
+  resetCompanionAIState,
+} from './systems/companionAISystem.js';
+export type { CompanionAIDecision, CompanionTargetKind } from './systems/companionAISystem.js';
+export {
+  _aiTypeForSpecies,
+  _generateStarterOffer,
+  _generateTrainerPoachOffer,
+  _recruitCompanion,
+  _STARTER_OFFER_SIZE,
+} from './floor3Recruiting.js';
+export type { RecruitCompanionOptions } from './floor3Recruiting.js';
+export { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 export {
   familyFeudSystem,
   getFamilyAIDecision,

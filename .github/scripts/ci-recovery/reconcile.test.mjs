@@ -3563,6 +3563,319 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+test('an explicit incomplete PR-description status dispatches Copilot with the continuation protocol', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: [
+          '## Progress',
+          '',
+          'Status: INCOMPLETE - session ran out of time',
+          '',
+          'The next session should continue the remaining implementation.',
+        ].join('\n'),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      body: { name: LABEL, node_id: 'LABEL_ci_owner' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 991 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.match(stdout, /assigned copilot pr=#42/);
+  const taskComment = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskComment, 'expected the incomplete status to post a recovery task');
+  assert.match(taskComment.body.body, /\*\*Required phases:\*\* session continuation\./);
+  assert.match(taskComment.body.body, /\*\*Session-continuation protocol:\*\*/);
+  assert.match(
+    taskComment.body.body,
+    /Read the PR description and current branch before changing anything/,
+  );
+  assert.match(taskComment.body.body, /continue the unfinished work in this PR/);
+  assert.match(taskComment.body.body, /while any work remains unfinished/);
+  assert.match(taskComment.body.body, /ready for normal review, update the PR description/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.query || '').includes('replaceActorsForAssignable'),
+    ),
+    'expected the continuation task to assign Copilot',
+  );
+});
+
+test('narrative text and comments cannot trigger session continuation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: 'This narrative quotes Status: INCOMPLETE - session ran out of time, but is not itself a status line.',
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [{ id: 992, body: 'Status: INCOMPLETE - session ran out of time' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.doesNotMatch(stdout, /session-continuation/);
+  assert.doesNotMatch(stdout, /would-assign copilot/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('code blocks, indented examples, and HTML comments cannot trigger session continuation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        body: [
+          '<!--',
+          'Status: INCOMPLETE - session ran out of time',
+          '-->',
+          '',
+          '```',
+          'Status: INCOMPLETE - session ran out of time',
+          '```',
+          '',
+          '~~~text',
+          'Status: INCOMPLETE - session ran out of time',
+          '~~~',
+          '',
+          '    Status: INCOMPLETE - session ran out of time',
+          '',
+          'No visible status line is set in this description.',
+        ].join('\n'),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr)) return;
+
+  assert.doesNotMatch(stdout, /session-continuation/);
+  assert.doesNotMatch(stdout, /would-assign copilot/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('a status removed after the initial fetch aborts the continuation dispatch', async (t) => {
+  const continuationBody = ['## Progress', '', 'Status: INCOMPLETE - session ran out of time'].join(
+    '\n',
+  );
+  let prFetches = 0;
+  let repositoryLabelExists = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      prFetches += 1;
+      // The description is edited (status removed) after the opening fetch,
+      // without any change to the head SHA.
+      return { body: { ...basePr(), body: prFetches === 1 ? continuationBody : '## Progress' } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL, node_id: 'LABEL_ci_owner' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL, node_id: 'LABEL_ci_owner' } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 993 } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/993`]: () => ({ body: { id: 993 } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /skip pr=#42 reason=session-continuation-status-changed phase=post-task-comment/,
+  );
+  assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    'a removed status must not post a continuation task comment',
+  );
+  assert.ok(
+    !mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    'a removed status must not assign Copilot',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    'the aborted dispatch must release the ownership fence',
+  );
+});
+
+test('a status added after the initial fetch aborts merge-train admission', async (t) => {
+  let prFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      prFetches += 1;
+      // The status line is added after the opening fetch, so the admission
+      // decision below was computed from a description that no longer applies.
+      return {
+        body: {
+          ...basePr(),
+          body: prFetches === 1 ? '## Summary' : 'Status: INCOMPLETE - session ran out of time',
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 994 } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: QUEUE_LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /skip pr=#42 reason=session-continuation-status-changed phase=queue-merge-train/,
+  );
+  assert.doesNotMatch(stdout, /queued merge-train pr=#42/);
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        (call.body?.labels || []).includes(QUEUE_LABEL),
+    ),
+    'an added status must not admit the PR to the merge train',
+  );
+});
+
 // ---------------------------------------------------------------------------
 // expected_head_sha binding — fail closed on a time-of-check/time-of-use race
 // between the trusted review-wake bridge's validation and this reconciliation.
@@ -6243,6 +6556,244 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
+test('live reconcile files unassigned follow-up backlog issue and resolves matching review thread', async (t) => {
+  const sourceIssueNumber = 3120;
+  const followupReviewCommentId = '3810312490';
+  const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${followupReviewCommentId}`;
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'src/shared/floor-behavior.ts',
+    line: 48,
+    comments: {
+      nodes: [
+        {
+          id: 'comment-followup-backlog',
+          body: 'Issue #3120 also requires filing a follow-up backlog issue for improving this rendering, explicitly without assigning it to Copilot. The repository issue list currently ends at #3120 and searches found no such follow-up, so this acceptance item is still missing. Please create and link the unassigned backlog issue before closing this PR.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'NONE',
+          url: threadUrl,
+        },
+      ],
+    },
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+      body: {
+        number: 4001,
+        body: '<!-- crawler-ci-followup-backlog:v1 sourceIssue=3120 pr=42 thread=PRRT_kwDOSvo2Ms6aWzBs -->',
+        labels: [{ name: 'automation' }],
+      },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`]:
+      () => ({
+        body: { id: 4002 },
+      }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3120',
+                        number: sourceIssueNumber,
+                        title: 'Disable the player sprite holds its weapon at all times feature',
+                        state: 'OPEN',
+                        labels: { nodes: [] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: WAITING_LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 4003 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const issueCreateCall = mutatingCalls.find(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.ok(issueCreateCall, 'expected a follow-up backlog issue to be created');
+  assert.match(issueCreateCall.body.body, /crawler-ci-followup-backlog:v1 sourceIssue=3120/);
+  assert.deepEqual(issueCreateCall.body.assignees, []);
+  assert.ok(issueCreateCall.body.labels.includes('automation'));
+
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a marker reply on the exact review-thread comment');
+  assert.match(replyCall.body.body, new RegExp(`✅ Addressed in ${HEAD_SHA}`));
+  assert.match(replyCall.body.body, /#4001/);
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
+  assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
+  assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+});
+
+test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {
+  const followupReviewCommentId = '3810312491';
+  const threadId = 'PRRT_kwDOSvo2Ms6aWzBt';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${followupReviewCommentId}`;
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'src/shared/floor-behavior.ts',
+    line: 48,
+    comments: {
+      nodes: [
+        {
+          id: 'comment-followup-backlog-cross-repo',
+          body: 'Issue #3120 also requires filing a follow-up backlog issue for improving this rendering, explicitly without assigning it to Copilot. The repository issue list currently ends at #3120 and searches found no such follow-up, so this acceptance item is still missing. Please create and link the unassigned backlog issue before closing this PR.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'NONE',
+          url: threadUrl,
+        },
+      ],
+    },
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3120_OTHER_REPO',
+                        number: 3120,
+                        title: 'Unrelated issue in another repository',
+                        state: 'OPEN',
+                        labels: { nodes: [] },
+                        repository: { nameWithOwner: 'other/repo' },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return { body: { data: {} } };
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: WAITING_LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 4004 } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.equal(
+    mutatingCalls.find(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+    ),
+    undefined,
+    'expected no follow-up backlog issue for a cross-repository closing reference',
+  );
+  assert.equal(
+    mutatingCalls.find(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.query || '').includes('resolveReviewThread') &&
+        call.body?.variables?.threadId === threadId,
+    ),
+    undefined,
+    'expected the review thread to stay unresolved',
+  );
+});
+
 test('live reconcile auto-resolves outdated threads and keeps reply targets on remaining review-thread blockers', async (t) => {
   const outdatedReviewCommentId = '3606008324';
   const freshReviewCommentId = '3606008325';
@@ -6425,7 +6976,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'use that full SHA in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+      'use that full SHA in `✅ Addressed in [post-push-head-sha]: [one-line note]`',
     ),
     'top-level-comment warning should require the post-push HEAD marker',
   );
@@ -6452,6 +7003,22 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
     'task comment should retain the concrete dispatch SHA as context',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Repository: \`${OWNER}/${REPO}\``),
+    'task comment should include the canonical owner/repo slug for GitHub API calls',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`\`GH_REPO="${OWNER}/${REPO}"\``),
+    'review-thread task comment should set GH_REPO for gh commands',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`\`repos/${OWNER}/${REPO}/...\` endpoint`),
+    'review-thread task comment should require fully qualified gh api endpoints',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not pass `--repo` to `gh api`'),
+    'review-thread task comment should not require an unsupported gh api flag',
+  );
   assert.equal(
     taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
     false,
@@ -6463,7 +7030,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     'ordinary thread tasks should omit prior-recovery-only PR-body instructions',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    taskCommentCall.body.body.includes('`✅ Not applicable: [one-line reason]`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
   );
   assert.ok(
@@ -7588,6 +8155,109 @@ test('reconcile skips outdated-marker for isOutdated thread that already has a t
   // Should still resolve the thread (via the existing trusted marker).
   assert.match(stdout, /would-resolve thread=thread-outdated-with-marker/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile resolves a thread whose valid ancestor marker is followed by a duplicate-reply no-op', async (t) => {
+  const reviewCommentId = '3828391116';
+  const threadId = 'PRRT_kwDOSvo2Ms6bFDVg';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const ancestorMarkerSha = STALE_REVIEWED_SHA;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-08-21T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'scripts/sprites/asset-requests/reconcile.ts',
+            line: 784,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-original',
+                  body: 'Treat proof paths as read dependencies and revalidate every proof against the complete planned result before applying.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+                {
+                  id: 'comment-addressed',
+                  body: `✅ Addressed in ${ancestorMarkerSha}: added plan-level proof validation.`,
+                  author: { login: 'copilot-swe-agent' },
+                  authorAssociation: 'NONE',
+                  url: '',
+                },
+                {
+                  id: 'comment-duplicate-noop',
+                  body: 'Duplicate reply skipped — already posted above.',
+                  author: { login: 'copilot-swe-agent' },
+                  authorAssociation: 'NONE',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${ancestorMarkerSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'ahead' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected the review thread to be resolved via GraphQL mutation');
+  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'expected no Copilot repair task for an already-addressed thread',
+  );
 });
 
 test('reconcile does not post outdated-marker for non-outdated thread with no trusted marker', async (t) => {
@@ -9915,6 +10585,12 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
                   authorAssociation: 'NONE',
                   author: { login: 'copilot-swe-agent[bot]' },
                 },
+                {
+                  id: 'PRIC_duplicate_noop',
+                  body: 'Duplicate reply skipped — already posted above.',
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
               ],
             },
           },
@@ -11586,6 +12262,291 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   );
 });
 
+test('closed PR resumes a persisted linked-issue restart that failed after abandonment', async (t) => {
+  // Regression: abandonment closes the PR *before* restarting its linked
+  // issues. A restart that fails mid-flight must not be lost, because every
+  // later reconciliation leaves through the closed-PR path long before the
+  // disposition handler runs. The pending intent is persisted in recovery
+  // state and drained here.
+  const stateComment = {
+    id: 771,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3198],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  let removedCopilot = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198`]: () => ({
+      body: { number: 3198, node_id: 'ISSUE_3198', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198/comments`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3198/comments`]: () => ({ body: { id: 8100 } }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                issue: {
+                  id: 'ISSUE_3198',
+                  state: 'OPEN',
+                  assignees: { nodes: [{ id: 'BOT_copilot', login: 'Copilot' }] },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('removeAssigneesFromAssignable')) {
+        removedCopilot = true;
+        return {
+          body: {
+            data: {
+              removeAssigneesFromAssignable: {
+                assignable: { assignees: { nodes: [] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: {
+          data: {
+            replaceActorsForAssignable: {
+              assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+            },
+          },
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /restarted linked issue #3198 after abandoning pr=#42/);
+  assert.equal(removedCopilot, true, 'restart must remove Copilot before reassigning');
+  assert.equal(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    undefined,
+    'completed restart intent must be cleared from recovery state',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/3198/comments`,
+    ),
+    'expected the intake kickoff comment on the restarted issue',
+  );
+});
+
+test('a failed linked-issue restart keeps the pending intent for the next run', async (t) => {
+  const stateComment = {
+    id: 772,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3198],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3198`]: () => ({
+      body: { number: 3198, node_id: 'ISSUE_3198', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ status: 500, body: { message: 'graphql unavailable' } }),
+  });
+  t.after(() => server.close());
+
+  const { code } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  assert.notEqual(code, 0, 'a failed restart must fail the run so it is retried');
+  assert.deepEqual(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    [3198],
+    'unfinished restart intent must survive for the next reconciliation',
+  );
+});
+
+test('trusted scope-mismatch review finding quarantines instead of dispatching Copilot', async (t) => {
+  const thread = {
+    id: 'PRRT_scope_mismatch',
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/agent-os/policies/ci-policy.md',
+    line: 12,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_scope_mismatch',
+          body: 'PR body says Fixes #3198 and promises Floor 2 AI repair, but the diff only changes planning-policy documentation and does not implement the linked feature. This scope mismatch needs maintainer disposition.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3199`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Floor 2 AI wiggle stuck telemetry and repair',
+        body: 'Fixes #3198',
+        additions: 10,
+        deletions: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: (_url, body) => {
+      for (const label of body.labels || []) {
+        if (!comments.labels) comments.labels = [];
+        comments.labels.push(label);
+      }
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 5000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3198',
+                        number: 3198,
+                        title: 'Floor 2 AI wiggle stuck telemetry and repair',
+                        state: 'OPEN',
+                        labels: { nodes: [] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('scope mismatch must not discover/assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('scope mismatch must not run review-thread or assignment mutations');
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined scope-mismatch pr=#42/);
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-pr-lifecycle:v1 -->')),
+    'expected lifecycle state comment',
+  );
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-ci-quarantine:v1 -->')),
+    'expected operator quarantine comment',
+  );
+  const stateComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
+  );
+  assert.equal(
+    parseStateComment(stateComment?.body)?.trigger,
+    'scope-mismatch-quarantined',
+    'expected CI recovery state comment to record the quarantine trigger',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'scope mismatch must not post a Copilot repair task',
+  );
+});
+
 test('a later top-level marker reply for the same fingerprint clears an earlier non-marker hint', async (t) => {
   // Regression: a non-marker top-level reply (e.g. "Blocked outside this
   // branch") stores a stale hint keyed by blocker ID / stable thread ID. If a
@@ -11889,7 +12850,7 @@ test('review-ledger thread blockers separate validator evidence from policy disa
   );
   assert.match(
     taskCommentCall.body.body,
-    /✅ Not applicable: <one-line reason>/i,
+    /✅ Not applicable: \[one-line reason\]/i,
     'task body should keep marker guidance only for deterministically inapplicable findings',
   );
 });

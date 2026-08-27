@@ -1,0 +1,22 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Gaggle
+metadata:
+  name: crawler
+spec:
+  displayName: Crawler
+  project:
+    provider: github
+    owner: nalfeo
+    name: Crawler
+    branch: main
+    connectionRef: repo-token
+  backlog:
+    provider: github
+    project: nalfeo/Crawler
+    labels:
+      - goobers:approved
+    connectionRef: repo-token
+  isolation:
+    namespace: gaggle-crawler
+  branchNamespace: 'goobers/crawler/'
+  ciCommand: ['npm', 'run', 'verify:fast']

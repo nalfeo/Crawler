@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "floor3-companion-progression",
+  "task_title": "Floor 3 Slice 5: Companion combat-XP, leveling, evolution, abilities",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged: 1) ledger safety depending on clearEntityStores discipline - verified every removeEntity call site for a Health-bearing entity (damageSystem, healthSystem, deathTimerSystem, harvestSystem, lifetimeSystem, projectileCleanupSystem, returningProjectileSystem, trapSystem, bossChestPickupSystem) already calls clearEntityStores, and the 3 sites that do not (mob-abilities owned projectiles, itemPickupSystem gold/gem/item pickups) are entity kinds that never carry Health/Companion state, so they cannot poison the ledger. 2) Team.id vs Companion.ownerTeam as two sources of truth - verified components.ts documents ownerTeam as a mirror of the Team.id source of truth, so companionProgressionSystem correctly keys off Team.id. 3) empty per-target contributor maps after contributor cleanup - accepted as bounded/self-limiting since the outer entry is deleted once its target dies or is itself cleared. 4) KO/merit XP semantics - current behavior (contributors keep merit XP even if later KO'd) is intentional and consistent with the assist-floor design notes already in the PR. 5) multi-team full-pool-credit farmability - already flagged in the code/PR as a documented slice-5 simplification for revisit at slices 7/8. 6) species-token load-order stability - accepted for the current lab-only phase, follow-up needed before production spawn/persistence usage. Two alternatives considered (kill-receipt queue at applyDamage time; dropSystem-published dead-target list) were both judged worse on architecture/coupling grounds than the chosen standalone-system design."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "a7514a75bf17afe050e35ae60a275c0b9257d7b7",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff implements the Floor 3 companion progression requirements flawlessly. It correctly restricts XP logic to Enemy targets and Companion sources, isolates progression processing to a sim-wired deterministic step cleanly decoupled from dropSystem's death cycle, and properly uses clearEntityStores to prevent stale EID leaks. Complex edge cases for merit XP vs assist XP splits among living and KO'd teammates are thoroughly handled and proven by robust ECS tests. All repository policies regarding layer boundaries, test-only export strictness, and lab wiring are strictly maintained."
+    }
+  }
+}

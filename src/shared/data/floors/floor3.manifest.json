@@ -1,0 +1,63 @@
+{
+  "id": "floor3",
+  "name": "Floor 3 - Companion League Overworld",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": false,
+    "released": false
+  },
+  "timer": {
+    "durationMs": 1200000,
+    "stairSpawnCountdownMs": 40000
+  },
+  "objectives": {
+    "requiredRats": 0,
+    "requiredSlimes": 0,
+    "requiredTotalKills": 0,
+    "requiredGold": 0,
+    "requiredJunk": 0,
+    "markerRadiusFt": 8.0
+  },
+  "map": {
+    "widthTiles": 220,
+    "heightTiles": 220,
+    "biome": "cave_system_biomes",
+    "seed": 126,
+    "roomWidthRange": [12, 24],
+    "roomHeightRange": [10, 20],
+    "maxRooms": 55,
+    "floorDensity": 0.35,
+    "tileSizeFt": 4.0
+  },
+  "terrainPackId": "industrial-cave",
+  "enemyPackId": "floor3-wild",
+  "floorLootTableId": "floor_3",
+  "player": {
+    "hpBonus": 45,
+    "moveSpeedBonus": 0.05,
+    "pickupRangeBonus": 2.0
+  },
+  "camera": {
+    "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": true,
+    "safeRoomWeaponImmunity": false,
+    "safeRoomDoorsAutoClose": false,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": false
+  },
+  "lighting": {
+    "ambient": 0.1
+  },
+  "props": {
+    "biomeTag": "cave",
+    "densityMultiplier": 0.85,
+    "allowedCategories": ["rubbish", "light-source", "structural"]
+  },
+  "floor3": {
+    "biomeRegionCount": 7
+  }
+}

@@ -17,7 +17,7 @@ export interface MobTemplate {
   readonly id: string;
   /** Display name for labs/HUD/debug. */
   readonly name: string;
-  /** AI behaviour type — one of AI_TYPE.* (CHASE, SWARM, RANGED, LEAPER). */
+  /** AI behaviour type — one of AI_TYPE.* (CHASE, SWARM, RANGED, LEAPER, GUARDIAN, SUPPORT). */
   readonly aiType: number;
   /** Starting/max hit points. */
   readonly hp: number;

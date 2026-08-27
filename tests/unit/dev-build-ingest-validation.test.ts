@@ -4,6 +4,7 @@ import type { HttpRequest, InvocationContext } from '@azure/functions';
 import {
   decodePngBase64,
   validateRunBundle,
+  validateRunSurveyAppend,
 } from '../../functions/dev-build-ingest/src/validation.js';
 
 const validRun = {
@@ -29,6 +30,30 @@ describe('dev-build ingest validation', () => {
       100,
     );
     expect(result.shouldFileIssue).toBe(true);
+  });
+
+  it('validates survey append payloads by runId without requiring a full run bundle', () => {
+    const append = validateRunSurveyAppend(
+      {
+        meta: { runId: 'append-run-1' },
+        survey: { enjoyment: 5, immersion: 4, mastery: 3, control: 4, tension: 2 },
+      },
+      100,
+    );
+
+    expect(append).toEqual({
+      runId: 'append-run-1',
+      survey: { enjoyment: 5, immersion: 4, mastery: 3, control: 4, tension: 2 },
+    });
+    expect(() =>
+      validateRunSurveyAppend(
+        {
+          meta: { runId: 'append-run-1' },
+          survey: { enjoyment: 5, immersion: 4, mastery: 3, control: 4 },
+        },
+        100,
+      ),
+    ).toThrow('survey.tension');
   });
 
   it('rejects out-of-range survey scores and issue reports without descriptions', () => {

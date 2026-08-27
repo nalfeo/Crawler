@@ -140,7 +140,7 @@ import {
 import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
-import { StoreNotFoundError, type RunStore } from '../store/types.js';
+import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
 import {
   createIssueIngesterController,
@@ -152,10 +152,25 @@ import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
   etagPreconditionFails,
+  ifNoneMatchPreconditionFails,
+  isCreateOnlyWrite,
   parseWorkflowState,
   serializeWorkflowState,
   workflowBriefKey,
 } from './workflow-state.js';
+
+/**
+ * Current content-hash ETag of the durable workflow state, or `null` when no
+ * state is stored (or the blob is unreadable/half-written).
+ */
+async function readWorkflowStateEtag(store: RunStore): Promise<string | null> {
+  if (!(await store.has(WORKFLOW_STATE_KEY))) return null;
+  try {
+    return computeStateEtag(await store.get(WORKFLOW_STATE_KEY));
+  } catch {
+    return null;
+  }
+}
 
 async function readCachedJson(store: RunStore, key: string): Promise<unknown | null> {
   if (!hasDerivedResourceCache(store)) return null;
@@ -686,7 +701,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     if (req.method === 'OPTIONS') {
       reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      reply.header('Access-Control-Allow-Headers', 'Content-Type, If-Match');
+      reply.header('Access-Control-Allow-Headers', 'Content-Type, If-Match, If-None-Match');
       reply.header('Access-Control-Expose-Headers', 'ETag');
       // `return reply` short-circuits Fastify routing after the preflight
       // is sent so the request can't fall through to a route handler and
@@ -3044,22 +3059,34 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // Optimistic concurrency: compute the current ETag and compare against the
     // caller's If-Match precondition before writing, so a stale tab can't
     // silently clobber a newer queue.
-    let currentEtag: string | null = null;
-    if (await store.has(WORKFLOW_STATE_KEY)) {
-      try {
-        currentEtag = computeStateEtag(await store.get(WORKFLOW_STATE_KEY));
-      } catch {
-        currentEtag = null;
-      }
-    }
+    const currentEtag = await readWorkflowStateEtag(store);
     const rawIfMatch = req.headers['if-match'];
     const ifMatch = Array.isArray(rawIfMatch) ? rawIfMatch[0] : rawIfMatch;
-    if (etagPreconditionFails(ifMatch, currentEtag)) {
+    const rawIfNoneMatch = req.headers['if-none-match'];
+    const ifNoneMatch = Array.isArray(rawIfNoneMatch) ? rawIfNoneMatch[0] : rawIfNoneMatch;
+    if (
+      etagPreconditionFails(ifMatch, currentEtag) ||
+      ifNoneMatchPreconditionFails(ifNoneMatch, currentEtag)
+    ) {
       reply.code(409);
       return { error: 'etag-conflict', etag: currentEtag };
     }
     const bytes = serializeWorkflowState(body.state);
-    await store.put(WORKFLOW_STATE_KEY, bytes);
+    // A client with no ETag (nothing stored yet) sends `If-None-Match: *`, so
+    // two first writers cannot both create the queue. Where the backing store
+    // enforces create-only writes server-side (Azure), use it: the read above
+    // is not atomic with this write.
+    if (isCreateOnlyWrite(ifNoneMatch) && typeof store.putConditional === 'function') {
+      try {
+        await store.putConditional(WORKFLOW_STATE_KEY, bytes, { ifNoneMatch: '*' });
+      } catch (err) {
+        if (!(err instanceof StoreConditionalWriteError)) throw err;
+        reply.code(409);
+        return { error: 'etag-conflict', etag: await readWorkflowStateEtag(store) };
+      }
+    } else {
+      await store.put(WORKFLOW_STATE_KEY, bytes);
+    }
     const etag = computeStateEtag(bytes);
     reply.header('ETag', etag);
     return { ok: true, etag };

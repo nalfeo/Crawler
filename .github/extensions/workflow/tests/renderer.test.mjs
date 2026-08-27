@@ -55,6 +55,54 @@ test('the client script wires the tab bar and all three read surfaces', () => {
   assert.doesNotMatch(html, /function renderRequests\(/);
 });
 
+test('the Author tab exposes the complete Azure workflow controls and visible refresh', () => {
+  const html = renderHtml('x');
+  assert.match(html, /id: 'author', label: 'Author'/);
+  assert.match(html, /function renderAuthor\(/);
+  assert.match(html, /Refresh Azure workflow/);
+  assert.match(html, /\/api\/workflow\/request/);
+  assert.match(html, /\/api\/workflow\/synthesize/);
+  assert.match(html, /\/api\/workflow\/brief/);
+  assert.match(html, /\/api\/workflow\/generate/);
+  assert.match(html, /\/api\/workflow\/postprocess/);
+  assert.match(html, /\/api\/workflow\/judge/);
+  assert.match(html, /\/api\/workflow\/approve/);
+  assert.match(html, /\/api\/workflow\/metadata/);
+  assert.match(html, /\/api\/workflow\/rewind/);
+  assert.match(html, /Tag metadata & finish/);
+  assert.match(html, /Metadata tagged and queued durably/);
+  assert.match(html, /X-Workflow-Mutation-Token/);
+  assert.doesNotMatch(html, /worker\/start/);
+});
+
+test('Author workflow mutations serialize duplicate clicks until the state refresh settles', () => {
+  const html = renderHtml('x');
+  assert.match(html, /var workflowMutationInFlight = false/);
+  assert.match(html, /if \(workflowMutationInFlight\) return Promise\.resolve\(false\)/);
+  assert.match(html, /workflowMutationInFlight = true/);
+  assert.match(html, /\.finally\(function \(\) \{\s*workflowMutationInFlight = false;\s*\}\)/);
+});
+
+test('unsaved brief YAML survives a polled re-render until the save succeeds', () => {
+  const html = renderHtml('x');
+  // A polled state push calls render(), which replaces #app wholesale; without
+  // a draft cache the operator's in-progress YAML edit is silently reverted to
+  // the durable candidate text.
+  assert.match(html, /var yamlDrafts = Object\.create\(null\)/);
+  assert.match(html, /function yamlDraftKey\(itemId, yamlPath\)/);
+  assert.match(html, /yaml\.value = yamlDraftValue\(draftKey, durableYaml\)/);
+  assert.match(html, /yaml\.addEventListener\('input'/);
+  assert.match(html, /if \(yaml\.value === durableYaml\) delete yamlDrafts\[draftKey\];/);
+  // Only a successful save clears the draft; a failed mutation resolves false.
+  assert.match(
+    html,
+    /workflowPost\('\/api\/workflow\/brief', body, label\)\.then\(function \(ok\) \{\s*if \(ok\) delete yamlDrafts\[draftKey\];/,
+  );
+  // The focused editor and caret are restored after the re-render.
+  assert.match(html, /data-yaml-draft-key/);
+  assert.match(html, /setSelectionRange\(activeYaml\.start, activeYaml\.end\)/);
+});
+
 test('the client script wires SSE + run selection', () => {
   const html = renderHtml('x');
   assert.match(html, /new EventSource\('\/events'\)/);
@@ -395,7 +443,7 @@ test('opening the embedded Post-process Debugger reveals the persistent host, la
   assert.match(html, /window\.__postprocessReadyMetric/);
 });
 
-test('the persistent #postprocess-host sits OUTSIDE #app (a sibling, like the toolbar) so render() never recreates it', () => {
+test('the persistent #postprocess-host sits outside #app and only displays on Runs', () => {
   const html = renderHtml('x');
   const appAt = html.indexOf('id="app"');
   const hostAt = html.indexOf('id="postprocess-host"');
@@ -407,14 +455,12 @@ test('the persistent #postprocess-host sits OUTSIDE #app (a sibling, like the to
   // Starts collapsed/hidden — no eager iframe/network activity on initial paint.
   assert.match(html, /<div id="postprocess-host" hidden>/);
   assert.doesNotMatch(html, /<iframe/); // no iframe in the initial server-rendered shell
-  // render()'s app.replaceChildren body must never reference postprocess-host —
-  // a static guard that a future edit doesn't accidentally fold the host into
-  // the re-rendered #app subtree (which would reset the iframe on every SSE
-  // push/tab switch/refresh).
+  // render() only toggles the sibling's visibility; it must not recreate the
+  // iframe while a Runs operator is editing postprocess settings.
   const renderBody = html.slice(
     html.indexOf('function render(state) {'),
     html.indexOf('var selecting = false;'),
   );
-  assert.doesNotMatch(renderBody, /postprocess-host/);
+  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'runs'/);
   assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

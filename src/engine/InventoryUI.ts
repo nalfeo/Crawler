@@ -53,7 +53,7 @@ import { hashStringToSeed } from '../shared/random.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import { renderItemTooltip } from './item-tooltip.js';
+import { formatStatLabel, formatStatValue, renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
@@ -936,11 +936,18 @@ export function createInventoryUI(
       entry.kind === 'generated-instance' && currentWorld
         ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
         : undefined;
-    const statLines = Object.entries(
+    const bonusStatLines = Object.entries(
       generatedInstance?.frozen.statBonuses ?? equipmentDef?.statBonuses ?? {},
     )
       .filter(([, value]) => typeof value === 'number' && value !== 0)
-      .map(([stat, value]) => `${value! > 0 ? '+' : ''}${value} ${stat}`);
+      .map(
+        ([stat, value]) =>
+          `${value! > 0 ? '+' : ''}${formatStatValue(stat as StatId, value!)} ${formatStatLabel(stat)}`,
+      );
+    // DPS leads the stat list (not a footer statLine) so it lines up with the
+    // rich-content sizing branch used whenever a generated weapon also has
+    // bonus rows.
+    const statLines = dpsLine !== undefined ? [dpsLine, ...bonusStatLines] : bonusStatLines;
     const iconTextureKey =
       generatedInstance?.frozen.artKey && scene.textures?.exists(generatedInstance.frozen.artKey)
         ? generatedInstance.frozen.artKey
@@ -960,7 +967,6 @@ export function createInventoryUI(
         quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
-        statLine: dpsLine,
         statLines,
         flavorText: statLines.length > 0 ? def.description || undefined : undefined,
         iconTextureKey,

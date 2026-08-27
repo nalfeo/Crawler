@@ -23,6 +23,16 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
   world.enemyProjectileArchetypeKeys.delete(eid);
   world.statusEffectsByEntity.delete(eid);
   world.attackWeaponSkillsByEntity.delete(eid);
+  // Floor 3 Companion League (slice 5): drop any tracked combat-XP
+  // contributions involving this EID before it can be recycled. Without this,
+  // an entity despawned alive (e.g. leash reset, floor cleanup) would have its
+  // zeroed `Health.current` slot misread as a kill by
+  // `companionProgressionSystem`, and a recycled EID could inherit a stale
+  // Companion contributor entry from a previous entity.
+  world.companionDamageContribution.delete(eid);
+  for (const contributors of world.companionDamageContribution.values()) {
+    contributors.delete(eid);
+  }
 }
 
 /** Create an entity with zeroed store slots (safe against ID recycling). */

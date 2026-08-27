@@ -162,21 +162,12 @@ describe('theme roster synthesis', () => {
     expect(() => validateRosterProposal(JSON.stringify(roster), REQUEST)).toThrow();
   });
 
-  it('rejects a split left/right mirror-pair roster through the human-edit path', () => {
+  it('rejects an invalid active slot through the human-edit path', () => {
     const split = validRoster();
     const equipment = split.equipment as { id: string; displayName: string; slots: string[] }[];
-    // Replace the unified mirror item with two separate single-side items.
-    const unifiedIndex = equipment.findIndex((entry) => entry.slots.length === 2);
-    expect(unifiedIndex).toBeGreaterThanOrEqual(0);
-    const [a, b] = equipment[unifiedIndex]!.slots;
-    equipment.splice(
-      unifiedIndex,
-      1,
-      { id: 'mirror-a', displayName: 'Mirror A', slots: [a!] },
-      { id: 'mirror-b', displayName: 'Mirror B', slots: [b!] },
-    );
+    equipment[0]!.slots = ['invalid-slot'];
 
-    expect(() => validateRosterProposal(JSON.stringify(split), REQUEST)).toThrow(/mirror slot/);
+    expect(() => validateRosterProposal(JSON.stringify(split), REQUEST)).toThrow(/slot/);
   });
 
   it('publishes the imported thresholds and the valid slot list in the system prompt', () => {

@@ -40,15 +40,29 @@ describe('release baseline regression workflow', () => {
   it('detects only after publishing and files before diagnostic upload', () => {
     const steps = baselineSteps();
     const publish = steps.findIndex((step) => step.name === 'Publish to baselines branch');
+    const balance = steps.findIndex(
+      (step) => step.name === 'File nightly balance issue for release baseline',
+    );
     const detect = steps.findIndex((step) => step.name === 'Detect baseline win-rate regression');
     const file = steps.findIndex(
       (step) => step.name === 'File regression issue and assign Copilot',
     );
     const upload = steps.findIndex((step) => step.name === 'Upload baseline as artifact');
     expect(publish).toBeGreaterThanOrEqual(0);
-    expect(detect).toBeGreaterThan(publish);
+    expect(balance).toBeGreaterThan(publish);
+    expect(detect).toBeGreaterThan(balance);
     expect(file).toBeGreaterThan(detect);
     expect(upload).toBeGreaterThan(file);
+  });
+
+  it('files the deduped nightly balance issue for every published release baseline', () => {
+    const steps = baselineSteps();
+    const file = steps.find(
+      (step) => step.name === 'File nightly balance issue for release baseline',
+    );
+    expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
+    expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
+    expect(file?.run).toBe('node .github/scripts/nightly-balance-issue/run.mjs');
   });
 
   it('gates filing on the detector output and scopes both required tokens to that step', () => {
@@ -61,6 +75,31 @@ describe('release baseline regression workflow', () => {
     expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
     expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
     expect(file?.run).toContain('baseline-regression-issue.mjs');
+  });
+
+  it('files the report-only leg win-rate issue from its own independent verdict', () => {
+    // The Floor 2 / chain win-rate ask lives in the release workflow (issue
+    // #3293), gated on a SEPARATE output so a Floor 1 loss cannot mask it.
+    const steps = baselineSteps();
+    const detect = steps.find((step) => step.name === 'Detect baseline win-rate regression');
+    const file = steps.find(
+      (step) => step.name === 'File report-only leg win-rate issue and assign Copilot',
+    );
+    const detectIndex = steps.findIndex(
+      (step) => step.name === 'Detect baseline win-rate regression',
+    );
+    const fileIndex = steps.findIndex(
+      (step) => step.name === 'File report-only leg win-rate issue and assign Copilot',
+    );
+    const upload = steps.findIndex((step) => step.name === 'Upload baseline as artifact');
+    expect(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT).toContain('leg-win-rate-floor.json');
+    expect(file?.if).toBe("steps.baseline-regression.outputs.legWinRateFloorBreach == 'true'");
+    expect(file?.env?.BASELINE_REGRESSION_RESULT).toBe(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT);
+    expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
+    expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
+    expect(file?.run).toContain('baseline-regression-issue.mjs');
+    expect(fileIndex).toBeGreaterThan(detectIndex);
+    expect(upload).toBeGreaterThan(fileIndex);
   });
 
   it('serializes concurrent sweeps for the same release without cancelling either run', () => {

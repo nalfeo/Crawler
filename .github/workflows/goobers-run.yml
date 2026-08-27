@@ -1,0 +1,308 @@
+name: Goobers Run
+
+# Dispatches the Goobers `crawler-feature-pr` workflow when an issue receives
+# `goobers:approved`, with an hourly recovery sweep and a manual escape hatch.
+# Downloads a pinned, checksum-verified Goobers release binary
+# (no Go build step — see .github/workflows/goobers-validate.yml), scaffolds a
+# throwaway instance root in the runner's temp directory, materializes this
+# repo's versioned `.goobers/` source into it, and triggers the workflow via
+# `goobers run`, which blocks until the run reaches a terminal state.
+#
+# This does not run a daemon and does not persist any instance state between
+# dispatches — every run gets a fresh instance root. See .goobers/README.md
+# and README.md#goobers for the source layout and runtime-boundary rules.
+
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    # Recover missed webhooks and retry still-eligible work without running at
+    # the crowded top of the hour.
+    - cron: '37 * * * *'
+  workflow_dispatch:
+    inputs:
+      goobers_version:
+        description: 'Goobers release tag to pin'
+        type: string
+        default: 'goobers-dev-6d33b160'
+      copilot_cli_version:
+        description: 'Pinned @github/copilot npm package version'
+        type: string
+        default: '1.0.80'
+      workflow:
+        description: 'Goobers workflow to run'
+        type: string
+        default: 'crawler-feature-pr'
+
+permissions:
+  checks: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: goobers-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.label.name == 'goobers:approved' &&
+      github.event.issue.state == 'open')
+    runs-on: ubuntu-latest
+    # Generous ceiling for a full plan -> implement -> review -> PR loop;
+    # the workflow's own maxConcurrentRuns/gates bound retries within this.
+    timeout-minutes: 90
+    env:
+      GOOBERS_VERSION: ${{ inputs.goobers_version || 'goobers-dev-6d33b160' }}
+      GOOBERS_REPO: Agent-Clubhouse/Goobers
+      GOOBERS_INSTANCE: ${{ github.workspace }}/.goobers-instance
+      GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Require GOOBERS_GITHUB_TOKEN
+        # crawler-feature-pr's implement/push-branch stages declare
+        # repo:push; the built-in github.token only has contents: read on
+        # this job (see permissions:, above), so it can neither push a
+        # branch nor open a PR, and a GITHUB_TOKEN-authored push wouldn't
+        # trigger the normal CI workflow anyway. Fail fast with a clear
+        # message instead of letting goobers run fail deep into the run.
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOBERS_GITHUB_TOKEN_SET:-}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
+            exit 1
+          fi
+        env:
+          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+
+      - name: Resolve pinned archive checksum
+        # Independent pin: this digest is reviewed and committed here, not
+        # fetched from the same mutable release as the archive. It must be
+        # updated (with a diff review of the new digest) whenever
+        # goobers_version's default changes. See
+        # .github/workflows/goobers-validate.yml for the shared list.
+        run: |
+          set -euo pipefail
+          case "${GOOBERS_VERSION}" in
+            goobers-dev-6d33b160)
+              echo "GOOBERS_ASSET=goobers_dev_linux_amd64.tar.gz" >> "$GITHUB_ENV"
+              echo "GOOBERS_SHA256=4758e471e845925c364621db61bdaddefc4a46f45de65aa1cf8a970e3376adde" >> "$GITHUB_ENV"
+              ;;
+            v0.3.3)
+              echo "GOOBERS_ASSET=goobers_v0.3.3_linux_amd64.tar.gz" >> "$GITHUB_ENV"
+              echo "GOOBERS_SHA256=47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-validate.yml) after independently verifying the release artifact." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Cache pinned Goobers archive
+        id: cache-goobers
+        uses: actions/cache@v4
+        with:
+          path: dl/goobers.tar.gz
+          key: goobers-archive-linux-amd64-${{ env.GOOBERS_VERSION }}-${{ env.GOOBERS_SHA256 }}
+
+      - name: Download pinned private Goobers draft
+        if: >-
+          steps.cache-goobers.outputs.cache-hit != 'true' &&
+          env.GOOBERS_VERSION == 'goobers-dev-6d33b160'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          gh release download "${GOOBERS_VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${GOOBERS_ASSET}" \
+            --output dl/goobers.tar.gz
+
+      - name: Download pinned public Goobers release
+        if: >-
+          steps.cache-goobers.outputs.cache-hit != 'true' &&
+          env.GOOBERS_VERSION != 'goobers-dev-6d33b160'
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          curl -fsSL -o dl/goobers.tar.gz \
+            "https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}/${GOOBERS_ASSET}"
+
+      - name: Verify archive against pinned checksum
+        # Always re-hash, including on a cache hit, so a poisoned/corrupted
+        # cache entry can't smuggle an unverified binary past this gate.
+        run: |
+          set -euo pipefail
+          echo "${GOOBERS_SHA256}  dl/goobers.tar.gz" | sha256sum --check --strict -
+
+      - name: Extract binary
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          tar -xzf dl/goobers.tar.gz -C bin goobers
+          chmod +x bin/goobers
+
+      - name: Verify binary version
+        run: |
+          set -euo pipefail
+          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Install Copilot CLI
+        # Pinned npm package install instead of piping the mutable
+        # https://gh.io/copilot-install script to bash: npm resolves this
+        # exact version+integrity hash from the registry metadata and
+        # verifies the tarball against it before it ever runs, so a
+        # compromised/updated installer script can't get code execution
+        # ahead of this job receiving credentials. The
+        # crawler-feature-pr workflow's producer/coder/reviewer goobers all
+        # declare harness: copilot. Headless PAT auth works as of Goobers
+        # #1996 as long as COPILOT_GITHUB_TOKEN is present in the ambient
+        # process environment before goobers run starts (see
+        # docs/guides/copilot-hosted-runner-auth-spike.md in the Goobers
+        # repo).
+        env:
+          COPILOT_CLI_VERSION: ${{ inputs.copilot_cli_version || '1.0.80' }}
+        run: |
+          set -euo pipefail
+          npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
+
+      - name: Validate .goobers source tree
+        run: goobers validate --source-tree .goobers
+
+      - name: Scaffold throwaway instance root
+        run: |
+          set -euo pipefail
+          rm -rf "$GOOBERS_INSTANCE"
+          mkdir -p "$GOOBERS_INSTANCE/config"
+
+      - name: Materialize checked-in source into the instance
+        # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
+        # populated config/ tree. workflowSource records the checked-in source;
+        # `config materialize` applies .goobers/instance.yaml.example and
+        # replaces config/ with manifest.yaml + gaggles/.
+        run: |
+          set -euo pipefail
+          cat > "${GOOBERS_INSTANCE}/instance.yaml" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${{ github.repository_owner }}
+              name: ${{ github.event.repository.name }}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          workflowSource:
+            kind: local-dir
+            path: ${{ github.workspace }}/.goobers
+          credentials:
+            - capability: agent:model
+              token:
+                env: COPILOT_GITHUB_TOKEN
+          runConditions:
+            maxParallelRuns: 1
+          EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
+          goobers validate "$GOOBERS_INSTANCE"
+
+      - name: Run the workflow
+        env:
+          # Ambient env, not runner.envPassthrough — required for the
+          # CopilotAdapter preflight probe on a clean runner (see the
+          # "Install Copilot CLI" step comment above).
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
+
+      - name: Upload run journal
+        id: upload-run-journal
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
+          path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Comment with Goobers run diagnostics
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
+          if [ -z "$events_file" ]; then
+            echo "No Goobers journal events found; skipping issue comment."
+            exit 0
+          fi
+
+          issue_number="$(
+            jq -r '
+              select(.externalRef? and .externalRef.kind == "issue")
+              | .externalRef.id
+            ' "$events_file" | tail -n 1
+          )"
+          if [ -z "$issue_number" ] || [ "$issue_number" = "null" ]; then
+            echo "No claimed issue found in Goobers journal; skipping issue comment."
+            exit 0
+          fi
+
+          run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
+          terminal_summary="$(
+            jq -r '
+              select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
+              | [
+                  (.type // ""),
+                  ("stage=" + (.stage // "-")),
+                  ("status=" + (.status // .result.status // "-")),
+                  ("code=" + (.error.code // .result.error.code // "-")),
+                  (.error.message // .result.error.message // .result.summary // "")
+                ]
+              | map(select(. != "" and . != "code=-"))
+              | join(" | ")
+            ' "$events_file" | tail -n 8
+          )"
+
+          body="$(mktemp)"
+          {
+            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
+            echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
+            echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
+            if [ -n "$terminal_summary" ]; then
+              echo
+              echo "Terminal journal events:"
+              echo '```'
+              echo "$terminal_summary"
+              echo '```'
+            fi
+            echo
+            echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          } > "$body"
+
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"

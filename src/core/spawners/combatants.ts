@@ -12,12 +12,13 @@ import {
   Size,
   Sprite,
   Spawner,
+  Team,
   Velocity,
   Weight,
 } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
-import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
+import { DEFAULT_BLOOD_COLOR, TeamId } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
@@ -74,6 +75,7 @@ export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
+  addComponent(world.ecs, eid, set(Team, { id: TeamId.PLAYER }));
   addComponent(world.ecs, eid, Inventory);
   world.inventories.set(eid, createInventoryBag());
 

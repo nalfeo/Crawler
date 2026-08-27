@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor1-release-sweep-loss-2469f429",
+  "task_title": "Fix Floor 1 release sweep losses at 2469f429",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Late plan review approved the minimal Floor 1 release unblock shape but required proving the #3494 acceptance surface still passes, replacing a broad floorScenario?.objective proxy with an explicit Floor 1 predicate, using a real Floor 2 retained-path positive test, and adding gold coverage. Addressed by running floor1-completion + floor1-economy-gate, changing the guard to isFloor1Run(world) using world.floorId === floor1 plus an objective-presence check, and adding Floor 2 XP/gold mid-run tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.6-flash",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "5d3935210231b69e668a9c85c618d546b89dedaf",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly resolves Floor 1 release sweep losses by incorporating merchant weapon reserves into repeat spell broker intent checks, adding a health threshold for post-boss spell broker return routing, and disabling mid-run loot sweeps on Floor 1. The changes are surgical, preserve initial spell purchase priorities, update collision parity baselines appropriately, and are thoroughly validated through both targeted unit tests and headless regression seeds."
+    }
+  }
+}

@@ -62,6 +62,8 @@ import {
   AoeOnImpact,
   Returning,
   Bouncing,
+  Homing,
+  Glowing,
   LineDamage,
   Trap,
   MeleeSwing,
@@ -81,6 +83,8 @@ import {
   PropLight,
   Harvestable,
   FamilyMembership,
+  Companion,
+  PartySlot,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -91,7 +95,13 @@ import type {
   PlayerLevel,
   MilestoneGrantEvent,
 } from '../shared/skills.js';
-import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
+import type {
+  FloorScenarioState,
+  Floor2SettlementSnapshot,
+  Floor3StudiosState,
+  Floor3PoachOffer,
+  Floor4ArenaState,
+} from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
 import type { QuestState } from '../shared/quest-types.js';
@@ -112,6 +122,7 @@ import {
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
+import type { Affinity } from '../shared/data/floor3/affinity.js';
 
 const logger = createLogger('core:world');
 
@@ -122,12 +133,32 @@ const logger = createLogger('core:world');
 export interface FloorExtendedState {
   /** Family faction state for floors with a families mechanic (e.g. Floor 2). */
   familyState?: Floor2State;
+  /** Floor 3 biome roster in territory-zone index order. */
+  floor3BiomeAffinities?: readonly Affinity[];
   /** Settlement snapshot for floors with a settlement mechanic (e.g. Floor 2). */
   settlement?: Floor2SettlementSnapshot;
   /** Trash territory assignments for floors with territorial trash spawning (e.g. Floor 2). Maps quadrant ID ('N', 'S', 'E', 'W') to archetype ID. */
   trashTerritories?: Map<string, string>;
   /** Ambient enemies tracked by the floor director when `world.floorScenario` is intentionally null (e.g. Floor 2). */
   ambientEnemyArchetypes?: Map<number, string>;
+  /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
+  floor3Studios?: Floor3StudiosState;
+  /**
+   * Pending Floor 3 starter-Companion offer (spec R5 §6.1): the seeded 4
+   * `speciesId`s presented while `world.state === 'loadout'` at floor start.
+   * Cleared implicitly once `selectFloor3StarterCompanion` resumes play —
+   * consumers should treat a missing/empty offer as "no pick pending".
+   */
+  floor3StarterOffer?: readonly string[];
+  /**
+   * Pending Floor 3 Trainer-poach pick (spec R5 §6.2): written when a Trainer
+   * roster is defeated while the player's party still has a recruit slot, and
+   * presented while `world.state === 'loadout'`. Cleared once the pick is
+   * resolved — consumers treat a missing offer as "no poach pending".
+   */
+  floor3PoachOffer?: Floor3PoachOffer;
+  /** Floor 4 arena clock + phase-machine state. */
+  floor4Arena?: Floor4ArenaState;
 }
 
 /**
@@ -449,8 +480,11 @@ export interface GameWorld {
   /**
    * Weapon skill IDs keyed by spawned attack entity EID (projectile/beam/swing/trap/AoE).
    * Preferred over `attackerWeaponSkills` so delayed hits keep the weapon that spawned them.
+   * A value of `null` explicitly suppresses the `attackerWeaponSkills` fallback — used by
+   * non-weapon attack entities (e.g. a spell-cast Magic Missile projectile) so a hit never
+   * gets mis-attributed to whatever weapon the player last fired.
    */
-  attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string }>;
+  attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string } | null>;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
@@ -488,6 +522,26 @@ export interface GameWorld {
    * `combatEvents` before `dropSystem` processes the target next frame.
    */
   lethalDamageSourceByTarget: Map<number, number>;
+  /**
+   * Floor 3 Companion League: cumulative damage each Companion (attacker eid)
+   * has dealt to each still-alive Enemy target (target eid), written by
+   * `applyDamage`. `companionProgressionSystem` (invoked from
+   * `runCoreSimulationStep` before `companionKOSystem`/`dropSystem`) reads
+   * this to split combat XP damage-weighted across contributing Companions
+   * once the target's health reaches 0, then deletes the target's entry. See
+   * `.specify/specs/floor3-companion-league.md` R7 / slice 5.
+   */
+  companionDamageContribution: Map<number, Map<number, number>>;
+  /**
+   * Floor 3 Companion League: the frame each Team started an uninterrupted
+   * idle window (no rival Companion within engagement range of any of its
+   * living Companions), keyed by team id. `companionKOSystem` (slice 6)
+   * revives every knocked-out Companion on a team once its idle window has
+   * lasted `tuning.floor3Companion.engagementEndFrames`, then clears the
+   * entry. Cleared immediately whenever the team re-engages. See
+   * `.specify/specs/floor3-companion-league.md` R5/R11.
+   */
+  companionEngagementIdleSince: Map<number, number>;
   /**
    * Durable record of the most recent damaging hit that landed on the player,
    * written at the `applyDamage` choke point. Unlike {@link combatEvents} —
@@ -530,8 +584,8 @@ export interface GameWorld {
    */
   vfxEvents: VfxEvent[];
   /**
-   * Cosmetic non-combat floating-text requests (skill level-ups today) emitted
-   * this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
+   * Cosmetic non-combat floating-text requests (skill level-ups, material gains)
+   * emitted this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
    * never read by game logic. Capped defensively by `pushFloaterEvent`.
    */
   floaterEvents: FloaterEvent[];
@@ -750,6 +804,19 @@ export interface GameWorld {
     inventory: boolean;
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
+    /**
+     * The **Gear panel/HUD affordance** — the only surface a human can equip
+     * through — becomes visible.
+     *
+     * Deliberately separate from {@link equipment}: that flag is the equipment
+     * *capability* latch (it also drives generated-equipment equip permission
+     * and the `equipmentUnlocked` achievement fact), whereas this one is the
+     * player-facing reveal. Floor 1 reveals Gear as part of the merchant beat,
+     * so it stays locked for the whole floor until the merchant's charm is
+     * actually acquired/equipped — unrelated early loot (a chest or enemy drop)
+     * must not open Gear before the shopkeeper errand (issue #3310).
+     */
+    equipmentPanel: boolean;
     /** Ability system and spells become usable once unlocked (Floor 1: after boss quest). */
     spells: boolean;
   };
@@ -781,6 +848,30 @@ export interface GameWorld {
    * timers and enable customization panels.
    */
   playerInSafeRoom: boolean;
+  /**
+   * Room ids that have become safe rooms *during* the run rather than at
+   * generation time.
+   *
+   * A boss arena stops being dangerous the moment its boss dies — the design's
+   * "Boss → Commercial Break" beat — so the floor scenario registers the
+   * cleared arena here and `isPointInSafeSpace` treats it like any authored
+   * SAFE room (timer pause, customization panels). The room's generated
+   * {@link RoomRole} deliberately stays `BOSS_STAIR`: `FloorMap.bossStairRoom`
+   * and every stair/spawn/minimap consumer resolve that room *by role*, so
+   * rewriting the role would make the boss room disappear from under the
+   * staircase it owns.
+   *
+   * Room ids are only unique *within* one generated floor, so the set is
+   * scoped to the map that produced it via {@link clearedSafeRoomMap}: a stale
+   * Floor 1 id must never make an unrelated Floor 2 room safe.
+   */
+  clearedSafeRoomIds: Set<number>;
+  /**
+   * The floor map {@link clearedSafeRoomIds} was recorded against. Any other
+   * map invalidates the whole set, so a floor transition needs no explicit
+   * reset — the ids simply stop applying.
+   */
+  clearedSafeRoomMap: FloorMap | null;
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -888,6 +979,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
   wireStore(ecs, Returning, stores.returning);
   wireStore(ecs, Bouncing, stores.bouncing);
+  wireStore(ecs, Homing, stores.homing);
+  wireStore(ecs, Glowing, stores.glowing);
   wireStore(ecs, LineDamage, stores.lineDamage);
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
@@ -907,6 +1000,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, PropLight, stores.propLight);
   wireStore(ecs, Harvestable, stores.harvestable);
   wireStore(ecs, FamilyMembership, stores.familyMembership);
+  wireStore(ecs, Companion, stores.companion);
+  wireStore(ecs, PartySlot, stores.partySlot);
 
   const world: GameWorld = {
     ecs,
@@ -951,6 +1046,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     goalFlags: new Map(),
     combatEvents: [],
     lethalDamageSourceByTarget: new Map(),
+    companionDamageContribution: new Map(),
+    companionEngagementIdleSince: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     floaterEvents: [],
@@ -990,6 +1087,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     featureUnlocks: {
       inventory: false,
       equipment: false,
+      equipmentPanel: false,
       spells: false,
     },
     achievements: {
@@ -1003,6 +1101,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
+    clearedSafeRoomIds: new Set<number>(),
+    clearedSafeRoomMap: null,
     floor2EquipmentFlags: {
       floor2EquipmentRegistry: false,
       floor2EquipmentCatalog: false,

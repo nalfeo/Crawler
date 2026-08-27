@@ -146,6 +146,13 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
     return null;
   }
 
+  if (manifest.enemyPackId === undefined) {
+    // FloorConfig is an ambient-pack-derived shape; a floor that spawns from an
+    // authored schedule has no such config to derive.
+    throw new Error(
+      `Floor "${floorId}" declares no enemyPackId, so it has no derivable FloorConfig.`,
+    );
+  }
   const enemyPack = getFloorEnemyPack(manifest.enemyPackId);
   if (!enemyPack) {
     throw new Error(`Enemy pack not found: ${manifest.enemyPackId}`);

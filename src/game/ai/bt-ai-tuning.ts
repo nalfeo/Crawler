@@ -47,10 +47,22 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
   // Raised 0.07→0.12 by the AI Sweep winner promotion above.
   farmPullWeight: 0.12,
+  // Issue #3275 item 2 introduced this as an opt-in persona/sweep axis for
+  // calmer en-route farming, but the production default stays neutral until a
+  // broad sweep promotes a non-1 value. The initial 1.35 candidate regressed
+  // existing headless gates after the branch rebased onto main.
+  calmFarmPullBoost: 1,
   // A/B axis 1: RISK_REWARD_FUSED is the 2026-07-21 AI Sweep winner (294/300).
   // A/B axis 2: LEGACY — fixed-priority Track A ladder.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   decisionMode: AIDecisionMode.LEGACY,
+  strategicUtilityWeights: {
+    completion: 1,
+    optimization: 1,
+    safety: 1,
+    exploration: 1,
+    costPerSecond: 1,
+  },
   debug: false,
 };
 
@@ -275,12 +287,26 @@ export const EXPLORE_DWELL_FRAMES = 180;
 // and the AI keeps fighting while the path is blocked. The goal re-evaluates once
 // the window expires, so it catches up when a door opens or the player moves closer.
 export const PROGRESS_SUPPRESS_FRAMES = 360;
-// Floor 2 family hunts stay inside the authored territory spawn zone and rotate
-// among deterministic interior patrol anchors when the selected family is absent.
+// Floor 2 family hunts rotate among deterministic interior patrol anchors when
+// no family target is within chase range.
 export const FLOOR2_HUNT_PATROL_ARRIVE_FT = 8;
 export const FLOOR2_HUNT_PATROL_RADIUS_FRACTION = 0.92;
 export const FLOOR2_HUNT_CHASE_RADIUS_FT = 120;
 export const FLOOR2_HUNT_NO_PROGRESS_FRAMES = 600;
+/**
+ * Hysteresis band (tiles) for territory-scoped clearing and patrol behavior.
+ * Without a band, a player parked exactly on the zone's tile-radius boundary
+ * flips `playerInTerritory` every single frame, alternately enabling and
+ * disabling the territory clear target and patrol fallback — an infinite
+ * one-tile ping-pong that reads as a sustained wiggle episode in telemetry
+ * (see the 2026-08-21 floor2-wiggle-stuck-repair handoff). A Schmitt-trigger
+ * band — shrink the "become inside" radius, grow the "stay inside" radius —
+ * requires genuine, sustained movement across the boundary before membership
+ * flips, so a single boundary-straddling frame can no longer flip that
+ * territory-scoped behavior. Family kill-quota targets are intentionally not
+ * gated by territory membership; they remain bounded by the hunt chase radius.
+ */
+export const FLOOR2_TERRITORY_HYSTERESIS_TILES = 3;
 // Keep family hunts combat-forward without pinning the AI in ENGAGE for the
 // entire objective: 45 seconds of focused fighting, then 15 seconds of patrol.
 export const FLOOR2_HUNT_ENGAGE_FRAMES = 2700;
@@ -848,15 +874,18 @@ export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 //   1. **Post-combat** (any time): only loot within LOOT_SWEEP_RADIUS_FT of the
 //      player, i.e. the drops from the fight that just ended. Bounded so the
 //      sweep is a local cleanup, never a cross-floor errand.
-//   2. **Pre-exit** (staircase unlocked, not yet descended): unbounded radius,
-//      because descending destroys every uncollected pickup (scene restart with
-//      a fresh entity world), so anything left behind is lost permanently.
+//   2. **Pre-exit** (staircase unlocked, not yet descended): bounded to the
+//      AI scan radius. It chains nearby drops while avoiding an unsafe cross-floor
+//      chase after the exit unlocks.
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable lull but surrenders in the final 1-min
-// crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
-// panic is always 0 there — the sweep runs until all reachable loot is taken.
+// stays active during the comfortable lull but surrenders in the final crunch
+// period when panic > 0.5. Floor 2 collapses too — its deadline lives on the
+// floor manifest timer (`resolveManifestFloorCollapseState`), not on a Floor-1
+// objective — so the same surrender applies there. It did NOT before: the panic
+// profile was Floor-1-only, so the unbounded pre-exit sweep swept until the
+// floor collapsed and runs that had already unlocked the exit never descended.
 export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
 // Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
 // sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.

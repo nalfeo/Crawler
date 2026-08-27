@@ -11,6 +11,8 @@ import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
   etagPreconditionFails,
+  ifNoneMatchPreconditionFails,
+  isCreateOnlyWrite,
   parseWorkflowState,
   serializeWorkflowState,
   workflowBriefKey,
@@ -103,5 +105,33 @@ describe('etagPreconditionFails', () => {
     expect(etagPreconditionFails(current, current)).toBe(false);
     expect(etagPreconditionFails('stale', current)).toBe(true);
     expect(etagPreconditionFails(current, null)).toBe(true);
+  });
+});
+
+describe('ifNoneMatchPreconditionFails', () => {
+  const current = 'abc123';
+
+  it('imposes no create-only requirement when If-None-Match is absent or empty', () => {
+    expect(ifNoneMatchPreconditionFails(undefined, current)).toBe(false);
+    expect(ifNoneMatchPreconditionFails(null, current)).toBe(false);
+    expect(ifNoneMatchPreconditionFails('', current)).toBe(false);
+  });
+
+  it('treats If-None-Match: * as "must not exist yet"', () => {
+    expect(ifNoneMatchPreconditionFails('*', null)).toBe(false);
+    expect(ifNoneMatchPreconditionFails('*', current)).toBe(true);
+  });
+
+  it('rejects a specific ETag that matches the current one', () => {
+    expect(ifNoneMatchPreconditionFails(current, current)).toBe(true);
+    expect(ifNoneMatchPreconditionFails('other', current)).toBe(false);
+    expect(ifNoneMatchPreconditionFails(current, null)).toBe(false);
+  });
+
+  it('recognises only * as a create-only write', () => {
+    expect(isCreateOnlyWrite('*')).toBe(true);
+    expect(isCreateOnlyWrite(current)).toBe(false);
+    expect(isCreateOnlyWrite(undefined)).toBe(false);
+    expect(isCreateOnlyWrite(null)).toBe(false);
   });
 });

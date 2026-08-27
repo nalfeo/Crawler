@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { removeEntity } from 'bitecs';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -7,9 +8,11 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   FLOOR2_STAIRS_POPPED_GOAL_ID,
   FLOOR2_VICTORY_GOAL_ID,
+  bossDefeatGoalId,
   floor2VictorySystem,
   confirmFloor2StairDescend,
   denUnlockGoalId,
+  initializeFloor2Bosses,
 } from '../../src/game/floor2Scenario.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import {
@@ -150,7 +153,7 @@ describe('floor2VictorySystem', () => {
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
   });
 
-  it('spawns boss chests for the secondary defeat-latch path (all dens unlocked, no living boss entities, some families not yet decapitated)', () => {
+  it('reconciles vanished boss encounters on the direct floor2VictorySystem path', () => {
     // Regression test for a gap surfaced by code review: a family whose boss
     // ECS entity vanishes without a normal `death` combat event (e.g. all
     // dens unlocked while the boss entity is otherwise despawned/recycled)
@@ -163,6 +166,9 @@ describe('floor2VictorySystem', () => {
       floor: 2,
       generatedEquipmentRunKey: 'victory-sweep-test',
     });
+    const gen = new CaveSystemGenerator({ presentCount: 3 });
+    const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
+    world.floorMap = floorMap;
     world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
     world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
     world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
@@ -176,9 +182,23 @@ describe('floor2VictorySystem', () => {
         betrayerFlag: false,
       },
     };
-    // No families decapitated yet, no living boss entities spawned (so
-    // allBossesDead=false, allBossEntitiesGone=true), and every present
-    // family's den goal flag is unlocked.
+    const floor2State = world.floorExtendedState.familyState!;
+    initializeFloor2Bosses(world, floorMap, floor2State);
+    const firstFamilyId = floor2State.presentFamilies[0]!;
+    const firstEncounter = floor2State.bossEncounters!.get(firstFamilyId)!;
+    const secondFamilyId = floor2State.presentFamilies[1]!;
+    const secondEncounter = floor2State.bossEncounters!.get(secondFamilyId)!;
+    expect(firstEncounter.started).toBe(false);
+    secondEncounter.started = true;
+    world.goalFlags.set(secondEncounter.activeGoalId, true);
+    // No families decapitated yet, no living boss entities left in ECS (so
+    // allBossesDead=false, allBossEntitiesGone=true), and every present family's
+    // den goal flag is unlocked.
+    for (const encounter of floor2State.bossEncounters!.values()) {
+      if (encounter.bossEid !== null) {
+        removeEntity(world.ecs, encounter.bossEid);
+      }
+    }
     for (const familyId of world.floorExtendedState.familyState!.presentFamilies) {
       world.goalFlags.set(denUnlockGoalId(familyId), true);
     }
@@ -189,7 +209,14 @@ describe('floor2VictorySystem', () => {
       const chestId = createBossChestId(familyId);
       expect(world.bossChests.has(chestId)).toBe(true);
       expect(world.bossChests.get(chestId)?.state).toBe('available');
+      expect(world.goalFlags.get(bossDefeatGoalId(familyId))).toBe(true);
     }
+    expect(firstEncounter.defeated).toBe(true);
+    expect(firstEncounter.bossEid).toBeNull();
+    expect(world.goalFlags.get(firstEncounter.activeGoalId)).toBe(false);
+    expect(firstEncounter.started).toBe(false);
+    expect(secondEncounter.started).toBe(true);
+    expect(world.goalFlags.get(secondEncounter.activeGoalId)).toBe(false);
   });
 });
 

@@ -1,8 +1,13 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
-import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './markers.mjs';
+import {
+  FOLLOWUP_BACKLOG_MARKER,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+} from './markers.mjs';
 
-export { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
+export { FOLLOWUP_BACKLOG_MARKER, ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+export const GOOBERS_APPROVED_LABEL = 'goobers:approved';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
 const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
@@ -24,6 +29,10 @@ const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
 // login list.
 export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
+}
+
+function uniqueActorIds(actors) {
+  return [...new Set(actors.map((actor) => actor.id).filter(Boolean))];
 }
 
 function hasTrustedCommentAuthor(comment) {
@@ -139,18 +148,26 @@ export const ISSUE_INTAKE_BODY = [
   '- Keep all required verification/review-harness/ledger steps for code-touching work.',
   '- Do not weaken gates, policy checks, or explicit human requirements to get green.',
   '',
-  '**Before writing any code**, post a detailed plan comment on this issue that covers:',
+  '**Before writing any code**, publish a detailed plan that covers:',
   '- High-level design and approach for the work.',
   '- Key decisions made (e.g. which systems, skills, or libraries are involved; alternatives considered).',
   '- A checklist of the concrete steps you will take.',
   '',
-  'Post this plan comment on the issue itself so the maintainer can review it before you open a PR.',
-  'Then, when you open the PR, include the same high-level summary in the PR description.',
+  'Publish that plan with your progress-report tool (the session progress summary / PR description) — do NOT try to post it as an issue or PR comment.',
+  'Cloud sessions have no issue-comment credentials, so never block on comment access: the progress summary and the PR description are the plan of record, and CI recovery mirrors them back onto this issue for you.',
 ].join('\n');
 
 export function isTelemetryIssue(issue) {
+  return hasIssueLabel(issue, 'telemetry');
+}
+
+export function isGoobersApprovedIssue(issue) {
+  return hasIssueLabel(issue, GOOBERS_APPROVED_LABEL);
+}
+
+function hasIssueLabel(issue, expectedLabel) {
   return (issue?.labels || []).some(
-    (label) => String(label?.name || '').toLowerCase() === 'telemetry',
+    (label) => String(label?.name || '').toLowerCase() === expectedLabel,
   );
 }
 
@@ -161,6 +178,13 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
 
   if (isTelemetryIssue(issue)) {
     return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
+  }
+
+  if (isGoobersApprovedIssue(issue)) {
+    return {
+      eligible: false,
+      reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+    };
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
@@ -213,6 +237,62 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   return [...new Set(explicitReferences)];
 }
 
+// `closingIssuesReferences` can reference issues in other repositories, and the
+// follow-up issue is always filed in this repository.  Restrict the matchable
+// closing issues to the current repository so a cross-repository reference
+// (e.g. `other/repo#3120`) never resolves to a same-numbered local issue.  A
+// missing repository fails closed so no caller can bypass the check.
+function sameRepositoryClosingIssues(closingIssues, repository) {
+  const target = String(repository || '').toLowerCase();
+  if (!target) return [];
+  return (closingIssues || []).filter(
+    (issue) => String(issue?.repository?.nameWithOwner || '').toLowerCase() === target,
+  );
+}
+
+export function reviewThreadFollowupBacklogIssueNumbers(thread, closingIssues, repository) {
+  const rootComment = thread?.comments?.nodes?.[0];
+  const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
+  const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();
+  if (
+    !PLAN_REQUIREMENT_REVIEWER_LOGINS.has(rootLogin) &&
+    !TRUSTED_ASSOCIATIONS.has(rootAssociation)
+  ) {
+    return [];
+  }
+
+  const text = String(rootComment?.body || '').toLowerCase();
+  const mentionsFollowupBacklogIssue =
+    /\bfollow[- ]?up\b[^.!?\n]{0,100}\bbacklog\s+issue\b/i.test(text) ||
+    /\bbacklog\s+issue\b[^.!?\n]{0,100}\bfollow[- ]?up\b/i.test(text);
+  if (!mentionsFollowupBacklogIssue) return [];
+
+  const asksToFileIssue =
+    /\b(?:file|filing|create|creating|open|opening)\b[^.!?\n]{0,140}\b(?:follow[- ]?up\s+)?backlog\s+issue\b/i.test(
+      text,
+    ) ||
+    /\b(?:follow[- ]?up\s+)?backlog\s+issue\b[^.!?\n]{0,140}\b(?:filed|created|opened|missing)\b/i.test(
+      text,
+    );
+  if (!asksToFileIssue) return [];
+
+  const requiresUnassignedCopilot =
+    /\b(?:unassigned|not\s+assigned|without\s+assigning|without\s+being\s+assigned)\b[^.!?\n]{0,100}\bcopilot\b/i.test(
+      text,
+    ) || /\bcopilot\b[^.!?\n]{0,100}\b(?:unassigned|not\s+assigned)\b/i.test(text);
+  if (!requiresUnassignedCopilot) return [];
+
+  const issueNumbers = sameRepositoryClosingIssues(closingIssues, repository)
+    .map((issue) => issue.number)
+    .filter(Number.isInteger);
+  const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
+    Number.parseInt(match[1], 10),
+  );
+  if (explicitReferences.length === 0) return [];
+  if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
+  return [...new Set(explicitReferences)];
+}
+
 export async function getCopilotIssueAssignmentContext({
   graphql,
   token,
@@ -240,6 +320,11 @@ export async function getCopilotIssueAssignmentContext({
           issue(number: $issueNumber) {
             id
             state
+            labels(first: 50) {
+              nodes {
+                name
+              }
+            }
             assignees(first: 50) {
               nodes {
                 id
@@ -270,6 +355,7 @@ export async function getCopilotIssueAssignmentContext({
     copilot,
     issueId: issueData.id,
     issueState: issueData.state,
+    labels: issueData.labels?.nodes || [],
     assignees: issueData.assignees?.nodes || [],
   };
 }
@@ -512,6 +598,15 @@ export function openBlockingIssues(dependencies) {
  * `blocked_by` dependency chain the intent is for Copilot to pick up the
  * dependent once the blocker clears, regardless of its labels.  The
  * trusted-opener check (no arbitrary bots) still applies.
+ *
+ * `restart` is threaded straight through to `runIssueIntake`. It defaults to
+ * `false`, which is a no-op when Copilot is already assigned (the assignee
+ * replace mutation is idempotent and does not re-fire GitHub's `assigned`
+ * webhook, so it never restarts a stalled session). Callers that positively
+ * determined the existing Copilot assignment is stale -- e.g.
+ * `epic-reprocess.mjs`'s `copilotOwnershipStatus` finding every linked PR
+ * closed or quarantined -- must pass `restart: true` so the issue is
+ * unassigned and reassigned, which does restart the session.
  */
 export async function intakeOpenedIssue({
   graphql,
@@ -523,17 +618,24 @@ export async function intakeOpenedIssue({
   issue,
   maintainerLogin = 'nalfeo',
   fromUnblockSweep = false,
+  restart = false,
 }) {
   let eligibilityReason;
   if (fromUnblockSweep) {
     // Automation-label restriction is intentionally skipped here — see JSDoc.
-    // We still reject non-issues (PR payloads), telemetry issues, and
-    // untrusted openers.
+    // We still reject non-issues (PR payloads), telemetry issues,
+    // Goobers-owned issues, and untrusted openers.
     if (!issue || issue.pull_request) {
       return { assigned: false, reason: 'event has no eligible issue payload' };
     }
     if (isTelemetryIssue(issue)) {
       return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
+    }
+    if (isGoobersApprovedIssue(issue)) {
+      return {
+        assigned: false,
+        reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+      };
     }
     const opener = String(issue.user?.login || '').toLowerCase();
     const maintainer = String(maintainerLogin || '').toLowerCase();
@@ -561,13 +663,50 @@ export async function intakeOpenedIssue({
     };
   }
 
-  const result = await runIssueIntake({ graphql, paginate, request, token, owner, repo, issue });
+  const result = await runIssueIntake({
+    graphql,
+    paginate,
+    request,
+    token,
+    owner,
+    repo,
+    issue,
+    restart,
+  });
   return {
     assigned: true,
     reason: eligibilityReason,
     assignee: result.assignee,
     comment: result.comment,
   };
+}
+
+/**
+ * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
+ * OPEN. Exported (and used as a marker via `instanceof`) so callers like
+ * `intakeUnblockedDependents` can distinguish this benign race — the issue
+ * closed between eligibility/blocked_by checks and the assignment mutation —
+ * from a genuine API/infra failure, and report it as a skip rather than an
+ * error.
+ */
+export class IssueNoLongerOpenError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is no longer open; skipping intake`);
+    this.name = 'IssueNoLongerOpenError';
+  }
+}
+
+/**
+ * Thrown by `runIssueIntake` when a live GraphQL re-fetch sees the
+ * `goobers:approved` label even though the triggering payload was eligible for
+ * Cloud Copilot intake. Exported so callers like `intakeUnblockedDependents`
+ * can treat this ownership race as a benign skip instead of an infra failure.
+ */
+export class IssueClaimedByGoobersError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is now labeled goobers:approved; skipping intake`);
+    this.name = 'IssueClaimedByGoobersError';
+  }
 }
 
 /**
@@ -625,13 +764,17 @@ export async function intakeUnblockedDependents({
       results.push({ number: dependent.number, ...outcome });
     } catch (err) {
       // A dependent closing between our `open` check above and the live
-      // assignment mutation is a benign race, not an infra failure — report it
-      // as a skip so the sweep doesn't flag the workflow run red for it.
-      if (err instanceof IssueNoLongerOpenError) {
+      // assignment mutation, or being claimed by Goobers in that same window,
+      // are both benign races. Report them as skips so the sweep doesn't flag
+      // the workflow run red for them.
+      if (err instanceof IssueNoLongerOpenError || err instanceof IssueClaimedByGoobersError) {
         results.push({
           number: dependent.number,
           assigned: false,
-          reason: 'dependent closed during processing',
+          reason:
+            err instanceof IssueNoLongerOpenError
+              ? 'dependent closed during processing'
+              : 'dependent claimed by Goobers during processing',
         });
         continue;
       }
@@ -645,22 +788,16 @@ export async function intakeUnblockedDependents({
   return results;
 }
 
-/**
- * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
- * OPEN. Exported (and used as a marker via `instanceof`) so callers like
- * `intakeUnblockedDependents` can distinguish this benign race — the issue
- * closed between eligibility/blocked_by checks and the assignment mutation —
- * from a genuine API/infra failure, and report it as a skip rather than an
- * error.
- */
-export class IssueNoLongerOpenError extends Error {
-  constructor(issueNumber) {
-    super(`Issue #${issueNumber} is no longer open; skipping intake`);
-    this.name = 'IssueNoLongerOpenError';
-  }
-}
-
-export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
+export async function runIssueIntake({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  issue,
+  restart = false,
+}) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
     graphql,
     token,
@@ -676,9 +813,35 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
   }
+  if (isGoobersApprovedIssue({ labels: assignmentContext.labels })) {
+    throw new IssueClaimedByGoobersError(issue.number);
+  }
 
+  // Every currently assigned actor recognized as Copilot (by login, not just
+  // by matching `assignmentContext.copilot.id`) -- an issue can be left
+  // assigned to a different valid Copilot actor ID/login variant than the one
+  // freshly discovered here, e.g. after a bot identity rotation.
+  const currentCopilotAssignees = assignmentContext.assignees.filter((actor) =>
+    isCopilotLogin(actor?.login),
+  );
+
+  // `restart: true` only does anything useful if it forces
+  // `replaceActorsForAssignable` to actually change the assignable's actor
+  // set -- GitHub only re-fires the `assigned` webhook (which is what
+  // restarts a stalled Copilot session) on a real transition. If we left a
+  // stale Copilot assignee in `assignmentContext.assignees` here,
+  // `buildIssueActorIds` would just carry that same stale actor id back into
+  // `actorIds` below (see its "keep whichever Copilot is already assigned"
+  // branch), making the mutation a same-set no-op. So on restart, derive
+  // `actorIds` with every Copilot-recognized assignee stripped out first --
+  // the removal below then always clears the actual stale actor(s), and
+  // `buildIssueActorIds` always falls back to the freshly discovered
+  // `assignmentContext.copilot.id` instead of reusing a stale one. Non-Copilot
+  // assignees are preserved either way.
   const actorIds = buildIssueActorIds({
-    assignees: assignmentContext.assignees,
+    assignees: restart
+      ? assignmentContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
+      : assignmentContext.assignees,
     copilotActorId: assignmentContext.copilot.id,
     includeCopilot: true,
   });
@@ -710,10 +873,18 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
+    if (restart && currentCopilotAssignees.length > 0) {
+      await removeIssueAssignees({
+        graphql,
+        token,
+        assignableId: issue.node_id || issue.id,
+        actorIds: uniqueActorIds(currentCopilotAssignees),
+      });
+    }
     assignment = await replaceIssueAssignees({
       graphql,
       token,
-      assignableId: issue.node_id,
+      assignableId: issue.node_id || issue.id,
       actorIds,
     });
   } catch (err) {

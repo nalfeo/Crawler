@@ -5,15 +5,19 @@ import { applyDamage, type DamageOptions } from '../../core/apply-damage.js';
 import { applyStatusEffect } from '../../core/status-effects.js';
 import { addStatModifier } from './statsSystem.js';
 import { resolveScalableOutput } from '../../shared/stats.js';
-import { addComponent, hasComponent, query } from 'bitecs';
+import { addComponent, hasComponent, query, set } from 'bitecs';
 import {
   Enemy,
   EffectiveStats,
+  Glowing,
   Health,
+  Homing,
   Knockback,
   Player,
   Position,
 } from '../../core/components.js';
+import { spawnProjectile } from '../../core/spawners/projectiles.js';
+import { tagDamageMeta } from '../../core/damage-meta.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { getSpellSkillId } from '../../shared/spell-skills.js';
 
@@ -35,23 +39,60 @@ const SPELL_SKILL_BREAKPOINT_BONUSES = [
   { level: 20, bonus: 0.3 },
 ] as const;
 
+/**
+ * Magic Missile grants an extra bolt at each of these skill levels INSTEAD OF
+ * the shared damage-breakpoint bonus below — see issue #3248 ("The 5/10/15/20
+ * skill levels up grant extra missiles. The other levels improve damage.").
+ * `getSpellSkillEfficacyMultiplier` special-cases 'magic-missile' to skip
+ * both the shared breakpoint bonus and the continuous bonus at each missile
+ * breakpoint, so a breakpoint level only gains its extra bolt.
+ */
+const MAGIC_MISSILE_EXTRA_MISSILE_LEVELS = [5, 10, 15, 20] as const;
+const MAGIC_MISSILE_SPELL_ID = 'magic-missile';
+
+/** Current level (0-20) of a holder's usage skill for the given spell, or 0. */
+function getSpellSkillLevel(world: GameWorld, holderEid: number, spellId: string): number {
+  const skillId = getSpellSkillId(spellId);
+  if (!skillId) return 0;
+  const state =
+    world.skillStatesByEntity.get(holderEid)?.get(skillId) ??
+    (hasComponent(world.ecs, holderEid, Player) ? world.playerSkills.get(skillId) : undefined);
+  return Math.max(0, Math.min(20, state?.level ?? 0));
+}
+
 /** Reusable efficacy layer shared by every spell effect, including utility. */
 function getSpellSkillEfficacyMultiplier(
   world: GameWorld,
   holderEid: number,
   spellId: string,
 ): number {
-  const skillId = getSpellSkillId(spellId);
-  if (!skillId) return 1;
-  const state =
-    world.skillStatesByEntity.get(holderEid)?.get(skillId) ??
-    (hasComponent(world.ecs, holderEid, Player) ? world.playerSkills.get(skillId) : undefined);
-  const level = Math.max(0, Math.min(20, state?.level ?? 0));
-  let multiplier = 1 + level * SPELL_SKILL_PER_LEVEL_BONUS;
-  for (const breakpoint of SPELL_SKILL_BREAKPOINT_BONUSES) {
-    if (level >= breakpoint.level) multiplier += breakpoint.bonus;
+  if (!getSpellSkillId(spellId)) return 1;
+  const level = getSpellSkillLevel(world, holderEid, spellId);
+  const efficacyLevels =
+    spellId === MAGIC_MISSILE_SPELL_ID
+      ? level -
+        MAGIC_MISSILE_EXTRA_MISSILE_LEVELS.filter((breakpointLevel) => breakpointLevel <= level)
+          .length
+      : level;
+  let multiplier = 1 + efficacyLevels * SPELL_SKILL_PER_LEVEL_BONUS;
+  // Magic Missile redirects the breakpoint dimension into extra bolts instead
+  // of a magnitude jump (see MAGIC_MISSILE_EXTRA_MISSILE_LEVELS doc above).
+  if (spellId !== MAGIC_MISSILE_SPELL_ID) {
+    for (const breakpoint of SPELL_SKILL_BREAKPOINT_BONUSES) {
+      if (level >= breakpoint.level) multiplier += breakpoint.bonus;
+    }
   }
   return multiplier;
+}
+
+/** Number of bolts a Magic Missile cast fires: 1 base + 1 per breakpoint reached. */
+function getMagicMissileCount(world: GameWorld, holderEid: number): number {
+  const level = getSpellSkillLevel(world, holderEid, MAGIC_MISSILE_SPELL_ID);
+  let count = 1;
+  for (const breakpointLevel of MAGIC_MISSILE_EXTRA_MISSILE_LEVELS) {
+    if (level >= breakpointLevel) count += 1;
+  }
+  return count;
 }
 
 function resolveSpellOutput(
@@ -124,6 +165,46 @@ function findNearestLivingEnemy(
   }
 
   return best ? { eid: best.eid, x: best.x, y: best.y } : null;
+}
+
+/**
+ * Up to `maxCount` living enemies within range, nearest first. Used by Magic
+ * Missile to fan its bolts across a cluster instead of dog-piling one target
+ * when the skill's breakpoint levels grant extra missiles (issue #3248).
+ *
+ * Deliberate design choice (confirmed during adversarial plan review): the
+ * issue only requires "extra missiles," not a specific targeting model, and
+ * classic Magic Missile lore/expectation is multi-target auto-spread, which
+ * also gives the multi-bolt visual payoff room to read clearly against a
+ * cluster rather than always stacking on one enemy. Round-robins over this
+ * list (`targets[i % targets.length]`) when there are fewer enemies than
+ * missiles, so excess bolts still fire at the nearest available target(s)
+ * rather than going unused.
+ */
+function findNearestLivingEnemies(
+  world: GameWorld,
+  casterEid: number,
+  rangeFt: number,
+  maxCount: number,
+): { eid: number; x: number; y: number }[] {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const rangeSq = rangeFt * rangeFt;
+  const found: { eid: number; x: number; y: number; distSq: number }[] = [];
+
+  for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemyEid] ?? 0;
+    const ey = world.stores.position.y[enemyEid] ?? 0;
+    const dx = ex - casterX;
+    const dy = ey - casterY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > rangeSq) continue;
+    found.push({ eid: enemyEid, x: ex, y: ey, distSq });
+  }
+
+  found.sort((a, b) => a.distSq - b.distSq);
+  return found.slice(0, maxCount).map(({ eid, x, y }) => ({ eid, x, y }));
 }
 
 function castFireball(
@@ -312,6 +393,45 @@ function castPulseShield(
   }
 }
 
+/** Magic Missile travel speed, in ft/frame — deliberately slower than the
+ * 0.5 ft/frame Fire Wand projectile so its arc-and-home flight is easy
+ * for a human to track, per issue #3248. */
+const MAGIC_MISSILE_SPEED_FT_PER_FRAME = 0.4;
+/** Frames a missile flies its initial launch heading before homing kicks in —
+ * the visible "arcs out from the player" phase. Deliberately short: at
+ * `MAGIC_MISSILE_SPEED_FT_PER_FRAME` this is a ~2.4ft off-axis excursion
+ * before the bolt starts curving back, small enough to reliably clear most
+ * doorway/corridor geometry while still reading as a visible arc rather than
+ * a beeline (adversarial plan review, issue #3248). */
+const MAGIC_MISSILE_ARC_OUT_FRAMES = 6;
+/** Per-missile launch-angle offset step (radians) used to fan multiple bolts
+ * out from the caster instead of stacking them on one heading. Kept modest
+ * (~20°) for the same wall-clearance reason as the arc-out duration above. */
+const MAGIC_MISSILE_ARC_STEP_RAD = 0.35;
+/** Max heading change per frame once homing activates (~14°/frame @60fps —
+ * curves smoothly onto the target rather than snapping). */
+const MAGIC_MISSILE_TURN_RATE_RAD_PER_FRAME = 0.24;
+/** Safety-net despawn range so a missile whose target dies mid-flight cannot
+ * fly forever; generous relative to cast range since the arc-out phase does
+ * not travel in a straight line. */
+const MAGIC_MISSILE_MAX_RANGE_MULTIPLIER = 2.5;
+/** Small purple point-light every bolt carries in flight — Magic Missile must
+ * "be a light source" per issue #3248. */
+const MAGIC_MISSILE_GLOW_RADIUS_PX = 48;
+const MAGIC_MISSILE_GLOW_INTENSITY = 0.5;
+const MAGIC_MISSILE_GLOW_COLOR = { r: 0xc0, g: 0x84, b: 0xfc };
+
+/** Launch-angle offset (radians) for the i-th of N simultaneous bolts. Every
+ * bolt — including a solo missile (index 0) — launches off-axis from its
+ * target and alternates sides, so a single Magic Missile visibly arcs out
+ * before curving in rather than beelining; additional bolts fan progressively
+ * wider so a multi-missile cast reads as a spread. */
+function magicMissileArcOffsetRad(index: number): number {
+  const half = Math.floor(index / 2) + 1;
+  const sign = index % 2 === 0 ? 1 : -1;
+  return sign * half * MAGIC_MISSILE_ARC_STEP_RAD;
+}
+
 function castMagicMissile(
   world: GameWorld,
   casterEid: number,
@@ -325,26 +445,74 @@ function castMagicMissile(
     world,
     resolveSpellOutput(world, casterEid, spellId, missileOutput.rangeTiles, effectiveIntelligence),
   );
-  const target = findNearestLivingEnemy(world, casterEid, rangeFt);
-  if (!target) return;
+  const missileCount = getMagicMissileCount(world, casterEid);
+  const targets = findNearestLivingEnemies(world, casterEid, rangeFt, missileCount);
+  if (targets.length === 0) return;
   const damage = Math.max(
     1,
     Math.round(
       resolveSpellOutput(world, casterEid, spellId, missileOutput.damage, effectiveIntelligence),
     ),
   );
-  pushVfxEvent(world.vfxEvents, {
-    kind: 'arcaneBoltImpact',
-    x: target.x,
-    y: target.y,
-    color: 0xc084fc,
-  });
-  applyDamage(world, target.eid, damage, target.x, target.y, {
-    ...SPELL_DAMAGE_OPTIONS,
-    sourceX: casterX,
-    sourceY: casterY,
-    sourceEid: casterEid,
-  });
+  const maxRangeFt = rangeFt * MAGIC_MISSILE_MAX_RANGE_MULTIPLIER;
+  const activateFrame = world.frameCount + MAGIC_MISSILE_ARC_OUT_FRAMES;
+
+  for (let i = 0; i < missileCount; i += 1) {
+    const target = targets[i % targets.length];
+    if (!target) continue;
+    const dx = target.x - casterX;
+    const dy = target.y - casterY;
+    const baseAngle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx);
+    const launchAngle = baseAngle + magicMissileArcOffsetRad(i);
+    const vx = Math.cos(launchAngle) * MAGIC_MISSILE_SPEED_FT_PER_FRAME;
+    const vy = Math.sin(launchAngle) * MAGIC_MISSILE_SPEED_FT_PER_FRAME;
+
+    const missileEid = spawnProjectile(
+      world,
+      casterX,
+      casterY,
+      vx,
+      vy,
+      damage,
+      0,
+      maxRangeFt,
+      1,
+      casterEid,
+    );
+    addComponent(
+      world.ecs,
+      missileEid,
+      set(Homing, {
+        targetEid: target.eid,
+        speed: MAGIC_MISSILE_SPEED_FT_PER_FRAME,
+        turnRateRadPerFrame: MAGIC_MISSILE_TURN_RATE_RAD_PER_FRAME,
+        activateFrame,
+      }),
+    );
+    addComponent(
+      world.ecs,
+      missileEid,
+      set(Glowing, {
+        radiusPx: MAGIC_MISSILE_GLOW_RADIUS_PX,
+        intensity: MAGIC_MISSILE_GLOW_INTENSITY,
+        colorR: MAGIC_MISSILE_GLOW_COLOR.r,
+        colorG: MAGIC_MISSILE_GLOW_COLOR.g,
+        colorB: MAGIC_MISSILE_GLOW_COLOR.b,
+      }),
+    );
+    tagDamageMeta(world, missileEid, {
+      origin: SPELL_DAMAGE_OPTIONS.origin,
+      affinity: SPELL_DAMAGE_OPTIONS.affinity,
+      scaleWithPrimary: SPELL_DAMAGE_OPTIONS.scaleWithPrimary,
+      canCrit: SPELL_DAMAGE_OPTIONS.canCrit,
+      fromActiveAbility: SPELL_DAMAGE_OPTIONS.fromActiveAbility,
+    });
+    // This is a spell cast, not a weapon-dispatched attack — explicitly
+    // suppress the `attackerWeaponSkills` fallback so a missile's hit is never
+    // mis-attributed to whichever weapon the player last fired (see
+    // `emitWeaponHitSkillEventsForSource`).
+    world.attackWeaponSkillsByEntity.set(missileEid, null);
+  }
 }
 
 function applyTimedBuff(

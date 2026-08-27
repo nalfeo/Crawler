@@ -51,10 +51,12 @@ export class QueueCommitError extends Error {
   constructor(
     readonly kind:
       | 'ci-refused'
+      | 'queue-frozen'
       | 'destination-conflict'
       | 'invalid-asset-path'
       | 'invalid-annotation'
       | 'invalid-brief-path'
+      | 'generated-deletion-refused'
       | 'git-failed'
       | 'push-retries-exhausted',
     message: string,
@@ -200,6 +202,23 @@ export interface QueueCommitOptions {
 }
 
 const DEFAULT_MAX_ATTEMPTS = 5;
+
+/**
+ * Env flag that FREEZES writes to the mutable `assets/queue` aggregate branch
+ * during the cutover to immutable asset request refs (issue #3205). Set it once
+ * the request writer is deployed: every remaining queue writer then fails with
+ * an actionable message instead of silently extending an aggregate branch that
+ * is about to be archived. Absent/`0`/`false` keeps today's behavior.
+ */
+export const ASSET_QUEUE_FREEZE_ENV = 'SPRITES_ASSET_QUEUE_FROZEN';
+
+/** True when the queue freeze flag is set to an affirmative value. */
+export function isAssetQueueFrozen(env: NodeJS.ProcessEnv): boolean {
+  const raw = env[ASSET_QUEUE_FREEZE_ENV];
+  if (raw === undefined) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== '' && normalized !== '0' && normalized !== 'false';
+}
 
 /**
  * Validate that each asset path is a safe repo-relative POSIX path under the art
@@ -377,6 +396,32 @@ export function isNonFastForwardRejection(stderr: string): boolean {
   );
 }
 
+function generatedDeletionRepairCommand(): string {
+  return (
+    'npm run sprites:repair-queue -- --audit --policy acc25eda-selective-v1 ' +
+    '(then re-run with --apply --expect-main <sha> --expect-queue <sha>)'
+  );
+}
+
+/**
+ * Normal queue ingestion is additive.  A generated deletion in the remote queue
+ * is corruption until a deliberately invoked, source-bound maintenance recovery
+ * proves otherwise; never auto-heal it by rewriting the branch mid-ingestion.
+ */
+export function assertNoGeneratedQueueDeletions(paths: readonly string[]): void {
+  const assetPaths = paths.filter(
+    (path) =>
+      /^public\/assets\/generated\/.+\.png$/u.test(path) ||
+      /^public\/assets\/generated\/entries\/.+\.json$/u.test(path),
+  );
+  if (assetPaths.length === 0) return;
+  throw new QueueCommitError(
+    'generated-deletion-refused',
+    `assets/queue deletes generated asset path(s): ${assetPaths.join(', ')}. ` +
+      `Normal ingestion refuses to publish over a destructive queue. Run ${generatedDeletionRepairCommand()}.`,
+  );
+}
+
 /**
  * Commit `assets`' current live state onto the remote `assets/queue` branch.
  * Never mutates the caller's working branch/index/HEAD.
@@ -393,6 +438,16 @@ export async function runQueueCommit(
       'ci-refused',
       'Per Constitutional §3, queue-commit is local-only: it pushes locally-approved ' +
         'assets to the remote assets/queue branch. Run it on a dev box.',
+    );
+  }
+
+  if (isAssetQueueFrozen(env)) {
+    throw new QueueCommitError(
+      'queue-frozen',
+      `Writes to the mutable assets/queue branch are frozen (${ASSET_QUEUE_FREEZE_ENV} is set). ` +
+        'Publish an immutable asset request instead: `npm run sprites:asset-request -- publish ...` ' +
+        '(scripts/sprites/asset-requests/). The queue branch is read-only during the cutover in ' +
+        'issue #3205 and is archived once its final tip is fully classified.',
     );
   }
 
@@ -467,6 +522,25 @@ export async function runQueueCommit(
             remote,
             `+${baseBranch}:${mainRef}`,
           ]);
+          const deleted = await runGit(deps.exec, repoRoot, [
+            'diff',
+            '--no-renames',
+            '--name-only',
+            '--diff-filter=D',
+            mainRef,
+            baseRef,
+            '--',
+            'public/assets/generated/',
+          ]);
+          if (deleted.code !== 0) {
+            throw new QueueCommitError(
+              'git-failed',
+              `Could not inspect ${queueBranch} for generated-path deletions: ${deleted.stderr || deleted.stdout}`,
+            );
+          }
+          assertNoGeneratedQueueDeletions(
+            deleted.stdout.split(/\r?\n/).filter((path) => path.trim() !== ''),
+          );
         }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
         // never check the queue branch out by name, so there is no

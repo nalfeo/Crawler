@@ -12,7 +12,17 @@ function waypoint(
   y: number,
   kind: QuestWaypoint['kind'] = 'npc',
 ): QuestWaypoint {
-  return { questId, x, y, kind, label: questId };
+  return { questId, x, y, dirX: x, dirY: y, kind, label: questId };
+}
+
+function sharedDirectionWaypoint(
+  questId: string,
+  x: number,
+  y: number,
+  dirX: number,
+  dirY: number,
+): QuestWaypoint {
+  return { questId, x, y, dirX, dirY, kind: 'npc', label: questId };
 }
 
 function distance(a: DirectionArrowState, b: DirectionArrowState): number {
@@ -105,6 +115,19 @@ describe('resolveDirectionArrowStates', () => {
     expect(states.map((state) => state.questId)).toEqual(['far']);
   });
 
+  it('uses the precise target (not the shared room anchor) for visibility and distance', () => {
+    // Two same-room quests share a `dirX/dirY` anchor for angle, but their
+    // precise `x/y` targets differ: one is on-screen, the other isn't. Only
+    // the off-screen one should render, and its label distance must reflect
+    // its own precise position, not the shared anchor.
+    const onScreenPrecise = sharedDirectionWaypoint('near', 1, 1, 100, 0);
+    const offScreenPrecise = sharedDirectionWaypoint('far', 100, 0, 100, 0);
+
+    const states = resolveDirectionArrowStates([onScreenPrecise, offScreenPrecise], 0, 0, 1);
+
+    expect(states.map((state) => state.questId)).toEqual(['far']);
+  });
+
   it('omits an NPC 9 feet away at BASE_ZOOM (zoom=2, the real game zoom on a 1x display)', () => {
     // Regression: camera.zoom = BASE_ZOOM * renderScale; the sync() caller must
     // divide by renderScale so the on-screen check sees design-space pixels.
@@ -186,6 +209,44 @@ describe('resolveDirectionArrowStates', () => {
     );
 
     expect(states).toHaveLength(0);
+  });
+
+  it('keeps an arrow visible when only its label region is reserved', () => {
+    const reserved = [{ x: 1000, y: 130, width: 160, height: 300 }];
+    const states = resolveDirectionArrowStates(
+      [
+        {
+          ...waypoint('ne-label-blocked', 100, -36),
+          label: 'Find the distant Welcome Office proprietor',
+        },
+      ],
+      0,
+      0,
+      1,
+      reserved,
+    );
+    expect(states).toHaveLength(1);
+    const [state] = states;
+    const [region] = reserved;
+    expect(state!.screenX).toBeGreaterThan(region!.x + region!.width);
+  });
+
+  it('fans to a different placement when the baseline label region is reserved', () => {
+    const [baseline] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1);
+    expect(baseline).toBeDefined();
+    const reserved = [
+      {
+        x: baseline!.labelScreenX - baseline!.labelWidth / 2 - 4,
+        y: baseline!.labelScreenY - baseline!.labelHeight / 2 - 4,
+        width: baseline!.labelWidth + 8,
+        height: baseline!.labelHeight + 8,
+      },
+    ];
+    const [state] = resolveDirectionArrowStates([waypoint('east', 100, 0)], 0, 0, 1, reserved);
+
+    expect(state).toBeDefined();
+    expect(state!.screenX).toBe(baseline!.screenX);
+    expect(state!.screenY).not.toBe(baseline!.screenY);
   });
 
   it('keeps a down-left arrow on the left half of the screen', () => {

@@ -8,6 +8,7 @@ import {
 import {
   planObjectiveRoute,
   IN_PLACE_LOCATION,
+  type ObjectiveUtilityWeights,
   type TravelOracle,
 } from '../../src/game/ai/objective-route-planner.js';
 import type { Floor1RunPlannerSnapshot, RunPlannerParams } from '../../src/game/ai/run-planner.js';
@@ -301,6 +302,32 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
     );
   });
 
+  it('still plans a farm leg for an optional purchase the unpaid charm prices out (issue #3275 item 1)', () => {
+    // The player is holding exactly the spell price, but the REQUIRED charm is
+    // still unpaid, so that gold is spoken for. Without the reserve the planner
+    // saw the purchase as already affordable, dropped the farm leg, and routed
+    // the AI to a vendor the purchase code then refused to fund — the wasted
+    // merchant round trip the issue reported.
+    const base = {
+      shopStage: 'awaiting-prize' as const,
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      playerGold: 30,
+      shopkeeperEquipmentCost: 10,
+      spellBrokerIntent: { status: 'farming' as const, cost: 30 },
+    };
+    const reserved = buildFloor1GoalGraph(snapshot(base));
+    expect(reserved.goals.map((goal) => goal.id)).toContain('farm-spell-broker-gold');
+    expect(reserved.meta.get('farm-spell-broker-gold')?.detail).toContain('10 gold remaining');
+
+    // Once the charm is paid for, the same gold is spendable and no farm leg
+    // is needed.
+    const released = buildFloor1GoalGraph(snapshot({ ...base, shopStage: 'complete' }));
+    expect(released.goals.map((goal) => goal.id)).not.toContain('farm-spell-broker-gold');
+  });
+
   it('plans the enabled merchant weapon as one optional bundle and drops it before required completion', () => {
     const snap = snapshot({
       shopStage: 'complete',
@@ -315,6 +342,9 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
       merchantWeaponIntent: { status: 'farming', cost: 20 },
     });
     const rawGraph = buildFloor1GoalGraph(snap);
+    expect(rawGraph.goals.find((goal) => goal.id === 'buy-merchant-weapon')?.utility).toEqual({
+      optimization: 100,
+    });
     const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
     const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
 
@@ -358,6 +388,11 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
       spellBrokerIntent: { status: 'farming', cost: 35 },
     });
     const rawGraph = buildFloor1GoalGraph(snap);
+    expect(rawGraph.goals.find((goal) => goal.id === 'buy-broker-spell')?.utility).toEqual({
+      completion: 40,
+      optimization: 60,
+      exploration: 20,
+    });
     const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
     const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
 
@@ -389,6 +424,81 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
     expect(preserveFloorClear.includedOptionalBundleIds).toEqual([]);
     expect(preserveFloorClear.droppedOptionalBundleIds).toContain('spell-broker-purchase');
     expect(preserveFloorClear.steps.map((step) => step.goalId)).toEqual(['take-stairs']);
+  });
+
+  it('lets persona utility weights pick a DIFFERENT optional bundle on the real Floor 1 graph', () => {
+    // Both optional bundles pending, and only enough budget for one of them.
+    // Which one survives must be decided by the persona's utility weights, not
+    // by bundle count or declaration order — that is the whole point of the
+    // objective-portfolio arm.
+    const snap = snapshot({
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      playerGold: 0,
+      merchantWeaponIntent: { status: 'farming', cost: 20 },
+      spellBrokerIntent: { status: 'farming', cost: 20 },
+    });
+    const graph = applyFloor1WorkCosts(buildFloor1GoalGraph(snap), snap, PARAMS);
+    const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
+
+    const planWith = (weights: ObjectiveUtilityWeights, budgetMs: number) =>
+      planObjectiveRoute({
+        goals: graph.goals,
+        startLocation: PLAYER_START_LOCATION,
+        initialSatisfiedEffects: graph.initialSatisfiedEffects,
+        budgetMs,
+        travelOracle: oracle,
+        utilityWeights: weights,
+      });
+
+    // Budget that admits exactly one of the two equally-priced bundles.
+    const bothBudget = planWith(
+      { completion: 0, optimization: 1, safety: 0, exploration: 0, costPerSecond: 0 },
+      1_000_000,
+    ).totalMs;
+    const oneBundleBudget = Math.floor(
+      (bothBudget +
+        planWith(
+          { completion: 0, optimization: 0, safety: 0, exploration: 0, costPerSecond: 1_000_000 },
+          1_000_000,
+        ).totalMs) /
+        2,
+    );
+
+    // A cohort that only values raw optimization prefers the weapon (100 pts of
+    // `optimization`) over the spell (60 pts).
+    const optimizer = planWith(
+      { completion: 0, optimization: 1, safety: 0, exploration: 0, costPerSecond: 0 },
+      oneBundleBudget,
+    );
+    expect(optimizer.includedOptionalBundleIds).toEqual(['merchant-weapon-purchase']);
+    expect(optimizer.droppedOptionalBundleIds).toEqual(['spell-broker-purchase']);
+
+    // A cohort that values completion/exploration prefers the spell bundle,
+    // which is the only one carrying those dimensions.
+    const completionist = planWith(
+      { completion: 3, optimization: 0, safety: 0, exploration: 3, costPerSecond: 0 },
+      oneBundleBudget,
+    );
+    expect(completionist.includedOptionalBundleIds).toEqual(['spell-broker-purchase']);
+    expect(completionist.droppedOptionalBundleIds).toEqual(['merchant-weapon-purchase']);
+
+    // Whichever optional subset wins, the required floor-clear goal survives in
+    // both plans — utility never trades away a required goal.
+    for (const route of [optimizer, completionist]) {
+      expect(route.steps.map((step) => step.goalId)).toContain('take-stairs');
+      expect(route.requiredOverBudget).toBe(false);
+      // The complete agenda still reports the dropped bundle's goals.
+      expect(route.portfolio.map((entry) => entry.goalId)).toEqual(
+        [...graph.goals].map((goal) => goal.id).sort(),
+      );
+    }
   });
 
   it('omits the spell broker bundle when spellsUnlocked is false (pre-boss-battle)', () => {

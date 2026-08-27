@@ -30,6 +30,10 @@ export const SLICE_A_DECISION_AXES: readonly AIInvariantAxis[] = [
     decisionMode: AIDecisionMode.LEGACY,
     pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   },
+  {
+    decisionMode: AIDecisionMode.OBJECTIVE_PORTFOLIO,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+  },
 ] as const;
 
 export interface AILocomotionInvariantContract {
@@ -89,7 +93,7 @@ export interface AIInvariantCoverageRow {
 }
 
 const ALL_INVARIANTS = Object.values(AI_INVARIANT);
-const ALL_DECISION_MODES = [AIDecisionMode.LEGACY] as const;
+const ALL_DECISION_MODES = [AIDecisionMode.LEGACY, AIDecisionMode.OBJECTIVE_PORTFOLIO] as const;
 
 function sameAxis(left: AIInvariantAxis, right: AIInvariantAxis): boolean {
   return left.decisionMode === right.decisionMode && left.pathingMode === right.pathingMode;

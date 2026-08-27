@@ -1,0 +1,290 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Workflow
+dslVersion: '2.0'
+metadata:
+  name: crawler-feature-pr
+spec:
+  gaggle: crawler
+  displayName: Crawler feature (approved issue to reviewed PR)
+  triggers:
+    - type: manual
+  readiness:
+    maxConcurrentRuns: 1
+  runControls:
+    maxRepasses: 6
+  start: query-backlog
+  tasks:
+    - name: query-backlog
+      type: deterministic
+      goal: Claim one maintainer-approved Crawler feature issue.
+      run:
+        command: ['goobers', 'backlog-query', '--claim']
+      inputs:
+        trustLabel: 'goobers:approved'
+        requireUnassigned: 'true'
+        excludeLabel: 'goobers/status:in-review'
+        maxItems: '1'
+        resultFile: 'claimed-item.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - claim-backlog-items
+      expectedOutputs:
+        - id
+        - title
+        - body
+        - url
+      next: hydrate-requirements
+    - name: hydrate-requirements
+      type: deterministic
+      inputsFrom:
+        issueNumber: query-backlog.id
+        issueTitle: query-backlog.title
+        issueBody: query-backlog.body
+        issueUrl: query-backlog.url
+      goal: Fetch the full claimed issue body into deterministic requirements context.
+      run:
+        script: |
+          set -eu
+          repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          issue="${GOOBERS_INPUT_ISSUENUMBER:-}"
+          title="${GOOBERS_INPUT_ISSUETITLE:-}"
+          url="${GOOBERS_INPUT_ISSUEURL:-}"
+          body="${GOOBERS_INPUT_ISSUEBODY:-}"
+          if [ -z "$issue" ]; then
+            echo "query-backlog did not emit an issue id" >&2
+            exit 1
+          fi
+
+          {
+            echo "# Claimed issue requirements"
+            echo
+            echo "- Repository: ${repo}"
+            echo "- Issue: #${issue} ${title}"
+            echo "- URL: ${url}"
+            echo
+            echo "## Body"
+            echo
+            printf '%s\n' "${body:-"(empty)"}"
+          } > requirements.md
+
+          jq -n \
+            --arg issueNumber "$issue" \
+            --arg issueTitle "$title" \
+            --arg issueUrl "$url" \
+            --rawfile requirements requirements.md \
+            '{
+              schema: "crawler.goobers.requirements/v1",
+              issueNumber: $issueNumber,
+              issueTitle: $issueTitle,
+              issueUrl: $issueUrl,
+              requirementsFile: "requirements.md",
+              requirements: $requirements
+            }' > requirements-result.json
+
+          cat requirements.md
+      inputs:
+        resultFile: 'requirements-result.json'
+      expectedOutputs:
+        - issueNumber
+        - issueTitle
+        - issueUrl
+        - requirementsFile
+      next: plan
+    - name: plan
+      type: agentic
+      goober: producer
+      contextFrom:
+        - hydrate-requirements
+      goal: Plan the claimed Crawler feature without modifying the repository.
+      capabilities:
+        - repo:read
+        - agent:model
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
+      expectedOutputs:
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
+      next: materialize-plan
+    - name: materialize-plan
+      type: deterministic
+      inputsFrom:
+        implementationPlan: plan.implementationPlan
+        hardGate: plan.hardGate
+        verdict: plan.verdict
+        appleEstimate: plan.appleEstimate
+      goal: Materialize the producer scalar outputs into durable implementation context.
+      run:
+        script: |
+          set -eu
+          {
+            echo "# Producer implementation plan"
+            echo
+            echo "- Verdict: ${GOOBERS_INPUT_VERDICT:-}"
+            echo "- Apple estimate: ${GOOBERS_INPUT_APPLEESTIMATE:-}"
+            echo "- Hard gate: ${GOOBERS_INPUT_HARDGATE:-}"
+            echo
+            echo "## Plan"
+            echo
+            printf '%s\n' "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}"
+          } > implementation-plan.md
+
+          jq -n \
+            --arg planFile "implementation-plan.md" \
+            --arg implementationPlan "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}" \
+            --arg hardGate "${GOOBERS_INPUT_HARDGATE:-}" \
+            --arg verdict "${GOOBERS_INPUT_VERDICT:-}" \
+            --arg appleEstimate "${GOOBERS_INPUT_APPLEESTIMATE:-}" \
+            --rawfile materializedPlan implementation-plan.md \
+            '{
+              schema: "crawler.goobers.implementation-plan/v1",
+              planFile: $planFile,
+              implementationPlan: $implementationPlan,
+              hardGate: $hardGate,
+              verdict: $verdict,
+              appleEstimate: $appleEstimate,
+              materializedPlan: $materializedPlan
+            }' > implementation-plan-result.json
+
+          cat implementation-plan.md
+      inputs:
+        resultFile: 'implementation-plan-result.json'
+      expectedOutputs:
+        - planFile
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
+      next: implement
+    - name: implement
+      type: agentic
+      goober: coder
+      contextFrom:
+        - hydrate-requirements
+        - materialize-plan
+        - implement
+        - review
+        - local-ci
+      goal: >-
+        Implement the claimed Crawler feature according to the producer plan,
+        run focused checks, and commit the change. On a repass, address the
+        attached reviewer or local-gate evidence before continuing.
+      capabilities:
+        - repo:push
+        - agent:model
+      policyActions:
+        - modify-repository
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
+      next: review
+    - name: push-branch
+      type: deterministic
+      goal: Push the implemented change as a branch.
+      run:
+        script: |
+          set -eu
+          npm ci
+          goobers push-branch
+      capabilities:
+        - repo:push
+      policyActions:
+        - push-repository-branch
+      next: local-ci
+    - name: local-ci
+      type: deterministic
+      goal: Run the configured Crawler local verification command.
+      run:
+        command: ['npm', 'run', 'verify:fast']
+        syncBase: true
+      next: local-gate
+    - name: open-pr
+      type: deterministic
+      goal: Open the pull request for the pushed branch.
+      run:
+        command: ['goobers', 'open-pr']
+      inputs:
+        resultFile: 'pr-result.json'
+      capabilities:
+        - provider:pr:write
+      policyActions:
+        - open-or-update-pr
+      expectedOutputs:
+        - pull-request-url
+        - prNumber
+        - opened
+      next: pr-opened-gate
+    - name: close-out
+      type: deterministic
+      goal: Mark the source issue as awaiting review and link the PR.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'in-review'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+    - name: park-needs-human
+      type: deterministic
+      goal: Park an issue that requires a maintainer product decision.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'needs-human'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+      next: '@abort'
+    - name: needs-remediation
+      type: deterministic
+      goal: Mark an issue that requires remediation and human escalation.
+      run:
+        command: ['goobers', 'issue-close-out']
+      inputs:
+        status: 'needs-remediation'
+        resultFile: 'issue-close-out-result.json'
+      capabilities:
+        - github:issues:write
+      policyActions:
+        - update-issue
+      next: '@escalate'
+  gates:
+    - name: review
+      evaluator: agentic
+      agentic:
+        goober: reviewer
+        retry:
+          maxAttempts: 2
+          backoffSeconds: 30
+      maxRepasses: 6
+      branches:
+        pass: push-branch
+        needs-changes: implement
+        fail: park-needs-human
+        escalate: needs-remediation
+    - name: local-gate
+      evaluator: automated
+      automated:
+        check: failure-class
+      branches:
+        pass: open-pr
+        fail: implement
+        infra: local-ci
+        escalate: needs-remediation
+    - name: pr-opened-gate
+      evaluator: automated
+      automated:
+        check: output-equals
+        params:
+          key: opened
+          equals: 'true'
+      branches:
+        pass: close-out
+        fail: '@abort'

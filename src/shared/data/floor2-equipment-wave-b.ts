@@ -11,7 +11,7 @@ import {
 } from './floor2-equipment-art.js';
 
 const WAVE_B_WEAPON_COUNT = 25;
-const WAVE_B_NON_WEAPON_COUNT = 20;
+const WAVE_B_NON_WEAPON_COUNT = 18;
 
 export const FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS = [
   'weapon.venom-dirk',
@@ -42,7 +42,6 @@ export const FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS = [
 ] as const satisfies readonly Floor2WeaponStableId[];
 
 export const FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS = [
-  'head.iron-visor',
   'head.quartermaster-cap',
   'head.batfolk-hood',
   'head.alchemist-goggles',
@@ -56,7 +55,6 @@ export const FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS = [
   'feet.iron-greaves',
   'feet.shadow-boots',
   'feet.merchant-sandals',
-  'accessory.blood-vial',
   'accessory.compass-charm',
   'accessory.lucky-feather',
   'accessory.gearwork-locket',
@@ -76,7 +74,6 @@ const MANIFEST_BY_ID: ReadonlyMap<Floor2EquipmentStableId, Floor2EquipmentArtDef
 
 const WAVE_B_DISPLAY_NAME_OVERRIDES: Readonly<Partial<Record<Floor2EquipmentStableId, string>>> =
   Object.freeze({
-    'head.iron-visor': 'Iron Faceplate',
     'feet.iron-greaves': 'Iron Legguards',
   });
 
@@ -97,7 +94,7 @@ function validateWavePartition(): void {
     FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS.length !== WAVE_B_WEAPON_COUNT ||
     FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS.length !== WAVE_B_NON_WEAPON_COUNT
   ) {
-    throw new Error('Floor 2 equipment Wave B must contain exactly 25 weapons and 20 non-weapons');
+    throw new Error('Floor 2 equipment Wave B must contain exactly 25 weapons and 18 non-weapons');
   }
   const canonicalIds = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((entry) =>
     WAVE_B_STABLE_ID_SET.has(entry.stableId),
@@ -355,13 +352,6 @@ interface WaveBNonWeaponInput {
 
 const WAVE_B_NON_WEAPON_INPUTS: readonly WaveBNonWeaponInput[] = [
   {
-    stableId: 'head.iron-visor',
-    slots: ['face'],
-    statBonuses: { armor: 2 },
-    rarity: 'common',
-    weightLb: 2,
-  },
-  {
     stableId: 'head.quartermaster-cap',
     slots: ['head'],
     statBonuses: { armor: 1, charisma: 1 },
@@ -377,7 +367,7 @@ const WAVE_B_NON_WEAPON_INPUTS: readonly WaveBNonWeaponInput[] = [
   },
   {
     stableId: 'head.alchemist-goggles',
-    slots: ['face'],
+    slots: ['head'],
     statBonuses: { armor: 1, intelligence: 1 },
     rarity: 'rare',
     weightLb: 1,
@@ -391,14 +381,14 @@ const WAVE_B_NON_WEAPON_INPUTS: readonly WaveBNonWeaponInput[] = [
   },
   {
     stableId: 'torso.velvet-coat',
-    slots: ['back'],
+    slots: ['chest'],
     statBonuses: { armor: 2, charisma: 1 },
     rarity: 'uncommon',
     weightLb: 4,
   },
   {
     stableId: 'torso.scavenger-harness',
-    slots: ['shoulders'],
+    slots: ['chest'],
     statBonuses: { armor: 3, strength: 1 },
     rarity: 'common',
     weightLb: 7,
@@ -412,14 +402,14 @@ const WAVE_B_NON_WEAPON_INPUTS: readonly WaveBNonWeaponInput[] = [
   },
   {
     stableId: 'hands.duelist-gloves',
-    slots: ['leftWrist', 'rightWrist'],
+    slots: ['gloves'],
     statBonuses: { armor: 1, dexterity: 1 },
     rarity: 'uncommon',
     weightLb: 1,
   },
   {
     stableId: 'hands.thorn-gauntlets',
-    slots: ['leftArm', 'rightArm'],
+    slots: ['gloves'],
     statBonuses: { armor: 3, strength: 1 },
     rarity: 'rare',
     weightLb: 5,
@@ -453,22 +443,15 @@ const WAVE_B_NON_WEAPON_INPUTS: readonly WaveBNonWeaponInput[] = [
     weightLb: 1,
   },
   {
-    stableId: 'accessory.blood-vial',
-    slots: ['belt'],
-    statBonuses: { constitution: 1, hpRegen: 0.25 },
-    rarity: 'uncommon',
-    weightLb: 0.5,
-  },
-  {
     stableId: 'accessory.compass-charm',
-    slots: ['ringRight'],
+    slots: ['ring2'],
     statBonuses: { luck: 1 },
     rarity: 'common',
     weightLb: 0.25,
   },
   {
     stableId: 'accessory.lucky-feather',
-    slots: ['ringLeft'],
+    slots: ['ring1'],
     statBonuses: { luck: 2 },
     rarity: 'rare',
     weightLb: 0.1,

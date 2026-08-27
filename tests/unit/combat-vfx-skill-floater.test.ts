@@ -42,6 +42,25 @@ describe('skill level-up floater rendering', () => {
     vfx.destroy();
   });
 
+  it('renders material-gain floaters through the same non-combat floater pipeline', () => {
+    const { scene, text } = createSceneStub();
+    const vfx = createCombatVfx(scene);
+    const world = createTestWorld();
+
+    world.floaterEvents.push({ kind: 'materialGain', x: 5, y: 7, label: '+1 Iron Ore' });
+    vfx.update(world, 0);
+
+    expect(world.floaterEvents).toHaveLength(0);
+    expect(text).toHaveBeenCalledTimes(1);
+    const [x, y, label, style] = text.mock.calls[0]!;
+    expect(x).toBe(ftToPx(5));
+    expect(y).toBe(ftToPx(7) - 22);
+    expect(label).toBe('+1 Iron Ore');
+    expect((style as { color: string }).color).toBe('#86efac');
+
+    vfx.destroy();
+  });
+
   it('fades and removes the floater after its lifetime', () => {
     const { scene, text } = createSceneStub();
     const vfx = createCombatVfx(scene);

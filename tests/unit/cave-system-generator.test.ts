@@ -20,6 +20,21 @@ function smallConfig(seed: number, widthTiles = 80, heightTiles = 60): MapConfig
   };
 }
 
+function smallFloor3Config(seed: number, widthTiles = 96, heightTiles = 96): MapConfig {
+  return {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: 4,
+    biome: BiomeType.CAVE_SYSTEM_BIOMES,
+    seed,
+    roomWidthRange: [5, 12],
+    roomHeightRange: [5, 12],
+    maxRooms: 20,
+    floorDensity: 0.45,
+    caveSystem: { presentCount: 7, layout: 'floor3-biomes' },
+  };
+}
+
 function generateWithPresent(seed: number, presentCount: number, w = 80, h = 60) {
   const gen = new CaveSystemGenerator({ presentCount });
   return gen.generate(smallConfig(seed, w, h), new SeededRandom(seed));
@@ -111,6 +126,13 @@ describe('CaveSystemGenerator', () => {
     expect(g.name).toBe('CaveSystemGenerator');
   });
 
+  it('registers the floor3 biome-overworld layout', () => {
+    const g = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    expect(g.name).toBe('CaveSystemGenerator');
+    const floor = g.generate(smallFloor3Config(91), new SeededRandom(91));
+    expect(floor.territoryZones).toHaveLength(7);
+  });
+
   it('is deterministic: same seed → identical output', () => {
     const a = generateWithPresent(1234, 4);
     const b = generateWithPresent(1234, 4);
@@ -118,6 +140,72 @@ describe('CaveSystemGenerator', () => {
     expect(a.terrain).toEqual(b.terrain);
     expect(a.roomGraph.getAll().length).toBe(b.roomGraph.getAll().length);
     expect(a.playerSpawn).toEqual(b.playerSpawn);
+  });
+
+  it('builds deterministic floor3 biome territory zones with no Floor 2-only rooms', () => {
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    const config = smallFloor3Config(4321);
+    const left = generator.generate(config, new SeededRandom(4321));
+    const right = generator.generate(config, new SeededRandom(4321));
+
+    expect(left.terrain).toEqual(right.terrain);
+    expect(left.playerSpawn).toEqual(right.playerSpawn);
+    expect(left.territoryZones).toEqual(right.territoryZones);
+    expect(left.territoryZones).toHaveLength(7);
+
+    const rooms = left.roomGraph.getAll();
+    expect(rooms.filter((room) => room.role === RoomRole.SPAWN)).toHaveLength(1);
+    expect(rooms.filter((room) => room.role === RoomRole.TERRITORY)).toHaveLength(7);
+    expect(rooms.filter((room) => room.role === RoomRole.BOSS_DEN)).toHaveLength(0);
+    expect(rooms.filter((room) => room.role === RoomRole.SETTLEMENT)).toHaveLength(0);
+    expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
+  });
+
+  it('enlarges the floor3 spawn/entrance room (issue: too small for the starter-pick UX) while staying reachable', () => {
+    // Regression coverage for the entrance-room-size complaint: bumping
+    // `spawnSizeCandidates` from [6,5,4] to [12,10,8] must hold across seeds
+    // without breaking reachability or the room-role invariants the floor3
+    // biome-overworld layout otherwise guarantees.
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    for (const seed of [4321, 91, 1, 555, 9999]) {
+      const config = smallFloor3Config(seed);
+      const floor = generator.generate(config, new SeededRandom(seed));
+      const spawnRoom = floor.roomGraph.getAll().find((room) => room.role === RoomRole.SPAWN);
+      expect(spawnRoom, `seed=${seed} missing spawn room`).toBeDefined();
+      expect(
+        spawnRoom!.bounds.width,
+        `seed=${seed} spawn room too small (width)`,
+      ).toBeGreaterThanOrEqual(8);
+      expect(
+        spawnRoom!.bounds.height,
+        `seed=${seed} spawn room too small (height)`,
+      ).toBeGreaterThanOrEqual(8);
+
+      const w = floor.config.widthTiles;
+      const h = floor.config.heightTiles;
+      const reached = bfsReachable(floor, floor.playerSpawn.x, floor.playerSpawn.y, w, h);
+      expect(reached[floor.playerSpawn.y * w + floor.playerSpawn.x], `seed=${seed}`).toBe(1);
+      let outsidePassableTileFound = false;
+      for (let y = 0; y < h && !outsidePassableTileFound; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          const insideSpawnRoom =
+            x >= spawnRoom!.bounds.x &&
+            x < spawnRoom!.bounds.x + spawnRoom!.bounds.width &&
+            y >= spawnRoom!.bounds.y &&
+            y < spawnRoom!.bounds.y + spawnRoom!.bounds.height;
+          if (insideSpawnRoom || !floor.tileMap.isPassable(x, y)) continue;
+          outsidePassableTileFound = true;
+          expect(reached[y * w + x], `seed=${seed} unreachable passable tile at (${x},${y})`).toBe(
+            1,
+          );
+          break;
+        }
+      }
+      expect(
+        outsidePassableTileFound,
+        `seed=${seed} expected passable tiles outside spawn room`,
+      ).toBe(true);
+    }
   });
 
   it('produces exactly the required role counts for presentCount=4', () => {

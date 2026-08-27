@@ -1,8 +1,14 @@
-import { addComponent } from 'bitecs';
+import { addComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { SkillHolder } from '../../src/core/components.js';
+import { Homing, SkillHolder } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
-import { statSystem } from '../../src/core/systems/index.js';
+import {
+  collisionSystem,
+  damageSystem,
+  homingSystem,
+  movementSystem,
+  statSystem,
+} from '../../src/core/systems/index.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
@@ -24,6 +30,7 @@ import {
   markSpellBrokerPurchased,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
+import { requiredShopPurchaseReserve } from '../../src/game/ai/required-purchase-reserve.js';
 import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import { MERCHANTS_CHARM_COST } from '../../src/shared/equipmentDefs.js';
@@ -234,6 +241,69 @@ describe('spell skills', () => {
       expect(dropped.purchaseStatus).toBe('abandoned');
     });
 
+    it('keeps an affordable repeat spell returning when the planner drops its bundle', () => {
+      const world = createTestWorld({ seed: 5 });
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      world.playerGold = first.cost;
+      updateSpellBrokerIntent(world, null, 3_000);
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+
+      const repeat = getSpellBrokerIntent(world);
+      world.playerGold = repeat.cost;
+      const droppedPlan: Pick<
+        Floor1RunPlan,
+        'slackMs' | 'droppedOptionalBundleIds' | 'includedOptionalBundleIds'
+      > = {
+        slackMs: 0,
+        droppedOptionalBundleIds: ['spell-broker-purchase'],
+        includedOptionalBundleIds: [],
+      };
+
+      const result = updateSpellBrokerIntent(world, droppedPlan as Floor1RunPlan, 3_000);
+
+      expect(result.purchaseStatus).toBe('returning');
+    });
+
+    it('does not revive an abandoned repeat spell after the final boss is defeated', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      world.playerGold = first.cost;
+      updateSpellBrokerIntent(world, null, 3_000);
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+
+      const repeat = getSpellBrokerIntent(world);
+      world.playerGold = 0;
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+
+      world.floorScenario!.objective.bossBattles.get('staircase')!.defeated = true;
+      world.playerGold = repeat.cost;
+
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+    });
+
+    it('abandons a repeat spell that would consume a pending weapon reserve', () => {
+      const world = createTestWorld({ seed: 13 });
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      markSpellBrokerPurchased(world, first.spellId ?? undefined);
+      const repeat = getSpellBrokerIntent(world);
+
+      const pendingWeaponReserve = 170;
+      world.playerGold = repeat.cost + pendingWeaponReserve - 1;
+
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('returning');
+      expect(updateSpellBrokerIntent(world, null, 3_000, pendingWeaponReserve).purchaseStatus).toBe(
+        'abandoned',
+      );
+    });
+
     it('runs the merchant weapon purchase alongside the broker, behind a gold reserve', () => {
       // These two purchases used to be mutually exclusive, capping a run at one
       // optional pickup no matter how much gold it had. They now run
@@ -413,11 +483,16 @@ describe('spell skills', () => {
       },
     },
     {
-      label: 'magic missile range',
+      label: 'magic missile total damage (count + per-hit scaling)',
       spellId: 'magic-missile' as const,
       read(level: number) {
+        // Magic Missile no longer applies damage instantly at cast time (issue
+        // #3248 — real homing projectiles that arc out then steer onto their
+        // target). Simulate flight to impact and sum the resulting damage, so
+        // this still exercises both per-hit efficacy scaling *and* the extra
+        // missile granted at level breakpoints 5/10/15/20.
         const { world, player } = createSpellEffectWorld('magic-missile', level);
-        const enemy = spawnEnemy(world, 16, 0, 100);
+        const enemy = spawnEnemy(world, 4, 0, 10000);
         applyCatalogEffect(world, {
           sourceType: 'ability',
           sourceId: 'magic-missile:active:0',
@@ -428,7 +503,17 @@ describe('spell skills', () => {
           },
           holderEid: player,
         });
-        return 100 - (world.stores.health.current[enemy] ?? 100);
+        // Step the projectile pipeline until every spawned missile has hit or
+        // despawned (bounded to avoid an infinite loop on regression).
+        for (let frame = 0; frame < 300; frame += 1) {
+          if (query(world.ecs, [Homing]).length === 0) break;
+          world.frameCount += 1;
+          homingSystem(world);
+          movementSystem(world);
+          const collision = collisionSystem(world);
+          damageSystem(world, collision);
+        }
+        return 10000 - (world.stores.health.current[enemy] ?? 10000);
       },
     },
     {
@@ -506,6 +591,83 @@ describe('spell skills', () => {
     expect(read(20)).toBeGreaterThan(read(0));
   });
 
+  it.each([
+    { level: 0, expectedMissiles: 1 },
+    { level: 4, expectedMissiles: 1 },
+    { level: 5, expectedMissiles: 2 },
+    { level: 9, expectedMissiles: 2 },
+    { level: 10, expectedMissiles: 3 },
+    { level: 14, expectedMissiles: 3 },
+    { level: 15, expectedMissiles: 4 },
+    { level: 19, expectedMissiles: 4 },
+    { level: 20, expectedMissiles: 5 },
+  ])(
+    'grants an extra Magic Missile bolt at each of the 5/10/15/20 breakpoints (level $level → $expectedMissiles)',
+    ({ level, expectedMissiles }) => {
+      const { world, player } = createSpellEffectWorld('magic-missile', level);
+      // Enough distinct enemies in range that missile count — not target
+      // availability — is the bottleneck being measured.
+      for (let i = 0; i < 5; i += 1) {
+        spawnEnemy(world, 4 + i, 0, 100);
+      }
+      applyCatalogEffect(world, {
+        sourceType: 'ability',
+        sourceId: 'magic-missile:active:0',
+        effect: {
+          type: 'spell_magic_missile',
+          damage: { base: 10, scalesWithIntelligence: false },
+          rangeTiles: { base: 3, scalesWithIntelligence: false },
+        },
+        holderEid: player,
+      });
+      expect(query(world.ecs, [Homing]).length).toBe(expectedMissiles);
+    },
+  );
+
+  it('redirects every Magic Missile breakpoint entirely into its extra bolt', () => {
+    // Per-hit damage must not advance at level 5: that level's entire gain is
+    // the extra missile, while only non-breakpoint levels improve damage.
+    function perHitDamageAtLevel(level: number): number {
+      const { world, player } = createSpellEffectWorld('magic-missile', level);
+      // Crit is RNG-gated (canCrit:true) and would make a fine-grained ratio
+      // assertion flaky across two independently-seeded casts — zero it out
+      // so per-hit damage is a pure function of the efficacy multiplier.
+      world.stores.effectiveStats.critChance[player] = 0;
+      const enemy = spawnEnemy(world, 4, 0, 1_000_000);
+      applyCatalogEffect(world, {
+        sourceType: 'ability',
+        sourceId: 'magic-missile:active:0',
+        effect: {
+          type: 'spell_magic_missile',
+          // Large base damage keeps per-hit `Math.round` quantization noise
+          // negligible relative to the ~2% linear-scaling delta being tested.
+          damage: { base: 10_000, scalesWithIntelligence: false },
+          rangeTiles: { base: 3, scalesWithIntelligence: false },
+        },
+        holderEid: player,
+      });
+      const missileCount = query(world.ecs, [Homing]).length;
+      for (let frame = 0; frame < 300; frame += 1) {
+        if (query(world.ecs, [Homing]).length === 0) break;
+        world.frameCount += 1;
+        homingSystem(world);
+        movementSystem(world);
+        const collision = collisionSystem(world);
+        damageSystem(world, collision);
+      }
+      const totalDamage = 1_000_000 - (world.stores.health.current[enemy] ?? 1_000_000);
+      return totalDamage / missileCount;
+    }
+
+    const perHitAtFour = perHitDamageAtLevel(4);
+    const perHitAtFive = perHitDamageAtLevel(5);
+    const expectedRatio = 1;
+    const continuousBonusRatio = (1 + 5 * 0.02) / (1 + 4 * 0.02);
+
+    expect(perHitAtFive / perHitAtFour).toBeCloseTo(expectedRatio, 2);
+    expect(perHitAtFive / perHitAtFour).not.toBeCloseTo(continuousBonusRatio, 2);
+  });
+
   it('emits one spell-use event only after successful player activation', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
@@ -570,12 +732,17 @@ describe('autoFloor1ProgressionSystem spell broker purchase', () => {
   it('buys the intended headline spell once it is affordable', () => {
     const { world, player } = setUpBrokerVisit(1);
     const intent = ensureSpellBrokerDecision(world);
-    world.playerGold = intent.cost;
+    // Fund the still-unpaid required shopkeeper charm on top of the spell:
+    // "affordable" means affordable without raiding the reserved charm price
+    // (issue #3275 item 1).
+    const reserve = requiredShopPurchaseReserve(world);
+    expect(reserve).toBeGreaterThan(0);
+    world.playerGold = intent.cost + reserve;
 
     autoFloor1ProgressionSystem(world, player);
 
     expect(getOrCreateAbilityState(world, player).learnedSpellIds).toContain(intent.spellId);
-    expect(world.playerGold).toBe(0);
+    expect(world.playerGold).toBe(reserve);
     expect(getSpellBrokerIntent(world).purchaseCount).toBe(1);
   });
 
@@ -590,7 +757,7 @@ describe('autoFloor1ProgressionSystem spell broker purchase', () => {
     // (not a broker purchase) — this is the one legitimate "unavailable for a
     // non-affordability reason" case, so the fallback is allowed to run.
     memorizeSpell(world, player, intent.spellId!);
-    world.playerGold = cheaper!.cost;
+    world.playerGold = cheaper!.cost + requiredShopPurchaseReserve(world);
 
     autoFloor1ProgressionSystem(world, player);
 

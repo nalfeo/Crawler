@@ -65,9 +65,10 @@ For **≥3🍎 sessions**, also run `npm run apples:record` at handoff (see belo
 ## Review Harness Trigger
 
 The apple estimate you declare also selects how much **pre-PR review** the change
-must receive. This is enforced: the `pr-review-ledger` guard hard-denies
-`create_pull_request` for a code-touching change without a valid **review ledger**
-for its tier.
+must receive. For 1–2🍎 changes, no ledger is required. For ≥3🍎 changes, commit
+and validate a **review ledger** for the tier; a present-but-invalid ledger is a
+hard blocker, while a missing ledger is treated as an artifact gap that the
+authoring or recovery agent must fix rather than escalate by default.
 
 | Apples | Required review stages (recorded in the ledger)                                                                                   |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------- |

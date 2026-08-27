@@ -154,6 +154,18 @@ The exact stage schemas and validator rules live in
 `scripts/agent/review/ledger.mjs` and are documented in the skill's
 [`.github/skills/review-harness/references/ledger-recipes.md`](../../../.github/skills/review-harness/references/ledger-recipes.md).
 
+### Recovery-authored ledgers and review evidence
+
+CI Recovery and PR Shepherd agents may create or repair a missing/incomplete
+ledger when a review thread identifies that gap. This is normal fix work, not a
+human escalation, as long as the PR diff and review context provide enough
+evidence to fill the required stages accurately.
+
+GitHub Copilot PR reviews count as code-review evidence when the ledger records
+the reviewer/model or actor, the findings, how they were resolved or classified,
+and the final thread state. Do not duplicate a completed Copilot review solely to
+make the ledger look self-authored; preserve the actual review provenance.
+
 ## Enforcement
 
 The `pr-review-ledger` guard (`.github/extensions/copilot-guards/guards/pr-review-ledger.mjs`)

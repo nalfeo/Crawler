@@ -397,6 +397,21 @@ export type ShopkeeperStage =
   | 'complete';
 
 /**
+ * Shopkeeper stages in which the (required) charm has NOT been paid for yet.
+ *
+ * Consumers reserve its price so an *optional* purchase can never price out the
+ * required one. The unpaid window starts at `not-met`, not at `ready-to-buy`:
+ * the optional spell broker unlocks the moment the Slime Rat dies, which can
+ * land while the merchant errand is still mid-fetch, and gold spent then is
+ * just as gone by the time the run reaches the counter.
+ */
+export const UNPAID_SHOPKEEPER_STAGES: ReadonlySet<ShopkeeperStage> = new Set<ShopkeeperStage>([
+  'not-met',
+  'awaiting-prize',
+  'ready-to-buy',
+]);
+
+/**
  * Quest-indicator affordance state for a Floor 1 NPC.
  * - `actionable` — talking now can accept or advance a quest (yellow `!`).
  * - `accepted`   — NPC owns an active quest but has nothing new right now (grey `!`).

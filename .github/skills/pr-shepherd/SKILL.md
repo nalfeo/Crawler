@@ -6,13 +6,13 @@ description: >-
   PRs to merge, clear the open-PR queue, or unblock a stuck PR through CI and
   review. Covers discovering in-scope PRs (open, no active session, or owner
   idle >30m), launching one child session per PR in parallel, diagnosing and
-  fixing REAL CI failures, resolving review threads, and arming auto-merge per
-  the repo merge policy.
+  fixing REAL CI failures, resolving review threads, and handing admissible PRs
+  to the merge train per the repo merge policy.
 ---
 
 # PR Shepherd
 
-Take one or more open PRs from "open" to "squash-merged into `main`" without hand-holding: discover what is in scope, fix the real blockers (CI failures, unresolved review threads), and let GitHub auto-merge finish the job. **No human review is required to merge this repo** — never blame a "review block" without explicit proof from `gh pr merge` output.
+Take one or more open PRs from "open" to "squash-merged into `main`" without hand-holding: discover what is in scope, fix the real blockers (CI failures, unresolved review threads), and let the **merge train** finish the job. **The merge train is the only thing that can merge a PR here** — `merge-train` is a required check that only the train writes, so never arm auto-merge and never blame a "review block" (no human review is required in this repo).
 
 This skill has two modes. Pick based on the request:
 
@@ -33,11 +33,13 @@ This skill has two modes. Pick based on the request:
 
 ## Crawler merge facts (authoritative)
 
-- **Merge command:** `gh pr merge <n> --auto --squash`. This enables GitHub auto-merge; it completes on its own once required checks pass. Do **not** run open-ended manual polling/wait loops after arming, but do perform a **bounded final-state verification** (`state=MERGED` and non-null `mergeCommit`) and resolve any blocking review threads before idling.
+- **The merge train merges, not you. Do not arm auto-merge.** `merge-train` is a required status check that only the train's promotion loop ever writes, so `gh pr merge --auto --squash` can never land a PR here — and `reconcile.mjs` calls `disableAutoMerge()` on admission, actively undoing it. Your job is to make the PR _admissible_ (green `ci`, resolved threads, not `BEHIND`/`DIRTY`), then let the train land it. Do **not** run open-ended polling loops; do a **bounded final-state verification** (`state=MERGED` and non-null `mergeCommit`).
+- **How the train lands a PR:** the `merge-train` label is the queue; reconcile runs ~every 30 min; queued PRs are admitted **FIFO** (oldest first); a `behind` head entry is fast-forwarded via update-branch and **holds the FIFO line** while it advances; admitted PRs are batched into a candidate that must pass `Merge Train Validation`; only then does App-bypass promotion write `merge-train` and squash-merge.
+- **A green Merge Train run does not mean anything merged.** Reconcile exits `0` on every stall path. `No admitted PR is ready for candidate construction` alongside a non-empty queue means the head of the queue is stuck and everything behind it is starved — inspect the **oldest** queued PR, not the one you were asked about.
 - **Required checks (GitHub Ruleset 19000576, "Merge Train Required Checks"):** `ci` (the aggregate) **and** `merge-train` for every ordinary actor. Classic branch protection's `required_status_checks` is disabled (only that setting — `required_conversation_resolution` and every other classic setting remain active). The trusted repository App has `bypass_mode: always` on the ruleset and performs all Merge Train promotions directly (sequentially squash-merging each queued PR via API bypass). The `merge-train` check is **written by trusted reconciliation on the PR head immediately before that App-bypass promotion** — it is not a polling target for `gh pr checks` and nothing posts it for ordinary non-App merges. What the batch validation step publishes is `merge-train-candidate` on the current `main` SHA (not on individual PR heads). A PR can show green `ci` and stay `BLOCKED`/`BEHIND` while waiting for the Merge Train to pick it up; once it does, the App writes `merge-train` and promotes atomically. Everything else (`Build` shows "skipping", `PR Ready/Reviewer Guard`, coverage, security advisory) is **non-required** and never blocks merge.
-- **`required_conversation_resolution: true`** — an unresolved review thread blocks auto-merge **even when CI is green**. Always reply to and resolve every review thread.
+- **`required_conversation_resolution: true`** — an unresolved review thread blocks train promotion **even when CI is green**. Always reply to and resolve every review thread.
 - **No required human review.** `reviewDecision` is empty by design. Auto-approve automation satisfies any nominal 1-review rule.
-- **Merge Train disarms auto-merge:** The Merge Train's `reconcile` job (`.github/workflows/merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`** each time it processes a PR in its queue. Expect to re-arm auto-merge repeatedly while a PR sits in the queue — a disarmed PR is normal, not a failure.
+- **Merge Train disarms auto-merge:** The Merge Train's `reconcile` job (`.github/workflows/merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`** each time it processes a PR in its queue. A disarmed PR is normal and expected — do **not** re-arm it; re-arming mid-flight interferes with promotion.
 - **Branch updates:** The `auto-rebase-prs.yml` workflow ("Auto-rebase open PRs") handles rebases. When the Merge Train is enabled it only dispatches targeted conflict-recovery rebases, not a blanket sweep. The Merge Train's own `reconcile` job also updates branches as part of its batch-validation cycle. As a manual fallback, `gh api -X PUT repos/nalfeo/Crawler/pulls/<n>/update-branch` reliably pulls latest `main` into a behind branch.
 - **Squash-merge auto-deletes the branch.** For a stacked PR whose head ref must survive, restore the ref afterward (see playbook).
 
@@ -49,7 +51,7 @@ This skill has two modes. Pick based on the request:
 4. **Diagnose every failing/cancelled check before concluding anything.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`. Confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Distinguish a real failure from a concurrency/timing artifact (see playbook §Diagnose).
 5. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`. Heartbeat the lease after each meaningful activity and at least every 20 minutes.
 6. **Resolve review threads:** read inline comments, address actionable ones in code, then reply to + resolve each thread (conversation-resolution gate).
-7. **Release the lease, then arm auto-merge:** only after blockers are clear, dispatch `operation=lease-release`, verify release, then run `gh pr merge <n> --auto --squash`. If `BLOCKED`, diagnose the actual cause — not "review required". If you stop without handing off active work, release the lease; abandoned leases become takeover-eligible after 30 minutes plus queue grace.
+7. **Release the lease, then hand off to the train:** only after blockers are clear, dispatch `operation=lease-release` and verify release. Ensure the PR carries the `merge-train` label and is not `BEHIND`/`DIRTY`; the train does the merging. Do **not** run `gh pr merge --auto`. If `mergeStateStatus` is `BLOCKED` with green `ci`, that is the normal "waiting for the train" state — diagnose the train (oldest queued PR, reconcile logs), not the PR. If you stop without handing off active work, release the lease; abandoned leases become takeover-eligible after 30 minutes plus queue grace.
 8. **Confirm + record:** verify `state=MERGED`, write a handoff in `docs/knowledge/handoffs/`, and (for **≥3🍎** sessions) score apples via `npm run apples:record`. 1–2🍎 sessions do not require an apples JSON. Commit with a conventional message + the `Co-authored-by: Copilot` trailer. Report the final merge commit.
 
 ## Scope & worktree rules (Mode A)

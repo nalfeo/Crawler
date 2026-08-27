@@ -65,6 +65,15 @@ export enum BiomeType {
   BASIC_UNDERGROUND = 'basic_underground',
   /** Floor 2 — open cavern network with family territories, boss dens, settlement, resource heart. */
   CAVE_SYSTEM = 'cave_system',
+  /** Floor 3 — open cavern overworld partitioned into biome territories, no Floor-2 special rooms. */
+  CAVE_SYSTEM_BIOMES = 'cave_system_biomes',
+  /**
+   * Floor 4 — the authored broadcast venue: one bounded arena with indexed feed
+   * gates, a curtain tunnel, and an adjoining Green Room. Fully authored (the
+   * generator consumes no RNG), because Floor 4's variety comes from its seeded
+   * Headliner card and rotating shops, not from its geometry (ADR 0090).
+   */
+  SHOWCASE_ARENA = 'showcase_arena',
 }
 
 // --- Map Configuration ---
@@ -88,10 +97,12 @@ export interface MapConfig {
   readonly maxRooms: number;
   /** Target percentage of floor tiles (for cellular automata generators). */
   readonly floorDensity: number;
-  /** Optional biome-specific cave-system knobs (Floor 2). */
+  /** Optional biome-specific cave-system knobs (Floor 2 / Floor 3 overworld). */
   readonly caveSystem?: {
-    /** Number of family territories to stamp (3–4). */
+    /** Number of territory regions to stamp (Floor 2 families / Floor 3 biomes). */
     readonly presentCount?: number;
+    /** Generator finishing path. Defaults to `'floor2'`. */
+    readonly layout?: 'floor2' | 'floor3-biomes';
     /** Cellular initial fill ratio (higher = more open caverns). */
     readonly initialFill?: number;
     /** Cellular smoothing passes. */
@@ -145,6 +156,32 @@ export interface MapConfig {
     readonly settlementMinDistanceFromDenTiles?: number;
     /** Minimum settlement distance from the resource-heart center, in tiles. */
     readonly settlementMinDistanceFromResourceHeartTiles?: number;
+  };
+  /**
+   * Optional authored-venue knobs for {@link BiomeType.SHOWCASE_ARENA} (Floor 4).
+   * Every value is a tile count; omitted fields fall back to the generator's
+   * authored defaults. The venue is authored rather than generated, so these
+   * are geometry, not tuning.
+   */
+  readonly showcaseArena?: {
+    /** Arena interior width in tiles. */
+    readonly arenaWidthTiles?: number;
+    /** Arena interior height in tiles. */
+    readonly arenaHeightTiles?: number;
+    /** Green Room interior width in tiles. */
+    readonly greenRoomWidthTiles?: number;
+    /** Green Room interior height in tiles. */
+    readonly greenRoomHeightTiles?: number;
+    /** Curtain-tunnel length in tiles (arena wall → Green Room wall). */
+    readonly tunnelLengthTiles?: number;
+    /** Curtain-tunnel width in tiles. */
+    readonly tunnelWidthTiles?: number;
+    /** Side length of each square pit-fixture pillar, in tiles. */
+    readonly pillarSizeTiles?: number;
+    /** Inset of each pillar from the arena interior corner, in tiles. */
+    readonly pillarInsetTiles?: number;
+    /** Venue outer wall thickness in tiles. */
+    readonly borderThicknessTiles?: number;
   };
 }
 
@@ -229,15 +266,19 @@ export interface RoomData {
   readonly interiorCells?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
 }
 
-// --- Territory Zones (Floor 2 spawn-weighting metadata) ---
+// --- Territory Zones (Floor 2 / Floor 3 spawn-weighting metadata) ---
 
 /**
- * A circular spawn-influence zone attached to a boss den. Used by spawn systems
- * to weight mob placement toward a family's territory. NOT a room — this is purely
- * metadata about where a family's influence extends on the map.
+ * A circular spawn-influence zone attached to a region center. Used by spawn
+ * systems to weight mob placement toward a territory. NOT a room — this is purely
+ * metadata about where a region's influence extends on the map.
  */
 export interface TerritoryZone {
-  /** Index into the present-families roster (matches TERRITORY / BOSS_DEN familyIndex). */
+  /**
+   * Numeric region index. On Floor 2 this matches the present-families roster
+   * (`TERRITORY` / `BOSS_DEN` `familyIndex`). On Floor 3 the same numeric slot
+   * is interpreted as an index into the fixed biome-affinity order.
+   */
   readonly familyIndex: number;
   /** Center tile X of the zone (boss den center). */
   readonly centerX: number;
@@ -245,6 +286,32 @@ export interface TerritoryZone {
   readonly centerY: number;
   /** Influence radius in tiles. */
   readonly radius: number;
+}
+
+// --- Feed Gates (Floor 4 arena spawn-mouth metadata) ---
+
+/** Cardinal edge an arena feed gate sits on. Index order is fixed by {@link ArenaFeedGate}. */
+export type FeedGateDirection = 'north' | 'east' | 'south' | 'west';
+
+/**
+ * A fixed, indexed spawn mouth on an arena's edge (Floor 4, FR3.4/FR9.2). Wave
+ * manifests name a gate by its `index`, so the ORDER is a data contract:
+ * `0 = north, 1 = east, 2 = south, 3 = west`. Reordering the array changes what
+ * every existing seed's wave manifest means and is a breaking change.
+ *
+ * The tile is the first PLAYABLE tile inside the arena at that edge, not a
+ * recessed alcove — a recess would be a dead end and violate the kiting
+ * invariant (FR9.3).
+ */
+export interface ArenaFeedGate {
+  /** Stable gate index used by wave manifests. */
+  readonly index: number;
+  /** Cardinal edge this gate feeds from. */
+  readonly direction: FeedGateDirection;
+  /** Gate tile X (inside the arena). */
+  readonly x: number;
+  /** Gate tile Y (inside the arena). */
+  readonly y: number;
 }
 
 // --- Floor Map (composite output of generation) ---
@@ -262,6 +329,8 @@ export interface FloorMapData {
   readonly visible: Uint8Array;
   /** Player spawn tile position. */
   readonly playerSpawn: { readonly x: number; readonly y: number };
-  /** Floor 2 family spawn-influence zones (empty on other floors). */
+  /** Floor 2 family / Floor 3 biome spawn-influence zones (empty on other floors). */
   readonly territoryZones?: ReadonlyArray<TerritoryZone>;
+  /** Floor 4 arena feed gates in fixed index order (empty on other floors). */
+  readonly feedGates?: ReadonlyArray<ArenaFeedGate>;
 }

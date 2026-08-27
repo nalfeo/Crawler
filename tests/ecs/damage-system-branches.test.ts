@@ -151,7 +151,7 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
     weaponSystem(world);
 
     const bowEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
-      ([, skills]) => skills.typeSkillId === bowDef.weaponTypeSkillId,
+      ([, skills]) => skills?.typeSkillId === bowDef.weaponTypeSkillId,
     );
     expect(bowEntry).toBeDefined();
     const [bowProjectile] = bowEntry!;
@@ -162,7 +162,7 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
 
     const pistolEntry = [...world.attackWeaponSkillsByEntity.entries()].find(
       ([eid, skills]) =>
-        eid !== bowProjectile && skills.typeSkillId === pistolDef.weaponTypeSkillId,
+        eid !== bowProjectile && skills?.typeSkillId === pistolDef.weaponTypeSkillId,
     );
     expect(pistolEntry).toBeDefined();
     const [pistolProjectile] = pistolEntry!;

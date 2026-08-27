@@ -10,6 +10,7 @@ import { DungeonGenerator } from './DungeonGenerator';
 import { CaveGenerator } from './CaveGenerator';
 import { ArenaGenerator } from './ArenaGenerator';
 import { CaveSystemGenerator } from './cave-system';
+import { ShowcaseArenaGenerator } from './ShowcaseArenaGenerator';
 
 const registry = new Map<BiomeType, MapGenerator>();
 
@@ -70,3 +71,12 @@ registerGenerator(BiomeType.TOWN, arenaGen); // placeholder
 // the manifest; today the generator defaults to 4.
 // TODO(floor2-slice-8): wire presentCount + family roster from manifest.
 registerGenerator(BiomeType.CAVE_SYSTEM, new CaveSystemGenerator());
+registerGenerator(
+  BiomeType.CAVE_SYSTEM_BIOMES,
+  new CaveSystemGenerator({ layout: 'floor3-biomes' }),
+);
+
+// Floor 4 — the authored broadcast venue (arena + curtain tunnel + Green Room).
+// Consumes no RNG: the geometry is authored, and only the manifest's
+// `showcaseArena` block moves it.
+registerGenerator(BiomeType.SHOWCASE_ARENA, new ShowcaseArenaGenerator());

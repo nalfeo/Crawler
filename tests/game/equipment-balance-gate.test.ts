@@ -40,21 +40,21 @@ describe('deterministic equipment balance gate', () => {
       'single-target',
       'aoe',
       'cadence/crit',
-      'active ability',
+      'ring equipment',
       'defense/encumbrance',
     ]);
 
     const active = report.builds.find((build) => build.buildId === 'active-ability')!;
     expect(active.levels[1].activeAbilityIds).toHaveLength(0);
     expect(active.levels[1].activeAbilityDps).toBe(0);
-    expect(active.levels[6].activeAbilityIds).toContain('fireball');
-    expect(active.levels[6].activeAbilityDps).toBeGreaterThan(0);
+    expect(active.levels[6].activeAbilityIds).toHaveLength(0);
+    expect(active.levels[6].activeAbilityDps).toBe(0);
     expect(active.levels[6].weaponAndPassiveDps).toBeGreaterThan(0);
     expect(active.levels[11].activeAbilityIds).toContain('fireball');
     expect(active.levels[11].activeAbilityDps).toBeGreaterThan(0);
     expect(active.levels[11].weaponAndPassiveDps).toBeGreaterThan(0);
     const defensive = report.builds.find((build) => build.buildId === 'defensive-encumbrance')!;
-    expect(defensive.levels[11].encumbranceBand).not.toBe('unburdened');
+    expect(defensive.levels[11].encumbranceBand).toBe('unburdened');
   });
 
   it('replays identically and is independent of cohort execution order', () => {

@@ -18,6 +18,7 @@ import type { GameWorld } from '../world.js';
 import { GAME } from '../../shared/constants.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemById } from '../../shared/items.js';
+import { pushFloaterEvent } from '../../shared/floater-events.js';
 import { getHarvestableDefByIndex } from '../../shared/harvestableDefs.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 
@@ -70,6 +71,12 @@ export function harvestSystem(world: GameWorld): void {
             const bag = world.inventories.get(playerEid);
             if (bag) {
               addItem(bag, itemDef.id, 1);
+              pushFloaterEvent(world.floaterEvents, {
+                kind: 'materialGain',
+                x: nx,
+                y: ny,
+                label: `+1 ${itemDef.name}`,
+              });
             }
           }
         }
@@ -80,6 +87,7 @@ export function harvestSystem(world: GameWorld): void {
           x: nx,
           y: ny,
           color: 0x66ffaa,
+          pickupAudioKind: 'material',
         });
 
         clearEntityStores(world, eid);

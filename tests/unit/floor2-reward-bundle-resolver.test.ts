@@ -197,7 +197,7 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
   // present (see `_partitionBases` in floor2-reward-bundle-resolver.ts).
   // Off-affinity weapons are excluded from the non-aligned pool when neutral
   // items exist, so magic players are not flooded with unusable physical weapons.
-  const NEUTRAL_ARMOR_BASE = 'travelers-cloak';
+  const NEUTRAL_ARMOR_BASE = 'accessory.gearwork-locket';
   const THREE_WAY_BASES = [PHYSICAL_BASE_A, MAGIC_BASE_A, NEUTRAL_ARMOR_BASE] as const;
 
   it('getGeneratedEquipmentBaseAffinity classifies weapon bases as physical/magic and armor as neutral', () => {
@@ -257,7 +257,7 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
 describe('_partitionBases — neutral-preference logic', () => {
   const PHYSICAL_BASE = 'weapon.iron-cleaver';
   const MAGIC_BASE = 'weapon.ember-wand';
-  const NEUTRAL_BASE = 'travelers-cloak';
+  const NEUTRAL_BASE = 'accessory.gearwork-locket';
 
   it('when neutral items exist: non-aligned pool contains only neutral items (no off-affinity weapons)', () => {
     // Physical player with physical + magic weapon + neutral armor:
@@ -286,19 +286,19 @@ describe('_partitionBases — neutral-preference logic', () => {
     expect(magicResult.nonAligned).toEqual([PHYSICAL_BASE]);
   });
 
-  it('full Floor 2 pool: both builds get neutral-only non-aligned pool (32 wearables, not weapon-diluted)', () => {
-    // Physical player: non-aligned = all 32 neutral items (not the magic weapons)
+  it('full Floor 2 pool: both builds get neutral-only non-aligned pool (25 wearables, not weapon-diluted)', () => {
+    // Physical player: non-aligned = all 25 neutral items (not the magic weapons)
     const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
     expect(physResult.aligned.length).toBeGreaterThan(0); // has physical weapons
-    expect(physResult.nonAligned.length).toBe(32); // 32 neutral wearables only
+    expect(physResult.nonAligned.length).toBe(25); // 25 neutral wearables only
     for (const id of physResult.nonAligned) {
       expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
     }
 
-    // Magic player: non-aligned = all 32 neutral items (not the physical weapons)
+    // Magic player: non-aligned = all 25 neutral items (not the physical weapons)
     const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
     expect(magicResult.aligned.length).toBeGreaterThan(0); // has magic weapons
-    expect(magicResult.nonAligned.length).toBe(32); // 32 neutral wearables only (no physical weapons)
+    expect(magicResult.nonAligned.length).toBe(25); // 25 neutral wearables only (no physical weapons)
     for (const id of magicResult.nonAligned) {
       expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
     }
@@ -307,9 +307,9 @@ describe('_partitionBases — neutral-preference logic', () => {
   it('non-aligned pool size is equal for both builds on the full Floor 2 pool (horizontal parity)', () => {
     const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
     const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
-    // Both builds now draw from the same 32-item neutral pool on non-aligned draws.
+    // Both builds now draw from the same 25-item neutral pool on non-aligned draws.
     expect(physResult.nonAligned.length).toBe(magicResult.nonAligned.length);
-    expect(physResult.nonAligned.length).toBe(32);
+    expect(physResult.nonAligned.length).toBe(25);
   });
 });
 
@@ -423,7 +423,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // Common draws zero affix effects (RARITY_EFFECT_BUDGET.common === 0), so
     // the generated instance carries no non-armor stats regardless of what
     // the base's catalog definition contains.
-    const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
+    const bases = [...MIXED_BASES, 'accessory.gearwork-locket'] as const;
     for (let seed = 0; seed < 24; seed += 1) {
       const world = createTestWorld({
         seed,
@@ -445,9 +445,9 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // Common or Uncommon. Under the decoupled model:
     //   - Common draws have zero non-armor stats (0-effect budget).
     //   - Uncommon draws have ≥1 affix-driven non-armor stat.
-    // (Rare is intentionally avoided here — travelers-cloak's effect catalog
+    // (Rare is intentionally avoided here — the locket's effect catalog
     // has no legal 2-unit combination.)
-    const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
+    const bases = [...MIXED_BASES, 'accessory.gearwork-locket'] as const;
     let sawTravelersCloakUncommon = false;
     for (let seed = 0; seed < 60; seed += 1) {
       const world = createTestWorld({
@@ -457,7 +457,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       });
       const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier2');
       const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
-      if (instance.baseId === 'travelers-cloak') {
+      if (instance.baseId === 'accessory.gearwork-locket') {
         const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
           ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
         );
@@ -474,7 +474,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(sawTravelersCloakUncommon).toBe(true);
   });
 
-  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity (using actual resolver partitioning)', () => {
+  it('the real 81-item central reward pool keeps both affinity subpools non-empty for every rarity (using actual resolver partitioning)', () => {
     // Under the decoupled model all bases are eligible for Common draws (no
     // base-stat pre-filtering). The full pool must keep both aligned and
     // non-aligned partitions non-empty for every player build and rarity,
@@ -557,30 +557,26 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     nonWeaponSlotsById.set(base.id, base.slots);
   }
 
-  it('validates the real 88-base pool without throwing at module load (already proven by this test file importing successfully) and returns the exact composition report', () => {
+  it('validates the real 81-base pool without throwing at module load (already proven by this test file importing successfully) and returns the exact composition report', () => {
     const report = validateFloor2RewardPoolTierEligibility();
     expect(report).toEqual(
       computeFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_STABLE_IDS, weaponIdSet),
     );
   });
 
-  it('computes the EXACT per-tier/per-rarity composition over the real 88-base pool (deterministic, not sampled)', () => {
-    // Ground truth, computed directly from the real catalogs: 88 total =
-    // 56 weapons + 32 non-weapons. Under the decoupled model, Common excludes
-    // nothing — all 88 bases are eligible at every rarity. 51 physical-aligned
-    // weapon bases, 5 magic-aligned weapon bases, 32 neutral non-weapons.
+  it('computes the exact per-tier/per-rarity composition over the active 81-base pool', () => {
     const report = computeFloor2RewardPoolTierEligibility(
       FLOOR2_REWARD_POOL_STABLE_IDS,
       weaponIdSet,
     );
 
     const fullComposition = {
-      total: 88,
+      total: 81,
       weapons: 56,
-      nonWeapons: 32,
+      nonWeapons: 25,
       physicalAligned: 51,
       magicAligned: 5,
-      neutral: 32,
+      neutral: 25,
     };
 
     expect(report.tier1.common).toEqual(fullComposition);
@@ -590,19 +586,19 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(report.tier3.common).toEqual(fullComposition);
 
     // Sanity cross-checks against the pool's own published totals.
-    expect(FLOOR2_REWARD_POOL_STABLE_IDS.length).toBe(88);
+    expect(FLOOR2_REWARD_POOL_STABLE_IDS.length).toBe(81);
     expect(FLOOR2_REWARD_POOL_WEAPON_IDS.length).toBe(56);
-    expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length).toBe(32);
+    expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length).toBe(25);
   });
 
   it('tier1 (Common-only) covers all non-weapon armor slots — no slot gaps under the decoupled model', () => {
-    // Under the decoupled model, all 32 non-weapon bases are Common-eligible
+    // Under the decoupled model, all active non-weapon bases are Common-eligible
     // (no base-stat pre-filtering). This means all 16 armor slots are
     // reachable from tier1 Common draws, eliminating the historical slot
     // gaps (neck/belt/ringLeft/ringRight) that existed under the old model
     // where 22 accessory-style non-weapons were excluded.
     const allNonWeapons = FLOOR2_REWARD_POOL_STABLE_IDS.filter((id) => !weaponIdSet.has(id));
-    expect(allNonWeapons).toHaveLength(32);
+    expect(allNonWeapons).toHaveLength(25);
 
     const coveredSlots = new Set<string>();
     for (const id of allNonWeapons) {
@@ -718,7 +714,7 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
 
   it('throws Floor2RewardPoolAuthoringError for weapon sub-pool missing one affinity (new category-check error path)', () => {
     // Construct a pool that passes the outer (full-pool) check but fails the
-    // weapon sub-pool check. Use ALL 88 bases — outer check passes because both
+    // weapon sub-pool check. Use all active bases — outer check passes because both
     // physical and magic weapons are present. Supply only PHYSICAL weapon IDs as
     // weaponIds so the weapon sub-pool is physical-only; a magic player then sees
     // an empty weapon-aligned partition. The weapon sub-pool affinity check runs
@@ -829,7 +825,7 @@ describe('categoryFromRoll — exact threshold contract', () => {
 describe('resolveEquipmentRewardBundle — category-weighted selection (weaponIds provided)', () => {
   const WEAPON_ID_SET = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
 
-  it('resolves without error from the full 88-entry pool with category weighting for both affinities', () => {
+  it('resolves without error from the full active pool with category weighting for both affinities', () => {
     for (const [i, weaponDef] of [{ id: 'iron-cleaver' }, { id: 'ember-wand' }].entries()) {
       const world = makeWorld(`category-full-pool-${i}`);
       setActiveWeapon(world, getWeaponDef(weaponDef.id)!);

@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "floor3-ai-personas",
+  "task_title": "Implement Floor 3 Guardian and Support AI personas",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved_with_changes. Adopted: lab must run companionAISystem->enemyAISystem->movementSystem and show movement, SUPPORT is explicitly movement-only/no projectile for this slice, append AI_TYPE ordinals as GUARDIAN=4/SUPPORT=5 preserving LEAPER=3, add behavior-specific enemyAISystem tests, audit AI_TYPE labels/comments, and only extend companion prepass if needed rather than adding a parallel Floor-3 AI stack."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "bc63cdcc4aaa56992557f2212259535b1f3823a3",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly introduces the GUARDIAN and SUPPORT AI personas without regressions. The pathing and legacy fallback logic properly compute standoff and retreat distances, safely handle zero-distance vectors, and cleanly integrate into the existing AI systems. Scope is extremely disciplined, tests provide solid coverage of the movement vectors for the new personas, and the lab is adequately updated to allow runtime validation."
+    }
+  }
+}

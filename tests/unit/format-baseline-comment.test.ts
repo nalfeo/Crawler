@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { formatBaselineComment } from '../../scripts/agent/perf/format-baseline-comment';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const options = {
   baselineBlobUrl: 'https://example.test/baseline.json',
@@ -13,6 +19,36 @@ function entry(day: number, winRate: number) {
     commit: `${suffix}`.repeat(20),
     commitDate: `2026-07-${suffix}T12:00:00Z`,
     winRate,
+  };
+}
+
+function funReport(score: number, pass: boolean) {
+  return {
+    report: {
+      runs: 2,
+      overall_fun_score: score,
+      dimensions: {
+        engagement: 70,
+        challenge_balance: 70,
+        excitement: 70,
+        pacing: 70,
+        competence_growth: 70,
+        choice_depth: 70,
+        run_distinctness: 70,
+      },
+      criteria: {
+        unsafe_combat_uptime: { observed: 0.7 },
+        survivability_variance: { observed: 0.3 },
+        run_variety: { observed: 70 },
+        dopamine_cadence: { observed: 60 },
+        snowball_frequency: { observed: 0.1 },
+        meta_progression: { observed: null },
+        item_viability: { observed: 0.1 },
+        early_death_rate: { observed: 0 },
+      },
+      persona_scores: {},
+      gate: { pass },
+    },
   };
 }
 
@@ -148,5 +184,115 @@ describe('formatBaselineComment', () => {
 
     expect(body).not.toContain('↳');
     expect(body).toContain('📊 Baseline win-rate for this release: **84%** (252/300)');
+  });
+
+  it('renders compatible loot, active-time DPS, fun, and Pages report details', () => {
+    const current = {
+      meta: { commit: 'a'.repeat(40), sweep: { revision: 2 } },
+      winRate: 1,
+      totalWins: 2,
+      totalRuns: 2,
+      legs: { floor1: { winRate: 1, totalWins: 2, totalRuns: 2 } },
+      runs: [
+        {
+          gameTimeMs: 60_000,
+          safeRoomMs: 10_000,
+          combat: { damageDealt: 500 },
+          lootEfficiency: {
+            xpSpawned: 100,
+            xpCollected: 80,
+            goldSpawned: 20,
+            goldCollected: 10,
+          },
+        },
+        {
+          gameTimeMs: 60_000,
+          safeRoomMs: 0,
+          combat: { damageDealt: 600 },
+          lootEfficiency: {
+            xpSpawned: 100,
+            xpCollected: 100,
+            goldSpawned: 20,
+            goldCollected: 20,
+          },
+        },
+      ],
+    };
+    const previous = {
+      ...current,
+      meta: { commit: 'b'.repeat(40), sweep: { revision: 2 } },
+      runs: current.runs.map((run) => ({
+        ...run,
+        combat: { damageDealt: 400 },
+        lootEfficiency: {
+          xpSpawned: 100,
+          xpCollected: 70,
+          goldSpawned: 20,
+          goldCollected: 10,
+        },
+      })),
+    };
+
+    const body = formatBaselineComment(current, [entry(10, 1), entry(9, 0.98)], {
+      ...options,
+      previousBaseline: previous,
+      funReport: funReport(75, true),
+      previousFunReport: funReport(72, true),
+      reportUrl:
+        'https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo',
+    });
+
+    expect(body).toContain('### Loot efficiency');
+    expect(body).toContain('XP **90.0%** (+20.0 pp)');
+    expect(body).toContain('gold **75.0%** (+25.0 pp)');
+    expect(body).toContain('combined **87.5%** (+20.8 pp)');
+    expect(body).toContain('### Damage rate');
+    expect(body).toContain('**600.0 damage / active min** (+163.6)');
+    expect(body).toContain('### Fun evaluation');
+    expect(body).toContain('**75.0/100** · gate **pass** · 2 runs · Δ +3.0 (improving)');
+    expect(body).toContain(
+      '[Release report](https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo)',
+    );
+  });
+
+  it('withholds the fun delta when optional release legs differ', () => {
+    const current = {
+      meta: { commit: 'a'.repeat(40), sweep: { revision: 2 } },
+      winRate: 1,
+      totalWins: 2,
+      totalRuns: 2,
+      legs: {
+        floor1: { winRate: 1, totalWins: 2, totalRuns: 2 },
+        floor2: { winRate: 1, totalWins: 2, totalRuns: 2 },
+      },
+    };
+    const previous = {
+      ...current,
+      meta: { commit: 'b'.repeat(40), sweep: { revision: 2 } },
+      legs: {
+        floor1: { winRate: 1, totalWins: 2, totalRuns: 2 },
+        'floor1-chain': { winRate: 1, totalWins: 2, totalRuns: 2 },
+      },
+    };
+
+    const body = formatBaselineComment(current, [entry(10, 1), entry(9, 1)], {
+      ...options,
+      previousBaseline: previous,
+      funReport: funReport(75, true),
+      previousFunReport: funReport(72, true),
+    });
+
+    expect(body).toContain(
+      '**75.0/100** · gate **pass** · 2 runs · Δ inconclusive (cohort changed)',
+    );
+  });
+
+  it('links the report from the current dev Pages tier', () => {
+    const formatter = readFileSync(
+      path.join(REPO_ROOT, 'scripts/agent/perf/format-baseline-comment.ts'),
+      'utf8',
+    );
+
+    expect(formatter).toContain("new URL('dev/release-baseline-report.html', base)");
   });
 });

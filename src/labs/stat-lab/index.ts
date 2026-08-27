@@ -18,7 +18,7 @@ const LAB_SEED = 42;
 const TEST_ITEM: EquipmentItemDef = {
   id: 'stat-test-ring',
   name: 'Stat Test Ring',
-  slots: ['ringLeft'],
+  slots: ['ring1'],
   rarity: 'uncommon',
   statBonuses: { strength: 5, armor: 3, critChance: 0.1 },
   weightLb: 0.25,

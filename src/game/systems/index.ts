@@ -36,6 +36,12 @@ export {
   _resetEmergentEventScheduler,
 } from './emergentEventSystem.js';
 export {
+  companionAISystem,
+  getCompanionAIDecision,
+  resetCompanionAIState,
+} from './companionAISystem.js';
+export type { CompanionAIDecision, CompanionTargetKind } from './companionAISystem.js';
+export {
   familyFeudSystem,
   getFamilyAIDecision,
   resolveHostileFallback,

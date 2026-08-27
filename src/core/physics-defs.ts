@@ -182,6 +182,13 @@ export const PHYSICS_BODIES = {
    * BOSS_CHEST_RANGE_FT (from bossChestPickupSystem), not this Size value.
    */
   'boss-chest': circle(1.0, 10_000),
+  /**
+   * Floor 3 Companion League Rally Point world-object (spec R5/R11, slice
+   * 6). Immovable, same footprint as a boss chest; the recovery trigger
+   * radius is `tuning.floor3Companion.rallyPointRangeFt` (companionKOSystem),
+   * not this Size value.
+   */
+  'rally-point': circle(1.0, 10_000),
 } as const;
 
 export type PhysicsBodyId = keyof typeof PHYSICS_BODIES;

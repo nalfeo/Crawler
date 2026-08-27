@@ -51,6 +51,53 @@ npm run verify:fast    # typecheck + changed-file lint + changed unit tests (~30
 npm run verify         # full pre-commit chain (add VERIFY_COVERAGE=1 / VERIFY_FULL=1 for coverage / headless)
 ```
 
+## Goobers (agent orchestration)
+
+Crawler uses [Goobers](https://github.com/Agent-Clubhouse/Goobers) to run its manual-only `crawler-feature-pr`
+workflow (producer plan → implementer → independent reviewer → `npm run verify:fast` →
+ready-for-review PR). The versioned desired-state source lives in [`.goobers/`](.goobers/README.md).
+
+To set up a local Goobers instance:
+
+1. Copy `.goobers/instance.yaml.example` to your external instance root (e.g. `C:\goobers\crawler\instance.yaml`)
+   and set `GOOBERS_GITHUB_TOKEN` (a dedicated target-repo token) and
+   `COPILOT_GITHUB_TOKEN` (the Copilot model token) before starting the daemon.
+2. Validate the versioned source before materializing it:
+   ```powershell
+   Q:\src\Goobers\bin\goobers.exe validate --source-tree .goobers
+   ```
+3. Materialize the `crawler` gaggle into your external instance root, then start the Goobers daemon.
+
+Do **not** put tokens, journals, workcopies, scheduler state, or telemetry inside `.goobers/` —
+that directory is source only; runtime state belongs in the external instance root.
+See [`.goobers/README.md`](.goobers/README.md) for the full runtime-boundary and migration notes.
+
+### Running Goobers in GitHub Actions
+
+Two workflows run Goobers on a GitHub-hosted runner without a Go build step — they
+download a pinned, checksum-verified release binary instead:
+
+- [`.github/workflows/goobers-validate.yml`](.github/workflows/goobers-validate.yml) — validates `.goobers/` only.
+- [`.github/workflows/goobers-run.yml`](.github/workflows/goobers-run.yml) — runs
+  `crawler-feature-pr` when an open issue receives `goobers:approved`, hourly at
+  minute 37 to recover missed events or failed eligible work, or by manual
+  dispatch. Goobers bounds plan/implementation/review retries to two attempts
+  and bounds gate repasses to two.
+
+`goobers-run.yml` needs two repository secrets configured (**Settings → Secrets and
+variables → Actions**) before it can succeed:
+
+| Secret                 | Required?    | What it's for                                                                                                                                                                                                                                                                                                     | Where to get it                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COPILOT_GITHUB_TOKEN` | **Required** | Authenticates the GitHub Copilot CLI's model backend for every agentic stage (producer, implementer, reviewer). This is a _separate_ concern from repo access — Copilot's model auth is account-level, not repo-level.                                                                                            | Create a **personal** fine-grained PAT (github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens) with **Account permissions → Copilot Requests: Read-only** and **no repository access at all**. If the token's owning account is outside `nalfeo`'s org, an org owner must approve it first (org Settings → Third-party access). |
+| `GOOBERS_GITHUB_TOKEN` | **Required** | Dedicated repository credential Goobers uses for issue/PR/branch operations (claiming issues, pushing branches, opening PRs). `crawler-feature-pr` declares `repo:push`, which the built-in `GITHUB_TOKEN` cannot safely satisfy because a `GITHUB_TOKEN`-authored push would not trigger the normal CI workflow. | Create a dedicated fine-grained PAT or GitHub App installation token with **Contents, Issues, and Pull requests: Read and write** on this repo only. Do not reuse `CRAWLER_CI_PAT`, which is reserved for CI recovery automation.                                                                                                                                   |
+
+The two tokens are deliberately different credentials with different scopes — never
+reuse one PAT for both. See the Goobers repo's
+[`docs/guides/github-token-scopes.md`](https://github.com/Agent-Clubhouse/Goobers/blob/main/docs/guides/github-token-scopes.md)
+for the full capability-to-token mapping and the cross-org rationale for keeping
+`agent:model` on its own personal token.
+
 ## Logging
 
 Crawler uses [`loglevel`](https://github.com/pimterry/loglevel) with scoped loggers.

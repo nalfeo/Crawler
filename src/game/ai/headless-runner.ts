@@ -28,6 +28,7 @@ import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../sha
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
+import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -48,7 +49,17 @@ import {
   finalizeHeadlessRunData,
   recordRewardEvent,
 } from './headless-run-data.js';
-import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
+import {
+  AI_STATE_NAME,
+  getDecisionEventState,
+  summarizeEvents,
+  type SimEvent,
+} from './event-log.js';
+import {
+  createDenBossTransitionTracker,
+  denBossSnapshotPayload,
+  denBossTransitionPayload,
+} from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
@@ -112,6 +123,14 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
     world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status === 'complete' ||
     readRunState(world) === 'safe_room'
   );
+}
+
+function computeHeadlessFloorProgressScore(world: GameWorld): number {
+  const floor4Arena = world.floorExtendedState?.floor4Arena;
+  if (floor4Arena) {
+    return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
+  }
+  return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
 
 function computeXpOnGroundAtEnd(world: GameWorld): number {
@@ -668,26 +687,27 @@ export async function runHeadless(
   // Select starter weapon when the scenario exposes a loadout phase.
   let starterWeaponIndex = 0;
   const forceWeaponId = config.forceWeaponId;
+  const forceWeaponDef = forceWeaponId !== undefined ? getWeaponDef(forceWeaponId) : undefined;
+  if (forceWeaponId !== undefined && !forceWeaponDef) {
+    throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+  }
   if (scenario.selectLoadoutOption && world.state === 'loadout') {
-    if (forceWeaponId !== undefined && world.floorScenario) {
-      const idx = world.floorScenario.starterChoices.indexOf(forceWeaponId);
-      if (idx === -1) {
-        if (!getWeaponDef(forceWeaponId)) {
-          throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+    if (forceWeaponId !== undefined) {
+      if (world.floorScenario) {
+        const idx = world.floorScenario.starterChoices.indexOf(forceWeaponId);
+        if (idx === -1) {
+          world.floorScenario.starterChoices.push(forceWeaponId);
+          starterWeaponIndex = world.floorScenario.starterChoices.length - 1;
+        } else {
+          starterWeaponIndex = idx;
         }
-        world.floorScenario.starterChoices.push(forceWeaponId);
-        starterWeaponIndex = world.floorScenario.starterChoices.length - 1;
       } else {
-        starterWeaponIndex = idx;
+        equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
       }
     }
     scenario.selectLoadoutOption(world, starterWeaponIndex);
   } else if (forceWeaponId !== undefined) {
-    const weaponDef = getWeaponDef(forceWeaponId);
-    if (!weaponDef) {
-      throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
-    }
-    equipStarterOrFallback(world, forceWeaponId, weaponDef);
+    equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
   }
 
   const startingWeapon: string =
@@ -806,6 +826,15 @@ export async function runHeadless(
   // Event-log / telemetry state
   const recordEvent = config.recordEvent;
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
+  const denSampleInterval = Math.max(1, sampleInterval * 4);
+  // `RunStats.movementQuality` must read the same regardless of the caller's
+  // event-log cadence (`eventSampleInterval` defaults to 15, but e.g. the
+  // win-rate sweep runner passes 60 — see scripts/agent/perf/winrate-sweep.ts).
+  // Its thresholds (`SummaryThresholds`) are absolute ft/duration values, not
+  // cadence-scaled, so movement-quality sampling always uses this fixed
+  // canonical interval, independent of `sampleInterval`.
+  const MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES = 15;
+  const denBossTracker = createDenBossTransitionTracker();
   const navProvider = aiProvider as AIInputProvider & {
     getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
     getTacticalRunDebug?: () => {
@@ -821,6 +850,12 @@ export async function runHeadless(
   let pathTravelAccum = 0;
   let lastSampleX = lastFrameX;
   let lastSampleY = lastFrameY;
+  // Independent accumulator/anchor for the fixed-cadence movement-quality
+  // sampler — kept separate from `pathTravelAccum`/`lastSampleX`/`lastSampleY`
+  // above, which follow the caller-controlled `sampleInterval`.
+  let movementPathTravelAccum = 0;
+  let movementLastSampleX = lastFrameX;
+  let movementLastSampleY = lastFrameY;
   let lastLoggedState: string | null = null;
   const decisionStateCounts: Record<string, number> = {};
   const decisionStateMs: Record<string, number> = {};
@@ -853,6 +888,30 @@ export async function runHeadless(
     };
   };
 
+  // Wasted-motion telemetry (issue #3198): periodic `sample` SimEvents are
+  // always buffered here — regardless of whether an external `recordEvent`
+  // callback is wired via `--event-log` — so `movementQuality` on `RunStats`
+  // is populated for every headless run, not just CLI invocations that pass
+  // the extra flag. Mirrors the `buildAiTelemetry`/`decisionStateCounts`
+  // pattern above.
+  const movementSamples: SimEvent[] = [];
+  const buildMovementQuality = (): NonNullable<RunStats['movementQuality']> => {
+    const summary = summarizeEvents(movementSamples);
+    return {
+      wiggleMs: summary.wiggleMs,
+      wigglePct: summary.wigglePct,
+      idleMs: summary.idleMs,
+      idlePct: summary.idlePct,
+      stuckMs: summary.stuckMs,
+      stuckPct: summary.stuckPct,
+      excludedMs: summary.excludedMs,
+      excludedPct: summary.excludedPct,
+      travelEfficiency: summary.travelEfficiency,
+      totalPathTravel: summary.totalPathTravel,
+      totalNetDisp: summary.totalNetDisp,
+    };
+  };
+
   const collectSkillMetrics = (): SkillRunMetrics => {
     const grants = world.milestoneGrantLog.map((g) => ({ ...g }));
     const uniqueAbilityCount = new Set(grants.map((g) => g.abilityId)).size;
@@ -882,6 +941,12 @@ export async function runHeadless(
     type: SimEvent['type'],
     enemyEids: ArrayLike<number> & Iterable<number>,
     note?: string,
+    // Overrides the pathTravel/netDisp basis used for this event. Defaults to
+    // the caller-controlled `pathTravelAccum`/`lastSampleX`/`lastSampleY`
+    // window; the always-on movement-quality sampler passes its own
+    // independent, fixed-cadence accumulator instead (see
+    // MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES above).
+    movementBasis?: { pathTravel: number; lastX: number; lastY: number },
   ): SimEvent => {
     const decision = aiProvider.getDecision();
     const baseState = AI_STATE_NAME[decision.state] ?? String(decision.state);
@@ -914,7 +979,9 @@ export async function runHeadless(
         ? null
         : (world.floorExtendedState?.ambientEnemyArchetypes?.get(decision.targetEid) ?? null);
     const nav = navProvider.getNavigationDebug?.();
-    const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+    const netDisp = movementBasis
+      ? Math.hypot(px - movementBasis.lastX, py - movementBasis.lastY)
+      : Math.hypot(px - lastSampleX, py - lastSampleY);
     // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
     // when the provider exposes them. Optional-chained + present-only, so a
     // provider WITHOUT these getters (e.g. a scripted/bare provider) emits
@@ -950,7 +1017,7 @@ export async function runHeadless(
       stuckFrames: nav?.stuckFrames ?? 0,
       pathLen: nav?.pathWaypoints.length ?? 0,
       netDisp: Math.round(netDisp),
-      pathTravel: Math.round(pathTravelAccum),
+      pathTravel: Math.round(movementBasis ? movementBasis.pathTravel : pathTravelAccum),
       remainingMs:
         world.floorScenario?.objective.deadlineMs != null
           ? Math.round(world.floorScenario.objective.deadlineMs - world.elapsedMs)
@@ -1035,6 +1102,26 @@ export async function runHeadless(
         world.state = 'playing';
       }
 
+      // Mirror MainGameScene.update()'s loadout modal: a scenario can re-enter
+      // `'loadout'` mid-run (Floor 3 pauses on every Trainer-poach pick, spec
+      // §6.2). The visual game reopens the picker; the headless runner has no
+      // UI, so it resolves each pending choice deterministically with option 0
+      // — exactly like the floor-start starter pick above. Without this the
+      // floor objective tick, which only runs while `'playing'`, would stall
+      // for the rest of the run.
+      if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
+        scenario.selectLoadoutOption(world, 0);
+      }
+
+      // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
+      // the player physically spawns on stage, so sample the phase BEFORE the
+      // step and account for it at the same post-step point as safeRoomSystem.
+      // This intentionally includes the transition frame where COUNTDOWN flips
+      // to WAVES, so the full countdown window is excluded from active time.
+      const floor4CountdownSafeFrame =
+        world.floorId === 'floor4' &&
+        world.floorExtendedState?.floor4Arena?.phase.kind === 'COUNTDOWN';
+
       // Run one simulation step using the canonical preSystems/postSystems derived
       // from createFloorMainSceneOptions() — the same source the visual pipeline
       // uses. This ensures both pipelines share one ordering definition (issue #663).
@@ -1051,7 +1138,7 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
-      if (world.playerInSafeRoom === true) {
+      if (world.playerInSafeRoom === true || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death
@@ -1090,6 +1177,40 @@ export async function runHeadless(
         world.playerInSafeRoom === true ? 0 : GAME.DELTA_MS,
       );
 
+      // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
+      const enemyEids = query(world.ecs, [Enemy]);
+
+      // Shared den-boss diagnostic contract — the SAME tracker the player /
+      // AI Runner session recorder uses, so all three surfaces emit identical
+      // evidence for identical world state. The rollup is accumulated here
+      // whether or not `recordEvent` is wired, so `RunStats` always carries it.
+      // Polled before the win/loss checks below so a lethal frame that also
+      // carries a boss/door transition is still observed — the real-game
+      // recorder ticks before its terminal-state break, and headless must
+      // match it rather than dropping the frame the loop breaks on.
+      const denTransitions = denBossTracker.poll(world, frameCount, playerEid);
+      if (recordEvent) {
+        for (const transition of denTransitions) {
+          const event = buildEvent(
+            'den',
+            enemyEids,
+            `den ${transition.kind}: ${transition.familyId}`,
+          );
+          event.reason = 'den-boss-telemetry';
+          event.denBoss = denBossTransitionPayload(transition);
+          recordEvent(event);
+        }
+        if (frameCount % denSampleInterval === 0) {
+          const denSnapshots = denBossTracker.getSnapshots();
+          if (denSnapshots.length > 0) {
+            const event = buildEvent('den', enemyEids, 'den snapshot');
+            event.reason = 'den-boss-telemetry';
+            event.denBoss = denBossSnapshotPayload(denSnapshots);
+            recordEvent(event);
+          }
+        }
+      }
+
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
       // is skipped and damageTaken under-counts on one-shot deaths).
@@ -1113,8 +1234,6 @@ export async function runHeadless(
         break;
       }
 
-      // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
-      const enemyEids = query(world.ecs, [Enemy]);
       const currentEnemyCount = enemyEids.length;
       if (mergedConfig.settlementReturnRouting) {
         const settlementReturnIntent = getSettlementReturnIntent(world);
@@ -1164,7 +1283,9 @@ export async function runHeadless(
       // Movement accumulation for wiggle/stuck detection.
       const frameX = world.stores.position.x[playerEid] ?? lastFrameX;
       const frameY = world.stores.position.y[playerEid] ?? lastFrameY;
-      pathTravelAccum += Math.hypot(frameX - lastFrameX, frameY - lastFrameY);
+      const frameTravel = Math.hypot(frameX - lastFrameX, frameY - lastFrameY);
+      pathTravelAccum += frameTravel;
+      movementPathTravelAccum += frameTravel;
       lastFrameX = frameX;
       lastFrameY = frameY;
 
@@ -1339,20 +1460,35 @@ export async function runHeadless(
         break;
       }
 
-      // Telemetry: state-change annotations + periodic samples.
+      // Telemetry: state-change annotations (only when an external event
+      // stream is wired) + periodic samples (always, for movementQuality).
       if (recordEvent) {
         const decisionState = getDecisionEventState(aiProvider.getDecision());
         if (decisionState !== lastLoggedState) {
           recordEvent(buildEvent('state', enemyEids, `state -> ${decisionState}`));
           lastLoggedState = decisionState;
         }
-        if (frameCount % sampleInterval === 0) {
-          recordEvent(buildEvent('sample', enemyEids));
-          // Reset per-sample movement window.
-          pathTravelAccum = 0;
-          lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
-          lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
-        }
+      }
+      if (frameCount % sampleInterval === 0) {
+        const sampleEvent = buildEvent('sample', enemyEids);
+        recordEvent?.(sampleEvent);
+        // Reset per-sample movement window (external event-log cadence).
+        pathTravelAccum = 0;
+        lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
+        lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
+      }
+      if (frameCount % MOVEMENT_QUALITY_SAMPLE_INTERVAL_FRAMES === 0) {
+        movementSamples.push(
+          buildEvent('sample', enemyEids, undefined, {
+            pathTravel: movementPathTravelAccum,
+            lastX: movementLastSampleX,
+            lastY: movementLastSampleY,
+          }),
+        );
+        // Reset the independent movement-quality sample window.
+        movementPathTravelAccum = 0;
+        movementLastSampleX = world.stores.position.x[playerEid] ?? movementLastSampleX;
+        movementLastSampleY = world.stores.position.y[playerEid] ?? movementLastSampleY;
       }
 
       // Check for victory (Floor 10+ or Floor 1 completion)
@@ -1360,8 +1496,16 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      if (world.floorScenario?.runSummary?.outcome === 'cleared_floor') {
+      const scenarioOutcome = scenario.getRunOutcome(world);
+      if (
+        scenarioOutcome === 'cleared_floor' ||
+        world.floorScenario?.runSummary?.outcome === 'cleared_floor'
+      ) {
         outcome = 'victory';
+        break;
+      }
+      if (scenarioOutcome === 'failed_timeout') {
+        outcome = 'timeout';
         break;
       }
       if (world.floorId === 'floor2' && hasFloor2ExitCompleted(world)) {
@@ -1386,12 +1530,7 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (
-        stallTracker.update(
-          computeFloorProgressScore(world.questLog.values(), world.playerGold),
-          frameCount,
-        )
-      ) {
+      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),
@@ -1533,8 +1672,11 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      floor4Arena: getFloor4ArenaRunStats(world),
+      denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
+      movementQuality: buildMovementQuality(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
       equipmentPlayability: collectEquipmentPlayabilityMetrics(
         world,
@@ -1638,8 +1780,11 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    floor4Arena: getFloor4ArenaRunStats(world),
+    denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
+    movementQuality: buildMovementQuality(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
     equipmentPlayability: collectEquipmentPlayabilityMetrics(
       world,

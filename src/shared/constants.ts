@@ -54,6 +54,9 @@ export const CORPSE = {
   LINGER_MS: 3_000,
 } as const;
 
+/** Feet inset for baby-slime spawn footprint checks to avoid exact tile-edge false hits. */
+export const MINI_SLIME_COLLISION_EPSILON_FT = 0.001;
+
 export const WeaponType = {
   MELEE: 0,
   RANGED: 1,

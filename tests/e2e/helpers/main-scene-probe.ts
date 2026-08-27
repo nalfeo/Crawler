@@ -16,7 +16,9 @@ import type {
   BossIntroProbeState,
   CarriedWeaponRenderInfo,
   HarvestableRenderSummary,
+  PropRenderSize,
   FamilyHudProbeState,
+  Floor3PartyHudProbeState,
   FloatingTextProbe,
   ItemIconRenderInfo,
   MainSceneProbeApi,
@@ -28,10 +30,13 @@ import type {
   SafeAreaLayoutProbe,
   TerrainRenderSummary,
   DoorRenderSummary,
+  StaircaseMarkerRenderInfo,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
+import type { CombatEvent } from '../../../src/shared/combat-events.js';
+import type { VfxEvent } from '../../../src/shared/vfx-events.js';
 
 declare global {
   interface Window {
@@ -83,18 +88,24 @@ export const mainSceneProbe = {
     page.evaluate((value) => window.__mainSceneProbe!.setSafeContext(value), enabled),
   unlockSafeRoomSurfaces: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.unlockSafeRoomSurfaces()),
+  setEquipmentPanelUnlocked: (page: Page, unlocked: boolean): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.setEquipmentPanelUnlocked(value), unlocked),
   resolveLoadout: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.resolveLoadout()),
   activateFamilyRelationships: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
   getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
+  getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
   startStaircaseBossBattle: (page: Page): Promise<number> =>
     page.evaluate(() => window.__mainSceneProbe!.startStaircaseBossBattle()),
   primeFloor1StairTransition: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.primeFloor1StairTransition()),
+  primeFloor2StairTransition: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor2StairTransition()),
   getBossIntroState: (page: Page): Promise<BossIntroProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getBossIntroState()),
   scrollBossIntro: (page: Page, delta: number): Promise<void> =>
@@ -103,6 +114,36 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.dismissBossIntro()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
+  getModalPickerContent: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
+  primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
+    page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
+  primeShopkeeperPostQuestStock: (
+    page: Page,
+    gold: number,
+    ownFirstOffer = false,
+  ): Promise<{
+    readonly position: ProbePoint;
+    readonly firstItemId: string | null;
+    readonly stockCount: number;
+  } | null> =>
+    page.evaluate(
+      ({ value, own }) => window.__mainSceneProbe!.primeShopkeeperPostQuestStock(value, own),
+      { value: gold, own: ownFirstOffer },
+    ),
+  primeSpellBrokerStock: (
+    page: Page,
+    gold: number,
+    learnFirstOffer = false,
+  ): Promise<{
+    readonly position: ProbePoint;
+    readonly firstSpellId: string | null;
+    readonly offerCount: number;
+  } | null> =>
+    page.evaluate(
+      ({ value, learn }) => window.__mainSceneProbe!.primeSpellBrokerStock(value, learn),
+      { value: gold, learn: learnFirstOffer },
+    ),
   getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
     page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
@@ -122,16 +163,26 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.primeNpcInteractionTarget()),
   primeQuestWaypointArrows: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.primeQuestWaypointArrows()),
-  primeCrowdedDownRightQuestWaypointArrows: (page: Page): Promise<void> =>
-    page.evaluate(() => window.__mainSceneProbe!.primeCrowdedDownRightQuestWaypointArrows()),
+  primeSameRoomQuestWaypointArrows: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeSameRoomQuestWaypointArrows()),
+  primeMerchantAndSpellBrokerQuestArrows: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeMerchantAndSpellBrokerQuestArrows()),
   getVisibleQuestArrowIds: (page: Page): Promise<string[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowIds()),
   getVisibleQuestArrowStates: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowStates()),
+  getMinimapRadarWaypointArrowIds: (page: Page): Promise<string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getMinimapRadarWaypointArrowIds()),
+  getMinimapOverlayWaypointArrowIds: (page: Page): Promise<string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getMinimapOverlayWaypointArrowIds()),
+  getMinimapOverlayWaypointDotIds: (page: Page): Promise<string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getMinimapOverlayWaypointDotIds()),
   requestAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestAchievementsToggle()),
   requestQuartermasterToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
+  getIssueButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getIssueButtonBounds()),
   requestInventoryToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
   requestEquipToggle: (page: Page): Promise<void> =>
@@ -151,6 +202,10 @@ export const mainSceneProbe = {
     ),
   equipPlayerActiveAbility: (page: Page, abilityId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipPlayerActiveAbility(id), abilityId),
+  primeMagicMissileLightProbe: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeMagicMissileLightProbe()),
+  getMagicMissileLightProbe: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getMagicMissileLightProbe()),
   getAbilityFloaters: (
     page: Page,
   ): Promise<
@@ -173,6 +228,10 @@ export const mainSceneProbe = {
     ),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
+  tapFloor3RosterButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3RosterButton()),
+  tapFloor3CommandButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3CommandButton()),
   tapQuartermasterButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapQuartermasterButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
@@ -189,6 +248,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getNpcRenderInfo()),
   getHarvestableRenderSummary: (page: Page): Promise<HarvestableRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
+  getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
@@ -197,6 +258,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getDoorRenderSummary()),
+  getStaircaseMarkerRenderInfo: (page: Page): Promise<StaircaseMarkerRenderInfo> =>
+    page.evaluate(() => window.__mainSceneProbe!.getStaircaseMarkerRenderInfo()),
   claimAchievementReward: (
     page: Page,
     achievementId: string,
@@ -213,6 +276,40 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.resumePendingRewardPresentations()),
   getRewardOpeningState: (page: Page): Promise<RewardOpeningProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardOpeningState()),
+  advanceRewardOpeningRenderFrames: (
+    page: Page,
+    frames: number,
+    deltaMs = 16,
+  ): Promise<RewardOpeningProbeState> =>
+    page.evaluate(
+      ({ frameCount, frameDeltaMs }) =>
+        window.__mainSceneProbe!.advanceRewardOpeningRenderFrames(frameCount, frameDeltaMs),
+      { frameCount: frames, frameDeltaMs: deltaMs },
+    ),
+  sampleAutoDrivenRewardOpeningRenderFrames: (
+    page: Page,
+    firstFrames: number,
+    nextFrames: number,
+    deltaMs = 16,
+  ): Promise<{
+    readonly first: RewardOpeningProbeState;
+    readonly next: RewardOpeningProbeState;
+  }> =>
+    page.evaluate(
+      ({ firstFrameCount, nextFrameCount, frameDeltaMs }) =>
+        window.__mainSceneProbe!.sampleAutoDrivenRewardOpeningRenderFrames(
+          firstFrameCount,
+          nextFrameCount,
+          frameDeltaMs,
+        ),
+      {
+        firstFrameCount: firstFrames,
+        nextFrameCount: nextFrames,
+        frameDeltaMs: deltaMs,
+      },
+    ),
+  isRewardOpeningAutoDrivenForProbe: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.isRewardOpeningAutoDrivenForProbe()),
   tickRewardOpening: (page: Page, deltaMs: number): Promise<void> =>
     page.evaluate((ms) => window.__mainSceneProbe!.tickRewardOpening(ms), deltaMs),
   skipRewardOpening: (page: Page): Promise<void> =>
@@ -297,6 +394,18 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
+  getCombatAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCombatAudioCueLog()),
+  clearCombatAudioCueLog: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.clearCombatAudioCueLog()),
+  pushTestCombatEvent: (
+    page: Page,
+    event: Partial<CombatEvent> & Pick<CombatEvent, 'type'>,
+  ): Promise<void> => page.evaluate((e) => window.__mainSceneProbe!.pushTestCombatEvent(e), event),
+  pushTestVfxEvent: (
+    page: Page,
+    event: Partial<VfxEvent> & Pick<VfxEvent, 'kind'>,
+  ): Promise<void> => page.evaluate((e) => window.__mainSceneProbe!.pushTestVfxEvent(e), event),
   getVisibleFloatingTexts: (page: Page, prefix = ''): Promise<readonly FloatingTextProbe[]> =>
     page.evaluate((value) => window.__mainSceneProbe!.getVisibleFloatingTexts(value), prefix),
 };

@@ -10,7 +10,10 @@ import {
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
-import { getScenarioDefinition } from '../game/scenarioDefinitions.js';
+import {
+  getScenarioDefinition,
+  getScenarioPresentationContract,
+} from '../game/scenarioDefinitions.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
@@ -25,6 +28,7 @@ import {
   mobAbilitySystem,
   type GameWorld,
 } from '../core/index.js';
+import { createRunEventCollector } from '../core/run-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
@@ -32,7 +36,7 @@ import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
-function defaultRunBundleSink(bundle: RunBundle): void {
+function defaultRunBundleSink(bundle: RunBundle): Promise<unknown> | void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -46,7 +50,7 @@ function defaultRunBundleSink(bundle: RunBundle): void {
     }
     return;
   }
-  void submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
+  return submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
     if (typeof console !== 'undefined') {
       console.warn('Silent run-bundle upload failed', error);
     }
@@ -60,7 +64,7 @@ function defaultRunBundleSink(bundle: RunBundle): void {
 export function createFloorMainSceneOptions(
   floorId: string = 'floor1',
   initializationOptions?: ScenarioInitializationOptions,
-  onRunBundle?: (bundle: RunBundle) => void,
+  onRunBundle?: (bundle: RunBundle) => Promise<unknown> | void,
 ): FloorMainSceneOptions {
   const scenario = getScenarioDefinition(floorId);
   const manifest = getFloorManifest(floorId);
@@ -77,11 +81,18 @@ export function createFloorMainSceneOptions(
       createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
     runStatsFactory: collectHumanRunStats,
     onRunBundle: onRunBundle ?? defaultRunBundleSink,
-    configureWorld: (world: GameWorld, playerEid: number) =>
-      scenario.configureWorld(world, playerEid, initializationOptions),
+    configureWorld: (world: GameWorld, playerEid: number) => {
+      world.runEvents ??= createRunEventCollector();
+      scenario.configureWorld(world, playerEid, initializationOptions);
+    },
     selectLoadoutOption: scenario.selectLoadoutOption,
-    director: scenario.director,
     onStairDescend: scenario.onStairDescend,
+    // Normalized presentation contract for this scenario (terminal outcome,
+    // stair marker/proximity, stair-descend confirmation copy, ordered
+    // Director milestones, completion-variant copy). Both sides name the
+    // shape from `src/shared/scenario-presentation.ts`, so the engine reads
+    // it without ever importing `src/game/`.
+    scenarioPresentation: getScenarioPresentationContract(scenario),
     onFloor1Cleared: nextFloorId
       ? (world: GameWorld, playerEid: number) => {
           const playerCarryover = capturePlayerCarryover(world, playerEid);

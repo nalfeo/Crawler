@@ -482,6 +482,67 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(world.floorScenario.objective.staircaseDiscovered).toBe(true);
   });
 
+  it('does not use collapse urgency to descend outside the marker radius', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 120;
+    world.stores.position.y[player] = 100;
+    world.elapsedMs = 599_999;
+    world.state = 'playing';
+    world.floorScenario = makeFloor1({
+      deadlineMs: 600_000,
+      markerRadiusFt: 4,
+      staircaseUnlocked: true,
+      staircaseDiscovered: false,
+      staircaseSpawned: true,
+      staircasePos: { x: 100, y: 100 },
+    });
+
+    autoFloor1ProgressionSystem(world, player, {
+      ...fakeProvider(decision({ state: AIState.EXPLORE })),
+      resolveFloor1PlanningDeadlineMs: () => world.elapsedMs,
+    });
+
+    expect(world.floorScenario.objective.staircaseDiscovered).toBe(false);
+    expect(world.state).toBe('playing');
+  });
+
+  describe('post-boss stair descend (issue #3449)', () => {
+    function stairWorld(): { world: GameWorld; player: number } {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.state = 'playing';
+      world.stores.position.x[player] = 100;
+      world.stores.position.y[player] = 100;
+      world.floorScenario = makeFloor1({
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircaseSpawned: true,
+        staircasePos: { x: 100, y: 100 },
+      });
+      return { world, player };
+    }
+
+    // Regression: the provider's live goal-graph planner always steers to the
+    // unlocked staircase, so a driver-side hold here parks the run ON the exit
+    // marker (observed: 330s of standing still on seed 11 / throwing-knife).
+    // The driver must confirm the descend as soon as the AI stands on an
+    // unlocked staircase with nothing left to collect.
+    it('descends on arrival at the unlocked staircase', () => {
+      const { world, player } = stairWorld();
+      const currentDecision = decision({ state: AIState.EXPLORE });
+      const provider: AIInputProvider = {
+        poll: () => {},
+        getDecision: () => currentDecision,
+        reset: () => {},
+      };
+
+      autoFloor1ProgressionSystem(world, player, provider);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
+    });
+  });
+
   describe('loot-aware stair-descend deferral', () => {
     function stairWorld() {
       const world = createTestWorld();
@@ -527,8 +588,9 @@ describe('autoFloor1ProgressionSystem', () => {
     it('spends the deferral budget only while standing on the staircase', () => {
       const { world, player } = stairWorld();
       spawnXpGem(world, 140, 140, 5);
-      // Far from the staircase: the walk there must not drain the budget.
+      // Far from the staircase: the walk there must not open the window.
       for (let i = 0; i < MAX_STAIR_DESCEND_DEFER_FRAMES + 10; i += 1) {
+        world.frameCount += 1;
         autoFloor1ProgressionSystem(world, player);
       }
       expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
@@ -548,6 +610,7 @@ describe('autoFloor1ProgressionSystem', () => {
 
       for (let i = 0; i < MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
         autoFloor1ProgressionSystem(world, player);
+        world.frameCount += 1;
       }
       expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
 
@@ -567,12 +630,44 @@ describe('autoFloor1ProgressionSystem', () => {
       expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(false);
 
       for (let i = 1; i < MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
+        world.frameCount += 1;
         autoFloor2ProgressionSystem(world, player);
       }
       expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(false);
 
+      world.frameCount += 1;
       autoFloor2ProgressionSystem(world, player);
       expect(world.floorExtendedState!.familyState!.staircaseDiscovered).toBe(true);
+    });
+
+    // Regression (issue #3449): the pre-exit loot sweep is unbounded in range,
+    // so the AI walks back off the marker toward loot it may never reach and
+    // returns seconds later. A window charged only on marker frames therefore
+    // stretched a 30 s hold into minutes of bouncing at the exit. The window is
+    // anchored to the first arrival instead, so wandering cannot extend it.
+    it('closes the deferral window on elapsed frames even when the AI leaves the marker', () => {
+      const { world, player } = stairWorld();
+      standOnStairs(world, player);
+      spawnXpGem(world, 5_000, 5_000, 5);
+
+      autoFloor1ProgressionSystem(world, player);
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      // The AI chases unreachable loot for the whole window, so the driver is
+      // never even consulted while it is away from the staircase.
+      world.stores.position.x[player] = 4_000;
+      world.stores.position.y[player] = 4_000;
+      for (let i = 0; i < MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
+        world.frameCount += 1;
+        autoFloor1ProgressionSystem(world, player);
+      }
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(false);
+
+      // Back on the marker with the loot still uncollected: it must leave now.
+      standOnStairs(world, player);
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
     });
 
     it('keeps Floor 1 and Floor 2 deferral budgets independent', () => {
@@ -582,6 +677,7 @@ describe('autoFloor1ProgressionSystem', () => {
       spawnXpGem(world, 5_000, 5_000, 5);
       for (let i = 0; i <= MAX_STAIR_DESCEND_DEFER_FRAMES; i += 1) {
         autoFloor1ProgressionSystem(world, player);
+        world.frameCount += 1;
       }
       expect(world.floorScenario!.objective.staircaseDiscovered).toBe(true);
 
@@ -635,7 +731,7 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(hasItem(swordBag, 'signet-of-focus')).toBe(true);
     expect(hasItem(fireballBag, 'signet-of-focus')).toBe(false);
     const fireballEquipment = getEquipmentState(fireballWorld, fireballPlayer)!;
-    expect(fireballEquipment.instances.get(fireballEquipment.equipped.ringRight!)?.def.id).toBe(
+    expect(fireballEquipment.instances.get(fireballEquipment.equipped.ring2!)?.def.id).toBe(
       'signet-of-focus',
     );
   });
@@ -684,7 +780,7 @@ describe('autoFloor1ProgressionSystem', () => {
 
     expect(hasItem(bag, 'signet-of-focus')).toBe(false);
     const equipment = getEquipmentState(world, player)!;
-    expect(equipment.instances.get(equipment.equipped.ringRight!)?.def.id).toBe('signet-of-focus');
+    expect(equipment.instances.get(equipment.equipped.ring2!)?.def.id).toBe('signet-of-focus');
   });
 
   it("still equips the Merchant's Charm even when persona scoring is zero", () => {

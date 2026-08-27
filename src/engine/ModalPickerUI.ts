@@ -39,6 +39,20 @@ export interface ModalPickerOpenHooks<TId extends string = string> {
   readonly onSelectionChange?: (event: ModalPickerSelectionChangeEvent<TId>) => void;
 }
 
+/** Read-only view of the text a modal is currently presenting. */
+export interface ModalPickerContentSnapshot {
+  readonly kind: string | null;
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly body: string | null;
+  readonly options: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly description: string | null;
+    readonly disabled: boolean;
+  }>;
+}
+
 export interface ModalPickerLayoutSnapshot {
   readonly panel: ScreenBounds;
   readonly title: ScreenBounds;
@@ -111,11 +125,17 @@ const LABEL_TOP = 8;
 const DESCRIPTION_TOP = 30;
 const ROW_TEXT_BOTTOM_PADDING = 8;
 
-export function createModalPickerUI(scene: Phaser.Scene): {
+export function createModalPickerUI(
+  scene: Phaser.Scene,
+  depth = 5000,
+): {
   open<TId extends string>(config: ModalPickerConfig<TId>, hooks?: ModalPickerOpenHooks<TId>): void;
+  handleKeyDown(event: KeyboardEvent): void;
   close(): void;
   isOpen(): boolean;
   getKind(): string | null;
+  /** Content currently rendered by the real modal (automation/e2e read-only). */
+  getContentSnapshot(): ModalPickerContentSnapshot | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
   destroy(): void;
 } {
@@ -147,7 +167,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   ): Phaser.GameObjects.Text =>
     scene.add.text(snap(x), snap(y), text, style).setResolution(effectiveResolution);
 
-  const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
+  const overlay = scene.add.container(0, 0).setDepth(depth).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
     .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);
@@ -246,9 +266,22 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
   };
 
+  // Scene shutdown can tear down `backdrop.scene` before this module's own
+  // `shutdown`/`destroy` handlers run `close()` → `rerender()`. Phaser's
+  // `disableInteractive()` unconditionally dereferences `this.scene.sys`, so
+  // it throws once the backdrop is scene-less mid-teardown; skip the input
+  // call in that case since there's no input plugin left to detach from.
+  const disableBackdropInteractive = (): void => {
+    backdrop.removeAllListeners('pointerdown');
+    if (backdrop.scene) {
+      backdrop.disableInteractive();
+    }
+  };
+
   const rerender = (): void => {
     if (!state) {
       overlay.setVisible(false);
+      disableBackdropInteractive();
       clearEntries();
       clearTextNodes();
       return;
@@ -256,6 +289,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
     clearEntries();
     clearTextNodes();
+    backdrop.removeAllListeners('pointerdown');
 
     // Refresh responsive scale before laying out (handles resize/rotation).
     uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
@@ -263,6 +297,35 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     overlay.setScale(uiScale);
 
     layoutPanel();
+    if (state.allowCancel) {
+      backdrop.setInteractive();
+      backdrop.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (!state) {
+          return;
+        }
+        const pointerInOverlay = overlay.getLocalPoint(
+          pointer.x,
+          pointer.y,
+          undefined,
+          pointer.camera,
+        );
+        const isInsidePanel =
+          pointerInOverlay.x >= panel.x &&
+          pointerInOverlay.x <= panel.x + panel.width &&
+          pointerInOverlay.y >= panel.y &&
+          pointerInOverlay.y <= panel.y + panel.height;
+        if (isInsidePanel) {
+          return;
+        }
+        const next = cancelModalPickerSelection(state);
+        if (next.status === 'cancelled') {
+          hooks?.onCancel?.({ source: 'pointer' });
+          close();
+        }
+      });
+    } else {
+      disableBackdropInteractive();
+    }
     const panelX = panel.x;
     const panelY = panel.y;
     let cursorY = panelY + PANEL_PADDING;
@@ -371,7 +434,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
-        ? 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
+        ? 'Tap to select  ·  Tap outside: Cancel  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
         : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
       FOOTER_STYLE,
     );
@@ -478,12 +541,28 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       hooks = nextHooks as ModalPickerOpenHooks<string> | undefined;
       rerender();
     },
+    handleKeyDown: onKeyDown,
     close,
     isOpen(): boolean {
       return state !== null && state.status === 'open';
     },
     getKind(): string | null {
       return kind;
+    },
+    getContentSnapshot(): ModalPickerContentSnapshot | null {
+      if (!state) return null;
+      return {
+        kind: state.kind ?? null,
+        title: state.title,
+        subtitle: state.subtitle ?? null,
+        body: state.body ?? null,
+        options: state.options.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description ?? null,
+          disabled: option.disabled === true,
+        })),
+      };
     },
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null {
       if (!state || !titleNode || !footerNode) {

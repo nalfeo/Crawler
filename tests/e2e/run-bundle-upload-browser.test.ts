@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createConnection } from 'node:net';
 import { resolve } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
@@ -13,26 +12,25 @@ let server: ChildProcess | null = null;
 let browser: Browser;
 let page: Page;
 
-function waitForPort(port: number, timeoutMs = 60_000): Promise<void> {
-  return new Promise((resolveReady, rejectReady) => {
-    const deadline = Date.now() + timeoutMs;
-    const attempt = () => {
-      const socket = createConnection({ port, host: '127.0.0.1' });
-      socket.once('connect', () => {
-        socket.destroy();
-        resolveReady();
-      });
-      socket.once('error', () => {
-        socket.destroy();
-        if (Date.now() > deadline) {
-          rejectReady(new Error(`Timed out waiting for Vite on port ${port}`));
-        } else {
-          setTimeout(attempt, 100);
-        }
-      });
-    };
-    attempt();
-  });
+// A bare TCP connect can succeed the instant Vite's listening socket is bound
+// (accepted into the kernel backlog) even if the dev-server process then
+// crashes or is still mid-startup, leaving `page.goto` to race an
+// ERR_CONNECTION_REFUSED a few milliseconds later. Probe with an actual HTTP
+// request instead so readiness means "serving", not just "listening".
+function waitForServerReady(url: string, timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const attempt = async (): Promise<void> => {
+    try {
+      await fetch(url);
+    } catch {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for Vite to serve ${url}`);
+      }
+      await new Promise((r) => setTimeout(r, 100));
+      return attempt();
+    }
+  };
+  return attempt();
 }
 
 describe('run bundle upload browser configuration', () => {
@@ -47,7 +45,7 @@ describe('run bundle upload browser configuration', () => {
         stdio: 'ignore',
       },
     );
-    await waitForPort(PORT);
+    await waitForServerReady(BASE_URL);
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage();
   });

@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-22",
+  "session_slug": "shop-ui-unification",
+  "task_title": "Unify merchant/shop UX onto one shared shop system",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer endorsed the boundary (share offer/presentation contract, keep panel+modal surfaces). Blocking concerns adopted: (1) collapse overlapping booleans into one discriminated availability state; (2) preserve each Floor-1 flow's current empty/unpurchasable behavior via an explicit policy rather than a blanket decline. Non-blocking adopted: forward ModalPicker kind unchanged (spell-broker automation contract); keep the model presentation-only (no re-derived eligibility, authoritative purchase stays in core/game callbacks); add deterministic coverage for the three Floor-1 adapters plus panel wording."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Round 1: Spell Broker mapped every non-purchasable, non-owned offer to insufficient-funds, so an offer refused for a non-price reason (already learned this run, no free ability slot) rendered \"Not enough gold.\" even with ample gold. Fixed by adding blockReasonFromGold() to the shared model and using it in handleSpellBrokerTalk; two deterministic unit tests added. The reviewer also flagged the incomplete ledger stages, which is this process step itself."
+        },
+        {
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Round 2 re-review of the fixed tree: no significant issues; all review categories reported clean."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "03610361602d8d48043ece44d81d421ca0131410",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change executes the stated goal of unifying merchant UI presentation behind a shared shop system. The ShopOffer model cleanly encapsulates and deduplicates availability logic, pricing, and error messaging without bleeding into core ECS execution. Unit and e2e tests verify the UI in the real artifact via new probe affordances. Scope is tightly controlled and compliant with layer and testing policies."
+    }
+  }
+}

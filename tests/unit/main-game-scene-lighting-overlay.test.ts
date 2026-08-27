@@ -141,6 +141,12 @@ describe('MainGameScene lighting overlay behavior', () => {
     expect(source).toContain('/^prop-torch-var-\\d+$/.test(spriteId)');
   });
 
+  it('collects Glowing entities (e.g. an in-flight Magic Missile bolt) as dynamic light sources', () => {
+    expect(source).toContain('query(this.world.ecs, [Glowing, Position])');
+    expect(source).toContain('this.world.stores.glowing.radiusPx[glowEid]');
+    expect(source).toContain('this.world.stores.glowing.intensity[glowEid]');
+  });
+
   it('includes secondary light-source membership in the stationary cache key', () => {
     expect(source).toContain('const secondarySourcesKey = secondarySourceKeyParts.join');
     expect(source).toContain('this.lightingLastSecondarySourcesKey === secondarySourcesKey');

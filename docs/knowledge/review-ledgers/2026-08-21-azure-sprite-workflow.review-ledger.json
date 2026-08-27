@@ -1,0 +1,73 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-21",
+  "session_slug": "azure-sprite-workflow",
+  "task_title": "Complete Azure Sprite Generation Workflow canvas",
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "The implementation is tooling-only: a thin canvas adapter over existing sidecar lifecycle contracts, which is capped at 3 apples by AGENTS.md.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Reviewed canonical sidecar adapter plan; retained the shared 13-stage queue and rejected direct DOM port, parallel endpoints, and canvas-local state.",
+      "model": "claude-sonnet-5",
+      "summary": "Adopted the full canonical 13-stage QueueState and item-preserving ETag merge writes; canvas proxies only authoring routes and never worker or issue consumer routes; rewind remains pointer-only; generating polling is bounded."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "grok-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gemini-3.7-flash"],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "8a349794dbcb7586aa288b97c74842e3b75c8927",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The final Azure Workflow Author integration is focused, deterministic, fully covered by the workflow extension suite, and preserves canonical sidecar lifecycle contracts."
+    }
+  }
+}

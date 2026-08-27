@@ -8,6 +8,7 @@ import {
   Position,
   Prop,
   PropLight,
+  RallyPoint,
   Size,
   Sprite,
   Team,
@@ -367,6 +368,33 @@ export function spawnBossChestEntity(
   addComponent(world.ecs, eid, BossChestEntity);
 
   world.bossChestEids.set(chestId, eid);
+
+  return eid;
+}
+
+/**
+ * Spawn a Floor 3 Companion League Rally Point (spec R5/R11, slice 6) — a
+ * safe world-object that instantly revives every knocked-out party
+ * Companion when the player stands within
+ * `tuning.floor3Companion.rallyPointRangeFt` (see `companionKOSystem`).
+ */
+export function spawnRallyPoint(world: GameWorld, x: number, y: number): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['rally-point'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: PHYSICS_BODIES['rally-point'].weight }));
+  addComponent(world.ecs, eid, RallyPoint);
 
   return eid;
 }

@@ -9,6 +9,7 @@ import shellForcePushMain from './guards/shell-force-push-main.mjs';
 import shellMainBranchDelete from './guards/shell-main-branch-delete.mjs';
 import shellBluntMergeStrategy from './guards/shell-blunt-merge-strategy.mjs';
 import shellGhPrCreate from './guards/shell-gh-pr-create.mjs';
+import shellIssueComment from './guards/shell-issue-comment.mjs';
 import shellRmRfRepo from './guards/shell-rm-rf-repo.mjs';
 import shellUnsafePortKill from './guards/shell-unsafe-port-kill.mjs';
 import editDeterminism from './guards/edit-determinism.mjs';
@@ -25,6 +26,7 @@ const guards = [
   shellMainBranchDelete,
   shellBluntMergeStrategy,
   shellGhPrCreate,
+  shellIssueComment,
   shellRmRfRepo,
   shellUnsafePortKill,
   editDeterminism,

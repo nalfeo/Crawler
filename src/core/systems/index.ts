@@ -13,10 +13,16 @@ export { areaDamageSystem, clearAreaDamageHits } from './areaDamageSystem.js';
 export { beamSystem } from './beamSystem.js';
 export { trapSystem } from './trapSystem.js';
 export { returningProjectileSystem } from './returningProjectileSystem.js';
+export { homingSystem } from './homingSystem.js';
 export { aoeOnImpactPreDamage, aoeOnImpactPostDamage } from './aoeOnImpactSystem.js';
 export { meleeSwingSystem, clearMeleeSwingHits } from './meleeSwingSystem.js';
 export { knockbackSystem } from './knockbackSystem.js';
 export { dropSystem, clearProcessedDeaths } from './dropSystem.js';
+export {
+  companionProgressionSystem,
+  companionLearnedAbilityIds,
+} from './companionProgressionSystem.js';
+export { companionKOSystem, _isPartyWiped } from './companionKOSystem.js';
 export { deathTimerSystem } from './deathTimerSystem.js';
 export {
   corpseStepSystem,

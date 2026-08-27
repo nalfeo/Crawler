@@ -1,0 +1,71 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-20",
+  "session_slug": "immediate-completion-telemetry",
+  "task_title": "Publish completion telemetry before optional survey",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer identified a load-bearing incompatibility: immutable bundle idempotency rejects survey-bearing resubmits. Final implementation uses a two-phase contract: publish immutable completion telemetry immediately; append survey separately by runId after waiting for any in-flight completion upload. Coverage exercises completion/survey ordering, duplicate and conflicting survey retries, stale survey append reconciliation, screenshot propagation, human terminal eligibility, and stable runId request shapes."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code_review-tool"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Found survey-before-completion status ambiguity and concurrent survey marker 412 idempotency gap; fixed with HTTP 425 and 412 re-read."
+        },
+        {
+          "round": 2,
+          "models": ["code_review-tool"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found survey-created issue used a stub bundle; fixed by reading the stored completion bundle before filing."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "Read-only review loop found duplicate-comment and stale survey retry edge cases plus missing screenshot propagation; fixed with survey.pending, Survey ID reconciliation across issue body/comments, and screenshot lookup."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final read-only review after screenshot fix reported no significant issues."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "0a1fae099287d3ce58e48e4b34024abffcf948fb",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly refactors completion telemetry into a two-phase process without introducing data duplication. MainGameScene tracks the completion upload promise and enforces completion-then-survey sequencing, handling failures cleanly. The ingest handler effectively separates survey appends from full bundle uploads via existing headers, enforcing runId preconditions and gracefully managing idempotency with content hashes. Tests are comprehensively updated and rules are followed."
+    }
+  }
+}

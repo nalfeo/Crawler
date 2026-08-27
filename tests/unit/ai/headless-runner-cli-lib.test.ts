@@ -37,6 +37,9 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
 
   it('parses a valid --decision-mode', () => {
     expect(cli('--decision-mode', 'legacy').decisionMode).toBe(AIDecisionMode.LEGACY);
+    expect(cli('--decision-mode', 'objectivePortfolio').decisionMode).toBe(
+      AIDecisionMode.OBJECTIVE_PORTFOLIO,
+    );
   });
 
   it('parses a valid --pathing-mode', () => {
@@ -212,6 +215,12 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
 });
 
 describe('personaConfigDivergence', () => {
+  it('gives personas distinct strategic objective affinities', () => {
+    expect(getPersonaConfig('min_max_cheeser').strategicUtilityWeights?.optimization).toBe(4);
+    expect(getPersonaConfig('explorer').strategicUtilityWeights?.exploration).toBe(4);
+    expect(getPersonaConfig('new_player').strategicUtilityWeights?.safety).toBe(3);
+  });
+
   it('reports no divergence when overrides match the persona preset', () => {
     const preset = getPersonaConfig('min_max_cheeser');
     expect(

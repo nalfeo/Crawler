@@ -6,11 +6,14 @@ import {
   Enemy,
   EnemyProjectile,
   EffectiveStats,
+  Glowing,
   Health,
+  Homing,
   Owner,
   Player,
   Projectile,
   Returning,
+  Team,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
@@ -21,6 +24,10 @@ import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 import { computeArmorReducedDamage } from '../combat-math.js';
 import { getMobAbilityMeleeDamageMultiplier } from '../mob-abilities/runtime.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
+
+/** Fallback impact tint for a Homing projectile with no `Glowing` color of its own. */
+const HOMING_IMPACT_FALLBACK_COLOR = 0xc084fc;
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -90,6 +97,20 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
   }
   const armor = world.stores.effectiveStats.armor[player] ?? 0;
   return computeArmorReducedDamage(rawDamage, armor);
+}
+
+function sameTeam(world: GameWorld, source: number, target: number): boolean {
+  return (
+    hasComponent(world.ecs, source, Team) &&
+    hasComponent(world.ecs, target, Team) &&
+    (world.stores.team.id[source] ?? 0) === (world.stores.team.id[target] ?? 0)
+  );
+}
+
+function projectileSource(world: GameWorld, projectile: number): number {
+  return hasComponent(world.ecs, projectile, Owner)
+    ? (world.stores.owner.eid[projectile] ?? projectile)
+    : projectile;
 }
 
 /** Emit a throttled 'blocked' event (max one per invincibility window). */
@@ -163,6 +184,26 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       world.stores.projectile.hitCount[projectile] = 0;
       clearProjectilePierceHits(world, projectile);
       return;
+    }
+    if (hasComponent(world.ecs, projectile, Homing)) {
+      // Guided spell bolt (currently only Magic Missile — issue #3248): the
+      // impact burst fires here, at its real point of contact, rather than
+      // at cast time, since the missile now travels before it actually
+      // connects. Color comes from the projectile's own `Glowing` light (so
+      // a future non-Magic-Missile homing spell isn't forced into Magic
+      // Missile's purple) and falls back to that purple only if the
+      // projectile somehow has no `Glowing` component.
+      const color = hasComponent(world.ecs, projectile, Glowing)
+        ? ((world.stores.glowing.colorR[projectile] ?? 0) << 16) |
+          ((world.stores.glowing.colorG[projectile] ?? 0) << 8) |
+          (world.stores.glowing.colorB[projectile] ?? 0)
+        : HOMING_IMPACT_FALLBACK_COLOR;
+      pushVfxEvent(world.vfxEvents, {
+        kind: 'arcaneBoltImpact',
+        x: world.stores.position.x[projectile] ?? world.stores.position.x[enemy] ?? 0,
+        y: world.stores.position.y[projectile] ?? world.stores.position.y[enemy] ?? 0,
+        color,
+      });
     }
     destroyEntity(world, projectile);
   }
@@ -293,6 +334,7 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, a, EnemyProjectile) &&
       hasComponent(world.ecs, b, Enemy)
     ) {
+      if (sameTeam(world, projectileSource(world, a), b)) continue;
       if (playerInSafeSpace) {
         destroyEntity(world, a);
         continue;
@@ -306,6 +348,7 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, b, EnemyProjectile) &&
       hasComponent(world.ecs, a, Enemy)
     ) {
+      if (sameTeam(world, projectileSource(world, b), a)) continue;
       if (playerInSafeSpace) {
         destroyEntity(world, b);
         continue;
@@ -326,11 +369,13 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
     }
 
     if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, Enemy)) {
+      if (sameTeam(world, a, b)) continue;
       applyPlayerEnemyHit(world, a, b, hitTimestamps);
       continue;
     }
 
     if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
+      if (sameTeam(world, b, a)) continue;
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
     }
   }
