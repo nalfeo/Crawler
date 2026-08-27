@@ -328,128 +328,130 @@ export async function prepareGenerationRequest(
   const referencesStartedAt = timing?.start() ?? null;
   try {
     if (supportsReferenceImages) {
-    const resolvedReferences = resolveReferenceSelection({
-      repoRoot,
-      briefName: brief.name,
-      briefType: brief.type,
-      count: referenceCount,
-      ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
-      ...(options.loadReferenceCandidates
-        ? { loadCandidates: options.loadReferenceCandidates }
-        : {}),
-      ...(options.loadDislikedReferenceNames
-        ? { loadDislikedNames: options.loadDislikedReferenceNames }
-        : {}),
-      ...(options.loadPendingDislikedReferenceNames
-        ? { loadPendingDislikedNames: options.loadPendingDislikedReferenceNames }
-        : {}),
-      assetExists: referenceAssetExists,
-    });
-    eligibleReferenceSprites = resolvedReferences.eligibleCandidates.map(toReferenceSpriteRef);
-    const eligibleByPath = new Map(
-      resolvedReferences.eligibleCandidates.map((entry) => [entry.assetPath, entry]),
-    );
-    const selected =
-      options.referenceAssetPaths === undefined
-        ? resolvedReferences.selection.selected
-        : options.referenceAssetPaths.map((assetPath) => {
-            const entry = eligibleByPath.get(assetPath);
-            if (!entry) {
-              throw new Error(
-                `prepareGenerationRequest: reference "${assetPath}" is not an eligible approved generated sprite`,
-              );
+      const resolvedReferences = resolveReferenceSelection({
+        repoRoot,
+        briefName: brief.name,
+        briefType: brief.type,
+        count: referenceCount,
+        ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
+        ...(options.loadReferenceCandidates
+          ? { loadCandidates: options.loadReferenceCandidates }
+          : {}),
+        ...(options.loadDislikedReferenceNames
+          ? { loadDislikedNames: options.loadDislikedReferenceNames }
+          : {}),
+        ...(options.loadPendingDislikedReferenceNames
+          ? { loadPendingDislikedNames: options.loadPendingDislikedReferenceNames }
+          : {}),
+        assetExists: referenceAssetExists,
+      });
+      eligibleReferenceSprites = resolvedReferences.eligibleCandidates.map(toReferenceSpriteRef);
+      const eligibleByPath = new Map(
+        resolvedReferences.eligibleCandidates.map((entry) => [entry.assetPath, entry]),
+      );
+      const selected =
+        options.referenceAssetPaths === undefined
+          ? resolvedReferences.selection.selected
+          : options.referenceAssetPaths.map((assetPath) => {
+              const entry = eligibleByPath.get(assetPath);
+              if (!entry) {
+                throw new Error(
+                  `prepareGenerationRequest: reference "${assetPath}" is not an eligible approved generated sprite`,
+                );
               }
-            return entry;
-          });
-    if (new Set(selected.map((entry) => entry.assetPath)).size !== selected.length) {
-      throw new Error('prepareGenerationRequest: duplicate reference asset paths are not allowed');
-    }
-    if (selected.length === 0) {
-      if (resolvedReferences.presentCandidateCount === 0 && brief.type === 'icon') {
-        options.warn?.(
-          `prepareGenerationRequest: no reference sprites exist in pool for brief "${brief.name}" ` +
-            `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
-        );
-      } else {
+              return entry;
+            });
+      if (new Set(selected.map((entry) => entry.assetPath)).size !== selected.length) {
         throw new Error(
-          `prepareGenerationRequest: no eligible generated reference sprites for brief "${brief.name}" ` +
-            `(type="${brief.type}"). Approve at least one high-quality sprite first.`,
+          'prepareGenerationRequest: duplicate reference asset paths are not allowed',
         );
       }
-    }
-    if (selected.length > 0) {
-      for (const entry of selected) {
-        const absolutePath = resolveAssetPath(entry.assetPath);
-        assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'prepareGenerationRequest');
-        const png = readReference(absolutePath);
-        const contentHash = sha256(png);
-        if (entry.contentHash && entry.contentHash !== contentHash) {
+      if (selected.length === 0) {
+        if (resolvedReferences.presentCandidateCount === 0 && brief.type === 'icon') {
+          options.warn?.(
+            `prepareGenerationRequest: no reference sprites exist in pool for brief "${brief.name}" ` +
+              `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
+          );
+        } else {
           throw new Error(
-            `prepareGenerationRequest: reference "${entry.assetPath}" content hash does not match the approved manifest`,
+            `prepareGenerationRequest: no eligible generated reference sprites for brief "${brief.name}" ` +
+              `(type="${brief.type}"). Approve at least one high-quality sprite first.`,
           );
         }
-        referenceInputs.push({
-          kind: 'approved',
-          assetPath: entry.assetPath,
+      }
+      if (selected.length > 0) {
+        for (const entry of selected) {
+          const absolutePath = resolveAssetPath(entry.assetPath);
+          assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'prepareGenerationRequest');
+          const png = readReference(absolutePath);
+          const contentHash = sha256(png);
+          if (entry.contentHash && entry.contentHash !== contentHash) {
+            throw new Error(
+              `prepareGenerationRequest: reference "${entry.assetPath}" content hash does not match the approved manifest`,
+            );
+          }
+          referenceInputs.push({
+            kind: 'approved',
+            assetPath: entry.assetPath,
+            contentHash,
+            png,
+            sprite: toReferenceSpriteRef(entry),
+          });
+        }
+        referenceSprites = {
+          selectorVersion: SELECTOR_VERSION,
+          seed: resolvedReferences.selection.seed,
+          requestedCount: selected.length,
+          eligibleCount: resolvedReferences.selection.eligibleCount,
+          sameTypeCount: resolvedReferences.selection.sameTypeCount,
+          selected: selected.map(toReferenceSpriteRef),
+        };
+      }
+    }
+
+    const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
+    if (brief.seedFrames.length > 0 && supportsReferenceImages) {
+      for (const seedFrame of brief.seedFrames) {
+        if (path.isAbsolute(seedFrame.path)) {
+          throw new Error(
+            `prepareGenerationRequest: seed frame path "${seedFrame.path}" must be relative to the repository root, not absolute`,
+          );
+        }
+        const resolved = path.resolve(repoRoot, seedFrame.path);
+        if (!resolved.startsWith(approvedSeedRoot + path.sep)) {
+          throw new Error(
+            `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves outside the approved seed directory (briefs/)`,
+          );
+        }
+        let canonical: string;
+        try {
+          canonical = resolveRealpath(resolved);
+        } catch {
+          throw new Error(
+            `prepareGenerationRequest: seed frame path "${seedFrame.path}" does not exist or cannot be resolved`,
+          );
+        }
+        if (!canonical.startsWith(approvedSeedRoot + path.sep)) {
+          throw new Error(
+            `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves (via symlink) outside the approved seed directory (briefs/)`,
+          );
+        }
+        const png = readReference(resolved);
+        if (png.length < PNG_MAGIC.length || !png.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
+          throw new Error(
+            `prepareGenerationRequest: seed frame "${seedFrame.path}" is not a valid PNG (magic bytes mismatch)`,
+          );
+        }
+        const contentHash = sha256(png);
+        seedFrameRefs.push({ path: seedFrame.path, contentHash });
+        seedInputs.push({
+          kind: 'seed',
+          assetPath: seedFrame.path,
           contentHash,
           png,
-          sprite: toReferenceSpriteRef(entry),
         });
       }
-      referenceSprites = {
-        selectorVersion: SELECTOR_VERSION,
-        seed: resolvedReferences.selection.seed,
-        requestedCount: selected.length,
-        eligibleCount: resolvedReferences.selection.eligibleCount,
-        sameTypeCount: resolvedReferences.selection.sameTypeCount,
-        selected: selected.map(toReferenceSpriteRef),
-      };
     }
-  }
-
-  const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
-    if (brief.seedFrames.length > 0 && supportsReferenceImages) {
-    for (const seedFrame of brief.seedFrames) {
-      if (path.isAbsolute(seedFrame.path)) {
-        throw new Error(
-          `prepareGenerationRequest: seed frame path "${seedFrame.path}" must be relative to the repository root, not absolute`,
-        );
-        }
-      const resolved = path.resolve(repoRoot, seedFrame.path);
-      if (!resolved.startsWith(approvedSeedRoot + path.sep)) {
-        throw new Error(
-          `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves outside the approved seed directory (briefs/)`,
-        );
-      }
-      let canonical: string;
-      try {
-        canonical = resolveRealpath(resolved);
-      } catch {
-        throw new Error(
-          `prepareGenerationRequest: seed frame path "${seedFrame.path}" does not exist or cannot be resolved`,
-        );
-      }
-      if (!canonical.startsWith(approvedSeedRoot + path.sep)) {
-        throw new Error(
-          `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves (via symlink) outside the approved seed directory (briefs/)`,
-        );
-      }
-      const png = readReference(resolved);
-      if (png.length < PNG_MAGIC.length || !png.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
-        throw new Error(
-          `prepareGenerationRequest: seed frame "${seedFrame.path}" is not a valid PNG (magic bytes mismatch)`,
-        );
-      }
-      const contentHash = sha256(png);
-      seedFrameRefs.push({ path: seedFrame.path, contentHash });
-      seedInputs.push({
-        kind: 'seed',
-        assetPath: seedFrame.path,
-        contentHash,
-        png,
-      });
-    }
-  }
   } finally {
     timing?.finish('referenceSelectionAndPngReads', referencesStartedAt);
   }
@@ -577,7 +579,9 @@ export async function generateSheetCore(
   }
 
   // Convert absolute briefPath to repo-relative with forward slashes (required by validation)
-  const repoRelativeBriefPath = path.relative(repoRoot, prepared.loaded.briefPath).replace(/\\/g, '/');
+  const repoRelativeBriefPath = path
+    .relative(repoRoot, prepared.loaded.briefPath)
+    .replace(/\\/g, '/');
 
   const identity: RunSummaryIdentity = {
     brief: brief.name,
