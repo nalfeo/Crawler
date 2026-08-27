@@ -336,7 +336,7 @@ describe('MainGameScene UI exclusivity', () => {
     await mainSceneProbe.requestAchievementsToggle(page);
     await waitForState(page, (state) => !state.achievementsOpen, { label: 'Awards closed' });
 
-    const npcScreenPoint = await mainSceneProbe.getFirstNpcScreenPoint(page);
+    const npcScreenPoint = await mainSceneProbe.getPrimedNpcScreenPoint(page);
     expect(npcScreenPoint, 'NPC should expose a screen-space hit point').not.toBeNull();
     if (!npcScreenPoint) return;
     await clickDesignPoint(npcScreenPoint);

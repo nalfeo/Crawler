@@ -940,8 +940,8 @@ export interface MainSceneProbeApi {
   getAchievementsButtonBounds(): ScreenBounds | null;
   /** Bounds of the visible Talk/Descend hint, or null when unavailable. */
   getInteractionHintBounds(): ScreenBounds | null;
-  /** Screen-space point for the first live NPC, or null before NPCs spawn. */
-  getFirstNpcScreenPoint(): ProbePoint | null;
+  /** Screen-space point for the NPC primed for interaction, or null when unavailable. */
+  getPrimedNpcScreenPoint(): ProbePoint | null;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
@@ -1223,6 +1223,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? createFloor1GameConfig(gameHost, sceneOptions)
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
+  let primedNpcEid: number | null = null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -1730,6 +1731,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return null;
       }
       const [npcEid, instance] = firstNpc;
+      primedNpcEid = npcEid;
       const x = world.stores.position.x[npcEid] ?? 0;
       const y = world.stores.position.y[npcEid] ?? 0;
       instance.nearbyPlayer = true;
@@ -1740,19 +1742,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return { x, y };
     },
 
-    getFirstNpcScreenPoint: (): ProbePoint | null => {
-      const scene = getScene();
-      const world = scene?.world;
-      const firstNpc = world?.npcs.entries().next().value;
+    getPrimedNpcScreenPoint: (): ProbePoint | null => {
+      const world = getScene()?.world;
       const camera = getPhaserScene()?.cameras.main;
-      if (!world || !firstNpc || !camera) {
+      if (
+        !world ||
+        primedNpcEid === null ||
+        !world.npcs.get(primedNpcEid)?.nearbyPlayer ||
+        !camera
+      ) {
         return null;
       }
-      const [npcEid] = firstNpc;
       const view = camera.worldView;
       return {
-        x: (ftToPx(world.stores.position.x[npcEid] ?? 0) - view.x) * camera.zoom + camera.x,
-        y: (ftToPx(world.stores.position.y[npcEid] ?? 0) - view.y) * camera.zoom + camera.y,
+        x: (ftToPx(world.stores.position.x[primedNpcEid] ?? 0) - view.x) * camera.zoom + camera.x,
+        y: (ftToPx(world.stores.position.y[primedNpcEid] ?? 0) - view.y) * camera.zoom + camera.y,
       };
     },
 
