@@ -141,6 +141,45 @@ export interface NearbyNpcLike {
 }
 
 /**
+ * Pick the nearby NPC whose collision footprint contains a click, preferring the
+ * closest footprint centre and then the lowest entity id.
+ */
+export function findClickedNearbyNpc(
+  clickX: number,
+  clickY: number,
+  npcs: ReadonlyMap<number, NearbyNpcLike>,
+  positionX: ArrayLike<number>,
+  positionY: ArrayLike<number>,
+  halfWidth: ArrayLike<number>,
+  halfHeight: ArrayLike<number>,
+): number {
+  let clickedNpcEid = -1;
+  let clickedNpcDistanceSq = Number.POSITIVE_INFINITY;
+  for (const eid of npcs.keys()) {
+    const instance = npcs.get(eid);
+    if (!instance?.nearbyPlayer) {
+      continue;
+    }
+    const npcX = positionX[eid] ?? 0;
+    const npcY = positionY[eid] ?? 0;
+    const dx = clickX - npcX;
+    const dy = clickY - npcY;
+    if (Math.abs(dx) > (halfWidth[eid] ?? 0) || Math.abs(dy) > (halfHeight[eid] ?? 0)) {
+      continue;
+    }
+    const distanceSq = dx * dx + dy * dy;
+    if (
+      distanceSq < clickedNpcDistanceSq ||
+      (distanceSq === clickedNpcDistanceSq && eid < clickedNpcEid)
+    ) {
+      clickedNpcDistanceSq = distanceSq;
+      clickedNpcEid = eid;
+    }
+  }
+  return clickedNpcEid;
+}
+
+/**
  * Pick the nearest NPC whose `nearbyPlayer` flag is set, or -1 when none qualify.
  *
  * Iterates the npc map directly and reads positions from the entity-store

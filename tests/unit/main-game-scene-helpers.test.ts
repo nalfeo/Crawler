@@ -10,6 +10,7 @@ import {
 import {
   areLightingRectsEqual,
   canFileLiveIssue,
+  findClickedNearbyNpc,
   formatAbilityTrigger,
   getLightingViewRect,
   LIGHTING_VIEW_BUFFER_PX,
@@ -236,6 +237,36 @@ describe('formatAbilityTrigger', () => {
         expect(formatAbilityTrigger(id)).toBe('Auto trigger');
       }),
     );
+  });
+});
+
+describe('findClickedNearbyNpc', () => {
+  const npcs = new Map([
+    [3, { nearbyPlayer: true }],
+    [7, { nearbyPlayer: true }],
+    [11, { nearbyPlayer: false }],
+  ]);
+  const positionX = [0, 0, 0, 4, 0, 0, 0, 8, 0, 0, 0, 12];
+  const positionY = [0, 0, 0, 4, 0, 0, 0, 8, 0, 0, 0, 12];
+  const halfWidth = Array(12).fill(1);
+  const halfHeight = Array(12).fill(1);
+
+  it('accepts only nearby NPC collision footprints', () => {
+    expect(findClickedNearbyNpc(4.5, 4.5, npcs, positionX, positionY, halfWidth, halfHeight)).toBe(
+      3,
+    );
+    expect(findClickedNearbyNpc(6, 6, npcs, positionX, positionY, halfWidth, halfHeight)).toBe(-1);
+    expect(findClickedNearbyNpc(12, 12, npcs, positionX, positionY, halfWidth, halfHeight)).toBe(
+      -1,
+    );
+  });
+
+  it('picks the nearest target and uses entity id as a deterministic tie-breaker', () => {
+    halfWidth[3] = 5;
+    halfHeight[3] = 5;
+    halfWidth[7] = 5;
+    halfHeight[7] = 5;
+    expect(findClickedNearbyNpc(6, 6, npcs, positionX, positionY, halfWidth, halfHeight)).toBe(3);
   });
 });
 

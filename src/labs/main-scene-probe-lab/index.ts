@@ -296,6 +296,7 @@ interface MainSceneInternals {
   issueReportPicker?: { isOpen(): boolean };
   getIssueButtonBounds?(): ScreenBounds | null;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
+  getAchievementsButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -960,6 +961,12 @@ export interface MainSceneProbeApi {
    * renders — the shipped unlock path, just without playing the junk quest.
    */
   unlockExperienceBar(): void;
+  /** Bounds of the live Awards button, or null when it is unavailable. */
+  getAchievementsButtonBounds(): ScreenBounds | null;
+  /** Bounds of the visible Talk/Descend hint, or null when unavailable. */
+  getInteractionHintBounds(): ScreenBounds | null;
+  /** Screen-space point for the NPC primed for interaction, or null when unavailable. */
+  getPrimedNpcScreenPoint(): ProbePoint | null;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
@@ -1241,6 +1248,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? createFloor1GameConfig(gameHost, sceneOptions)
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
+  let primedNpcEid: number | null = null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -1748,6 +1756,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return null;
       }
       const [npcEid, instance] = firstNpc;
+      primedNpcEid = npcEid;
       const x = world.stores.position.x[npcEid] ?? 0;
       const y = world.stores.position.y[npcEid] ?? 0;
       instance.nearbyPlayer = true;
@@ -1756,6 +1765,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
       return { x, y };
+    },
+
+    getPrimedNpcScreenPoint: (): ProbePoint | null => {
+      const world = getScene()?.world;
+      const camera = getPhaserScene()?.cameras.main;
+      if (
+        !world ||
+        primedNpcEid === null ||
+        !world.npcs.get(primedNpcEid)?.nearbyPlayer ||
+        !camera
+      ) {
+        return null;
+      }
+      const view = camera.worldView;
+      return {
+        x: (ftToPx(world.stores.position.x[primedNpcEid] ?? 0) - view.x) * camera.zoom + camera.x,
+        y: (ftToPx(world.stores.position.y[primedNpcEid] ?? 0) - view.y) * camera.zoom + camera.y,
+      };
     },
 
     primeQuestWaypointArrows: () => {
@@ -2006,6 +2033,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         health: read('hud-health-panel-bounds'),
       };
     },
+    getAchievementsButtonBounds: () => getScene()?.getAchievementsButtonBounds?.() ?? null,
+
+    getInteractionHintBounds: () => getScene()?.getInteractionHintBounds?.() ?? null,
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
