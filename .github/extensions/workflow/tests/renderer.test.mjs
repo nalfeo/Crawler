@@ -152,6 +152,14 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.match(html, /'aria-label': 'Editable full synthesis request template'/);
   assert.match(html, /text: 'Apply template edits'/);
   assert.match(html, /function applyTemplateEdits\(/);
+  const applyTemplateSource = html.slice(
+    html.indexOf('function applyTemplateEdits('),
+    html.indexOf("var viewTemplate = h('button'"),
+  );
+  assert.ok(
+    applyTemplateSource.indexOf('floorNumber.value = editedFloorNumber') >
+      applyTemplateSource.indexOf('updateRoleOptions()'),
+  );
   assert.match(html, /template-actions/);
   assert.match(html, /class: 'request-actions'/);
   assert.ok(html.indexOf("class: 'template-actions'") < html.indexOf("class: 'request-actions'"));

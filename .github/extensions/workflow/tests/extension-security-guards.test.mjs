@@ -89,6 +89,16 @@ test('authoring mutations reuse token, origin, and JSON guards without a queue-c
   assert.doesNotMatch(source, /workflow\/worker\/start/);
 });
 
+test('reference-preview proxy preserves sidecar client errors and forwards 4xx statuses', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const routeStart = source.indexOf("path: '/api/workflow/reference-preview'");
+  const nextRouteStart = source.indexOf("path: '/api/workflow/refresh'", routeStart);
+  assert.ok(routeStart >= 0 && nextRouteStart > routeStart);
+  const handlerSource = source.slice(routeStart, nextRouteStart);
+  assert.match(handlerSource, /error\.status >= 400 && error\.status < 500/);
+  assert.match(handlerSource, /error: error\?\.code \?\? 'reference-preview-failed'/);
+});
+
 test('invalid Author request input returns the established bad-request error type', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf("path: '/api/workflow/request'");

@@ -340,7 +340,11 @@ export function editRequestItem(item, patch) {
   }
   if (typeof edited.brief === 'string') edited.brief = edited.brief.trim();
   if (typeof edited.requester === 'string') edited.requester = edited.requester.trim() || null;
-  if ('requestedType' in edited && !SPRITE_TYPES.has(edited.requestedType)) {
+  if (
+    'requestedType' in edited &&
+    edited.requestedType !== 'auto' &&
+    !SPRITE_TYPES.has(edited.requestedType)
+  ) {
     throw new Error('requestedType must be a known sprite type.');
   }
   if ('sizeVariant' in edited && !SIZE_VARIANTS.has(edited.sizeVariant)) {

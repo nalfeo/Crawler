@@ -1827,9 +1827,16 @@ const jsonRoutes = [
       try {
         return { json: await entry.client.getWorkflowReferencePreview(name, type) };
       } catch (error) {
+        const status =
+          Number.isInteger(error?.status) && error.status >= 400 && error.status < 500
+            ? error.status
+            : 502;
         return {
-          status: 502,
-          json: { error: 'reference-preview-failed', message: error?.message ?? String(error) },
+          status,
+          json: {
+            error: error?.code ?? 'reference-preview-failed',
+            message: error?.message ?? String(error),
+          },
         };
       }
     },

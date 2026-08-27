@@ -267,6 +267,21 @@ test('editing metadata-only fields preserves synthesized state', () => {
   assert.equal(edited.requester, 'Ada');
 });
 
+test('editing an auto-typed request preserves its canonical unclassified type', () => {
+  const original = addRequest(
+    { items: [], selectedId: null, nextSeq: 1 },
+    { name: 'unclassified asset' },
+  ).item;
+  const edited = editRequestItem(original, {
+    requestedType: 'auto',
+    priority: 'high',
+  });
+  assert.equal(edited.requestedType, 'auto');
+  assert.equal(edited.resolvedType, null);
+  assert.equal(edited.priority, 'high');
+  assert.equal(edited.stage, 'draft');
+});
+
 test('editing validates durable request fields at the state boundary', () => {
   const original = item(1);
   assert.throws(() => editRequestItem(original, { name: '---' }), /letters or numbers/);

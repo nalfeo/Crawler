@@ -1933,12 +1933,12 @@ const CLIENT_SCRIPT = String.raw`
       brief.value = editedBrief === '[none]' ? '' : editedBrief;
       if (optionExists(type, editedType)) type.value = editedType;
       if (optionExists(size, editedSize)) size.value = editedSize;
-      if (/^\d+$/.test(editedFloorNumber)) floorNumber.value = editedFloorNumber;
       floor.value = editedFloor === 'none' ? '' : editedFloor;
       updateFamilyOptions();
       family.value = editedFamily === 'none' ? '' : editedFamily;
       updateRoleOptions();
       role.value = editedRole === 'none' ? '' : editedRole;
+      if (/^\d+$/.test(editedFloorNumber)) floorNumber.value = editedFloorNumber;
       if (optionExists(priority, editedPriority)) priority.value = editedPriority;
       requester.value = editedRequester === 'none' ? '' : editedRequester;
       categoryInjection.value = editedCategoryInjection === '[resolved after automatic type classification]'
