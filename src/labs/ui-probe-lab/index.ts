@@ -63,6 +63,7 @@ import {
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../../shared/equipment-slots.js';
+import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -161,6 +162,12 @@ export interface UiProbeApi {
   previewGeneratedEquipmentBagItem(instanceKey: GeneratedEquipmentInstanceKey | null): void;
   /** Add a deterministic, stronger chest candidate for comparison captures. */
   addGeneratedChestReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Add a deterministic chest candidate with both positive and negative direct deltas. */
+  addGeneratedMixedDeltaChestReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Add a deterministic dual-ring candidate while both visible ring slots are occupied. */
+  addGeneratedRingReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Seed a Sword and Shield, then add a two-handed Bag replacement. */
+  seedMultiHandReplacement(): boolean;
   /** Equip a bag item straight from the integrated bag column. */
   equipFromEquipmentBag(itemId: string): boolean;
   /** Unequip whatever is in `slotId`, returning it to the bag. */
@@ -517,6 +524,79 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       return instance.instanceId;
     }
 
+    private addGeneratedMixedDeltaChestReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'armor.ui-probe-tempered-hauberk',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Tempered Chain Hauberk',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['chest'],
+          tags: ['armor'],
+          weightLb: 14,
+          statBonuses: { armor: 6, constitution: 0 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
+    }
+
+    private addGeneratedRingReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'accessory.ui-probe-lucky-band',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Polished Fortune Band',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['ringLeft', 'ringRight'],
+          tags: ['accessory'],
+          weightLb: 0.25,
+          statBonuses: { luck: 2 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
+    }
+
+    private seedMultiHandReplacement(): boolean {
+      const bag = this.world.inventories.get(this.playerEid);
+      if (!bag) return false;
+      addItem(bag, 'bone-club', 1);
+      const sword = getEquipmentDefForItem('iron-sword');
+      const shield: EquipmentItemDef = {
+        id: 'ui-probe-shield',
+        name: 'Shield',
+        slots: ['offHand'],
+        statBonuses: { armor: 3 },
+        rarity: 'common',
+        weightLb: 6,
+      };
+      if (!sword) return false;
+      const equipped =
+        equip(this.world, this.playerEid, sword, { force: true }).ok &&
+        equip(this.world, this.playerEid, shield, { force: true }).ok;
+      this.equipmentUI?.refresh(this.world);
+      return equipped;
+    }
+
     /**
      * Replace the bag contents with exactly `count` equippable slots so the
      * integrated bag column overflows its visible rows. Each pushed slot is a
@@ -673,6 +753,9 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         equipInventoryItem: (itemId: string) => this.equipInventoryItem(itemId),
         seedAllGear: () => this.seedAllGear(),
         addGeneratedChestReplacement: () => this.addGeneratedChestReplacement(),
+        addGeneratedMixedDeltaChestReplacement: () => this.addGeneratedMixedDeltaChestReplacement(),
+        addGeneratedRingReplacement: () => this.addGeneratedRingReplacement(),
+        seedMultiHandReplacement: () => this.seedMultiHandReplacement(),
         getEquippedSlotIds: () => {
           const state = getEquipmentState(this.world, this.playerEid);
           if (!state) return [];

@@ -119,10 +119,10 @@ unless measured geometry proves a defect.
 ### Bag-anchored mixed-delta comparison
 
 Generated-item delta comparison now takes the real hovered Bag-cell bounds through
-the same preview path as static Bag items. Its `CURRENT` and `CANDIDATE` cards sit
+the same preview path as static Bag items. Its `EQUIPPED` and `CANDIDATE` cards sit
 side by side on the Bag-facing side rather than reverting to the bottom Equipment
 inspector. Both cards use the same generic `renderItemTooltip()` compact-card path,
-including the light-gold outline, title/header spacing, and right-aligned `CURRENT` /
+including the light-gold outline, title/header spacing, and right-aligned `EQUIPPED` /
 `CANDIDATE` labels. Candidate deltas render inline only beside direct item stats
 (for example, `+6 Armor (+2)`) and retain green/red gain/loss color; derived-only
 secondary changes such as Max HP from Constitution are not repeated as separate rows.
@@ -141,7 +141,7 @@ pair separation, and topmost state.
 
 The obsolete fixed inspector backing rectangle is hidden whenever the shared floating
 cards render, removing the empty outlined panel behind the Bag-anchored pair. Both
-item names now use the same 8px left inset as their stat rows; `CURRENT` and
+item names now use the same 8px left inset as their stat rows; `EQUIPPED` and
 `CANDIDATE` remain right-aligned on the shared top edge. Direct stat comparisons use
 two text spans: the base value (for example, `+6 Armor`) remains neutral while only
 the parenthesized direct delta (for example, `(+2)`) is bold and green/red. The

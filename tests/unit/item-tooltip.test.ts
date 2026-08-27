@@ -189,7 +189,7 @@ describe('item tooltip redesign', () => {
         def,
         quantity: 1,
         fontFamily: 'Arial',
-        sectionLabel: 'CURRENT',
+        sectionLabel: 'EQUIPPED',
         placement,
         crispText: (x, y, text) =>
           (scene as { add: { text: (x: number, y: number, text: string) => StubObject } }).add.text(

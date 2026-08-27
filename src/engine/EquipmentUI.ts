@@ -1314,52 +1314,68 @@ export function createEquipmentUI(
     return state?.equipped[operationalSlotId(slotId)] == null;
   }
 
-  function renderTooltipPair(
-    current: EquipmentItemDef,
+  function renderComparisonTooltips(
+    replaced: readonly EquipmentItemDef[],
     candidate: EquipmentItemDef,
     inlineDeltas: Partial<Record<StatId, number>> = {},
     sourceBounds: ScreenBounds | null = null,
   ): void {
     const gap = 8;
-    const cardWidth = Math.floor((inspectorW - 16 - gap) / 2);
-    // Comparison cards share a baseline but take their height from the most
-    // content-heavy card so multi-line deltas never spill out of the border.
+    const equipped = replaced.length > 0 ? replaced : [emptyComparisonDef('slot')];
+    const isDualRingComparison =
+      equipped.length === 2 &&
+      candidate.slots.includes('ringLeft') &&
+      candidate.slots.includes('ringRight');
+    const cards = isDualRingComparison
+      ? [
+          { def: equipped[0]!, label: 'EQUIPPED', deltas: {} },
+          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
+          { def: equipped[1]!, label: 'EQUIPPED', deltas: {} },
+          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
+        ]
+      : [
+          ...equipped.map((def) => ({ def, label: 'EQUIPPED', deltas: {} })),
+          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
+        ];
+    const columns = isDualRingComparison ? 2 : cards.length;
+    const rows = Math.ceil(cards.length / columns);
+    const availableWidth = sourceBounds ? sourceBounds.x - 14 - (panelX + 8) : inspectorW - 12;
+    const cardWidth = Math.min(176, Math.floor((availableWidth - gap * (columns - 1)) / columns));
     const cardHeight = Math.max(
-      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(current), '').height,
-      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(candidate, inlineDeltas), '')
-        .height,
+      ...cards.map(
+        ({ def, deltas }) =>
+          getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(def, deltas), '').height,
+      ),
     );
-    const pairWidth = cardWidth * 2 + gap;
-    const pairX = sourceBounds ? sourceBounds.x - 14 - pairWidth : inspectorX + 6;
-    const pairY = sourceBounds
+    const comparisonWidth = cardWidth * columns + gap * (columns - 1);
+    const comparisonHeight = cardHeight * rows + gap * (rows - 1);
+    const comparisonX = sourceBounds ? sourceBounds.x - 14 - comparisonWidth : inspectorX + 6;
+    const comparisonY = sourceBounds
       ? Math.max(
           panelY + 8,
           Math.min(
-            sourceBounds.y + sourceBounds.height / 2 - cardHeight / 2,
-            panelY + panelHeight - cardHeight - 8,
+            sourceBounds.y + sourceBounds.height / 2 - comparisonHeight / 2,
+            panelY + panelHeight - comparisonHeight - 8,
           ),
         )
       : inspectorY + 7;
-    renderEquipmentTooltipCard(
-      current,
-      { x: pairX, y: pairY, width: cardWidth, height: cardHeight },
-      'CURRENT',
-      [],
-      false,
-    );
-    renderEquipmentTooltipCard(
-      candidate,
-      {
-        x: pairX + cardWidth + gap,
-        y: pairY,
-        width: cardWidth,
-        height: cardHeight,
-      },
-      'CANDIDATE',
-      [],
-      false,
-      tooltipStatLines(candidate, inlineDeltas),
-    );
+    for (const [index, card] of cards.entries()) {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      renderEquipmentTooltipCard(
+        card.def,
+        {
+          x: comparisonX + column * (cardWidth + gap),
+          y: comparisonY + row * (cardHeight + gap),
+          width: cardWidth,
+          height: cardHeight,
+        },
+        card.label,
+        [],
+        false,
+        tooltipStatLines(card.def, card.deltas),
+      );
+    }
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
@@ -1423,7 +1439,7 @@ export function createEquipmentUI(
       ? getBagTooltipPlacement(sourceBounds, preferredWidth, placementSeed.height)
       : getCenterFacingTooltipPlacement(slotId, preferredWidth, placementSeed.height);
     if (!placement) {
-      renderTooltipPair(emptyComparisonDef(slotId), def);
+      renderComparisonTooltips([emptyComparisonDef(slotId)], def);
       return;
     }
     const layout = getEquipmentTooltipCardLayout(
@@ -1522,9 +1538,6 @@ export function createEquipmentUI(
       canEquip: preview.canEquip,
       statsKnown: true,
     });
-    // Static swapped-out names still resolve through getItemById(swapped.id)?.name ?? swapped.name
-    // when callers need a text-only fallback; the card now renders the full item instead.
-    const current = preview.swappedOut[0] ?? emptyComparisonDef(targets[0] ?? 'slot');
     const candidate = getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name);
     const targetSlot = targets[0] ?? selectedSlotFilter;
     const bagSource =
@@ -1534,7 +1547,7 @@ export function createEquipmentUI(
     if (targetSlot && (isSlotEmpty(targetSlot) || selectedSlotFilter === targetSlot)) {
       showCandidateTooltip(candidate, targetSlot, bagSource);
     } else {
-      renderTooltipPair(current, candidate, preview.deltas, bagSource);
+      renderComparisonTooltips(preview.swappedOut, candidate, preview.deltas, bagSource);
     }
   }
 
@@ -1604,15 +1617,18 @@ export function createEquipmentUI(
       canEquip: preview.canEquip,
       statsKnown: true,
     });
-    const current =
-      preview.swappedOut[0] ??
-      currentEquippedForSlots(candidate.slots) ??
-      emptyComparisonDef(targets[0] ?? 'slot');
     const bagSource =
       previewEntryIdentity === null
         ? null
         : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
-    renderTooltipPair(current, candidate, preview.deltas, bagSource);
+    renderComparisonTooltips(
+      preview.swappedOut.length > 0
+        ? preview.swappedOut
+        : [currentEquippedForSlots(candidate.slots) ?? emptyComparisonDef(targets[0] ?? 'slot')],
+      candidate,
+      preview.deltas,
+      bagSource,
+    );
   }
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {

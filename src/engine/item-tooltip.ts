@@ -76,7 +76,7 @@ export function getEquipmentTooltipCardLayout(
       ? (visibleDiffLines - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
       : 0;
   return {
-    height: diffStartY + diffBlockHeight + EQUIPMENT_CARD_BOTTOM_PADDING,
+    height: Math.max(110, diffStartY + diffBlockHeight + EQUIPMENT_CARD_BOTTOM_PADDING),
     headerCenterY: 12,
     icon: { x: 40, y: EQUIPMENT_CARD_ICON_CENTER_Y, size: EQUIPMENT_CARD_ICON_SIZE },
     statStartY: EQUIPMENT_CARD_STAT_START_Y,
@@ -109,7 +109,7 @@ export interface ItemTooltipRenderParams {
   flavorText?: string;
   /** Net comparison rows. These always render at the bottom of the candidate card. */
   diffLines?: readonly string[];
-  /** Optional section label such as CURRENT or CANDIDATE. */
+  /** Optional section label such as EQUIPPED or CANDIDATE. */
   sectionLabel?: string;
   /** Approved generated art key. Falls back to a readable two-letter icon. */
   iconTextureKey?: string;
@@ -248,13 +248,14 @@ export function renderItemTooltip(
   }
 
   const compactHeaderTopY = ty + 6;
+  const compactHeaderFontSize = compactLayout && statLines.length === 0 ? '14px' : '12px';
   const nameText = crispText(
     compactLayout ? tx + 8 : tx + (richIcon ? 42 : 8),
     compactLayout ? compactHeaderTopY : ty + (sectionLabel ? 18 : 8),
     def.name,
     {
       fontFamily,
-      fontSize: compactLayout ? '11px' : richContent ? '13px' : '15px',
+      fontSize: compactLayout ? compactHeaderFontSize : richContent ? '13px' : '15px',
       fontStyle: compactLayout ? 'bold' : undefined,
       color: `#${rarityColor.toString(16).padStart(6, '0')}`,
       wordWrap: {
@@ -306,7 +307,7 @@ export function renderItemTooltip(
       sectionLabel,
       {
         fontFamily,
-        fontSize: '9px',
+        fontSize: compactLayout && statLines.length === 0 ? '12px' : compactLayout ? '10px' : '9px',
         color: '#e9c46a',
       },
     );
@@ -332,7 +333,7 @@ export function renderItemTooltip(
       const text = typeof line === 'string' ? line : line.text;
       const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
         fontFamily,
-        fontSize: '11px',
+        fontSize: compactLayout ? '12px' : '11px',
         color: '#d9e2ef',
       });
       container.add(statText);
@@ -344,7 +345,7 @@ export function renderItemTooltip(
           line.deltaText,
           {
             fontFamily,
-            fontSize: '11px',
+            fontSize: compactLayout ? '12px' : '11px',
             fontStyle: 'bold',
             color: line.deltaColor,
           },
