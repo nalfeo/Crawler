@@ -146,8 +146,16 @@ export async function inspectRunnerDemand({
   repo,
   currentRunId,
   requestFn = request,
+  // Runs whose own jobs must not be counted as competing demand. The release
+  // sweep gate passes its own run id here: the deploy run is itself active
+  // while the gate probes, so counting it would report pressure the sweep does
+  // not actually compete with.
+  excludeRunIds = [],
 }) {
-  const runs = await listActiveRuns(token, owner, repo, requestFn);
+  const excluded = new Set(excludeRunIds.map(Number).filter((runId) => Number.isFinite(runId)));
+  const runs = (await listActiveRuns(token, owner, repo, requestFn)).filter(
+    (run) => !excluded.has(Number(run.id)),
+  );
   const sweepRuns = runs.filter((run) => SWEEP_WORKFLOW_NAMES.has(run.name));
   const nonSweepRuns = runs.filter((run) => !SWEEP_WORKFLOW_NAMES.has(run.name));
   const jobCounts = await Promise.all(

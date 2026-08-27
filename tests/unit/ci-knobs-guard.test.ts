@@ -130,6 +130,18 @@ const OPERATIONALLY_TWEAKABLE_ROUTER: Record<string, string> = {
 };
 
 /**
+ * Operationally-tweakable constants that live OUTSIDE router.mjs, keyed by the
+ * script that declares them: `<constantName>: <envVarName>`. Each one must have
+ * a matching env read in its own file and a row in ci-config-knobs.md.
+ */
+const OPERATIONALLY_TWEAKABLE_BY_FILE: Record<string, Record<string, string>> = {
+  '.github/scripts/release-sweep-admission.mjs': {
+    RELEASE_SWEEP_MAX_COMPETING_DEMAND: 'RELEASE_SWEEP_MAX_COMPETING_DEMAND',
+    RELEASE_SWEEP_MIN_INTERVAL_HOURS: 'RELEASE_SWEEP_MIN_INTERVAL_HOURS',
+  },
+};
+
+/**
  * All file-scope numeric constants that are intentionally hardcoded — not
  * operationally tweakable but structurally necessary.  The set spans ALL
  * production scripts under .github/scripts/ (names are unique across files).
@@ -214,6 +226,9 @@ const STRUCTURAL_ALLOWLIST = new Set([
   // ci-conflict-coordinator/state.mjs
   'MIN_CLUSTER_SIZE', // minimum PR count for a conflict-coordination cluster
   'MAX_OVERLAP_FILES', // max overlap files stored per cluster
+  // release-sweep-admission.mjs
+  'RELEASE_SWEEP_PEAK_RUNNERS', // peak runners the release sweep claims; mirrors deploy.yml max-parallel, pinned by a parity test
+  'HOUR_MS', // milliseconds per hour; a unit conversion, not a behavior knob
   // sweep-budget.mjs
   'SWEEP_POOL_SIZE', // max concurrent sweep runs in the pool
   'ACCOUNT_RUNNER_LIMIT', // GitHub Free account-level runner concurrency limit
@@ -468,6 +483,10 @@ describe('CI knobs guard', () => {
       return files;
     }
 
+    for (const knobs of Object.values(OPERATIONALLY_TWEAKABLE_BY_FILE)) {
+      for (const name of Object.keys(knobs)) knownTweakable.add(name);
+    }
+
     const allProductionScripts = collectMjsFiles(scriptsDir);
 
     for (const scriptPath of allProductionScripts) {
@@ -516,6 +535,23 @@ describe('CI knobs guard', () => {
             `table so operators know this constant is intentionally hardcoded.`,
         ).toBe(true);
       });
+    }
+
+    for (const [relPath, knobs] of Object.entries(OPERATIONALLY_TWEAKABLE_BY_FILE)) {
+      const source = read(relPath);
+      for (const [constName, envVarName] of Object.entries(knobs)) {
+        it(`${relPath}: ${constName} is env-readable and documented`, () => {
+          expect(
+            source.includes(`process.env.${envVarName}`) || source.includes(`env.${envVarName}`),
+            `${relPath} must read ${envVarName} from the environment.`,
+          ).toBe(true);
+          expect(
+            knobsDoc.includes(envVarName),
+            `Tweakable knob '${envVarName}' is registered for ${relPath} but does not appear in ` +
+              `docs/agent-os/policies/ci-config-knobs.md.`,
+          ).toBe(true);
+        });
+      }
     }
 
     for (const [constName, envVarName] of Object.entries(OPERATIONALLY_TWEAKABLE_ROUTER)) {

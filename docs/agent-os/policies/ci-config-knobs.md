@@ -82,6 +82,37 @@ global backpressure applied deferred=N pr_numbers=... outstanding=K cap=C budget
 
 ---
 
+### Release sweep capacity gate
+
+The release sweep (`release-report-sweep` — 15 shards — plus `baseline-sweep` in
+`deploy.yml`) holds ~16 runners for up to an hour on every push to main. The
+`sweep-capacity-gate` job skips it while the account runner pool is constrained,
+but never for longer than the staleness interval, so the baseline series cannot
+silently stop. Decision logic lives in `.github/scripts/release-sweep-admission.mjs`.
+
+| Variable                             | Default | Safe range       | Scope        | Effect                                                                                                                                                                    |
+| ------------------------------------ | ------- | ---------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RELEASE_SWEEP_MIN_INTERVAL_HOURS`   | `24`    | positive integer | `deploy.yml` | Maximum age of the last published baseline before the sweep runs regardless of runner pressure. Lower = fresher baselines, more contention; higher = more dev headroom.   |
+| `RELEASE_SWEEP_MAX_COMPETING_DEMAND` | `4`     | positive integer | `deploy.yml` | Competing demand (live non-sweep jobs + latent CI backlog) above which the sweep is skipped. Raise to sweep more eagerly, lower to protect CI/dev capacity more strongly. |
+
+```
+constrained = nonSweepJobs + latentBacklog > RELEASE_SWEEP_MAX_COMPETING_DEMAND (4)
+sweep       = !constrained || hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24)
+```
+
+The threshold is deliberately low because the sweep is not a marginal consumer:
+its report-leg matrix runs at `max-parallel: 20` (`RELEASE_SWEEP_PEAK_RUNNERS`),
+the whole GitHub Free account pool, so admitting it while anything else is
+queued directly delays that work. `HOUR_MS` in the same script is a unit
+conversion, not a knob.
+
+Both variables are parsed fail-safe: an empty, non-numeric, or non-positive value
+falls back to the default above. Every probe failure (runner demand, latent
+backlog, `baselines` branch read) and a manual `workflow_dispatch` **fail open**
+— the sweep runs — because losing baseline data is worse than spending runners.
+
+---
+
 ## Must-preserve invariants
 
 The CI-recovery redesign must preserve these behaviors; deleting any mechanism
