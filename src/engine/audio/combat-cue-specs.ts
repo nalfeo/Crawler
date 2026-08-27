@@ -109,6 +109,36 @@ export function combatSynthSpecForCue(cue: CombatAudioCue): SynthCueSpec {
         label: 'combat:ability-activate',
       };
     case 'pickup':
+      if (cue.pickupAudioKind === 'xp') {
+        return {
+          waveform: 'sine',
+          frequencyHz: 760,
+          glideToHz: 1040,
+          durationMs: 90,
+          gain: 0.08,
+          label: 'combat:pickup-xp',
+        };
+      }
+      if (cue.pickupAudioKind === 'gold') {
+        return {
+          waveform: 'triangle',
+          frequencyHz: 520,
+          glideToHz: 680,
+          durationMs: 120,
+          gain: 0.1,
+          label: 'combat:pickup-gold',
+        };
+      }
+      if (cue.pickupAudioKind === 'material') {
+        return {
+          waveform: 'square',
+          frequencyHz: 360,
+          glideToHz: 480,
+          durationMs: 100,
+          gain: 0.08,
+          label: 'combat:pickup-material',
+        };
+      }
       return {
         waveform: 'triangle',
         frequencyHz: 640,

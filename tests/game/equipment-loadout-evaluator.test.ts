@@ -307,7 +307,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(result.ranked[0]?.nextScore.components.affinity).toBe(7);
   });
 
-  it('models every realized beam tick in weapon offense', () => {
+  it('models one hit per target for beam weapon offense', () => {
     const laser = generated('laser', 'erv-beam-ticks');
     const result = evaluateEquipmentLoadoutCandidates(inputShape([], [candidate(laser)]))
       .ranked[0]!;
@@ -331,8 +331,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
       stats.attackSpeed,
       stats.cooldownReduction,
     );
-    const beamTicks = 1 + Math.floor(weapon.durationMs / weapon.beamTickMs);
-    const expectedDps = (damage * accuracy * beamTicks * 1_000) / cooldownMs;
+    const expectedDps = (damage * accuracy * 1_000) / cooldownMs;
 
     expect(result.nextScore.components.offense).toBeCloseTo(
       expectedDps * SINGLE_TARGET.durationSeconds,
