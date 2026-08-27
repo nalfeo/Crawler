@@ -1888,12 +1888,22 @@ const CLIENT_SCRIPT = String.raw`
       render(lastState);
     }
     function templateSection(text, heading, nextHeadings) {
-      var start = text.indexOf(heading);
+      function lineHeadingIndex(candidate, from) {
+        var startAt = from || 0;
+        while (startAt < text.length) {
+          var found = text.indexOf(candidate, startAt);
+          if (found < 0) return -1;
+          if (found === 0 || text.charAt(found - 1) === '\n') return found;
+          startAt = found + candidate.length;
+        }
+        return -1;
+      }
+      var start = lineHeadingIndex(heading, 0);
       if (start < 0) return '';
       start += heading.length;
       var end = text.length;
       nextHeadings.forEach(function (nextHeading) {
-        var next = text.indexOf(nextHeading, start);
+        var next = lineHeadingIndex(nextHeading, start);
         if (next >= 0 && next < end) end = next;
       });
       return text.slice(start, end).trim();
@@ -2195,8 +2205,10 @@ const CLIENT_SCRIPT = String.raw`
         var editFloorInjection = field('Floor injection override', h('textarea', { text: selected.injectionOverrides?.floor || '' }));
         var editFamilyInjection = field('Family/theme injection override', h('textarea', { text: selected.injectionOverrides?.family || '' }));
         var editCategoryInjection = field('Sprite category injection override', h('textarea', {
-        text: selected.injectionOverrides?.category ||
-          (selected.requestedType !== 'auto' ? categoryDesignLanguage[selected.requestedType] || '' : '')
+        text: selected.injectionOverrides?.category || '',
+        placeholder: selected.requestedType !== 'auto'
+          ? categoryDesignLanguage[selected.requestedType] || ''
+          : 'Choose a concrete sprite type to see its canonical category design language.'
         }));
         var categoryDraftByType = {};
         categoryDraftByType[selected.requestedType] = editCategoryInjection.value;
@@ -2245,6 +2257,12 @@ const CLIENT_SCRIPT = String.raw`
         title: 'Persist these request fields to the shared Azure-backed workflow'
         });
         saveEdit.addEventListener('click', function () {
+        var canonicalEditCategory = editType.value === 'auto'
+          ? ''
+          : (categoryDesignLanguage[editType.value] || '');
+        var categoryOverride = editCategoryInjection.value === canonicalEditCategory
+          ? ''
+          : editCategoryInjection.value;
         workflowPost('/api/workflow/edit', {
           itemId: selected.id,
           patch: {
@@ -2261,7 +2279,7 @@ const CLIENT_SCRIPT = String.raw`
             injectionOverrides: {
               floor: editFloorInjection.value,
               family: editFamilyInjection.value,
-              category: editCategoryInjection.value
+              category: categoryOverride
             }
           }
         }, 'Saving request…').then(function (ok) { if (ok) backdrop.remove(); });

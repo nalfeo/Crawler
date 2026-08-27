@@ -17,12 +17,13 @@ describe('asset request context capabilities', () => {
       'floor1',
       'floor2',
       'floor3',
+      'floor4',
     ]);
 
     for (const capability of capabilities) {
       const manifest = getFloorManifest(capability.floorId);
       expect(manifest?.enemyPackId).toBe(capability.enemyPackId);
-      const pack = getFloorEnemyPack(capability.enemyPackId);
+      const pack = capability.enemyPackId ? getFloorEnemyPack(capability.enemyPackId) : undefined;
       for (const family of capability.families) {
         expect(pack?.archetypes.some((archetype) => archetype.familyId === family.id)).toBe(true);
       }

@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-21",
   "session_slug": "azure-sprite-workflow",
-  "task_title": "Add eight-direction sprite authoring and complete the Azure workflow canvas",
+  "task_title": "Unify sprite brief authoring context and reference previews",
   "estimated_apples": 3,
   "apples_rescored_from": 4,
   "rescore_reason": "The implementation is tooling-only: a thin canvas adapter over existing sidecar lifecycle contracts, which is capped at 3 apples by AGENTS.md.",

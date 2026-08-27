@@ -140,6 +140,7 @@ import {
 import { SPRITE_CATEGORY_DESIGN_LANGUAGE } from '../sprite-category-design-language.js';
 import { resolveReferenceSelection } from '../resolve-reference-selection.js';
 import { SELECTOR_VERSION } from '../reference-selector.js';
+import { resolveGeneratedAssetPath } from '../generated-asset-path.js';
 import { isSpriteType } from '../../../src/shared/sprite-types.js';
 import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
@@ -2459,7 +2460,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         seed: resolved.selection.seed,
         currentPreview: true,
         references: resolved.selection.selected.map((entry) => {
-          const absolutePath = path.resolve(resolved.publicAssetsRoot, entry.assetPath);
+          const absolutePath = resolveGeneratedAssetPath(
+            entry.assetPath,
+            resolved.publicAssetsRoot,
+            'reference-preview',
+          );
           return {
             briefId: entry.briefId,
             spriteName: entry.spriteName,

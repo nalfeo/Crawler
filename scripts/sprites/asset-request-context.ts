@@ -52,7 +52,7 @@ export interface AssetRequestContextCapability {
   readonly floorId: string;
   readonly floor: number;
   readonly name: string;
-  readonly enemyPackId: string;
+  readonly enemyPackId?: string;
   readonly canonicalFloorInjection?: string;
   readonly families: readonly {
     readonly id: string;
@@ -75,8 +75,8 @@ export class AssetRequestContextError extends Error {
 export function getAssetRequestContextCapabilities(): readonly AssetRequestContextCapability[] {
   return getAvailableFloorIds().flatMap((floorId) => {
     const manifest = getFloorManifest(floorId);
-    if (!manifest || !manifest.enemyPackId) return [];
-    const pack = getFloorEnemyPack(manifest.enemyPackId);
+    if (!manifest) return [];
+    const pack = manifest.enemyPackId ? getFloorEnemyPack(manifest.enemyPackId) : undefined;
     const families = pack
       ? [
           ...new Set(
@@ -100,7 +100,7 @@ export function getAssetRequestContextCapabilities(): readonly AssetRequestConte
         floorId,
         floor,
         name: manifest.name,
-        enemyPackId: manifest.enemyPackId,
+        ...(manifest.enemyPackId ? { enemyPackId: manifest.enemyPackId } : {}),
         ...(floorInjection(floor) ? { canonicalFloorInjection: floorInjection(floor) } : {}),
         families,
       },

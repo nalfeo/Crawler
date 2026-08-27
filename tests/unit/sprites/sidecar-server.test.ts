@@ -228,6 +228,37 @@ describe('buildServer routes (inject)', () => {
     expect(body.service).toBeNull();
   });
 
+  it('GET /api/workflow/reference-preview returns selected in-tree PNGs as data URLs', async () => {
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    writeShard(generatedDir, 'reference-var-0', {
+      briefId: 'reference',
+      spriteName: 'reference-var-0',
+      assetPath: 'generated/reference-var-0.png',
+      type: 'character',
+      sensorScore: '8/8',
+      judgeScore: '5',
+      variantIndex: 0,
+    } as never);
+    writeFileSync(path.join(generatedDir, 'reference-var-0.png'), Buffer.from('PNG'));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/reference-preview?name=new-character&type=character',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      currentPreview: true,
+      references: [
+        {
+          spriteName: 'reference-var-0',
+          assetPath: 'generated/reference-var-0.png',
+          imageDataUrl: 'data:image/png;base64,UE5H',
+        },
+      ],
+    });
+  });
+
   it('managed service exposes provenance and requires its shutdown token', async () => {
     const requestShutdown = vi.fn();
     const managedApp = buildServer({

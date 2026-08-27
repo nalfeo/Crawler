@@ -137,6 +137,9 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.match(html, /Enter an asset name to resolve its deterministic reference examples/);
   assert.doesNotMatch(html, /previewName \|\| '\[not-entered\]'/);
   assert.match(html, /categoryDraftByType\[selected\.requestedType\]/);
+  assert.match(html, /text: selected\.injectionOverrides\?\.category \|\| ''/);
+  assert.match(html, /editCategoryInjection\.value === canonicalEditCategory/);
+  assert.match(html, /text\.charAt\(found - 1\) === '\\n'/);
   assert.match(html, /categoryDraftByType\[previousCategoryType\] = categoryInjection\.value/);
   assert.match(html, /categoryDraftByType: Object\.assign\(\{\}, categoryDraftByType\)/);
   assert.match(html, /function captureRequestComposerDraft\(/);
