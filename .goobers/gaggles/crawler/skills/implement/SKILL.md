@@ -20,4 +20,9 @@ If optional `list_inputs`, `grep_input`, or `read_input` helpers are unavailable
 ignore them and continue; missing Goobers input tools alone is not an escalation
 reason.
 
+Your first shell command must list `.goobers/context/` and print the readable
+context files there. A missing helper tool is not the same as missing
+requirements context; do not report `MISSING_REQUIREMENTS_CONTEXT` unless the
+directory was listed and the required files were absent or unreadable.
+
 Return the final completion as raw JSON only, with scalar-only `outputs`.
