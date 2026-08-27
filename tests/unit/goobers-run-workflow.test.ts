@@ -46,9 +46,11 @@ interface GoobersDefinition {
     runControls?: { maxRepasses?: number };
     tasks: Array<{
       name: string;
+      next?: string;
       run?: { command?: string[]; script?: string };
       inputsFrom?: Record<string, string>;
       capabilities?: string[];
+      contextFrom?: string[];
       expectedOutputs?: string[];
       retry?: { maxAttempts?: number; backoffSeconds?: number };
     }>;
@@ -119,6 +121,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     const tasks = new Map(definition.spec.tasks.map((task) => [task.name, task]));
     const hydrate = tasks.get('hydrate-requirements');
+    const plan = tasks.get('plan');
+    const materializePlan = tasks.get('materialize-plan');
+    const implement = tasks.get('implement');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -142,6 +147,25 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(hydrate?.run?.script).toContain('requirements-result.json');
     expect(hydrate?.capabilities).toBeUndefined();
     expect(hydrate?.retry).toBeUndefined();
+    expect(plan?.expectedOutputs).toEqual([
+      'implementationPlan',
+      'hardGate',
+      'verdict',
+      'appleEstimate',
+    ]);
+    expect(plan?.next).toBe('materialize-plan');
+    expect(materializePlan?.inputsFrom).toEqual({
+      implementationPlan: 'plan.implementationPlan',
+      hardGate: 'plan.hardGate',
+      verdict: 'plan.verdict',
+      appleEstimate: 'plan.appleEstimate',
+    });
+    expect(materializePlan?.run?.script).toContain('implementation-plan-result.json');
+    expect(materializePlan?.run?.script).toContain('GOOBERS_INPUT_IMPLEMENTATIONPLAN');
+    expect(materializePlan?.next).toBe('implement');
+    expect(implement?.contextFrom).toContain('hydrate-requirements');
+    expect(implement?.contextFrom).toContain('materialize-plan');
+    expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     for (const name of ['plan', 'implement']) {

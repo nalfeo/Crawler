@@ -104,14 +104,67 @@ spec:
         maxAttempts: 2
         backoffSeconds: 30
       expectedOutputs:
-        - implementation-plan
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
+      next: materialize-plan
+    - name: materialize-plan
+      type: deterministic
+      inputsFrom:
+        implementationPlan: plan.implementationPlan
+        hardGate: plan.hardGate
+        verdict: plan.verdict
+        appleEstimate: plan.appleEstimate
+      goal: Materialize the producer scalar outputs into durable implementation context.
+      run:
+        script: |
+          set -eu
+          {
+            echo "# Producer implementation plan"
+            echo
+            echo "- Verdict: ${GOOBERS_INPUT_VERDICT:-}"
+            echo "- Apple estimate: ${GOOBERS_INPUT_APPLEESTIMATE:-}"
+            echo "- Hard gate: ${GOOBERS_INPUT_HARDGATE:-}"
+            echo
+            echo "## Plan"
+            echo
+            printf '%s\n' "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}"
+          } > implementation-plan.md
+
+          jq -n \
+            --arg planFile "implementation-plan.md" \
+            --arg implementationPlan "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}" \
+            --arg hardGate "${GOOBERS_INPUT_HARDGATE:-}" \
+            --arg verdict "${GOOBERS_INPUT_VERDICT:-}" \
+            --arg appleEstimate "${GOOBERS_INPUT_APPLEESTIMATE:-}" \
+            --rawfile materializedPlan implementation-plan.md \
+            '{
+              schema: "crawler.goobers.implementation-plan/v1",
+              planFile: $planFile,
+              implementationPlan: $implementationPlan,
+              hardGate: $hardGate,
+              verdict: $verdict,
+              appleEstimate: $appleEstimate,
+              materializedPlan: $materializedPlan
+            }' > implementation-plan-result.json
+
+          cat implementation-plan.md
+      inputs:
+        resultFile: 'implementation-plan-result.json'
+      expectedOutputs:
+        - planFile
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
       next: implement
     - name: implement
       type: agentic
       goober: coder
       contextFrom:
         - hydrate-requirements
-        - plan
+        - materialize-plan
         - implement
         - review
         - local-ci

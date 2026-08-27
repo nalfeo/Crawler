@@ -31,3 +31,7 @@ because there is no chat preamble channel.
 
 Return the final completion as raw JSON only. Do not wrap it in Markdown. Keep
 `outputs` scalar-only; put structured details in the plan artifact.
+
+On success, use these exact output keys: `implementationPlan`, `hardGate`,
+`verdict`, and `appleEstimate`. Downstream deterministic stages consume those
+names directly, so do not rename them to `plan` or `implementation-plan`.

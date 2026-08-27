@@ -48,3 +48,8 @@ Final responses must be raw JSON only: no Markdown fences, no prose before or
 after. The `outputs` object accepts only scalar values, so encode lists as
 comma-separated strings or move details into a plan artifact path referenced by
 a scalar output.
+
+When planning succeeds, the final JSON must include these exact scalar output
+keys because downstream deterministic stages consume them by name:
+`implementationPlan`, `hardGate`, `verdict`, and `appleEstimate`. Do not use
+alternate names such as `plan` or `implementation-plan`.
