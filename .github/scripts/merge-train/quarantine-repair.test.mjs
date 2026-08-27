@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  MANAGED_COMMENT_PREFIX,
+  quarantineRepairNoticeMarker,
+  QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
+} from '../ci-recovery/markers.mjs';
+import {
   REPAIR_BRANCH_PREFIX,
   buildReplacementBody,
   buildSupersedeNoticeBody,
@@ -97,6 +102,19 @@ test('buildSupersedeNoticeBody names the replacement PR and the exact head sha',
   assert.match(body, /#3700/);
   assert.match(body, new RegExp(HEAD_SHA));
   assert.match(body, new RegExp(BLOCKED_LABEL));
+});
+
+test('buildSupersedeNoticeBody starts with the managed marker (regression: prose-first bypassed the CI Recovery Router loop guard)', () => {
+  const body = buildSupersedeNoticeBody({ replacementPrNumber: 3700, headSha: HEAD_SHA });
+  // The router's job-level `if:` skips issue_comment events whose body
+  // starts with `MANAGED_COMMENT_PREFIX` -- the marker must be the literal
+  // first characters, not merely present somewhere in the body.
+  assert.ok(body.startsWith(MANAGED_COMMENT_PREFIX));
+  assert.ok(body.startsWith(quarantineRepairNoticeMarker(3700)));
+});
+
+test('QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX uses the managed crawler- prefix the router recognizes', () => {
+  assert.ok(QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX.startsWith(MANAGED_COMMENT_PREFIX));
 });
 
 test('repairEligibility: only open, quarantined, same-repo, restricted-branch PRs are eligible', () => {
@@ -257,6 +275,7 @@ test('repairQuarantinedPr is idempotent: re-running does not recreate the branch
       state: 'open',
       base: { ref: 'main' },
       body: validReplacementBody,
+      head: { sha: HEAD_SHA },
     },
   });
   // Simulate the linking comment already having been posted on a prior run
@@ -264,7 +283,7 @@ test('repairQuarantinedPr is idempotent: re-running does not recreate the branch
   const comments = [
     quarantineStatusComment(),
     {
-      body: 'already linked\n\n<!-- crawler:quarantine-repair-notice:3700 -->',
+      body: `already linked\n\n${quarantineRepairNoticeMarker(3700)}`,
       performed_via_github_app: {},
     },
   ];
@@ -321,6 +340,7 @@ test('repairQuarantinedPr recovers from a race where another run created the PR 
             state: 'open',
             base: { ref: 'main' },
             body: renderRepairMarker(3588, HEAD_SHA),
+            head: { sha: HEAD_SHA },
           },
         ],
       };
@@ -441,6 +461,301 @@ test('repairQuarantinedPr refuses to link to an open PR on its branch targeting 
     }),
     /refusing to link to it/,
   );
+});
+
+// Regression: a prior version of `findVerifiedReplacementPr` validated only
+// the repair marker + base ref before treating an existing PR on the repair
+// branch as verified. Both of those survive a force-push untouched (they
+// live in the PR's body/base metadata, not its commits), so an OPEN
+// replacement whose branch was force-pushed to unrelated commits -- by a
+// compromised token, a careless collaborator with push access to a
+// non-`copilot/*` branch, or a bug elsewhere -- was accepted as
+// "linked-existing" (or, via the race-recovery path, silently returned from
+// `repairQuarantinedPr` after a failed create) with no verification that the
+// branch still carries the original quarantined commit at all. These tests
+// pin the fix: ancestry from the original `headSha` must be re-proven from a
+// live compare call for every non-merged replacement.
+test('repairQuarantinedPr rejects an OPEN replacement whose branch was force-pushed to unrelated commits, without mutating anything', async () => {
+  const branchName = repairBranchNameFor();
+  const unrelatedSha = 'b'.repeat(40);
+  const calls = [];
+  const requestFn = async (token, path, options) => {
+    calls.push({ path, method: options?.method || 'GET', body: options?.body });
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588`) {
+      return { data: originalPr() };
+    }
+    if (path.startsWith(`/repos/${OWNER}/${REPO}/pulls?head=`)) {
+      return {
+        data: [
+          {
+            number: 3700,
+            state: 'open',
+            base: { ref: 'main' },
+            body: renderRepairMarker(3588, HEAD_SHA),
+            head: { ref: branchName, sha: unrelatedSha },
+          },
+        ],
+      };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/compare/${HEAD_SHA}...${unrelatedSha}`) {
+      return { data: { status: 'diverged' } };
+    }
+    throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
+  };
+  const paginateFn = async (_token, path) => {
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments`) return [quarantineStatusComment()];
+    throw new Error(`unexpected paginate: ${path}`);
+  };
+
+  await assert.rejects(
+    repairQuarantinedPr({
+      requestFn,
+      paginateFn,
+      token: 'token',
+      owner: OWNER,
+      repo: REPO,
+      originalPrNumber: 3588,
+    }),
+    /does not descend from the original quarantined head/,
+  );
+
+  // The rejection must happen BEFORE any mutation is attempted -- no new
+  // branch, no new PR, no supersede notice comment.
+  assert.ok(!calls.some((call) => call.method === 'POST'));
+});
+
+test('repairQuarantinedPr rejects a CLOSED-unmerged replacement whose branch head no longer descends from the original quarantined head', async () => {
+  const branchName = repairBranchNameFor();
+  const unrelatedSha = 'c'.repeat(40);
+  const calls = [];
+  const requestFn = async (token, path, options) => {
+    calls.push({ path, method: options?.method || 'GET', body: options?.body });
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588`) {
+      return { data: originalPr() };
+    }
+    if (path.startsWith(`/repos/${OWNER}/${REPO}/pulls?head=`)) {
+      return {
+        data: [
+          {
+            number: 3700,
+            state: 'closed',
+            merged_at: null,
+            base: { ref: 'main' },
+            body: renderRepairMarker(3588, HEAD_SHA),
+            head: { ref: branchName, sha: unrelatedSha },
+          },
+        ],
+      };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/compare/${HEAD_SHA}...${unrelatedSha}`) {
+      return { data: { status: 'behind' } };
+    }
+    throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
+  };
+  const paginateFn = async (_token, path) => {
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments`) return [quarantineStatusComment()];
+    throw new Error(`unexpected paginate: ${path}`);
+  };
+
+  await assert.rejects(
+    repairQuarantinedPr({
+      requestFn,
+      paginateFn,
+      token: 'token',
+      owner: OWNER,
+      repo: REPO,
+      originalPrNumber: 3588,
+    }),
+    /does not descend from the original quarantined head/,
+  );
+  assert.ok(!calls.some((call) => call.method === 'POST'));
+});
+
+test('repairQuarantinedPr accepts an OPEN replacement whose branch legitimately advanced past the original head (merge-train merged main into it)', async () => {
+  const branchName = repairBranchNameFor();
+  const advancedSha = 'd'.repeat(40);
+  const requestFn = async (token, path, options) => {
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588`) {
+      return { data: originalPr() };
+    }
+    if (path.startsWith(`/repos/${OWNER}/${REPO}/pulls?head=`)) {
+      return {
+        data: [
+          {
+            number: 3700,
+            state: 'open',
+            base: { ref: 'main' },
+            body: renderRepairMarker(3588, HEAD_SHA),
+            head: { ref: branchName, sha: advancedSha },
+          },
+        ],
+      };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/compare/${HEAD_SHA}...${advancedSha}`) {
+      return { data: { status: 'ahead' } };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments` && options?.method === 'POST') {
+      return { data: { id: 1 } };
+    }
+    throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
+  };
+  const paginateFn = async (_token, path) => {
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments`) return [quarantineStatusComment()];
+    throw new Error(`unexpected paginate: ${path}`);
+  };
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'linked-existing');
+  assert.equal(result.replacementPrNumber, 3700);
+});
+
+test('repairQuarantinedPr treats a merged replacement as terminal, even though the merge train moved the branch tip away from the original head sha', async () => {
+  // The merge train's update-branch step merges `main` into the replacement
+  // branch while advancing it, so by the time it merges the branch tip is
+  // essentially NEVER still `HEAD_SHA`. If the repair ever re-derived state
+  // from the branch ref for an already-merged replacement, it would either
+  // throw ("unexpected sha") or, if the branch was also deleted post-merge,
+  // fall through to fabricating a second, now-no-diff, replacement PR.
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: true,
+    refSha: 'd'.repeat(40), // diverged: no longer HEAD_SHA
+    existingPr: {
+      number: 3700,
+      state: 'closed',
+      merged_at: '2024-01-01T00:00:00Z',
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+    },
+  });
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.deepEqual(result, {
+    action: 'already-repaired',
+    originalPrNumber: 3588,
+    replacementPrNumber: 3700,
+    branchName: repairBranchNameFor(),
+    headSha: HEAD_SHA,
+    noticePosted: true,
+  });
+  // Never queried the (diverged) branch ref, never created a branch, never
+  // created a second PR.
+  assert.ok(!calls.some((call) => call.path.startsWith(`/repos/${OWNER}/${REPO}/git/ref/heads/`)));
+  assert.ok(!calls.some((call) => call.method === 'POST' && call.path.endsWith('/git/refs')));
+  assert.ok(
+    !calls.some((call) => call.path === `/repos/${OWNER}/${REPO}/pulls` && call.method === 'POST'),
+  );
+});
+
+test('repairQuarantinedPr treats a merged replacement as terminal even after GitHub auto-deletes its branch', async () => {
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: false, // branch deleted post-merge
+    existingPr: {
+      number: 3700,
+      state: 'closed',
+      merged_at: '2024-01-01T00:00:00Z',
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+    },
+  });
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'already-repaired');
+  assert.equal(result.replacementPrNumber, 3700);
+  assert.ok(!calls.some((call) => call.method === 'POST' && call.path.endsWith('/git/refs')));
+  assert.ok(
+    !calls.some((call) => call.path === `/repos/${OWNER}/${REPO}/pulls` && call.method === 'POST'),
+  );
+});
+
+test('repairQuarantinedPr is idempotent once a replacement has already merged (no second notice re-posted)', async () => {
+  const { requestFn, paginateFn } = stubGithub({
+    refExists: false,
+    existingPr: {
+      number: 3700,
+      state: 'closed',
+      merged_at: '2024-01-01T00:00:00Z',
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+    },
+  });
+  const comments = [
+    quarantineStatusComment(),
+    {
+      body: quarantineRepairNoticeMarker(3700),
+      performed_via_github_app: {},
+    },
+  ];
+  const paginateWithComments = async (token, path) => {
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments`) return comments;
+    return paginateFn(token, path);
+  };
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn: paginateWithComments,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'already-repaired');
+  assert.equal(result.noticePosted, false);
+});
+
+test('repairQuarantinedPr skips (never auto-recreates) a replacement that was closed without merging', async () => {
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: true,
+    refSha: HEAD_SHA,
+    existingPr: {
+      number: 3700,
+      state: 'closed',
+      merged_at: null,
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+      head: { sha: HEAD_SHA },
+    },
+  });
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'skip');
+  assert.equal(result.replacementPrNumber, 3700);
+  assert.match(result.reason, /closed without merging/);
+  // No mutation of any kind: no new branch, no new PR, and -- unlike the
+  // open/merged path -- no supersede notice either (this needs a human).
+  assert.ok(!calls.some((call) => call.method === 'POST'));
 });
 
 test('repairAllQuarantinedPrs discovers PR-shaped issues carrying the blocked label and repairs each', async () => {

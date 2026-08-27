@@ -140,6 +140,30 @@ export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 
 export const STALE_BASE_RETARGET_MARKER = '<!-- crawler-ci-stale-base-retarget:v1';
 
 // ---------------------------------------------------------------------------
+// Quarantine-repair (merge-train) notice comment
+// ---------------------------------------------------------------------------
+
+/**
+ * Leading prefix for the quarantine-repair supersede-notice comment that
+ * `merge-train/quarantine-repair.mjs` posts on the ORIGINAL quarantined PR
+ * once a writable replacement PR exists for it. Full format:
+ * `<!-- crawler-quarantine-repair-notice:v1 replacement=<prNumber> -->`.
+ *
+ * This MUST be the first thing written in the comment body (see
+ * `buildSupersedeNoticeBody`), not merely present somewhere inside it: the
+ * `ci-recovery-router` workflow's job-level `if:` filters `issue_comment`
+ * events by `startsWith(comment.body, MANAGED_COMMENT_PREFIX)`, and a marker
+ * that isn't the leading text does not satisfy `startsWith` -- which would
+ * otherwise let this automation's own notice comment trigger an unnecessary
+ * CI-recovery run every time a repair notice is posted.
+ */
+export const QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX = '<!-- crawler-quarantine-repair-notice:v1';
+
+export function quarantineRepairNoticeMarker(replacementPrNumber) {
+  return `${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX} replacement=${replacementPrNumber} -->`;
+}
+
+// ---------------------------------------------------------------------------
 // Epic-create issue markers
 // ---------------------------------------------------------------------------
 
@@ -201,6 +225,7 @@ export const MANAGED_COMMENT_MARKERS = [
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,
   STALE_BASE_RETARGET_MARKER,
+  QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
 ];

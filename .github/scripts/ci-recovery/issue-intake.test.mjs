@@ -584,6 +584,94 @@ test('restart issue intake removes existing Copilot assignee before reassigning'
   });
 });
 
+test('restart issue intake removes a stale Copilot actor variant that differs from the suggested actor', async () => {
+  // Regression test: the issue is assigned to BOT_B ('copilot', a different
+  // valid Copilot login/ID variant), while the live discovery query resolves
+  // BOT_A ('copilot-swe-agent') as the suggested actor to (re)assign. A naive
+  // `actor.id === assignmentContext.copilot.id` comparison would never match
+  // here, so removal would be skipped and `replaceActorsForAssignable` would
+  // just reassert BOT_B unchanged -- a same-set no-op that never re-fires the
+  // `assigned` webhook and never restarts the stalled session.
+  const calls = [];
+  const graphql = async (_token, query, variables) => {
+    if (query.includes('suggestedActors')) {
+      calls.push(['discover', variables]);
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_A', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            assignees: {
+              nodes: [
+                { id: 'USER_NALFEO', login: 'nalfeo' },
+                { id: 'BOT_B', login: 'copilot' },
+              ],
+            },
+          },
+        },
+      };
+    }
+    if (query.includes('removeAssigneesFromAssignable')) {
+      calls.push(['remove', variables]);
+      return {
+        removeAssigneesFromAssignable: {
+          assignable: { assignees: { nodes: [{ login: 'nalfeo' }] } },
+        },
+      };
+    }
+    calls.push(['assign', variables]);
+    return {
+      replaceActorsForAssignable: {
+        assignable: {
+          assignees: { nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }] },
+        },
+      },
+    };
+  };
+  const paginate = async () => {
+    calls.push(['comments']);
+    return [
+      {
+        id: 1,
+        body: ISSUE_INTAKE_BODY,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ];
+  };
+
+  const result = await runIssueIntake({
+    graphql,
+    paginate,
+    request: async () => assert.fail('existing kickoff comment should be reused'),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue,
+    restart: true,
+  });
+
+  assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'existing' });
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ['discover', 'comments', 'remove', 'assign'],
+  );
+  // The stale variant (BOT_B / 'copilot') is removed, not silently kept.
+  assert.deepEqual(calls[2][1], {
+    assignableId: 'ISSUE_1067',
+    assigneeIds: ['BOT_B'],
+  });
+  // Reassignment preserves the non-Copilot assignee and uses the freshly
+  // discovered suggested actor (BOT_A), not the stale removed one (BOT_B).
+  assert.deepEqual(calls[3][1], {
+    assignableId: 'ISSUE_1067',
+    actorIds: ['USER_NALFEO', 'BOT_A'],
+  });
+});
+
 test('deletes the kickoff comment when assignment does not persist', async () => {
   const requestCalls = [];
   let graphqlCall = 0;

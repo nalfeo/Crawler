@@ -46,6 +46,33 @@
  * exists" / "pull request already exists" responses rather than duplicating
  * anything.
  *
+ * Once a replacement PR exists, it OWNS the mutable branch's lifecycle, not
+ * this function: the merge train's update-branch step will merge `main` into
+ * it while advancing it (moving the tip away from the recorded `headSha`),
+ * and GitHub may delete the branch once the replacement merges. A repair run
+ * therefore always looks for an already-verified replacement BEFORE touching
+ * the branch ref at all, and reacts explicitly to what it finds --
+ * open (ensure the notice is posted), merged (terminal, nothing left to do),
+ * or closed-without-merging (skip; recreating on this deterministic branch
+ * name is a decision for a human, not this script) -- so a moved or deleted
+ * branch is never mistaken for corruption, and a merged replacement is never
+ * given a second, now-no-diff, sibling PR.
+ *
+ * "OWNS the mutable branch's lifecycle" is deliberately narrow, though: it
+ * means the branch's tip is allowed to MOVE FORWARD from `headSha` (train
+ * merges, then eventual merge/delete), not that ANY commit ever pushed to it
+ * is trusted. `findVerifiedReplacementPr` therefore re-derives ancestry from
+ * a live compare call for every non-merged replacement (open, or
+ * closed-without-merging) before it is linked to, skipped, or reported as
+ * repaired -- a force-push (accidental or hostile) that repoints an OPEN
+ * replacement's branch at unrelated commits must never be accepted as
+ * "linked-existing" just because it once carried the right marker and base.
+ * A MERGED replacement is exempt from that ancestry re-check: it is terminal
+ * by construction (see `finalizeExistingReplacement`), and by the time it
+ * merges its tip has almost always already moved past `headSha` legitimately
+ * (or the branch is gone), so re-deriving ancestry there would misfire on
+ * the expected case, not the dangerous one.
+ *
  * Every exported function is dependency-injected (`request`/`paginate` passed
  * in, mirroring `merge-train/reconcile-lib.mjs`) so tests exercise real
  * control flow against stub HTTP, never a live network call or a mocked
@@ -55,6 +82,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { encodeRefPath, paginate, request } from '../ci-recovery/github.mjs';
+import { quarantineRepairNoticeMarker } from '../ci-recovery/markers.mjs';
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from '../ci-recovery/state.mjs';
 import {
   UNADVANCEABLE_STRIKE_THRESHOLD,
@@ -65,7 +93,6 @@ import { BLOCKED_LABEL, STATUS_MARKER, hasLeadingMarker } from './state.mjs';
 
 export const REPAIR_BRANCH_PREFIX = 'crawler-quarantine-repair/';
 const REPAIR_MARKER_PREFIX = '<!-- crawler:quarantine-repair-of:';
-const NOTICE_MARKER_PREFIX = '<!-- crawler:quarantine-repair-notice:';
 const RESTRICTED_BRANCH_PATTERN = /^copilot\//i;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
@@ -107,10 +134,6 @@ export function parseRepairMarker(body) {
   const prNumber = Number.parseInt(prNumberText, 10);
   if (!Number.isInteger(prNumber) || !SHA_PATTERN.test(String(shaText || ''))) return null;
   return { prNumber, sha: shaText };
-}
-
-function renderNoticeMarker(replacementPrNumber) {
-  return `${NOTICE_MARKER_PREFIX}${replacementPrNumber} -->`;
 }
 
 /**
@@ -217,15 +240,21 @@ export function buildReplacementBody({ original, headSha }) {
   ].join('\n');
 }
 
+/**
+ * The notice marker MUST be the leading text of the comment body (not merely
+ * present in it) so the ci-recovery-router workflow's `startsWith(comment.body,
+ * '<!-- crawler-')` job guard recognizes this as a managed comment and skips
+ * dispatching an unnecessary recovery run for it (see `markers.mjs`).
+ */
 export function buildSupersedeNoticeBody({ replacementPrNumber, headSha }) {
   return [
+    quarantineRepairNoticeMarker(replacementPrNumber),
+    '',
     `Quarantine repair: this PR's head branch cannot be updated by the merge train ` +
       `(repeated update-branch 403 -- \`${BLOCKED_LABEL}\`).`,
     `Replacement PR #${replacementPrNumber} carries the exact same commits ` +
       `(head \`${headSha}\`) on a writable branch against \`main\`.`,
     `This PR is left open for audit; land the work via #${replacementPrNumber}.`,
-    '',
-    renderNoticeMarker(replacementPrNumber),
   ].join('\n');
 }
 
@@ -243,6 +272,69 @@ async function getRefSha({ requestFn, token, owner, repo, branchName }) {
 }
 
 /**
+ * Verifies a candidate replacement PR's CURRENT head sha still legitimately
+ * descends from (or equals) the original quarantined PR's `headSha`, using
+ * the same compare-API ancestry pattern `backfill-historical-landed.mjs`
+ * uses to confirm a commit reached `main`. This is the check that closes the
+ * force-push gap: the marker/base checks in `findVerifiedReplacementPr` only
+ * prove the replacement PR was ONCE opened correctly against the right
+ * branch name -- they say nothing about what commits that branch carries
+ * NOW, and nothing stops a force-push (malicious or accidental) from
+ * repointing an OPEN or CLOSED-unmerged replacement's branch at unrelated
+ * commits after the fact. A MERGED replacement is intentionally exempt (see
+ * the `replacementLifecycleState` check at the call site): the merge train
+ * legitimately advances an open replacement's tip by merging `main` into it
+ * while advancing, and once merged the branch may be moved further or
+ * deleted entirely, so `headSha` no longer being its tip is the expected,
+ * safe, idempotent case, not corruption.
+ *
+ * `identical` (branch tip unchanged) and `ahead` (branch tip advanced with
+ * `headSha` still an ancestor -- e.g. `main` was merged in) are both
+ * legitimate outcomes of the compare `headSha...replacementHeadSha`;
+ * anything else (`diverged`/`behind`, or an unreadable/deleted commit) means
+ * the branch no longer provably carries the original quarantined commit, so
+ * it is refused rather than silently linked to or reported as already
+ * repaired.
+ */
+async function verifyReplacementHeadDescendsFromOriginal({
+  requestFn,
+  token,
+  owner,
+  repo,
+  candidate,
+  headSha,
+}) {
+  const replacementHeadSha = candidate.head?.sha;
+  if (!SHA_PATTERN.test(String(replacementHeadSha || ''))) {
+    throw new Error(
+      `PR #${candidate.number} on branch \`${candidate.head?.ref ?? '<unknown>'}\` has no ` +
+        'readable head sha; refusing to link to it',
+    );
+  }
+  if (replacementHeadSha === headSha) return;
+  let comparison;
+  try {
+    comparison = (
+      await requestFn(
+        token,
+        `/repos/${owner}/${repo}/compare/${encodeURIComponent(headSha)}...${encodeURIComponent(replacementHeadSha)}`,
+      )
+    ).data;
+  } catch (error) {
+    throw new Error(
+      `Could not verify PR #${candidate.number}'s head \`${replacementHeadSha}\` descends from the ` +
+        `original quarantined head \`${headSha}\` (${error?.status ?? 'network'}); refusing to link to it`,
+    );
+  }
+  if (comparison?.status !== 'ahead' && comparison?.status !== 'identical') {
+    throw new Error(
+      `PR #${candidate.number}'s head \`${replacementHeadSha}\` does not descend from the original ` +
+        `quarantined head \`${headSha}\` (compare status: ${comparison?.status}); refusing to link to it`,
+    );
+  }
+}
+
+/**
  * Finds a previously-created replacement PR for this exact branch, verifying
  * it against the repair marker (not merely its existence) before it is ever
  * reused: the branch name is entirely ours (derived from `prNumber`+`headSha`
@@ -250,6 +342,23 @@ async function getRefSha({ requestFn, token, owner, repo, branchName }) {
  * does NOT carry our marker for this exact `(originalPrNumber, headSha)` pair
  * indicates a corrupted or unexpected prior state -- fail loud rather than
  * silently link the original PR to the wrong replacement.
+ *
+ * Looks across every state (open, merged, closed), not just open: once a
+ * replacement PR exists it owns the mutable branch's lifecycle (see
+ * `finalizeExistingReplacement`), and a merged or closed replacement is a
+ * REAL prior outcome that must be recognized, never re-discovered as "no
+ * replacement yet" and repaired a second time. Prefers an open PR if one
+ * exists, then a merged one, then falls back to the most recently listed
+ * closed-unmerged one -- GitHub allows only one open PR per head+base pair,
+ * but history can accumulate more than one closed/merged entry over time.
+ *
+ * The marker and base checks alone only prove what was true when the
+ * replacement was ORIGINALLY opened -- they are silent about the branch's
+ * CURRENT tip. So for every state except `merged` (which legitimately owns
+ * the branch's mutable lifecycle -- see `verifyReplacementHeadDescendsFromOriginal`),
+ * this additionally re-derives ancestry from a live compare call before the
+ * candidate is ever returned to a caller that might link, skip, or report it
+ * as already repaired.
  */
 async function findVerifiedReplacementPr({
   requestFn,
@@ -266,21 +375,49 @@ async function findVerifiedReplacementPr({
     `/repos/${owner}/${repo}/pulls?head=${encodeURIComponent(`${owner}:${branchName}`)}&state=all&per_page=10`,
   );
   const candidates = Array.isArray(response.data) ? response.data : [];
-  const open = candidates.find((pr) => String(pr.state).toLowerCase() === 'open');
-  if (!open) return null;
-  const marker = parseRepairMarker(open.body);
+  if (candidates.length === 0) return null;
+  const candidate =
+    candidates.find((pr) => String(pr?.state || '').toLowerCase() === 'open') ??
+    candidates.find((pr) => pr?.merged === true || pr?.merged_at) ??
+    candidates[0];
+  const marker = parseRepairMarker(candidate.body);
   if (!marker || marker.prNumber !== originalPrNumber || marker.sha !== headSha) {
     throw new Error(
-      `Branch ${branchName} already has open PR #${open.number}, but its body does not carry ` +
+      `Branch ${branchName} already has PR #${candidate.number}, but its body does not carry ` +
         `the expected repair marker for #${originalPrNumber}@${headSha}; refusing to link to it`,
     );
   }
-  if (String(open.base?.ref || '') !== baseBranch) {
+  if (String(candidate.base?.ref || '') !== baseBranch) {
     throw new Error(
-      `Branch ${branchName}'s open PR #${open.number} targets base \`${open.base?.ref}\`, expected \`${baseBranch}\`; refusing to link to it`,
+      `Branch ${branchName}'s PR #${candidate.number} targets base \`${candidate.base?.ref}\`, expected \`${baseBranch}\`; refusing to link to it`,
     );
   }
-  return open;
+  if (replacementLifecycleState(candidate) !== 'merged') {
+    await verifyReplacementHeadDescendsFromOriginal({
+      requestFn,
+      token,
+      owner,
+      repo,
+      candidate,
+      headSha,
+    });
+  }
+  return candidate;
+}
+
+/**
+ * Classifies a verified replacement PR's lifecycle so the caller can react
+ * explicitly instead of assuming "open" is the only possible state (see
+ * `finalizeExistingReplacement`). GitHub's list-pulls response includes
+ * `merged_at` (and the single-PR "get" response also includes a `merged`
+ * boolean) for merged PRs, but never both a `state: 'open'` AND a `merged_at`
+ * together, so checking `state` first is sufficient to distinguish the two
+ * non-open outcomes.
+ */
+function replacementLifecycleState(pr) {
+  if (String(pr?.state || '').toLowerCase() === 'open') return 'open';
+  if (pr?.merged === true || pr?.merged_at) return 'merged';
+  return 'closed';
 }
 
 async function postSupersedeNoticeOnce({
@@ -293,7 +430,7 @@ async function postSupersedeNoticeOnce({
   replacementPrNumber,
   headSha,
 }) {
-  const marker = renderNoticeMarker(replacementPrNumber);
+  const marker = quarantineRepairNoticeMarker(replacementPrNumber);
   const comments = await paginateFn(
     token,
     `/repos/${owner}/${repo}/issues/${originalPrNumber}/comments`,
@@ -314,6 +451,76 @@ async function postSupersedeNoticeOnce({
     body: { body: buildSupersedeNoticeBody({ replacementPrNumber, headSha }) },
   });
   return true;
+}
+
+/**
+ * Finalizes repair for a branch that ALREADY has a verified replacement PR
+ * (any lifecycle state), reacting explicitly to each outcome instead of
+ * assuming "open" is the only possibility:
+ *
+ *   - open: the normal steady state -- ensure the one-time linking notice is
+ *     posted on the original, same as always.
+ *   - merged: the replacement already landed the work on `main`. This is
+ *     terminal -- there is nothing left to repair, and the branch's tip
+ *     almost always no longer equals the original's `headSha` (the merge
+ *     train's update-branch step merges `main` into it while advancing it,
+ *     and GitHub may have auto-deleted the branch after merge). Neither is a
+ *     corruption to refuse; treating this PR's existence as sufficient
+ *     (rather than re-deriving from the branch ref) is what keeps re-running
+ *     the repair idempotent instead of throwing or fabricating a second,
+ *     now-no-diff, replacement PR.
+ *   - closed (not merged): a human (or a previous automated attempt) closed
+ *     the replacement without landing it. Recreating a PR on this exact
+ *     deterministic branch name automatically would either reopen work a
+ *     human already rejected, or -- if the branch was since deleted --
+ *     silently fabricate a fresh PR carrying commits that may already be on
+ *     `main` via some other path. That decision needs a human, so this is
+ *     reported as a skip rather than acted on.
+ */
+async function finalizeExistingReplacement({
+  requestFn,
+  paginateFn,
+  token,
+  owner,
+  repo,
+  originalPrNumber,
+  replacement,
+  branchName,
+  headSha,
+}) {
+  const state = replacementLifecycleState(replacement);
+  if (state === 'closed') {
+    return {
+      action: 'skip',
+      originalPrNumber,
+      replacementPrNumber: replacement.number,
+      branchName,
+      headSha,
+      reason:
+        `Replacement PR #${replacement.number} for #${originalPrNumber} was closed without ` +
+        `merging; not auto-recreating a replacement on ${branchName} -- resolve manually`,
+    };
+  }
+
+  const noticePosted = await postSupersedeNoticeOnce({
+    requestFn,
+    paginateFn,
+    token,
+    owner,
+    repo,
+    originalPrNumber,
+    replacementPrNumber: replacement.number,
+    headSha,
+  });
+
+  return {
+    action: state === 'merged' ? 'already-repaired' : 'linked-existing',
+    originalPrNumber,
+    replacementPrNumber: replacement.number,
+    branchName,
+    headSha,
+    noticePosted,
+  };
 }
 
 /**
@@ -352,6 +559,37 @@ export async function repairQuarantinedPr({
   const headSha = original.head.sha;
   const branchName = repairBranchName(originalPrNumber, headSha);
 
+  // Look for an already-verified replacement FIRST, before ever touching the
+  // branch ref. Once a replacement PR exists it owns the branch's mutable
+  // lifecycle (the merge train's update-branch step moves its tip merging in
+  // `main`, and GitHub may delete it after merge) -- neither is a corruption
+  // this function should refuse or repair around. Only the very-first repair
+  // pass (no replacement anywhere yet) legitimately owns comparing/creating
+  // the branch ref itself.
+  const existingReplacement = await findVerifiedReplacementPr({
+    requestFn,
+    token,
+    owner,
+    repo,
+    branchName,
+    baseBranch,
+    originalPrNumber,
+    headSha,
+  });
+  if (existingReplacement) {
+    return finalizeExistingReplacement({
+      requestFn,
+      paginateFn,
+      token,
+      owner,
+      repo,
+      originalPrNumber,
+      replacement: existingReplacement,
+      branchName,
+      headSha,
+    });
+  }
+
   const existingBranchSha = await getRefSha({ requestFn, token, owner, repo, branchName });
   if (existingBranchSha && existingBranchSha !== headSha) {
     // The branch name is derived from (prNumber, headSha) with a 12-hex-char
@@ -384,48 +622,37 @@ export async function repairQuarantinedPr({
     }
   }
 
-  let replacement = await findVerifiedReplacementPr({
-    requestFn,
-    token,
-    owner,
-    repo,
-    branchName,
-    baseBranch,
-    originalPrNumber,
-    headSha,
-  });
+  let replacement;
   let created = false;
-  if (!replacement) {
-    try {
-      const response = await requestFn(token, `/repos/${owner}/${repo}/pulls`, {
-        method: 'POST',
-        body: {
-          title: `${original.title} (quarantine repair of #${originalPrNumber})`,
-          head: branchName,
-          base: baseBranch,
-          body: buildReplacementBody({ original, headSha }),
-          maintainer_can_modify: true,
-        },
+  try {
+    const response = await requestFn(token, `/repos/${owner}/${repo}/pulls`, {
+      method: 'POST',
+      body: {
+        title: `${original.title} (quarantine repair of #${originalPrNumber})`,
+        head: branchName,
+        base: baseBranch,
+        body: buildReplacementBody({ original, headSha }),
+        maintainer_can_modify: true,
+      },
+    });
+    replacement = response.data;
+    created = true;
+  } catch (error) {
+    if (error.status === 422 && /already exists/i.test(String(error.message))) {
+      // Race: another run created the PR between our check and this POST.
+      replacement = await findVerifiedReplacementPr({
+        requestFn,
+        token,
+        owner,
+        repo,
+        branchName,
+        baseBranch,
+        originalPrNumber,
+        headSha,
       });
-      replacement = response.data;
-      created = true;
-    } catch (error) {
-      if (error.status === 422 && /already exists/i.test(String(error.message))) {
-        // Race: another run created the PR between our check and this POST.
-        replacement = await findVerifiedReplacementPr({
-          requestFn,
-          token,
-          owner,
-          repo,
-          branchName,
-          baseBranch,
-          originalPrNumber,
-          headSha,
-        });
-        if (!replacement) throw error;
-      } else {
-        throw error;
-      }
+      if (!replacement) throw error;
+    } else {
+      throw error;
     }
   }
 

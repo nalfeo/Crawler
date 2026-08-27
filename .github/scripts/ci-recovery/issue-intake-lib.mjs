@@ -813,8 +813,31 @@ export async function runIssueIntake({
     throw new IssueClaimedByGoobersError(issue.number);
   }
 
+  // Every currently assigned actor recognized as Copilot (by login, not just
+  // by matching `assignmentContext.copilot.id`) -- an issue can be left
+  // assigned to a different valid Copilot actor ID/login variant than the one
+  // freshly discovered here, e.g. after a bot identity rotation.
+  const currentCopilotAssignees = assignmentContext.assignees.filter((actor) =>
+    isCopilotLogin(actor?.login),
+  );
+
+  // `restart: true` only does anything useful if it forces
+  // `replaceActorsForAssignable` to actually change the assignable's actor
+  // set -- GitHub only re-fires the `assigned` webhook (which is what
+  // restarts a stalled Copilot session) on a real transition. If we left a
+  // stale Copilot assignee in `assignmentContext.assignees` here,
+  // `buildIssueActorIds` would just carry that same stale actor id back into
+  // `actorIds` below (see its "keep whichever Copilot is already assigned"
+  // branch), making the mutation a same-set no-op. So on restart, derive
+  // `actorIds` with every Copilot-recognized assignee stripped out first --
+  // the removal below then always clears the actual stale actor(s), and
+  // `buildIssueActorIds` always falls back to the freshly discovered
+  // `assignmentContext.copilot.id` instead of reusing a stale one. Non-Copilot
+  // assignees are preserved either way.
   const actorIds = buildIssueActorIds({
-    assignees: assignmentContext.assignees,
+    assignees: restart
+      ? assignmentContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
+      : assignmentContext.assignees,
     copilotActorId: assignmentContext.copilot.id,
     includeCopilot: true,
   });
@@ -846,15 +869,12 @@ export async function runIssueIntake({
 
   let assignment;
   try {
-    if (
-      restart &&
-      assignmentContext.assignees.some((actor) => actor.id === assignmentContext.copilot.id)
-    ) {
+    if (restart && currentCopilotAssignees.length > 0) {
       await removeIssueAssignees({
         graphql,
         token,
         assignableId: issue.node_id || issue.id,
-        actorIds: [assignmentContext.copilot.id],
+        actorIds: [...new Set(currentCopilotAssignees.map((actor) => actor.id).filter(Boolean))],
       });
     }
     assignment = await replaceIssueAssignees({
