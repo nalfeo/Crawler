@@ -237,7 +237,7 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     listeners.get('keydown')!.listener(new Event('keydown'));
     expect(createdContexts[0]!.resume).toHaveBeenCalled();
     await Promise.resolve();
-    expect(listeners).toHaveLength(0);
+    expect(listeners.size).toBe(0);
 
     engine.play(CUE);
     expect(createdOscillators).toHaveLength(1);
@@ -260,7 +260,7 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     };
     const engine = createAudioCueEngine();
     listeners.get('pointerdown')!.listener(new Event('pointerdown'));
-    expect(listeners).toHaveLength(0);
+    expect(listeners.size).toBe(0);
 
     engine.play(CUE);
     expect(createdOscillators).toHaveLength(0);

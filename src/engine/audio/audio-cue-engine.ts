@@ -133,16 +133,16 @@ export function createAudioCueEngine(): AudioCueEngine {
       removeActivationListeners();
       return;
     }
-    if (audioCtx.state === 'suspended') {
-      void audioCtx
-        .resume()
-        .then(removeActivationListeners)
-        .catch(() => {
-          // Autoplay-blocked contexts retry on the next genuine user gesture.
-        });
+    if (audioCtx.state === 'closed') {
+      removeActivationListeners();
       return;
     }
-    removeActivationListeners();
+    void audioCtx
+      .resume()
+      .then(removeActivationListeners)
+      .catch(() => {
+        // Autoplay-blocked contexts retry on the next genuine user gesture.
+      });
   }
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
