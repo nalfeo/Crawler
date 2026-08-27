@@ -650,16 +650,12 @@ function expectedWeaponDpsProfile(
     stats.attackSpeed,
     stats.cooldownReduction,
   );
-  const beamTicks =
-    weapon.beamLength > 0 && weapon.beamTickMs > 0
-      ? 1 + Math.floor(Math.max(0, weapon.durationMs) / weapon.beamTickMs)
-      : 1;
   const impactSplashHits = weapon.weaponType === WeaponType.MAGIC && weapon.aoeRadius > 0 ? 1 : 0;
   const returnHits = weapon.returnSpeed > 0 && weapon.maxRange > 0 ? 1 : 0;
   const damagePerSecond = (damage * accuracy * 1_000) / cooldownMs;
   return {
-    primary: damagePerSecond * (beamTicks + impactSplashHits + returnHits),
-    additionalTarget: damagePerSecond * beamTicks,
+    primary: damagePerSecond * (1 + impactSplashHits + returnHits),
+    additionalTarget: damagePerSecond,
   };
 }
 
