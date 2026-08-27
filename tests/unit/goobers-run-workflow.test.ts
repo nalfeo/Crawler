@@ -96,7 +96,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       GOOBERS_WORKFLOW: "${{ inputs.workflow || 'crawler-feature-pr' }}",
     });
     expect(checkout?.with).toEqual({
-      ref: '${{ github.event.repository.default_branch || github.ref_name }}',
+      ref: "${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}",
       'persist-credentials': false,
     });
     expect(install?.env?.COPILOT_CLI_VERSION).toBe("${{ inputs.copilot_cli_version || '1.0.80' }}");
