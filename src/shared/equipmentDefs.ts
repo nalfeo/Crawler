@@ -186,9 +186,9 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
-  // --- Merchant-stocked weapons (no ITEM_CATALOG slug; equipment-only, like
-  //     the Wave-B floor 2 weapons below). Every weapon a shop archetype can
-  //     stock needs a def here, otherwise the settlement purchase path cannot
+  // --- Merchant-stocked weapons (each `id` mirrors an `items.ts` slug, like
+  //     the starter weapons above). Every weapon a shop archetype can stock
+  //     needs a def here, otherwise the settlement purchase path cannot
   //     resolve the offer and the row renders as unbuyable. ---
   weapon({
     id: 'knife',

@@ -27,6 +27,12 @@ export interface ShopCatalogItem {
 /**
  * Resolve a merchant stock id onto the bag item it grants, or `null` when the
  * id is neither a catalog item nor an equippable weapon.
+ *
+ * A weapon id resolves to the *equipment def's* item slug, which is
+ * deliberately allowed to differ from the weapon id — stocking `'sword'` grants
+ * the `'iron-sword'` bag item, exactly as the Floor 1 merchant already does.
+ * The display name comes from the same resolved def, so the advertised name
+ * always describes the item the player actually receives.
  */
 export function resolveShopCatalogItem(itemId: string): ShopCatalogItem | null {
   const catalogItem = getItemById(itemId);
