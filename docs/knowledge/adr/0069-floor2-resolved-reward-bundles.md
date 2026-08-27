@@ -362,3 +362,13 @@ instances. Inherent armor remains base-driven and level/rarity-scaled, while
 non-armor power is affix-budget driven by rarity (Common 0, Uncommon 1, Rare 2).
 This makes the Common non-armor contract hold by construction and removes the
 need for resolver-time base-category prefiltering.
+
+### Amendment (2026-08-27): non-weapon bases keep their inherent stat line
+
+Superseding the non-armor half of the 2026-07-31 amendment: dropping a base's
+authored non-armor stats made every zero-armor base realize at Common with an
+empty stat map (issue #3697). Non-weapon bases now spread their authored
+non-armor line into every instance at every rarity, and rarity affixes stack on
+top — rarity stays affix-driven. The Common contract is now "no affix-driven
+stat bonus", read from `resolvedEffects`. See
+[`2026-08-27-generated-equipment-inherent-stat-line.md`](2026-08-27-generated-equipment-inherent-stat-line.md).

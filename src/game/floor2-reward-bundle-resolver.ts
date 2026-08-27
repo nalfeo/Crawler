@@ -24,7 +24,7 @@ import { getActiveWeapon } from './weaponSystem.js';
 import {
   generateEquipmentInstance,
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentInstanceHasNonArmorStatBonus,
+  generatedEquipmentInstanceHasAffixDrivenStatBonus,
 } from './generated-equipment-generator.js';
 import {
   FLOOR2_REWARD_POOL_STABLE_IDS,
@@ -110,10 +110,10 @@ export function _assertGeneratedRewardInstanceLegal(
   instance: GeneratedEquipmentInstanceV1,
   rarity: GeneratedEquipmentRarity,
 ): void {
-  if (rarity === 'common' && generatedEquipmentInstanceHasNonArmorStatBonus(instance)) {
+  if (rarity === 'common' && generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)) {
     throw new RewardBundleResolutionError(
       'illegal-base',
-      `Generated Common instance for base ${instance.baseId} has a non-armor stat bonus, violating the Common rarity contract`,
+      `Generated Common instance for base ${instance.baseId} has an affix-driven stat bonus, violating the Common rarity contract`,
     );
   }
 }
