@@ -1,5 +1,5 @@
 name: 'Setup Node with verified dependencies'
-description: 'Install Node and run npm ci for every job.'
+description: 'Set up Node with lockfile-keyed npm caching and verified dependency installs.'
 
 inputs:
   node-version:
@@ -20,6 +20,10 @@ runs:
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
+        # Cache npm's content-addressed download store, never node_modules.
+        # npm ci remains authoritative and rebuilds node_modules from the lockfile.
+        cache: 'npm'
+        cache-dependency-path: 'package-lock.json'
 
     - name: Install dependencies
       if: ${{ inputs.install-dependencies == 'true' }}
