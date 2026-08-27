@@ -14,8 +14,10 @@ import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { getRatTemplate } from './spawners/template-accessor.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
-import { AttackWaveRat, Enemy, Player } from '../core/components.js';
-import { addComponent, query } from 'bitecs';
+import { AttackWaveRat, Enemy, Player, Size, Sprite } from '../core/components.js';
+import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { SHAPE_CIRCLE } from '../core/physics-defs.js';
+import { addComponent, query, setComponent } from 'bitecs';
 import { computeMultiSourceFlowField } from '../core/map/flow-field.js';
 import { RoomRole } from '../shared/map-types.js';
 import { GAME } from '../shared/constants.js';
@@ -303,6 +305,18 @@ function spawnWavePack(world: GameWorld): void {
     );
 
     if (eid) {
+      setComponent(world.ecs, eid, Sprite, {
+        textureId: ratTemplate.textureId,
+        width: ratTemplate.spriteWidth,
+        height: ratTemplate.spriteHeight,
+      });
+      setComponent(world.ecs, eid, Size, {
+        radius: Math.max(ratTemplate.spriteWidth, ratTemplate.spriteHeight) * 0.5,
+        halfWidth: 0,
+        halfHeight: 0,
+        shape: SHAPE_CIRCLE,
+      });
+      setEnemyAppearanceKey(world, eid, ratTemplate.id);
       liveCount++;
       state.aliveWaveRatCount = liveCount;
 
@@ -320,7 +334,7 @@ export function attackWaveSystem(world: GameWorld): void {
   if (!world.attackWaveFlags.attackWaves) {
     return;
   }
-  if (world.floorId !== '' && world.floorId !== 'floor1') {
+  if (world.floorId !== 'floor1') {
     return;
   }
 

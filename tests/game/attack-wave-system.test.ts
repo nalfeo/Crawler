@@ -31,6 +31,7 @@ import { GAME } from '../../src/shared/constants.js';
 import { pxToFt } from '../../src/shared/units.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
 import tuning from '../../src/shared/data/tuning.json';
+import { getRatTemplate } from '../../src/game/spawners/template-accessor.js';
 
 type TuningSchema = typeof tuning & {
   attackWaves: {
@@ -52,6 +53,7 @@ describe('attackWaveSystem', () => {
   describe('flag off', () => {
     it('produces zero spawns and consumes zero RNG draws', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom();
       spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = false;
@@ -75,6 +77,7 @@ describe('attackWaveSystem', () => {
   describe('flag on', () => {
     it('fires a wave at intervalMs with exactly packSize rats, then again at the next interval', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
       spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
@@ -116,6 +119,7 @@ describe('attackWaveSystem', () => {
 
     it('spawns rats with always-aggro CHASE behavior so they close distance on the player', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
       const playerEid = spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
@@ -125,9 +129,14 @@ describe('attackWaveSystem', () => {
 
       const rats = query(world.ecs, [Enemy]);
       expect(rats.length).toBeGreaterThan(0);
+      const ratTemplate = getRatTemplate();
 
       for (const eid of rats) {
         expect(world.stores.enemyBehavior.aggroRange[eid]).toBe(0);
+        expect(world.stores.sprite.textureId[eid]).toBe(ratTemplate.textureId);
+        expect(world.stores.sprite.width[eid]).toBe(ratTemplate.spriteWidth);
+        expect(world.stores.sprite.height[eid]).toBe(ratTemplate.spriteHeight);
+        expect(world.enemyAppearanceKeys.get(eid)).toBe(ratTemplate.id);
       }
 
       // Force aggro to be active immediately (past any stagger delay) and
@@ -182,6 +191,7 @@ describe('attackWaveSystem', () => {
 
     it('suppresses waves when pathable distance to nearest safe room is within threshold', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeCorridorMap();
       // Safe room center is around tile (2,2); pick a nearby open player tile.
       spawnPlayer(world, 3 * 4 + 2, 2 * 4 + 2); // tile (3,2), tileSizeFt=4
@@ -196,6 +206,7 @@ describe('attackWaveSystem', () => {
 
     it('does not suppress when the player is far (pathable) from any safe room', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeCorridorMap();
       // Far corner from the safe room at (1,1)-(4,4).
       spawnPlayer(world, 18 * 4 + 2, 18 * 4 + 2);
@@ -210,6 +221,7 @@ describe('attackWaveSystem', () => {
 
     it('does not spawn while the player is inside a safe space, regardless of distance field', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeCorridorMap();
       spawnPlayer(world, 18 * 4 + 2, 18 * 4 + 2);
       world.attackWaveFlags.attackWaves = true;
@@ -261,6 +273,7 @@ describe('attackWaveSystem', () => {
       });
 
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = floorMap;
       // Player just below the wall, euclidean-close to the safe room above it.
       spawnPlayer(world, 2 * 4 + 2, 11 * 4 + 2);
@@ -280,6 +293,7 @@ describe('attackWaveSystem', () => {
 
     it('reuses the cached field and invalidates it for map and cleared-room ownership changes', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       const firstMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
       world.floorMap = firstMap;
       spawnPlayer(world, 400, 400);
@@ -312,6 +326,7 @@ describe('attackWaveSystem', () => {
   describe('off-screen spawn placement', () => {
     it('places every wave spawn at or beyond the configured ring radius, which is >= half the viewport diagonal', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 200, heightTiles: 200, tileSizeFt: 4 });
       const playerEid = spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
@@ -342,6 +357,7 @@ describe('attackWaveSystem', () => {
     it('same seed produces identical wave timing, count, and spawn positions', () => {
       function runWorld() {
         const world = createTestWorld({ seed: 777 });
+        world.floorId = 'floor1';
         world.floorMap = makeMapWithSafeRoom({ widthTiles: 200, heightTiles: 200, tileSizeFt: 4 });
         spawnPlayer(world, 400, 400);
         world.attackWaveFlags.attackWaves = true;
@@ -364,6 +380,7 @@ describe('attackWaveSystem', () => {
   describe('maxAliveFromWaves cap', () => {
     it('never exceeds the cap, and recount allows new spawns once rats die', () => {
       const world = createTestWorld();
+      world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 200, heightTiles: 200, tileSizeFt: 4 });
       spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
