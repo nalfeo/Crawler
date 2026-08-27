@@ -221,6 +221,12 @@ const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/**
+ * Design-space gutter kept between the bottom of the interaction hint and the
+ * top of the bottom-anchored ability bar, so the Talk/Descend button stacks
+ * cleanly above the slots row instead of covering it.
+ */
+const INTERACTION_HINT_ABILITY_BAR_GAP = 10;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
 const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
@@ -1457,10 +1463,16 @@ export class MainGameScene extends Phaser.Scene {
 
   /**
    * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
-   * home-indicator band on notched devices (zero inset elsewhere).
+   * home-indicator band on notched devices (zero inset elsewhere) and stacked
+   * above the ability bar whenever that bar is rendered.
    */
   private interactionHintY(): number {
-    return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
+    const baseline = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
+    const abilityBarTop = this.hudUi?.getAbilityBarScreenTop() ?? null;
+    if (abilityBarTop === null) {
+      return baseline;
+    }
+    return Math.min(baseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP);
   }
 
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -4350,6 +4362,9 @@ export class MainGameScene extends Phaser.Scene {
     const issueOpen = this.issueReportPausedState !== undefined;
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    // The ability bar appears/disappears at runtime (spell unlock, modal open),
+    // so restack the Talk/Descend hint above it right after the HUD syncs.
+    this.interactionHint?.setY(this.interactionHintY());
     this.updateDirectorCommentary();
 
     const canFileIssue = this.canFileIssue(issueOpen);

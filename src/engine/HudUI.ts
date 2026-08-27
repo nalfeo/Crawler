@@ -16,7 +16,7 @@ import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
-import { createHudAbilityBar } from './HudAbilityBar.js';
+import { ABILITY_BAR_PANEL_TOP, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import {
@@ -66,6 +66,12 @@ export function createHudUI(scene: Phaser.Scene): {
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
   getAbilityBarBounds(): ScreenBounds;
+  /**
+   * Screen-space (design-space) Y of the ability panel's top edge, or `null`
+   * when the bar is not rendered. Bottom-center affordances outside the HUD
+   * groups (the Talk/Descend interaction hint) stack above this line.
+   */
+  getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
@@ -151,6 +157,10 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeftTopEdge = bottomLeftNaturalBounds.top;
   const abilityBarLeftEdge = bottomCenter.getBounds().left;
 
+  // Live scale of the bottom-center group, mirrored out so callers can project
+  // the ability bar's authored design constants into screen space.
+  let bottomCenterScale = 1;
+
   function applyScale(): void {
     const s = computeVitalsScale({
       desiredScale: getUiScale(scene),
@@ -158,7 +168,7 @@ export function createHudUI(scene: Phaser.Scene): {
       clusterTopEdge: bottomLeftTopEdge,
       neighborLeftEdge: abilityBarLeftEdge,
     });
-    const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
+    bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;
     const cx = w / 2;
@@ -305,6 +315,18 @@ export function createHudUI(scene: Phaser.Scene): {
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
+    getAbilityBarScreenTop: () => {
+      if (hidden || !abilityBar.isVisible()) {
+        return null;
+      }
+      // Same projection as applyScale(): the group is anchored to the canvas
+      // bottom, lifted by the safe-area inset, then scaled about the origin.
+      return (
+        GAME.HEIGHT -
+        getSafeAreaInsets(scene).bottom -
+        bottomCenterScale * (GAME.HEIGHT - ABILITY_BAR_PANEL_TOP)
+      );
+    },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,

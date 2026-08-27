@@ -16,10 +16,30 @@ const SLOT_GAP = 6;
 const BAR_WIDTH =
   ACTIVE_ABILITY_SLOT_LIMIT * SLOT_WIDTH + (ACTIVE_ABILITY_SLOT_LIMIT - 1) * SLOT_GAP;
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
-const BAR_Y = GAME.HEIGHT - 140;
 const PANEL_PADDING = 8;
-const PANEL_TOP = BAR_Y - 30;
-const PANEL_HEIGHT = SLOT_HEIGHT + 38;
+/** Title strip + slot row. */
+export const ABILITY_BAR_PANEL_HEIGHT = SLOT_HEIGHT + 38;
+const PANEL_HEIGHT = ABILITY_BAR_PANEL_HEIGHT;
+/**
+ * Design-space clearance kept between the ability panel and the canvas bottom
+ * edge. The parent `bottomCenter` group additionally offsets the device
+ * safe-area bottom inset (see HudUI.applyScale), so this margin is purely the
+ * authored visual gutter.
+ */
+export const ABILITY_BAR_PANEL_BOTTOM_MARGIN = 12;
+const PANEL_BOTTOM_MARGIN = ABILITY_BAR_PANEL_BOTTOM_MARGIN;
+/**
+ * Top edge of the ability panel in design space. The bar is anchored to the
+ * bottom of the canvas; bottom-center affordances that must not cover it
+ * (the Talk/Descend interaction hint) stack *above* this line.
+ */
+export const ABILITY_BAR_PANEL_TOP = GAME.HEIGHT - PANEL_BOTTOM_MARGIN - PANEL_HEIGHT;
+const PANEL_TOP = ABILITY_BAR_PANEL_TOP;
+/** Slot row sits below the panel title strip. */
+export const ABILITY_BAR_SLOT_ROW_TOP = PANEL_TOP + 30;
+const BAR_Y = ABILITY_BAR_SLOT_ROW_TOP;
+/** Height of a single ability slot; the slot row must fit inside the panel. */
+export const ABILITY_BAR_SLOT_HEIGHT = SLOT_HEIGHT;
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -47,6 +67,8 @@ export function createHudAbilityBar(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld, playerEid: number): void;
+  /** Whether the bar is currently rendered (spells unlocked). */
+  isVisible(): boolean;
   getPanelScreenBounds(): ScreenBounds;
   getSlotScreenBounds(index: number): ScreenBounds | null;
   destroy(): void;
@@ -179,7 +201,9 @@ export function createHudAbilityBar(
     ...cooldownLabels,
   ]);
 
+  let barVisible = false;
   const setVisible = (visible: boolean): void => {
+    barVisible = visible;
     panel.setVisible(visible);
     title.setVisible(visible);
     manageHint.setVisible(visible);
@@ -287,6 +311,7 @@ export function createHudAbilityBar(
 
   return {
     sync,
+    isVisible: () => barVisible,
     getPanelScreenBounds: () => ({
       x: BAR_X - PANEL_PADDING,
       y: PANEL_TOP,
