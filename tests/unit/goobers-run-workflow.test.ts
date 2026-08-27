@@ -48,6 +48,12 @@ interface GoobersDefinition {
     runControls?: { maxRepasses?: number };
     tasks: Array<{
       name: string;
+      next?: string;
+      run?: { command?: string[]; script?: string };
+      inputsFrom?: Record<string, string>;
+      capabilities?: string[];
+      contextFrom?: string[];
+      expectedOutputs?: string[];
       retry?: { maxAttempts?: number; backoffSeconds?: number };
     }>;
     gates: Array<{
@@ -55,6 +61,11 @@ interface GoobersDefinition {
       agentic?: { retry?: { maxAttempts?: number; backoffSeconds?: number } };
     }>;
   };
+}
+
+interface GoobersInstance {
+  repos: Array<{ token?: { env?: string } }>;
+  credentials?: Array<{ capability?: string; token?: { env?: string } }>;
 }
 
 function loadYaml<T>(...segments: string[]): T {
@@ -89,6 +100,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const job = workflow.jobs.run;
     const checkout = job?.steps?.find((step) => step.name === 'Checkout');
+    const installDeps = job?.steps?.find((step) => step.name === 'Install project dependencies');
     const install = job?.steps?.find((step) => step.name === 'Install Copilot CLI');
     const upload = job?.steps?.find((step) => step.name === 'Upload run journal');
 
@@ -102,9 +114,10 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     expect(workflow.permissions?.checks).toBe('write');
     expect(checkout?.with).toEqual({
-      ref: '${{ github.event.repository.default_branch || github.ref_name }}',
+      ref: "${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}",
       'persist-credentials': false,
     });
+    expect(installDeps?.run).toBe('npm ci');
     expect(install?.env?.COPILOT_CLI_VERSION).toBe("${{ inputs.copilot_cli_version || '1.0.80' }}");
     expect(upload?.with?.name).toContain("inputs.workflow || 'crawler-feature-pr'");
   });
@@ -118,6 +131,10 @@ describe('Goobers automatic dispatch and recovery', () => {
       'crawler-feature-pr.yaml',
     );
     const tasks = new Map(definition.spec.tasks.map((task) => [task.name, task]));
+    const hydrate = tasks.get('hydrate-requirements');
+    const plan = tasks.get('plan');
+    const materializePlan = tasks.get('materialize-plan');
+    const implement = tasks.get('implement');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -125,7 +142,43 @@ describe('Goobers automatic dispatch and recovery', () => {
       'goobers-run.yml',
     ).jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
 
-    expect(definition.spec.runControls?.maxRepasses).toBe(2);
+    expect(definition.spec.runControls?.maxRepasses).toBe(6);
+    expect(hydrate).toBeDefined();
+    expect(tasks.get('query-backlog')?.expectedOutputs).toEqual(['id', 'title', 'body', 'url']);
+    expect(hydrate?.inputsFrom).toEqual({
+      issueNumber: 'query-backlog.id',
+      issueTitle: 'query-backlog.title',
+      issueBody: 'query-backlog.body',
+      issueUrl: 'query-backlog.url',
+    });
+    expect(hydrate?.run?.script).not.toContain('gh issue view');
+    expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_ISSUENUMBER');
+    expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_ISSUEBODY');
+    expect(hydrate?.run?.script).not.toContain('.goobers/context');
+    expect(hydrate?.run?.script).toContain('requirements-result.json');
+    expect(hydrate?.capabilities).toBeUndefined();
+    expect(hydrate?.retry).toBeUndefined();
+    expect(plan?.expectedOutputs).toEqual([
+      'implementationPlan',
+      'hardGate',
+      'verdict',
+      'appleEstimate',
+    ]);
+    expect(plan?.next).toBe('materialize-plan');
+    expect(materializePlan?.inputsFrom).toEqual({
+      implementationPlan: 'plan.implementationPlan',
+      hardGate: 'plan.hardGate',
+      verdict: 'plan.verdict',
+      appleEstimate: 'plan.appleEstimate',
+    });
+    expect(materializePlan?.run?.script).toContain('implementation-plan-result.json');
+    expect(materializePlan?.run?.script).toContain('GOOBERS_INPUT_IMPLEMENTATIONPLAN');
+    expect(materializePlan?.next).toBe('implement');
+    expect(implement?.contextFrom).toContain('hydrate-requirements');
+    expect(implement?.contextFrom).toContain('materialize-plan');
+    expect(implement?.contextFrom).not.toContain('plan');
+    expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
+    expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
@@ -140,6 +193,11 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(tasks.get(name)?.retry).toBeUndefined();
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
+    expect(runStep?.env).toMatchObject({
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
   });
 
@@ -188,7 +246,11 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.if).toContain("env.GOOBERS_VERSION != 'goobers-dev-6d33b160'");
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
-    expect(run?.env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    expect(run?.env).toMatchObject({
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
     expect(run?.run).toContain(
       'goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"',
     );
@@ -198,5 +260,20 @@ describe('Goobers automatic dispatch and recovery', () => {
       'if-no-files-found': 'warn',
       'retention-days': 30,
     });
+  });
+
+  it('keeps Goobers repository and model credentials separate', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+    const requireToken = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Require GOOBERS_GITHUB_TOKEN',
+    );
+
+    expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
+    expect(instance.credentials).toContainEqual({
+      capability: 'agent:model',
+      token: { env: 'COPILOT_GITHUB_TOKEN' },
+    });
+    expect(requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET).toBe('${{ secrets.GOOBERS_GITHUB_TOKEN }}');
   });
 });

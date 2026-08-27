@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../../../scripts/sprites/checkin.js';
 import { issueCheckpointKey } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
 import { publishSelectedAssetRequests } from '../../../scripts/sprites/asset-request-publisher.js';
-import type { RunStore } from '../../../scripts/sprites/store/types.js';
+import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
 
 // Mock approve.js so prepareCheckpoint does not need real sprite run files.
 // The mock also creates the shard + PNG that validateExactAssetPayloads expects.
@@ -73,7 +73,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
     },
     async get(key) {
       const value = mem.get(key);
-      if (!value) throw new Error(`Missing store key: ${key}`);
+      if (!value) throw new StoreNotFoundError(key);
       return value;
     },
     async has(key) {
