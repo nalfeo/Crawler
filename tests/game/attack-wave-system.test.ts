@@ -32,6 +32,7 @@ import { pxToFt } from '../../src/shared/units.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
 import tuning from '../../src/shared/data/tuning.json';
 import { getRatTemplate } from '../../src/game/spawners/template-accessor.js';
+import { getBodyRadius } from '../../src/core/physics-body.js';
 
 type TuningSchema = typeof tuning & {
   attackWaves: {
@@ -134,8 +135,9 @@ describe('attackWaveSystem', () => {
       for (const eid of rats) {
         expect(world.stores.enemyBehavior.aggroRange[eid]).toBe(0);
         expect(world.stores.sprite.textureId[eid]).toBe(ratTemplate.textureId);
-        expect(world.stores.sprite.width[eid]).toBe(ratTemplate.spriteWidth);
-        expect(world.stores.sprite.height[eid]).toBe(ratTemplate.spriteHeight);
+        expect(getBodyRadius(world, eid)).toBe(
+          Math.max(ratTemplate.spriteWidth, ratTemplate.spriteHeight) * 0.5,
+        );
         expect(world.enemyAppearanceKeys.get(eid)).toBe(ratTemplate.id);
       }
 
