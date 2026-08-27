@@ -55,11 +55,12 @@ describe('EquipmentUI bag-scroll architectural guard', () => {
     expect(source.match(/resolveEquipmentInstance\(lastWorld, state, instId\)/g)).toHaveLength(3);
     expect(source).toContain('itemDef ?? instance.def');
     expect(source).toContain('showGeneratedEquipmentTooltip(instance.def)');
-    expect(source).toContain('getItemById(swapped.id)?.name ?? swapped.name');
+    expect(source).toContain('preview.swappedOut.length > 0');
   });
 
-  it('shows comparison deltas via the "Current totals"/"vs <item>" stats-pane banner', () => {
-    expect(source).toContain("'Current totals'");
+  it('shows N-item comparison deltas via renderComparisonTooltips/renderEquipmentTooltipCard', () => {
+    expect(source).toContain('function renderComparisonTooltips(');
+    expect(source).toContain('function renderEquipmentTooltipCard(');
     expect(source).toContain('compare.statsKnown');
   });
 });
