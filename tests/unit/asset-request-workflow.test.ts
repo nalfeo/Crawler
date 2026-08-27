@@ -42,7 +42,9 @@ describe('asset-request workflow capacity', () => {
 
   it('drains two requests concurrently through azure-openai provider configuration', () => {
     const workflow = loadWorkflow();
-    const drain = workflow.jobs.drain?.steps?.find((step) => step.name === 'Drain worker');
+    const drain = workflow.jobs.drain?.steps?.find(
+      (step) => step.name === 'Ingest issues + drain worker',
+    );
     expect(drain?.env).toMatchObject({
       SPRITES_WORKER_CONCURRENCY: '2',
       SPRITES_PROVIDER: 'azure-openai',
@@ -64,6 +66,12 @@ describe('asset-request workflow capacity', () => {
       'AZURE_OPENAI_VISION_DEPLOYMENT',
     ]);
     expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('FOUNDRY_'))).toBe(false);
+    expect(drain?.env).toMatchObject({
+      SPRITES_WORKER_DRAIN: 'true',
+      SPRITES_WORKER_POLL_MS: '1000',
+    });
+    expect(drain?.env).not.toHaveProperty('SPRITES_WORKER_MAX_EMPTY_POLLS');
+    expect(drain?.run).toBe('bash scripts/sprites/asset-request-pipeline.sh');
   });
 
   it('keeps the GitHub secret-sync command azure-aware', () => {
