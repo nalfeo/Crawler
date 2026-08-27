@@ -274,8 +274,15 @@ interface MainSceneInternals {
     close(): void;
     getVisibleEntries?(): ReadonlyArray<{
       id: string;
+      description: string;
       details: string;
       canToggle?: boolean;
+    }>;
+    getVisibleRowLayouts?(): ReadonlyArray<{
+      readonly id: string;
+      readonly row: ScreenBounds;
+      readonly details: ScreenBounds;
+      readonly description: ScreenBounds;
     }>;
     /**
      * Label of the non-equippable-passives section header currently
@@ -463,8 +470,16 @@ export interface NpcRenderInfo {
 
 export interface AbilityLoadoutVisibleEntryProbe {
   readonly id: string;
+  readonly description: string;
   readonly details: string;
   readonly canToggle: boolean;
+}
+
+export interface AbilityLoadoutRowLayoutProbe {
+  readonly id: string;
+  readonly row: ScreenBounds;
+  readonly details: ScreenBounds;
+  readonly description: ScreenBounds;
 }
 
 /** Boot-time facts + live readings exposed for characterization assertions. */
@@ -483,6 +498,8 @@ export interface MainSceneState {
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
   readonly abilityLoadoutVisibleEntries: readonly AbilityLoadoutVisibleEntryProbe[];
+  /** Measured bounds for text inside rendered loadout rows. */
+  readonly abilityLoadoutRowLayouts: readonly AbilityLoadoutRowLayoutProbe[];
   /**
    * Label of the non-equippable-passives section header currently rendered
    * in the visible loadout row list (e.g. "PASSIVE ABILITIES"), or `null`
@@ -1309,9 +1326,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         scene?.abilityLoadoutUI?.getVisibleEntries?.() ?? []
       ).map((entry) => ({
         id: entry.id,
+        description: entry.description,
         details: entry.details,
         canToggle: entry.canToggle !== false,
       }));
+      const abilityLoadoutRowLayouts = scene?.abilityLoadoutUI?.getVisibleRowLayouts?.() ?? [];
       const abilityLoadoutSectionHeaderLabel =
         scene?.abilityLoadoutUI?.getVisibleSectionHeaderLabel?.() ?? null;
       const currentAnnouncement = scene?.hudUi?.getCurrentAnnouncement?.() ?? null;
@@ -1337,6 +1356,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         modalOpen,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
+        abilityLoadoutRowLayouts,
         abilityLoadoutSectionHeaderLabel,
         currentAnnouncement,
         equippedActiveAbilityIds,

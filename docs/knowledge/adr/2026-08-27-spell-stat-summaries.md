@@ -24,7 +24,7 @@ no duration. A player picking between `fireball` and `magic-missile` had no way
 to compare them without reading `src/game/abilities/registry.ts`.
 
 The numbers already exist, authored once, in that registry as `CatalogEffect[]`
-(`spell_projectile`, `spell_aoe`, `spell_heal`, `spell_buff`, …). Two ways to get
+(`spell_fireball`, `spell_magic_missile`, `spell_heal`, `spell_timed_buff`, …). Two ways to get
 them in front of the player:
 
 1. **Author a second `stats:` string per spell** in `ability-presentation.ts`.
@@ -82,9 +82,9 @@ disagreed by 2px and let a full-width line spill past its row.
 - Retuning a spell in the registry updates every picker automatically; there is
   no second string to forget.
 - `tests/unit/spell-effect-summary.test.ts` asserts the **exact** string for each
-  Floor-1 boss-reward spell and loops the registry to require that any spell that
-  damages or reaches another entity states both a damage and a reach number, so a
-  new effect type cannot ship a blank line.
+  Floor-1 boss-reward spell and loops the registry to require that spells which
+  reach another entity state a reach number and spells which damage another
+  entity state damage, so a new effect type cannot ship a blank line.
 - The modal picker is now variable-height for **all** callers, not just spells.
   `tests/e2e/boss-reward-picker-ux.test.ts` measures the real `MainGameScene`
   modal at 1280x720 and 960x540 and asserts every box stays inside the panel and

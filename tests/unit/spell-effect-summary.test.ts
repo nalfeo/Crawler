@@ -4,8 +4,32 @@ import {
   formatSpellEffectSummary,
 } from '../../src/shared/spell-effect-summary.js';
 import { getAbilityEffectSummary } from '../../src/game/abilities/effect-summary.js';
-import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
+import {
+  getAbilityDefinition,
+  getAllAbilityDefinitions,
+} from '../../src/game/abilities/registry.js';
 import { FLOOR1_BOSS_REWARD_SPELL_IDS } from '../../src/shared/abilities.js';
+import type { CatalogEffect } from '../../src/shared/progression-effects.js';
+
+function effectTargetsOtherEntities(effect: CatalogEffect): boolean {
+  return (
+    effect.type === 'spell_fireball' ||
+    effect.type === 'spell_magic_missile' ||
+    effect.type === 'spell_frost_nova' ||
+    effect.type === 'spell_life_drain' ||
+    effect.type === 'spell_pulse_shield' ||
+    effect.type === 'spell_enemy_slow_burst'
+  );
+}
+
+function effectDamagesOtherEntities(effect: CatalogEffect): boolean {
+  return (
+    effect.type === 'spell_fireball' ||
+    effect.type === 'spell_magic_missile' ||
+    effect.type === 'spell_frost_nova' ||
+    effect.type === 'spell_life_drain'
+  );
+}
 
 describe('formatSpellEffectSummary', () => {
   it('returns undefined when no effect is a spell', () => {
@@ -101,6 +125,48 @@ describe('formatSpellEffectSummary', () => {
     );
   });
 
+  it('formats non-damage multiply modifiers with their additive stat lane semantics', () => {
+    expect(
+      formatSpellEffectSummary([
+        {
+          type: 'spell_timed_buff',
+          durationFrames: { base: 900, scalesWithIntelligence: false },
+          modifiers: [
+            { stat: 'armor', op: 'multiply', value: { base: 0.1, scalesWithIntelligence: false } },
+            {
+              stat: 'projectileSpeed',
+              op: 'multiply',
+              value: { base: 0.1, scalesWithIntelligence: false },
+            },
+          ],
+        },
+      ]),
+    ).toBe('Armor +0.1 • Projectile Speed +0.1 • Duration 15s • Base — scales with mastery');
+  });
+
+  it('reports Intelligence scaling when any independently scalable output opts in', () => {
+    expect(
+      formatSpellEffectSummary([
+        {
+          type: 'spell_fireball',
+          damage: { base: 15, scalesWithIntelligence: false },
+          radiusTiles: { base: 3, scalesWithIntelligence: true },
+        },
+      ]),
+    ).toContain('Base — scales with INT & mastery');
+    expect(
+      formatSpellEffectSummary([
+        {
+          type: 'spell_frost_nova',
+          damage: { base: 10, scalesWithIntelligence: false },
+          radiusTiles: { base: 3, scalesWithIntelligence: false },
+          slowMultiplier: { base: 0.55, scalesWithIntelligence: true },
+          slowDurationMs: { base: 3_000, scalesWithIntelligence: true },
+        },
+      ]),
+    ).toContain('Base — scales with INT & mastery');
+  });
+
   it('scales tile-based reach with the floor tile size', () => {
     const effects = [
       {
@@ -132,23 +198,16 @@ describe('getAbilityEffectSummary', () => {
     }
   });
 
-  it('states damage and reach for every spell that targets other entities', () => {
-    const targetsOthers = [
-      'fireball',
-      'magic-missile',
-      'frost-nova',
-      'vampiric-touch',
-      'curse',
-      'pulse-shield',
-    ] as const;
-    for (const spellId of targetsOthers) {
-      const summary = getAbilityEffectSummary(spellId)!;
-      expect(summary, `${spellId} never states its reach`).toMatch(/\d+(\.\d+)? ft/);
-    }
-    for (const spellId of ['fireball', 'magic-missile', 'frost-nova', 'vampiric-touch'] as const) {
-      expect(getAbilityEffectSummary(spellId), `${spellId} never states its damage`).toMatch(
-        /Damage \d/,
-      );
+  it('states reach for targeting spells and damage for damaging spells', () => {
+    for (const definition of getAllAbilityDefinitions()) {
+      if (definition.kind !== 'spell') continue;
+      const summary = getAbilityEffectSummary(definition.id);
+      if (definition.effects.some(effectTargetsOtherEntities)) {
+        expect(summary, `${definition.id} never states its reach`).toMatch(/\d+(\.\d+)? ft/);
+      }
+      if (definition.effects.some(effectDamagesOtherEntities)) {
+        expect(summary, `${definition.id} never states its damage`).toMatch(/Damage \d/);
+      }
     }
   });
 });

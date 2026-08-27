@@ -21,12 +21,15 @@ describe('spell stat detail wiring', () => {
     expect(source).not.toContain("from '../../game/abilities/");
   });
 
-  it('MainGameScene shows the stat line in the Spell Broker stock and the abilities bar', () => {
+  it('MainGameScene shows the stat line in the Spell Broker stock and abilities descriptions', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
     expect(source).toContain(
       "detail: this.describeAbilityStats(offer.spellId) ?? 'A permanent spell for this run.',",
     );
-    expect(source).toMatch(/details: \[[\s\S]{0,320}this\.describeAbilityStats\(abilityId\)/);
+    expect(source).toContain('const effectSummary = this.describeAbilityStats(abilityId);');
+    expect(source).toContain(
+      'description: effectSummary ? `${description}\\n${effectSummary}` : description,',
+    );
   });
 
   it('the floor bootstrap supplies the summary from the ability registry', () => {

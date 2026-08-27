@@ -29,6 +29,13 @@ export interface AbilityLoadoutConfig {
   readonly onClose?: () => void;
 }
 
+export interface AbilityLoadoutRowLayout {
+  readonly id: string;
+  readonly row: ScreenBounds;
+  readonly details: ScreenBounds;
+  readonly description: ScreenBounds;
+}
+
 const PANEL_WIDTH = 760;
 const PANEL_HEIGHT = 544;
 const PANEL_PADDING = 22;
@@ -75,6 +82,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   getPanelScreenBounds(): ScreenBounds;
   getListViewportScreenBounds(): ScreenBounds;
   getVisibleRowScreenBounds(): ScreenBounds[];
+  getVisibleRowLayouts(): AbilityLoadoutRowLayout[];
   getVisibleAbilityIds(): string[];
   getVisibleEntries(): readonly AbilityLoadoutEntry[];
   /**
@@ -107,6 +115,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   let feedback = '';
   let feedbackTone: AbilityLoadoutToggleResult['tone'] = 'success';
   let rowBounds: ScreenBounds[] = [];
+  let rowLayouts: AbilityLoadoutRowLayout[] = [];
   let visibleSectionHeaderLabel: string | null = null;
 
   const overlay = scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0).setVisible(false);
@@ -162,6 +171,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     for (const object of dynamic) object.destroy();
     dynamic.length = 0;
     rowBounds = [];
+    rowLayouts = [];
   };
 
   const scaledBounds = (box: ScreenBounds): ScreenBounds => ({
@@ -370,7 +380,8 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
         color: hex(COLORS.accent),
         wordWrap: { width: viewport.width - 250 },
       });
-      const description = text(viewport.x + 90, rowY + 76, entry.description, {
+      const descriptionY = Math.max(rowY + 76, details.y + details.height + 4);
+      const description = text(viewport.x + 90, descriptionY, entry.description, {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: hex(COLORS.textPrimary),
@@ -427,7 +438,24 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       }
 
       const box = { x: viewport.x, y: rowY, width: viewport.width, height: ROW_HEIGHT };
-      rowBounds.push(scaledBounds(box));
+      const rowScreenBounds = scaledBounds(box);
+      rowBounds.push(rowScreenBounds);
+      rowLayouts.push({
+        id: entry.id,
+        row: rowScreenBounds,
+        details: scaledBounds({
+          x: details.x,
+          y: details.y,
+          width: details.width,
+          height: details.height,
+        }),
+        description: scaledBounds({
+          x: description.x,
+          y: description.y,
+          width: description.width,
+          height: description.height,
+        }),
+      });
       dynamic.push(row, tile, identity, name, details, description, action, actionLabel);
       overlay.add([row, tile, identity, name, details, description, action, actionLabel]);
     }
@@ -595,6 +623,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       scaledBounds({ x: panelX, y: panelY, width: PANEL_WIDTH, height: PANEL_HEIGHT }),
     getListViewportScreenBounds: () => scaledBounds(listViewportBounds()),
     getVisibleRowScreenBounds: () => [...rowBounds],
+    getVisibleRowLayouts: () => rowLayouts.map((layout) => ({ ...layout })),
     getVisibleAbilityIds: () =>
       entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS).map((entry) => entry.id),
     getVisibleEntries: () => entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS),

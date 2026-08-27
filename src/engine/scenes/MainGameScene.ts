@@ -3719,17 +3719,18 @@ export class MainGameScene extends Phaser.Scene {
       const activeEntries = activeIds.map((abilityId) => {
         const presentation = getAbilityPresentation(abilityId);
         const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
+        const effectSummary = this.describeAbilityStats(abilityId);
+        const description = presentation?.description ?? 'Configured auto ability.';
         return {
           id: abilityId,
           name: presentation?.name ?? abilityId,
           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
-          description: presentation?.description ?? 'Configured auto ability.',
+          description: effectSummary ? `${description}\n${effectSummary}` : description,
           category: presentation?.category ?? 'utility',
           details: [
             presentation?.kind === 'spell' ? 'SPELL' : 'AUTO',
             `${cooldownSeconds}s CD`,
             formatAbilityTrigger(abilityId),
-            this.describeAbilityStats(abilityId),
           ]
             .filter((part): part is string => part !== undefined)
             .join('  •  '),
