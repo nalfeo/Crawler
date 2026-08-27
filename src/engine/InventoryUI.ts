@@ -43,6 +43,7 @@ import {
   getItemById,
 } from '../shared/items.js';
 import type { GeneratedEquipmentInventoryEntry } from '../shared/inventory.js';
+import type { GeneratedEquipmentInstanceV1 } from '../shared/generated-equipment-types.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -104,6 +105,18 @@ export interface InventoryUIConfig {
 
 /** Max ms between two clicks on the same cell to count as an equip double-click. */
 const DOUBLE_CLICK_MS = 220;
+
+const GENERATED_EQUIPMENT_FALLBACK_DESCRIPTION =
+  'A dungeon-forged reward with terms the producers refuse to print.';
+
+export function generatedEquipmentTooltipDescription(
+  instance: Pick<GeneratedEquipmentInstanceV1, 'baseId'>,
+): string {
+  const baseDescription = getItemById(instance.baseId)?.description.trim();
+  return baseDescription && baseDescription.length > 0
+    ? baseDescription
+    : GENERATED_EQUIPMENT_FALLBACK_DESCRIPTION;
+}
 
 export function createInventoryUI(
   scene: Phaser.Scene,
@@ -309,23 +322,33 @@ export function createInventoryUI(
     if (!currentWorld) return undefined;
     const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
     if (!instance) return undefined;
-    const stats = Object.entries(instance.frozen.statBonuses)
-      .filter(([, value]) => value !== 0)
-      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
     return {
       name: instance.frozen.displayName,
-      description: [
-        instance.frozen.slots.map(getSlotLabel).join(' / '),
-        stats.join(', '),
-        `${instance.frozen.weightLb} lb`,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      description: generatedEquipmentTooltipDescription(instance),
       tags: instance.frozen.tags.map(normalizeGeneratedInventoryTag),
       rarity: generatedRarityToItemRarity[instance.rarity] ?? ItemRarity.Common,
       slots: instance.frozen.slots,
     };
   };
+
+  function generatedEquipmentSummaryLine(
+    entry: GeneratedEquipmentInventoryEntry,
+  ): string | undefined {
+    if (!currentWorld) return undefined;
+    const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
+    if (!instance) return undefined;
+    const stats = Object.entries(instance.frozen.statBonuses)
+      .filter(([, value]) => value !== 0)
+      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
+    const summary = [
+      instance.frozen.slots.map(getSlotLabel).join(' / '),
+      stats.join(', '),
+      `${instance.frozen.weightLb} lb`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return summary.length > 0 ? summary : undefined;
+  }
 
   function resolveEntryDef(entry: InventoryBagEntry): ItemDef | undefined {
     if (entry.kind === 'stackable-static-item') return getItemById(entry.itemId);
@@ -936,6 +959,9 @@ export function createInventoryUI(
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
     const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
+    const generatedSummary =
+      entry.kind === 'generated-instance' ? generatedEquipmentSummaryLine(entry) : undefined;
+    const statLine = [dpsLine, generatedSummary].filter(Boolean).join(' · ') || undefined;
     tooltipObjects.push(
       ...renderItemTooltip({
         scene,
@@ -951,7 +977,7 @@ export function createInventoryUI(
         quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
-        statLine: dpsLine,
+        statLine,
         crispText,
       }),
     );
