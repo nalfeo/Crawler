@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BOSS_BAR_COLORS, resolveBossHealthBar } from '../../src/engine/boss-health-bar-state.js';
-import type { Floor1BossEncounterState } from '../../src/shared/floor-types.js';
+import type { FloorBossEncounterState } from '../../src/shared/floor-types.js';
 import { spawnEnemy } from '../../src/core/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-function battle(overrides: Partial<Floor1BossEncounterState> = {}): Floor1BossEncounterState {
+function battle(overrides: Partial<FloorBossEncounterState> = {}): FloorBossEncounterState {
   return {
     started: true,
     bossEid: null,
@@ -93,7 +93,7 @@ describe('resolveBossHealthBar', () => {
     const world = createTestWorld();
     const slimeRat = spawnEnemy(world, 0, 0, 100);
     const staircase = spawnEnemy(world, 0, 0, 200);
-    const battles = new Map<string, Floor1BossEncounterState>([
+    const battles = new Map<string, FloorBossEncounterState>([
       ['slime-rat', battle({ bossEid: slimeRat, displayName: 'Slime Rat' })],
       ['staircase', battle({ bossEid: staircase, displayName: 'Rat Slime' })],
     ]);
@@ -106,7 +106,7 @@ describe('resolveBossHealthBar', () => {
   it('falls back to a later started battle when the earlier boss is gone', () => {
     const world = createTestWorld();
     const staircase = spawnEnemy(world, 0, 0, 200);
-    const battles = new Map<string, Floor1BossEncounterState>([
+    const battles = new Map<string, FloorBossEncounterState>([
       ['slime-rat', battle({ bossEid: null })],
       ['staircase', battle({ bossEid: staircase, displayName: 'Rat Slime' })],
     ]);

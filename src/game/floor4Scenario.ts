@@ -65,7 +65,10 @@ import type {
   Floor4ArenaPhase,
   Floor4ArenaRunStats,
   Floor4ArenaState,
+  Floor4GateTelegraph,
   Floor4PendingWaveSpawn,
+  Floor4PendingWaveWindow,
+  Floor4WaveManifest,
   Floor4WaveSpawnEntry,
   Floor4WaveTelemetry,
   Floor4WaveWindowState,
@@ -172,6 +175,8 @@ function recordFloor4PhaseTransition(
     cutFloor4WaveEnemies(world, state);
   }
   state.waves = undefined;
+  const pending = state.pendingWaves;
+  state.pendingWaves = undefined;
 
   state.phase = cloneFloor4Phase(phase);
   state.phaseElapsedMs = 0;
@@ -184,7 +189,7 @@ function recordFloor4PhaseTransition(
   });
 
   if (phase.kind === 'WAVES') {
-    state.waves = armFloor4ActWaves(world, phase.act);
+    state.waves = armFloor4ActWaves(world, phase.act, pending);
   }
 }
 
@@ -241,17 +246,27 @@ function floor4FeedGates(world: GameWorld): readonly ArenaFeedGate[] {
  * Arm an act's wave window: build its immutable manifests once (FR3.2), and
  * start it with an empty cursor/debt/ownership set.
  */
-function armFloor4ActWaves(world: GameWorld, act: Floor4ActIndex): Floor4WaveWindowState {
+function armFloor4ActWaves(
+  world: GameWorld,
+  act: Floor4ActIndex,
+  pending?: Floor4PendingWaveWindow,
+): Floor4WaveWindowState {
   const gates = floor4FeedGates(world);
   if (gates.length === 0) {
     throw new Error('Floor 4 wave window armed on a map with no feed gates');
   }
+  // A pre-armed window already built this act's manifests to light wave 0's
+  // gates; reusing them keeps the telegraph and the release describing the same
+  // content (they are seed-identical either way, so this is not a re-roll).
+  const usable = pending?.act === act ? pending : undefined;
   return {
     act,
-    manifests: buildFloor4ActWaveManifests(getFloor4WaveConfig(), world.seed, act, gates.length),
+    manifests:
+      usable?.manifests ??
+      buildFloor4ActWaveManifests(getFloor4WaveConfig(), world.seed, act, gates.length),
     releaseCursor: 0,
     debt: [],
-    armedTelegraphs: [],
+    armedTelegraphs: usable ? [...usable.armedTelegraphs] : [],
     ownedEnemies: new Map(),
   };
 }
@@ -408,6 +423,34 @@ function pushFloor4GateTelegraphVfx(world: GameWorld, gate: ArenaFeedGate): void
 }
 
 /**
+ * Light every gate one wave enters from, once. Shared by the in-window
+ * telegraph pass and the pre-act pre-arm so both produce identical armed state
+ * and identical telemetry.
+ */
+function armFloor4WaveTelegraph(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  armedTelegraphs: Floor4GateTelegraph[],
+  manifest: Floor4WaveManifest,
+  firesAtArenaMs: number,
+): void {
+  if (armedTelegraphs.some((armed) => armed.waveIndex === manifest.waveIndex)) {
+    return;
+  }
+  const gateIndexes = [...new Set(manifest.entries.map((entry) => entry.gateIndex))].sort(
+    (left, right) => left - right,
+  );
+  for (const gateIndex of gateIndexes) {
+    armedTelegraphs.push({ gateIndex, waveIndex: manifest.waveIndex, firesAtArenaMs });
+    state.waveTelemetry.gateTelegraphsArmed += 1;
+    const gate = floor4FeedGates(world)[gateIndex];
+    if (gate) {
+      pushFloor4GateTelegraphVfx(world, gate);
+    }
+  }
+}
+
+/**
  * Arm gate telegraphs for every wave whose release is within the authored lead
  * time. Idempotent per wave: a wave is telegraphed once, then disarmed when it
  * releases (or discarded at the next phase boundary, FR3.5).
@@ -425,41 +468,91 @@ function armFloor4GateTelegraphs(
       // Manifests are in release order, so nothing further is due either.
       break;
     }
-    if (waves.armedTelegraphs.some((armed) => armed.waveIndex === manifest.waveIndex)) {
-      continue;
-    }
-    const gateIndexes = [...new Set(manifest.entries.map((entry) => entry.gateIndex))].sort(
-      (left, right) => left - right,
+    armFloor4WaveTelegraph(
+      world,
+      state,
+      waves.armedTelegraphs,
+      manifest,
+      floor4ActStartMs(waves.act) + manifest.releaseAtActMs,
     );
-    for (const gateIndex of gateIndexes) {
-      waves.armedTelegraphs.push({
-        gateIndex,
-        waveIndex: manifest.waveIndex,
-        firesAtArenaMs: floor4ActStartMs(waves.act) + manifest.releaseAtActMs,
-      });
-      state.waveTelemetry.gateTelegraphsArmed += 1;
-      const gate = floor4FeedGates(world)[gateIndex];
-      if (gate) {
-        pushFloor4GateTelegraphVfx(world, gate);
-      }
-    }
   }
 }
 
 /**
- * Bank a released wave's entries as spawn debt, in manifest order, bounded by
- * the authored debt cap. Overflow beyond the cap is DISCARDED, never banked
- * (FR3.5) — an act must not be able to accumulate a lethal post-boss burst.
+ * Pre-arm the opening wave's telegraph before its act starts.
+ *
+ * Wave 0 releases at `releaseAtActMs = 0`, so the in-window pass can only ever
+ * arm and fire it on the same tick — the authored lead would be invisible for
+ * the first wave of EVERY act. This runs during the final `telegraphLeadMs` of
+ * COUNTDOWN/INTERMISSION instead, and hands the armed state to the window so
+ * the wave is not telegraphed twice.
  */
-function enqueueFloor4WaveDebt(
+function prearmFloor4NextActTelegraphs(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  act: Floor4ActIndex,
+  msUntilActStart: number,
+): void {
+  const leadMs = getFloor4WaveConfig().gates.telegraphLeadMs;
+  if (msUntilActStart > leadMs) {
+    return;
+  }
+  const gates = floor4FeedGates(world);
+  if (gates.length === 0) {
+    return;
+  }
+  if (!state.pendingWaves || state.pendingWaves.act !== act) {
+    state.pendingWaves = {
+      act,
+      manifests: buildFloor4ActWaveManifests(getFloor4WaveConfig(), world.seed, act, gates.length),
+      armedTelegraphs: [],
+    };
+  }
+  const pending = state.pendingWaves;
+  const opener = pending.manifests[0];
+  if (!opener) {
+    return;
+  }
+  armFloor4WaveTelegraph(
+    world,
+    state,
+    pending.armedTelegraphs,
+    opener,
+    floor4ActStartMs(act) + opener.releaseAtActMs,
+  );
+}
+
+/**
+ * Release one wave's entries: spawn into whatever live capacity exists right
+ * now, and bank only the genuine remainder as spawn debt (bounded by the
+ * authored debt cap, FR3.5).
+ *
+ * Order matters twice over. An entry may only spawn immediately while the debt
+ * queue is empty, so older debt never loses its place at the head of the FIFO;
+ * and `debtCap` is applied only to entries that actually *become* debt, so a
+ * tight (or zero) debt cap throttles backlog rather than deleting a wave that
+ * the arena had room for.
+ */
+function releaseFloor4WaveEntries(
+  world: GameWorld,
   state: Floor4ArenaState,
   waves: Floor4WaveWindowState,
   entries: readonly Floor4WaveSpawnEntry[],
   waveIndex: number,
 ): void {
-  const debtCap = getFloor4WaveConfig().concurrency.debtCap;
+  const concurrency = getFloor4WaveConfig().concurrency;
+  let live = pruneFloor4OwnedEnemies(world, waves);
   for (const [slot, entry] of entries.entries()) {
-    if (waves.debt.length >= debtCap) {
+    if (waves.debt.length === 0 && live < concurrency.liveCap) {
+      const eid = spawnFloor4WaveEnemy(world, entry, slot);
+      if (eid !== null) {
+        waves.ownedEnemies.set(eid, waveIndex);
+        state.waveTelemetry.enemiesSpawned += 1;
+        live += 1;
+      }
+      continue;
+    }
+    if (waves.debt.length >= concurrency.debtCap) {
       state.waveTelemetry.debtDiscarded += 1;
       continue;
     }
@@ -509,10 +602,9 @@ function releaseFloor4DueWaves(
       (armed) => armed.waveIndex !== manifest.waveIndex,
     );
     // Drain first so older debt keeps its place at the head of the queue, then
-    // bank this wave and release as much of it as the cap allows right now.
+    // release this wave into whatever capacity is left, banking the remainder.
     drainFloor4SpawnDebt(world, state, waves);
-    enqueueFloor4WaveDebt(state, waves, manifest.entries, manifest.waveIndex);
-    drainFloor4SpawnDebt(world, state, waves);
+    releaseFloor4WaveEntries(world, state, waves, manifest.entries, manifest.waveIndex);
   }
 }
 
@@ -638,6 +730,12 @@ export function arenaDirectorSystem(world: GameWorld): void {
 
   switch (state.phase.kind) {
     case 'COUNTDOWN':
+      prearmFloor4NextActTelegraphs(
+        world,
+        state,
+        1,
+        phaseConfig.countdownMs - state.phaseElapsedMs,
+      );
       if (state.phaseElapsedMs >= phaseConfig.countdownMs) {
         recordFloor4PhaseTransition(world, state, { kind: 'WAVES', act: 1 }, 'countdown-complete');
       }
@@ -671,10 +769,18 @@ export function arenaDirectorSystem(world: GameWorld): void {
       }
       break;
     case 'INTERMISSION': {
+      const nextAct = nextFloor4Act(state.phase.act);
+      if (nextAct) {
+        prearmFloor4NextActTelegraphs(
+          world,
+          state,
+          nextAct,
+          phaseConfig.intermissionMs - state.phaseElapsedMs,
+        );
+      }
       if (state.phaseElapsedMs < phaseConfig.intermissionMs) {
         break;
       }
-      const nextAct = nextFloor4Act(state.phase.act);
       if (nextAct) {
         recordFloor4PhaseTransition(
           world,

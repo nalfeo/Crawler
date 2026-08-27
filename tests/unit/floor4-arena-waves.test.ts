@@ -149,6 +149,73 @@ describe('floor4 wave release', () => {
 });
 
 describe('floor4 gate telegraphs', () => {
+  it('pre-arms the opening wave before its act starts (design §4)', () => {
+    const world = setupFloor4(2024);
+
+    // Wave 0 releases at act-relative 0ms, so its warning can only exist before
+    // the wave window opens: outside the lead window nothing is lit.
+    advance(world, phase.countdownMs - waves.gates.telegraphLeadMs - 2);
+    expect(arena(world).pendingWaves).toBeUndefined();
+    expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(0);
+
+    advance(world, 2);
+    const pending = arena(world).pendingWaves!;
+    const opener = pending.manifests[0]!;
+    const openerGates = [...new Set(opener.entries.map((entry) => entry.gateIndex))].sort(
+      (left, right) => left - right,
+    );
+    expect(pending.act).toBe(1);
+    expect(pending.armedTelegraphs.map((armed) => armed.gateIndex)).toEqual(openerGates);
+    expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(openerGates.length);
+    expect(world.vfxEvents.filter((event) => event.kind === 'spawnerPulse')).toHaveLength(
+      openerGates.length,
+    );
+    // A telegraph is a warning, not a release.
+    expect(liveEnemies(world)).toHaveLength(0);
+
+    // Idempotent while it stays armed.
+    advance(world, 1);
+    expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(openerGates.length);
+
+    // The window inherits the pre-armed state (and its manifests) rather than
+    // arming wave 0 a second time.
+    advance(world, waves.gates.telegraphLeadMs);
+    expect(arena(world).phase).toEqual({ kind: 'WAVES', act: 1 });
+    expect(arena(world).pendingWaves).toBeUndefined();
+    expect(waveWindow(world).manifests[0]).toEqual(opener);
+    expect(
+      waveWindow(world)
+        .armedTelegraphs.filter((armed) => armed.waveIndex === 0)
+        .map((armed) => armed.gateIndex),
+    ).toEqual(openerGates);
+    expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(openerGates.length);
+
+    // Spent on release, exactly like every later wave's telegraph.
+    advance(world, 1);
+    expect(waveWindow(world).releaseCursor).toBe(1);
+    expect(waveWindow(world).armedTelegraphs.some((armed) => armed.waveIndex === 0)).toBe(false);
+  });
+
+  it('pre-arms the opening wave of a later act during the intermission', () => {
+    const world = setupFloor4(2024);
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    advance(world, phase.headlineWindowMs);
+    expect(arena(world).phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+
+    advance(world, phase.intermissionMs - 1);
+    const pending = arena(world).pendingWaves!;
+    expect(pending.act).toBe(2);
+    expect(pending.armedTelegraphs.every((armed) => armed.waveIndex === 0)).toBe(true);
+    expect(pending.armedTelegraphs.length).toBeGreaterThan(0);
+    const armedCount = arena(world).waveTelemetry.gateTelegraphsArmed;
+
+    advance(world, 1);
+    expect(arena(world).phase).toEqual({ kind: 'WAVES', act: 2 });
+    expect(waveWindow(world).armedTelegraphs.some((armed) => armed.waveIndex === 0)).toBe(true);
+    expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(armedCount);
+  });
+
   it('lights the gates ahead of a release and disarms them when it fires', () => {
     const world = setupFloor4(2024);
     openWaveWindow(world);
@@ -220,6 +287,27 @@ describe('floor4 concurrency cap and spawn debt', () => {
     // lethal post-window burst (FR3.5).
     expect(telemetry.debtDiscarded).toBeGreaterThan(0);
     expect(telemetry.enemiesSpawned).toBe(waves.concurrency.liveCap);
+  });
+
+  it('spawns into free capacity before banking anything as debt', () => {
+    // A tight (or zero) debt cap must throttle the BACKLOG, not delete a wave
+    // the arena had room for: with debtCap 0 the opener still spawns in full.
+    const concurrency = waves.concurrency as { liveCap: number; debtCap: number };
+    const originalDebtCap = concurrency.debtCap;
+    concurrency.debtCap = 0;
+    try {
+      const world = setupFloor4(2024);
+      openWaveWindow(world);
+
+      const manifest = waveWindow(world).manifests[0]!;
+      expect(manifest.entries.length).toBeGreaterThan(0);
+      expect(manifest.entries.length).toBeLessThanOrEqual(concurrency.liveCap);
+      expect(arena(world).waveTelemetry.enemiesSpawned).toBe(manifest.entries.length);
+      expect(arena(world).waveTelemetry.debtDiscarded).toBe(0);
+      expect(waveWindow(world).debt).toHaveLength(0);
+    } finally {
+      concurrency.debtCap = originalDebtCap;
+    }
   });
 
   it('clears banked debt and armed telegraphs at the phase boundary', () => {

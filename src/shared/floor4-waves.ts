@@ -47,15 +47,12 @@ export interface Floor4WaveScheduleConfig {
  * The `:` delimiter and the `waves` purpose label are a data contract: changing
  * either re-rolls every existing seed's card, which is a breaking change.
  */
-export function floor4WaveStreamKey(seed: number, act: number, waveIndex: number): string {
+function floor4WaveStreamKey(seed: number, act: number, waveIndex: number): string {
   return `${seed}:floor4:waves:${act}:${waveIndex}`;
 }
 
 /** Act-relative release mark for a wave, in ms (spec FR3.1). */
-export function floor4WaveReleaseAtActMs(
-  config: Floor4WaveScheduleConfig,
-  waveIndex: number,
-): number {
+function floor4WaveReleaseAtActMs(config: Floor4WaveScheduleConfig, waveIndex: number): number {
   return waveIndex * config.cadence.intervalMs;
 }
 
@@ -66,7 +63,7 @@ export function floor4WaveReleaseAtActMs(
  * Act 1's wave 0 additionally takes `openingWaveMultiplier` — the deliberately
  * tiny opener that teaches the gates before the floor means it (design §5.1).
  */
-export function computeFloor4WaveBudget(
+function computeFloor4WaveBudget(
   config: Floor4WaveScheduleConfig,
   act: number,
   waveIndex: number,
@@ -80,7 +77,7 @@ export function computeFloor4WaveBudget(
 }
 
 /** The authored roster for an act. Throws rather than silently spawning nothing. */
-export function floor4ActRoster(
+function floor4ActRoster(
   config: Floor4WaveScheduleConfig,
   act: number,
 ): readonly Floor4WaveRosterEntry[] {
@@ -123,7 +120,7 @@ function pickWeighted(
  * order — which is also the spawn order and the FIFO debt order — is a pure
  * function of the seed.
  */
-export function buildFloor4WaveManifest(
+function buildFloor4WaveManifest(
   config: Floor4WaveScheduleConfig,
   seed: number,
   act: Floor4ActIndex,
@@ -146,7 +143,12 @@ export function buildFloor4WaveManifest(
     }
     const picked = pickWeighted(rng, affordable);
     const gateIndex = rng.nextInt(0, gateCount - 1);
-    entries.push({ archetypeId: picked.archetypeId, gateIndex, threatCost: picked.threatCost });
+    // Frozen per entry, not just per array: a shallow freeze would still let a
+    // consumer rewrite an entry's archetype or gate after the act armed, which
+    // is exactly the immutability the manifest contract (FR3.2) promises.
+    entries.push(
+      Object.freeze({ archetypeId: picked.archetypeId, gateIndex, threatCost: picked.threatCost }),
+    );
     remaining -= picked.threatCost;
   }
 

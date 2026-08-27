@@ -434,6 +434,19 @@ export interface Floor4WaveWindowState {
   ownedEnemies: Map<number, number>;
 }
 
+/**
+ * Pre-armed opening telegraph for an act whose wave window has not opened yet.
+ *
+ * Built during the final `gates.telegraphLeadMs` of the preceding phase and
+ * handed to the window when it arms, so wave 0 gets the same authored warning
+ * every later wave gets without its manifests being rebuilt or re-rolled.
+ */
+export interface Floor4PendingWaveWindow {
+  readonly act: Floor4ActIndex;
+  readonly manifests: readonly Floor4WaveManifest[];
+  armedTelegraphs: Floor4GateTelegraph[];
+}
+
 /** Cumulative wave telemetry for a Floor 4 run (spec FR10.3). */
 export interface Floor4WaveTelemetry {
   /** Waves whose manifest was released into the arena. */
@@ -477,6 +490,16 @@ export interface Floor4ArenaState {
    * wave-window boundary, so no consumer can read stale release state.
    */
   waves?: Floor4WaveWindowState;
+  /**
+   * Gate telegraphs lit for the *next* act's opening wave, armed during the
+   * final `gates.telegraphLeadMs` of COUNTDOWN/INTERMISSION.
+   *
+   * Wave 0 releases at `releaseAtActMs = 0`, so it can only get its authored
+   * pre-spawn warning before its act's wave window exists. The manifests are
+   * carried with it so the window arms on exactly the content it telegraphed.
+   * Discarded at every phase boundary it is not consumed by (FR3.5).
+   */
+  pendingWaves?: Floor4PendingWaveWindow;
   /** Cumulative wave counters, retained across acts for RunStats. */
   waveTelemetry: Floor4WaveTelemetry;
 }
@@ -490,7 +513,6 @@ export interface Floor4ArenaRunStats {
 
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
-export type Floor1BossEncounterState = FloorBossEncounterState;
 export type Floor1ObjectiveState = FloorObjectiveState;
 export type Floor1RunSummary = FloorRunSummary;
 export type Floor1ScenarioState = FloorScenarioState;
