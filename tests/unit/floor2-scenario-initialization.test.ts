@@ -5,7 +5,7 @@ import { DoorState } from '../../src/core/index.js';
 import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { safeRoomSystem } from '../../src/core/safe-space.js';
 import { SeededRandom } from '../../src/shared/random.js';
-import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole, TerrainType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -29,8 +29,8 @@ import { createTestWorld } from '../helpers/world-factory.js';
 
 const originalFloor2Manifest = structuredClone(getFloorManifest('floor2')!);
 
-function createScenarioWorld() {
-  const world = createTestWorld({ seed: 42, floor: 2 });
+function createScenarioWorld(seed = 42) {
+  const world = createTestWorld({ seed, floor: 2 });
   const playerEid = spawnPlayer(world, 0, 0);
   return { world, playerEid };
 }
@@ -197,6 +197,57 @@ describe('initializeFloor2Scenario manifest validation', () => {
     );
     expect(settlementAnchorRoomId).toBe(world.floorExtendedState?.settlement?.settlementRoomId);
   });
+
+  it.each([
+    { seed: 42, roomCount: 2 },
+    { seed: 1, roomCount: 3 },
+  ])(
+    'keeps every internal settlement hallway tile safe for a $roomCount-room cluster (seed $seed)',
+    ({ seed, roomCount }) => {
+      const { world, playerEid } = createScenarioWorld(seed);
+      initializeFloor2Scenario(world, playerEid);
+
+      const floorMap = world.floorMap!;
+      const settlement = world.floorExtendedState!.settlement!;
+      expect(settlement.settlementRoomIds).toHaveLength(roomCount);
+      expect(floorMap.settlementHallwayTileIndices.size).toBeGreaterThan(0);
+
+      for (const idx of floorMap.settlementHallwayTileIndices) {
+        const tile = { x: idx % floorMap.width, y: Math.floor(idx / floorMap.width) };
+        const point = floorMap.tileToWorld(tile.x, tile.y);
+        world.stores.position.x[playerEid] = point.x;
+        world.stores.position.y[playerEid] = point.y;
+        safeRoomSystem(world);
+        expect(world.playerInSafeRoom, `internal hallway tile (${tile.x},${tile.y})`).toBe(true);
+        if (floorMap.terrain[idx] !== TerrainType.DOOR) {
+          expect(floorMap.terrain[idx]).toBe(TerrainType.SAFE_ROOM_FLOOR);
+        }
+      }
+
+      const bar = floorMap.roomGraph.get(settlement.settlementRoomId)!;
+      const exteriorDoors = bar.doors.filter(
+        (door) => door.y === bar.bounds.y || door.y === bar.bounds.y + bar.bounds.height - 1,
+      );
+      expect(exteriorDoors).toHaveLength(2);
+      for (const door of exteriorDoors) {
+        const outsideY = door.y === bar.bounds.y ? door.y - 1 : door.y + 1;
+        for (const tile of [
+          { x: door.x, y: door.y },
+          { x: door.x, y: outsideY },
+        ]) {
+          const idx = tile.y * floorMap.width + tile.x;
+          expect(floorMap.settlementHallwayTileIndices.has(idx)).toBe(false);
+          const point = floorMap.tileToWorld(tile.x, tile.y);
+          world.stores.position.x[playerEid] = point.x;
+          world.stores.position.y[playerEid] = point.y;
+          safeRoomSystem(world);
+          expect(world.playerInSafeRoom, `exterior approach tile (${tile.x},${tile.y})`).toBe(
+            false,
+          );
+        }
+      }
+    },
+  );
 
   it('starts a direct Floor 2 run at level 5 with spent stats and the charm equipped', () => {
     const { world, playerEid } = createScenarioWorld();

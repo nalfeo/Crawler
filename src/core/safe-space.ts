@@ -22,6 +22,10 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
   const floorMap = world.floorMap;
   if (!floorMap) return false;
   const tile = floorMap.worldToTile(x, y);
+  const settlement = world.floorExtendedState?.settlement;
+  if (settlement && floorMap.settlementHallwayTileIndices.has(tile.y * floorMap.width + tile.x)) {
+    return true;
+  }
   if (getWorldFloorBehavior(world).spawnRoomIsSafe) {
     const entranceRoom = floorMap.spawnRoom;
     if (entranceRoom && roomContainsTile(entranceRoom, tile.x, tile.y)) {
