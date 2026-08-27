@@ -288,8 +288,17 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   if (!bag) {
     return;
   }
-  // Inventory unlocks the moment the player picks up the merchant's fetch item.
-  if (!world.featureUnlocks.inventory && hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)) {
+  const merchantCharmGatesEquipment = getWorldFloorBehavior(world).merchantCharmGatesEquipment;
+  const merchantQuestComplete =
+    merchantCharmGatesEquipment !== null &&
+    isQuestComplete(world, merchantCharmGatesEquipment.prerequisiteQuestId);
+  // On merchant-gated floors, inventory waits for the errand to be complete.
+  if (
+    !world.featureUnlocks.inventory &&
+    (merchantCharmGatesEquipment === null
+      ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)
+      : merchantQuestComplete)
+  ) {
     world.featureUnlocks.inventory = true;
   }
   const hasMerchantCharmEquipped =
@@ -306,7 +315,6 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   // behavior config (see shared/floor-behavior.ts) instead of a hardcoded floor id.
   // When enabled, the gate applies only once the configured prerequisite quest
   // exists in the quest log, and remains until the merchant charm is acquired/equipped.
-  const merchantCharmGatesEquipment = getWorldFloorBehavior(world).merchantCharmGatesEquipment;
   const needsMerchantCharmGate =
     merchantCharmGatesEquipment !== null &&
     world.questLog.has(merchantCharmGatesEquipment.prerequisiteQuestId);

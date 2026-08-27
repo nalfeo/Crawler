@@ -116,8 +116,8 @@ describe('questSystem coverage supplement', () => {
       questSystem(world);
       const quest = world.questLog.get(FLOOR1_SHOP_QUEST_ID)!;
       expect(quest.done['fetch-prize']).toBe(true);
-      // Inventory unlocks the moment the fetch item is held.
-      expect(world.featureUnlocks.inventory).toBe(true);
+      // The Bag stays locked until the full merchant errand is complete.
+      expect(world.featureUnlocks.inventory).toBe(false);
     });
   });
 
