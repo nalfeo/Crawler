@@ -36,7 +36,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "afaa0d75796a6d6a44e5f57cbe27179274ed18ae",
+      "head_sha": "524902ffc448c240bf6fe36e859f04f50947a4e2",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -47,7 +47,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The diff effectively implements a deterministic, file-based drain marker to replace the arbitrary timeout polling. It correctly encapsulates the logic within a robust shell script handling interrupts, adds the necessary checks to the worker CLI, fixes a concurrency lock memory leak in worker.ts that was surfaced by the new concurrency tests, and includes excellent unit and benchmark coverage for the new behaviors and race conditions."
+      "notes": "The change expertly implements the durable producer completion marker, replacing arbitrary polling with a robust file-based orchestration. The bash wrapper correctly handles cleanup and restricts secret scope, while the worker cleanly tracks the idle boundary and handles all concurrency races. The fix to the lock tail memory leak ensures reliable concurrency cleanup. Test coverage is extremely thorough, explicitly hitting race windows and verifying signal handling and exit codes."
     }
   }
 }
