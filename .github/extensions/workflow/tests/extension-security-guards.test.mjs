@@ -109,8 +109,62 @@ test('Azure polling pushes an iframe update only when a queued generation comple
     source,
     /changed \|\|= saved\?\.stage === 'sheet' && saved\.run\?\.runId === matched\.runId/,
   );
-  assert.match(source, /\.then\(\(\{ changed \}\) => \(changed \? forceLiveState/);
-  assert.match(source, /\.then\(\(state\) => \(state \? entry\.pushState\(state\) : null\)\)/);
+  assert.match(source, /async function applyWorkflowPollSnapshot\(/);
+  assert.match(source, /if \(previousEtag === snapshot\.etag && !snapshot\.changed\) return/);
+  assert.match(source, /await entry\.pushState\(state\)/);
+});
+
+test('Azure polling is process-wide, reuses one fresh read, and unsubscribes closed instances', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /const workflowStatePoller = createWorkflowStatePoller\(/);
+  assert.match(source, /runWorkflowStatePoll\(entry,/);
+  assert.match(
+    source,
+    /initialRemote: remote,\s*invalidate: false,\s*retryOnConflict: false,\s*completionWriteLimit: 1/,
+  );
+  assert.match(
+    source,
+    /entry\.onSnapshot = \(snapshot, context\) => applyWorkflowPollSnapshot\(entry, snapshot, context\)/,
+  );
+  assert.match(source, /workflowStatePoller\.subscribe\(ctx\.instanceId, entry\)/);
+  assert.match(source, /entry\.stopWorkflowPoll\?\.\(\)/);
+  assert.doesNotMatch(source, /entry\.workflowPoll = setInterval/);
+});
+
+test('manual workflow refreshes drain completed generations while coordinated polls limit completion writes', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const refreshStart = source.indexOf('async function refreshQueuedWorkflowItems(');
+  const refresh = source.slice(
+    refreshStart,
+    source.indexOf('\nfunction workflowMutationAllowed', refreshStart),
+  );
+
+  assert.match(refresh, /completionWriteLimit = Infinity/);
+  assert.match(refresh, /let remainingCompletionWrites = completionWriteLimit/);
+  assert.match(refresh, /if \(remainingCompletionWrites <= 0\) break/);
+});
+
+test('poll snapshot adoption and push are fenced against asynchronous invalidation', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const applyStart = source.indexOf('async function applyWorkflowPollSnapshot(');
+  const apply = source.slice(
+    applyStart,
+    source.indexOf('\nfunction workflowMutationAllowed', applyStart),
+  );
+
+  assert.match(
+    apply,
+    /async function applyWorkflowPollSnapshot\(entry, snapshot, \{ source, isCurrent \}\)/,
+  );
+  assert.match(apply, /if \(!isCurrent\(\)\) return;/);
+  assert.match(
+    apply,
+    /adoptWorkflowState\(entry, snapshot\.state, snapshot\.etag, \{ invalidate: false \}\)/,
+  );
+  assert.match(
+    apply,
+    /const state = await forceLiveState\(entry\.instanceId\);\s*if \(!isCurrent\(\)\) return;\s*await entry\.pushState\(state\)/,
+  );
 });
 
 test('Azure polling drops a completed run when the remote item was rewound or regenerated', () => {
