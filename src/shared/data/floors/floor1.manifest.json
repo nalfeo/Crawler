@@ -49,6 +49,9 @@
     "bossChests": true,
     "merchantCharmGatesEquipment": {
       "prerequisiteQuestId": "floor1-shopkeeper-errand"
+    },
+    "merchantQuestGatesInventory": {
+      "prerequisiteQuestId": "floor1-shopkeeper-errand"
     }
   },
   "lighting": {

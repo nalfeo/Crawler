@@ -15,6 +15,7 @@ describe('floor behavior config', () => {
       carriedMainHandWeapon: false,
       bossChests: true,
       merchantCharmGatesEquipment: { prerequisiteQuestId: 'floor1-shopkeeper-errand' },
+      merchantQuestGatesInventory: { prerequisiteQuestId: 'floor1-shopkeeper-errand' },
       settlementEquipmentEconomy: false,
     });
   });
@@ -29,6 +30,7 @@ describe('floor behavior config', () => {
       carriedMainHandWeapon: false,
       bossChests: true,
       merchantCharmGatesEquipment: null,
+      merchantQuestGatesInventory: null,
       settlementEquipmentEconomy: true,
     });
   });
@@ -43,6 +45,7 @@ describe('floor behavior config', () => {
       carriedMainHandWeapon: false,
       bossChests: false,
       merchantCharmGatesEquipment: null,
+      merchantQuestGatesInventory: null,
       settlementEquipmentEconomy: false,
     });
   });
@@ -57,6 +60,7 @@ describe('floor behavior config', () => {
       carriedMainHandWeapon: false,
       bossChests: false,
       merchantCharmGatesEquipment: null,
+      merchantQuestGatesInventory: null,
       settlementEquipmentEconomy: false,
     });
   });

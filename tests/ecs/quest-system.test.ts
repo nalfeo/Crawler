@@ -137,6 +137,17 @@ describe('questSystem', () => {
     expect(world.featureUnlocks.inventory).toBe(false);
   });
 
+  it('unlocks the Bag from the merchant fetch item on floors without the inventory quest gate', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor-does-not-exist';
+    const player = spawnPlayer(world, 0, 0);
+
+    addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+    questSystem(world);
+
+    expect(world.featureUnlocks.inventory).toBe(true);
+  });
+
   it('keeps the haveEquippable step latched once satisfied (equip removes the item)', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

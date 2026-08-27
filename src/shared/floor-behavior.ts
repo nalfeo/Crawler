@@ -64,6 +64,16 @@ export const floorBehaviorSchema = z
       .nullable()
       .default(null),
     /**
+     * Gate the Inventory/Bag feature unlock behind a merchant quest completion.
+     * When `null`, inventory keeps the legacy key-item pickup unlock behavior.
+     */
+    merchantQuestGatesInventory: z
+      .object({
+        prerequisiteQuestId: z.string().min(1),
+      })
+      .nullable()
+      .default(null),
+    /**
      * Enable the Quartermaster/settlement generated-equipment economy (stock
      * generation, purchasing) and achievement equipment reward bundles on this
      * floor. This is a narrower gate layered on top of the `equipmentEconomy`

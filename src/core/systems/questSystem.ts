@@ -288,17 +288,19 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
   if (!bag) {
     return;
   }
-  const merchantCharmGatesEquipment = getWorldFloorBehavior(world).merchantCharmGatesEquipment;
-  const merchantQuestComplete =
-    merchantCharmGatesEquipment !== null &&
-    isQuestComplete(world, merchantCharmGatesEquipment.prerequisiteQuestId);
-  // Floors without the merchant gate retain fetch-item inventory unlocks; gated
-  // floors wait for the merchant errand to be complete.
+  const floorBehavior = getWorldFloorBehavior(world);
+  const merchantCharmGatesEquipment = floorBehavior.merchantCharmGatesEquipment;
+  const merchantQuestGatesInventory = floorBehavior.merchantQuestGatesInventory;
+  const merchantInventoryQuestComplete =
+    merchantQuestGatesInventory !== null &&
+    isQuestComplete(world, merchantQuestGatesInventory.prerequisiteQuestId);
+  // Floors without the inventory quest gate retain fetch-item inventory unlocks;
+  // gated floors wait for the configured merchant errand to be complete.
   if (
     !world.featureUnlocks.inventory &&
-    (merchantCharmGatesEquipment === null
+    (merchantQuestGatesInventory === null
       ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)
-      : merchantQuestComplete)
+      : merchantInventoryQuestComplete)
   ) {
     world.featureUnlocks.inventory = true;
   }
