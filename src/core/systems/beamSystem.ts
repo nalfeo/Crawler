@@ -65,6 +65,46 @@ let beamRankGen = 0;
 let beamRankStamp = new Uint32Array(0);
 let beamRankIdx = new Int32Array(0);
 const beamCandidateScratch: number[] = [];
+const hitSets = new WeakMap<GameWorld, Map<number, Map<number, number>>>();
+
+function getHitSet(world: GameWorld, eid: number): Map<number, number> {
+  let worldHits = hitSets.get(world);
+  if (worldHits === undefined) {
+    worldHits = new Map();
+    hitSets.set(world, worldHits);
+  }
+  let hits = worldHits.get(eid);
+  if (hits === undefined) {
+    hits = new Map();
+    worldHits.set(eid, hits);
+  }
+  return hits;
+}
+
+/** Clean up hit tracking for removed beam entities. */
+export function clearBeamHits(world: GameWorld, eid: number): void {
+  hitSets.get(world)?.delete(eid);
+}
+
+/**
+ * Drop hit tracking for beams that are no longer live.
+ *
+ * `spawnBeam`/`lifetimeSystem` cover the normal spawn/expiry path, but a beam can
+ * also be torn down directly (e.g. `removeEntity` on owner death or floor reset),
+ * which would otherwise leave its entry in the map forever. Sweeping once per
+ * invocation keeps the map bounded by the number of live beams.
+ */
+function pruneBeamHits(world: GameWorld): void {
+  const worldHits = hitSets.get(world);
+  if (worldHits === undefined) {
+    return;
+  }
+  for (const beamEid of worldHits.keys()) {
+    if (!entityExists(world.ecs, beamEid) || !hasComponent(world.ecs, beamEid, LineDamage)) {
+      worldHits.delete(beamEid);
+    }
+  }
+}
 
 /**
  * Build the canonical rank map from the current [Health, Position] set and report
@@ -141,6 +181,8 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
   const beams = query(world.ecs, [LineDamage, Position]);
   const { position, lineDamage, team } = world.stores;
 
+  pruneBeamHits(world);
+
   // Lazy grid broad-phase state: resolved once, on the first beam that passes the
   // tick + safe-space gates (see the gather block below). Beam-absent / no-tick
   // frames therefore add zero [Health, Position] scans, matching legacy.
@@ -210,6 +252,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
       useGrid && collisionResult
         ? gatherBeamCandidates(collisionResult.grid, midX, midY, beamReachRadius)
         : query(world.ecs, [Health, Position]);
+    const hitSet = getHitSet(world, eid);
 
     for (const target of targets) {
       if (
@@ -222,6 +265,11 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
       }
 
       if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player)) {
+        continue;
+      }
+
+      const targetGeneration = world.entityRenderGeneration[target] ?? 0;
+      if (hitSet.get(target) === targetGeneration) {
         continue;
       }
 
@@ -249,6 +297,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
             sourceEid: ownerEid >= 0 ? ownerEid : undefined,
           },
         );
+        hitSet.set(target, targetGeneration);
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
         }

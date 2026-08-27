@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Lifetime, LineDamage, Position } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { beamSystem } from '../../src/core/systems/beamSystem.js';
+import { lifetimeSystem } from '../../src/core/systems/lifetimeSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -42,27 +43,36 @@ describe('beam weapons', () => {
     expect(hp).toBe(100 - def.baseDamage);
   });
 
-  it('beam respects tick interval for repeated damage', () => {
+  it('damages each enemy once per firing while still hitting late entrants', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 6.25, 0, 100);
-    const def = getWeaponDef('laser')!;
+    const firstEnemy = spawnEnemy(world, 6.25, 0, 100);
+    const def = { ...getWeaponDef('laser')!, baseAccuracy: 1 };
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
     weaponSystem(world);
     beamSystem(world);
 
-    const hpAfterFirst = world.stores.health.current[enemy] ?? 0;
+    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
 
-    // Advance less than tickMs — should not deal damage again
-    world.elapsedMs += def.beamTickMs / 2;
-    beamSystem(world);
-    expect(world.stores.health.current[enemy]).toBe(hpAfterFirst);
-
-    // Advance past tickMs — should deal damage
+    const lateEnemy = spawnEnemy(world, 12.5, 0, 100);
     world.elapsedMs += def.beamTickMs;
     beamSystem(world);
-    expect(world.stores.health.current[enemy]!).toBeLessThan(hpAfterFirst);
+    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
+    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage);
+
+    world.elapsedMs += def.durationMs - def.beamTickMs;
+    beamSystem(world);
+    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
+    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage);
+    lifetimeSystem(world);
+
+    world.elapsedMs = def.cooldownMs * 2;
+    weaponSystem(world);
+    beamSystem(world);
+
+    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage * 2);
+    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage * 2);
   });
 });
