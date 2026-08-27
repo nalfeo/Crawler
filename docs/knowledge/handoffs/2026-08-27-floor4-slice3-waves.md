@@ -90,6 +90,26 @@ Same-seed reruns reproduce timeline and wave telemetry field-for-field.
   `COUNTDOWN → … → VICTORY` rehearsal timeline is still asserted in
   `tests/unit/floor4-arena-director.test.ts`.
 
+## Review Fixes (post-first-push)
+
+- **Spawn before banking.** `releaseFloor4WaveEntries` now fills free live capacity first
+  and only banks the true remainder under `debtCap`, so a small (or zero) `debtCap` can no
+  longer discard entries that fit in an empty arena.
+- **Opening telegraphs pre-arm.** `prearmFloor4NextActTelegraphs` arms wave 0's gate flare
+  during the final `telegraphLeadMs` of COUNTDOWN (act 1) and INTERMISSION (later acts),
+  parking the manifests in `state.pendingWaves`; `recordFloor4PhaseTransition` clears them
+  at every other boundary.
+- **Manifests are deep-frozen.** Each spawn entry is frozen at creation, not just the
+  containing array.
+- **A missing feed gate throws.** `spawnFloor4WaveEnemy` returns `number` and throws on an
+  unknown gate index — a broken map/manifest contract fails loudly instead of silently
+  deleting an enemy (adjudicated by `gpt-5.5` during multi-model review).
+- **The cut counts its banked debt.** `cutFloor4WaveEnemies` adds `waves.debt.length` to
+  `debtDiscarded` before clearing, so `enemiesSpawned + debtDiscarded === released entries`
+  holds across the boundary; asserted as an invariant test.
+- **Manifest helpers un-exported.** Only `buildFloor4ActWaveManifests` and its types are
+  public, which clears the blocking `health-test-only-exports` guard finding.
+
 ## What's Next / Blockers
 
 - **Slice 4+** (Headliners, Green Room shops, HUD) hangs off the same director slot. The

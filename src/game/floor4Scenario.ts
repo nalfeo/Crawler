@@ -369,15 +369,21 @@ function resolveFloor4GateSpawnPosition(
   return floorMap.isPassableAt(candidate.x, candidate.y) ? candidate : center;
 }
 
-/** Spawn one manifest entry at its fixed gate. Consumes no RNG stream. */
-function spawnFloor4WaveEnemy(
-  world: GameWorld,
-  entry: Floor4WaveSpawnEntry,
-  slot: number,
-): number | null {
+/**
+ * Spawn one manifest entry at its fixed gate. Consumes no RNG stream.
+ *
+ * A manifest is composed against `feedGates.length`, so an entry whose gate is
+ * missing means the map/manifest contract itself broke. That is thrown rather
+ * than absorbed: silently dropping the entry would delete an enemy, make the
+ * encounter quietly easier, and hide the corruption inside a telemetry counter
+ * that otherwise means authored debt-cap pressure.
+ */
+function spawnFloor4WaveEnemy(world: GameWorld, entry: Floor4WaveSpawnEntry, slot: number): number {
   const gate = floor4FeedGates(world)[entry.gateIndex];
   if (!gate || !world.floorMap) {
-    return null;
+    throw new Error(
+      `Floor 4 wave entry references feed gate ${entry.gateIndex}, which this map does not have`,
+    );
   }
   const archetype = floor4WaveArchetype(entry.archetypeId);
   const spawn = resolveFloor4GateSpawnPosition(world, gate, slot);
@@ -545,11 +551,9 @@ function releaseFloor4WaveEntries(
   for (const [slot, entry] of entries.entries()) {
     if (waves.debt.length === 0 && live < concurrency.liveCap) {
       const eid = spawnFloor4WaveEnemy(world, entry, slot);
-      if (eid !== null) {
-        waves.ownedEnemies.set(eid, waveIndex);
-        state.waveTelemetry.enemiesSpawned += 1;
-        live += 1;
-      }
+      waves.ownedEnemies.set(eid, waveIndex);
+      state.waveTelemetry.enemiesSpawned += 1;
+      live += 1;
       continue;
     }
     if (waves.debt.length >= concurrency.debtCap) {
@@ -575,9 +579,6 @@ function drainFloor4SpawnDebt(
   while (waves.debt.length > 0 && live < liveCap) {
     const pending = waves.debt.shift() as Floor4PendingWaveSpawn;
     const eid = spawnFloor4WaveEnemy(world, pending.entry, pending.slot);
-    if (eid === null) {
-      continue;
-    }
     waves.ownedEnemies.set(eid, pending.waveIndex);
     state.waveTelemetry.enemiesSpawned += 1;
     live += 1;
@@ -662,6 +663,9 @@ function cutFloor4WaveEnemies(world: GameWorld, state: Floor4ArenaState): void {
     state.waveTelemetry.enemiesCut += 1;
   }
   waves.ownedEnemies.clear();
+  // Banked-but-unspawned entries die with the window too; count them so
+  // spawned + cut + discarded still accounts for every released entry.
+  state.waveTelemetry.debtDiscarded += waves.debt.length;
   waves.debt.length = 0;
   waves.armedTelegraphs.length = 0;
 }

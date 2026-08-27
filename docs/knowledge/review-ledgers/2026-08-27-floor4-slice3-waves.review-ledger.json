@@ -16,13 +16,50 @@
       "notes": "Alt A separate wave system rejected: violates single phase authority and creates ordering coupling. Alt B ambient director rejected: player-relative spawning cannot provide fixed gates/FIFO debt. Alt C pre-spawn rejected: violates cap. Adopted reviewer revisions: bounded director transition handling, immutable content separate from release state, Floor 4 pack/schema registration and roster validation; retain arenaDirectorSystem and existing scenario slot."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "cutFloor4WaveEnemies cleared waves.debt without counting it, so released entries no longer equalled enemiesSpawned + debtDiscarded. Fixed by adding the banked debt length to debtDiscarded before clearing, plus an accounting-invariant regression test."
+        },
+        {
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review of the delta (throw-on-missing-gate, cut debt accounting, new multi-act/invariant/throw tests) reported no new issues."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "claude-sonnet-4.6 raised three: act-relative firesAtArenaMs assertion (arena-absolute in production), unaccounted null spawns, and lost multi-act coverage after the headless VICTORY test was replaced. gpt-5.3-codex and gemini-3.1-pro-preview reported clean and confirmed arenaDirectorSystem is wired via afterSpawnerSystems in src/bootstrap/floor-main-scene-options.ts. All three fixed."
+        },
+        {
+          "models": [
+            "claude-sonnet-4.6",
+            "gpt-5.3-codex",
+            "gemini-3.1-pro-preview",
+            "claude-opus-4.6"
+          ],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "claude-sonnet-4.6 argued a missing feed gate should throw rather than be counted as discarded debt; adjudicator gpt-5.5 agreed (broken map/manifest contract must fail loudly). spawnFloor4WaveEnemy now returns number and throws, with a regression test. gpt-5.3-codex, gemini-3.1-pro-preview and claude-opus-4.6 re-reviewed the delta and reported clean."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

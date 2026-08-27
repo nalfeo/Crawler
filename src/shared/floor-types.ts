@@ -455,7 +455,10 @@ export interface Floor4WaveTelemetry {
   enemiesSpawned: number;
   /** Enemies removed by the cut at a wave-window boundary (FR3.6). */
   enemiesCut: number;
-  /** Debt entries dropped because the debt cap was full (FR3.5). */
+  /**
+   * Released entries that never reached the arena: overflow beyond the debt cap
+   * (FR3.5), plus banked debt still unspawned when the wave cut ends the window.
+   */
   debtDiscarded: number;
   /** Gate telegraphs armed. */
   gateTelegraphsArmed: number;

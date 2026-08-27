@@ -233,7 +233,12 @@ describe('floor4 gate telegraphs', () => {
     advance(world, 2);
     const armed = waveWindow(world).armedTelegraphs.filter((entry) => entry.waveIndex === 1);
     expect(armed.map((entry) => entry.gateIndex)).toEqual(expectedGates);
-    expect(armed.every((entry) => entry.firesAtArenaMs === nextManifest.releaseAtActMs)).toBe(true);
+    // `firesAtArenaMs` is arena-ABSOLUTE, not act-relative — a HUD countdown
+    // reads it against the arena clock.
+    const actStartMs = phase.actDurationMs * (waveWindow(world).act - 1);
+    expect(
+      armed.every((entry) => entry.firesAtArenaMs === actStartMs + nextManifest.releaseAtActMs),
+    ).toBe(true);
     expect(world.vfxEvents.filter((event) => event.kind === 'spawnerPulse').length).toBe(
       arena(world).waveTelemetry.gateTelegraphsArmed,
     );
@@ -247,6 +252,64 @@ describe('floor4 gate telegraphs', () => {
     advance(world, waves.gates.telegraphLeadMs);
     expect(waveWindow(world).releaseCursor).toBe(2);
     expect(waveWindow(world).armedTelegraphs.some((entry) => entry.waveIndex === 1)).toBe(false);
+  });
+});
+
+describe('floor4 multi-act wave hand-off', () => {
+  it('arms, telegraphs, releases and cuts every act of the rehearsal', () => {
+    const world = setupFloor4(31);
+    advance(world, phase.countdownMs);
+
+    for (let act = 1; act <= phase.actCount; act += 1) {
+      expect(arena(world).phase).toEqual({ kind: 'WAVES', act });
+      const window = waveWindow(world);
+      expect(window.act).toBe(act);
+
+      // The opener's telegraph was pre-armed in the preceding phase and handed
+      // to this window rather than re-armed (or skipped) here.
+      const opener = window.manifests[0]!;
+      const openerGates = [...new Set(opener.entries.map((entry) => entry.gateIndex))].sort(
+        (left, right) => left - right,
+      );
+      expect(
+        window.armedTelegraphs
+          .filter((armed) => armed.waveIndex === 0)
+          .map((armed) => armed.gateIndex),
+      ).toEqual(openerGates);
+      // Telegraph marks are arena-ABSOLUTE, so a later act's opener is not 0.
+      const actStartMs = phase.actDurationMs * (act - 1);
+      expect(
+        window.armedTelegraphs.every(
+          (armed) => armed.firesAtArenaMs === actStartMs + opener.releaseAtActMs,
+        ),
+      ).toBe(true);
+      expect(arena(world).pendingWaves).toBeUndefined();
+
+      const releasedBefore = arena(world).waveTelemetry.wavesReleased;
+      advance(world, 1);
+      for (let wave = 1; wave < waves.cadence.wavesPerAct; wave += 1) {
+        advance(world, waves.cadence.intervalMs);
+      }
+      expect(arena(world).waveTelemetry.wavesReleased).toBe(
+        releasedBefore + waves.cadence.wavesPerAct,
+      );
+
+      // Boundary: the act's survivors are cut and the window is torn down.
+      advance(world, phase.waveWindowMs);
+      expect(arena(world).phase).toEqual({ kind: 'HEADLINE', act, cleared: true });
+      expect(arena(world).waves).toBeUndefined();
+      expect(liveEnemies(world)).toHaveLength(0);
+
+      advance(world, phase.headlineWindowMs);
+      advance(world, phase.intermissionMs);
+    }
+
+    expect(arena(world).phase).toEqual({ kind: 'VICTORY' });
+    expect(arena(world).pendingWaves).toBeUndefined();
+    expect(arena(world).waveTelemetry.wavesReleased).toBe(
+      waves.cadence.wavesPerAct * phase.actCount,
+    );
+    expect(arena(world).waveTelemetry.enemiesCut).toBeGreaterThan(0);
   });
 });
 
@@ -310,19 +373,40 @@ describe('floor4 concurrency cap and spawn debt', () => {
     }
   });
 
+  it('fails loudly when a released entry references a gate the map lacks', () => {
+    // Unreachable while the map and its manifests agree, which is exactly why
+    // it must not be absorbed: quietly dropping the entry would delete an enemy
+    // and hide the corruption inside the debt-discard counter.
+    const world = setupFloor4(2024);
+    advance(world, phase.countdownMs);
+    (world.floorMap as unknown as { feedGates: unknown[] }).feedGates = [];
+
+    expect(() => advance(world, 1)).toThrow(/feed gate/);
+  });
+
   it('clears banked debt and armed telegraphs at the phase boundary', () => {
     const world = setupFloor4(31);
     openFinalActWaveWindow(world);
     for (let wave = 1; wave < waves.cadence.wavesPerAct; wave += 1) {
       advance(world, waves.cadence.intervalMs);
     }
-    expect(waveWindow(world).debt.length).toBeGreaterThan(0);
+    const window = waveWindow(world);
+    expect(window.debt.length).toBeGreaterThan(0);
+    const releasedEntries = window.manifests
+      .slice(0, window.releaseCursor)
+      .reduce((total, manifest) => total + manifest.entries.length, 0);
 
     advance(world, phase.waveWindowMs);
 
     expect(arena(world).phase.kind).toBe('HEADLINE');
     expect(arena(world).waves).toBeUndefined();
     expect(liveEnemies(world)).toHaveLength(0);
+    // Every released entry is accounted for: it either stood in the arena
+    // (spawned, and then cut) or never reached it (discarded) — banked debt
+    // dropped by the cut is discarded, not silently forgotten.
+    const telemetry = arena(world).waveTelemetry;
+    expect(telemetry.enemiesSpawned + telemetry.debtDiscarded).toBe(releasedEntries);
+    expect(telemetry.enemiesCut).toBeLessThanOrEqual(telemetry.enemiesSpawned);
   });
 });
 
