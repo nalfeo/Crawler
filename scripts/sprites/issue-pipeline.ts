@@ -22,6 +22,7 @@ import {
   runCheckpointStage,
 } from './issue-pipeline-checkpoint.js';
 import { runResumableAssetRun } from './resumable-asset-run.js';
+import type { MonotonicNow } from './pipeline-timing.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -46,6 +47,7 @@ export interface RunIssuePipelineOptions {
    */
   readonly postProgressComments?: boolean;
   readonly env?: NodeJS.ProcessEnv;
+  readonly monotonicNow?: MonotonicNow;
 }
 
 const synthesizedCandidateSchema = z
@@ -130,6 +132,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     issueNumber: request.issueNumber,
     fingerprint: request.fingerprint,
     now,
+    ...(options.monotonicNow ? { monotonicNow: options.monotonicNow } : {}),
   });
   const comment = (text: string) => options.issueApi.comment(request.issueNumber, text);
   // Progress comments show live pipeline status. They are suppressed on
@@ -276,6 +279,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     visionProvider: options.visionProvider,
     env: options.env ?? process.env,
     now,
+    ...(options.monotonicNow ? { monotonicNow: options.monotonicNow } : {}),
   });
 
   await attachIssueMetadata(options.store, completedRun.briefId, completedRun.runId, {

@@ -67,6 +67,7 @@ import {
 } from './run-artifacts.js';
 import { REFERENCE_COUNT, SELECTOR_VERSION } from './reference-selector.js';
 import { resolveReferenceSelection } from './resolve-reference-selection.js';
+import { SpritePipelineTimingCollector, type MonotonicNow } from './pipeline-timing.js';
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
 import { assertResolvedUnderGenerated } from './generated-asset-path.js';
@@ -93,6 +94,8 @@ export interface GenerateOneOptions {
   readonly maxAttempts?: number;
   /** Clock injection for deterministic tests. */
   readonly now?: () => Date;
+  /** Monotonic clock injection for observational pipeline timing. */
+  readonly monotonicNow?: MonotonicNow;
   /** Reference PNG loader injection; defaults to `fs.readFileSync`. */
   readonly readReference?: (absolutePath: string) => Buffer;
   /**
@@ -223,6 +226,7 @@ export interface GenerateSheetCoreResult {
    */
   readonly expected: number;
   readonly identity: RunSummaryIdentity;
+  readonly timing: SpritePipelineTimingCollector;
 }
 
 export interface PreparedReferenceInput {
@@ -283,6 +287,7 @@ function sha256(bytes: string | Buffer): string {
 
 export async function prepareGenerationRequest(
   options: GenerateOneOptions,
+  timing?: SpritePipelineTimingCollector,
 ): Promise<PreparedGenerationRequest> {
   const repoRoot = options.repoRoot;
   const readReference = options.readReference ?? ((p) => readFileSync(p));
@@ -291,11 +296,13 @@ export async function prepareGenerationRequest(
   const brief = loaded.brief;
   const palette = loaded.palette;
   const expected = variantCount(brief);
-  const expansion = await expandVariations({
-    brief,
-    provider: options.textProvider ?? null,
-    ...(options.warn ? { warn: options.warn } : {}),
-  });
+  const expand = () =>
+    expandVariations({
+      brief,
+      provider: options.textProvider ?? null,
+      ...(options.warn ? { warn: options.warn } : {}),
+    });
+  const expansion = timing ? await timing.measure('variationExpansion', expand) : await expand();
   const effectiveBrief = { ...brief, variations: [...expansion.variations] };
   const styleGuide = loadStyleGuide(repoRoot);
   const generatedPrompt = brief.iconBatch
@@ -313,10 +320,14 @@ export async function prepareGenerationRequest(
   const referenceAssetExists =
     options.referenceAssetExists ?? ((absolutePath) => existsSync(absolutePath));
   const referenceInputs: PreparedReferenceInput[] = [];
+  const seedInputs: PreparedReferenceInput[] = [];
+  const seedFrameRefs: SeedFrameRef[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
   let eligibleReferenceSprites: ReferenceSpriteRef[] = [];
 
-  if (supportsReferenceImages) {
+  const referencesStartedAt = timing?.start() ?? null;
+  try {
+    if (supportsReferenceImages) {
     const resolvedReferences = resolveReferenceSelection({
       repoRoot,
       briefName: brief.name,
@@ -347,7 +358,7 @@ export async function prepareGenerationRequest(
               throw new Error(
                 `prepareGenerationRequest: reference "${assetPath}" is not an eligible approved generated sprite`,
               );
-            }
+              }
             return entry;
           });
     if (new Set(selected.map((entry) => entry.assetPath)).size !== selected.length) {
@@ -397,15 +408,13 @@ export async function prepareGenerationRequest(
   }
 
   const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
-  const seedInputs: PreparedReferenceInput[] = [];
-  const seedFrameRefs: SeedFrameRef[] = [];
-  if (brief.seedFrames.length > 0 && supportsReferenceImages) {
+    if (brief.seedFrames.length > 0 && supportsReferenceImages) {
     for (const seedFrame of brief.seedFrames) {
       if (path.isAbsolute(seedFrame.path)) {
         throw new Error(
           `prepareGenerationRequest: seed frame path "${seedFrame.path}" must be relative to the repository root, not absolute`,
         );
-      }
+        }
       const resolved = path.resolve(repoRoot, seedFrame.path);
       if (!resolved.startsWith(approvedSeedRoot + path.sep)) {
         throw new Error(
@@ -440,6 +449,9 @@ export async function prepareGenerationRequest(
         png,
       });
     }
+  }
+  } finally {
+    timing?.finish('referenceSelectionAndPngReads', referencesStartedAt);
   }
 
   const orderedInputs = [...seedInputs, ...referenceInputs];
@@ -476,9 +488,10 @@ export async function generateSheetCore(
   const maxAttempts = options.maxAttempts ?? 2;
   const now = options.now ?? (() => new Date());
   const createdAt = now();
+  const timing = new SpritePipelineTimingCollector(options.monotonicNow);
   // Default to a local store rooted at <outputRoot>/runs — same layout as before.
   const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
-  const prepared = options.prepared ?? (await prepareGenerationRequest(options));
+  const prepared = options.prepared ?? (await prepareGenerationRequest(options, timing));
   const {
     brief,
     effectiveBrief,
@@ -505,15 +518,25 @@ export async function generateSheetCore(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++;
     try {
-      const sheet = await options.provider.generateSheet({
-        brief: effectiveBrief,
-        prompt,
-        singleVariantPrompt,
-        referencePngs,
-        variants: expected,
-      });
-      await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
-      const slice = sliceSheetFromBrief(sheet, brief);
+      const sheet = await timing.measure('provider', () =>
+        options.provider.generateSheet({
+          brief: effectiveBrief,
+          prompt,
+          singleVariantPrompt,
+          referencePngs,
+          variants: expected,
+        }),
+      );
+      await timing.measure('initialSheetPersistence', () =>
+        store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet),
+      );
+      const slicingStartedAt = timing.start();
+      let slice: BriefSliceResult;
+      try {
+        slice = sliceSheetFromBrief(sheet, brief);
+      } finally {
+        timing.finish('slicingAndPostprocess', slicingStartedAt);
+      }
       // Structural-only gate (ADR 0052): the slicer
       // is data-driven and never invents cuts, so it emits the sheet's HONEST
       // grid at its real count — which may differ from the brief's commanded
@@ -554,7 +577,7 @@ export async function generateSheetCore(
   }
 
   // Convert absolute briefPath to repo-relative with forward slashes (required by validation)
-  const repoRelativeBriefPath = path.relative(repoRoot, options.briefPath).replace(/\\/g, '/');
+  const repoRelativeBriefPath = path.relative(repoRoot, prepared.loaded.briefPath).replace(/\\/g, '/');
 
   const identity: RunSummaryIdentity = {
     brief: brief.name,
@@ -601,6 +624,7 @@ export async function generateSheetCore(
     attempts,
     expected,
     identity,
+    timing,
   };
 }
 
@@ -616,7 +640,7 @@ export async function generateSheetCore(
  */
 export async function generateOne(options: GenerateOneOptions): Promise<GenerateOneResult> {
   const core = await generateSheetCore(options);
-  const { store, storeKey, runDir, brief, attempts, identity } = core;
+  const { store, storeKey, runDir, brief, attempts, identity, timing } = core;
 
   const summary: RunSummary = {
     ...identity,
@@ -625,6 +649,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     chosen: null,
     judgeBudget: null,
     judgeCache: null,
+    timing: timing.snapshot(),
   };
 
   const summaryKey = storeKey('summary.json');

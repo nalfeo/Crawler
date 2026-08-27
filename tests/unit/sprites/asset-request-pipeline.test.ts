@@ -101,9 +101,11 @@ describe.skipIf(!hasBash)('asset-request pipeline coordinator', () => {
     const { result, log, marker } = run('success');
 
     expect(result.status).toBe(0);
+    expect(log).toHaveLength(4);
     expect(log).toContain('worker-start secret=worker-secret');
     expect(log).toContain('ingest-start secret=absent');
-    expect(log.indexOf('ingest-done')).toBeLessThan(log.indexOf('worker-marker'));
+    expect(log.indexOf('ingest-done')).toBeGreaterThan(log.indexOf('ingest-start secret=absent'));
+    expect(log.indexOf('worker-marker')).toBeGreaterThan(log.indexOf('ingest-done'));
     expect(() => readFileSync(marker)).toThrow();
   });
 
