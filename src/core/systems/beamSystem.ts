@@ -87,6 +87,26 @@ export function clearBeamHits(world: GameWorld, eid: number): void {
 }
 
 /**
+ * Drop hit tracking for beams that are no longer live.
+ *
+ * `spawnBeam`/`lifetimeSystem` cover the normal spawn/expiry path, but a beam can
+ * also be torn down directly (e.g. `removeEntity` on owner death or floor reset),
+ * which would otherwise leave its entry in the map forever. Sweeping once per
+ * invocation keeps the map bounded by the number of live beams.
+ */
+function pruneBeamHits(world: GameWorld): void {
+  const worldHits = hitSets.get(world);
+  if (worldHits === undefined) {
+    return;
+  }
+  for (const beamEid of worldHits.keys()) {
+    if (!entityExists(world.ecs, beamEid) || !hasComponent(world.ecs, beamEid, LineDamage)) {
+      worldHits.delete(beamEid);
+    }
+  }
+}
+
+/**
  * Build the canonical rank map from the current [Health, Position] set and report
  * whether the grid broad-phase is safe to use this invocation.
  *
@@ -160,6 +180,8 @@ function gatherBeamCandidates(
 export function beamSystem(world: GameWorld, collisionResult?: CollisionResult): void {
   const beams = query(world.ecs, [LineDamage, Position]);
   const { position, lineDamage, team } = world.stores;
+
+  pruneBeamHits(world);
 
   // Lazy grid broad-phase state: resolved once, on the first beam that passes the
   // tick + safe-space gates (see the gather block below). Beam-absent / no-tick
@@ -246,7 +268,8 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
         continue;
       }
 
-      if (hitSet.get(target) === world.entityRenderGeneration[target]) {
+      const targetGeneration = world.entityRenderGeneration[target] ?? 0;
+      if (hitSet.get(target) === targetGeneration) {
         continue;
       }
 
@@ -274,7 +297,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
             sourceEid: ownerEid >= 0 ? ownerEid : undefined,
           },
         );
-        hitSet.set(target, world.entityRenderGeneration[target] ?? 0);
+        hitSet.set(target, targetGeneration);
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
         }

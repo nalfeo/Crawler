@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { spawnBeam, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { beamSystem } from '../../src/core/systems/beamSystem.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
-import { Health, Position, Sprite, Team } from '../../src/core/components.js';
+import { Health, LineDamage, Owner, Position, Sprite, Team } from '../../src/core/components.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -113,6 +113,45 @@ describe('beamSystem branch coverage', () => {
     removeEntity(world.ecs, beam);
 
     expect(() => beamSystem(world)).not.toThrow();
+  });
+
+  it('drops hit tracking for beams removed outside the lifetime path', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 30, 0, 50);
+    world.elapsedMs = 1000;
+    const beam = spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
+
+    beamSystem(world);
+    expect(world.stores.health.current[enemy]).toBe(35);
+
+    // Torn down directly (owner death / floor reset), bypassing lifetimeSystem.
+    removeEntity(world.ecs, beam);
+    beamSystem(world);
+
+    // Rebuild a beam on the recycled EID without going through spawnBeam, so only
+    // the in-system prune can have cleared the stale tracking.
+    const revived = addEntity(world.ecs);
+    expect(revived).toBe(beam);
+    addComponent(world.ecs, revived, set(Position, { x: 0, y: 0 }));
+    addComponent(
+      world.ecs,
+      revived,
+      set(LineDamage, {
+        dirX: 1,
+        dirY: 0,
+        length: 100,
+        damage: 15,
+        tickMs: 0,
+        lastTickMs: 0,
+      }),
+    );
+    addComponent(world.ecs, revived, set(Owner, { eid: player }));
+    addComponent(world.ecs, revived, set(Team, { id: TeamId.PLAYER }));
+
+    beamSystem(world);
+
+    expect(world.stores.health.current[enemy]).toBe(20);
   });
 });
 
