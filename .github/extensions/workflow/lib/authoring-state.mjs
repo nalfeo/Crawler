@@ -333,6 +333,9 @@ export function editRequestItem(item, patch) {
   const edited = Object.fromEntries(
     Object.entries(patch).filter(([key]) => REQUEST_EDIT_FIELDS.has(key)),
   );
+  if ('name' in edited && typeof edited.name !== 'string') {
+    throw new Error('name must be a string.');
+  }
   if (typeof edited.name === 'string') {
     edited.name = edited.name.trim();
     if (!slugify(edited.name)) throw new Error('name must contain letters or numbers.');
@@ -367,6 +370,14 @@ export function editRequestItem(item, patch) {
   }
   if ('floorId' in edited) edited.floorId = optionalTrimmedString(edited.floorId);
   if ('familyId' in edited) edited.familyId = optionalTrimmedString(edited.familyId);
+  if (
+    'injectionOverrides' in edited &&
+    (!edited.injectionOverrides ||
+      typeof edited.injectionOverrides !== 'object' ||
+      Array.isArray(edited.injectionOverrides))
+  ) {
+    throw new Error('injectionOverrides must be an object.');
+  }
   if (typeof edited.injectionOverrides === 'object' && edited.injectionOverrides !== null) {
     edited.injectionOverrides = normalizeInjectionOverrides(edited.injectionOverrides);
   }

@@ -284,6 +284,7 @@ test('editing an auto-typed request preserves its canonical unclassified type', 
 
 test('editing validates durable request fields at the state boundary', () => {
   const original = item(1);
+  assert.throws(() => editRequestItem(original, { name: 123 }), /name must be a string/);
   assert.throws(() => editRequestItem(original, { name: '---' }), /letters or numbers/);
   assert.throws(() => editRequestItem(original, { requestedType: 'unknown' }), /known sprite type/);
   assert.throws(() => editRequestItem(original, { sizeVariant: 'huge' }), /known sprite footprint/);
@@ -291,6 +292,10 @@ test('editing validates durable request fields at the state boundary', () => {
   assert.throws(() => editRequestItem(original, { priority: 'urgent' }), /priority/);
   assert.throws(() => editRequestItem(original, { floor: 0 }), /integer from 1 through 20/);
   assert.throws(() => editRequestItem(original, { floor: 21 }), /integer from 1 through 20/);
+  assert.throws(
+    () => editRequestItem(original, { injectionOverrides: 'category prose' }),
+    /injectionOverrides must be an object/,
+  );
 });
 
 test('icon requests remain icon requests through creation and editing', () => {

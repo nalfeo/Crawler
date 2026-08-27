@@ -142,7 +142,7 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.match(html, /categoryDraftByType\[selected\.requestedType\]/);
   assert.match(html, /text: selected\.injectionOverrides\?\.category \|\| ''/);
   assert.match(html, /editCategoryInjection\.value === canonicalEditCategory/);
-  assert.match(html, /text\.charAt\(found - 1\) === '\\n'/);
+  assert.match(html, /var parseRequestTemplate = function parseRequestTemplate/);
   assert.match(html, /categoryDraftByType\[previousCategoryType\] = categoryInjection\.value/);
   assert.match(html, /categoryDraftByType: Object\.assign\(\{\}, categoryDraftByType\)/);
   assert.match(html, /function captureRequestComposerDraft\(/);
@@ -157,7 +157,7 @@ test('Briefs provides a multiline direction editor, full request template previe
     html.indexOf("var viewTemplate = h('button'"),
   );
   assert.ok(
-    applyTemplateSource.indexOf('floorNumber.value = editedFloorNumber') >
+    applyTemplateSource.indexOf("floorNumber.value = edited.floorNumber === '[none]' ? ''") >
       applyTemplateSource.indexOf('updateRoleOptions()'),
   );
   assert.match(html, /template-actions/);

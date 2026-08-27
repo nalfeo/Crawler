@@ -34,6 +34,7 @@ import * as sheetDisplayFns from './lib/sheet-display.mjs';
 import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
 import * as briefLookupFns from './lib/brief-lookup.mjs';
 import * as requestFilterFns from './lib/request-filter.mjs';
+import * as requestTemplateFns from './lib/request-template.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -246,6 +247,7 @@ const CLIENT_SCRIPT = String.raw`
   /*__FEEDBACK_SUMMARY_FNS__*/
   /*__BRIEF_LOOKUP_FNS__*/
   /*__REQUEST_FILTER_FNS__*/
+  /*__REQUEST_TEMPLATE_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
@@ -1851,63 +1853,29 @@ const CLIENT_SCRIPT = String.raw`
           if (selectedFloor.families[ti].id === family.value) selectedFamily = selectedFloor.families[ti];
         }
       }
-      var lines = [
-        'FULL SYNTHESIS REQUEST',
-        '',
-        'Asset name: ' + (name.value.trim() || '[not entered]'),
-        'Additional direction:',
-        brief.value.trim() || '[none]',
-        '',
-        'Sprite type: ' + type.value,
-        'Sprite footprint: ' + size.value,
-        'Floor intensity: ' + (floorNumber.value || '1'),
-        'Floor context: ' + (selectedFloor ? selectedFloor.floorId + ' · ' + selectedFloor.name : 'none'),
-        'Enemy family context: ' + (selectedFamily ? selectedFamily.id : 'none'),
-        'Mob role context: ' + (role.value || 'none'),
-        'Request priority: ' + priority.value,
-        'Requester identity: ' + (requester.value.trim() || 'none'),
-        '',
-        'Crawler design-language injection (always applied):',
-        CRAWLER_DESIGN_LANGUAGE,
-        '',
-        'Sprite category design-language injection:',
-        categoryInjection.value.trim() || '[resolved after automatic type classification]',
-        '',
-        'Floor design-language injection:',
-        floorInjection.value.trim() || (selectedFloor && selectedFloor.canonicalFloorInjection) || '[none]',
-        '',
-        'Family/theme design-language injection:',
-        familyInjection.value.trim() || (selectedFamily && selectedFamily.canonicalFamilyInjection) || '[none]',
-        '',
-        'The request above is sent to Synthesize after Generate Brief, with the selected game-derived sources and request-local injection overrides.'
-      ];
-      return lines.join('\n');
+      return renderRequestTemplate({
+        name: name.value.trim(),
+        brief: brief.value.trim(),
+        type: type.value,
+        size: size.value,
+        floorNumber: floorNumber.value,
+        floorContext: selectedFloor ? selectedFloor.floorId + ' · ' + selectedFloor.name : '',
+        familyContext: selectedFamily ? selectedFamily.id : '',
+        role: role.value,
+        priority: priority.value,
+        requester: requester.value.trim(),
+        crawlerDesignLanguage: CRAWLER_DESIGN_LANGUAGE,
+        categoryInjection: categoryInjection.value.trim(),
+        floorInjection: floorInjection.value.trim() ||
+          (selectedFloor && selectedFloor.canonicalFloorInjection) || '',
+        familyInjection: familyInjection.value.trim() ||
+          (selectedFamily && selectedFamily.canonicalFamilyInjection) || ''
+      });
     }
     function closeTemplateModal() {
       requestTemplateModal = null;
       referencePreview = null;
       render(lastState);
-    }
-    function templateSection(text, heading, nextHeadings) {
-      function lineHeadingIndex(candidate, from) {
-        var startAt = from || 0;
-        while (startAt < text.length) {
-          var found = text.indexOf(candidate, startAt);
-          if (found < 0) return -1;
-          if (found === 0 || text.charAt(found - 1) === '\n') return found;
-          startAt = found + candidate.length;
-        }
-        return -1;
-      }
-      var start = lineHeadingIndex(heading, 0);
-      if (start < 0) return '';
-      start += heading.length;
-      var end = text.length;
-      nextHeadings.forEach(function (nextHeading) {
-        var next = lineHeadingIndex(nextHeading, start);
-        if (next >= 0 && next < end) end = next;
-      });
-      return text.slice(start, end).trim();
     }
     function optionExists(select, value) {
       for (var oi = 0; oi < select.options.length; oi++) {
@@ -1916,35 +1884,24 @@ const CLIENT_SCRIPT = String.raw`
       return false;
     }
     function applyTemplateEdits(templateText) {
-      var editedName = templateSection(templateText, 'Asset name:', ['Additional direction:']);
-      var editedBrief = templateSection(templateText, 'Additional direction:', ['Sprite type:']);
-      var editedType = templateSection(templateText, 'Sprite type:', ['Sprite footprint:']);
-      var editedSize = templateSection(templateText, 'Sprite footprint:', ['Floor intensity:']);
-      var editedFloorNumber = templateSection(templateText, 'Floor intensity:', ['Floor context:']);
-      var editedFloor = templateSection(templateText, 'Floor context:', ['Enemy family context:']).split(' · ')[0];
-      var editedFamily = templateSection(templateText, 'Enemy family context:', ['Mob role context:']);
-      var editedRole = templateSection(templateText, 'Mob role context:', ['Request priority:']);
-      var editedPriority = templateSection(templateText, 'Request priority:', ['Requester identity:']);
-      var editedRequester = templateSection(templateText, 'Requester identity:', ['Crawler design-language injection (always applied):']);
-      var editedCategoryInjection = templateSection(templateText, 'Sprite category design-language injection:', ['Floor design-language injection:']);
-      var editedFloorInjection = templateSection(templateText, 'Floor design-language injection:', ['Family/theme design-language injection:']);
-      var editedFamilyInjection = templateSection(templateText, 'Family/theme design-language injection:', ['The request above']);
-      name.value = editedName === '[not entered]' ? '' : editedName;
-      brief.value = editedBrief === '[none]' ? '' : editedBrief;
-      if (optionExists(type, editedType)) type.value = editedType;
-      if (optionExists(size, editedSize)) size.value = editedSize;
+      var edited = parseRequestTemplate(templateText);
+      name.value = edited.name === '[not entered]' ? '' : edited.name;
+      brief.value = edited.brief === '[none]' ? '' : edited.brief;
+      if (optionExists(type, edited.type)) type.value = edited.type;
+      if (optionExists(size, edited.size)) size.value = edited.size;
+      var editedFloor = edited.floorContext.split(' · ')[0];
       floor.value = editedFloor === 'none' ? '' : editedFloor;
       updateFamilyOptions();
-      family.value = editedFamily === 'none' ? '' : editedFamily;
+      family.value = edited.familyContext === 'none' ? '' : edited.familyContext;
       updateRoleOptions();
-      role.value = editedRole === 'none' ? '' : editedRole;
-      if (/^\d+$/.test(editedFloorNumber)) floorNumber.value = editedFloorNumber;
-      if (optionExists(priority, editedPriority)) priority.value = editedPriority;
-      requester.value = editedRequester === 'none' ? '' : editedRequester;
-      categoryInjection.value = editedCategoryInjection === '[resolved after automatic type classification]'
-        ? '' : editedCategoryInjection;
-      floorInjection.value = editedFloorInjection === '[none]' ? '' : editedFloorInjection;
-      familyInjection.value = editedFamilyInjection === '[none]' ? '' : editedFamilyInjection;
+      role.value = edited.role === 'none' ? '' : edited.role;
+      floorNumber.value = edited.floorNumber === '[none]' ? '' : edited.floorNumber;
+      if (optionExists(priority, edited.priority)) priority.value = edited.priority;
+      requester.value = edited.requester === 'none' ? '' : edited.requester;
+      categoryInjection.value = edited.categoryInjection === '[resolved after automatic type classification]'
+        ? '' : edited.categoryInjection;
+      floorInjection.value = edited.floorInjection === '[none]' ? '' : edited.floorInjection;
+      familyInjection.value = edited.familyInjection === '[none]' ? '' : edited.familyInjection;
     }
     var viewTemplate = h('button', {
       text: 'View full template',
@@ -2560,7 +2517,8 @@ export function renderHtml(instanceId, mutationToken = '') {
     .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
     .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
     .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns))
-    .replace('/*__REQUEST_FILTER_FNS__*/', () => serializePureModule(requestFilterFns));
+    .replace('/*__REQUEST_FILTER_FNS__*/', () => serializePureModule(requestFilterFns))
+    .replace('/*__REQUEST_TEMPLATE_FNS__*/', () => serializePureModule(requestTemplateFns));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
