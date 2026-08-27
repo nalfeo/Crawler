@@ -10,7 +10,13 @@ interface GoobersActionsWorkflow {
   on: {
     issues?: { types?: string[] };
     schedule?: Array<{ cron?: string }>;
-    workflow_dispatch?: { inputs?: { goobers_version?: { default?: string } } };
+    workflow_dispatch?: {
+      inputs?: {
+        goobers_version?: { default?: string };
+        issue_number?: { default?: string };
+        abandon_existing?: { default?: boolean };
+      };
+    };
   };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
@@ -135,6 +141,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
+    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -145,6 +152,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(definition.spec.runControls?.maxRepasses).toBe(6);
     expect(hydrate).toBeDefined();
     expect(tasks.get('query-backlog')?.expectedOutputs).toEqual(['id', 'title', 'body', 'url']);
+    expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
+    expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
     expect(hydrate?.inputsFrom).toEqual({
       issueNumber: 'query-backlog.id',
       issueTitle: 'query-backlog.title',
@@ -179,12 +188,17 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
+    expect(implement?.next).toBe('checkpoint-branch');
+    expect(checkpoint?.run?.script).toContain('goobers push-branch');
+    expect(checkpoint?.run?.script).not.toContain('npm ci');
+    expect(checkpoint?.next).toBe('review');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
+      'checkpoint-branch',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -275,5 +289,49 @@ describe('Goobers automatic dispatch and recovery', () => {
       token: { env: 'COPILOT_GITHUB_TOKEN' },
     });
     expect(requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET).toBe('${{ secrets.GOOBERS_GITHUB_TOKEN }}');
+  });
+
+  it('supports deterministic issue-linked PR recovery and explicit abandon', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const recovery = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Resolve Goobers recovery target',
+    );
+
+    expect(workflow.on.workflow_dispatch?.inputs).toMatchObject({
+      issue_number: { default: '' },
+      abandon_existing: { default: false },
+    });
+    expect(recovery?.env).toMatchObject({
+      GOOBERS_GITHUB_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      ISSUE_NUMBER: '${{ inputs.issue_number || github.event.issue.number }}',
+      ABANDON_EXISTING: "${{ inputs.abandon_existing || 'false' }}",
+    });
+    expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
+    expect(recovery?.run).toContain('cross-referenced');
+    expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN secret is required');
+    expect(recovery?.run).toContain('goobers/status:in-review');
+    expect(recovery?.run).toContain('Scheduled recovery selected issue');
+    expect(recovery?.run).toContain('goobers/crawler/*');
+    expect(recovery?.run).toContain('gh pr checkout "${pr_number}"');
+    expect(recovery?.run).toContain('gh pr close "${pr_number}"');
+    expect(recovery?.run).toContain('starting over');
+    expect(recovery?.run).toContain('GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}');
+    expect(
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Preserve trusted Goobers source')
+        ?.run,
+    ).toContain('crawler-goobers-source');
+    const run = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
+    expect(run?.env).toMatchObject({
+      GOOBERS_RESUME_PR: '${{ env.GOOBERS_RESUME_PR }}',
+      GOOBERS_RESUME_BRANCH: '${{ env.GOOBERS_RESUME_BRANCH }}',
+      GOOBERS_RECOVERY_ISSUE: '${{ env.GOOBERS_RECOVERY_ISSUE }}',
+    });
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into the instance',
+    );
+    expect(materialize?.run).toContain('path: ${GOOBERS_SOURCE}');
+    expect(
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Validate .goobers source tree')?.run,
+    ).toContain('"$GOOBERS_SOURCE"');
   });
 });

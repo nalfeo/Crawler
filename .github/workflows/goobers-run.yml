@@ -8,9 +8,9 @@ name: Goobers Run
 # repo's versioned `.goobers/` source into it, and triggers the workflow via
 # `goobers run`, which blocks until the run reaches a terminal state.
 #
-# This does not run a daemon and does not persist any instance state between
-# dispatches — every run gets a fresh instance root. See .goobers/README.md
-# and README.md#goobers for the source layout and runtime-boundary rules.
+# This does not run a daemon and does not persist instance state between
+# dispatches; recovery is performed deterministically from the issue timeline
+# and the attached PR branch. See .goobers/README.md and README.md#goobers.
 
 on:
   issues:
@@ -33,6 +33,14 @@ on:
         description: 'Goobers workflow to run'
         type: string
         default: 'crawler-feature-pr'
+      issue_number:
+        description: 'Issue number to resume (manual dispatch only)'
+        type: string
+        default: ''
+      abandon_existing:
+        description: 'Close an attached open Goobers PR and start over'
+        type: boolean
+        default: false
 
 permissions:
   checks: write
@@ -66,6 +74,100 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
           persist-credentials: false
+
+      - name: Preserve trusted Goobers source
+        run: |
+          set -euo pipefail
+          cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
+          echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
+
+      - name: Resolve Goobers recovery target
+        id: recovery
+        env:
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ inputs.issue_number || github.event.issue.number }}
+          ABANDON_EXISTING: ${{ inputs.abandon_existing || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOBERS_GITHUB_TOKEN_SET}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN secret is required before recovery lookup; see README.md#goobers." >&2
+            exit 1
+          fi
+          if [ -z "${ISSUE_NUMBER}" ]; then
+            for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
+              --state open --label 'goobers/status:in-review' --json number --jq '.[].number'); do
+              candidate_pr="$(
+                gh api --paginate \
+                  "repos/${GITHUB_REPOSITORY}/issues/${candidate_issue}/timeline" \
+                  --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
+                  while read -r candidate; do
+                    details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName)"
+                    state="$(jq -r '.state' <<<"${details}")"
+                    branch="$(jq -r '.headRefName' <<<"${details}")"
+                    if [ "${state}" = "OPEN" ] && [[ "${branch}" == goobers/crawler/* ]]; then
+                      printf '%s\n' "${candidate}"
+                      break
+                    fi
+                  done
+              )"
+              if [ -n "${candidate_pr}" ]; then
+                ISSUE_NUMBER="${candidate_issue}"
+                echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr}."
+                break
+              fi
+            done
+          fi
+          if [ -z "${ISSUE_NUMBER}" ]; then
+            echo "No issue number supplied; starting a fresh Goobers run."
+            exit 0
+          fi
+          if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; use workflow_dispatch issue_number with an integer." >&2
+            exit 1
+          fi
+          echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}" >> "${GITHUB_ENV}"
+
+          pr_number="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/timeline" \
+              --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
+              while read -r candidate; do
+                details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName)"
+                state="$(jq -r '.state' <<<"${details}")"
+                branch="$(jq -r '.headRefName' <<<"${details}")"
+                if [ "${state}" = "OPEN" ] && [[ "${branch}" == goobers/crawler/* ]]; then
+                  printf '%s\n' "${candidate}"
+                  break
+                fi
+              done
+          )"
+          if [ -z "${pr_number}" ]; then
+            echo "No open Goobers PR cross-referenced from issue #${ISSUE_NUMBER}; starting a fresh branch."
+            exit 0
+          fi
+
+          if [ "${ABANDON_EXISTING}" = "true" ]; then
+            gh pr close "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
+              --comment "Goobers recovery instructed to abandon this partial-progress PR; a fresh run will start from the issue."
+            echo "Abandoned open Goobers PR #${pr_number} by explicit instruction; starting over."
+            exit 0
+          fi
+
+          branch="$(
+            gh pr view "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
+              --json headRefName --jq '.headRefName'
+          )"
+          if [ -z "${branch}" ]; then
+            echo "::error::Open PR #${pr_number} has no readable head branch; use abandon_existing=true to start over." >&2
+            exit 1
+          fi
+          gh pr checkout "${pr_number}" --repo "${GITHUB_REPOSITORY}"
+          {
+            echo "GOOBERS_RESUME_PR=${pr_number}"
+            echo "GOOBERS_RESUME_BRANCH=${branch}"
+          } >> "${GITHUB_ENV}"
+          echo "Resuming open Goobers PR #${pr_number} on branch '${branch}'."
 
       - name: Require GOOBERS_GITHUB_TOKEN
         # crawler-feature-pr's implement/push-branch stages declare
@@ -185,7 +287,7 @@ jobs:
           npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
 
       - name: Validate .goobers source tree
-        run: goobers validate --source-tree .goobers
+        run: goobers validate --source-tree "$GOOBERS_SOURCE"
 
       - name: Scaffold throwaway instance root
         run: |
@@ -211,7 +313,7 @@ jobs:
                 env: GOOBERS_GITHUB_TOKEN
           workflowSource:
             kind: local-dir
-            path: ${{ github.workspace }}/.goobers
+            path: ${GOOBERS_SOURCE}
           credentials:
             - capability: agent:model
               token:
@@ -230,6 +332,9 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
+          GOOBERS_RESUME_BRANCH: ${{ env.GOOBERS_RESUME_BRANCH }}
+          GOOBERS_RECOVERY_ISSUE: ${{ env.GOOBERS_RECOVERY_ISSUE }}
         run: |
           set -euo pipefail
           goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"

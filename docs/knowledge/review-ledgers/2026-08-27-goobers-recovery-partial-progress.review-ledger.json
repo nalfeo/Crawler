@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "goobers-recovery-partial-progress",
+  "task_title": "Add Goobers recovery and partial-progress persistence",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "",
+      "clean": true,
+      "summary": "Separate-model review identified token preflight ordering, Goobers branch filtering, resume env propagation, and checkpoint npm ci concerns; all were addressed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "summary": "Found and fixed trusted-source validation and scheduled-sweep/issue-targeting gaps; final review is clean."
+        }
+      ],
+      "completed": true
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

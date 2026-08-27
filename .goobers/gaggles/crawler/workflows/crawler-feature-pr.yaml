@@ -18,7 +18,33 @@ spec:
       type: deterministic
       goal: Claim one maintainer-approved Crawler feature issue.
       run:
-        command: ['goobers', 'backlog-query', '--claim']
+        script: |
+          set -eu
+          if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+            issue="${GOOBERS_RECOVERY_ISSUE}"
+            case "${issue}" in
+              (*[!0-9]*|'')
+                echo "GOOBERS_RECOVERY_ISSUE must be a numeric issue number; refusing recovery claim." >&2
+                exit 1
+                ;;
+            esac
+            issue_json="$(gh issue view "${issue}" --repo "${GITHUB_REPOSITORY}" --json state,title,body,url,labels)"
+            state="$(jq -r '.state' <<<"${issue_json}")"
+            approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"${issue_json}")"
+            if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ]; then
+              echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
+              exit 1
+            fi
+            gh issue edit "${issue}" --repo "${GITHUB_REPOSITORY}" --add-label 'goobers/status:in-review'
+            jq '{
+              id: (.number // '"${issue}"'),
+              title,
+              body,
+              url
+            }' <<<"${issue_json}" > claimed-item.json
+          else
+            goobers backlog-query --claim
+          fi
       inputs:
         trustLabel: 'goobers:approved'
         requireUnassigned: 'true'
@@ -180,7 +206,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: review
+      next: checkpoint-branch
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -194,6 +220,18 @@ spec:
       policyActions:
         - push-repository-branch
       next: local-ci
+    - name: checkpoint-branch
+      type: deterministic
+      goal: Persist implementation commits immediately before review.
+      run:
+        script: |
+          set -eu
+          goobers push-branch
+      capabilities:
+        - repo:push
+      policyActions:
+        - push-repository-branch
+      next: review
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
