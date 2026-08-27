@@ -168,6 +168,7 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
     cursor: number;
@@ -545,6 +546,21 @@ export interface MainSceneState {
   readonly settlementShopArchetypeIds: readonly string[];
 }
 
+/**
+ * Live projection of the between-floor summary screen: the stat lines a player
+ * can read, the acknowledgement prompt, and whether the descent is waiting.
+ */
+export interface FloorSummaryProbeState {
+  readonly visible: boolean;
+  readonly lines: readonly string[];
+  readonly prompt: string | null;
+  readonly awaitingAcknowledgement: boolean;
+  /** Panel rectangle behind the completion copy (design space). */
+  readonly panelBounds: ScreenBounds | null;
+  /** Union of every visible completion-screen text (design space). */
+  readonly contentBounds: ScreenBounds | null;
+}
+
 /** Safe-area insets plus every edge-anchored screen-space surface (design space). */
 export interface SafeAreaLayoutProbe {
   readonly insets: SafeAreaInsets;
@@ -876,6 +892,8 @@ export interface MainSceneProbeApi {
    * intrude into the display-cutout / home-indicator bands.
    */
   getSafeAreaLayout(): SafeAreaLayoutProbe;
+  /** Live between-floor summary screen projection (stat lines + prompt). */
+  getFloorSummaryState(): FloorSummaryProbeState;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Advance the paused simulation by N fixed steps using the real scene seam. */
@@ -1506,6 +1524,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
+
+    getFloorSummaryState: (): FloorSummaryProbeState =>
+      getScene()?.getFloorSummaryState?.() ?? {
+        visible: false,
+        lines: [],
+        prompt: null,
+        awaitingAcknowledgement: false,
+        panelBounds: null,
+        contentBounds: null,
+      },
 
     getSafeAreaLayout: (): SafeAreaLayoutProbe => {
       const scene = getScene();

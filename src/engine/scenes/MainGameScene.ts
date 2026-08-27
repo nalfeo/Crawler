@@ -25,6 +25,11 @@ import {
   WORLD_VFX_DEPTH,
 } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
+import {
+  buildFloorSummaryRows,
+  countPlayerAttributedKills,
+  formatFloorSummaryText,
+} from '../../shared/floor-summary.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
@@ -233,6 +238,52 @@ const FLOOR_TRANS_BAR_W = 400;
 const FLOOR_TRANS_BAR_H = 14;
 const FLOOR_TRANS_BAR_INNER_W = FLOOR_TRANS_BAR_W - 2;
 const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
+
+/**
+ * Grace period before the between-floor summary accepts its acknowledgement
+ * input. The stair-descend confirmation is itself an Enter press / tap, so
+ * without this the same physical input that confirmed the descent could be
+ * read again as "continue" and the summary would flash past unread.
+ */
+const FLOOR_SUMMARY_ACK_ARM_MS = 450;
+
+/** Panel height used by the taller between-floor summary layout. */
+const FLOOR_SUMMARY_PANEL_H = 400;
+
+/** Screen-space bounds of a visible game object, or null when hidden/absent. */
+function toScreenBounds(
+  object?: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text,
+): ScreenBounds | null {
+  if (!object || !object.visible) {
+    return null;
+  }
+  const bounds = object.getBounds();
+  return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+}
+
+/** Union of the screen bounds of every visible object, or null when none are. */
+function unionScreenBounds(
+  objects: readonly (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text | undefined)[],
+): ScreenBounds | null {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const object of objects) {
+    const bounds = toScreenBounds(object);
+    if (!bounds) {
+      continue;
+    }
+    left = Math.min(left, bounds.x);
+    top = Math.min(top, bounds.y);
+    right = Math.max(right, bounds.x + bounds.width);
+    bottom = Math.max(bottom, bounds.y + bounds.height);
+  }
+  if (!Number.isFinite(left)) {
+    return null;
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
 
 const logger = createLogger('engine:main-game-scene');
 
@@ -838,11 +889,39 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
+  /** Panel behind the completion copy; grown when the summary is shown. */
+  private floorCompletionPanel?: Phaser.GameObjects.Rectangle;
+
   private floorCompletionTitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
+  /** Between-floor stats block ("Time on floor", "Enemies slain", …). */
+  private floorSummaryText?: Phaser.GameObjects.Text;
+
+  /** "Press SPACE …" prompt shown while the summary waits for a human. */
+  private floorSummaryPromptText?: Phaser.GameObjects.Text;
+
+  private keyFloorSummaryAdvanceSpace?: Phaser.Input.Keyboard.Key;
+
+  private keyFloorSummaryAdvanceEnter?: Phaser.Input.Keyboard.Key;
+
+  /**
+   * Descent deferred until the player acknowledges the floor summary. Set only
+   * for human-driven runs; AI-driven runs keep the timed progress bar.
+   */
+  private pendingFloorTransition?: () => void;
+
+  /** Scene time (ms) from which the summary acknowledgement is accepted. */
+  private floorSummaryAckArmedAtMs = 0;
+
+  /** Latched pointer/touch acknowledgement, consumed by the update loop. */
+  private floorSummaryAckRequested = false;
+
+  /** Player-attributed enemy kills counted on this floor. */
+  private floorKills = 0;
 
   /** Progress bar shown during floor-to-floor transitions (hidden otherwise). */
   private floorTransitionProgressTrack?: Phaser.GameObjects.Rectangle;
@@ -1029,6 +1108,10 @@ export class MainGameScene extends Phaser.Scene {
     this.warnedMissingDependencies = false;
     this.floorCompletionMessageShown = false;
     this.floorCompletionMessagePending = false;
+    this.pendingFloorTransition = undefined;
+    this.floorSummaryAckArmedAtMs = 0;
+    this.floorSummaryAckRequested = false;
+    this.floorKills = 0;
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
@@ -1072,6 +1155,12 @@ export class MainGameScene extends Phaser.Scene {
     this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.keyRoster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.keyFloorSummaryAdvanceSpace = this.input.keyboard?.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+    );
+    this.keyFloorSummaryAdvanceEnter = this.input.keyboard?.addKey(
+      Phaser.Input.Keyboard.KeyCodes.ENTER,
+    );
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1397,6 +1486,12 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
+      this.floorSummaryText = undefined;
+      this.floorSummaryPromptText = undefined;
+      this.pendingFloorTransition = undefined;
+      this.floorSummaryAckRequested = false;
+      this.keyFloorSummaryAdvanceSpace = undefined;
+      this.keyFloorSummaryAdvanceEnter = undefined;
       this.floorTransitionProgressTrack = undefined;
       this.floorTransitionProgressFill = undefined;
       this.floorTransitionProgressShine = undefined;
@@ -1447,6 +1542,41 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  /**
+   * Live read-back of the between-floor summary screen — what a player can
+   * actually read, plus whether the descent is waiting on them. Test/automation
+   * affordance for the deterministic floor-summary e2e.
+   */
+  getFloorSummaryState(): {
+    visible: boolean;
+    lines: string[];
+    prompt: string | null;
+    awaitingAcknowledgement: boolean;
+    panelBounds: ScreenBounds | null;
+    contentBounds: ScreenBounds | null;
+  } {
+    const visible =
+      (this.floorCompletionScreen?.visible ?? false) && (this.floorSummaryText?.visible ?? false);
+    const text = this.floorSummaryText?.text ?? '';
+    return {
+      visible,
+      lines: visible && text.length > 0 ? text.split('\n') : [],
+      prompt:
+        (this.floorSummaryPromptText?.visible ?? false)
+          ? (this.floorSummaryPromptText?.text ?? null)
+          : null,
+      awaitingAcknowledgement: this.pendingFloorTransition !== undefined,
+      panelBounds: toScreenBounds(this.floorCompletionPanel),
+      contentBounds: unionScreenBounds([
+        this.floorCompletionTitleText,
+        this.floorCompletionSubtitleText,
+        this.floorCompletionBodyText,
+        this.floorSummaryText,
+        this.floorSummaryPromptText,
+      ]),
+    };
+  }
+
   getIssueButtonBounds(): ScreenBounds | null {
     if (!this.issueButton?.visible) {
       return null;
@@ -1469,6 +1599,13 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.pendingFloorTransition) {
+      // The between-floor summary owns every pointer press while it waits,
+      // touch included — this is the one screen a touch-only player must be
+      // able to dismiss without a keyboard.
+      this.floorSummaryAckRequested = true;
+      return;
+    }
     if (this.abilityLoadoutUI?.isOpen()) {
       return;
     }
@@ -2009,8 +2146,19 @@ export class MainGameScene extends Phaser.Scene {
     this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
+    this.updateFloorSummaryAcknowledgement();
     this.showDeathScreenIfNeeded();
     this.refreshCameraMasks();
+
+    // The between-floor summary is a blocking screen: freeze the fixed step
+    // while it waits for the player (rendering and camera stay alive, exactly
+    // like the boss-intro/level-up freeze branches below).
+    if (this.pendingFloorTransition) {
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateOverlayText();
+      return;
+    }
 
     this.processOpenAbilitiesModal();
     if (this.issueReportPausedState !== undefined) {
@@ -2244,6 +2392,11 @@ export class MainGameScene extends Phaser.Scene {
       // src/engine module). Call order + arguments are identical to the former
       // inline body; the paused single-step drain stays at its exact original
       // seam (between preSystems and movementSystem) via the `afterInput` hook.
+      // Player-attributed kills for the between-floor summary. Counted here,
+      // per simulation step, because the render layer drains `combatEvents`
+      // once per rendered frame while this loop may run several steps: the
+      // pre-step queue length is the cursor that makes each death count once.
+      const combatEventsBeforeStep = this.world.combatEvents.length;
       runSimulationStep(this.world, this.inputState, {
         preSystems: this.options.preSystems,
         postSystems: this.options.postSystems,
@@ -2265,6 +2418,11 @@ export class MainGameScene extends Phaser.Scene {
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
+      this.floorKills += countPlayerAttributedKills(
+        this.world.combatEvents,
+        this.playerEid,
+        combatEventsBeforeStep,
+      );
 
       // Record telemetry from the human player each sim step when configured.
       if (this.sessionRecorder) {
@@ -2923,9 +3081,10 @@ export class MainGameScene extends Phaser.Scene {
     const completionBackdrop = this.add
       .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
       .setOrigin(0, 0);
-    const completionPanel = this.add
+    this.floorCompletionPanel = this.add
       .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
       .setStrokeStyle(2, 0x334155, 1);
+    const completionPanel = this.floorCompletionPanel;
     this.floorCompletionTitleText = this.add
       .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
         fontFamily: 'Segoe UI, Arial, sans-serif',
@@ -2953,6 +3112,23 @@ export class MainGameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5, 0.5);
+    this.floorSummaryText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2, '', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#e2e8f0',
+        align: 'left',
+      })
+      .setOrigin(0.5, 0.5)
+      .setVisible(false);
+    this.floorSummaryPromptText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#fbbf24',
+      })
+      .setOrigin(0.5, 0.5)
+      .setVisible(false);
 
     // Floor-transition progress bar — hidden by default, shown only when the
     // scene is about to restart into the next floor.
@@ -2994,6 +3170,8 @@ export class MainGameScene extends Phaser.Scene {
         this.floorCompletionTitleText,
         this.floorCompletionSubtitleText,
         this.floorCompletionBodyText,
+        this.floorSummaryText,
+        this.floorSummaryPromptText,
         this.floorTransitionProgressTrack,
         this.floorTransitionProgressFill,
         this.floorTransitionProgressShine,
@@ -4468,15 +4646,28 @@ export class MainGameScene extends Phaser.Scene {
     if (completionVariant === 'transition_to_next_floor') {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
+      this.showFloorSummary();
       this.floorCompletionScreen?.setVisible(true);
-      this.startFloorTransitionProgress(() => {
+      const advance = (): void => {
         const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
         if (nextOptions) {
           const composedNextOptions =
             this.options.recomposeFloorTransitionOptions?.(nextOptions) ?? nextOptions;
           this.scene.restart({ mainGameSceneOptions: composedNextOptions });
         }
-      });
+      };
+      // An AI-driven run has nobody to press a key, so it keeps the timed
+      // progress bar (long enough for a viewer/recording to read the summary).
+      // A human reads the summary and descends when they are ready.
+      if (this.isRunAutoDriven()) {
+        this.floorSummaryPromptText?.setVisible(false);
+        this.startFloorTransitionProgress(advance);
+        return;
+      }
+      this.pendingFloorTransition = advance;
+      this.floorSummaryAckRequested = false;
+      this.floorSummaryAckArmedAtMs = this.time.now + FLOOR_SUMMARY_ACK_ARM_MS;
+      this.floorSummaryPromptText?.setText('Press SPACE or ENTER to descend').setVisible(true);
       return;
     }
 
@@ -4490,6 +4681,105 @@ export class MainGameScene extends Phaser.Scene {
 
   private shouldShowFloorCompletionMessage(): boolean {
     return this.hasReachedScenarioRunOutcome() && !this.floorCompletionMessageShown;
+  }
+
+  /**
+   * True when an AI — not a human — is driving this run. Same signal every
+   * other auto-advance surface uses (see {@link driveAutoBossIntro}).
+   */
+  private isRunAutoDriven(): boolean {
+    return this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+  }
+
+  /**
+   * Fills in and lays out the between-floor stats block. Every value comes
+   * from durable per-floor state (the scene's own kill tally, the world clock,
+   * the per-floor gold ledger, the player's level/health) so it reads the same
+   * whether the floor was cleared in 40 seconds or 10 minutes.
+   */
+  private showFloorSummary(): void {
+    const summaryText = this.floorSummaryText;
+    if (!summaryText) {
+      return;
+    }
+    const accuracy = this.sessionRecorder?.getStats().weaponTelemetry?.accuracy;
+    const goldLedger = this.world.goldLedger;
+    const rows = buildFloorSummaryRows({
+      elapsedMs: this.world.elapsedMs,
+      kills: this.floorKills,
+      level: this.world.playerLevel?.level ?? 0,
+      xpGained: (this.world.playerLevel?.xp ?? 0) - this.runStartXp,
+      goldEarned: goldLedger.earnedFromDrops + goldLedger.earnedFromLootBoxes,
+      goldHeld: this.world.playerGold,
+      currentHealth: this.world.stores.health.current[this.playerEid] ?? 0,
+      maxHealth: this.world.stores.health.max[this.playerEid] ?? 0,
+      ...(accuracy === undefined ? {} : { accuracy }),
+    });
+    summaryText.setText(formatFloorSummaryText(rows)).setVisible(true);
+    this.layoutFloorCompletionScreenWithSummary();
+  }
+
+  /**
+   * Re-lays out the completion screen for the taller summary variant. The
+   * terminal (no-summary) variants keep the original compact geometry, so this
+   * only runs on the between-floor path.
+   */
+  private layoutFloorCompletionScreenWithSummary(): void {
+    const centerX = GAME.WIDTH / 2;
+    const centerY = GAME.HEIGHT / 2;
+    this.floorCompletionPanel?.setSize(620, FLOOR_SUMMARY_PANEL_H);
+    this.floorCompletionTitleText?.setPosition(centerX, centerY - 150);
+    this.floorCompletionSubtitleText?.setPosition(centerX, centerY - 108);
+    this.floorCompletionBodyText?.setPosition(centerX, centerY - 68);
+    this.floorSummaryText?.setPosition(centerX, centerY + 15);
+    this.floorSummaryPromptText?.setPosition(centerX, centerY + 110);
+    const barX = centerX - FLOOR_TRANS_BAR_W / 2;
+    const barY = centerY + 130;
+    this.floorTransitionProgressTrack?.setPosition(barX, barY);
+    this.floorTransitionProgressFill?.setPosition(barX + 1, barY + 1);
+    this.floorTransitionProgressShine?.setPosition(barX + 1, barY + 1);
+    this.floorTransitionProgressLabel?.setPosition(centerX, barY + 22);
+  }
+
+  /**
+   * Runs the between-floor summary's acknowledgement input. Accepts keyboard
+   * (SPACE/ENTER) and any pointer press including touch — the scene's normal
+   * pointer handler deliberately ignores touch, so the summary owns its own
+   * latch ({@link floorSummaryAckRequested}) to stay reachable on mobile.
+   *
+   * The arm delay means the very press that confirmed the stair descent can
+   * never double as the acknowledgement.
+   */
+  private updateFloorSummaryAcknowledgement(): void {
+    const advance = this.pendingFloorTransition;
+    if (!advance) {
+      return;
+    }
+    if (this.time.now < this.floorSummaryAckArmedAtMs) {
+      // Swallow input that was already down when the summary appeared.
+      this.floorSummaryAckRequested = false;
+      this.consumeFloorSummaryAdvanceKeys();
+      return;
+    }
+    const acknowledged = this.floorSummaryAckRequested || this.consumeFloorSummaryAdvanceKeys();
+    if (!acknowledged) {
+      return;
+    }
+    this.floorSummaryAckRequested = false;
+    this.pendingFloorTransition = undefined;
+    this.floorSummaryPromptText?.setVisible(false);
+    this.startFloorTransitionProgress(advance);
+  }
+
+  /** JustDown-reads both advance keys, returning whether either fired. */
+  private consumeFloorSummaryAdvanceKeys(): boolean {
+    const space =
+      this.keyFloorSummaryAdvanceSpace !== undefined &&
+      Phaser.Input.Keyboard.JustDown(this.keyFloorSummaryAdvanceSpace);
+    const enter =
+      this.keyFloorSummaryAdvanceEnter !== undefined &&
+      Phaser.Input.Keyboard.JustDown(this.keyFloorSummaryAdvanceEnter);
+    return space || enter;
   }
 
   /**
