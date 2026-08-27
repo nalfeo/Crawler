@@ -88,6 +88,46 @@ describe('createDrainOnStatus', () => {
     expect(abort).toHaveBeenCalledTimes(1);
   });
 
+  it('never drains on idle polls before a coordinated producer completes', () => {
+    const abort = vi.fn();
+    let producerComplete = false;
+    const wrapped = createDrainOnStatus({
+      base: vi.fn(),
+      maxEmptyPolls: 3,
+      abort,
+      isProducerComplete: () => producerComplete,
+    });
+
+    for (let index = 0; index < 20; index += 1) wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+
+    producerComplete = true;
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
+  it('confirms emptiness with a dequeue cycle begun after completion', () => {
+    const abort = vi.fn();
+    let producerComplete = false;
+    const wrapped = createDrainOnStatus({
+      base: vi.fn(),
+      maxEmptyPolls: 3,
+      abort,
+      isProducerComplete: () => producerComplete,
+    });
+
+    wrapped(idle);
+    producerComplete = true;
+    wrapped(processing);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
   it('passes non-idle/non-processing events straight through to base', () => {
     const abort = vi.fn();
     const base = vi.fn();

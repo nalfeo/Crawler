@@ -21,6 +21,7 @@ import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import type { ImageProvider } from '../../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../../scripts/sprites/provider/types.js';
 import { runWorker, sleep, type WorkerStatus } from '../../../scripts/sprites/worker.js';
+import { createDrainOnStatus } from '../../../scripts/sprites/worker-cli-lib.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,82 @@ describe('runWorker', () => {
     expect(statuses).toContainEqual(
       expect.objectContaining({ type: 'done', briefId: 'iron-sword' }),
     );
+  });
+
+  it.each([
+    'after-precompletion-empty',
+    'immediately-before-completion',
+    'completion-while-processing',
+  ] as const)('drains concurrent slots without dropping the %s race', async (race) => {
+    mockGenerate.mockResolvedValue(fakeSummaryResult as never);
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const messages: DequeuedMessage[] = [];
+    const request = makeRequest(`race-${race}`);
+    let producerComplete = false;
+    let idleCount = 0;
+    const abortController = new AbortController();
+    const statuses: WorkerStatus[] = [];
+
+    if (race === 'completion-while-processing') {
+      messages.push(makeMessage(request, ack));
+    }
+
+    const queue: AssetQueue = {
+      backend: 'noop',
+      async enqueue(enqueuedRequest) {
+        messages.push(makeMessage(enqueuedRequest, ack));
+      },
+      async dequeue() {
+        return messages.shift() ?? null;
+      },
+      async peek() {
+        return messages.map((message) => message.request);
+      },
+    };
+
+    const onStatus = createDrainOnStatus({
+      base: (status) => {
+        statuses.push(status);
+        if (status.type === 'idle') {
+          idleCount += 1;
+          if (race === 'after-precompletion-empty' && idleCount === 1) {
+            void queue.enqueue(request);
+          }
+          if (race === 'immediately-before-completion' && idleCount === 1) {
+            void queue.enqueue(request);
+            producerComplete = true;
+          }
+        }
+        if (status.type === 'processing' && race === 'completion-while-processing') {
+          producerComplete = true;
+        }
+        if (status.type === 'done' && race === 'after-precompletion-empty') {
+          producerComplete = true;
+        }
+      },
+      maxEmptyPolls: 3,
+      abort: () => abortController.abort(),
+      isProducerComplete: () => producerComplete,
+    });
+
+    await runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      concurrency: 2,
+      pollIntervalMs: 1,
+      signal: abortController.signal,
+      onStatus,
+    });
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ type: 'done', briefId: `race-${race}` }),
+    );
+    const doneIndex = statuses.findIndex((status) => status.type === 'done');
+    expect(doneIndex).toBeGreaterThanOrEqual(0);
+    expect(statuses.slice(doneIndex + 1)).toContainEqual({ type: 'idle' });
   });
 
   it('does NOT ack when generateOne throws, emits error status', async () => {

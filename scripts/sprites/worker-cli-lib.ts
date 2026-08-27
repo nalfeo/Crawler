@@ -49,13 +49,29 @@ export function createDrainOnStatus(options: {
   readonly maxEmptyPolls: number;
   readonly abort: () => void;
   readonly onDrain?: () => void;
+  /**
+   * Optional durable producer-completion probe. When supplied, pre-completion
+   * idle polls never trigger drain. Two completion-observing empty statuses are
+   * required so at least one dequeue starts after completion: the marker can
+   * otherwise appear after a dequeue returns empty but before its status emits.
+   */
+  readonly isProducerComplete?: () => boolean;
 }): (status: WorkerStatus) => void {
   let idleCount = 0;
   let aborted = false;
   return (status) => {
     if (status.type === 'idle') {
-      idleCount += 1;
-      if (!aborted && idleCount >= options.maxEmptyPolls) {
+      const producerComplete = options.isProducerComplete?.();
+      if (options.isProducerComplete) {
+        idleCount = producerComplete === true ? idleCount + 1 : 0;
+      } else {
+        idleCount += 1;
+      }
+      if (
+        !aborted &&
+        ((options.isProducerComplete !== undefined && idleCount >= 2) ||
+          (options.isProducerComplete === undefined && idleCount >= options.maxEmptyPolls))
+      ) {
         aborted = true;
         options.onDrain?.();
         options.abort();
