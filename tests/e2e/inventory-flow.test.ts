@@ -1106,6 +1106,14 @@ describe('equipment decision gate (e2e)', () => {
         expect(card.x + card.width).toBeLessThanOrEqual(geometry.target!.x - 10);
       }
       expect(overlaps(geometry.cards[0]!, geometry.cards[1]!)).toBe(false);
+      expect(
+        Math.abs(geometry.cards[0]!.y - geometry.cards[1]!.y),
+        'current and candidate comparisons must share a horizontal baseline',
+      ).toBeLessThanOrEqual(1);
+      expect(
+        geometry.cards[1]!.x - (geometry.cards[0]!.x + geometry.cards[0]!.width),
+        'current and candidate comparisons must preserve a readable horizontal gap',
+      ).toBeGreaterThanOrEqual(8);
     } finally {
       await closeQuietly(context);
     }

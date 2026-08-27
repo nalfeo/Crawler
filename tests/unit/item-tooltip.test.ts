@@ -4,13 +4,14 @@ import { ItemRarity, type ItemDef } from '../../src/shared/items.js';
 
 interface StubObject {
   text?: string;
+  strokeColor?: number;
   width: number;
   height: number;
   x: number;
   y: number;
   setOrigin: () => StubObject;
   setScale: () => StubObject;
-  setStrokeStyle: () => StubObject;
+  setStrokeStyle: (width?: number, color?: number) => StubObject;
   getBounds: () => { x: number; y: number; width: number; height: number };
 }
 
@@ -23,7 +24,10 @@ function object(x: number, y: number, width: number, height: number, text?: stri
     y,
     setOrigin: () => value,
     setScale: () => value,
-    setStrokeStyle: () => value,
+    setStrokeStyle: (_width?: number, color?: number) => {
+      value.strokeColor = color;
+      return value;
+    },
     getBounds: () => ({ x: x - width / 2, y: y - height / 2, width, height }),
   };
   return value;
@@ -131,6 +135,7 @@ describe('item tooltip redesign', () => {
     );
     const background = tooltipObjects[0] as unknown as StubObject;
     expect(background.getBounds()).toMatchObject({ x: 24, y: 36, width: 220, height: 136 });
+    expect(background.strokeColor).toBe(0xe9c46a);
   });
 
   it('keeps current and candidate cards in separate, stable placements', () => {

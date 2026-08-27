@@ -119,14 +119,23 @@ unless measured geometry proves a defect.
 ### Bag-anchored mixed-delta comparison
 
 Generated-item delta comparison now takes the real hovered Bag-cell bounds through
-the same preview path as static Bag items. Its `CURRENT` and `CANDIDATE` cards stack
-on the Bag-facing side rather than reverting to the bottom Equipment inspector. Each
-card is declared independently in review geometry: card-to-card overlap, panel escape,
-text escape, and target occlusion are deterministic blockers. The real Phaser/Azure
-v0.3.1 capture passes with zero deterministic blockers and an anchored 80.0 score;
-Azure receives the zoomed card/Bag interaction plus labeled full-panel placement
-context. The e2e fixture asserts the generated Bag target, both card bounds, panel
-containment, non-occlusion, left-side proximity, pair separation, and topmost state.
+the same preview path as static Bag items. Its `CURRENT` and `CANDIDATE` cards sit
+side by side on the Bag-facing side rather than reverting to the bottom Equipment
+inspector. Both cards use the same generic `renderItemTooltip()` compact-card path,
+including the light-gold outline, title/header spacing, and right-aligned `CURRENT` /
+`CANDIDATE` labels. Candidate deltas render inline only beside direct item stats
+(for example, `+6 Armor (+2)`) and retain green/red gain/loss color; derived-only
+secondary changes such as Max HP from Constitution are not repeated as separate rows.
+
+The real Phaser/Azure v0.3.4 capture passes with zero deterministic blockers and an
+anchored 80.0 score:
+`files/visual-review/after/v0.3.4/equipment-hover-mixed-delta.{png,review.json}`.
+The focus crop includes the complete pair, and Azure receives that readable detail
+alongside the full-panel placement context. The fixture hard-fails missing cards,
+card overlap, horizontal baseline drift, inadequate inter-card separation, or intrusion
+into the hovered Bag item's 14px clearance. The e2e fixture asserts the generated Bag
+target, both card bounds, panel containment, non-occlusion, side-by-side baseline,
+pair separation, and topmost state.
 
 ## Validation
 
@@ -135,6 +144,8 @@ containment, non-occlusion, left-side proximity, pair separation, and topmost st
 - `node --test scripts/agent/review/visual-review-lib.test.mjs` — 53 passed.
 - `node --test scripts/agent/review/text-raster-lib.test.mjs` — 6 passed.
 - `npm run typecheck` — passed.
+- `npm run review:visual:deterministic` — 32 passed.
+- `npm run test:e2e -- -t "anchors generated delta comparisons"` — passed.
 
 ## Systems touched
 

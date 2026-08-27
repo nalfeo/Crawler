@@ -64,7 +64,11 @@ import {
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import { getEquipmentTooltipCardLayout, renderItemTooltip } from './item-tooltip.js';
+import {
+  getEquipmentTooltipCardLayout,
+  renderItemTooltip,
+  type TooltipStatLine,
+} from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 
 // ---------------------------------------------------------------------------
@@ -1197,13 +1201,23 @@ export function createEquipmentUI(
     };
   }
 
-  function tooltipStatLines(def: EquipmentItemDef): string[] {
+  function tooltipStatLines(
+    def: EquipmentItemDef,
+    inlineDeltas: Partial<Record<StatId, number>> = {},
+  ): TooltipStatLine[] {
     return Object.entries(def.statBonuses)
       .filter(([, value]) => typeof value === 'number' && value !== 0)
-      .map(
-        ([statId, value]) =>
-          `${value! > 0 ? '+' : ''}${formatStatValue(statId as StatId, value!)} ${formatStatLabel(statId)}`,
-      );
+      .map(([statId, value]) => {
+        const typedStatId = statId as StatId;
+        const delta = inlineDeltas[typedStatId] ?? 0;
+        const inlineDelta =
+          Math.abs(delta) > 1e-9
+            ? ` (${delta > 0 ? '+' : '-'}${formatStatValue(typedStatId, Math.abs(delta))})`
+            : '';
+        const text = `${value! > 0 ? '+' : ''}${formatStatValue(typedStatId, value!)} ${formatStatLabel(typedStatId)}${inlineDelta}`;
+        if (Math.abs(delta) <= 1e-9) return text;
+        return { text, color: delta > 0 ? '#49d06f' : '#e8695b' };
+      });
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {
@@ -1227,6 +1241,7 @@ export function createEquipmentUI(
     sectionLabel: string,
     diffLines: readonly string[] = [],
     includeFlavor = true,
+    statLines: readonly TooltipStatLine[] = tooltipStatLines(def),
   ): void {
     inspectorBg.setVisible(true);
     inspectorPlaceholder.setVisible(false);
@@ -1246,7 +1261,7 @@ export function createEquipmentUI(
         fontFamily: FONT_FAMILY,
         sectionLabel,
         iconTextureKey: tooltipIconKey(def),
-        statLines: tooltipStatLines(def),
+        statLines,
         flavorText: includeFlavor ? itemTooltipDef(def).description || undefined : '',
         diffLines,
         placement,
@@ -1301,7 +1316,7 @@ export function createEquipmentUI(
   function renderTooltipPair(
     current: EquipmentItemDef,
     candidate: EquipmentItemDef,
-    diffLines: readonly string[] = [],
+    inlineDeltas: Partial<Record<StatId, number>> = {},
     sourceBounds: ScreenBounds | null = null,
   ): void {
     const gap = 8;
@@ -1310,15 +1325,18 @@ export function createEquipmentUI(
     // content-heavy card so multi-line deltas never spill out of the border.
     const cardHeight = Math.max(
       getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(current), '').height,
-      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(candidate), '', diffLines).height,
+      getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(candidate, inlineDeltas), '')
+        .height,
     );
-    const stacked = sourceBounds !== null;
-    const pairHeight = stacked ? cardHeight * 2 + gap : cardHeight;
-    const pairX = stacked ? sourceBounds.x - 14 - cardWidth : inspectorX + 6;
-    const pairY = stacked
+    const pairWidth = cardWidth * 2 + gap;
+    const pairX = sourceBounds ? sourceBounds.x - 14 - pairWidth : inspectorX + 6;
+    const pairY = sourceBounds
       ? Math.max(
           panelY + 8,
-          Math.min(sourceBounds.y - pairHeight / 2, panelY + panelHeight - pairHeight - 8),
+          Math.min(
+            sourceBounds.y + sourceBounds.height / 2 - cardHeight / 2,
+            panelY + panelHeight - cardHeight - 8,
+          ),
         )
       : inspectorY + 7;
     renderEquipmentTooltipCard(
@@ -1331,14 +1349,15 @@ export function createEquipmentUI(
     renderEquipmentTooltipCard(
       candidate,
       {
-        x: stacked ? pairX : pairX + cardWidth + gap,
-        y: stacked ? pairY + cardHeight + gap : pairY,
+        x: pairX + cardWidth + gap,
+        y: pairY,
         width: cardWidth,
         height: cardHeight,
       },
       'CANDIDATE',
-      diffLines,
+      [],
       false,
+      tooltipStatLines(candidate, inlineDeltas),
     );
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
@@ -1490,16 +1509,10 @@ export function createEquipmentUI(
     ]);
   }
 
-  function formatSignedStatDelta(statId: StatId, delta: number): string {
-    const magnitude = formatStatValue(statId, Math.abs(delta));
-    const sign = delta > 0 ? '+' : '-';
-    return `${formatStatLabel(statId)} ${sign}${magnitude}`;
-  }
-
   // Diablo-style equip preview: current equipment and candidate are distinct
-  // cards, with the net stat change at the bottom of the candidate card.
+  // cards. Only direct candidate stats receive inline delta annotations; derived
+  // secondary effects never appear as a misleading independent row.
   function showEquipPreview(def: ItemDef, preview: EquipDeltaPreview): void {
-    const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
     const targets = targetSlotsForItem(def.id);
     setCompare({
       label: def.name,
@@ -1511,10 +1524,6 @@ export function createEquipmentUI(
     // Static swapped-out names still resolve through getItemById(swapped.id)?.name ?? swapped.name
     // when callers need a text-only fallback; the card now renders the full item instead.
     const current = preview.swappedOut[0] ?? emptyComparisonDef(targets[0] ?? 'slot');
-    const diffLines =
-      changed.length === 0
-        ? ['No stat change']
-        : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
     const candidate = getEquipmentDefForItem(def.id) ?? emptyComparisonDef(def.name);
     const targetSlot = targets[0] ?? selectedSlotFilter;
     const bagSource =
@@ -1524,7 +1533,7 @@ export function createEquipmentUI(
     if (targetSlot && (isSlotEmpty(targetSlot) || selectedSlotFilter === targetSlot)) {
       showCandidateTooltip(candidate, targetSlot, bagSource);
     } else {
-      renderTooltipPair(current, candidate, diffLines, bagSource);
+      renderTooltipPair(current, candidate, preview.deltas, bagSource);
     }
   }
 
@@ -1586,7 +1595,6 @@ export function createEquipmentUI(
       weightLb: instance.frozen.weightLb,
     };
     const preview = previewEquipDeltaForDef(lastWorld, playerEid, candidate);
-    const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
     const targets = targetSlotsForRegistrySlots(candidate.slots);
     setCompare({
       label: candidate.name,
@@ -1599,15 +1607,11 @@ export function createEquipmentUI(
       preview.swappedOut[0] ??
       currentEquippedForSlots(candidate.slots) ??
       emptyComparisonDef(targets[0] ?? 'slot');
-    const diffLines =
-      changed.length === 0
-        ? ['No stat change']
-        : changed.map((statId) => formatSignedStatDelta(statId, preview.deltas[statId] ?? 0));
     const bagSource =
       previewEntryIdentity === null
         ? null
         : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
-    renderTooltipPair(current, candidate, diffLines, bagSource);
+    renderTooltipPair(current, candidate, preview.deltas, bagSource);
   }
 
   function previewBagEntry(entry: InventoryBagEntry | null): void {
@@ -2706,7 +2710,19 @@ export function createEquipmentUI(
     getInspectorScreenBounds: (): ScreenBounds | null => {
       if (!inspectorBg.visible) return null;
       const b = inspectorBg.getBounds();
-      return { x: b.x, y: b.y, width: b.width, height: b.height };
+      const inspectorBounds = { x: b.x, y: b.y, width: b.width, height: b.height };
+      if (!tooltipBounds) return inspectorBounds;
+      const left = Math.min(inspectorBounds.x, tooltipBounds.x);
+      const top = Math.min(inspectorBounds.y, tooltipBounds.y);
+      const right = Math.max(
+        inspectorBounds.x + inspectorBounds.width,
+        tooltipBounds.x + tooltipBounds.width,
+      );
+      const bottom = Math.max(
+        inspectorBounds.y + inspectorBounds.height,
+        tooltipBounds.y + tooltipBounds.height,
+      );
+      return { x: left, y: top, width: right - left, height: bottom - top };
     },
     getTextRuns: (): EquipmentTextRun[] => collectTextRuns(),
     getTextRasterMetadata,

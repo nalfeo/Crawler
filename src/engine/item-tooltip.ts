@@ -3,7 +3,7 @@ import { type ItemDef, RARITY_COLORS } from '../shared/items.js';
 import { fitScaleForBox } from './ui-scale.js';
 
 const TOOLTIP_BG = 0x0a0a16;
-const TOOLTIP_BORDER = 0x444466;
+const TOOLTIP_BORDER = 0xe9c46a;
 const TOOLTIP_WIDTH = 200;
 const TOOLTIP_BASE_HEIGHT = 110;
 const TOOLTIP_STAT_HEIGHT_BONUS = 18;
@@ -11,11 +11,13 @@ const TOOLTIP_META_OFFSET = 16;
 const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
 const TOOLTIP_LINE_SPACING = 18;
 const EQUIPMENT_CARD_ICON_SIZE = 28;
-const EQUIPMENT_CARD_ICON_CENTER_Y = 38;
-const EQUIPMENT_CARD_STAT_START_Y = 60;
+const EQUIPMENT_CARD_ICON_CENTER_Y = 48;
+const EQUIPMENT_CARD_STAT_START_Y = 70;
 const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
 const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
 const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
+
+export type TooltipStatLine = string | { readonly text: string; readonly color: string };
 
 function countWrappedDescriptionLines(text: string, columns: number): number {
   let lines = 1;
@@ -49,7 +51,7 @@ export interface EquipmentTooltipCardLayout {
  */
 export function getEquipmentTooltipCardLayout(
   width: number,
-  statLines: readonly string[],
+  statLines: readonly TooltipStatLine[],
   flavorText?: string,
   diffLines: readonly string[] = [],
 ): EquipmentTooltipCardLayout {
@@ -100,7 +102,7 @@ export interface ItemTooltipRenderParams {
   /** Optional stat callout rendered above the footer/meta lines. */
   statLine?: string;
   /** Equipment stat rows shown in the item body. */
-  statLines?: readonly string[];
+  statLines?: readonly TooltipStatLine[];
   /** Optional flavor copy. It is deliberately secondary to stats. */
   flavorText?: string;
   /** Net comparison rows. These always render at the bottom of the candidate card. */
@@ -152,8 +154,7 @@ export function renderItemTooltip(
     diffLines.length > 0 ||
     sectionLabel !== undefined;
   const tooltipWidth = placement?.width ?? TOOLTIP_WIDTH;
-  const isCompactEquipmentCard =
-    placement !== undefined && (sectionLabel === 'EQUIPPED' || sectionLabel === 'CANDIDATE');
+  const isCompactEquipmentCard = placement !== undefined && sectionLabel !== undefined;
   const compactLayout = isCompactEquipmentCard
     ? getEquipmentTooltipCardLayout(
         tooltipWidth,
@@ -253,7 +254,9 @@ export function renderItemTooltip(
       fontSize: compactLayout ? '11px' : richContent ? '13px' : '15px',
       fontStyle: compactLayout ? 'bold' : undefined,
       color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-      wordWrap: { width: compactLayout ? 80 : tooltipWidth - (richIcon ? 50 : 16) },
+      wordWrap: {
+        width: compactLayout ? tooltipWidth - 76 : tooltipWidth - (richIcon ? 50 : 16),
+      },
     },
   );
   if (compactLayout) {
@@ -327,10 +330,12 @@ export function renderItemTooltip(
           ? ty + 50
           : ty + statY;
     statLines.slice(0, 3).forEach((line, index) => {
-      const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, line, {
+      const text = typeof line === 'string' ? line : line.text;
+      const color = typeof line === 'string' ? '#d9e2ef' : line.color;
+      const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
         fontFamily,
         fontSize: '11px',
-        color: '#d9e2ef',
+        color,
       });
       container.add(statText);
       objects.push(statText);

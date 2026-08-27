@@ -103,6 +103,7 @@
   }
   if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
   const tooltip = probe?.getEquipmentTooltipBounds?.();
+  const flags = [];
   const hoveredSlotId =
     scenario === 'equipment-hover-equipped'
       ? 'head'
@@ -176,6 +177,33 @@
     // the target-and-card crop as its detailed inspection frame.
     window.__visualReviewClip = { x: left, y: top, width: right - left, height: bottom - top };
   }
+  if (scenario === 'equipment-hover-mixed-delta') {
+    if (tooltipCards.length !== 2) {
+      flags.push(
+        `Stats-delta comparison must render exactly two cards; found ${tooltipCards.length}.`,
+      );
+    } else {
+      const [current, candidate] = tooltipCards;
+      const horizontalGap = candidate.x - (current.x + current.width);
+      if (Math.abs(current.y - candidate.y) > 1) {
+        flags.push(
+          `Stats-delta comparison cards must share a horizontal baseline; vertical delta is ${Math.abs(current.y - candidate.y).toFixed(1)}px.`,
+        );
+      }
+      if (horizontalGap < 8) {
+        flags.push(
+          `Stats-delta comparison cards overlap or lack separation; horizontal gap is ${horizontalGap.toFixed(1)}px.`,
+        );
+      }
+      if (
+        hoverTarget &&
+        (current.x + current.width > hoverTarget.x - 14 ||
+          candidate.x + candidate.width > hoverTarget.x - 14)
+      ) {
+        flags.push('Stats-delta comparison cards intrude into the hovered Bag item clearance.');
+      }
+    }
+  }
   const doll = probe?.getEquipmentDollBounds?.();
   if (doll) regions.push({ id: 'paper-doll', box: doll, kind: 'panel' });
   const stats = probe?.getEquipmentStatsBounds?.();
@@ -191,7 +219,6 @@
     const id = headerIds.get(run.text);
     if (id) regions.push({ id, box: run.bounds, kind: 'header' });
   }
-  const flags = [];
   if (scenario === 'equipment-hover-empty-slot') {
     const tooltipRuns = (probe?.getEquipmentTextRuns?.() ?? []).filter(
       (run) => run.region === 'inspector',
