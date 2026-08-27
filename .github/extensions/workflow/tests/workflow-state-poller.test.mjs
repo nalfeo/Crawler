@@ -135,6 +135,56 @@ test('a mutation invalidation suppresses stale fan-out to every instance', async
   assert.equal(deliveries, 0);
 });
 
+test('an in-flight delivery receives a currentness fence after invalidation', async () => {
+  const scheduler = fakeScheduler();
+  const delivery = deferred();
+  let isCurrent;
+  const poller = createWorkflowStatePoller({
+    poll: async () => ({ state: { revision: 1 }, etag: 'etag-1' }),
+    ...scheduler,
+  });
+  poller.subscribe('canvas-1', {
+    onSnapshot: async (_snapshot, context) => {
+      isCurrent = context.isCurrent;
+      await delivery.promise;
+    },
+  });
+
+  const tick = poller.tick();
+  await Promise.resolve();
+  assert.equal(isCurrent(), true);
+  poller.invalidate();
+  assert.equal(isCurrent(), false);
+  delivery.resolve();
+
+  assert.deepEqual(await tick, { reads: 1, delivered: 1, invalidated: true });
+});
+
+test('a failed delivery is logged and does not prevent later live canvases receiving the snapshot', async () => {
+  const scheduler = fakeScheduler();
+  const warnings = [];
+  const received = [];
+  const poller = createWorkflowStatePoller({
+    poll: async () => ({ state: { revision: 1 }, etag: 'etag-1' }),
+    log: (message, level) => warnings.push({ message, level }),
+    ...scheduler,
+  });
+  poller.subscribe('canvas-failed', {
+    onSnapshot: async () => {
+      throw new Error('disconnected');
+    },
+  });
+  poller.subscribe('canvas-live', {
+    onSnapshot: async (snapshot) => received.push(snapshot),
+  });
+
+  assert.deepEqual(await poller.tick(), { reads: 1, delivered: 1, invalidated: false });
+  assert.deepEqual(received, [{ state: { revision: 1 }, etag: 'etag-1' }]);
+  assert.deepEqual(warnings, [
+    { message: 'workflow state poll delivery failed: disconnected', level: 'warn' },
+  ]);
+});
+
 test('an in-flight tick excludes closed and newly-opened instances and does not restart after last close', async () => {
   const scheduler = fakeScheduler();
   const remote = deferred();

@@ -256,6 +256,7 @@ const workflowStatePoller = createWorkflowStatePoller({
         initialRemote: remote,
         invalidate: false,
         retryOnConflict: false,
+        completionWriteLimit: 1,
       }),
     ),
   log,
@@ -627,7 +628,12 @@ async function replaceWorkflowItem(entry, itemId, updater) {
 
 async function refreshQueuedWorkflowItems(
   entry,
-  { initialRemote = null, invalidate = true, retryOnConflict = true } = {},
+  {
+    initialRemote = null,
+    invalidate = true,
+    retryOnConflict = true,
+    completionWriteLimit = Infinity,
+  } = {},
 ) {
   const previousEtag = entry.workflow.etag;
   const remote = initialRemote ?? (await entry.client.getWorkflowState());
@@ -635,6 +641,7 @@ async function refreshQueuedWorkflowItems(
   adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag, { invalidate });
   let state = entry.workflow.state;
   let changed = false;
+  let remainingCompletionWrites = completionWriteLimit;
   for (const item of state.items) {
     if (item.stage !== 'generating' || !item.generationRequestedAt) continue;
     const chosenCandidate = item.candidates.find(
@@ -680,22 +687,26 @@ async function refreshQueuedWorkflowItems(
     );
     const saved = state.items.find((candidate) => candidate.id === item.id);
     changed ||= saved?.stage === 'sheet' && saved.run?.runId === matched.runId;
-    // One completion write per tick keeps the durable-state read budget at one;
-    // additional completed items are picked up by following intervals.
-    break;
+    // Coordinated poll ticks limit writes, while explicit user refreshes drain
+    // every completed generation in this pass.
+    remainingCompletionWrites -= 1;
+    if (remainingCompletionWrites <= 0) break;
   }
   return { state, etag: entry.workflow.etag, previousEtag, changed };
 }
 
-async function applyWorkflowPollSnapshot(entry, snapshot, { source }) {
+async function applyWorkflowPollSnapshot(entry, snapshot, { source, isCurrent }) {
+  if (!isCurrent()) return;
   const previousEtag = source ? snapshot.previousEtag : entry.workflow.etag;
   if (source) {
     if (entry.workflow.etag !== snapshot.etag) return;
   } else {
+    if (!isCurrent()) return;
     adoptWorkflowState(entry, snapshot.state, snapshot.etag, { invalidate: false });
   }
   if (previousEtag === snapshot.etag && !snapshot.changed) return;
   const state = await forceLiveState(entry.instanceId);
+  if (!isCurrent()) return;
   await entry.pushState(state);
 }
 

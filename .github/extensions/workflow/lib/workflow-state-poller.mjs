@@ -64,8 +64,14 @@ export function createWorkflowStatePoller({
     for (const [instanceId, subscriber] of targets) {
       if (invalidationEpoch !== epochAtStart) break;
       if (subscribers.get(instanceId) !== subscriber) continue;
-      await subscriber.onSnapshot(snapshot, { source: subscriber === source });
-      delivered += 1;
+      const isCurrent = () =>
+        invalidationEpoch === epochAtStart && subscribers.get(instanceId) === subscriber;
+      try {
+        await subscriber.onSnapshot(snapshot, { source: subscriber === source, isCurrent });
+        delivered += 1;
+      } catch (error) {
+        log(`workflow state poll delivery failed: ${error?.message ?? error}`, 'warn');
+      }
     }
     return { reads: 1, delivered, invalidated: invalidationEpoch !== epochAtStart };
   }

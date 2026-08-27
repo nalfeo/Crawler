@@ -43,6 +43,10 @@ subscription, and clears it after the last instance closes.
   observed on the next tick.
 - Closed or replaced subscribers are excluded from in-flight fan-out. Closing the
   final instance clears the shared timer and cannot restart it from a late result.
+- Delivery contexts carry a currentness fence, checked immediately before adopting
+  or pushing state; a failed canvas delivery is logged without aborting fan-out.
+- Coordinated ticks limit completion writes to one, while explicit refresh actions
+  retain their full-drain behavior.
 
 ## Measurement
 
@@ -73,6 +77,7 @@ Ledger:
 - `npm run verify:fast` passed.
 - The six-instance benchmark reported an 83.33% request reduction.
 - The 3-apple review ledger and PR prerequisites passed.
+- Follow-up review repair: focused workflow tests and `npm run verify:fast` passed.
 
 ## Blockers
 
