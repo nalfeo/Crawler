@@ -179,10 +179,8 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     const lock = new Promise<void>((resolve) => {
       release = resolve;
     });
-    briefLocks.set(
-      key,
-      prev.then(() => lock),
-    );
+    const lockTail = prev.then(() => lock);
+    briefLocks.set(key, lockTail);
     return prev.then(async () => {
       try {
         return await fn();
@@ -190,7 +188,7 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
         release();
         // Clean up the map entry only if it still points to the slot we just
         // completed (another waiter may have chained on and replaced it).
-        if (briefLocks.get(key) === prev.then(() => lock)) {
+        if (briefLocks.get(key) === lockTail) {
           briefLocks.delete(key);
         }
       }
