@@ -171,6 +171,36 @@ describe('Pulse Shield auto-triggers in the shipped visual pipeline', () => {
   });
 });
 
+describe('Curse auto-triggers in the shipped visual pipeline', () => {
+  it('fires when 3 nearby enemies crowd the player in active combat space', () => {
+    const { world, playerEid } = createPlayingFloor1World(13);
+    const options = createFloor1MainSceneOptions();
+
+    world.floorScenario!.offeredRewardSpellIds = ['curse', 'heal', 'fireball'];
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    const learned = selectSpellFromBossBattle(world, playerEid, 'curse');
+    expect(learned).toBe(true);
+    expect(world.featureUnlocks.spells).toBe(true);
+
+    // Step one frame first to match the same initialized-runtime posture used by
+    // the other real-pipeline spell trigger integration checks in this file.
+    stepVisualPipeline(world, options, 1);
+
+    spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+    spawnStationaryEnemyNearPlayer(world, playerEid, -2.5);
+    spawnStationaryEnemyNearPlayer(world, playerEid, 2);
+
+    stepVisualPipeline(world, options, 5);
+
+    const state = world.abilityStatesByEntity.get(playerEid);
+    const cooldownFrame = state?.cooldownByAbilityId.get('curse');
+    expect(cooldownFrame).toBeDefined();
+    expect(cooldownFrame).toBeGreaterThan(0);
+    const bursts = world.vfxEvents.filter((e) => e.kind === 'curseBurst');
+    expect(bursts.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('Fireball kill attribution', () => {
   it('retains casterEid as sourceEid in the death event after a lethal fireball hit', () => {
     const { world, playerEid } = createPlayingFloor1World(7);
