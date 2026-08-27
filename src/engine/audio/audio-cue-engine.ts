@@ -140,7 +140,9 @@ export function createAudioCueEngine(): AudioCueEngine {
         .catch(() => {
           // Autoplay-blocked contexts retry on the next genuine user gesture.
         });
+      return;
     }
+    removeActivationListeners();
   }
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

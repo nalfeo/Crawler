@@ -10,7 +10,7 @@ UX Designer
 
 ## Systems touched
 
-inventory, hud-ux
+hud-ux
 
 ## Apples
 
