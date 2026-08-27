@@ -144,6 +144,8 @@ test('Briefs provides a multiline direction editor, full request template previe
   assert.match(html, /categoryDraftByType: Object\.assign\(\{\}, categoryDraftByType\)/);
   assert.match(html, /function captureRequestComposerDraft\(/);
   assert.match(html, /function restoreRequestComposerDraft\(/);
+  assert.match(html, /requestComposerDraft = null;\s+if \(lastState\) render\(lastState\)/);
+  assert.match(html, /if \(editRequestModalOpen\) \{\s+lastState = state;\s+return;/);
   assert.match(html, /'aria-label': 'Editable full synthesis request template'/);
   assert.match(html, /text: 'Apply template edits'/);
   assert.match(html, /function applyTemplateEdits\(/);

@@ -325,6 +325,7 @@ const CLIENT_SCRIPT = String.raw`
   var requestTemplateModal = null;
   var referencePreview = null; // { key, status, data, error } | null
   var requestComposerDraft = null;
+  var editRequestModalOpen = false;
 
   // ── Embedded Postprocess Debugger host (persistent sibling of #app) ─────
   // #postprocess-host lives OUTSIDE #app in the static shell below (see
@@ -2004,7 +2005,11 @@ const CLIENT_SCRIPT = String.raw`
         },
         priority: priority.value,
         requester: requester.value
-      }, 'Generating brief…');
+      }, 'Generating brief…').then(function (ok) {
+        if (!ok) return;
+        requestComposerDraft = null;
+        if (lastState) render(lastState);
+      });
     });
     composer.appendChild(h('label', { text: 'Asset name', style: { display: 'block', marginTop: '8px' } }, [name]));
     composer.appendChild(h('label', { text: 'Art direction brief', style: { display: 'block', marginTop: '8px' } }, [brief]));
@@ -2155,11 +2160,16 @@ const CLIENT_SCRIPT = String.raw`
         title: 'Edit the original request fields. Prompt changes invalidate downstream synthesis results.'
       });
       editRequest.addEventListener('click', function () {
+        editRequestModalOpen = true;
         var backdrop = h('div', { class: 'modal-backdrop' });
         var modal = h('div', { class: 'modal panel' }, [
         h('div', { class: 'between' }, [
           h('strong', { text: 'Edit request' }),
-          h('button', { text: 'Close', title: 'Close without saving', onclick: function () { backdrop.remove(); } })
+          h('button', { text: 'Close', title: 'Close without saving', onclick: function () {
+            editRequestModalOpen = false;
+            backdrop.remove();
+            if (lastState) render(lastState);
+          } })
         ]),
         h('p', { class: 'muted', text: 'Changing prompt or game context clears promoted briefs and generated runs; durable Azure artifacts are retained.' })
         ]);
@@ -2282,7 +2292,12 @@ const CLIENT_SCRIPT = String.raw`
               category: categoryOverride
             }
           }
-        }, 'Saving request…').then(function (ok) { if (ok) backdrop.remove(); });
+        }, 'Saving request…').then(function (ok) {
+          if (!ok) return;
+          editRequestModalOpen = false;
+          backdrop.remove();
+          if (lastState) render(lastState);
+        });
         });
         modal.appendChild(h('div', { class: 'request-actions' }, [saveEdit]));
         backdrop.appendChild(modal);
@@ -2416,6 +2431,10 @@ const CLIENT_SCRIPT = String.raw`
 
   function render(state) {
     if (!state) return;
+    if (editRequestModalOpen) {
+      lastState = state;
+      return;
+    }
     var restoreModalFocus = !!(
       briefModal &&
       document.activeElement &&

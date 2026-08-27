@@ -267,6 +267,17 @@ test('editing metadata-only fields preserves synthesized state', () => {
   assert.equal(edited.requester, 'Ada');
 });
 
+test('editing validates durable request fields at the state boundary', () => {
+  const original = item(1);
+  assert.throws(() => editRequestItem(original, { name: '---' }), /letters or numbers/);
+  assert.throws(() => editRequestItem(original, { requestedType: 'unknown' }), /known sprite type/);
+  assert.throws(() => editRequestItem(original, { sizeVariant: 'huge' }), /known sprite footprint/);
+  assert.throws(() => editRequestItem(original, { mobRole: 'miniboss' }), /mobRole/);
+  assert.throws(() => editRequestItem(original, { priority: 'urgent' }), /priority/);
+  assert.throws(() => editRequestItem(original, { floor: 0 }), /integer from 1 through 20/);
+  assert.throws(() => editRequestItem(original, { floor: 21 }), /integer from 1 through 20/);
+});
+
 test('metadata completion preserves durable status honestly', () => {
   const result = metadataDonePatch(
     {

@@ -334,11 +334,34 @@ export function editRequestItem(item, patch) {
   );
   if (typeof edited.name === 'string') {
     edited.name = edited.name.trim();
-    if (!edited.name) throw new Error('name must not be empty.');
+    if (!slugify(edited.name)) throw new Error('name must contain letters or numbers.');
     edited.kebabName = slugify(edited.name);
   }
   if (typeof edited.brief === 'string') edited.brief = edited.brief.trim();
   if (typeof edited.requester === 'string') edited.requester = edited.requester.trim() || null;
+  if ('requestedType' in edited && !SPRITE_TYPES.has(edited.requestedType)) {
+    throw new Error('requestedType must be a known sprite type.');
+  }
+  if ('sizeVariant' in edited && !SIZE_VARIANTS.has(edited.sizeVariant)) {
+    throw new Error('sizeVariant must be a known sprite footprint.');
+  }
+  if ('mobRole' in edited && edited.mobRole !== null && !MOB_ROLES.has(edited.mobRole)) {
+    throw new Error('mobRole must be normal, elite, boss, or null.');
+  }
+  if ('priority' in edited && !REQUEST_PRIORITIES.has(edited.priority)) {
+    throw new Error('priority must be normal or high.');
+  }
+  if ('floor' in edited) {
+    if (edited.floor === null) {
+      edited.floor = null;
+    } else {
+      const floor = normalizeFloor(edited.floor);
+      if (floor === null) throw new Error('floor must be an integer from 1 through 20, or null.');
+      edited.floor = floor;
+    }
+  }
+  if ('floorId' in edited) edited.floorId = optionalTrimmedString(edited.floorId);
+  if ('familyId' in edited) edited.familyId = optionalTrimmedString(edited.familyId);
   if (typeof edited.injectionOverrides === 'object' && edited.injectionOverrides !== null) {
     edited.injectionOverrides = normalizeInjectionOverrides(edited.injectionOverrides);
   }
