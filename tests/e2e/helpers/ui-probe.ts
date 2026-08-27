@@ -131,6 +131,12 @@ export const probe = {
     page.evaluate((i) => window.__uiProbe!.getInventoryCellBounds(i), index),
   getInventoryCellIndexForItem: (page: Page, itemId: string) =>
     page.evaluate((id) => window.__uiProbe!.getInventoryCellIndexForItem(id), itemId),
+  scrollInventory: (page: Page, rows: number) =>
+    page.evaluate((r) => window.__uiProbe!.scrollInventory(r), rows),
+  getInventoryScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryScrollRow()),
+  getInventoryMaxScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryMaxScrollRow()),
   isTooltipVisible: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipVisible()),
   isTooltipPinned: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipPinned()),
 

@@ -104,6 +104,12 @@ export interface UiProbeApi {
   getInventoryCellBounds(index: number): ScreenBounds | null;
   /** Render-order index of the first visible cell holding `itemId`, or null. */
   getInventoryCellIndexForItem(itemId: string): number | null;
+  /** Scroll the standalone inventory grid by whole rows. */
+  scrollInventory(rows: number): void;
+  /** Current top row of the standalone inventory grid. */
+  getInventoryScrollRow(): number;
+  /** Maximum scrollable row of the standalone inventory grid. */
+  getInventoryMaxScrollRow(): number;
   isTooltipVisible(): boolean;
   isTooltipPinned(): boolean;
 
@@ -518,6 +524,11 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.inventoryUI?.getCellScreenBounds(index) ?? null,
         getInventoryCellIndexForItem: (itemId: string) =>
           this.inventoryUI?.getCellIndexForItem(itemId) ?? null,
+        scrollInventory: (rows: number) => {
+          this.inventoryUI?.scroll(rows);
+        },
+        getInventoryScrollRow: () => this.inventoryUI?.getScrollRow() ?? 0,
+        getInventoryMaxScrollRow: () => this.inventoryUI?.getMaxScrollRow() ?? 0,
         isTooltipVisible: () => this.inventoryUI?.isTooltipVisible() ?? false,
         isTooltipPinned: () => this.inventoryUI?.isTooltipPinned() ?? false,
 

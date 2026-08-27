@@ -16,6 +16,7 @@ import { EffectiveStats } from '../core/components.js';
 import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
 import { computeTheoreticalSingleTargetDps } from '../core/weapon-dps.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import type {
   GeneratedInventoryEntryResolver,
@@ -132,6 +133,12 @@ export function createInventoryUI(
   getCellIndexForItem(itemId: string): number | null;
   /** Test/automation affordance: visible rendered inventory base item ids, in cell order. */
   getVisibleItemIds(): readonly string[];
+  /** Scroll the visible inventory grid by whole rows. */
+  scroll(rows: number): boolean;
+  /** Current top row of the visible inventory grid. */
+  getScrollRow(): number;
+  /** Maximum scrollable row of the visible inventory grid. */
+  getMaxScrollRow(): number;
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -170,6 +177,8 @@ export function createInventoryUI(
   let externalSlotFilter: EquipmentSlotId | null = null;
   let currentBag: InventoryBag | null = null;
   let currentSortBy: SortField = 'rarity';
+  let scrollRow = 0;
+  let maxScrollRow = 0;
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
 
@@ -466,6 +475,7 @@ export function createInventoryUI(
     const sortFields: SortField[] = ['rarity', 'name', 'quantity'];
     const idx = sortFields.indexOf(currentSortBy);
     currentSortBy = sortFields[(idx + 1) % sortFields.length]!;
+    scrollRow = 0;
     sortBtn.setText(`Sort: ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
     renderItems();
   });
@@ -482,12 +492,13 @@ export function createInventoryUI(
   // Cell objects pool
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell background rectangles, in render order (test/automation hit-targets).
-  const cellBackgrounds: Phaser.GameObjects.Rectangle[] = [];
+  const cellBackgrounds: (Phaser.GameObjects.Rectangle | null)[] = [];
   // Canonical identity per render-order cell, parallel to cellBackgrounds.
   const cellEntryIdentities: string[] = [];
   // Base item id per render-order cell (generated entries use their base id),
   // parallel to cellBackgrounds. Powers getVisibleItemIds/getCellIndexForItem.
   const cellItemIds: string[] = [];
+  const visibleCellItemIds: string[] = [];
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -577,6 +588,7 @@ export function createInventoryUI(
     cellBackgrounds.length = 0;
     cellEntryIdentities.length = 0;
     cellItemIds.length = 0;
+    visibleCellItemIds.length = 0;
   }
 
   function clearTooltip(): void {
@@ -653,6 +665,7 @@ export function createInventoryUI(
       tabBg.setInteractive({ useHandCursor: true });
       tabBg.on('pointerdown', () => {
         activeTag = tag;
+        scrollRow = 0;
         renderTabs();
         renderItems();
       });
@@ -712,22 +725,37 @@ export function createInventoryUI(
     if (!currentBag) return;
 
     const entries = getFilteredEntries();
-    const maxRows = Math.floor(gridHeight / (CELL_SIZE + CELL_GAP));
-    const maxVisible = maxRows * COLS;
+    const visibleRows = Math.max(1, Math.floor((gridHeight + CELL_GAP) / (CELL_SIZE + CELL_GAP)));
+    const totalRows = Math.ceil(entries.length / COLS);
+    maxScrollRow = Math.max(0, totalRows - visibleRows);
+    if (scrollRow > maxScrollRow) scrollRow = maxScrollRow;
+    if (scrollRow < 0) scrollRow = 0;
+    const maxVisible = visibleRows * COLS;
     // Center the fixed-width grid within the panel so the left/right padding is
     // symmetric. The panel is wider than the grid needs (its width is driven by
     // the header row), so a left-anchored grid would dump all the slack on the
     // right and read as broken.
     const gridPixelWidth = COLS * CELL_SIZE + (COLS - 1) * CELL_GAP;
     const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
+    cellBackgrounds.push(...new Array<null>(entries.length).fill(null));
 
-    for (let i = 0; i < Math.min(entries.length, maxVisible); i++) {
-      const entry = entries[i]!;
+    const startIndex = scrollRow * COLS;
+    const endIndex = Math.min(entries.length, startIndex + maxVisible);
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]!;
+      const def = resolveEntryDef(entry);
+      cellEntryIdentities.push(inventoryEntryIdentity(entry));
+      cellItemIds.push(def?.id ?? '');
+    }
+
+    for (let index = startIndex; index < endIndex; index++) {
+      const entry = entries[index]!;
       const def = resolveEntryDef(entry);
       if (!def) continue;
 
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
+      const localIndex = index - startIndex;
+      const col = localIndex % COLS;
+      const row = Math.floor(localIndex / COLS);
       const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
       const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
 
@@ -855,9 +883,8 @@ export function createInventoryUI(
       container.add(cellBg);
       container.add(iconObject);
       cellObjects.push(cellBg, iconObject);
-      cellBackgrounds.push(cellBg);
-      cellEntryIdentities.push(inventoryEntryIdentity(entry));
-      cellItemIds.push(def.id);
+      cellBackgrounds[index] = cellBg;
+      visibleCellItemIds.push(def.id);
     }
 
     // Fill trailing cells of the final row with empty-slot backgrounds so the
@@ -865,7 +892,7 @@ export function createInventoryUI(
     // capacity has a clear affordance. Empty cells are decorative only — never
     // pushed to cellBackgrounds/cellItemIds, so automation item indices stay
     // stable.
-    const filledCells = Math.min(entries.length, maxVisible);
+    const filledCells = Math.min(Math.max(0, entries.length - startIndex), maxVisible);
     const rectCells = Math.min(Math.ceil(filledCells / COLS) * COLS, maxVisible);
     for (let i = filledCells; i < rectCells; i++) {
       const col = i % COLS;
@@ -884,6 +911,26 @@ export function createInventoryUI(
       emptyInset.setStrokeStyle(1, COLORS.emptyCellBorder, 0.9);
       container.add(emptyInset);
       cellObjects.push(emptyInset);
+    }
+
+    if (maxScrollRow > 0) {
+      const scrollText =
+        scrollRow >= maxScrollRow
+          ? `Rows ${scrollRow + 1}-${totalRows}/${totalRows}`
+          : `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows} ↓`;
+      const scrollHint = crispText(
+        gridLeft + gridPixelWidth,
+        panelY + panelHeight - PANEL_PADDING - 10,
+        scrollText,
+        {
+          fontFamily: FONT_FAMILY,
+          fontSize: '10px',
+          color: hex(COLORS.accent),
+        },
+      );
+      scrollHint.setOrigin(1, 1);
+      container.add(scrollHint);
+      cellObjects.push(scrollHint);
     }
 
     // Thin divider anchoring the count footer to the grid above it, so the
@@ -916,10 +963,10 @@ export function createInventoryUI(
 
     // Re-show (or drop) the pinned tooltip after rebuilding the grid.
     if (pinned !== null) {
-      const stillPresent = entries.some(
+      const pinnedIndex = entries.findIndex(
         (entry) => inventoryEntryIdentity(entry) === inventoryEntryIdentity(pinned!.entry),
       );
-      if (stillPresent) {
+      if (pinnedIndex >= 0 && cellBackgrounds[pinnedIndex]) {
         showTooltip(pinned.def, pinned.entry, pinned.x, pinned.y);
       } else {
         pinned = null;
@@ -967,12 +1014,14 @@ export function createInventoryUI(
     if (event.key === 'Backspace') {
       event.preventDefault();
       searchQuery = searchQuery.slice(0, -1);
+      scrollRow = 0;
       updateSearchDisplay();
       renderItems();
     } else if (event.key === 'Escape') {
       // Will be handled by toggle
     } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
       searchQuery += event.key;
+      scrollRow = 0;
       updateSearchDisplay();
       renderItems();
     }
@@ -1054,6 +1103,7 @@ export function createInventoryUI(
       const iconReady = textureKey !== '' && scene.textures?.exists(textureKey) === true;
       signature += `;${inventoryEntryIdentity(entry)}:${entry.kind === 'stackable-static-item' ? entry.quantity : 1}:${artKey ?? ''}:${textureKey}:${iconReady ? 1 : 0}`;
     }
+    signature += `|scroll:${scrollRow}`;
     return signature;
   }
 
@@ -1063,6 +1113,7 @@ export function createInventoryUI(
 
     if (visible) {
       searchQuery = '';
+      scrollRow = 0;
       applyLayout();
       updateSearchDisplay();
       refresh(world);
@@ -1072,6 +1123,38 @@ export function createInventoryUI(
       lastRenderSignature = null;
     }
   }
+
+  function invalidate(): void {
+    lastRenderSignature = null;
+    if (visible) {
+      renderItems();
+      lastRenderSignature = computeRenderSignature();
+    }
+  }
+
+  function scroll(rows: number): boolean {
+    if (rows === 0) return false;
+    const next = Math.min(maxScrollRow, Math.max(0, scrollRow + rows));
+    if (next === scrollRow) return false;
+    scrollRow = next;
+    invalidate();
+    return true;
+  }
+
+  const handleWheel = (
+    pointer: Phaser.Input.Pointer,
+    _currentlyOver: Phaser.GameObjects.GameObject[],
+    _deltaX: number,
+    deltaY: number,
+  ): void => {
+    if (!visible || maxScrollRow <= 0 || deltaY === 0) return;
+    const s = getRenderScale(scene);
+    const gridBounds = new Phaser.Geom.Rectangle(panelX, gridY, panelWidth, gridHeight);
+    if (!Phaser.Geom.Rectangle.Contains(gridBounds, pointer.x / s, pointer.y / s)) return;
+    scroll(deltaY > 0 ? 1 : -1);
+  };
+
+  scene.input.on('wheel', handleWheel);
 
   return {
     toggle,
@@ -1085,24 +1168,29 @@ export function createInventoryUI(
     },
     getCellIndexForEntry: (entry: InventoryBagEntry): number | null => {
       const i = cellEntryIdentities.indexOf(inventoryEntryIdentity(entry));
-      return i >= 0 ? i : null;
+      return i >= 0 && cellBackgrounds[i] ? i : null;
     },
     getCellIndexForItem: (itemId: string): number | null => {
-      const i = cellItemIds.indexOf(itemId);
+      const i = cellItemIds.findIndex((id, index) => id === itemId && cellBackgrounds[index]);
       return i >= 0 ? i : null;
     },
-    getVisibleItemIds: (): readonly string[] => [...cellItemIds],
+    getVisibleItemIds: (): readonly string[] => [...visibleCellItemIds],
+    scroll,
+    getScrollRow: () => scrollRow,
+    getMaxScrollRow: () => maxScrollRow,
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {
       if (externalSlotFilter === slotId) return;
       externalSlotFilter = slotId;
+      scrollRow = 0;
       lastRenderSignature = null;
       updateSlotFilterLabel();
     },
     getEquipmentSlotFilter: () => externalSlotFilter,
     destroy() {
       scene.input.keyboard?.off('keydown', handleKeyDown);
+      scene.input.off('wheel', handleWheel);
       scene.scale.off('resize', applyLayout);
       clearTabObjects();
       clearCellObjects();

@@ -220,6 +220,66 @@ describe('inventory flow (e2e)', () => {
     ).toBe(true);
   });
 
+  it('scrolls the standalone inventory bag when it overflows its visible rows', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+
+    const total = 40;
+    await probe.openInventory(page);
+    await probe.seedOverflowBag(page, total);
+    await page.waitForTimeout(250);
+
+    const maxScroll = await probe.getInventoryMaxScrollRow(page);
+    expect(maxScroll, 'a 40-cell inventory must overflow its visible rows').toBeGreaterThan(0);
+    expect(await probe.getInventoryScrollRow(page), 'the inventory starts at the top row').toBe(0);
+
+    expect(
+      await probe.getInventoryCellBounds(page, 0),
+      'the first inventory cell should be visible before scrolling',
+    ).not.toBeNull();
+    expect(
+      await probe.getInventoryCellBounds(page, total - 1),
+      'the last inventory cell should be off-screen before scrolling',
+    ).toBeNull();
+
+    const firstCell = await probe.getInventoryCellBounds(page, 0);
+    expect(firstCell, 'the first cell should remain available for wheel targeting').not.toBeNull();
+    if (firstCell) {
+      const rect = await getCanvasRect(page);
+      const game = await getGameSize(page);
+      const domCenter = boundsCenterScreen(rect, game, firstCell);
+      await page.mouse.move(domCenter.x, domCenter.y);
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(150);
+      expect(
+        await probe.getInventoryScrollRow(page),
+        'a downward wheel over the inventory grid should advance the scroll row',
+      ).toBeGreaterThan(0);
+    }
+
+    await probe.scrollInventory(page, maxScroll);
+    await page.waitForTimeout(150);
+    expect(
+      await probe.getInventoryScrollRow(page),
+      'scrolling by maxScroll should reach the last inventory row',
+    ).toBe(maxScroll);
+    expect(
+      await probe.getInventoryCellBounds(page, total - 1),
+      'the last inventory cell should be visible after scrolling to the bottom',
+    ).not.toBeNull();
+    expect(
+      await probe.getInventoryCellBounds(page, 0),
+      'the first inventory cell should scroll off-screen at the bottom',
+    ).toBeNull();
+
+    await probe.scrollInventory(page, -(maxScroll + 5));
+    await page.waitForTimeout(150);
+    expect(
+      await probe.getInventoryScrollRow(page),
+      'scrolling up past the top should clamp at row 0',
+    ).toBe(0);
+  });
+
   it('shows a tooltip on hover and clears it on hover-out (unpinned)', async () => {
     await loadUiProbeLab(page);
     await hideLabChrome(page);
