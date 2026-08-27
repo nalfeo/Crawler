@@ -99,13 +99,30 @@ describe('skill L5 milestone ability grants', () => {
     expect(getL5AbilityId('sprint')).toBeDefined();
   });
 
-  it('all L5 ability IDs reference real registered abilities of kind passive', () => {
+  it('all L5 ability IDs reference real registered abilities', () => {
     for (const skill of getAllSkillDefinitions()) {
       const abilityId = getL5AbilityId(skill.id);
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
       expect(def, `ability ${abilityId} (for skill ${skill.id}) not found`).toBeDefined();
-      expect(def!.kind).toBe('passive');
+      // Arcane is the one class whose L5 milestone unlocks an ACTIVE ability
+      // (issue #3676); every other L5 milestone is still a passive.
+      expect(def!.kind).toBe(skill.id === 'arcane' ? 'active' : 'passive');
+    }
+  });
+
+  it('the arcane L5 and L15 milestones grant weapon-gated ACTIVE abilities', () => {
+    const arcane = getAllSkillDefinitions().find((s) => s.id === 'arcane');
+    expect(arcane).toBeDefined();
+    for (const level of [5, 15]) {
+      const abilityId = arcane!.milestones.find((m) => m.level === level)?.abilityId;
+      expect(abilityId, `arcane L${level} milestone should grant an ability`).toBeDefined();
+      const def = getAbilityDefinition(abilityId!);
+      expect(def?.kind, `arcane L${level} should be an active ability`).toBe('active');
+      expect(def?.weaponPrerequisite).toBe('arcane');
+      // 'active' (not 'spell') keeps the unlock out of the spellbook feature
+      // gate, which on Floor 1 only opens after the first boss.
+      expect(def?.cooldownFrames).toBeGreaterThan(0);
     }
   });
 });
@@ -120,13 +137,12 @@ describe('weapon-skill passive ability definitions', () => {
       const abilityId = getL5AbilityId(classSkillId);
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
-      expect(def?.kind).toBe('passive');
-      if (def?.kind === 'passive') {
-        expect(
-          def.weaponPrerequisite,
-          `${abilityId} should have weapon prerequisite '${classSkillId}'`,
-        ).toBe(classSkillId);
-      }
+      // Passive or active, a weapon CLASS milestone reward must stay gated on
+      // that class so the class contract survives the arcane active conversion.
+      expect(
+        def?.weaponPrerequisite,
+        `${abilityId} should have weapon prerequisite '${classSkillId}'`,
+      ).toBe(classSkillId);
     }
   });
 

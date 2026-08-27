@@ -547,8 +547,13 @@ function activeWeaponItem(equipped: readonly LoadoutItem[]): LoadoutItem | null 
   return equipped.find((item) => item.weapon !== null) ?? null;
 }
 
-function passivePrerequisiteMet(ability: AbilityDefinition, weapon: WeaponDef | null): boolean {
-  if (ability.kind !== 'passive') return false;
+/**
+ * Whether an ability's weapon prerequisite is satisfied by the candidate
+ * loadout's weapon. Applies to passives (whose stat effects are inert while
+ * unmet) and to weapon-gated ACTIVES (which refuse to fire while unmet), so a
+ * weapon-gated active scores zero on a loadout that cannot fire it.
+ */
+function abilityPrerequisiteMet(ability: AbilityDefinition, weapon: WeaponDef | null): boolean {
   if (ability.weaponPrerequisite === undefined) return true;
   return (
     weapon !== null &&
@@ -567,7 +572,7 @@ function passiveModifiers(
   const modifiers: LegacyStatModifierLike[] = [];
   for (const abilityId of [...ownership.passive.keys()].sort()) {
     const ability = getAbilityDefinition(abilityId);
-    if (ability === undefined || !passivePrerequisiteMet(ability, weapon)) continue;
+    if (ability === undefined || !abilityPrerequisiteMet(ability, weapon)) continue;
     for (const effect of ability.effects) {
       if (effect.type === 'stat_add' || effect.type === 'stat_multiply') {
         modifiers.push({
@@ -767,11 +772,13 @@ function expectedActiveAbilityValue(
   stats: Readonly<Record<StatId, number>>,
   fixture: EquipmentEncounterFixture,
   config: EquipmentErvConfig,
+  weapon: WeaponDef | null,
 ): number {
   let value = 0;
   for (const abilityId of configured) {
     const ability = getAbilityDefinition(abilityId);
     if (ability === undefined || ability.kind === 'passive') continue;
+    if (!abilityPrerequisiteMet(ability, weapon)) continue;
     const uptime = triggerUptime(ability, fixture);
     if (uptime <= 0) continue;
     const cooldownFrames = applyCooldownReduction(ability.cooldownFrames, stats.cooldownReduction);
@@ -846,7 +853,7 @@ function passiveNonStatValue(
   let value = 0;
   for (const abilityId of [...ownership.passive.keys()].sort()) {
     const ability = getAbilityDefinition(abilityId);
-    if (ability === undefined || !passivePrerequisiteMet(ability, weapon)) continue;
+    if (ability === undefined || !abilityPrerequisiteMet(ability, weapon)) continue;
     for (const effect of ability.effects) {
       if (effect.type === 'extra_projectile') {
         continue;
@@ -942,7 +949,8 @@ function scoreLoadout(
     config.weights.passiveAbility;
   components.activeAbility =
     fixtures.reduce(
-      (sum, fixture) => sum + expectedActiveAbilityValue(configured, fullStats, fixture, config),
+      (sum, fixture) =>
+        sum + expectedActiveAbilityValue(configured, fullStats, fixture, config, weapon),
       0,
     ) * config.weights.activeAbility;
   components.affinity =

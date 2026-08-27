@@ -5,9 +5,14 @@ import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillDefinition } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
-import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
+import {
+  grantAbilitySources,
+  queueAbilityTrigger,
+  revokeAbilitySources,
+  type AbilityGrantRequest,
+} from './abilitySystem.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
-import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shared/abilities.js';
+import { skillAbilityGrantSourceId, type AbilityGrantKind } from '../../shared/abilities.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { pushFloaterEvent } from '../../shared/floater-events.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
@@ -17,8 +22,18 @@ import {
   weaponSwingVfxKindForPreset,
 } from '../../shared/weapon-swing-vfx.js';
 
-/** How long the level-5 passive-unlock banner is shown, in milliseconds. */
-const SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS = 2600;
+/** How long a skill milestone unlock banner (passive or active) is shown, in milliseconds. */
+const SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS = 2600;
+
+/**
+ * Grant kind for a milestone ability, derived from the catalog so an active
+ * milestone reward is granted onto the ability bar instead of the passive list.
+ * Unknown ids fall back to `'passive'`, preserving the pre-existing behaviour
+ * for milestones whose ability is not (yet) registered.
+ */
+function abilityGrantKind(abilityId: string): AbilityGrantKind {
+  return getAbilityDefinition(abilityId)?.kind === 'passive' ? 'passive' : 'active';
+}
 
 /**
  * Processes skill usage events each frame.
@@ -134,29 +149,21 @@ function applyMilestone(
     const targetEid = holderEid ?? query(world.ecs, [Player])[0];
     if (targetEid !== undefined) {
       const sourceId = skillAbilityGrantSourceId(skillId, level);
+      const grantedDef = getAbilityDefinition(milestone.abilityId);
+      const grantKind = abilityGrantKind(milestone.abilityId);
 
       // Handle upgrade logic: L15 replaces L5, L20 replaces L10
-      const revokeRequests: Array<{
-        kind: 'passive';
-        abilityId: string;
-        sourceId: AbilityGrantSourceId;
-      }> = [];
-      if (level === 15) {
-        const oldSourceId = skillAbilityGrantSourceId(skillId, 5);
-        const oldMilestone = def.milestones.find((m) => m.level === 5);
+      const revokeRequests: AbilityGrantRequest[] = [];
+      const replacedLevel = level === 15 ? 5 : level === 20 ? 10 : undefined;
+      if (replacedLevel !== undefined) {
+        const oldSourceId = skillAbilityGrantSourceId(skillId, replacedLevel);
+        const oldMilestone = def.milestones.find((m) => m.level === replacedLevel);
         if (oldMilestone?.abilityId !== undefined) {
           revokeRequests.push({
-            kind: 'passive',
-            abilityId: oldMilestone.abilityId,
-            sourceId: oldSourceId,
-          });
-        }
-      } else if (level === 20) {
-        const oldSourceId = skillAbilityGrantSourceId(skillId, 10);
-        const oldMilestone = def.milestones.find((m) => m.level === 10);
-        if (oldMilestone?.abilityId !== undefined) {
-          revokeRequests.push({
-            kind: 'passive',
+            // The replaced ability may itself be an active (e.g. the arcane
+            // level-5 unlock), so the revoke kind must match the catalog kind —
+            // a mismatched kind is rejected by the grant-ownership validator.
+            kind: abilityGrantKind(oldMilestone.abilityId),
             abilityId: oldMilestone.abilityId,
             sourceId: oldSourceId,
           });
@@ -168,14 +175,21 @@ function applyMilestone(
         revokeAbilitySources(world, targetEid, revokeRequests);
       }
 
-      // Grant the new ability
-      grantAbilitySources(world, targetEid, [
-        {
-          kind: 'passive',
-          abilityId: milestone.abilityId,
-          sourceId,
-        },
-      ]);
+      // Grant the new ability. Actives additionally take an open bar slot; when
+      // every slot is full the ability stays owned-but-unequipped rather than
+      // throwing, matching the equipment grant path.
+      grantAbilitySources(
+        world,
+        targetEid,
+        [
+          {
+            kind: grantKind,
+            abilityId: milestone.abilityId,
+            sourceId,
+          },
+        ],
+        grantKind === 'active' ? { configureActives: 'fill-open-slots' } : {},
+      );
 
       // Append to the run-level milestone grant log (read by headless runner).
       world.milestoneGrantLog.push({
@@ -200,24 +214,38 @@ function applyMilestone(
           });
         }
 
-        const abilityDef = getAbilityDefinition(milestone.abilityId);
         const isGeneralPassive =
-          abilityDef !== undefined &&
-          abilityDef.kind === 'passive' &&
-          abilityDef.weaponPrerequisite === undefined;
+          grantedDef !== undefined &&
+          grantedDef.kind === 'passive' &&
+          grantedDef.weaponPrerequisite === undefined;
 
-        if (isGeneralPassive && swingVfx === undefined) {
+        // Weapon-gated PASSIVES get their flash from `applyPassive` when the
+        // prerequisite is first met, so only general passives and actives need
+        // the one-time unlock flash here.
+        if ((isGeneralPassive || grantKind === 'active') && swingVfx === undefined) {
           pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
         }
 
         const presentation = getAbilityPresentation(milestone.abilityId);
-        pushAnnouncement(world.announcements, {
-          kind: 'skillPassiveUnlocked',
-          archetypeIndex: -1,
-          text: `Passive Unlocked: ${presentation?.name ?? milestone.abilityId}`,
-          durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
-          elapsedMs: world.elapsedMs,
-        });
+        const abilityName = presentation?.name ?? grantedDef?.name ?? milestone.abilityId;
+        pushAnnouncement(
+          world.announcements,
+          grantKind === 'active'
+            ? {
+                kind: 'skillAbilityUnlocked',
+                archetypeIndex: -1,
+                text: `Ability Unlocked: ${abilityName}`,
+                durationMs: SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS,
+                elapsedMs: world.elapsedMs,
+              }
+            : {
+                kind: 'skillPassiveUnlocked',
+                archetypeIndex: -1,
+                text: `Passive Unlocked: ${abilityName}`,
+                durationMs: SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS,
+                elapsedMs: world.elapsedMs,
+              },
+        );
       }
     }
   }

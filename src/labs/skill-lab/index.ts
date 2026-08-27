@@ -93,15 +93,21 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         const abilityGrantCell = abilityGrantId
           ? (() => {
               const abilityDef = allAbilities.find((a) => a.id === abilityGrantId);
-              if (!abilityDef || abilityDef.kind !== 'passive') return '—';
-              const granted = passiveIds.includes(abilityGrantId);
+              if (!abilityDef) return '—';
+              // Milestone rewards may be passives or ACTIVES (e.g. arcane L5),
+              // so ownership is read from the matching grant list.
+              const granted =
+                abilityDef.kind === 'passive'
+                  ? passiveIds.includes(abilityGrantId)
+                  : activeIds.includes(abilityGrantId);
               const prereqMet = granted
                 ? weaponPrerequisiteMet(world, player, abilityGrantId)
                 : false;
               const prereq = abilityDef.weaponPrerequisite;
               const statusColor = !granted ? '#555' : prereqMet ? '#4f8' : '#fa0';
               const statusText = !granted ? '—' : prereqMet ? '✓ active' : `⚠ needs ${prereq}`;
-              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} (${statusText})</span>`;
+              const kindTag = abilityDef.kind === 'passive' ? 'passive' : 'ACTIVE';
+              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} [${kindTag}] (${statusText})</span>`;
             })()
           : '—';
 

@@ -1,3 +1,5 @@
+import type { WeaponSkillId } from './weapon-skills.js';
+
 export type AbilityPresentationKind = 'active' | 'passive' | 'spell';
 export type AbilityPresentationCategory = 'combat' | 'defense' | 'utility';
 
@@ -12,6 +14,14 @@ export interface AbilityPresentation {
   readonly cooldownFrames?: number;
   readonly passiveEffectSummary?: string;
   readonly passiveRequirementSummary?: string;
+  /**
+   * Weapon skill the holder must be wielding for this ability to do anything.
+   * Declared here (rather than only on the game-layer catalog definition) so the
+   * rendering layer — which must not import `src/game/` — can surface an unmet
+   * prerequisite on the ability bar. The game-layer catalog spreads this
+   * presentation entry, so there is a single source of truth for the value.
+   */
+  readonly weaponPrerequisite?: WeaponSkillId;
 }
 
 export const ABILITY_PRESENTATION_BY_ID = {
@@ -479,6 +489,27 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'passive',
     passiveEffectSummary: 'Accuracy +0.15, Arcane Regen +8%',
     passiveRequirementSummary: 'an arcane weapon',
+  },
+  // Arcane weapon-class actives (level 5 unlock + its level 15 evolution)
+  'arcane-nova': {
+    id: 'arcane-nova',
+    name: 'Arcane Nova',
+    shortLabel: 'NOVA',
+    description: 'Detonate raw arcane power around a nearby enemy.',
+    category: 'combat',
+    kind: 'active',
+    cooldownFrames: 600,
+    weaponPrerequisite: 'arcane',
+  },
+  'arcane-nova-evolved': {
+    id: 'arcane-nova-evolved',
+    name: 'Arcane Nova (Evolved)',
+    shortLabel: 'NOVA+',
+    description: 'A wider, fiercer arcane detonation on a shorter recharge.',
+    category: 'combat',
+    kind: 'active',
+    cooldownFrames: 480,
+    weaponPrerequisite: 'arcane',
   },
   // Weapon type actives (20 total)
   'sword-strike-base': {

@@ -1083,25 +1083,35 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   },
 
   // Arcane class
+  // Level 5 / 15 reward an ACTIVE ability (issue #3676): the arcane class is the
+  // one weapon class whose fantasy is casting, so its milestone unlock is a real
+  // castable rather than another flat damage passive. `kind: 'active'` (not
+  // 'spell') keeps it out of the spellbook feature gate and the spell-mastery
+  // skills, while `weaponPrerequisite` preserves the weapon-class contract: the
+  // nova only fires while an arcane weapon is equipped.
   {
-    id: 'arcane-mastery-base',
-    name: 'Arcane Mastery',
-    shortLabel: 'ARCANE',
-    description: '+10% damage with arcane weapons',
-    category: 'combat',
-    kind: 'passive',
-    weaponPrerequisite: 'arcane',
-    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+    ...ABILITY_PRESENTATION_BY_ID['arcane-nova'],
+    trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 8 },
+    flavorText: '"Point it at the crowd. That is the whole technique." — The Director',
+    effects: [
+      {
+        type: 'spell_fireball',
+        damage: { base: 14, scalesWithIntelligence: true },
+        radiusTiles: { base: 3, scalesWithIntelligence: false },
+      },
+    ],
   },
   {
-    id: 'arcane-mastery-evolved',
-    name: 'Arcane Mastery (Evolved)',
-    shortLabel: 'ARCANE+',
-    description: '+15% damage with arcane weapons',
-    category: 'combat',
-    kind: 'passive',
-    weaponPrerequisite: 'arcane',
-    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+    ...ABILITY_PRESENTATION_BY_ID['arcane-nova-evolved'],
+    trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 8 },
+    flavorText: '"Bigger blast, shorter wait. The audience calls that growth." — The Director',
+    effects: [
+      {
+        type: 'spell_fireball',
+        damage: { base: 22, scalesWithIntelligence: true },
+        radiusTiles: { base: 4, scalesWithIntelligence: false },
+      },
+    ],
   },
   {
     id: 'arcane-efficiency-evolved',
