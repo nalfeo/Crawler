@@ -341,7 +341,13 @@ export function editRequestItem(item, patch) {
     if (!slugify(edited.name)) throw new Error('name must contain letters or numbers.');
     edited.kebabName = slugify(edited.name);
   }
+  if ('brief' in edited && typeof edited.brief !== 'string') {
+    throw new Error('brief must be a string.');
+  }
   if (typeof edited.brief === 'string') edited.brief = edited.brief.trim();
+  if ('requester' in edited && edited.requester !== null && typeof edited.requester !== 'string') {
+    throw new Error('requester must be a string or null.');
+  }
   if (typeof edited.requester === 'string') edited.requester = edited.requester.trim() || null;
   if (
     'requestedType' in edited &&

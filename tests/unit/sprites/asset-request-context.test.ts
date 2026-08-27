@@ -106,4 +106,14 @@ describe('asset request context capabilities', () => {
       }),
     ).toThrow("Family 'unicorns' is not bound");
   });
+
+  it('omits an enemy-pack source id when the floor has no enemy pack', () => {
+    const context = resolveAssetRequestContext({
+      floor: 4,
+      floorId: 'floor4',
+    });
+
+    expect(context.sourceIds).toEqual({ floorId: 'floor4' });
+    expect(Object.hasOwn(context.sourceIds, 'enemyPackId')).toBe(false);
+  });
 });

@@ -348,6 +348,11 @@ test('editing validates durable request fields at the state boundary', () => {
     () => editRequestItem(original, { injectionOverrides: 'category prose' }),
     /injectionOverrides must be an object/,
   );
+  assert.throws(() => editRequestItem(original, { brief: 123 }), /brief must be a string/);
+  assert.throws(
+    () => editRequestItem(original, { requester: { name: 'Ada' } }),
+    /requester must be a string or null/,
+  );
 });
 
 test('icon requests remain icon requests through creation and editing', () => {

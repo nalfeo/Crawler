@@ -259,6 +259,28 @@ describe('buildServer routes (inject)', () => {
     });
   });
 
+  it('GET /api/workflow/reference-preview skips an unreadable selected PNG', async () => {
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    writeShard(generatedDir, 'reference-var-0', {
+      briefId: 'reference',
+      spriteName: 'reference-var-0',
+      assetPath: 'generated/reference-var-0.png',
+      type: 'character',
+      sensorScore: '8/8',
+      judgeScore: '5',
+      variantIndex: 0,
+    } as never);
+    mkdirSync(path.join(generatedDir, 'reference-var-0.png'));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/reference-preview?name=new-character&type=character',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ currentPreview: true, references: [] });
+  });
+
   it('GET /api/workflow/reference-preview rejects an invalid asset name as a client error', async () => {
     const res = await app.inject({
       method: 'GET',

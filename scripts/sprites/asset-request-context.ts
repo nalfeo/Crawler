@@ -146,7 +146,7 @@ export function resolveAssetRequestContext(input: AssetRequestContextInput): Ass
   let archetypeId: string | undefined;
   const sourceIds: AssetRequestContextSourceIds = {
     ...(resolvedFloorId ? { floorId: resolvedFloorId } : {}),
-    ...(manifest ? { enemyPackId: manifest.enemyPackId } : {}),
+    ...(manifest?.enemyPackId ? { enemyPackId: manifest.enemyPackId } : {}),
     ...(familyId ? { familyId } : {}),
   };
   if (familyId) {

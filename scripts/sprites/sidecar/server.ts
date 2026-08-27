@@ -2467,21 +2467,29 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         selectorVersion: SELECTOR_VERSION,
         seed: resolved.selection.seed,
         currentPreview: true,
-        references: resolved.selection.selected.map((entry) => {
+        references: resolved.selection.selected.flatMap((entry) => {
           const absolutePath = resolveGeneratedAssetPath(
             entry.assetPath,
             resolved.publicAssetsRoot,
             'reference-preview',
           );
-          return {
-            briefId: entry.briefId,
-            spriteName: entry.spriteName,
-            type: entry.type,
-            assetPath: entry.assetPath,
-            sensorScore: entry.sensorScore,
-            judgeScore: entry.judgeScore,
-            imageDataUrl: `data:image/png;base64,${readFileSync(absolutePath).toString('base64')}`,
-          };
+          try {
+            return [
+              {
+                briefId: entry.briefId,
+                spriteName: entry.spriteName,
+                type: entry.type,
+                assetPath: entry.assetPath,
+                sensorScore: entry.sensorScore,
+                judgeScore: entry.judgeScore,
+                imageDataUrl: `data:image/png;base64,${readFileSync(absolutePath).toString('base64')}`,
+              },
+            ];
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            req.log.warn(`reference-preview skipped unreadable ${entry.assetPath}: ${message}`);
+            return [];
+          }
         }),
       };
     },

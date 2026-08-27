@@ -1,4 +1,4 @@
-import { SPRITE_TYPES, type SpriteType } from '../../src/shared/sprite-types.js';
+import type { SpriteType } from '../../src/shared/sprite-types.js';
 
 export const SPRITE_CATEGORY_DESIGN_LANGUAGE: Readonly<Record<SpriteType, string>> = {
   weapon:
@@ -15,10 +15,6 @@ export const SPRITE_CATEGORY_DESIGN_LANGUAGE: Readonly<Record<SpriteType, string
     'Classic RPG 3/4 orthographic character presentation. Keep the full body visible, the face readable, a stable floor line, parallel construction, and no vanishing point, foreshortening, or receding perspective unless an explicit directional-animation brief overrides the facing.',
   icon: 'Classic RPG icon presentation. Use one bold symbolic subject, centered and readable at very small size, with no scene, character hand, text, or camera-dependent perspective.',
 };
-
-if (Object.keys(SPRITE_CATEGORY_DESIGN_LANGUAGE).length !== SPRITE_TYPES.length) {
-  throw new Error('Every SpriteType must define category design language.');
-}
 
 export function spriteCategoryDesignLanguageBlock(type: SpriteType, override?: string): string {
   const categoryLanguage = override?.trim() || SPRITE_CATEGORY_DESIGN_LANGUAGE[type];

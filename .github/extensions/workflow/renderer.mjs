@@ -2059,6 +2059,7 @@ const CLIENT_SCRIPT = String.raw`
         applyTemplateEdits(templateEditor.value);
           captureRequestComposerDraft();
         requestTemplateModal = null;
+        referencePreview = null;
         backdrop.remove();
         name.focus();
       });
@@ -2228,6 +2229,11 @@ const CLIENT_SCRIPT = String.raw`
         text: 'Save request',
         title: 'Persist these request fields to the shared Azure-backed workflow'
         });
+        var editError = h('div', {
+        class: 'panel error',
+        hidden: true,
+        style: { marginTop: '10px' }
+        });
         saveEdit.addEventListener('click', function () {
         var categoryOverride = normalizeCategoryOverride(
           editCategoryInjection.value,
@@ -2254,12 +2260,17 @@ const CLIENT_SCRIPT = String.raw`
             }
           }
         }, 'Saving request…').then(function (ok) {
-          if (!ok) return;
+          if (!ok) {
+            editError.hidden = false;
+            editError.textContent = lastState?.error || 'Workflow action failed.';
+            return;
+          }
           editRequestModalOpen = false;
           backdrop.remove();
           if (lastState) render(lastState);
         });
         });
+        modal.appendChild(editError);
         modal.appendChild(h('div', { class: 'request-actions' }, [saveEdit]));
         backdrop.appendChild(modal);
         wrap.appendChild(backdrop);
