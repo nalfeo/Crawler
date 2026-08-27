@@ -14,8 +14,18 @@
       "notes": "Reviewer forked on two points: (1) the aura should extend the existing per-entity status renderer pattern rather than add a second per-entity Graphics subsystem — adopted as a SINGLE shared Graphics layer redrawn per frame, which also removes the EID-recycling hazard; (2) the burst radius bump to 5 tiles was unjustified — dropped, radiusTiles stays 4 (16ft) and now exactly matches the new trigger ring. Also adopted: polarity derived from (stat, op, value) rather than stat alone, explicit attackSpeed visuals, tests for expired/persistent/multi-effect/tie cases, a natural-activation trigger test instead of forceActivateAbility, and FOV/corpse gating for the aura. Cooldown direction: reviewer flagged that shortening it contradicts the literal wording; resolved by following the literal reading (840 -> 960 frames) and surfacing the interpretation in the PR description for the maintainer."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["claude-opus-4.6"],
+          "reviewer_model": "claude-opus-4.6",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Full-diff review against the repo review contract plus the path-scoped engine/game/shared/tests instructions. Checked determinism, layer boundaries, per-frame cost in PhaserBridge.sync, EID recycling and lifecycle, fog-of-war/corpse information leaks, tint backward compatibility (0xaadfff preserved), downstream consumers of the curse trigger/cooldown (equipment-loadout-evaluator reads the registry dynamically), and regression coverage. No actionable findings."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
