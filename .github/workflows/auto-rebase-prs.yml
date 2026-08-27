@@ -154,6 +154,24 @@ jobs:
               continue
             fi
 
+            # Honor the same automation opt-out labels the CI-recovery router
+            # enforces (.github/scripts/ci-recovery/router.mjs). Without this the
+            # sweep rebases/retriggers PRs that explicitly opted out of merge
+            # automation, including the empty "retrigger validation recovery"
+            # commits pushed further below.
+            opt_out_label=$(
+              echo "$pr" | jq -r '
+                [.labels[]? | .name]
+                | map(select(. == "ci-recovery-opt-out" or . == "human-approval-required"))
+                | first // empty
+              '
+            )
+            if [ -n "$opt_out_label" ]; then
+              echo "  ⏭️ Skipping PR #$number ($opt_out_label label opts out of merge automation)."
+              skipped=$((skipped + 1))
+              continue
+            fi
+
             # D2 fix (always-rebase, not conflict-only): for the non-train blanket
             # sweep, use the GitHub update-branch API instead of git-rebase + force-push.
             # Use CRAWLER_CI_PAT when available so the branch update triggers required CI
