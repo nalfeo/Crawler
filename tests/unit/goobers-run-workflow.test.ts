@@ -114,6 +114,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       'crawler-feature-pr.yaml',
     );
     const tasks = new Map(definition.spec.tasks.map((task) => [task.name, task]));
+    const hydrate = tasks.get('hydrate-requirements');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -122,6 +123,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     ).jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
 
     expect(definition.spec.runControls?.maxRepasses).toBe(6);
+    expect(hydrate).toBeDefined();
+    expect(hydrate?.retry).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }

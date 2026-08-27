@@ -31,10 +31,27 @@ spec:
         - claim-backlog-items
       expectedOutputs:
         - claimed-item
+      next: hydrate-requirements
+    - name: hydrate-requirements
+      type: deterministic
+      contextFrom:
+        - query-backlog
+      goal: Fetch the full claimed issue body into deterministic requirements context.
+      run:
+        command: ['node', 'scripts/agent/goobers/hydrate-requirements.mjs']
+      inputs:
+        resultFile: 'requirements-result.json'
+      expectedOutputs:
+        - issueNumber
+        - issueTitle
+        - issueUrl
+        - requirementsFile
       next: plan
     - name: plan
       type: agentic
       goober: producer
+      contextFrom:
+        - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
       capabilities:
         - repo:read
@@ -49,7 +66,7 @@ spec:
       type: agentic
       goober: coder
       contextFrom:
-        - query-backlog
+        - hydrate-requirements
         - plan
         - implement
         - review
