@@ -35,6 +35,8 @@ rule.
 
 - `npx vitest run tests/unit/floor2-director-territory.test.ts --project unit` ✅
 - `npx vitest run tests/headless/floor2-completion.test.ts --project headless` ✅
+  - Includes a real-headless assertion that tracks newly-created Floor 2 ambient
+    enemies and rejects any creation in `RoomRole.SPAWN` or `RoomRole.BOSS_DEN`.
 - `npm run verify:fast` ✅
 - `npm run format:check` ✅
 
@@ -43,10 +45,10 @@ rule.
 - **Before:** the reported Floor 2 run `9d9825f5-656c-4b9e-b4f4-89d5f1d7350f`
   showed a mob inside the entrance room. The supplied blob bundle could not be
   fetched in this sandbox because its hostname did not resolve.
-- **After:** the real Floor 2 headless pipeline exercised by
-  `tests/headless/floor2-completion.test.ts` passes; its Floor 2 scenario invokes
-  the same `floor2EnemyDirectorSystem` acceptance gate that now deterministically
-  rejects `RoomRole.SPAWN` candidates.
+- **After:** `tests/headless/floor2-completion.test.ts` runs the real Floor 2
+  headless pipeline and its new ambient-spawn assertion observed newly-created
+  tracked ambient enemies while confirming none were created in `RoomRole.SPAWN`
+  or `RoomRole.BOSS_DEN`.
 
 ## What's Next / Blockers
 
