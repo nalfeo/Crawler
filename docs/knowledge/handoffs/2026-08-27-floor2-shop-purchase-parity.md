@@ -30,9 +30,11 @@ Broker), `hammer` and `crossbow` (The Quartermaster), `knife` and `boomerang`
 
 Changes:
 
-- Added inventory items and weapon-equipment defs for the five weapons, so a
-  purchase lands in the bag (`addItem` requires an `ITEM_CATALOG` slug) and the
-  equipped item activates its `WeaponDef`.
+- Added inventory items for the five weapons, so a purchase lands in the bag
+  (`addItem` requires an `ITEM_CATALOG` slug). They stay catalog-only, like the
+  14 existing flavour weapons with no equipment def: wiring a weapon-equipment
+  def requires real, approved art, and `npm run check:equipment-art-coverage`
+  (shrink-only baseline) fails any wired piece without it.
 - Extracted the merchant stock resolution into `src/shared/shop-catalog.ts` and
   routed both the shop-archetype loader and the purchase path through it, so
   stock lists can only reference ids a player can actually buy. A future data
@@ -49,8 +51,8 @@ seeds 1–8, projected through `getSettlementShopOfferViews`:
 
 - Before: 26 offers with `canPurchase=false, reason=unknown-item`
   (`bowling-ball` ×4, `crossbow` ×7, `hammer` ×7, `knife` ×5, `boomerang` ×3).
-- After: 0 blocked offers; purchasing `bowling-ball` credits the bag and the
-  slug resolves to a weapon-equipment def.
+- After: 0 blocked offers; purchasing `bowling-ball` debits gold, decrements
+  stock, and adds the `bowling-ball` slug to the bag.
 
 ## Key Decisions Made
 
@@ -61,5 +63,8 @@ updated deliberately (118 → 123 items, Weapons 23 → 28).
 
 ## What's Next / Blockers
 
-None. The five icons use tracked placeholders and can be generated through the
-normal sprite pipeline whenever the art backlog reaches them.
+The five icons use tracked placeholders and can be generated through the normal
+sprite pipeline whenever the art backlog reaches them. Once real art lands, the
+weapons can be promoted from catalog-only bag items to wired equipment defs
+(`WEAPON_EQUIPMENT_DEFS`) so they activate their `WeaponDef` on equip; wiring
+them before the art exists is blocked by `check:equipment-art-coverage`.

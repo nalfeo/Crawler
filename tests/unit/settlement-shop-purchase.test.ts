@@ -6,8 +6,8 @@ import {
 } from '../../src/core/settlement-shop-purchase.js';
 import type { Floor2SettlementSnapshot } from '../../src/shared/floor-types.js';
 import { knownShopItemIds, loadShopArchetypes } from '../../src/shared/data/shop-archetypes.js';
-import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
 import { listStaticInventorySlots } from '../../src/shared/inventory.js';
+import { getItemById } from '../../src/shared/items.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 type TestWorld = ReturnType<typeof createTestWorld>;
@@ -193,9 +193,7 @@ describe('Settlement shop purchase', () => {
     const bag = world.inventories.get(playerEid);
     expect(bag).toBeDefined();
     expect(listStaticInventorySlots(bag!)).toContainEqual({ itemId: 'bowling-ball', quantity: 1 });
-    // The purchased slug must activate the weapon when equipped, otherwise the
-    // sale would only hand the player an inert bag entry.
-    expect(getEquipmentDefForItem('bowling-ball')?.weaponId).toBe('bowling-ball');
+    expect(getItemById('bowling-ball')?.name).toBe('Bowling Ball');
   });
 
   it('only advertises stockable ids the purchase path can resolve', () => {

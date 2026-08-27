@@ -186,55 +186,6 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
-  // --- Merchant-stocked weapons (each `id` mirrors an `items.ts` slug, like
-  //     the starter weapons above). Every weapon a shop archetype can stock
-  //     needs a def here, otherwise the settlement purchase path cannot
-  //     resolve the offer and the row renders as unbuyable. ---
-  weapon({
-    id: 'knife',
-    name: 'Knife',
-    slots: ['mainHand'],
-    statBonuses: {},
-    rarity: 'common',
-    weaponId: 'knife',
-    weightLb: 0.75,
-  }),
-  weapon({
-    id: 'hammer',
-    name: 'Hammer',
-    slots: ['mainHand', 'offHand'],
-    statBonuses: {},
-    rarity: 'common',
-    weaponId: 'hammer',
-    weightLb: 8,
-  }),
-  weapon({
-    id: 'crossbow',
-    name: 'Crossbow',
-    slots: ['mainHand', 'offHand'],
-    statBonuses: {},
-    rarity: 'uncommon',
-    weaponId: 'crossbow',
-    weightLb: 7,
-  }),
-  weapon({
-    id: 'boomerang',
-    name: 'Boomerang',
-    slots: ['mainHand'],
-    statBonuses: {},
-    rarity: 'common',
-    weaponId: 'boomerang',
-    weightLb: 1,
-  }),
-  weapon({
-    id: 'bowling-ball',
-    name: 'Bowling Ball',
-    slots: ['mainHand', 'offHand'],
-    statBonuses: {},
-    rarity: 'uncommon',
-    weaponId: 'bowling-ball',
-    weightLb: 14,
-  }),
   // --- Floor 2 weapons ---
   ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
 ];
