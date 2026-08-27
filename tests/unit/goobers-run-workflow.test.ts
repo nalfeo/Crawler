@@ -87,6 +87,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const job = workflow.jobs.run;
     const checkout = job?.steps?.find((step) => step.name === 'Checkout');
+    const installDeps = job?.steps?.find((step) => step.name === 'Install project dependencies');
     const install = job?.steps?.find((step) => step.name === 'Install Copilot CLI');
     const upload = job?.steps?.find((step) => step.name === 'Upload run journal');
 
@@ -99,6 +100,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       ref: "${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}",
       'persist-credentials': false,
     });
+    expect(installDeps?.run).toBe('npm ci');
     expect(install?.env?.COPILOT_CLI_VERSION).toBe("${{ inputs.copilot_cli_version || '1.0.80' }}");
     expect(upload?.with?.name).toContain("inputs.workflow || 'crawler-feature-pr'");
   });
@@ -119,7 +121,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       'goobers-run.yml',
     ).jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
 
-    expect(definition.spec.runControls?.maxRepasses).toBe(2);
+    expect(definition.spec.runControls?.maxRepasses).toBe(6);
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }

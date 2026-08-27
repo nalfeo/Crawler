@@ -140,6 +140,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install project dependencies
+        run: npm ci
+
       - name: Install Copilot CLI
         # Pinned npm package install instead of piping the mutable
         # https://gh.io/copilot-install script to bash: npm resolves this

@@ -11,7 +11,7 @@ spec:
   readiness:
     maxConcurrentRuns: 1
   runControls:
-    maxRepasses: 2
+    maxRepasses: 6
   start: query-backlog
   tasks:
     - name: query-backlog
