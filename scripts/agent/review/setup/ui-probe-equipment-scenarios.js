@@ -209,7 +209,7 @@
       id: `tooltip-card:${index}`,
       box: card,
       kind: 'other',
-      parentId: 'equipment-panel',
+      parentId: 'tooltip-layout',
     });
   }
   if (tooltip) {

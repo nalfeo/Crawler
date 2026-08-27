@@ -34,6 +34,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
   initializeBaseStats,
+  unequip,
 } from '../../core/systems/equipmentSystem.js';
 import { createGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
@@ -590,6 +591,10 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         weightLb: 6,
       };
       if (!sword) return false;
+      // The probe scene can inherit a starter weapon. Clear it so this scenario
+      // always exposes the requested distinct Sword + Shield replacement state.
+      unequip(this.world, this.playerEid, 'mainHand', { force: true });
+      unequip(this.world, this.playerEid, 'offHand', { force: true });
       const equipped =
         equip(this.world, this.playerEid, sword, { force: true }).ok &&
         equip(this.world, this.playerEid, shield, { force: true }).ok;

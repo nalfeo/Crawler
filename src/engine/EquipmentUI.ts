@@ -1320,6 +1320,9 @@ export function createEquipmentUI(
     inlineDeltas: Partial<Record<StatId, number>> = {},
     sourceBounds: ScreenBounds | null = null,
   ): void {
+    // A resize can rebuild the panel while preserving the active bag preview.
+    // Replace the prior card group instead of appending an identical comparison.
+    clearInspectorText();
     const gap = 8;
     const equipped = replaced.length > 0 ? replaced : [emptyComparisonDef('slot')];
     const isDualRingComparison =
