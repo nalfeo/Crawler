@@ -63,6 +63,21 @@ describe('ability registry', () => {
     }
   });
 
+  it("keeps curse's trigger ring consistent with its own burst radius", () => {
+    const curse = getAbilityDefinition('curse');
+    expect(curse?.kind).toBe('spell');
+    if (curse === undefined || curse.kind === 'passive') throw new Error('curse is not a spell');
+    expect(curse.trigger).toEqual({ kind: 'enemy_cluster', minEnemies: 2, withinFeet: 16 });
+    expect(curse.cooldownFrames).toBe(960);
+    const burst = curse.effects.find((effect) => effect.type === 'spell_enemy_slow_burst');
+    expect(burst).toBeDefined();
+    // 4 tiles × the 4ft default tile size = 16ft, i.e. every enemy that can
+    // complete the trigger cluster is inside the burst it triggers.
+    if (burst?.type === 'spell_enemy_slow_burst') {
+      expect(burst.radiusTiles.base * 4).toBeGreaterThanOrEqual(16);
+    }
+  });
+
   it('labels the fireball spell ability as "Fireball"', () => {
     expect(ABILITY_PRESENTATION_BY_ID.fireball.name).toBe('Fireball');
     expect(getAbilityDefinition('fireball')?.name).toBe('Fireball');

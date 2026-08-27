@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "curse-range-status-visuals",
+  "task_title": "Curse range/cooldown tuning + enemy status-effect visuals",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer forked on two points: (1) the aura should extend the existing per-entity status renderer pattern rather than add a second per-entity Graphics subsystem — adopted as a SINGLE shared Graphics layer redrawn per frame, which also removes the EID-recycling hazard; (2) the burst radius bump to 5 tiles was unjustified — dropped, radiusTiles stays 4 (16ft) and now exactly matches the new trigger ring. Also adopted: polarity derived from (stat, op, value) rather than stat alone, explicit attackSpeed visuals, tests for expired/persistent/multi-effect/tie cases, a natural-activation trigger test instead of forceActivateAbility, and FOV/corpse gating for the aura. Cooldown direction: reviewer flagged that shortening it contradicts the literal wording; resolved by following the literal reading (840 -> 960 frames) and surfacing the interpretation in the PR description for the maintainer."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
