@@ -2,6 +2,7 @@ import { entityExists, query, removeEntity } from 'bitecs';
 import { Lifetime } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import { clearAreaDamageHits } from './areaDamageSystem.js';
+import { clearBeamHits } from './beamSystem.js';
 import { clearProjectilePierceHits } from './damageSystem.js';
 import { clearMeleeSwingHits } from './meleeSwingSystem.js';
 import type { GameWorld } from '../world.js';
@@ -19,6 +20,7 @@ export function lifetimeSystem(world: GameWorld): void {
 
     if (world.elapsedMs >= expiresAt) {
       clearAreaDamageHits(world, eid);
+      clearBeamHits(world, eid);
       clearMeleeSwingHits(world, eid);
       clearProjectilePierceHits(world, eid);
       clearEntityStores(world, eid);
