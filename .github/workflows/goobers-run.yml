@@ -154,11 +154,11 @@ jobs:
           rm -rf "$GOOBERS_INSTANCE"
           mkdir -p "$GOOBERS_INSTANCE"
 
-      - name: Point the instance at this repository and the checked-in source
-        # workflowSource: local-dir reads the checked-in .goobers/ tree
-        # directly (kind local-dir per Goobers internal/instance/config.go),
-        # so runtime definitions always match the branch's committed source —
-        # no separate `config materialize` copy step needed.
+      - name: Materialize checked-in source into the instance
+        # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
+        # populated config/ tree. workflowSource records the checked-in source;
+        # `config materialize` applies .goobers/instance.yaml.example and
+        # replaces config/ with manifest.yaml + gaggles/.
         run: |
           set -euo pipefail
           cat > "${GOOBERS_INSTANCE}/instance.yaml" <<EOF
@@ -180,6 +180,7 @@ jobs:
           runConditions:
             maxParallelRuns: 1
           EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
 
       - name: Run the workflow

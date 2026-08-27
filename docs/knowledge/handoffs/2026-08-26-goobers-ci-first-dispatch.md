@@ -64,11 +64,12 @@ This is a real before/after on the actual artifact, not a local-only check.
 ## Unresolved issues
 
 - **`goobers-run.yml` has never completed a live run.** Only the validate
-  workflow is proven. The run workflow requires a `GOOBERS_GITHUB_TOKEN` secret
-  (a PAT/App token with Contents/Issues/Pull-requests read-write) which is not
-  yet configured; `COPILOT_GITHUB_TOKEN` is configured. The workflow fails fast
-  with a clear message when the token is absent, so this is a clean blocker
-  rather than a deep mid-run failure.
+  workflow is proven. The run workflow now reuses `CRAWLER_CI_PAT` for
+  repo-write operations and `COPILOT_GITHUB_TOKEN` for Copilot model auth.
+  The first live run after token reuse failed earlier, while validating the
+  throwaway instance, because the workflow wrote only a root `instance.yaml`
+  and did not materialize the checked-in source into the runtime `config/`
+  directory Goobers v0.2.2 expects.
 - The deliberate design choice in `goobers-run.yml` is to require a PAT rather
   than widen `permissions: contents: write` on the built-in `github.token`,
   because a `GITHUB_TOKEN`-authored push does not trigger the normal CI
@@ -77,9 +78,8 @@ This is a real before/after on the actual artifact, not a local-only check.
 
 ## Recommended next steps
 
-1. Configure the `GOOBERS_GITHUB_TOKEN` secret, then dispatch
-   `goobers-run.yml` to exercise the full claim → plan → implement → review →
-   PR loop against issue #3639.
+1. Dispatch `goobers-run.yml` to exercise the full claim → plan → implement →
+   review → PR loop against issue #3639.
 2. Expect further schema/runtime findings on that first run — the validate pass
    only proves the config parses, not that every task's runtime contract holds.
 3. Consider making `goobers-validate.yml` a PR-triggered check on

@@ -60,7 +60,7 @@ ready-for-review PR). The versioned desired-state source lives in [`.goobers/`](
 To set up a local Goobers instance:
 
 1. Copy `.goobers/instance.yaml.example` to your external instance root (e.g. `C:\goobers\crawler\instance.yaml`)
-   and set a `GOOBERS_GITHUB_TOKEN` env var with a token for the target repo.
+   and set a `CRAWLER_CI_PAT` env var with a token for the target repo.
 2. Validate the versioned source before materializing it:
    ```powershell
    Q:\src\Goobers\bin\goobers.exe validate --source-tree .goobers
