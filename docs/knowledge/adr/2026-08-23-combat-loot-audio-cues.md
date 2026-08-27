@@ -195,10 +195,11 @@ authoritative acquisition sites (`itemPickupSystem` and `harvestSystem`).
 `combatSynthSpecForCue` selects three pairwise-distinct synth signatures.
 
 The cue kind remains `pickup` rather than splitting into three arbitration
-kinds. This preserves the existing 50 ms shared pickup cooldown and same-frame
-coalescing, preventing a mixed loot cluster from creating three simultaneous
-voices. Sparkle tint remains a separate visual concern, and untyped producers
-such as boss chests continue to receive the generic pickup tone.
+kinds. Typed XP/gold/material cues share the existing 50 ms typed pickup
+cooldown and same-frame coalescing with each other, while generic pickup cues
+use a separate clock so one generic + one typed cue can still dispatch in the
+same frame. Sparkle tint remains a separate visual concern, and untyped
+producers such as boss chests continue to receive the generic pickup tone.
 
 ## Alternatives Considered
 
