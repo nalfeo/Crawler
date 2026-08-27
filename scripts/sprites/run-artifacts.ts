@@ -36,6 +36,7 @@ import type {
   ManualAnchorOverride,
   ManualWeaponAnchorOverride,
 } from './postprocess-overrides.js';
+import type { SpritePipelineTimingSnapshot } from './pipeline-timing.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
@@ -295,6 +296,13 @@ export interface RunSummary {
     readonly misses: number;
     readonly bypassed: number;
   } | null;
+  /**
+   * Monotonic stage attribution for the original generate/full-run invocation.
+   * It is intentionally historical: explicit reprocess/rejudge operations keep
+   * this snapshot rather than relabeling old measurements as current work.
+   * Absent on summaries created before timing telemetry was introduced.
+   */
+  readonly timing?: SpritePipelineTimingSnapshot;
   readonly postprocessOverrides?: {
     readonly profilePath: string | null;
     readonly snapshotJsonPath: string | null;
