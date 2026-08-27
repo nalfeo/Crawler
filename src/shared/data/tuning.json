@@ -134,7 +134,7 @@
     "_note": "Periodic rat pack waves. Disabled by default. Waves spawn off-screen at regular intervals and charge the player unless suppressed by proximity to a safe room.",
     "intervalMs": 15000,
     "packSize": 10,
-    "spawnRingRadiusFt": 35,
+    "spawnRingRadiusFt": 50,
     "safeRoomSuppressionTiles": 15,
     "maxAliveFromWaves": 20
   }

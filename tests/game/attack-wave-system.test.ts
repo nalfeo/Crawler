@@ -25,6 +25,9 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { spawnerArenaSystem, spawnerSystem } from '../../src/game/index.js';
+import { GAME } from '../../src/shared/constants.js';
+import { pxToFt } from '../../src/shared/units.js';
+import { floor1Config } from '../../src/shared/floor-config.js';
 import tuning from '../../src/shared/data/tuning.json';
 
 type TuningSchema = typeof tuning & {
@@ -254,8 +257,8 @@ describe('attackWaveSystem', () => {
       const playerEid = spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
 
-      const viewportWidthFt = 16;
-      const viewportHeightFt = 12;
+      const viewportWidthFt = pxToFt(GAME.WIDTH / floor1Config.camera.zoom);
+      const viewportHeightFt = pxToFt(GAME.HEIGHT / floor1Config.camera.zoom);
       const minRingRadiusFt = Math.hypot(viewportWidthFt / 2, viewportHeightFt / 2);
       expect(TUNING.attackWaves.spawnRingRadiusFt).toBeGreaterThanOrEqual(minRingRadiusFt);
 
@@ -271,7 +274,7 @@ describe('attackWaveSystem', () => {
         const dx = world.stores.position.x[eid]! - px;
         const dy = world.stores.position.y[eid]! - py;
         const dist = Math.hypot(dx, dy);
-        expect(dist).toBeGreaterThanOrEqual(minRingRadiusFt - 0.01);
+        expect(dist).toBeGreaterThanOrEqual(TUNING.attackWaves.spawnRingRadiusFt - 0.01);
       }
     });
   });
@@ -288,7 +291,7 @@ describe('attackWaveSystem', () => {
         const rats = Array.from(query(world.ecs, [Enemy]));
         return rats
           .map((eid) => ({ x: world.stores.position.x[eid], y: world.stores.position.y[eid] }))
-          .sort((a, b) => (a.x! - b.x!) || (a.y! - b.y!));
+          .sort((a, b) => a.x! - b.x! || a.y! - b.y!);
       }
 
       const first = runWorld();
