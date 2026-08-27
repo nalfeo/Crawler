@@ -259,6 +259,16 @@ describe('buildServer routes (inject)', () => {
     });
   });
 
+  it('GET /api/workflow/reference-preview rejects an invalid asset name as a client error', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/reference-preview?name=!!!&type=character',
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'bad-request' });
+  });
+
   it('managed service exposes provenance and requires its shutdown token', async () => {
     const requestShutdown = vi.fn();
     const managedApp = buildServer({

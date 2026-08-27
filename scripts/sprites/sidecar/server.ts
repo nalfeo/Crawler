@@ -121,7 +121,7 @@ import {
   RerunError,
   type RerunErrorKind,
 } from '../rerun.js';
-import { normaliseName, synthesizeBrief } from '../synthesize-brief.js';
+import { normaliseName, synthesizeBrief, SynthesizeBriefError } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 import {
   AssetRequestContextError,
@@ -2450,9 +2450,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(400);
         return { error: 'bad-request', message: 'name and a concrete sprite type are required' };
       }
+      let normalizedName: string;
+      try {
+        normalizedName = normaliseName(name);
+      } catch (error) {
+        if (!(error instanceof SynthesizeBriefError)) throw error;
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
       const resolved = resolveReferenceSelection({
         repoRoot: deps.repoRoot,
-        briefName: normaliseName(name),
+        briefName: normalizedName,
         briefType: type,
       });
       return {
