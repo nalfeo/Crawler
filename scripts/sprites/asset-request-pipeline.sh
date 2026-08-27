@@ -1,19 +1,36 @@
 #!/usr/bin/env bash
 
 set -uo pipefail
+# Enable monitor mode so the backgrounded worker becomes the leader of its own
+# process group. `sprites:worker` is an npm -> tsx -> node tree, so signalling
+# only the launcher PID can leave the real worker consuming the queue; cleanup
+# signals the whole group (negative PID) instead.
+set -m
 
 npm_bin="${SPRITES_PIPELINE_NPM_BIN:-npm}"
 marker_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 marker="${SPRITES_WORKER_PRODUCER_COMPLETE_FILE:-${marker_root}/asset-request-producer-complete-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}}"
 worker_pid=""
+worker_reaped=0
+
+# Signals the worker's entire process group, then escalates to SIGKILL so no
+# descendant (tsx/node) can outlive a dead launcher. `worker_pid` is never
+# cleared once set: after the launcher is reaped its PGID is still the handle
+# for any surviving descendants.
+stop_worker_group() {
+  [[ -n "$worker_pid" ]] || return 0
+  kill -TERM -- -"$worker_pid" 2>/dev/null || kill -TERM "$worker_pid" 2>/dev/null || true
+  if [[ "$worker_reaped" -eq 0 ]]; then
+    wait "$worker_pid" 2>/dev/null || true
+    worker_reaped=1
+  fi
+  kill -KILL -- -"$worker_pid" 2>/dev/null || true
+}
 
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
-  if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
-    kill -TERM "$worker_pid" 2>/dev/null || true
-    wait "$worker_pid" 2>/dev/null || true
-  fi
+  stop_worker_group
   rm -f "$marker"
   exit "$status"
 }
@@ -53,7 +70,8 @@ fi
 if ! kill -0 "$worker_pid" 2>/dev/null; then
   wait "$worker_pid"
   worker_status=$?
-  worker_pid=""
+  worker_reaped=1
+  stop_worker_group
   if [[ "$worker_status" -eq 0 ]]; then
     echo "asset-request pipeline: worker exited before producer completion" >&2
     echo "Remediation: inspect the worker log and rerun the workflow." >&2
@@ -75,7 +93,8 @@ fi
 
 wait "$worker_pid"
 worker_status=$?
-worker_pid=""
+worker_reaped=1
+stop_worker_group
 rm -f "$marker"
 trap - EXIT INT TERM
 exit "$worker_status"

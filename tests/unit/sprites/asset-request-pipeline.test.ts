@@ -10,14 +10,20 @@ const SCRIPT = toBashScriptPath(
   path.join(REPO_ROOT, 'scripts', 'sprites', 'asset-request-pipeline.sh'),
 );
 
+// The coordinator is a Bash script, so this suite can only run where a `bash`
+// binary is resolvable; skip rather than fail on environments without one.
+const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
+
 let tempDir: string;
 let fakeNpm: string;
 let logFile: string;
+let childPidFile: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(path.join(tmpdir(), 'asset-request-pipeline-'));
   fakeNpm = path.join(tempDir, 'fake-npm.sh');
   logFile = path.join(tempDir, 'events.log');
+  childPidFile = path.join(tempDir, 'worker-child.pid');
   writeFileSync(
     fakeNpm,
     `#!/usr/bin/env bash
@@ -26,6 +32,10 @@ command_name="\${2:-}"
 case "$command_name" in
   sprites:worker)
     echo "worker-start secret=\${AZURE_OPENAI_API_KEY:-absent}" >> "$PIPELINE_TEST_LOG"
+    # Stand in for the real npm -> tsx -> node tree: a descendant that never
+    # sees a signal aimed only at this launcher PID.
+    sleep 30 &
+    echo $! > "$PIPELINE_TEST_CHILD_PID_FILE"
     trap 'echo worker-term >> "$PIPELINE_TEST_LOG"; exit 0' TERM INT
     if [[ "\${PIPELINE_TEST_MODE:-success}" == "worker-preexit" ]]; then
       exit 0
@@ -35,6 +45,12 @@ case "$command_name" in
     ;;
   sprites:ingest-once)
     echo "ingest-start secret=\${AZURE_OPENAI_API_KEY:-absent}" >> "$PIPELINE_TEST_LOG"
+    # Deterministic ordering: never finish before the worker fixture has
+    # recorded its descendant PID, so the assertions always have a handle.
+    for _ in $(seq 1 1000); do
+      [[ -s "$PIPELINE_TEST_CHILD_PID_FILE" ]] && break
+      sleep 0.01
+    done
     case "\${PIPELINE_TEST_MODE:-success}" in
       producer-fail) exit 7 ;;
       signal) kill -TERM "$PPID"; exit 0 ;;
@@ -61,15 +77,26 @@ function run(mode: string) {
       SPRITES_PIPELINE_NPM_BIN: toBashScriptPath(fakeNpm),
       SPRITES_WORKER_PRODUCER_COMPLETE_FILE: toBashScriptPath(marker),
       PIPELINE_TEST_LOG: toBashScriptPath(logFile),
+      PIPELINE_TEST_CHILD_PID_FILE: toBashScriptPath(childPidFile),
       PIPELINE_TEST_MODE: mode,
       AZURE_OPENAI_API_KEY: 'worker-secret',
     }),
   });
   const log = readFileSync(logFile, 'utf8').trim().split(/\r?\n/);
-  return { result, log, marker };
+  const workerChildPid = Number.parseInt(readFileSync(childPidFile, 'utf8').trim(), 10);
+  return { result, log, marker, workerChildPid };
 }
 
-describe('asset-request pipeline coordinator', () => {
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe.skipIf(!hasBash)('asset-request pipeline coordinator', () => {
   it('marks producer completion only after ingest and keeps provider secrets worker-scoped', () => {
     const { result, log, marker } = run('success');
 
@@ -98,6 +125,20 @@ describe('asset-request pipeline coordinator', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('worker exited before producer completion');
     expect(log).not.toContain('worker-marker');
+  });
+
+  it('kills worker descendants when the producer fails', () => {
+    const { workerChildPid } = run('producer-fail');
+
+    expect(Number.isInteger(workerChildPid)).toBe(true);
+    expect(isAlive(workerChildPid)).toBe(false);
+  });
+
+  it('kills worker descendants when the launcher exits before producer completion', () => {
+    const { workerChildPid } = run('worker-preexit');
+
+    expect(Number.isInteger(workerChildPid)).toBe(true);
+    expect(isAlive(workerChildPid)).toBe(false);
   });
 
   it('maps TERM to 143 and cleans up the worker and marker', () => {
