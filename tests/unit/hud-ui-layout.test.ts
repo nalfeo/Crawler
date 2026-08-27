@@ -61,7 +61,10 @@ describe('HudUI mobile layout guards', () => {
   it('wires the loot counter and skill tracker into the shared vitals stack', () => {
     const lootSource = readFileSync('src/engine/HudLootCounter.ts', 'utf8');
     expect(lootSource).toMatch(
-      /import\s+\{\s*VITALS_X,\s*VITALS_PANEL_Y\s*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+      /import\s+\{[^}]*\bVITALS_X\b[^}]*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+    );
+    expect(lootSource).toMatch(
+      /import\s+\{[^}]*\bVITALS_PANEL_Y\b[^}]*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
     );
     expect(lootSource).toMatch(/const PANEL_X = VITALS_X;/);
     expect(lootSource).toMatch(/const PANEL_Y = VITALS_PANEL_Y\.loot;/);
@@ -69,7 +72,10 @@ describe('HudUI mobile layout guards', () => {
 
     const skillSource = readFileSync('src/engine/HudSkillTracker.ts', 'utf8');
     expect(skillSource).toMatch(
-      /import\s+\{\s*VITALS_X,\s*VITALS_PANEL_Y\s*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+      /import\s+\{[^}]*\bVITALS_X\b[^}]*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+    );
+    expect(skillSource).toMatch(
+      /import\s+\{[^}]*\bVITALS_PANEL_Y\b[^}]*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
     );
     expect(skillSource).toMatch(/const PANEL_X = VITALS_X;/);
     expect(skillSource).toMatch(/const PANEL_Y = VITALS_PANEL_Y\.skill;/);
