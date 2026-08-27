@@ -147,6 +147,7 @@ import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
 import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
+import { emitCorpseExplosion } from '../core/apply-damage.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2943,15 +2944,8 @@ function explodeEnemiesInClearedBossRoom(world: GameWorld, room: RoomData | null
       continue;
     }
 
-    world.combatEvents.push({
-      type: 'corpseExplode',
-      x,
-      y,
-      amount: 0,
-      targetType: 'enemy',
-      timestamp: world.elapsedMs,
-      targetEid: eid,
-    });
+    emitCorpseExplosion(world, eid, x, y, 0);
+    world.floorScenario?.enemyArchetypes.delete(eid);
     clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
   }
