@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "b063a8a71440a20ad9b8c47ee355f384ac330306",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff correctly implements semantic metadata for XP, gold, and material pickups without inferring type from cosmetic tint. The arbitration logic prioritizes typed cues over generic ones while maintaining same-frame coalescing and shared cooldowns. Test coverage spans unit, ECS, and e2e layers, and the code follows project policies."
     }
   }
 }
