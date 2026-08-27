@@ -1282,9 +1282,9 @@ export function createEquipmentUI(
       const delta = candidateDps - replacedDps;
       lines.push(
         delta === 0
-          ? `${formatDps(candidateDps)} Max 1T DPS`
+          ? `DPS: ${formatDps(candidateDps)}`
           : {
-              text: candidateDps === 0 ? 'Max 1T DPS' : `${formatDps(candidateDps)} Max 1T DPS`,
+              text: candidateDps === 0 ? 'DPS' : `DPS: ${formatDps(candidateDps)}`,
               deltaText: ` (${delta > 0 ? '+' : '-'}${formatDps(Math.abs(delta))})`,
               deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
             },
@@ -1297,7 +1297,7 @@ export function createEquipmentUI(
     const dps = weaponSingleTargetDps(def);
     return dps === null
       ? tooltipStatLines(def)
-      : [`${formatDps(dps)} Max 1T DPS`, ...tooltipStatLines(def)];
+      : [`DPS: ${formatDps(dps)}`, ...tooltipStatLines(def)];
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {

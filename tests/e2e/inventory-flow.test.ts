@@ -1146,9 +1146,7 @@ describe('equipment decision gate (e2e)', () => {
         probe.previewEquipmentBagItem('bone-club');
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
-      expect(handRows).toEqual(
-        expect.arrayContaining(['22.2 Max 1T DPS', '(-2.8)', 'Armor', '(-3)']),
-      );
+      expect(handRows).toEqual(expect.arrayContaining(['DPS: 22.2', '(-2.8)', 'Armor', '(-3)']));
     } finally {
       await closeQuietly(context);
     }
