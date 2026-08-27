@@ -23,6 +23,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { runFull } from '../../scripts/sprites/run-full.js';
+import {
+  spritePipelineTimingSchema,
+  type SpritePipelineTimingSnapshot,
+} from '../../scripts/sprites/pipeline-timing.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import {
@@ -189,6 +193,46 @@ describe('runFull — one-shot full pipeline (integration)', () => {
       }
     }
     expect(result.attempts).toBe(1);
+  });
+
+  it('persists reproducible monotonic stage attribution with a fake provider', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const fixture: SpritePipelineTimingSnapshot = spritePipelineTimingSchema.parse(
+      JSON.parse(
+        readFileSync(path.resolve('tests/fixtures/sprites/generation-timing.json'), 'utf8'),
+      ),
+    );
+    const samples = [
+      0, 0, 5, 5, 12, 12, 62, 62, 70, 70, 79, 79, 89, 89, 92, 92, 96, 96, 99, 99, 103, 103, 106,
+      106, 110, 110, 113, 113, 117, 117, 125, 140,
+    ];
+    let providerCalls = 0;
+    const provider: ImageProvider = {
+      async generateSheet(): Promise<Buffer> {
+        providerCalls++;
+        return sheet;
+      },
+    };
+
+    const result = await runFull({
+      briefPath,
+      preloaded,
+      provider,
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      monotonicNow: () => samples.shift() ?? Number.NaN,
+    });
+
+    expect(providerCalls).toBe(1);
+    expect(result.summary.timing).toEqual(fixture);
+    expect(result.summary.timing?.totalMs).toBe(
+      Object.values(result.summary.timing?.stages ?? {}).reduce(
+        (total, duration) => total + duration,
+        0,
+      ),
+    );
   });
 
   it('ranks passing candidates ahead of failing ones, then by score desc', async () => {
