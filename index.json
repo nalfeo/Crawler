@@ -136,6 +136,40 @@
     }
   },
   {
+    "commit": "b2747d21e220b762ee41348c50b76a369567fe3b",
+    "commitDate": "2026-08-27T09:26:20-07:00",
+    "commitSubject": "ci(auto-rebase): honor merge-automation opt-out labels",
+    "capturedAt": "2026-08-27T19:46:55.696Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33103416523",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b2747d21e220b762ee41348c50b76a369567fe3b.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/b2747d21e220b762ee41348c50b76a369567fe3b.fun-report.json"
+    }
+  },
+  {
     "commit": "5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06",
     "commitDate": "2026-08-27T07:09:01Z",
     "commitSubject": "ci(goobers): trial hosted progress from private draft (#3650)",
