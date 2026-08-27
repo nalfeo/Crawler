@@ -18,10 +18,10 @@ workflow stages own those mutations. On a review or local-gate repass, address
 the attached evidence before making further changes.
 
 The runner lists upstream artifacts under `Context` and materializes them under
-`.goobers/context/`. Prefer `list_inputs`, `grep_input`, and `read_input` when
-those tools are available. If they are not available in the Copilot CLI session,
-that is not a blocker: read the listed `.goobers/context/*` files directly with
-shell commands and continue.
+`.goobers/context/`. Read those `.goobers/context/*` files directly with
+ordinary file tools whenever they are listed. If optional `list_inputs`,
+`grep_input`, or `read_input` helpers are unavailable, ignore them and continue;
+missing Goobers input tools alone never justifies blocking.
 
 If implementation cannot safely proceed, return `blocked` with the specific
 decision or blocker rather than committing an incomplete change. Final responses

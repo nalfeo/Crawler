@@ -18,10 +18,10 @@ Return `fail` only for a product decision that requires a maintainer. Do not
 modify the repository, issue, or pull requests.
 
 The runner lists upstream artifacts under `Context` and materializes them under
-`.goobers/context/`. Prefer `list_inputs`, `grep_input`, and `read_input` when
-those tools are available. If they are not available in the Copilot CLI session,
-that is not a blocker: read the listed `.goobers/context/*` files directly with
-shell commands and continue.
+`.goobers/context/`. Read those `.goobers/context/*` files directly with
+ordinary file tools whenever they are listed. If optional `list_inputs`,
+`grep_input`, or `read_input` helpers are unavailable, ignore them and continue;
+missing Goobers input tools alone never justifies blocking.
 
 Final responses must be raw JSON only: no Markdown fences, no prose before or
 after. Keep `outputs` scalar-only; encode lists as comma-separated strings or
