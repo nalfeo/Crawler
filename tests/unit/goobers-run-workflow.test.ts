@@ -10,8 +10,9 @@ interface GoobersActionsWorkflow {
   on: {
     issues?: { types?: string[] };
     schedule?: Array<{ cron?: string }>;
-    workflow_dispatch?: unknown;
+    workflow_dispatch?: { inputs?: { goobers_version?: { default?: string } } };
   };
+  permissions?: Record<string, string>;
   concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
   jobs: {
     run?: {
@@ -20,6 +21,7 @@ interface GoobersActionsWorkflow {
       env?: Record<string, string>;
       steps?: Array<{
         name?: string;
+        if?: string;
         uses?: string;
         env?: Record<string, string>;
         run?: string;
@@ -99,9 +101,13 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(job?.name).toContain("inputs.workflow || 'crawler-feature-pr'");
     expect(job?.env).toMatchObject({
-      GOOBERS_VERSION: "${{ inputs.goobers_version || 'v0.3.3' }}",
+      GOOBERS_VERSION: "${{ inputs.goobers_version || 'goobers-dev-6d33b160' }}",
       GOOBERS_WORKFLOW: "${{ inputs.workflow || 'crawler-feature-pr' }}",
     });
+    expect(workflow.on.workflow_dispatch?.inputs?.goobers_version?.default).toBe(
+      'goobers-dev-6d33b160',
+    );
+    expect(workflow.permissions?.checks).toBe('write');
     expect(checkout?.with).toEqual({
       ref: "${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}",
       'persist-credentials': false,
@@ -190,7 +196,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
   });
 
-  it('pins the same non-v0.2.2 Goobers checksum in run and validate workflows', () => {
+  it('pins the private draft trial while retaining the validated v0.3.3 release', () => {
     const runWorkflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const validateWorkflow = loadYaml<GoobersValidateWorkflow>(
       '.github',
@@ -205,13 +211,45 @@ describe('Goobers automatic dispatch and recovery', () => {
     )?.run;
     const runDefault = runWorkflow.jobs.run?.env?.GOOBERS_VERSION;
     const validateDefault = validateWorkflow.on.workflow_dispatch?.inputs?.goobers_version?.default;
-    const expectedSha = '47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82';
+    const draftSha = '4758e471e845925c364621db61bdaddefc4a46f45de65aa1cf8a970e3376adde';
+    const releaseSha = '47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82';
 
-    expect(runDefault).toBe("${{ inputs.goobers_version || 'v0.3.3' }}");
+    expect(runDefault).toBe("${{ inputs.goobers_version || 'goobers-dev-6d33b160' }}");
     expect(validateDefault).toBe('v0.3.3');
-    expect(runDefault).not.toContain('v0.2.2');
-    expect(validateDefault).not.toBe('v0.2.2');
-    expect(extractPinnedSha(runShaScript)).toBe(expectedSha);
-    expect(extractPinnedSha(validateShaScript)).toBe(expectedSha);
+    expect(runShaScript).toContain(`GOOBERS_SHA256=${draftSha}`);
+    expect(runShaScript).toContain(`GOOBERS_SHA256=${releaseSha}`);
+    expect(runShaScript).toContain('GOOBERS_ASSET=goobers_dev_linux_amd64.tar.gz');
+    expect(extractPinnedSha(validateShaScript)).toBe(releaseSha);
+  });
+
+  it('downloads the draft asset with authenticated gh and projects hosted progress', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const privateDownload = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Download pinned private Goobers draft',
+    );
+    const publicDownload = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Download pinned public Goobers release',
+    );
+    const run = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
+    const upload = workflow.jobs.run?.steps?.find((step) => step.name === 'Upload run journal');
+
+    expect(privateDownload?.if).toContain("env.GOOBERS_VERSION == 'goobers-dev-6d33b160'");
+    expect(privateDownload?.env?.GH_TOKEN).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(privateDownload?.run).toContain('gh release download "${GOOBERS_VERSION}"');
+    expect(privateDownload?.run).toContain('--repo "${GITHUB_REPOSITORY}"');
+    expect(privateDownload?.run).toContain('--pattern "${GOOBERS_ASSET}"');
+    expect(publicDownload?.if).toContain("env.GOOBERS_VERSION != 'goobers-dev-6d33b160'");
+    expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
+    expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
+    expect(run?.env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    expect(run?.run).toContain(
+      'goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"',
+    );
+    expect(upload?.with).toEqual({
+      name: "goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}",
+      path: '${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/',
+      'if-no-files-found': 'warn',
+      'retention-days': 30,
+    });
   });
 });
