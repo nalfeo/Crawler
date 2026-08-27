@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -22,6 +23,56 @@ const actionYml = readFileSync(
   path.join(repoRoot, '.github/actions/setup-node/action.yml'),
   'utf8',
 );
+type ActionStep = {
+  name?: string;
+  uses?: string;
+  if?: string;
+  run?: string;
+  with?: Record<string, string>;
+};
+const action = parse(actionYml) as { runs: { steps: ActionStep[] } };
+
+describe('setup-node dependency caching', () => {
+  it('keys the npm download cache from package-lock.json, gated on install-dependencies', () => {
+    const setupNode = action.runs.steps.find((step) => step.uses === 'actions/setup-node@v4');
+
+    expect(setupNode?.with).toMatchObject({
+      cache: "${{ inputs.install-dependencies == 'true' && 'npm' || '' }}",
+      'cache-dependency-path':
+        "${{ inputs.install-dependencies == 'true' && 'package-lock.json' || '' }}",
+    });
+  });
+
+  it('never caches node_modules and keeps npm ci authoritative', () => {
+    const install = action.runs.steps.find((step) => step.name === 'Install dependencies');
+
+    // Normalize every configured `actions/cache*` path (any major version),
+    // splitting multiline path lists, and reject any entry whose segments
+    // include `node_modules` in any relative form (`node_modules`,
+    // `./node_modules`, `**/node_modules`, etc.).
+    const cachesNodeModules = action.runs.steps.some((step) => {
+      if (!step.uses?.startsWith('actions/cache@')) return false;
+      const rawPath = step.with?.path;
+      if (!rawPath) return false;
+      return rawPath
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .some((entry) =>
+          entry
+            .split('/')
+            .map((segment) => segment.trim())
+            .includes('node_modules'),
+        );
+    });
+
+    expect(cachesNodeModules).toBe(false);
+    expect(install).toMatchObject({
+      if: "${{ inputs.install-dependencies == 'true' }}",
+      run: 'npm ci',
+    });
+  });
+});
 
 /**
  * A transient Ubuntu mirror outage made `playwright install-deps` time out,
