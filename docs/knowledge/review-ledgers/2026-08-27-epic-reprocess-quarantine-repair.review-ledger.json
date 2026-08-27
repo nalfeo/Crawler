@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "epic-reprocess-quarantine-repair",
+  "task_title": "Fix epic-reprocess staleness + merge-train quarantine repair",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "plan_divergence": "minor",
+      "notes": "gpt-5.4 (high effort) reviewed the design (not just code) after reading epic-reprocess.mjs, issue-intake-lib.mjs, quarantine-repair.mjs/test, reconcile.mjs quarantine path, reconcile-lib.mjs. Verdict was rejected pending fixes; all 9 concerns resolved, no re-architecture. Alternatives considered and rejected: (1) always restart:true for Copilot-assigned epic nodes -- rejected, would restart healthy sessions, violates rule; (2) make Fix-1 purely event-driven off PR close/quarantine instead of a polling backstop -- rejected, reconcile.mjs already restarts on PR-close, this IS the backstop for when that misses, duplication is intentional defense-in-depth, documented in code comment; (3) repair inline at the quarantine site in reconcile.mjs instead of a separate post-pass sweep -- rejected, keeps the quarantine-detection concern (reconcile.mjs) separate from the repair concern (quarantine-repair.mjs), and the sweep re-derives the confirmation from the same authoritative marker so no information is lost; (4) change GitHub App/branch permissions to let the train push copilot/* directly -- rejected, outside repo control (GitHub-enforced Copilot-branch restriction), and would remove the branch-owner safety property intentionally. Must-fix #5 (BLOCKED_LABEL is generic -- also applied by blockEntry/deAdmitNoop for validation failures and no-op diffs, both commonly on copilot/* branches too) -- fixed by adding isConfirmedRestrictedBranchQuarantine(), which reads the authoritative evaluateUnadvanceableStrike status-comment marker (same one the quarantine path itself writes) and requires strikes >= UNADVANCEABLE_STRIKE_THRESHOLD for the CURRENT live head sha; repairQuarantinedPr now calls this before ever creating a branch/PR. Must-fix #6 (existing-PR reuse on a branch was accepted without validating base/marker) -- fixed by findVerifiedReplacementPr(), which requires the found open PR to carry the exact repair marker for (originalPrNumber, headSha) and target the expected base, else throws rather than silently linking. Nice-to-have #7 (ref-creation race) -- hardened: POST /git/refs now catches a 422 and re-verifies the sha before accepting. Nice-to-have #8 (labels(first:50) could truncate merge-train-blocked off a heavily-labeled PR) -- bumped to first:100. Nice-to-have #9 (notice-marker suppression trusted any commenter) -- fixed by isTrustedNoticeAuthor(), reusing the performed_via_github_app / TRUSTED_ASSOCIATIONS / TRUSTED_BOT_LOGINS pattern already established in issue-intake-lib.mjs/reconcile.mjs, so only our own automation identity (or another trusted actor) can suppress a re-post. All fixes covered by new/updated node --test cases (19 tests in quarantine-repair.test.mjs, 13 in epic-reprocess.test.mjs); full targeted suite re-run clean (1135 tests) after each fix."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["code-review-agent"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "copilotOwnershipStatus treated a MERGED linked PR the same as CLOSED (both fell outside the state===open filter), so an issue could be spuriously restarted during the merge-vs-issue-autoclose webhook lag window. Fixed: MERGED now short-circuits to stale:false before the abandoned/quarantined checks; 2 new regression tests added."
+        },
+        {
+          "round": 2,
+          "models": ["code-review-agent"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-reviewed full diff after the MERGED fix. Confirmed PullRequestState GraphQL enum has only OPEN/CLOSED/MERGED (no other value hits this bug class); REST PR state (used in quarantine-repair.mjs repairEligibility) has only open/closed, no analogous issue. No further findings across epic-reprocess.mjs, issue-intake-lib.mjs, quarantine-repair.mjs(+test), merge-train.yml, merge-train-workflow-wakeups.test.ts."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

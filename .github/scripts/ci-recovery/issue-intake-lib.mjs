@@ -594,6 +594,15 @@ export function openBlockingIssues(dependencies) {
  * `blocked_by` dependency chain the intent is for Copilot to pick up the
  * dependent once the blocker clears, regardless of its labels.  The
  * trusted-opener check (no arbitrary bots) still applies.
+ *
+ * `restart` is threaded straight through to `runIssueIntake`. It defaults to
+ * `false`, which is a no-op when Copilot is already assigned (the assignee
+ * replace mutation is idempotent and does not re-fire GitHub's `assigned`
+ * webhook, so it never restarts a stalled session). Callers that positively
+ * determined the existing Copilot assignment is stale -- e.g.
+ * `epic-reprocess.mjs`'s `copilotOwnershipStatus` finding every linked PR
+ * closed or quarantined -- must pass `restart: true` so the issue is
+ * unassigned and reassigned, which does restart the session.
  */
 export async function intakeOpenedIssue({
   graphql,
@@ -605,6 +614,7 @@ export async function intakeOpenedIssue({
   issue,
   maintainerLogin = 'nalfeo',
   fromUnblockSweep = false,
+  restart = false,
 }) {
   let eligibilityReason;
   if (fromUnblockSweep) {
@@ -649,7 +659,16 @@ export async function intakeOpenedIssue({
     };
   }
 
-  const result = await runIssueIntake({ graphql, paginate, request, token, owner, repo, issue });
+  const result = await runIssueIntake({
+    graphql,
+    paginate,
+    request,
+    token,
+    owner,
+    repo,
+    issue,
+    restart,
+  });
   return {
     assigned: true,
     reason: eligibilityReason,
