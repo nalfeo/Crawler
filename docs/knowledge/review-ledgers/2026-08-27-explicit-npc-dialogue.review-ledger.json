@@ -14,8 +14,18 @@
       "notes": "Adopted: pointer hit-testing converts Phaser world pixels to feet and uses actual NPC Size half-extents, separately requiring nearbyPlayer; closest qualifying NPC is selected with eid tie-break; real-input E2E will expose precise NPC and Awards screen-space points. Rejected sprite-interactive rearchitecture because it is invasive and unnecessary."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Review round 1: ledger stage incompleteness remains expected until finalization; resolved the valid probe concern by binding its projected screen point to the NPC primed for interaction. Re-review found no implementation concerns."
     },
     "independent_grade": {
       "completed": false,
