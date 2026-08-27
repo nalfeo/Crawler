@@ -16,8 +16,11 @@ import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { Player } from '../core/components.js';
 import { entityExists, query } from 'bitecs';
-import { computeFlowField } from '../core/map/flow-field.js';
+import { computeMultiSourceFlowField } from '../core/map/flow-field.js';
 import { RoomRole } from '../shared/map-types.js';
+import { GAME } from '../shared/constants.js';
+import { pxToFt } from '../shared/units.js';
+import { floor1Config } from '../shared/floor-config.js';
 
 // Type assertion for tuning (schema loaded at build time)
 type TuningSchema = typeof tuning & {
@@ -76,9 +79,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
   // Invalidate flow field cache if map changed or safe rooms cleared
   if (
     state.safeRoomDistanceFieldMap !== floorMap ||
-    (state.safeRoomDistanceField !== undefined &&
-      state.safeRoomDistanceField !== null &&
-      state.clearedSafeRoomIdsSnapshot &&
+    (state.clearedSafeRoomIdsSnapshot !== undefined &&
       state.clearedSafeRoomIdsSnapshot !== Array.from(world.clearedSafeRoomIds).join(','))
   ) {
     state.safeRoomDistanceField = null;
@@ -90,35 +91,40 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
   if (!state.safeRoomDistanceField || state.safeRoomDistanceField === null) {
     const safeRoomTiles: Array<{ x: number; y: number }> = [];
 
-    // Collect all safe room tiles (use room center as anchor)
+    // Seed every traversable tile in each safe room so distance is to the room,
+    // not to an arbitrary center tile.
     const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
     for (const room of safeRooms) {
-      const centerX = Math.floor(room.bounds.x + room.bounds.width / 2);
-      const centerY = Math.floor(room.bounds.y + room.bounds.height / 2);
-      safeRoomTiles.push({ x: centerX, y: centerY });
+      for (let y = room.bounds.y; y < room.bounds.y + room.bounds.height; y += 1) {
+        for (let x = room.bounds.x; x < room.bounds.x + room.bounds.width; x += 1) {
+          safeRoomTiles.push({ x, y });
+        }
+      }
     }
 
     // Also include cleared safe rooms
     for (const clearedId of world.clearedSafeRoomIds) {
       const room = floorMap.roomGraph.get(clearedId);
       if (room) {
-        const centerX = Math.floor(room.bounds.x + room.bounds.width / 2);
-        const centerY = Math.floor(room.bounds.y + room.bounds.height / 2);
-        safeRoomTiles.push({ x: centerX, y: centerY });
+        for (let y = room.bounds.y; y < room.bounds.y + room.bounds.height; y += 1) {
+          for (let x = room.bounds.x; x < room.bounds.x + room.bounds.width; x += 1) {
+            safeRoomTiles.push({ x, y });
+          }
+        }
       }
     }
 
     // If no safe rooms, cache an empty field (no suppression needed)
     if (safeRoomTiles.length === 0) {
-      state.safeRoomDistanceField = null;
+      state.safeRoomDistanceField = new Int32Array(
+        floorMap.tileMap.width * floorMap.tileMap.height,
+      ).fill(-1);
       state.safeRoomDistanceFieldMap = floorMap;
       state.clearedSafeRoomIdsSnapshot = '';
       return false;
     }
 
-    // Compute multi-source BFS: use first safe room as goal for flow field
-    const firstSafeRoom = safeRoomTiles[0]!;
-    const field = computeFlowField(floorMap, firstSafeRoom);
+    const field = computeMultiSourceFlowField(floorMap, safeRoomTiles);
 
     state.safeRoomDistanceField = field.distance;
     state.safeRoomDistanceFieldMap = floorMap;
@@ -163,14 +169,17 @@ function resolveWaveSpawnPoint(
 
   const spawnRingRadiusFt = TUNING.attackWaves.spawnRingRadiusFt;
   const tileSizeFt = floorMap.config.tileSizeFt;
+  if (spawnRingRadiusFt < minRingRadiusFt) {
+    throw new Error('attackWaves.spawnRingRadiusFt must cover the Floor 1 viewport diagonal');
+  }
 
   // Try up to 5 attempts to find a valid spawn point on the ring
   for (let attempt = 0; attempt < 5; attempt++) {
     // Pick a random angle
     const angle = world.rng.next() * Math.PI * 2;
 
-    // Pick a random distance within the ring (at least minRingRadiusFt)
-    const distance = minRingRadiusFt + world.rng.next() * (spawnRingRadiusFt - minRingRadiusFt);
+    // Keep every spawn at the configured off-screen radius.
+    const distance = spawnRingRadiusFt;
 
     const spawnX = playerX + Math.cos(angle) * distance;
     const spawnY = playerY + Math.sin(angle) * distance;
@@ -225,8 +234,8 @@ function spawnWavePack(world: GameWorld): void {
   }
 
   // Compute minimum off-screen radius (half viewport diagonal)
-  const viewportWidthFt = 16; // Standard viewport width (GAME.WIDTH = 800px, FLOOR_1_CAMERA_ZOOM = 2.5, so 800 / 2.5 / 50 = 6.4ft, use 16 as reasonable estimate)
-  const viewportHeightFt = 12; // Standard viewport height (GAME.HEIGHT = 600px, 600 / 2.5 / 50 = 4.8ft, use 12 as reasonable estimate)
+  const viewportWidthFt = pxToFt(GAME.WIDTH / floor1Config.camera.zoom);
+  const viewportHeightFt = pxToFt(GAME.HEIGHT / floor1Config.camera.zoom);
   const minRingRadiusFt = computeMinSpawnRingRadiusFt(viewportWidthFt, viewportHeightFt);
 
   const state = (world.attackWaveState ??= {
