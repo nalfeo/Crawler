@@ -36,6 +36,9 @@ prompt says "00/01/02 query-backlog" or similar upstream context artifacts must
 be inspected, those are file names or prompt-listed artifacts to read from
 `.goobers/context/`; do not return `MISSING_REQUIREMENTS_CONTEXT` until you have
 actually listed that directory and attempted to read the materialized files.
+If a context file names issue #3639 or another claimed issue but omits the full
+body, fetch it directly with `gh issue view <number> --repo nalfeo/Crawler
+--json number,title,body,labels,url` and use that issue body as requirements.
 
 If implementation cannot safely proceed, return `blocked` with the specific
 decision or blocker rather than committing an incomplete change. Final responses

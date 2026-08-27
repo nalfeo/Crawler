@@ -24,5 +24,8 @@ Your first shell command must list `.goobers/context/` and print the readable
 context files there. A missing helper tool is not the same as missing
 requirements context; do not report `MISSING_REQUIREMENTS_CONTEXT` unless the
 directory was listed and the required files were absent or unreadable.
+If the context identifies a claimed issue but does not include its body, fetch
+the full issue with `gh issue view <number> --repo nalfeo/Crawler --json
+number,title,body,labels,url` and continue from that.
 
 Return the final completion as raw JSON only, with scalar-only `outputs`.
