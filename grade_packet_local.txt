@@ -1,0 +1,1113 @@
+
+You are an INDEPENDENT grader for a change in the Crawler repository. You did not
+write this change and you did not review it. Grade the DIFF ITSELF — do not trust
+any summary, commit message, or the change author's own description of it.
+
+Task: Show range/damage numbers for spells that target others
+Declared complexity: 3 apple(s)
+Graded tree: 2aa706e0a20dd250b27de711a5ef90ddde7005ba (base 5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06)
+
+Changed files (16):
+  • docs/knowledge/adr/2026-08-27-spell-stat-summaries.md
+  • docs/knowledge/handoffs/2026-08-27-spell-stat-summaries.md
+  • docs/knowledge/review-ledgers/2026-08-27-spell-effect-numbers.review-ledger.json
+  • src/bootstrap/floor-main-scene-options.ts
+  • src/engine/ModalPickerUI.ts
+  • src/engine/scenes/MainGameScene.ts
+  • src/game/abilities/effect-summary.ts
+  • src/game/floorScenario.ts
+  • src/game/systems/progressionEffects.ts
+  • src/labs/abilities-lab/index.ts
+  • src/shared/spell-effect-summary.ts
+  • tests/e2e/boss-reward-picker-ux.test.ts
+  • tests/e2e/floor1-merchant-modal.test.ts
+  • tests/game/floor1-scenario.test.ts
+  • tests/unit/spell-effect-summary.test.ts
+  • tests/unit/spell-stat-detail-wiring.test.ts
+
+Score each criterion as an integer 1..5:
+- **correctness** — Does the change actually do what it claims, including edge cases, error paths, and state/ordering? 1 = provably broken, 5 = correct with edge cases handled.
+- **scope_discipline** — Is the diff the smallest correct change for the stated task, with no unrelated refactors or drive-by rewrites? 1 = sprawling, 5 = surgical.
+- **test_coverage** — Are the changed behaviors covered by tests that would fail without the change, and is existing coverage preserved? 1 = none, 5 = every changed behavior covered.
+- **policy_compliance** — Does it obey the repo rules that apply to the touched paths (determinism/SeededRandom, no Date.now(), layer import boundaries, systems wired sim-side, labs for new systems)? 1 = violates, 5 = fully compliant.
+- **maintainability** — Will the next agent understand and safely change this? Naming, structure, comments where non-obvious, no dead or duplicated code. 1 = opaque, 5 = clear.
+
+Verdict rules:
+- "pass" only if NO criterion scores below 3 and you found no blocker-severity finding.
+- "fail" otherwise. A fail is not a rejection of the work; it forces a human to look.
+- Report only high-confidence, actionable findings. No style or formatting nits.
+
+Reply with ONE fenced ```json block and nothing else, matching exactly:
+```json
+{
+  "criteria": {
+    "correctness": <integer 1..5>,
+    "scope_discipline": <integer 1..5>,
+    "test_coverage": <integer 1..5>,
+    "policy_compliance": <integer 1..5>,
+    "maintainability": <integer 1..5>
+  },
+  "verdict": "pass" | "fail",
+  "findings": [
+    { "severity": "blocker" | "major" | "minor", "file": "<path>", "detail": "<what is wrong and the smallest correct remedy>" }
+  ],
+  "notes": "<one paragraph justifying the verdict>"
+}
+```
+
+DIFF:
+```diff
+diff --git a/docs/knowledge/adr/2026-08-27-spell-stat-summaries.md b/docs/knowledge/adr/2026-08-27-spell-stat-summaries.md
+new file mode 100644
+index 0000000..c93b0e6
+--- /dev/null
++++ b/docs/knowledge/adr/2026-08-27-spell-stat-summaries.md
+@@ -0,0 +1,104 @@
++# ADR: Spell stat lines are derived from the ability registry, not authored twice
++
++## Status
++
++Accepted
++
++## Date
++
++2026-08-27
++
++## Estimated Complexity
++
++🍎 x 3 — one new pure `src/shared/` formatter plus a `src/game/` lookup, four
++presentation surfaces rewired, and one latent `src/engine/` modal-layout bug that
++the extra description line exposed.
++
++## Context
++
++Issue #3671: every surface where the player _chooses_ a spell showed prose only.
++The boss-reward "Learn a Spell" modal, the Spell Broker offer list, the abilities
++config modal (`[B]`), and the abilities lab tooltip all rendered
++`ABILITY_PRESENTATION[id].description` — evocative text with no damage, no reach,
++no duration. A player picking between `fireball` and `magic-missile` had no way
++to compare them without reading `src/game/abilities/registry.ts`.
++
++The numbers already exist, authored once, in that registry as `CatalogEffect[]`
++(`spell_projectile`, `spell_aoe`, `spell_heal`, `spell_buff`, …). Two ways to get
++them in front of the player:
++
++1. **Author a second `stats:` string per spell** in `ability-presentation.ts`.
++   Simple, fully controllable copy — and guaranteed to silently drift the first
++   time anyone retunes a spell, because nothing links the two.
++2. **Derive the line from the effect values at read time.** One source of truth;
++   a retune updates the UI for free. Costs a formatter that must understand every
++   effect shape, and must not lie about what the number means.
++
++We chose (2). Drift on gameplay numbers is exactly the failure this repo keeps
++paying for, and a derived line is testable against the registry itself.
++
++Two honesty problems fell out of the plan review and shaped the format:
++
++- The registry values are **base** values. `resolveSpellOutput` multiplies them
++  by INT scaling _and_ a spell-mastery efficacy multiplier, so a bare "Damage 15"
++  is wrong for any player who is not at base. Every summary therefore ends with
++  an explicit `Base — scales with INT & mastery` (or `… with mastery` for effects
++  with no INT term).
++- `fireball.radiusTiles` is **both** the targeting reach and the blast radius —
++  the epicenter is picked from enemies within it. Labelling it "Radius" would
++  read as blast-only, so it renders as `Target & blast radius`.
++
++## Decision
++
++`src/shared/spell-effect-summary.ts` exports a pure
++`formatSpellEffectSummary(effects, { tileSizeFt })` that turns `CatalogEffect[]`
++into a `•`-joined stat line, converting tiles to feet with the live
++`floorMap.config.tileSizeFt` (default 4). `src/game/abilities/effect-summary.ts`
++resolves an ability id through `getAbilityDefinition` and delegates. Passive
++abilities and unknown ids return `undefined`, so no caller has to special-case.
++
++Four surfaces consume it:
++
++- `getBossRewardSpellOptions` (`src/game/floorScenario.ts`) emits
++  `prose\nstats` as the option description.
++- `MainGameScene` gets the summary through a **scene option callback**
++  (`getAbilityEffectSummary`), wired in `src/bootstrap/floor-main-scene-options.ts`.
++  The engine layer must not import `src/game/`, and this keeps the ESLint layer
++  rule intact instead of reaching across it.
++- The abilities lab tooltip appends the same line.
++
++`src/engine/ModalPickerUI.ts` was authored with a **fixed 400px panel** and no
++content fit, so the added second description line rendered outside the panel — a
++latent bug any longer description would have hit. The panel now measures its
++real content and grows to it in a second pass (`fitContent`), re-deriving
++`uiScale` and shifting the already-created nodes by the panel-origin delta. Text
++heights are only measurable after creation in Phaser, hence the second pass
++rather than a pre-computation. The description wrap width is now tied to the same
++`ENTRY_TEXT_INDENT` constant as the description's x offset, which previously
++disagreed by 2px and let a full-width line spill past its row.
++
++## Consequences
++
++- Retuning a spell in the registry updates every picker automatically; there is
++  no second string to forget.
++- `tests/unit/spell-effect-summary.test.ts` asserts the **exact** string for each
++  Floor-1 boss-reward spell and loops the registry to require that any spell that
++  damages or reaches another entity states both a damage and a reach number, so a
++  new effect type cannot ship a blank line.
++- The modal picker is now variable-height for **all** callers, not just spells.
++  `tests/e2e/boss-reward-picker-ux.test.ts` measures the real `MainGameScene`
++  modal at 1280x720 and 960x540 and asserts every box stays inside the panel and
++  no two boxes overlap, so a future overflow is caught deterministically.
++- Displayed numbers are base values, explicitly labelled as such. If we later
++  want live per-player values, the formatter takes an options object and can
++  accept a resolved-stat context without changing its callers' shape.
++
++## Alternatives considered
++
++- **Hand-authored `stats:` strings** — rejected for guaranteed drift (above).
++- **Importing the registry directly into `MainGameScene`** — rejected: it
++  violates the `src/engine/` → `src/game/` layer rule, which
++  `tests/unit/spell-stat-detail-wiring.test.ts` now guards explicitly.
++- **Shrinking the font / truncating to fit the fixed panel** — rejected: it hides
++  the very numbers the issue asks for, and leaves the latent overflow in place
++  for the next caller.
+diff --git a/docs/knowledge/handoffs/2026-08-27-spell-stat-summaries.md b/docs/knowledge/handoffs/2026-08-27-spell-stat-summaries.md
+new file mode 100644
+index 0000000..752aaf1
+--- /dev/null
++++ b/docs/knowledge/handoffs/2026-08-27-spell-stat-summaries.md
+@@ -0,0 +1,105 @@
++# Session Handoff: Spells that target others now show range/damage numbers
++
++## Date
++
++2026-08-27
++
++## Persona
++
++UX Designer
++
++## Systems touched
++
++hud-ux, weapons, boss-rooms
++
++## Apples
++
++3🍎 estimated, 3🍎 actual (exact — the modal-panel overflow was surprise scope,
++offset by the formatter being smaller than planned).
++
++## What Was Done
++
++Issue #3671: spell pickers showed prose only, so a player choosing between
++`fireball` and `magic-missile` saw no damage, reach, or duration.
++
++- New pure `src/shared/spell-effect-summary.ts` derives a `•`-joined stat line
++  from the ability registry's authored `CatalogEffect[]` (tiles → feet via the
++  live `floorMap.config.tileSizeFt`), always suffixed
++  `Base — scales with INT & mastery` because `resolveSpellOutput` applies INT and
++  spell-mastery multipliers on top. `fireball` renders `Target & blast radius`
++  because its `radiusTiles` is both the targeting reach and the blast.
++- `src/game/abilities/effect-summary.ts` maps ability id → summary; passives and
++  unknown ids return `undefined`.
++- Wired into all four spell-facing surfaces: the boss-reward "Learn a Spell"
++  modal (`getBossRewardSpellOptions`), the Spell Broker offers and the abilities
++  config modal (`MainGameScene`, via a new `getAbilityEffectSummary` scene-option
++  callback wired in `src/bootstrap/floor-main-scene-options.ts` so the engine
++  layer never imports `src/game/`), and the abilities-lab tooltip.
++- `src/engine/ModalPickerUI.ts` had a **fixed 400px panel** with no content fit;
++  the extra description line rendered outside it. The panel now measures real
++  content and grows to it (`fitContent`), and the description wrap width is tied
++  to the same `ENTRY_TEXT_INDENT` as its x offset (they disagreed by 2px, letting
++  a full-width line spill past its row).
++
++**Observed in the real `MainGameScene`** via `main-scene-probe` at 1280x720 and
++960x540 — before: every boss-reward option description was prose only and the
++assertion for a numeric stat line failed; after: e.g. `magic-missile` reads
++`Damage 11 • Range 16 ft • Base — scales with INT & mastery`, and every measured
++box sits inside the panel with no overlapping pair. Both viewports pass.
++
++## Key Decisions Made
++
++- **Derive, never author twice.** A hand-written `stats:` string per spell would
++  drift the first time anyone retunes the registry. See
++  `docs/knowledge/adr/2026-08-27-spell-stat-summaries.md`.
++- **Label the numbers as base values.** Showing a bare "Damage 15" is a lie for
++  any player above base INT/mastery.
++- **Scene-option callback over a cross-layer import**, guarded by a source-string
++  wiring test that asserts `MainGameScene` never imports `../../game/abilities/`.
++- **Grow the modal panel rather than shrink the text** — hiding the numbers would
++  defeat the issue, and the overflow was latent for every future caller.
++
++## What's Next / Blockers
++
++- The Spell Broker's _unavailable_ offers still read "Unavailable right now."
++  (`shop-modal-presenter.ts` replaces `detail` for disabled offers). Showing the
++  stat line there too would need a presenter change that affects every shop —
++  deliberately out of scope.
++- Melee/ranged weapon options in other pickers still have no equivalent numeric
++  line; the same formatter shape would extend to them.
++
++## Retrospective
++
++### Lessons Learned
++
++- `ModalPickerUI` was authored at a fixed 500x400 with **no content fit at all**.
++  Any content change to any picker in the game can silently render outside the
++  panel; there was no test for it until now. If you touch modal text, measure.
++- Phaser text heights are only readable **after** the object is created, so a
++  fit-to-content pass has to be a second pass that shifts already-placed nodes,
++  not a pre-computation.
++- Bounds assertions on measured Phaser geometry need a sub-pixel epsilon: a label
++  laid out flush against its description (`LABEL_TOP + labelHeight ===
++DESCRIPTION_TOP` exactly) reads as overlapping under float accumulation.
++- The e2e suite needs `npx playwright install chromium` in a fresh sandbox.
++
++### Mistakes Made
++
++- I wrote the first stat-line e2e assertions as `/(Damage|Range) \d/`, which
++  fails for self-buff spells (`haste`, `bless`, `stoneskin`) that legitimately
++  have neither. Early signal: the formatter's own unit test already showed those
++  three producing only `Move Speed`/`Armor`/`Duration` segments — I should have
++  derived the regex from the ten verified strings instead of from the two spells
++  in the issue title.
++- I initially planned to show base numbers with no qualifier. The plan review
++  caught it; a player at 20 INT would have seen a number that never appears in
++  their own damage log.
++
++### Opportunities for Future Improvement
++
++- Promote "no picker content renders outside its panel" into a shared
++  deterministic helper so every modal (floor3 pickers, shops, loadout) is covered
++  rather than just the boss-reward one.
++- A registry-parity test shape like `spell-effect-summary.test.ts`'s
++  "targets others must state damage + reach" loop would be worth applying to
++  weapons, so new content cannot ship a blank stat line.
+diff --git a/docs/knowledge/review-ledgers/2026-08-27-spell-effect-numbers.review-ledger.json b/docs/knowledge/review-ledgers/2026-08-27-spell-effect-numbers.review-ledger.json
+new file mode 100644
+index 0000000..bfdd29d
+--- /dev/null
++++ b/docs/knowledge/review-ledgers/2026-08-27-spell-effect-numbers.review-ledger.json
+@@ -0,0 +1,30 @@
++{
++  "schema_version": "review-ledger/v2",
++  "date": "2026-08-27",
++  "session_slug": "spell-effect-numbers",
++  "task_title": "Show range/damage numbers for spells that target others",
++  "estimated_apples": 3,
++  "stages": {
++    "plan_review": {
++      "completed": true,
++      "reviewer_model": "gpt-5.6-terra",
++      "concerns_count": 7,
++      "resolved_count": 7,
++      "plan_divergence": "minor",
++      "notes": "Blocking: (1) base-only numbers mislead -> every summary now ends with an explicit \"Base — scales with INT & mastery\" suffix; (2) fireball radiusTiles is both reach and blast -> labelled \"Target & blast radius\". Non-blocking, all adopted: abilities-lab tooltip wired too; drift tests assert exact per-spell strings; callback named getAbilityEffectSummary; tileSizeFt passed explicitly from floorMap config; e2e observe-before-done via main-scene-probe on the real modals at 1280x720 and 960x540."
++    },
++    "code_review": {
++      "clean": false,
++      "rounds": []
++    },
++    "independent_grade": {
++      "completed": false,
++      "grader_model": "",
++      "implementer_model": "",
++      "head_sha": "",
++      "criteria": {},
++      "verdict": "",
++      "findings_count": 0
++    }
++  }
++}
+diff --git a/src/bootstrap/floor-main-scene-options.ts b/src/bootstrap/floor-main-scene-options.ts
+index e698b13..b864c38 100644
+--- a/src/bootstrap/floor-main-scene-options.ts
++++ b/src/bootstrap/floor-main-scene-options.ts
+@@ -15,6 +15,7 @@ import {
+   getScenarioPresentationContract,
+ } from '../game/scenarioDefinitions.js';
+ import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
++import { getAbilityEffectSummary } from '../game/abilities/effect-summary.js';
+ import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
+ import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
+ import {
+@@ -112,6 +113,8 @@ export function createFloorMainSceneOptions(
+       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
+     },
+     getSpellRewardOptions: (world: GameWorld) => getBossRewardSpellOptions(world),
++    getAbilityEffectSummary: (world: GameWorld, abilityId: string) =>
++      getAbilityEffectSummary(abilityId, world.floorMap?.config.tileSizeFt),
+     allocateStatPoints: (
+       world: GameWorld,
+       _playerEid: number,
+diff --git a/src/engine/ModalPickerUI.ts b/src/engine/ModalPickerUI.ts
+index e182fcb..d334a50 100644
+--- a/src/engine/ModalPickerUI.ts
++++ b/src/engine/ModalPickerUI.ts
+@@ -107,11 +107,12 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+   ...LABEL_STYLE,
+   color: '#64748b',
+ };
++const ENTRY_TEXT_INDENT = 26;
+ const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+   fontFamily: 'monospace',
+   fontSize: '13px',
+   color: '#cbd5e1',
+-  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - 24 },
++  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - ENTRY_TEXT_INDENT },
+ };
+ const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+   fontFamily: 'monospace',
+@@ -153,7 +154,14 @@ export function createModalPickerUI(
+     const safe = getSafeAreaInsets(scene);
+     return PANEL_SCREEN_MARGIN + Math.max(safe.top, safe.right, safe.bottom, safe.left);
+   };
+-  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
++  /**
++   * Current panel height. Starts at the authored {@link PANEL_HEIGHT} and grows
++   * to fit measured content (rows wrap to two lines once an option carries both
++   * prose and a numeric stat line), so a taller picker never spills its rows
++   * past the panel edge.
++   */
++  let panelHeight = PANEL_HEIGHT;
++  let uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
+   let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+   const viewWidth = (): number => GAME.WIDTH / uiScale;
+   const viewHeight = (): number => GAME.HEIGHT / uiScale;
+@@ -243,7 +251,7 @@ export function createModalPickerUI(
+ 
+   const layoutPanel = (): void => {
+     backdrop.setSize(viewWidth(), viewHeight());
+-    panel.setSize(PANEL_WIDTH, PANEL_HEIGHT);
++    panel.setSize(PANEL_WIDTH, panelHeight);
+     // Centre inside the safe rect rather than the raw canvas. The overlay is
+     // laid out in virtual space (design ÷ uiScale), so the design-space insets
+     // are converted to the same space before use.
+@@ -257,11 +265,11 @@ export function createModalPickerUI(
+     const safeWidth = viewWidth() - inset.left - inset.right;
+     const safeHeight = viewHeight() - inset.top - inset.bottom;
+     panel.x = Math.round(Math.max(inset.left, inset.left + (safeWidth - PANEL_WIDTH) / 2));
+-    panel.y = Math.round(Math.max(inset.top, inset.top + (safeHeight - PANEL_HEIGHT) / 2));
++    panel.y = Math.round(Math.max(inset.top, inset.top + (safeHeight - panelHeight) / 2));
+     bevelTop.setPosition(panel.x, panel.y).setSize(PANEL_WIDTH, 2);
+-    bevelLeft.setPosition(panel.x, panel.y).setSize(2, PANEL_HEIGHT);
+-    bevelBottom.setPosition(panel.x, panel.y + PANEL_HEIGHT - 2).setSize(PANEL_WIDTH, 2);
+-    bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, PANEL_HEIGHT);
++    bevelLeft.setPosition(panel.x, panel.y).setSize(2, panelHeight);
++    bevelBottom.setPosition(panel.x, panel.y + panelHeight - 2).setSize(PANEL_WIDTH, 2);
++    bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, panelHeight);
+     titleStrip.setPosition(panel.x + 2, panel.y + 2).setSize(PANEL_WIDTH - 4, 38);
+     titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
+   };
+@@ -278,6 +286,39 @@ export function createModalPickerUI(
+     }
+   };
+ 
++  /**
++   * Grow the panel to the measured content and re-centre it, moving the already
++   * laid-out content with it. Text heights are only known after the objects
++   * exist, so the panel is sized in a second pass instead of trusting the
++   * authored {@link PANEL_HEIGHT} — otherwise long option copy (prose plus a
++   * numeric stat line) renders outside the panel.
++   */
++  const fitContent = (footer: Phaser.GameObjects.Text): void => {
++    const required = Math.ceil(footer.y + footer.height + PANEL_PADDING - panel.y);
++    if (required <= panelHeight) {
++      return;
++    }
++    const previousX = panel.x;
++    const previousY = panel.y;
++    panelHeight = required;
++    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
++    effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
++    overlay.setScale(uiScale);
++    layoutPanel();
++    const dx = panel.x - previousX;
++    const dy = panel.y - previousY;
++    for (const node of textNodes) {
++      node.setPosition(snap(node.x + dx), snap(node.y + dy)).setResolution(effectiveResolution);
++    }
++    for (const entry of entries) {
++      entry.row.setPosition(snap(entry.row.x + dx), snap(entry.row.y + dy));
++      entry.label.setPosition(snap(entry.label.x + dx), snap(entry.label.y + dy));
++      entry.description.setPosition(snap(entry.description.x + dx), snap(entry.description.y + dy));
++      entry.label.setResolution(effectiveResolution);
++      entry.description.setResolution(effectiveResolution);
++    }
++  };
++
+   const rerender = (): void => {
+     if (!state) {
+       overlay.setVisible(false);
+@@ -292,7 +333,10 @@ export function createModalPickerUI(
+     backdrop.removeAllListeners('pointerdown');
+ 
+     // Refresh responsive scale before laying out (handles resize/rotation).
+-    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
++    // Content height is only known after the text objects are measured below,
++    // so start from the authored height and grow the panel in `fitContent()`.
++    panelHeight = PANEL_HEIGHT;
++    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
+     effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+     overlay.setScale(uiScale);
+ 
+@@ -364,7 +408,7 @@ export function createModalPickerUI(
+         isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
+       );
+       const description = crispText(
+-        panelX + PANEL_PADDING + 26,
++        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT,
+         rowY + DESCRIPTION_TOP,
+         option.description ?? (isDisabled ? 'Unavailable' : ''),
+         DESCRIPTION_STYLE,
+@@ -442,6 +486,8 @@ export function createModalPickerUI(
+     textNodes.push(footer);
+     overlay.add(footer);
+ 
++    fitContent(footer);
++
+     overlay.setVisible(true);
+   };
+ 
+diff --git a/src/engine/scenes/MainGameScene.ts b/src/engine/scenes/MainGameScene.ts
+index 797d7e8..49aea25 100644
+--- a/src/engine/scenes/MainGameScene.ts
++++ b/src/engine/scenes/MainGameScene.ts
+@@ -337,6 +337,13 @@ export interface MainGameSceneOptions {
+   getSpellRewardOptions?: (
+     world: GameWorld,
+   ) => Array<{ id: string; label: string; description: string }>;
++  /**
++   * Player-facing numeric stat line for an ability (damage, range/radius, heal,
++   * slow, buff duration), derived from the game-layer ability catalog. Injected
++   * because `src/engine/` may not import `src/game/`; when it is omitted (labs,
++   * harnesses) the spell UI falls back to prose-only copy.
++   */
++  getAbilityEffectSummary?: (world: GameWorld, abilityId: string) => string | undefined;
+   /**
+    * Apply level-up stat allocations (game-layer `spendPoints` injected from
+    * main.ts). When omitted, the level-up screen is skipped and the run resumes
+@@ -3677,6 +3684,15 @@ export class MainGameScene extends Phaser.Scene {
+     );
+   }
+ 
++  /**
++   * Numeric stat line for an ability, via the injected game-layer catalog
++   * lookup. `undefined` when the ability has no spell effects or when the
++   * option was not wired (labs/harnesses).
++   */
++  private describeAbilityStats(abilityId: string): string | undefined {
++    return this.options.getAbilityEffectSummary?.(this.world, abilityId);
++  }
++
+   private openAbilitiesConfigModal(): void {
+     if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
+       return;
+@@ -3709,7 +3725,14 @@ export class MainGameScene extends Phaser.Scene {
+           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
+           description: presentation?.description ?? 'Configured auto ability.',
+           category: presentation?.category ?? 'utility',
+-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
++          details: [
++            presentation?.kind === 'spell' ? 'SPELL' : 'AUTO',
++            `${cooldownSeconds}s CD`,
++            formatAbilityTrigger(abilityId),
++            this.describeAbilityStats(abilityId),
++          ]
++            .filter((part): part is string => part !== undefined)
++            .join('  •  '),
+           equipped: state.equippedActiveAbilityIds.includes(abilityId),
+         };
+       });
+@@ -5378,7 +5401,9 @@ export class MainGameScene extends Phaser.Scene {
+       id: offer.spellId,
+       name: getAbilityPresentation(offer.spellId)?.name ?? offer.spellId,
+       priceGold: offer.cost,
+-      detail: 'A permanent spell for this run. One purchase per offer.',
++      // Lead with what the spell actually does to a target — a price with no
++      // damage/range numbers gave the player nothing to compare offers on.
++      detail: this.describeAbilityStats(offer.spellId) ?? 'A permanent spell for this run.',
+       owned: offer.purchased,
+       purchasable:
+         !offer.purchased && broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+diff --git a/src/game/abilities/effect-summary.ts b/src/game/abilities/effect-summary.ts
+new file mode 100644
+index 0000000..5ae03a6
+--- /dev/null
++++ b/src/game/abilities/effect-summary.ts
+@@ -0,0 +1,26 @@
++import { getAbilityDefinition } from './registry.js';
++import { formatSpellEffectSummary } from '../../shared/spell-effect-summary.js';
++
++/**
++ * Player-facing numeric stat line for an ability, derived from the authored
++ * catalog effects (damage, range/radius, heal, slow, buff duration), or
++ * `undefined` for abilities with no spell effects.
++ *
++ * The registry is the single source of truth: every surface that offers a spell
++ * (boss reward picker, Spell Broker, abilities bar) reads the same numbers the
++ * runtime casts, so a balance edit can never leave stale copy behind.
++ *
++ * @param tileSizeFt - Feet per tile for the loaded floor; falls back to the
++ *   default map tile size, matching the runtime's own fallback.
++ */
++export function getAbilityEffectSummary(
++  abilityId: string,
++  tileSizeFt?: number,
++): string | undefined {
++  const definition = getAbilityDefinition(abilityId);
++  if (!definition) return undefined;
++  return formatSpellEffectSummary(
++    definition.effects,
++    tileSizeFt === undefined ? {} : { tileSizeFt },
++  );
++}
+diff --git a/src/game/floorScenario.ts b/src/game/floorScenario.ts
+index 69f754e..1d146b5 100644
+--- a/src/game/floorScenario.ts
++++ b/src/game/floorScenario.ts
+@@ -122,6 +122,7 @@ import { generateFloor1SpellBrokerOffers } from '../shared/spell-skills.js';
+ import type { Floor1SpellBrokerOffer, FloorBossEncounterState } from '../shared/floor-types.js';
+ import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
+ import { getAbilityDefinition } from './abilities/registry.js';
++import { getAbilityEffectSummary } from './abilities/effect-summary.js';
+ import {
+   acceptQuest,
+   notifyQuestTalk,
+@@ -407,10 +408,14 @@ export function getBossRewardSpellOptions(world: GameWorld): Array<{
+ }> {
+   return [...getOfferedBossRewardSpellIds(world)].map((spellId) => {
+     const def = getAbilityDefinition(spellId);
++    const prose = def?.description ?? 'Learn a new spell.';
++    // Prose alone never told the player what a spell actually does to a target,
++    // so the authored damage/range/radius numbers ride along with the pitch.
++    const stats = getAbilityEffectSummary(spellId, world.floorMap?.config.tileSizeFt);
+     return {
+       id: spellId,
+       label: def?.name ?? spellId,
+-      description: def?.description ?? 'Learn a new spell.',
++      description: stats === undefined ? prose : `${prose}\n${stats}`,
+     };
+   });
+ }
+diff --git a/src/game/systems/progressionEffects.ts b/src/game/systems/progressionEffects.ts
+index 38c5078..fc0df50 100644
+--- a/src/game/systems/progressionEffects.ts
++++ b/src/game/systems/progressionEffects.ts
+@@ -20,6 +20,7 @@ import { spawnProjectile } from '../../core/spawners/projectiles.js';
+ import { tagDamageMeta } from '../../core/damage-meta.js';
+ import { pushVfxEvent } from '../../shared/vfx-events.js';
+ import { getSpellSkillId } from '../../shared/spell-skills.js';
++import { DEFAULT_TILE_SIZE_FT } from '../../shared/spell-effect-summary.js';
+ 
+ interface ApplyCatalogEffectOptions {
+   sourceType: StatModifier['sourceType'];
+@@ -29,8 +30,6 @@ interface ApplyCatalogEffectOptions {
+   holderEid?: number;
+ }
+ 
+-const DEFAULT_TILE_SIZE_FT = 4;
+-
+ const SPELL_SKILL_PER_LEVEL_BONUS = 0.02;
+ const SPELL_SKILL_BREAKPOINT_BONUSES = [
+   { level: 5, bonus: 0.1 },
+diff --git a/src/labs/abilities-lab/index.ts b/src/labs/abilities-lab/index.ts
+index 456162f..fa21e9e 100644
+--- a/src/labs/abilities-lab/index.ts
++++ b/src/labs/abilities-lab/index.ts
+@@ -44,6 +44,7 @@ import {
+   type AbilityDefinition,
+ } from '../../game/index.js';
+ import { getAbilityPresentation } from '../../shared/ability-presentation.js';
++import { getAbilityEffectSummary } from '../../game/abilities/effect-summary.js';
+ import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+ import { BiomeType } from '../../shared/map-types.js';
+ import type { MapConfig } from '../../shared/map-types.js';
+@@ -446,7 +447,8 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): ()
+       const btn = document.createElement('button');
+       btn.type = 'button';
+       btn.textContent = def.name;
+-      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown).`;
++      const stats = getAbilityEffectSummary(def.id);
++      btn.title = `${def.description}${stats === undefined ? '' : `\n${stats}`}\n\nClick to force-fire (bypasses cooldown).`;
+       btn.style.padding = '10px 12px';
+       btn.style.minWidth = '80px';
+       btn.style.background = def.kind === 'spell' ? '#1e3a8a' : '#166534';
+diff --git a/src/shared/spell-effect-summary.ts b/src/shared/spell-effect-summary.ts
+new file mode 100644
+index 0000000..a828eff
+--- /dev/null
++++ b/src/shared/spell-effect-summary.ts
+@@ -0,0 +1,177 @@
++/**
++ * spell-effect-summary — player-facing numeric summaries for spell abilities.
++ *
++ * Spell copy in `ability-presentation.ts` is prose only ("Hurl a ball of fire
++ * that explodes in an area"), which leaves the player choosing a spell — at the
++ * boss reward picker, the Spell Broker, or the abilities bar — with no idea how
++ * much damage it deals or how far it reaches. This module derives that stat line
++ * from the SAME authored `CatalogEffect` values the runtime casts (see
++ * `game/systems/progressionEffects.ts`), so the numbers can never drift from
++ * balance changes the way a hand-written string would.
++ *
++ * Pure and dependency-free (no Phaser/DOM/world), so the engine UI, the game
++ * layer, and labs all format identically and it is unit-testable.
++ */
++import type { CatalogEffect, TimedBuffModifier } from './progression-effects.js';
++import { STAT_DISPLAY } from './stat-display.js';
++import type { StatKey } from './stats.js';
++import { GAME } from './constants.js';
++
++/**
++ * Tile size used when no floor map is loaded. Mirrors
++ * `DEFAULT_MAP_CONFIG.tileSizeFt` and the runtime fallback in
++ * `progressionEffects.ts#tilesToFeet`.
++ */
++export const DEFAULT_TILE_SIZE_FT = 4;
++
++/** Separator between stat segments — matches the abilities-bar detail rows. */
++const SEGMENT_SEPARATOR = ' • ';
++
++export interface SpellEffectSummaryOptions {
++  /** Feet per map tile; spell radii/ranges are authored in tiles. */
++  readonly tileSizeFt?: number;
++}
++
++/** Trims trailing zeros so `12.0` reads as `12` and `3.6` stays `3.6`. */
++function formatNumber(value: number, maxDecimals = 1): string {
++  const rounded = Number(value.toFixed(maxDecimals));
++  return String(rounded);
++}
++
++function formatFeet(tiles: number, tileSizeFt: number): string {
++  return `${formatNumber(tiles * tileSizeFt)} ft`;
++}
++
++function formatSeconds(milliseconds: number): string {
++  return `${formatNumber(milliseconds / 1000)}s`;
++}
++
++/** Speed multipliers are authored as the REMAINING fraction (0.55 → 45% slow). */
++function formatSlow(multiplier: number, durationMs: number): string {
++  const slowPercent = Math.round((1 - multiplier) * 100);
++  return `Slow ${slowPercent}% for ${formatSeconds(durationMs)}`;
++}
++
++/**
++ * Stats whose modifier value is a BONUS FRACTION rather than a flat amount —
++ * `foldLegacyStatModifier` accumulates both `add` and `multiply` ops into the
++ * same fraction lane for these (see `shared/stats.ts`), so 0.05 means +5%.
++ */
++const FRACTION_STATS = new Set<StatKey>(['moveSpeed', 'attackSpeed']);
++
++function formatModifier(modifier: TimedBuffModifier): string {
++  const stat: StatKey = modifier.stat;
++  const label = STAT_DISPLAY[stat].label;
++  const value = modifier.value.base;
++  // `damage` splits by op: `add` is flat damage, `multiply` is a percentage.
++  if (FRACTION_STATS.has(stat) || modifier.op === 'multiply') {
++    return `${label} +${formatNumber(value * 100)}%`;
++  }
++  return `${label} +${formatNumber(value, 2)}`;
++}
++
++/** Stat segments for one spell effect, or `[]` when the effect is not a spell. */
++function summarizeEffect(effect: CatalogEffect, tileSizeFt: number): string[] {
++  switch (effect.type) {
++    case 'spell_fireball':
++      return [
++        `Damage ${formatNumber(effect.damage.base)}`,
++        // The blast radius doubles as the targeting reach: the epicentre is
++        // chosen from enemies within it (progressionEffects.ts#castFireball),
++        // so one segment names both rather than repeating the same number.
++        `Target & blast radius ${formatFeet(effect.radiusTiles.base, tileSizeFt)}`,
++      ];
++    case 'spell_magic_missile':
++      return [
++        `Damage ${formatNumber(effect.damage.base)}`,
++        `Range ${formatFeet(effect.rangeTiles.base, tileSizeFt)}`,
++      ];
++    case 'spell_frost_nova':
++      return [
++        `Damage ${formatNumber(effect.damage.base)}`,
++        `Radius ${formatFeet(effect.radiusTiles.base, tileSizeFt)}`,
++        formatSlow(effect.slowMultiplier.base, effect.slowDurationMs.base),
++      ];
++    case 'spell_life_drain':
++      return [
++        `Damage ${formatNumber(effect.damage.base)}`,
++        `Range ${formatFeet(effect.rangeTiles.base, tileSizeFt)}`,
++        `Heals ${formatNumber(effect.heal.base)}`,
++      ];
++    case 'spell_pulse_shield':
++      return [
++        `Radius ${formatFeet(effect.radiusTiles.base, tileSizeFt)}`,
++        `Knockback ${formatNumber(effect.knockbackForce.base, 2)}`,
++      ];
++    case 'spell_enemy_slow_burst':
++      return [
++        `Radius ${formatFeet(effect.radiusTiles.base, tileSizeFt)}`,
++        formatSlow(effect.slowMultiplier.base, effect.slowDurationMs.base),
++      ];
++    case 'spell_heal':
++      return [`Heals ${formatNumber(effect.heal.base)}`];
++    case 'spell_timed_buff':
++      return [
++        ...effect.modifiers.map(formatModifier),
++        `Duration ${formatSeconds((effect.durationFrames.base / GAME.TARGET_FPS) * 1000)}`,
++      ];
++    default:
++      return [];
++  }
++}
++
++/** True when any of the spell's outputs grows with Intelligence. */
++function scalesWithIntelligence(effect: CatalogEffect): boolean {
++  switch (effect.type) {
++    case 'spell_fireball':
++    case 'spell_frost_nova':
++    case 'spell_magic_missile':
++      return effect.damage.scalesWithIntelligence;
++    case 'spell_life_drain':
++      return effect.damage.scalesWithIntelligence || effect.heal.scalesWithIntelligence;
++    case 'spell_heal':
++      return effect.heal.scalesWithIntelligence;
++    case 'spell_pulse_shield':
++      return (
++        effect.knockbackForce.scalesWithIntelligence || effect.radiusTiles.scalesWithIntelligence
++      );
++    case 'spell_enemy_slow_burst':
++      return effect.radiusTiles.scalesWithIntelligence;
++    case 'spell_timed_buff':
++      return (
++        effect.durationFrames.scalesWithIntelligence ||
++        effect.modifiers.some((modifier) => modifier.value.scalesWithIntelligence)
++      );
++    default:
++      return false;
++  }
++}
++
++/**
++ * One-line stat summary for a spell's effects, or `undefined` when the ability
++ * has no spell effects (passives keep their authored `passiveEffectSummary`).
++ *
++ * The values shown are the authored BASE outputs. At cast time they are further
++ * raised by Intelligence (when the output scales with it) and by the spell's
++ * mastery efficacy multiplier, so the line closes with a scaling note rather
++ * than presenting the numbers as a final guaranteed hit.
++ */
++export function formatSpellEffectSummary(
++  effects: readonly CatalogEffect[],
++  options: SpellEffectSummaryOptions = {},
++): string | undefined {
++  const tileSizeFt = options.tileSizeFt ?? DEFAULT_TILE_SIZE_FT;
++  const segments: string[] = [];
++  let intelligenceScaled = false;
++  for (const effect of effects) {
++    const effectSegments = summarizeEffect(effect, tileSizeFt);
++    if (effectSegments.length === 0) continue;
++    segments.push(...effectSegments);
++    intelligenceScaled ||= scalesWithIntelligence(effect);
++  }
++  if (segments.length === 0) return undefined;
++  segments.push(
++    intelligenceScaled ? 'Base — scales with INT & mastery' : 'Base — scales with mastery',
++  );
++  return segments.join(SEGMENT_SEPARATOR);
++}
+diff --git a/tests/e2e/boss-reward-picker-ux.test.ts b/tests/e2e/boss-reward-picker-ux.test.ts
+index 53802b2..d4c3dde 100644
+--- a/tests/e2e/boss-reward-picker-ux.test.ts
++++ b/tests/e2e/boss-reward-picker-ux.test.ts
+@@ -10,8 +10,17 @@ const VIEWPORTS = [
+ 
+ type Bounds = { x: number; y: number; width: number; height: number };
+ 
++// Sub-pixel tolerance: measured Phaser bounds accumulate float error, so boxes
++// that are laid out flush against each other must not read as overlapping.
++const OVERLAP_EPSILON = 0.5;
++
+ function overlaps(a: Bounds, b: Bounds): boolean {
+-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
++  return (
++    a.x < b.x + b.width - OVERLAP_EPSILON &&
++    a.x + a.width - OVERLAP_EPSILON > b.x &&
++    a.y < b.y + b.height - OVERLAP_EPSILON &&
++    a.y + a.height - OVERLAP_EPSILON > b.y
++  );
+ }
+ 
+ describe('real boss reward ability picker UX', () => {
+@@ -78,6 +87,16 @@ describe('real boss reward ability picker UX', () => {
+         expect(overlaps(entry.label, entry.description)).toBe(false);
+       }
+ 
++      const content = await mainSceneProbe.getModalPickerContent(page);
++      expect(content, 'real boss reward picker content was unavailable').not.toBeNull();
++      expect(content!.options.length).toBeGreaterThan(0);
++      for (const option of content!.options) {
++        // Prose first, then the authored numbers the player is choosing between.
++        expect(option.description, `${option.id} shows no stat line`).toMatch(
++          /\n.*(Damage|Heals|Radius|Range|Slow|Duration|Knockback|Move Speed|Armor|Accuracy).*\d/,
++        );
++      }
++
+       await context.close();
+     });
+   }
+diff --git a/tests/e2e/floor1-merchant-modal.test.ts b/tests/e2e/floor1-merchant-modal.test.ts
+index d113355..182c938 100644
+--- a/tests/e2e/floor1-merchant-modal.test.ts
++++ b/tests/e2e/floor1-merchant-modal.test.ts
+@@ -123,5 +123,14 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
+     expect(content!.options[0]!.disabled).toBe(true);
+     expect(content!.options[0]!.description).toBe('Unavailable right now.');
+     expect(content!.options.some((option) => option.disabled === false)).toBe(true);
++
++    // Purchasable spells must state what they actually do — the broker used to
++    // show only a price and a generic "a permanent spell for this run" line.
++    const purchasable = content!.options.filter((option) => option.disabled === false);
++    for (const option of purchasable) {
++      expect(option.description, `${option.id} shows no stat line`).toMatch(
++        /(Damage|Heals|Radius|Range|Slow|Duration|Knockback|Move Speed).*\d/,
++      );
++    }
+   });
+ });
+diff --git a/tests/game/floor1-scenario.test.ts b/tests/game/floor1-scenario.test.ts
+index 6652253..6247b34 100644
+--- a/tests/game/floor1-scenario.test.ts
++++ b/tests/game/floor1-scenario.test.ts
+@@ -34,6 +34,7 @@ import {
+   startFloor1BossEncounter,
+   SHOPKEEPER_EQUIPMENT_COST,
+ } from '../../src/game/floorScenario.js';
++import { getAbilityEffectSummary } from '../../src/game/abilities/effect-summary.js';
+ import { getActiveWeapon } from '../../src/game/weaponSystem.js';
+ import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
+ import {
+@@ -1092,7 +1093,18 @@ describe('floor1Scenario', () => {
+     for (const spellId of offered) {
+       expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toContain(spellId);
+     }
+-    expect(getBossRewardSpellOptions(seededWorld).map((option) => option.id)).toEqual(offered);
++    const rewardOptions = getBossRewardSpellOptions(seededWorld);
++    expect(rewardOptions.map((option) => option.id)).toEqual(offered);
++    // Every offer must state its real numbers, not just prose: the player picks
++    // one permanent spell here and cannot compare reach/damage otherwise.
++    for (const option of rewardOptions) {
++      const [prose, stats] = option.description.split('\n');
++      expect(prose, `${option.id} lost its prose description`).toBeTruthy();
++      expect(stats, `${option.id} offers no stat line`).toBe(
++        getAbilityEffectSummary(option.id, seededWorld.floorMap?.config.tileSizeFt),
++      );
++      expect(stats).toMatch(/\d/);
++    }
+ 
+     const { world: duplicateSeedWorld } = makeWorld();
+     expect(getOfferedBossRewardSpellIds(duplicateSeedWorld)).toEqual(offered);
+diff --git a/tests/unit/spell-effect-summary.test.ts b/tests/unit/spell-effect-summary.test.ts
+new file mode 100644
+index 0000000..b07cb34
+--- /dev/null
++++ b/tests/unit/spell-effect-summary.test.ts
+@@ -0,0 +1,154 @@
++import { describe, expect, it } from 'vitest';
++import {
++  DEFAULT_TILE_SIZE_FT,
++  formatSpellEffectSummary,
++} from '../../src/shared/spell-effect-summary.js';
++import { getAbilityEffectSummary } from '../../src/game/abilities/effect-summary.js';
++import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
++import { FLOOR1_BOSS_REWARD_SPELL_IDS } from '../../src/shared/abilities.js';
++
++describe('formatSpellEffectSummary', () => {
++  it('returns undefined when no effect is a spell', () => {
++    expect(
++      formatSpellEffectSummary([
++        { type: 'stat_add', stat: 'armor', value: 3 },
++        { type: 'stat_multiply', stat: 'damage', value: 0.1 },
++      ]),
++    ).toBeUndefined();
++    expect(formatSpellEffectSummary([])).toBeUndefined();
++  });
++
++  it('reports damage and the shared target/blast reach for an area spell', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_fireball',
++          damage: { base: 15, scalesWithIntelligence: true },
++          radiusTiles: { base: 3, scalesWithIntelligence: false },
++        },
++      ]),
++    ).toBe('Damage 15 • Target & blast radius 12 ft • Base — scales with INT & mastery');
++  });
++
++  it('reports damage and range for a single-target spell', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_magic_missile',
++          damage: { base: 11, scalesWithIntelligence: true },
++          rangeTiles: { base: 4, scalesWithIntelligence: false },
++        },
++      ]),
++    ).toBe('Damage 11 • Range 16 ft • Base — scales with INT & mastery');
++  });
++
++  it('converts a speed multiplier into a slow percentage and seconds', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_frost_nova',
++          damage: { base: 10, scalesWithIntelligence: true },
++          radiusTiles: { base: 3, scalesWithIntelligence: false },
++          slowMultiplier: { base: 0.55, scalesWithIntelligence: false },
++          slowDurationMs: { base: 3_000, scalesWithIntelligence: false },
++        },
++      ]),
++    ).toBe('Damage 10 • Radius 12 ft • Slow 45% for 3s • Base — scales with INT & mastery');
++  });
++
++  it('reports damage, range and healing for a life-drain spell', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_life_drain',
++          damage: { base: 12, scalesWithIntelligence: true },
++          rangeTiles: { base: 3, scalesWithIntelligence: false },
++          heal: { base: 9, scalesWithIntelligence: true },
++        },
++      ]),
++    ).toBe('Damage 12 • Range 12 ft • Heals 9 • Base — scales with INT & mastery');
++  });
++
++  it('omits the Intelligence note when nothing in the spell scales with it', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_enemy_slow_burst',
++          radiusTiles: { base: 4, scalesWithIntelligence: false },
++          slowMultiplier: { base: 0.4, scalesWithIntelligence: false },
++          slowDurationMs: { base: 3_600, scalesWithIntelligence: false },
++        },
++      ]),
++    ).toBe('Radius 16 ft • Slow 60% for 3.6s • Base — scales with mastery');
++  });
++
++  it('formats timed-buff modifiers by their stat lane and the duration in seconds', () => {
++    expect(
++      formatSpellEffectSummary([
++        {
++          type: 'spell_timed_buff',
++          durationFrames: { base: 900, scalesWithIntelligence: false },
++          modifiers: [
++            { stat: 'damage', op: 'add', value: { base: 4, scalesWithIntelligence: false } },
++            { stat: 'damage', op: 'multiply', value: { base: 0.1, scalesWithIntelligence: false } },
++            { stat: 'accuracy', op: 'add', value: { base: 0.1, scalesWithIntelligence: false } },
++            { stat: 'moveSpeed', op: 'add', value: { base: 0.05, scalesWithIntelligence: false } },
++          ],
++        },
++      ]),
++    ).toBe(
++      'Damage +4 • Damage +10% • Accuracy +0.1 • Move Speed +5% • Duration 15s • Base — scales with mastery',
++    );
++  });
++
++  it('scales tile-based reach with the floor tile size', () => {
++    const effects = [
++      {
++        type: 'spell_pulse_shield',
++        knockbackForce: { base: 1, scalesWithIntelligence: false },
++        radiusTiles: { base: 4, scalesWithIntelligence: false },
++      },
++    ] as const;
++    expect(formatSpellEffectSummary(effects, { tileSizeFt: 8 })).toContain('Radius 32 ft');
++    expect(formatSpellEffectSummary(effects, { tileSizeFt: DEFAULT_TILE_SIZE_FT })).toContain(
++      'Radius 16 ft',
++    );
++  });
++});
++
++describe('getAbilityEffectSummary', () => {
++  it('returns undefined for passives and unknown ability ids', () => {
++    expect(getAbilityEffectSummary('combat-flow')).toBeUndefined();
++    expect(getAbilityEffectSummary('no-such-ability')).toBeUndefined();
++  });
++
++  it('gives every offerable Floor 1 spell a numeric summary derived from the registry', () => {
++    for (const spellId of FLOOR1_BOSS_REWARD_SPELL_IDS) {
++      const definition = getAbilityDefinition(spellId);
++      expect(definition).toBeDefined();
++      const summary = getAbilityEffectSummary(spellId);
++      expect(summary, `${spellId} has no stat summary`).toBeDefined();
++      expect(summary).toBe(formatSpellEffectSummary(definition!.effects));
++    }
++  });
++
++  it('states damage and reach for every spell that targets other entities', () => {
++    const targetsOthers = [
++      'fireball',
++      'magic-missile',
++      'frost-nova',
++      'vampiric-touch',
++      'curse',
++      'pulse-shield',
++    ] as const;
++    for (const spellId of targetsOthers) {
++      const summary = getAbilityEffectSummary(spellId)!;
++      expect(summary, `${spellId} never states its reach`).toMatch(/\d+(\.\d+)? ft/);
++    }
++    for (const spellId of ['fireball', 'magic-missile', 'frost-nova', 'vampiric-touch'] as const) {
++      expect(getAbilityEffectSummary(spellId), `${spellId} never states its damage`).toMatch(
++        /Damage \d/,
++      );
++    }
++  });
++});
+diff --git a/tests/unit/spell-stat-detail-wiring.test.ts b/tests/unit/spell-stat-detail-wiring.test.ts
+new file mode 100644
+index 0000000..f6fbc29
+--- /dev/null
++++ b/tests/unit/spell-stat-detail-wiring.test.ts
+@@ -0,0 +1,41 @@
++import { describe, expect, it } from 'vitest';
++import { readFileSync } from 'node:fs';
++
++/**
++ * Guards the cross-layer wiring that puts a spell's real damage/range numbers on
++ * every surface where the player picks or inspects a spell. The formatting
++ * itself is covered by `spell-effect-summary.test.ts`; this protects the
++ * integration points, because `src/engine/` cannot import the game-layer
++ * ability catalog and must receive the summary through scene options — a
++ * regression there would silently restore prose-only spell copy.
++ */
++describe('spell stat detail wiring', () => {
++  it('MainGameScene reads the summary through an injected game-layer callback', () => {
++    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
++    expect(source).toContain(
++      'getAbilityEffectSummary?: (world: GameWorld, abilityId: string) => string | undefined;',
++    );
++    expect(source).toContain('private describeAbilityStats(abilityId: string): string | undefined');
++    expect(source).toContain('this.options.getAbilityEffectSummary?.(this.world, abilityId)');
++    // Engine must never reach into the game layer directly for this.
++    expect(source).not.toContain("from '../../game/abilities/");
++  });
++
++  it('MainGameScene shows the stat line in the Spell Broker stock and the abilities bar', () => {
++    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
++    expect(source).toContain(
++      "detail: this.describeAbilityStats(offer.spellId) ?? 'A permanent spell for this run.',",
++    );
++    expect(source).toMatch(/details: \[[\s\S]{0,320}this\.describeAbilityStats\(abilityId\)/);
++  });
++
++  it('the floor bootstrap supplies the summary from the ability registry', () => {
++    const source = readFileSync('src/bootstrap/floor-main-scene-options.ts', 'utf-8');
++    expect(source).toContain(
++      "import { getAbilityEffectSummary } from '../game/abilities/effect-summary.js';",
++    );
++    expect(source).toMatch(
++      /getAbilityEffectSummary: \(world: GameWorld, abilityId: string\) =>\s*getAbilityEffectSummary\(abilityId, world\.floorMap\?\.config\.tileSizeFt\)/,
++    );
++  });
++});
+
+```
