@@ -70,6 +70,7 @@ body:
         - ''
         - floor1
         - floor2
+        - floor3
     validations:
       required: false
   - type: input

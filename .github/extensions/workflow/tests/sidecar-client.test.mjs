@@ -25,6 +25,7 @@ import {
   runPostprocessUrl,
   workflowStateUrl,
   workflowAssetContextUrl,
+  workflowReferencePreviewUrl,
   workflowSynthesizeUrl,
   workflowBriefUrl,
   workflowPromoteUrl,
@@ -87,6 +88,13 @@ test('runsUrl omits the query by default and only adds a promoted filter when na
 
 test('workflow asset-context URL targets the shared game-data capability route', () => {
   assert.equal(workflowAssetContextUrl(BASE), `${BASE}/api/workflow/asset-context`);
+});
+
+test('workflow reference-preview URL encodes its deterministic selector inputs', () => {
+  assert.equal(
+    workflowReferencePreviewUrl(BASE, 'main player', 'character'),
+    `${BASE}/api/workflow/reference-preview?name=main%20player&type=character`,
+  );
 });
 
 test('workflow client fetches game-derived authoring capabilities without caching', async () => {

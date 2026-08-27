@@ -147,6 +147,10 @@ export function workflowAssetContextUrl(baseUrl) {
   return `${baseUrl}/api/workflow/asset-context`;
 }
 
+export function workflowReferencePreviewUrl(baseUrl, name, type) {
+  return `${baseUrl}/api/workflow/reference-preview?name=${enc(name)}&type=${enc(type)}`;
+}
+
 export function workflowSynthesizeUrl(baseUrl) {
   return `${baseUrl}/api/workflow/synthesize`;
 }
@@ -617,6 +621,13 @@ export function createSidecarClient(options) {
     return readResponse(response, 'Failed to load asset request context');
   }
 
+  async function getWorkflowReferencePreview(name, type) {
+    const response = await fetchImpl(workflowReferencePreviewUrl(baseUrl, name, type), {
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to load reference preview');
+  }
+
   async function putWorkflowState(state, etag = null) {
     const headers = { 'Content-Type': 'application/json' };
     // With no ETag the state has never been read as existing, so this write is
@@ -777,6 +788,7 @@ export function createSidecarClient(options) {
     unapproveVariant,
     getWorkflowState,
     getWorkflowAssetContext,
+    getWorkflowReferencePreview,
     putWorkflowState,
     synthesizeWorkflow,
     saveWorkflowBrief,

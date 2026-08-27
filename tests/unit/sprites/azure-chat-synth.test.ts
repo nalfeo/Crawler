@@ -53,8 +53,18 @@ describe('buildUserPrompt', () => {
   });
 
   it('asks the model to classify when no type is supplied', () => {
-    const prompt = buildUserPrompt(makeRequest({ type: null }));
+    const request = makeRequest({ type: null });
+    const prompt = buildUserPrompt(request);
     expect(prompt).toContain('Sprite type: classify from the name.');
+    expect(buildSystemPrompt(request)).not.toContain('## Sprite category design language');
+  });
+
+  it('injects canonical category design language when the request type is known', () => {
+    const prompt = buildSystemPrompt(makeRequest({ type: 'enemy' }));
+    expect(prompt).toContain('## Sprite category design language');
+    expect(prompt).toMatch(/screen-right turn/i);
+    expect(prompt).toMatch(/no vanishing point, foreshortening, apparent-size change/i);
+    expect(prompt).not.toMatch(/Mobs face left by default/i);
   });
 
   it('places explicit theme identity in the user prompt and design language in the system prompt', () => {

@@ -98,6 +98,7 @@ import { workflowErrorStatus } from './lib/workflow-errors.mjs';
 import {
   addRequest,
   approvalPatch,
+  editRequestItem,
   emptyQueue,
   mergeChangedItem,
   metadataDonePatch,
@@ -1813,6 +1814,27 @@ const jsonRoutes = [
     },
   },
   {
+    method: 'GET',
+    path: '/api/workflow/reference-preview',
+    handler: async ({ url, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const name = url.searchParams.get('name')?.trim();
+      const type = url.searchParams.get('type')?.trim();
+      if (!name || !type || type === 'auto') {
+        return { status: 400, json: { error: 'name and a concrete sprite type are required' } };
+      }
+      try {
+        return { json: await entry.client.getWorkflowReferencePreview(name, type) };
+      } catch (error) {
+        return {
+          status: 502,
+          json: { error: 'reference-preview-failed', message: error?.message ?? String(error) },
+        };
+      }
+    },
+  },
+  {
     method: 'POST',
     path: '/api/workflow/refresh',
     handler: (context) =>
@@ -1850,6 +1872,18 @@ const jsonRoutes = [
         await hydrateWorkflow(entry, { force: true });
         const next = selectItem(entry.workflow.state, body.itemId);
         entry.workflow.state = await saveWorkflowItem(entry, next, null, null, { select: true });
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
+    path: '/api/workflow/edit',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string' || !body.patch || typeof body.patch !== 'object') {
+          throw new CanvasError('bad-request', 'itemId and patch are required.');
+        }
+        await replaceWorkflowItem(entry, body.itemId, (item) => editRequestItem(item, body.patch));
         return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
       }),
   },

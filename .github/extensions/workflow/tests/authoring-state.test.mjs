@@ -5,6 +5,7 @@ import {
   WORKFLOW_STAGES,
   addRequest,
   approvalPatch,
+  editRequestItem,
   mergeChangedItem,
   metadataDonePatch,
   normalizeQueue,
@@ -162,7 +163,11 @@ test('request creation persists the local counterpart of GitHub request context 
     floorId: 'floor2',
     familyId: 'goblins',
     mobRole: 'elite',
-    injectionOverrides: { floor: 'cold blue stone', family: 'patched green leather' },
+    injectionOverrides: {
+      floor: 'cold blue stone',
+      family: 'patched green leather',
+      category: 'orthographic enemy construction',
+    },
     priority: 'high',
     requester: 'sprite-author',
   });
@@ -174,6 +179,7 @@ test('request creation persists the local counterpart of GitHub request context 
   assert.deepEqual(item.injectionOverrides, {
     floor: 'cold blue stone',
     family: 'patched green leather',
+    category: 'orthographic enemy construction',
   });
   assert.equal(item.priority, 'high');
   assert.equal(item.requester, 'sprite-author');
@@ -208,6 +214,48 @@ test('editing a chosen promoted brief clears stale downstream artifacts', () => 
     generationRequestedAt: '2026-08-21T12:00:00.000Z',
     approvedAssetPath: 'public/assets/generated/asset-1.png',
     metadataSummary: 'Tagged',
+  });
+
+  test('editing prompt fields resets downstream state and updates the consumer id', () => {
+    const original = item(1, {
+      stage: 'done',
+      name: 'old-name',
+      kebabName: 'old-name',
+      candidates: [{ yamlPath: 'briefs/draft/old-name.yaml' }],
+      chosenCandidatePath: 'briefs/draft/old-name.yaml',
+      briefPath: 'briefs/old-name.yaml',
+      run: { briefId: 'old-name', runId: 'run-1', candidates: [] },
+      approvedAssetPath: 'public/assets/generated/old-name.png',
+    });
+    const edited = editRequestItem(original, {
+      name: 'New Name',
+      brief: 'new direction',
+      injectionOverrides: { floor: 'new floor injection' },
+    });
+    assert.equal(edited.kebabName, 'new-name');
+    assert.equal(edited.stage, 'draft');
+    assert.deepEqual(edited.candidates, []);
+    assert.equal(edited.chosenCandidatePath, null);
+    assert.equal(edited.briefPath, null);
+    assert.equal(edited.run, null);
+    assert.equal(edited.approvedAssetPath, null);
+    assert.deepEqual(edited.injectionOverrides, { floor: 'new floor injection' });
+  });
+
+  test('editing metadata-only fields preserves synthesized state', () => {
+    const original = item(1, {
+      stage: 'done',
+      run: { briefId: 'asset-1', runId: 'run-1', candidates: [] },
+    });
+    const edited = editRequestItem(original, {
+      priority: 'high',
+      requester: 'Ada',
+      injectionOverrides: {},
+    });
+    assert.equal(edited.stage, 'done');
+    assert.equal(edited.run.runId, 'run-1');
+    assert.equal(edited.priority, 'high');
+    assert.equal(edited.requester, 'Ada');
   });
   const reset = resetDownstreamForBriefChange(original, original.chosenCandidatePath);
   assert.equal(reset.stage, 'candidates');

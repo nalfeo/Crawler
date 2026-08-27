@@ -69,9 +69,11 @@ function normalizeInjectionOverrides(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const floor = optionalTrimmedString(value.floor);
   const family = optionalTrimmedString(value.family);
+  const category = optionalTrimmedString(value.category);
   return {
     ...(floor ? { floor } : {}),
     ...(family ? { family } : {}),
+    ...(category ? { category } : {}),
   };
 }
 
@@ -297,6 +299,65 @@ export function updateItem(state, itemId, patch) {
   return {
     ...state,
     items: state.items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+  };
+}
+
+const REQUEST_EDIT_FIELDS = new Set([
+  'name',
+  'brief',
+  'requestedType',
+  'sizeVariant',
+  'floor',
+  'floorId',
+  'familyId',
+  'mobRole',
+  'injectionOverrides',
+  'priority',
+  'requester',
+]);
+
+const PROMPT_AFFECTING_FIELDS = new Set([
+  'name',
+  'brief',
+  'requestedType',
+  'sizeVariant',
+  'floor',
+  'floorId',
+  'familyId',
+  'mobRole',
+  'injectionOverrides',
+]);
+
+export function editRequestItem(item, patch) {
+  const edited = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => REQUEST_EDIT_FIELDS.has(key)),
+  );
+  if (typeof edited.name === 'string') {
+    edited.name = edited.name.trim();
+    if (!edited.name) throw new Error('name must not be empty.');
+    edited.kebabName = slugify(edited.name);
+  }
+  if (typeof edited.brief === 'string') edited.brief = edited.brief.trim();
+  if (typeof edited.requester === 'string') edited.requester = edited.requester.trim() || null;
+  if (typeof edited.injectionOverrides === 'object' && edited.injectionOverrides !== null) {
+    edited.injectionOverrides = normalizeInjectionOverrides(edited.injectionOverrides);
+  }
+  const promptChanged = Object.keys(edited).some((key) => {
+    if (!PROMPT_AFFECTING_FIELDS.has(key)) return false;
+    if (key === 'injectionOverrides') {
+      return JSON.stringify(edited[key]) !== JSON.stringify(normalizeInjectionOverrides(item[key]));
+    }
+    return !Object.is(edited[key], item[key]);
+  });
+  const next = { ...item, ...edited };
+  if (!promptChanged) return next;
+  return {
+    ...resetDownstreamForBriefChange(next, null),
+    stage: 'draft',
+    candidates: [],
+    chosenCandidatePath: null,
+    resolvedType: next.requestedType === 'auto' ? null : next.requestedType,
+    assetRequestContext: null,
   };
 }
 

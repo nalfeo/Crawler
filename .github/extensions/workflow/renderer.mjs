@@ -33,6 +33,7 @@ import * as runFilterFns from './lib/run-filter.mjs';
 import * as sheetDisplayFns from './lib/sheet-display.mjs';
 import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
 import * as briefLookupFns from './lib/brief-lookup.mjs';
+import * as requestFilterFns from './lib/request-filter.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -41,7 +42,6 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
-
 /**
  * Serialize a module's exported pure functions into browser source (`var name
  * = function name(...) {...};` declarations), the same way
@@ -74,6 +74,8 @@ const STYLES = `
   .muted { color: var(--text-color-muted, #94a3b8); font-size: 12px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .header-status { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .refresh-mini { padding: 3px 8px; font-size: 11px; border-radius: 999px; }
   header { margin-bottom: 12px; }
   select, button, input, textarea {
     background: #0f172a; color: #e2e8f0;
@@ -169,9 +171,16 @@ const STYLES = `
   .filelist { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto;
     border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 6px; }
   .filelist button { text-align: left; background: transparent; border: 1px solid transparent; padding: 4px 8px;
-    border-radius: 6px; font-size: 12px; color: #cbd5e1; width: 100%; }
+    border-radius: 6px; font-size: 12px; color: #cbd5e1; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .filelist button:hover { background: rgba(148,163,184,0.08); }
   .filelist button.active { background: rgba(56,189,248,0.12); border-color: rgba(56,189,248,0.4); color: #e2e8f0; }
+  .stage-pill { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #94a3b8; border: 1px solid rgba(148,163,184,0.35); border-radius: 999px; padding: 1px 7px;
+    flex: 0 0 auto; white-space: nowrap; }
+  .field { display: block; margin-top: 8px; }
+  .field span { display: block; margin-bottom: 3px; color: #94a3b8; font-size: 11px; }
+  .field input, .field select, .field textarea { width: 100%; }
   .split { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 12px; align-items: start; }
   .draft-tag { font-size: 9px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4); border-radius: 4px;
     padding: 0 4px; margin-left: 6px; }
@@ -204,6 +213,8 @@ const STYLES = `
   .concise-summary.pass { color: #86efac; }
   .concise-summary.fail { color: #fca5a5; }
   .concise-summary.unjudged, .concise-summary.none { color: #94a3b8; }
+  .request-brief { min-height: 120px; font-family: inherit; font-size: 13px; }
+  .request-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   .sheet-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
   .modal-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,0.75); display: flex;
     align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
@@ -234,6 +245,7 @@ const CLIENT_SCRIPT = String.raw`
   /*__SHEET_DISPLAY_FNS__*/
   /*__FEEDBACK_SUMMARY_FNS__*/
   /*__BRIEF_LOOKUP_FNS__*/
+  /*__REQUEST_FILTER_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
@@ -267,21 +279,52 @@ const CLIENT_SCRIPT = String.raw`
     { key: 'presentation', label: 'Presentation' },
     { key: 'themeAdherence', label: 'Theme adherence' }
   ];
+  // Keep this human-readable copy aligned with scripts/sprites/content-direction.ts.
+  var CRAWLER_DESIGN_LANGUAGE = [
+    'Crawler uses classic RPG 3/4 orthographic perspective in a dark-fantasy dungeon',
+    'rebuilt as deranged reality-show spectacle.',
+    'Its design language combines expressive, offbeat RPG characters; retro-futurist salvage',
+    'and corporate decay; and brutal improvised machinery, vehicles, armor, and contraptions.',
+    '',
+    'Build concepts from specific collisions between familiar things: panda mafia dons,',
+    'goblin motorcycle gangs, plate-armored crabs wearing baseball caps, or ceremonial',
+    'monsters carrying junk-built technology. Give each concept one instantly readable',
+    'identity and one unforgettable contradiction: cute and threatening, mundane and',
+    'monstrous, ceremonial and improvised, or bureaucratic and feral.',
+    '',
+    'The weirdness must feel authored. Avoid random ingredient soup, generic grim fantasy,',
+    'and undirected gore. Preserve dark humor, a strong silhouette, and an obvious gameplay',
+    'role. Deeper floors become stranger, more shocking, grotesque, frightening, and',
+    'wonderful without becoming less readable.'
+  ].join('\n');
   var TABS = [
-    { id: 'author', label: 'Author' },
     { id: 'backlog', label: 'Backlog' },
-    { id: 'files', label: 'Plans & Briefs' },
-    { id: 'runs', label: 'Runs' }
+    { id: 'briefs', label: 'Briefs' },
+    { id: 'sprites', label: 'Sprites' }
+  ];
+  // Keep this literal aligned with WORKFLOW_STAGES in lib/authoring-state.mjs
+  // (the durable source of truth for every reachable item.stage). This is the
+  // FULL canonical list, including the transient 'postprocessing'/'judging'
+  // stages, per that module's own invariant that a canvas writer must never
+  // truncate stages or fields it does not currently render.
+  var REQUEST_STAGE_FILTERS = [
+    'draft', 'synthesizing', 'candidates', 'generating', 'sheet', 'postprocessing',
+    'postprocessed', 'judging', 'variants', 'approved', 'checked-in', 'tagging', 'done'
   ];
   var app = document.getElementById('app');
   var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
-  var activeTab = 'author';
+  var activeTab = 'backlog';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
   var runSearch = ''; // type-to-filter text over briefId/runId
+  var requestStageFilter = 'all'; // all | one of WORKFLOW_STAGES
+  var requestSearch = ''; // type-to-filter text over name/kebabName/requester
   var sheetViewMode = 'constrained'; // 'constrained' (<=512x512) | 'full'
   var briefModal = null; // { relPath, name, content, error, triggerEl } | null
+  var requestTemplateModal = null;
+  var referencePreview = null; // { key, status, data, error } | null
+  var requestComposerDraft = null;
 
   // ── Embedded Postprocess Debugger host (persistent sibling of #app) ─────
   // #postprocess-host lives OUTSIDE #app in the static shell below (see
@@ -411,7 +454,7 @@ const CLIENT_SCRIPT = String.raw`
     lastState.stale = false;
     var staleBadge = document.querySelector('.stale-badge');
     if (staleBadge) staleBadge.remove();
-    if (activeTab !== 'runs') return;
+    if (activeTab !== 'sprites') return;
     // Re-render the full candidates section: a variant-scoped reprocess also
     // rebuilds every sibling's summary entry (clearing judge maps), so all
     // cards need refreshing, not just the target card.
@@ -471,6 +514,18 @@ const CLIENT_SCRIPT = String.raw`
       + '&runId=' + encodeURIComponent(runId) + '&file=' + encodeURIComponent(file);
   }
 
+  // Keyed by TABS id. The <h1> stays the fixed app/canvas brand title (matches
+  // the canvas's registered title in extension.mjs); only the descriptive
+  // subtitle beneath it should change with the active tab, since a
+  // Sprites-specific sentence was previously shown unconditionally on every
+  // tab (including Backlog and Briefs, where it does not describe what the
+  // user is looking at).
+  var TAB_SUBTITLES = {
+    backlog: 'Review which consumer-facing assets are still placeholders vs. approved sprites.',
+    briefs: 'Author asset requests, generate briefs, and browse plan/brief sources.',
+    sprites: 'Inspect generated runs and accept a variant into the durable asset queue.'
+  };
+
   function renderHealth(state) {
     var health = state.health || { state: 'down' };
     var badge = h('span', { class: 'badge ' + health.state, text: health.state });
@@ -483,12 +538,26 @@ const CLIENT_SCRIPT = String.raw`
       badges.push(h('span', { class: 'stale-badge', title: 'Showing a cached view while a background refresh checks for updates.' },
         [h('span', { class: 'spinner' }), 'revalidating…']));
     }
+    var refresh = h('button', {
+      class: 'refresh-mini',
+      text: 'Refresh Azure',
+      title: 'Fetch externally completed Azure workflow work now'
+    });
+    refresh.addEventListener('click', function () {
+      workflowPost('/api/workflow/refresh', {}, 'Refreshing Azure workflow…');
+    });
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Generation Workflow' }),
-        h('div', { class: 'muted', text: 'Inspect generated runs and accept a variant into the durable asset queue.' })
+        h('div', { class: 'muted', text: TAB_SUBTITLES[activeTab] || TAB_SUBTITLES.briefs })
       ]),
-      h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })]))
+      h('div', { class: 'header-status' }, [
+        h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })])),
+        h('div', { class: 'row' }, [
+          refresh,
+          h('span', { class: 'muted', text: 'Azure ' + (state.workflowLastRefreshAt || 'not loaded') })
+        ])
+      ])
     ]);
   }
 
@@ -616,7 +685,7 @@ const CLIENT_SCRIPT = String.raw`
     return parts[parts.length - 1] || sourceRun;
   }
 
-  // ---- Plans & Briefs tab ------------------------------------------------
+  // ---- Brief source files ------------------------------------------------
   function renderFiles(state) {
     var files = state.files || {};
     var wrap = h('div', null, []);
@@ -673,7 +742,7 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
-  // ---- Runs tab (reuses the sprite-review generation-output inspection) --
+  // ---- Sprites tab (reuses the sprite-review generation-output inspection) --
   function renderRunPicker(state) {
     var runs = filteredRuns(state);
     var sel = state.selected;
@@ -748,6 +817,12 @@ const CLIENT_SCRIPT = String.raw`
     }
 
     var toolbar = h('div', { class: 'sheet-toolbar' }, []);
+    var backToBriefs = h('button', { type: 'button', text: 'Back to Briefs', title: 'Return to request and brief editing' });
+    backToBriefs.addEventListener('click', function () {
+      activeTab = 'briefs';
+      if (lastState) render(lastState);
+    });
+    toolbar.appendChild(backToBriefs);
     var viewBriefBtn = h('button', { id: 'view-brief-btn', type: 'button', text: 'View Brief' });
     viewBriefBtn.addEventListener('click', function (ev) { openBriefModal(state, ev.currentTarget); });
     toolbar.appendChild(viewBriefBtn);
@@ -1496,7 +1571,7 @@ const CLIENT_SCRIPT = String.raw`
     return wrap;
   }
 
-  // ---- Author tab: durable Azure workflow state machine -------------------
+  // ---- Briefs tab: durable Azure workflow state machine -------------------
   var workflowMutationInFlight = false;
   // Unsaved brief YAML, keyed by itemId::yamlPath. A polled state push replaces
   // #app wholesale, so without this cache an in-progress edit would be silently
@@ -1534,6 +1609,51 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  function filteredRequests(workflow) {
+    return filterRequests(workflow.items || [], requestStageFilter, requestSearch);
+  }
+
+  // Mirrors renderRunPicker's stage/promotion <select> + search <input>
+  // composition (see lib/run-filter.mjs) so the Briefs request list and the
+  // Sprites run list share one picker pattern. Filtering never clears
+  // workflow.selectedId — a filtered-out selection stays selected in state
+  // even if it is not visible in this list.
+  function renderRequestPicker(workflow) {
+    var visible = filteredRequests(workflow);
+    var stageSel = h('select', { title: 'Filter requests by workflow stage' });
+    var stageOpts = [['all', 'All stages']].concat(
+      REQUEST_STAGE_FILTERS.map(function (stage) { return [stage, stage]; })
+    );
+    for (var f = 0; f < stageOpts.length; f++) {
+      var o = document.createElement('option');
+      o.value = stageOpts[f][0]; o.textContent = stageOpts[f][1];
+      if (stageOpts[f][0] === requestStageFilter) o.selected = true;
+      stageSel.appendChild(o);
+    }
+    stageSel.addEventListener('change', function () {
+      requestStageFilter = stageSel.value;
+      if (lastState) render(lastState);
+    });
+
+    var searchInput = h('input', {
+      type: 'search',
+      class: 'run-search',
+      placeholder: 'Filter by name or requester…',
+      'aria-label': 'Filter requests by name or requester',
+      value: requestSearch
+    });
+    searchInput.addEventListener('input', function () {
+      requestSearch = searchInput.value;
+      if (lastState) render(lastState);
+    });
+
+    return h('div', { class: 'row', style: { marginTop: '8px', marginBottom: '4px' } }, [
+      h('span', { class: 'muted', text: 'Stage:' }), stageSel,
+      searchInput,
+      h('span', { class: 'muted', text: visible.length + ' of ' + (workflow.items || []).length + ' shown' })
+    ]);
+  }
+
   function renderAuthor(state) {
     var workflow = state.workflow || { items: [], selectedId: null };
     var selected = null;
@@ -1541,25 +1661,6 @@ const CLIENT_SCRIPT = String.raw`
       if (workflow.items[i].id === workflow.selectedId) selected = workflow.items[i];
     }
     var wrap = h('div', null, []);
-    var refresh = h('button', {
-      class: 'accept-button',
-      text: 'Refresh Azure workflow',
-      title: 'Fetch externally completed Azure work now'
-    });
-    refresh.addEventListener('click', function () {
-      workflowPost('/api/workflow/refresh', {}, 'Refreshing Azure workflow…');
-    });
-    wrap.appendChild(h('div', { class: 'panel info', style: { marginBottom: '12px' } }, [
-      h('div', { class: 'between' }, [
-        h('div', null, [
-          h('strong', { text: 'Azure-backed authoring workflow' }),
-          h('div', { class: 'muted', text: 'Generation is queued to Azure; this canvas never starts queue consumers.' })
-        ]),
-        refresh
-      ]),
-      h('div', { class: 'muted', style: { marginTop: '6px' },
-        text: 'Last Azure refresh: ' + (state.workflowLastRefreshAt || 'not yet loaded') })
-    ]));
     if (state.workflowError) {
       wrap.appendChild(h('div', { class: 'panel warn', style: { marginBottom: '12px' },
         text: 'Azure workflow state is unavailable: ' + state.workflowError }));
@@ -1568,26 +1669,38 @@ const CLIENT_SCRIPT = String.raw`
     var composer = h('div', { class: 'panel', style: { marginBottom: '12px' } }, [
       h('div', { class: 'section-title', text: 'New art request' })
     ]);
-    var name = h('input', { type: 'text', placeholder: 'Bare consumer id, e.g. rusty-anvil', 'aria-label': 'Asset name' });
-    var brief = h('input', { type: 'text', placeholder: 'One-line art request', 'aria-label': 'One-line art request' });
-    var type = h('select', { 'aria-label': 'Sprite type' });
-    ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character'].forEach(function (value) {
+    var name = h('input', {
+      type: 'text',
+      placeholder: 'Bare consumer id, e.g. rusty-anvil',
+      title: 'Stable consumer-facing asset identifier',
+      'aria-label': 'Asset name'
+    });
+    var brief = h('textarea', {
+      class: 'request-brief',
+      placeholder: 'Describe the art direction. This text is sent to Synthesize as additional direction.',
+      title: 'Freeform art direction sent to Synthesize',
+      'aria-label': 'Art direction brief'
+    });
+    var type = h('select', { title: 'Choose the generated sprite category', 'aria-label': 'Sprite type' });
+    ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character', 'icon'].forEach(function (value) {
       type.appendChild(h('option', { value: value, text: value }));
     });
-    var size = h('select', { 'aria-label': 'Sprite footprint' });
+    var size = h('select', { title: 'Choose the intended sprite footprint', 'aria-label': 'Sprite footprint' });
     ['default', 'wide', 'tall', 'large'].forEach(function (value) {
       size.appendChild(h('option', { value: value, text: value }));
     });
     var contextCapabilities = state.assetContext && Array.isArray(state.assetContext.capabilities)
       ? state.assetContext.capabilities : [];
+    var categoryDesignLanguage = state.assetContext?.categoryDesignLanguage || {};
     var floorNumber = h('input', {
       type: 'number',
       min: '1',
       max: '20',
       placeholder: 'Floor 1-20',
+      title: 'Optional numeric floor intensity used by synthesis',
       'aria-label': 'Floor intensity'
     });
-    var floor = h('select', { 'aria-label': 'Floor context' });
+    var floor = h('select', { title: 'Select a floor from the live game manifests', 'aria-label': 'Floor context' });
     floor.appendChild(h('option', { value: '', text: 'No floor context' }));
     contextCapabilities.forEach(function (capability) {
       floor.appendChild(h('option', {
@@ -1595,27 +1708,92 @@ const CLIENT_SCRIPT = String.raw`
         text: 'Floor ' + capability.floor + ' · ' + capability.name
       }));
     });
-    var family = h('select', { 'aria-label': 'Enemy family context' });
-    var role = h('select', { 'aria-label': 'Mob role context' });
-    var priority = h('select', { 'aria-label': 'Request priority' });
+    var family = h('select', { title: 'Select a family available on the chosen floor', 'aria-label': 'Enemy family context' });
+    var role = h('select', { title: 'Select a role available for the chosen family', 'aria-label': 'Mob role context' });
+    var priority = h('select', { title: 'Choose queue priority for this request', 'aria-label': 'Request priority' });
     ['normal', 'high'].forEach(function (value) {
       priority.appendChild(h('option', { value: value, text: value + ' priority' }));
     });
     var requester = h('input', {
       type: 'text',
       placeholder: 'Requester identity (optional)',
+      title: 'Optional name recorded with the request',
       'aria-label': 'Requester identity'
     });
     var floorInjection = h('textarea', {
       placeholder: 'Canonical floor design language appears after selecting a floor. Edits apply only to this request.',
+      title: 'Override floor design language for this request only',
       'aria-label': 'Floor injection override',
       style: { minHeight: '74px' }
     });
     var familyInjection = h('textarea', {
       placeholder: 'Canonical family design language appears after selecting a family. Edits apply only to this request.',
+      title: 'Override family or theme design language for this request only',
       'aria-label': 'Family injection override',
       style: { minHeight: '74px' }
     });
+    var categoryInjection = h('textarea', {
+      placeholder: 'Choose a sprite type to load its canonical category design language. Edits apply only to this request.',
+      title: 'Override sprite-category design language for this request only',
+      'aria-label': 'Sprite category design-language override',
+      style: { minHeight: '92px' }
+    });
+    var categoryDraftByType = requestComposerDraft?.categoryDraftByType
+      ? Object.assign({}, requestComposerDraft.categoryDraftByType)
+      : {};
+    var previousCategoryType = type.value;
+    function updateCategoryInjection() {
+      categoryDraftByType[previousCategoryType] = categoryInjection.value;
+      categoryInjection.value = Object.hasOwn(categoryDraftByType, type.value)
+        ? categoryDraftByType[type.value]
+        : type.value === 'auto'
+          ? ''
+          : (categoryDesignLanguage[type.value] || '');
+      previousCategoryType = type.value;
+    }
+    function captureRequestComposerDraft() {
+      categoryDraftByType[type.value] = categoryInjection.value;
+      requestComposerDraft = {
+        name: name.value,
+        brief: brief.value,
+        type: type.value,
+        size: size.value,
+        floorNumber: floorNumber.value,
+        floor: floor.value,
+        family: family.value,
+        role: role.value,
+        priority: priority.value,
+        requester: requester.value,
+        floorInjection: floorInjection.value,
+        familyInjection: familyInjection.value,
+        categoryInjection: categoryInjection.value,
+        categoryDraftByType: Object.assign({}, categoryDraftByType)
+      };
+    }
+    function restoreRequestComposerDraft() {
+      updateFamilyOptions();
+      if (!requestComposerDraft) {
+        updateCategoryInjection();
+        return;
+      }
+      name.value = requestComposerDraft.name;
+      brief.value = requestComposerDraft.brief;
+      type.value = requestComposerDraft.type;
+      size.value = requestComposerDraft.size;
+      floor.value = requestComposerDraft.floor;
+      updateFamilyOptions();
+      family.value = requestComposerDraft.family;
+      updateRoleOptions();
+      role.value = requestComposerDraft.role;
+      floorNumber.value = requestComposerDraft.floorNumber;
+      priority.value = requestComposerDraft.priority;
+      requester.value = requestComposerDraft.requester;
+      floorInjection.value = requestComposerDraft.floorInjection;
+      familyInjection.value = requestComposerDraft.familyInjection;
+      categoryInjection.value = requestComposerDraft.categoryInjection;
+      categoryDraftByType[type.value] = categoryInjection.value;
+      previousCategoryType = type.value;
+    }
     function selectedFloorCapability() {
       for (var ci = 0; ci < contextCapabilities.length; ci++) {
         if (contextCapabilities[ci].floorId === floor.value) return contextCapabilities[ci];
@@ -1657,8 +1835,148 @@ const CLIENT_SCRIPT = String.raw`
     }
     floor.addEventListener('change', updateFamilyOptions);
     family.addEventListener('change', updateRoleOptions);
-    updateFamilyOptions();
-    var create = h('button', { class: 'accept-button', text: 'Create request' });
+    type.addEventListener('change', updateCategoryInjection);
+    restoreRequestComposerDraft();
+    var create = h('button', {
+      class: 'accept-button',
+      text: 'Generate Brief',
+      title: 'Save this request and queue it for Azure synthesis'
+    });
+    function fullRequestTemplate() {
+      var selectedFloor = selectedFloorCapability();
+      var selectedFamily = null;
+      if (selectedFloor && Array.isArray(selectedFloor.families)) {
+        for (var ti = 0; ti < selectedFloor.families.length; ti++) {
+          if (selectedFloor.families[ti].id === family.value) selectedFamily = selectedFloor.families[ti];
+        }
+      }
+      var lines = [
+        'FULL SYNTHESIS REQUEST',
+        '',
+        'Asset name: ' + (name.value.trim() || '[not entered]'),
+        'Additional direction:',
+        brief.value.trim() || '[none]',
+        '',
+        'Sprite type: ' + type.value,
+        'Sprite footprint: ' + size.value,
+        'Floor intensity: ' + (floorNumber.value || '1'),
+        'Floor context: ' + (selectedFloor ? selectedFloor.floorId + ' · ' + selectedFloor.name : 'none'),
+        'Enemy family context: ' + (selectedFamily ? selectedFamily.id : 'none'),
+        'Mob role context: ' + (role.value || 'none'),
+        'Request priority: ' + priority.value,
+        'Requester identity: ' + (requester.value.trim() || 'none'),
+        '',
+        'Crawler design-language injection (always applied):',
+        CRAWLER_DESIGN_LANGUAGE,
+        '',
+        'Sprite category design-language injection:',
+        categoryInjection.value.trim() || '[resolved after automatic type classification]',
+        '',
+        'Floor design-language injection:',
+        floorInjection.value.trim() || (selectedFloor && selectedFloor.canonicalFloorInjection) || '[none]',
+        '',
+        'Family/theme design-language injection:',
+        familyInjection.value.trim() || (selectedFamily && selectedFamily.canonicalFamilyInjection) || '[none]',
+        '',
+        'The request above is sent to Synthesize after Generate Brief, with the selected game-derived sources and request-local injection overrides.'
+      ];
+      return lines.join('\n');
+    }
+    function closeTemplateModal() {
+      requestTemplateModal = null;
+      referencePreview = null;
+      render(lastState);
+    }
+    function templateSection(text, heading, nextHeadings) {
+      var start = text.indexOf(heading);
+      if (start < 0) return '';
+      start += heading.length;
+      var end = text.length;
+      nextHeadings.forEach(function (nextHeading) {
+        var next = text.indexOf(nextHeading, start);
+        if (next >= 0 && next < end) end = next;
+      });
+      return text.slice(start, end).trim();
+    }
+    function optionExists(select, value) {
+      for (var oi = 0; oi < select.options.length; oi++) {
+        if (select.options[oi].value === value) return true;
+      }
+      return false;
+    }
+    function applyTemplateEdits(templateText) {
+      var editedName = templateSection(templateText, 'Asset name:', ['Additional direction:']);
+      var editedBrief = templateSection(templateText, 'Additional direction:', ['Sprite type:']);
+      var editedType = templateSection(templateText, 'Sprite type:', ['Sprite footprint:']);
+      var editedSize = templateSection(templateText, 'Sprite footprint:', ['Floor intensity:']);
+      var editedFloorNumber = templateSection(templateText, 'Floor intensity:', ['Floor context:']);
+      var editedFloor = templateSection(templateText, 'Floor context:', ['Enemy family context:']).split(' · ')[0];
+      var editedFamily = templateSection(templateText, 'Enemy family context:', ['Mob role context:']);
+      var editedRole = templateSection(templateText, 'Mob role context:', ['Request priority:']);
+      var editedPriority = templateSection(templateText, 'Request priority:', ['Requester identity:']);
+      var editedRequester = templateSection(templateText, 'Requester identity:', ['Crawler design-language injection (always applied):']);
+      var editedCategoryInjection = templateSection(templateText, 'Sprite category design-language injection:', ['Floor design-language injection:']);
+      var editedFloorInjection = templateSection(templateText, 'Floor design-language injection:', ['Family/theme design-language injection:']);
+      var editedFamilyInjection = templateSection(templateText, 'Family/theme design-language injection:', ['The request above']);
+      name.value = editedName === '[not entered]' ? '' : editedName;
+      brief.value = editedBrief === '[none]' ? '' : editedBrief;
+      if (optionExists(type, editedType)) type.value = editedType;
+      if (optionExists(size, editedSize)) size.value = editedSize;
+      if (/^\d+$/.test(editedFloorNumber)) floorNumber.value = editedFloorNumber;
+      floor.value = editedFloor === 'none' ? '' : editedFloor;
+      updateFamilyOptions();
+      family.value = editedFamily === 'none' ? '' : editedFamily;
+      updateRoleOptions();
+      role.value = editedRole === 'none' ? '' : editedRole;
+      if (optionExists(priority, editedPriority)) priority.value = editedPriority;
+      requester.value = editedRequester === 'none' ? '' : editedRequester;
+      categoryInjection.value = editedCategoryInjection === '[resolved after automatic type classification]'
+        ? '' : editedCategoryInjection;
+      floorInjection.value = editedFloorInjection === '[none]' ? '' : editedFloorInjection;
+      familyInjection.value = editedFamilyInjection === '[none]' ? '' : editedFamilyInjection;
+    }
+    var viewTemplate = h('button', {
+      text: 'View full template',
+      type: 'button',
+      title: 'Review and edit the complete request before creating it'
+    });
+    viewTemplate.addEventListener('click', function () {
+      captureRequestComposerDraft();
+      requestTemplateModal = fullRequestTemplate();
+      var previewName = name.value.trim();
+      var previewType = type.value;
+      var previewKey = previewName + '|' + previewType;
+      referencePreview = !previewName || previewType === 'auto'
+        ? {
+            key: previewKey,
+            status: 'empty',
+            data: null,
+            error: null,
+            reason: !previewName ? 'name' : 'type'
+          }
+        : { key: previewKey, status: 'loading', data: null, error: null };
+      render(lastState);
+      if (previewName && previewType !== 'auto') {
+        fetch('/api/workflow/reference-preview?name=' + encodeURIComponent(previewName) +
+          '&type=' + encodeURIComponent(previewType))
+          .then(function (response) {
+            return response.json().then(function (payload) {
+              if (!response.ok) throw new Error(payload.message || payload.error || 'Reference preview failed');
+              return payload;
+            });
+          })
+          .then(function (payload) {
+            if (!referencePreview || referencePreview.key !== previewKey) return;
+            referencePreview = { key: previewKey, status: 'ready', data: payload, error: null };
+            render(lastState);
+          })
+          .catch(function (error) {
+            if (!referencePreview || referencePreview.key !== previewKey) return;
+            referencePreview = { key: previewKey, status: 'error', data: null, error: error.message };
+            render(lastState);
+          });
+      }
+    });
     create.addEventListener('click', function () {
       workflowPost('/api/workflow/request', {
         name: name.value,
@@ -1671,13 +1989,16 @@ const CLIENT_SCRIPT = String.raw`
         mobRole: role.value || undefined,
         injectionOverrides: {
           floor: floorInjection.value,
-          family: familyInjection.value
+          family: familyInjection.value,
+          category: categoryInjection.value
         },
         priority: priority.value,
         requester: requester.value
-      }, 'Creating request…');
+      }, 'Generating brief…');
     });
-    composer.appendChild(h('div', { class: 'row' }, [name, brief, type, size, create]));
+    composer.appendChild(h('label', { text: 'Asset name', style: { display: 'block', marginTop: '8px' } }, [name]));
+    composer.appendChild(h('label', { text: 'Art direction brief', style: { display: 'block', marginTop: '8px' } }, [brief]));
+    composer.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, [type, size]));
     composer.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, [
       floorNumber, floor, family, role, priority, requester
     ]));
@@ -1687,19 +2008,108 @@ const CLIENT_SCRIPT = String.raw`
         : 'Game-derived request context is unavailable until the sprite sidecar responds.' }));
     composer.appendChild(h('label', { text: 'Floor design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [floorInjection]));
     composer.appendChild(h('label', { text: 'Family/theme design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [familyInjection]));
+    composer.appendChild(h('label', { text: 'Sprite category design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [categoryInjection]));
+    composer.appendChild(h('div', { class: 'template-actions', style: { marginTop: '12px' } }, [viewTemplate]));
+    composer.appendChild(h('div', { class: 'request-actions' }, [create]));
+    composer.addEventListener('input', captureRequestComposerDraft);
+    composer.addEventListener('change', captureRequestComposerDraft);
     wrap.appendChild(composer);
+    if (requestTemplateModal !== null) {
+      var backdrop = h('div', { class: 'modal-backdrop' });
+      var modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'request-template-title' });
+      modal.appendChild(h('button', {
+        class: 'modal-close',
+        type: 'button',
+        text: '✕ Close',
+        title: 'Close without applying template edits',
+        onclick: closeTemplateModal
+      }));
+      modal.appendChild(h('h2', { id: 'request-template-title', text: 'Full synthesis request template' }));
+      modal.appendChild(h('div', { class: 'muted', text: 'Review the exact name, direction, game context, and injection values that will be sent after you generate the brief.' }));
+      var templateEditor = h('textarea', {
+        class: 'yaml',
+        title: 'Edit request fields, then apply them to the authoring form',
+        'aria-label': 'Editable full synthesis request template'
+      });
+      templateEditor.value = requestTemplateModal;
+      templateEditor.addEventListener('input', function () {
+        requestTemplateModal = templateEditor.value;
+      });
+      modal.appendChild(templateEditor);
+      modal.appendChild(h('h3', { text: 'Reference examples', style: { marginBottom: '4px' } }));
+      modal.appendChild(h('div', {
+        class: 'muted',
+        text: 'Current deterministic preview of the approved sprites that generation would attach now. The set is re-evaluated if the approved pool or dislike annotations change before generation.'
+      }));
+      if (!referencePreview || referencePreview.status === 'loading') {
+        modal.appendChild(h('div', { class: 'panel', text: 'Loading reference examples…', style: { marginTop: '8px' } }));
+      } else if (referencePreview.status === 'error') {
+        modal.appendChild(h('div', { class: 'panel warn', text: 'Reference preview unavailable: ' + referencePreview.error, style: { marginTop: '8px' } }));
+      } else if (referencePreview.status === 'empty' ||
+        !Array.isArray(referencePreview.data?.references) ||
+        referencePreview.data.references.length === 0) {
+        modal.appendChild(h('div', { class: 'panel', text: referencePreview.reason === 'name'
+          ? 'Enter an asset name to resolve its deterministic reference examples.'
+          : type.value === 'auto'
+            ? 'Reference examples resolve after automatic sprite-type classification.'
+          : 'No eligible approved reference examples are currently available.', style: { marginTop: '8px' } }));
+      } else {
+        var referenceGallery = h('div', { class: 'row', style: { marginTop: '8px', alignItems: 'stretch' } });
+        referencePreview.data.references.forEach(function (reference) {
+          referenceGallery.appendChild(h('figure', {
+            class: 'panel',
+            title: reference.assetPath,
+            style: { margin: '0', width: '150px' }
+          }, [
+            h('img', {
+              src: reference.imageDataUrl,
+              alt: reference.spriteName + ' approved reference sprite',
+              style: { width: '128px', height: '128px', objectFit: 'contain', imageRendering: 'pixelated' }
+            }),
+            h('figcaption', { text: reference.spriteName, style: { overflowWrap: 'anywhere' } }),
+            h('div', { class: 'muted', text: reference.type + ' · sensors ' + reference.sensorScore +
+              (reference.judgeScore == null ? '' : ' · judge ' + reference.judgeScore) })
+          ]));
+        });
+        modal.appendChild(referenceGallery);
+      }
+      var applyTemplate = h('button', {
+        class: 'accept-button',
+        text: 'Apply template edits',
+        title: 'Apply editable template values to the request form'
+      });
+      applyTemplate.addEventListener('click', function () {
+        applyTemplateEdits(templateEditor.value);
+          captureRequestComposerDraft();
+        requestTemplateModal = null;
+        backdrop.remove();
+        name.focus();
+      });
+      modal.appendChild(h('div', { class: 'request-actions' }, [applyTemplate]));
+      backdrop.appendChild(modal);
+      wrap.appendChild(backdrop);
+    }
 
     if (workflow.items.length === 0) {
-      wrap.appendChild(h('div', { class: 'muted', text: 'Create a request to begin synthesis.' }));
+      wrap.appendChild(h('div', { class: 'muted', text: 'Generate a brief to begin synthesis.' }));
       return wrap;
     }
+    wrap.appendChild(renderRequestPicker(workflow));
+    var visibleItems = filteredRequests(workflow);
     var list = h('div', { class: 'filelist' }, []);
-    workflow.items.forEach(function (item) {
+    if (visibleItems.length === 0) {
+      list.appendChild(h('div', { class: 'muted', style: { padding: '4px 8px' },
+        text: 'No requests match the current stage/search filter.' }));
+    }
+    visibleItems.forEach(function (item) {
       list.appendChild(h('button', {
         class: item.id === workflow.selectedId ? 'active' : '',
-        text: item.name + ' · ' + item.stage,
+        title: item.name + ' · ' + item.stage,
         onclick: function () { workflowPost('/api/workflow/select', { itemId: item.id }, 'Selecting request…'); }
-      }));
+      }, [
+        h('span', { text: item.name }),
+        h('span', { class: 'stage-pill', text: item.stage })
+      ]));
     });
     var detail = h('div', { class: 'panel' }, []);
     if (!selected) {
@@ -1730,7 +2140,138 @@ const CLIENT_SCRIPT = String.raw`
         if (selected.assetRequestContext.injections.family) injectionLines.push('Family/theme: ' + selected.assetRequestContext.injections.family);
         if (injectionLines.length) detail.appendChild(h('pre', { class: 'muted', text: injectionLines.join('\n') }));
       }
+      var editRequest = h('button', {
+        text: 'Edit request',
+        title: 'Edit the original request fields. Prompt changes invalidate downstream synthesis results.'
+      });
+      editRequest.addEventListener('click', function () {
+        var backdrop = h('div', { class: 'modal-backdrop' });
+        var modal = h('div', { class: 'modal panel' }, [
+        h('div', { class: 'between' }, [
+          h('strong', { text: 'Edit request' }),
+          h('button', { text: 'Close', title: 'Close without saving', onclick: function () { backdrop.remove(); } })
+        ]),
+        h('p', { class: 'muted', text: 'Changing prompt or game context clears promoted briefs and generated runs; durable Azure artifacts are retained.' })
+        ]);
+        function field(label, control) {
+        modal.appendChild(h('label', { class: 'field' }, [h('span', { text: label }), control]));
+        return control;
+        }
+        var editName = field('Asset name', h('input', { type: 'text', value: selected.name }));
+        var editBrief = field('Art direction brief', h('textarea', { class: 'request-brief', text: selected.brief || '' }));
+        var editType = field('Sprite type', h('select'));
+        ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character', 'icon'].forEach(function (value) {
+        editType.appendChild(h('option', { value: value, text: value }));
+        });
+        editType.value = selected.requestedType;
+        var editSize = field('Sprite footprint', h('select'));
+        ['default', 'wide', 'tall', 'large'].forEach(function (value) {
+        editSize.appendChild(h('option', { value: value, text: value }));
+        });
+        editSize.value = selected.sizeVariant;
+        var editFloorNumber = field('Floor intensity', h('input', {
+        type: 'number',
+        min: '1',
+        max: '20',
+        placeholder: 'Floor 1-20',
+        title: 'Optional numeric floor intensity used by synthesis',
+        'aria-label': 'Floor intensity',
+        value: selected.floor != null ? String(selected.floor) : ''
+        }));
+        var editFloor = field('Floor context', h('select'));
+        editFloor.appendChild(h('option', { value: '', text: 'No floor context' }));
+        contextCapabilities.forEach(function (capability) {
+        editFloor.appendChild(h('option', { value: capability.floorId, text: 'Floor ' + capability.floor + ' · ' + capability.name }));
+        });
+        editFloor.value = selected.floorId || '';
+        var editFamily = field('Enemy family context', h('select'));
+        var editRole = field('Mob role context', h('select'));
+        var editPriority = field('Priority', h('select'));
+        ['normal', 'high'].forEach(function (value) {
+        editPriority.appendChild(h('option', { value: value, text: value + ' priority' }));
+        });
+        editPriority.value = selected.priority || 'normal';
+        var editRequester = field('Requester identity', h('input', { type: 'text', value: selected.requester || '' }));
+        var editFloorInjection = field('Floor injection override', h('textarea', { text: selected.injectionOverrides?.floor || '' }));
+        var editFamilyInjection = field('Family/theme injection override', h('textarea', { text: selected.injectionOverrides?.family || '' }));
+        var editCategoryInjection = field('Sprite category injection override', h('textarea', {
+        text: selected.injectionOverrides?.category ||
+          (selected.requestedType !== 'auto' ? categoryDesignLanguage[selected.requestedType] || '' : '')
+        }));
+        var categoryDraftByType = {};
+        categoryDraftByType[selected.requestedType] = editCategoryInjection.value;
+        var previousEditType = editType.value;
+        editType.addEventListener('change', function () {
+        categoryDraftByType[previousEditType] = editCategoryInjection.value;
+        editCategoryInjection.value = Object.hasOwn(categoryDraftByType, editType.value)
+          ? categoryDraftByType[editType.value]
+          : editType.value === 'auto'
+            ? ''
+            : (categoryDesignLanguage[editType.value] || '');
+        previousEditType = editType.value;
+        });
+        function editCapability() {
+        for (var ei = 0; ei < contextCapabilities.length; ei++) {
+          if (contextCapabilities[ei].floorId === editFloor.value) return contextCapabilities[ei];
+        }
+        return null;
+        }
+        function editFamilies() {
+        var capability = editCapability();
+        editFamily.replaceChildren(h('option', { value: '', text: 'No enemy family' }));
+        (capability?.families || []).forEach(function (entry) {
+          editFamily.appendChild(h('option', { value: entry.id, text: entry.id }));
+        });
+        editFamily.value = selected.familyId || '';
+        editFamily.disabled = !capability;
+        editRoles();
+        }
+        function editRoles() {
+        var capability = editCapability();
+        var familyEntry = (capability?.families || []).find(function (entry) { return entry.id === editFamily.value; });
+        editRole.replaceChildren(h('option', { value: '', text: 'No mob role' }));
+        (familyEntry?.roles || []).forEach(function (value) {
+          editRole.appendChild(h('option', { value: value, text: value }));
+        });
+        editRole.value = selected.mobRole || '';
+        editRole.disabled = !familyEntry;
+        }
+        editFloor.addEventListener('change', editFamilies);
+        editFamily.addEventListener('change', editRoles);
+        editFamilies();
+        var saveEdit = h('button', {
+        class: 'accept-button',
+        text: 'Save request',
+        title: 'Persist these request fields to the shared Azure-backed workflow'
+        });
+        saveEdit.addEventListener('click', function () {
+        workflowPost('/api/workflow/edit', {
+          itemId: selected.id,
+          patch: {
+            name: editName.value,
+            brief: editBrief.value,
+            requestedType: editType.value,
+            sizeVariant: editSize.value,
+            floorId: editFloor.value || null,
+            floor: editFloorNumber.value === '' ? null : Number(editFloorNumber.value),
+            familyId: editFamily.value || null,
+            mobRole: editRole.value || null,
+            priority: editPriority.value,
+            requester: editRequester.value,
+            injectionOverrides: {
+              floor: editFloorInjection.value,
+              family: editFamilyInjection.value,
+              category: editCategoryInjection.value
+            }
+          }
+        }, 'Saving request…').then(function (ok) { if (ok) backdrop.remove(); });
+        });
+        modal.appendChild(h('div', { class: 'request-actions' }, [saveEdit]));
+        backdrop.appendChild(modal);
+        wrap.appendChild(backdrop);
+      });
       var controls = h('div', { class: 'row' }, []);
+      controls.appendChild(editRequest);
       if (selected.stage === 'draft') {
         controls.appendChild(h('button', { class: 'accept-button', text: 'Synthesize draft briefs',
           onclick: function () { workflowPost('/api/workflow/synthesize', { itemId: selected.id, candidates: 3 }, 'Synthesizing briefs…'); } }));
@@ -1765,16 +2306,23 @@ const CLIENT_SCRIPT = String.raw`
           detail.appendChild(candidatePanel);
         });
       }
-      if ((selected.stage === 'candidates' || selected.stage === 'draft') && (selected.chosenCandidatePath || selected.candidates.length)) {
-        controls.appendChild(h('button', { class: 'accept-button', text: 'Promote & queue Azure generation',
-          onclick: function () { workflowPost('/api/workflow/generate', { itemId: selected.id }, 'Queueing Azure generation…'); } }));
+      if ((selected.stage === 'candidates' || selected.stage === 'draft') && (selected.chosenCandidatePath || (selected.candidates && selected.candidates.length))) {
+        controls.appendChild(h('button', {
+          class: 'accept-button',
+          text: 'Generate sprite',
+          title: 'Promote the chosen brief and continue the generated-sprite workflow on the Sprites page',
+          onclick: function () {
+            workflowPost('/api/workflow/generate', { itemId: selected.id }, 'Queueing Azure generation…')
+              .then(function (ok) { if (ok) { activeTab = 'sprites'; if (lastState) render(lastState); } });
+          }
+        }));
       }
       if (selected.stage === 'generating') {
         controls.appendChild(h('span', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Waiting for Azure queue output…']));
       }
       if (selected.run) {
         controls.appendChild(h('button', { text: 'View generated sheet', onclick: function () {
-          activeTab = 'runs'; select(selected.run.briefId, selected.run.runId, null);
+          activeTab = 'sprites'; select(selected.run.briefId, selected.run.runId, null);
         } }));
       }
       if (selected.stage === 'sheet') {
@@ -1812,15 +2360,22 @@ const CLIENT_SCRIPT = String.raw`
     return wrap;
   }
 
+  function renderBriefs(state) {
+    var wrap = h('div', null, []);
+    wrap.appendChild(renderAuthor(state));
+    wrap.appendChild(h('div', { style: { marginTop: '12px' } }, [renderFiles(state)]));
+    return wrap;
+  }
+
 
   // ---- Tab bar + top-level render ----------------------------------------
   function renderTabs(state) {
     var bar = h('div', { class: 'tabs' }, []);
     var counts = {
-      author: (state.workflow && state.workflow.items) ? state.workflow.items.length : 0,
+      briefs: ((state.workflow && state.workflow.items) ? state.workflow.items.length : 0) +
+        (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
       backlog: (state.backlog && state.backlog.reports) ? state.backlog.reports.length : 0,
-      files: (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
-      runs: (state.runs || []).length
+      sprites: (state.runs || []).length
     };
     for (var i = 0; i < TABS.length; i++) {
       (function (tab) {
@@ -1836,9 +2391,8 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function renderActiveTab(state) {
-    if (activeTab === 'author') return renderAuthor(state);
-    if (activeTab === 'files') return renderFiles(state);
-    if (activeTab === 'runs') return renderRuns(state);
+    if (activeTab === 'briefs') return renderBriefs(state);
+    if (activeTab === 'sprites') return renderRuns(state);
     return renderBacklog(state);
   }
 
@@ -1858,8 +2412,8 @@ const CLIENT_SCRIPT = String.raw`
       : null;
     lastState = state;
     // The debugger is a Run-specific inspection tool. Its iframe stays mounted
-    // across Runs-tab refreshes, but must not leak into backlog or brief views.
-    if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
+    // across Sprites-tab refreshes, but must not leak into backlog or brief views.
+    if (postprocessHost) postprocessHost.hidden = activeTab !== 'sprites';
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
     if (state.error) {
@@ -1968,7 +2522,8 @@ export function renderHtml(instanceId, mutationToken = '') {
     .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
     .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
     .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
-    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));
+    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns))
+    .replace('/*__REQUEST_FILTER_FNS__*/', () => serializePureModule(requestFilterFns));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
@@ -1977,7 +2532,7 @@ export function renderHtml(instanceId, mutationToken = '') {
     '<style>' + STYLES + '</style>',
     '</head><body>',
     '<div class="toolbar">',
-    '<button id="refresh-btn" type="button" title="Reload backlog and runs">↻ Refresh</button>',
+    '<button id="refresh-btn" type="button" title="Reload backlog and sprites">↻ Refresh</button>',
     '<span id="busy" class="busy" hidden><span class="spinner"></span><span id="busy-label">Loading…</span></span>',
     '</div>',
     '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',

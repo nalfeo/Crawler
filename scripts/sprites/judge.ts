@@ -46,6 +46,7 @@ import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
 import { contentDirectionBlock } from './content-direction.js';
+import { spriteCategoryDesignLanguageBlock } from './sprite-category-design-language.js';
 import { designLanguageAddendaBlock } from './content-direction.js';
 import {
   resolveDesignLanguageAddenda,
@@ -657,6 +658,8 @@ function buildSystemInstructions(
     'like it belongs in the same shipped set.',
     '',
     contentDirectionBlock(floor, addenda),
+    '',
+    spriteCategoryDesignLanguageBlock(brief.type, brief.assetRequestContext?.injections.category),
     '',
     `Score the candidate on ${axisCount === 4 ? 'four' : axisCount} independent 1-5 ordinal axes:`,
     '',

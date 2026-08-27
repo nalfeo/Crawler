@@ -230,12 +230,14 @@ const assetRequestContextSchema = z
       .object({
         floor: z.string().min(1).optional(),
         family: z.string().min(1).optional(),
+        category: z.string().min(1).optional(),
       })
       .strict(),
     injectionOverrides: z
       .object({
         floor: z.string().min(1).optional(),
         family: z.string().min(1).optional(),
+        category: z.string().min(1).optional(),
       })
       .strict()
       .optional(),

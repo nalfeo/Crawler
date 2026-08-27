@@ -51,7 +51,6 @@ import {
   loadStyleGuide,
 } from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
-import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { sliceSheetFromBrief, type BriefSliceResult } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
@@ -66,24 +65,11 @@ import {
   type RunSummary,
   type SeedFrameRef,
 } from './run-artifacts.js';
-import {
-  REFERENCE_COUNT,
-  referenceSelectorSeed,
-  selectReferences,
-  SELECTOR_VERSION,
-} from './reference-selector.js';
+import { REFERENCE_COUNT, SELECTOR_VERSION } from './reference-selector.js';
+import { resolveReferenceSelection } from './resolve-reference-selection.js';
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
-import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
-// The Sprite Editor's queued-but-unpromoted annotation overlay lives beside
-// the extension (a `.mjs` cannot import TypeScript, so this is the one
-// direction that CAN be shared without duplicating logic). A sibling
-// `pending-annotation-overlay.d.mts` declares its types for `tsc` without
-// requiring `allowJs`.
-import {
-  resolvePendingAnnotationsPath,
-  readPendingDislikedSpriteNames,
-} from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
+import { assertResolvedUnderGenerated } from './generated-asset-path.js';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -234,7 +220,6 @@ export interface GenerateSheetCoreResult {
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
-const ANNOTATION_PARSE_ATTEMPTS = 3;
 
 /**
  * Project a selected manifest entry into the auditable run-summary shape. The
@@ -257,42 +242,6 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
     judgeScore: entry.judgeScore ?? null,
     contentHash: entry.contentHash ?? null,
   };
-}
-
-/**
- * Raw `sprites` map from the tracked `sprite-editor-annotations.json`
- * aggregate. Fails safe to an empty map (never throws) on a missing,
- * malformed, or transiently torn file, mirroring the pending-overlay
- * reader's own fail-safe retry policy.
- */
-function loadAnnotationSpritesMap(annotationsPath: string): Readonly<Record<string, unknown>> {
-  for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
-    try {
-      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
-        readonly sprites?: unknown;
-      };
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-      const sprites = raw.sprites;
-      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites)) return {};
-      return sprites as Record<string, unknown>;
-    } catch {
-      // Concurrent sprite-editor writes can expose a transient truncated snapshot.
-      // Retry a bounded number of times, then fail-safe to an empty map.
-    }
-  }
-  return {};
-}
-
-function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
-  const sprites = loadAnnotationSpritesMap(annotationsPath);
-  const disliked = new Set<string>();
-  for (const [spriteName, note] of Object.entries(sprites)) {
-    if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
-    if ((note as { readonly disliked?: unknown }).disliked === true) {
-      disliked.add(spriteName);
-    }
-  }
-  return disliked;
 }
 
 export async function generateSheetCore(
@@ -347,75 +296,29 @@ export async function generateSheetCore(
   const resolveAssetPath = (assetPath: string) => path.resolve(publicAssetsRoot, assetPath);
   const referenceAssetExists =
     options.referenceAssetExists ?? ((absolutePath) => existsSync(absolutePath));
-  const loadReferenceCandidates =
-    options.loadReferenceCandidates ??
-    (() => {
-      const manifestPath =
-        options.manifestPath ?? path.join(publicAssetsRoot, 'generated', 'manifest.json');
-      // The aggregate manifest.json is a gitignored build artifact; compose the
-      // reference pool directly from the committed per-asset shards (the source
-      // of truth), falling back to a legacy aggregate file when no shards exist.
-      // A cold start with neither yields an empty pool so the zero-eligible
-      // guard below raises its actionable error instead of an opaque ENOENT.
-      const manifest = loadGeneratedManifest(path.dirname(manifestPath));
-      return Object.values(manifest.entries);
-    });
-  const loadDislikedReferenceNames =
-    options.loadDislikedReferenceNames ??
-    (() => {
-      const annotationsPath = path.join(
-        publicAssetsRoot,
-        'generated',
-        'sprite-editor-annotations.json',
-      );
-      if (!existsSync(annotationsPath)) return new Set<string>();
-      return loadDislikedSpriteNamesFromAnnotations(annotationsPath);
-    });
-  const loadPendingDislikedReferenceNames =
-    options.loadPendingDislikedReferenceNames ??
-    (() => {
-      const annotationsPath = path.join(
-        publicAssetsRoot,
-        'generated',
-        'sprite-editor-annotations.json',
-      );
-      // Reconcile each pending dislike's captured `base` against the tracked
-      // annotation before trusting it, so a dislike another worktree has since
-      // superseded (e.g. promotion now carries a favorite) is not counted
-      // indefinitely — see `readPendingDislikedSpriteNames`.
-      const currentSprites = existsSync(annotationsPath)
-        ? loadAnnotationSpritesMap(annotationsPath)
-        : {};
-      return readPendingDislikedSpriteNames(resolvePendingAnnotationsPath(repoRoot), {
-        getCurrentAnnotation: (key) =>
-          Object.hasOwn(currentSprites, key) ? currentSprites[key] : null,
-      });
-    });
-
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
   if (supportsReferenceImages) {
-    const presentCandidates = loadReferenceCandidates().filter(
-      (entry) =>
-        isSafeGeneratedAssetPath(entry.assetPath) &&
-        referenceAssetExists(resolveAssetPath(entry.assetPath)),
-    );
-    const selection = selectReferences({
-      candidates: presentCandidates,
+    const resolvedReferences = resolveReferenceSelection({
+      repoRoot,
       briefName: brief.name,
       briefType: brief.type,
       count: referenceCount,
-      seed: referenceSelectorSeed(brief.name),
-      // Union the durably-tracked dislikes with anything queued-but-not-yet
-      // -promoted, so a sprite disliked moments ago cannot slip back in as a
-      // reference before the reconciler catches up.
-      dislikedSpriteNames: new Set([
-        ...loadDislikedReferenceNames(),
-        ...loadPendingDislikedReferenceNames(),
-      ]),
+      ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
+      ...(options.loadReferenceCandidates
+        ? { loadCandidates: options.loadReferenceCandidates }
+        : {}),
+      ...(options.loadDislikedReferenceNames
+        ? { loadDislikedNames: options.loadDislikedReferenceNames }
+        : {}),
+      ...(options.loadPendingDislikedReferenceNames
+        ? { loadPendingDislikedNames: options.loadPendingDislikedReferenceNames }
+        : {}),
+      assetExists: referenceAssetExists,
     });
+    const selection = resolvedReferences.selection;
     if (selection.selected.length === 0) {
-      if (presentCandidates.length === 0 && brief.type === 'icon') {
+      if (resolvedReferences.presentCandidateCount === 0 && brief.type === 'icon') {
         // Bootstrap case: no approved icon sprites exist in the manifest yet.
         // Icons are a new sprite type bootstrapped without pre-existing references;
         // proceed without reference images rather than aborting.

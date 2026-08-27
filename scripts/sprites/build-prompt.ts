@@ -6,6 +6,7 @@ import { resizeSpriteStrategy } from './size-variants.js';
 import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
 import { directionAddendaFromContext } from './asset-request-context.js';
+import { spriteCategoryDesignLanguageBlock } from './sprite-category-design-language.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -126,6 +127,8 @@ export function buildPrompt(brief: Brief, styleGuide: string): string {
     floorContextBlock(brief.floor),
     ...addenda,
     '',
+    spriteCategoryDesignLanguageBlock(brief.type, brief.assetRequestContext?.injections.category),
+    '',
     briefSubjectBlock(brief),
     '',
     outputSizeBlock(brief),
@@ -160,6 +163,8 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
     ...(brief.seedFrames.length > 0 ? [seedFrameBlock(brief.seedFrames), ''] : []),
     floorContextBlock(brief.floor),
     ...addenda,
+    '',
+    spriteCategoryDesignLanguageBlock(brief.type, brief.assetRequestContext?.injections.category),
     '',
     briefSubjectBlock(brief),
     '',
@@ -378,13 +383,13 @@ function typeRulesBlock(brief: Brief): string | null {
     const facing = brief.sensors.enemy?.facing ?? 'three-quarter';
     const facingLine =
       facing === 'front'
-        ? '- Draw the mob facing straight forward toward the camera, not angled or in three-quarter view.'
+        ? '- Explicit brief-facing override: draw the mob facing straight forward toward the camera, not angled or in three-quarter view. This overrides the category default turn only; preserve orthographic construction.'
         : facing === 'three-quarter'
           ? '- Draw the mob generally toward the camera at a one-third-to-two-thirds turn. Never use a full side profile.'
           : facing === 'left'
-            ? '- Draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the left edge. Never use a full side profile. Keep the pose consistent across every variant on the sheet.'
+            ? '- Explicit brief-facing override: draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the left edge. Never use a full side profile. This overrides the category default turn only; preserve orthographic construction and keep the pose consistent across every variant.'
             : facing === 'right'
-              ? '- Draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the right edge. Never use a full side profile. Keep the pose consistent across every variant on the sheet.'
+              ? '- Explicit brief-facing override: draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the right edge. Never use a full side profile. This overrides the category default turn only; preserve orthographic construction and keep the pose consistent across every variant.'
               : '- Keep the mob orientation consistent across every variant on the sheet.';
     const bossLines =
       brief.mobRole === 'boss'

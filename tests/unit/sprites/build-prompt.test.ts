@@ -160,6 +160,9 @@ describe('buildPrompt (single)', () => {
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/one-third-to-two-thirds turn/i);
     expect(out).toMatch(/Never use a full side profile/i);
+    expect(out).toContain('## Sprite category design language');
+    expect(out).toMatch(/screen-right turn/i);
+    expect(out).toMatch(/no vanishing point, foreshortening, apparent-size change/i);
   });
 
   it('honors an explicit left bias without allowing a full side profile', () => {
@@ -171,6 +174,23 @@ describe('buildPrompt (single)', () => {
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/turn biased toward the left edge/i);
     expect(out).toMatch(/Never use a full side profile/i);
+    expect(out).toMatch(/Explicit brief-facing override/i);
+    expect(out).toMatch(/preserve orthographic construction/i);
+  });
+
+  it('uses a request-local category injection instead of the canonical category default', () => {
+    const out = buildPrompt(
+      makeBrief({
+        type: 'character',
+        assetRequestContext: {
+          sourceIds: {},
+          injections: { category: 'Custom category silhouette contract.' },
+        },
+      } as Partial<Brief>),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('Custom category silhouette contract.');
+    expect(out).not.toMatch(/Classic RPG 3\/4 orthographic character presentation/);
   });
 
   it('makes boss enemies large and visually dominant', () => {

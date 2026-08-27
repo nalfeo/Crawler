@@ -121,7 +121,7 @@ import {
   RerunError,
   type RerunErrorKind,
 } from '../rerun.js';
-import { synthesizeBrief } from '../synthesize-brief.js';
+import { normaliseName, synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 import {
   AssetRequestContextError,
@@ -137,6 +137,10 @@ import {
   parseOptionalRequester,
   type AssetRequestPriority,
 } from '../asset-request.js';
+import { SPRITE_CATEGORY_DESIGN_LANGUAGE } from '../sprite-category-design-language.js';
+import { resolveReferenceSelection } from '../resolve-reference-selection.js';
+import { SELECTOR_VERSION } from '../reference-selector.js';
+import { isSpriteType } from '../../../src/shared/sprite-types.js';
 import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
@@ -2433,7 +2437,42 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.get('/api/workflow/asset-context', async () => ({
     capabilities: getAssetRequestContextCapabilities(),
+    categoryDesignLanguage: SPRITE_CATEGORY_DESIGN_LANGUAGE,
   }));
+
+  app.get<{ Querystring: { name?: string; type?: string } }>(
+    '/api/workflow/reference-preview',
+    async (req, reply) => {
+      const name = req.query.name?.trim();
+      const type = req.query.type?.trim();
+      if (!name || !type || !isSpriteType(type)) {
+        reply.code(400);
+        return { error: 'bad-request', message: 'name and a concrete sprite type are required' };
+      }
+      const resolved = resolveReferenceSelection({
+        repoRoot: deps.repoRoot,
+        briefName: normaliseName(name),
+        briefType: type,
+      });
+      return {
+        selectorVersion: SELECTOR_VERSION,
+        seed: resolved.selection.seed,
+        currentPreview: true,
+        references: resolved.selection.selected.map((entry) => {
+          const absolutePath = path.resolve(resolved.publicAssetsRoot, entry.assetPath);
+          return {
+            briefId: entry.briefId,
+            spriteName: entry.spriteName,
+            type: entry.type,
+            assetPath: entry.assetPath,
+            sensorScore: entry.sensorScore,
+            judgeScore: entry.judgeScore,
+            imageDataUrl: `data:image/png;base64,${readFileSync(absolutePath).toString('base64')}`,
+          };
+        }),
+      };
+    },
+  );
 
   app.post<{ Body: WorkflowSynthesizeBody }>('/api/workflow/synthesize', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowSynthesizeBody;
@@ -2544,24 +2583,29 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return {
           error: 'bad-request',
           message:
-            'body.injectionOverrides must be an object with optional floor and family strings',
+            'body.injectionOverrides must be an object with optional floor, family, and category strings',
         };
       }
       const values = body.injectionOverrides as Record<string, unknown>;
       if (
-        Object.keys(values).some((key) => key !== 'floor' && key !== 'family') ||
+        Object.keys(values).some(
+          (key) => key !== 'floor' && key !== 'family' && key !== 'category',
+        ) ||
         Object.values(values).some((value) => typeof value !== 'string')
       ) {
         reply.code(400);
         return {
           error: 'bad-request',
-          message: 'body.injectionOverrides accepts only floor and family string values',
+          message: 'body.injectionOverrides accepts only floor, family, and category string values',
         };
       }
       injectionOverrides = {
         ...(typeof values.floor === 'string' && values.floor.trim() ? { floor: values.floor } : {}),
         ...(typeof values.family === 'string' && values.family.trim()
           ? { family: values.family }
+          : {}),
+        ...(typeof values.category === 'string' && values.category.trim()
+          ? { category: values.category }
           : {}),
       };
     }

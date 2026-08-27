@@ -13,7 +13,11 @@ import { getFloorEnemyPack } from '../../../src/shared/enemy-packs.js';
 describe('asset request context capabilities', () => {
   it('derives floor, family, and role choices from registered game manifests and packs', () => {
     const capabilities = getAssetRequestContextCapabilities();
-    expect(capabilities.map((capability) => capability.floorId)).toEqual(['floor1', 'floor2']);
+    expect(capabilities.map((capability) => capability.floorId)).toEqual([
+      'floor1',
+      'floor2',
+      'floor3',
+    ]);
 
     for (const capability of capabilities) {
       const manifest = getFloorManifest(capability.floorId);

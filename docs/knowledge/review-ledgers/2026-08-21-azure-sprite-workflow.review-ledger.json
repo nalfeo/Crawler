@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-21",
   "session_slug": "azure-sprite-workflow",
-  "task_title": "Complete Azure Sprite Generation Workflow canvas",
+  "task_title": "Add eight-direction sprite authoring and complete the Azure workflow canvas",
   "estimated_apples": 3,
   "apples_rescored_from": 4,
   "rescore_reason": "The implementation is tooling-only: a thin canvas adapter over existing sidecar lifecycle contracts, which is capped at 3 apples by AGENTS.md.",
@@ -31,12 +31,13 @@
         },
         {
           "round": 2,
-          "models": ["gpt-5.3-codex"],
-          "concerns_count": 3,
-          "resolved_count": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
           "clean": true
         }
-      ]
+      ],
+      "notes": "The final category/reference review fixed custom-category overwrite, blank-name reference selection, stale synthesized candidates after prompt edits, preview/generation name normalization drift, composer state loss across rerenders, and contradictory Azure enemy-facing guidance. Live validation then found and fixed an iframe helper scoping bug and new-request category draft loss."
     },
     "multi_model_review": {
       "clean": true,
@@ -53,21 +54,7 @@
       ]
     },
     "independent_grade": {
-      "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
-      "implementer_model": "gpt-5.6-terra",
-      "head_sha": "8a349794dbcb7586aa288b97c74842e3b75c8927",
-      "findings": [],
-      "criteria": {
-        "correctness": 5,
-        "scope_discipline": 5,
-        "test_coverage": 5,
-        "policy_compliance": 5,
-        "maintainability": 5
-      },
-      "verdict": "pass",
-      "findings_count": 0,
-      "notes": "The final Azure Workflow Author integration is focused, deterministic, fully covered by the workflow extension suite, and preserves canonical sidecar lifecycle contracts."
+      "completed": false
     }
   }
 }

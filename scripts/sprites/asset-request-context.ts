@@ -8,6 +8,7 @@ export type MobRole = (typeof MOB_ROLES)[number];
 export interface DirectionInjections {
   readonly floor?: string;
   readonly family?: string;
+  readonly category?: string;
 }
 
 /**
@@ -18,6 +19,7 @@ export interface DirectionInjections {
 export interface DirectionInjectionOverrides {
   readonly floor?: string;
   readonly family?: string;
+  readonly category?: string;
 }
 
 export interface AssetRequestContextSourceIds {
@@ -73,7 +75,7 @@ export class AssetRequestContextError extends Error {
 export function getAssetRequestContextCapabilities(): readonly AssetRequestContextCapability[] {
   return getAvailableFloorIds().flatMap((floorId) => {
     const manifest = getFloorManifest(floorId);
-    if (!manifest) return [];
+    if (!manifest || !manifest.enemyPackId) return [];
     const pack = getFloorEnemyPack(manifest.enemyPackId);
     const families = pack
       ? [
@@ -153,6 +155,11 @@ export function resolveAssetRequestContext(input: AssetRequestContextInput): Ass
         `familyId '${familyId}' requires a known floorId. Select a floor from GET /api/workflow/asset-context.`,
       );
     }
+    if (!manifest.enemyPackId) {
+      throw new AssetRequestContextError(
+        `Floor '${manifest.id}' declares no enemy pack and cannot resolve family context.`,
+      );
+    }
     const pack = getFloorEnemyPack(manifest.enemyPackId);
     if (!pack) {
       throw new AssetRequestContextError(
@@ -191,6 +198,7 @@ export function resolveAssetRequestContext(input: AssetRequestContextInput): Ass
     ...((overrides.family ?? canonicalFamily)
       ? { family: overrides.family ?? canonicalFamily }
       : {}),
+    ...(overrides.category ? { category: overrides.category } : {}),
   };
 
   return {
@@ -272,6 +280,9 @@ function normalizeInjectionOverrides(
       : {}),
     ...(overrides.family !== undefined
       ? { family: normalizeInjection(overrides.family, 'family') }
+      : {}),
+    ...(overrides.category !== undefined
+      ? { category: normalizeInjection(overrides.category, 'category') }
       : {}),
   };
 }

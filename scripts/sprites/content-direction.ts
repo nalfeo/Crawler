@@ -4,7 +4,8 @@ export const DEFAULT_FLOOR = 1;
 export const MAX_FLOOR = 20;
 
 export const CRAWLER_DESIGN_LANGUAGE = [
-  'Crawler is a dark-fantasy dungeon rebuilt as deranged reality-show spectacle.',
+  'Crawler uses a classic RPG 3/4 orthographic perspective to present a dark-fantasy',
+  'dungeon rebuilt as deranged reality-show spectacle.',
   'Its design language combines expressive, offbeat RPG characters; retro-futurist salvage',
   'and corporate decay; and brutal improvised machinery, vehicles, armor, and contraptions.',
   '',
