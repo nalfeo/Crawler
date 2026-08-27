@@ -737,7 +737,8 @@ export function createInventoryUI(
     // right and read as broken.
     const gridPixelWidth = COLS * CELL_SIZE + (COLS - 1) * CELL_GAP;
     const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
-    cellBackgrounds.push(...new Array<null>(entries.length).fill(null));
+    cellBackgrounds.length = entries.length;
+    cellBackgrounds.fill(null);
 
     const startIndex = scrollRow * COLS;
     const endIndex = Math.min(entries.length, startIndex + maxVisible);
@@ -914,10 +915,10 @@ export function createInventoryUI(
     }
 
     if (maxScrollRow > 0) {
+      const scrollDirections = `${scrollRow > 0 ? '↑' : ''}${scrollRow < maxScrollRow ? '↓' : ''}`;
       const scrollText =
-        scrollRow >= maxScrollRow
-          ? `Rows ${scrollRow + 1}-${totalRows}/${totalRows}`
-          : `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows} ↓`;
+        `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows}` +
+        (scrollDirections ? ` ${scrollDirections}` : '');
       const scrollHint = crispText(
         gridLeft + gridPixelWidth,
         panelY + panelHeight - PANEL_PADDING - 10,
