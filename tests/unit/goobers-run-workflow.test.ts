@@ -136,6 +136,11 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(tasks.get(name)?.retry).toBeUndefined();
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
+    expect(runStep?.env).toMatchObject({
+      GH_TOKEN: '${{ secrets.CRAWLER_CI_PAT }}',
+      CRAWLER_CI_PAT: '${{ secrets.CRAWLER_CI_PAT }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
   });
 

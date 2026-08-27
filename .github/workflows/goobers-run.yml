@@ -207,6 +207,7 @@ jobs:
           # "Install Copilot CLI" step comment above).
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
         run: |
           set -euo pipefail
           goobers run "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
