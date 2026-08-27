@@ -1,7 +1,8 @@
 /**
  * Release-sweep capacity admission (nalfeo/Crawler#3774).
  *
- * The release sweep (`release-report-sweep` — 15 shards — plus `baseline-sweep`)
+ * The release sweep (`release-report-sweep` — 30 shards, 15 per report leg,
+ * running at `max-parallel: 20` — plus `baseline-sweep`)
  * is the single largest runner consumer in the repository: ~600 headless runs
  * that hold ~16 concurrent runners for up to an hour, fired on every push to
  * main. When CI and development are already competing for the account runner

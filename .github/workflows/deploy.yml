@@ -382,7 +382,10 @@ jobs:
     # continue-on-error keeps the failure from reddening the release workflow.
     continue-on-error: true
     outputs:
-      should_sweep: ${{ steps.admission.outputs.should_sweep || steps.fallback.outputs.should_sweep }}
+      # The trailing 'true' closes the last fail-open hole: if the runner is
+      # never provisioned, neither step runs, both outputs are empty, and the
+      # sweep would otherwise be skipped by an infrastructure failure.
+      should_sweep: ${{ steps.admission.outputs.should_sweep || steps.fallback.outputs.should_sweep || 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:

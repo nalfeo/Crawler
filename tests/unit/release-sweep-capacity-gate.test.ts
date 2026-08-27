@@ -44,7 +44,10 @@ function job(id: string): WorkflowJob {
 describe('release sweep capacity gate wiring', () => {
   it('runs the admission script and exposes a should_sweep output', () => {
     const gate = job('sweep-capacity-gate');
-    expect(gate.outputs?.should_sweep).toContain('should_sweep');
+    // The output must end in a literal 'true' so a never-provisioned runner —
+    // where neither step writes a verdict — still fails open.
+    expect(gate.outputs?.should_sweep).toContain('steps.admission.outputs.should_sweep');
+    expect(gate.outputs?.should_sweep).toMatch(/\|\|\s*'true'\s*}}$/);
     const runs = (gate.steps ?? []).map((step) => step.run ?? '').join('\n');
     expect(runs).toContain('node .github/scripts/release-sweep-admission.mjs');
     // A manual deploy is an explicit operator decision and must never be

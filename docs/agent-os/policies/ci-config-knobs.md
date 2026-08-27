@@ -84,7 +84,8 @@ global backpressure applied deferred=N pr_numbers=... outstanding=K cap=C budget
 
 ### Release sweep capacity gate
 
-The release sweep (`release-report-sweep` — 15 shards — plus `baseline-sweep` in
+The release sweep (`release-report-sweep` — 30 shards, 15 per report leg, run at
+`max-parallel: 20` — plus `baseline-sweep` in
 `deploy.yml`) holds ~16 runners for up to an hour on every push to main. The
 `sweep-capacity-gate` job skips it while the account runner pool is constrained,
 but never for longer than the staleness interval, so the baseline series cannot
