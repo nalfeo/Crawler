@@ -231,6 +231,7 @@ interface MainSceneInternals {
   };
   achievementsUI?: {
     isOpen(): boolean;
+    toggle(world: GameWorld): void;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
     getScrollIndex(): number;
@@ -794,6 +795,8 @@ export interface MainSceneProbeApi {
   setSafeContext(enabled: boolean): void;
   /** Unlock inventory/equipment/abilities and seed one achievement for testing. */
   unlockSafeRoomSurfaces(): void;
+  /** Open the real Awards pane through the scene-owned UI toggle. */
+  openAchievements(): void;
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -2430,6 +2433,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) return;
       unlockAchievement(world, achievementId);
       scene?.achievementsUI?.refresh(world);
+    },
+
+    openAchievements: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world || scene?.achievementsUI?.isOpen()) return;
+      scene.achievementsUI?.toggle(world);
     },
 
     claimAchievementReward: (achievementId: string) => {

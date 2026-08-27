@@ -29,9 +29,9 @@ import type { RewardOpeningUI } from './RewardOpeningUI.js';
 import { prefersReducedMotion } from './reduced-motion.js';
 import { getAchievementIconEntry } from './achievement-icon.js';
 
-const PANEL_PADDING = 16;
+const PANEL_PADDING = 20;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
-const ROW_HEIGHT = 98;
+const ROW_HEIGHT = 104;
 const ROW_GAP = 8;
 const ROW_SCROLL_STEP = ROW_HEIGHT + ROW_GAP;
 const DRAG_SLOP = 8;
@@ -183,14 +183,14 @@ export function createAchievementsUI(
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
 
-  const title = crispText(0, 0, '🏆 ACHIEVEMENTS', {
+  const title = crispText(0, 0, '🏆 AWARDS', {
     fontFamily: FONT_FAMILY,
     fontSize: '20px',
     color: hex(COLORS.textPrimary),
   });
   container.add(title);
 
-  const hint = crispText(0, 0, 'Open a reward to reveal the box · scroll for more · [V] to close', {
+  const hint = crispText(0, 0, '[V] close', {
     fontFamily: FONT_FAMILY,
     fontSize: '12px',
     color: hex(COLORS.textSecondary),
@@ -198,7 +198,24 @@ export function createAchievementsUI(
   hint.setOrigin(1, 0);
   container.add(hint);
 
-  const listTop = (): number => panelY + PANEL_PADDING + 40;
+  const summary = crispText(0, 0, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '12px',
+    color: hex(COLORS.textSecondary),
+  });
+  container.add(summary);
+
+  const headerRule = scene.add.rectangle(
+    0,
+    0,
+    panelWidth - PANEL_PADDING * 2,
+    1,
+    COLORS.panelBorder,
+    1,
+  );
+  container.add(headerRule);
+
+  const listTop = (): number => panelY + PANEL_PADDING + 62;
   const listBottom = (): number => panelY + panelHeight - PANEL_PADDING;
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
@@ -353,6 +370,7 @@ export function createAchievementsUI(
 
     const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
+    if (claimed) box.setFillStyle(COLORS.panelBg, 0.72);
     container.add(box);
     rowObjects.push(box);
 
@@ -428,7 +446,7 @@ export function createAchievementsUI(
       rowObjects.push(expander);
     }
 
-    const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
+    const btnLabel = claimed ? rewardReveal(def.reward) : `OPEN REWARD\n${rewardLabel(def.reward)}`;
     const btn = crispText(x + w - 12, y + 14, btnLabel, {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
@@ -481,6 +499,13 @@ export function createAchievementsUI(
       if (scrollbarThumb) scrollbarThumb.setVisible(false);
       return;
     }
+
+    const openCount = defs.filter(
+      (def) => def.reward.type === 'lootBox' && !lastWorld?.achievements.claimedIds.has(def.id),
+    ).length;
+    summary.setText(
+      `${defs.length} unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`,
+    );
 
     if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
 
@@ -566,6 +591,10 @@ export function createAchievementsUI(
     hint
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
+    summary
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 30)
+      .setResolution(textResolution);
+    headerRule.setPosition(panelX + panelWidth / 2, panelY + PANEL_PADDING + 52);
     flavorHeightCache.clear();
     if (visible) lastSignature = null;
   }
