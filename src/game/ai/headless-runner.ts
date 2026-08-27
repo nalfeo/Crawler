@@ -43,6 +43,7 @@ import {
 } from './types.js';
 import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import { createRunEventCollector } from '../../core/run-events.js';
+import { isPointInTimeStoppingSafeSpace } from '../../core/safe-space.js';
 import {
   captureHeadlessRunDataFrame,
   createHeadlessRunData,
@@ -1142,7 +1143,13 @@ export async function runHeadless(
       // stats. A cleared boss arena no longer pauses the deadline, so it no
       // longer discounts active time either.
       frameCount++;
-      if (world.playerInTimeStoppingSafeRoom === true || floor4CountdownSafeFrame) {
+      const playerX = world.stores.position.x[playerEid];
+      const playerY = world.stores.position.y[playerEid];
+      const playerInTimeStoppingSafeRoom =
+        playerX !== undefined &&
+        playerY !== undefined &&
+        isPointInTimeStoppingSafeSpace(world, playerX, playerY);
+      if (playerInTimeStoppingSafeRoom || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death

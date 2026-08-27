@@ -354,6 +354,7 @@ describe('safeRoomSystem floor-timer credit', () => {
     world.floorId = 'floor4';
     safeRoomSystem(world);
     expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    expect(world.safeRoomElapsedMs).toBe(GAME.DELTA_MS);
     expect(world.safeRoomTimerCreditMs).toBe(0);
   });
 

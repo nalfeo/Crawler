@@ -871,6 +871,15 @@ export interface GameWorld {
    */
   safeRoomTimerCreditMs: number;
   /**
+   * Milliseconds spent in authored time-stopping safe spaces, regardless of
+   * whether the current floor pauses its collapse timer.
+   *
+   * This is the baseline safe-room occupancy metric used by run-stats
+   * reporting. Floors can still choose not to apply it as timer credit via
+   * `behavior.safeRoomPausesFloorTimer`.
+   */
+  safeRoomElapsedMs: number;
+  /**
    * Room ids that have become safe rooms *during* the run rather than at
    * generation time.
    *
@@ -1125,6 +1134,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerInSafeRoom: false,
     playerInTimeStoppingSafeRoom: false,
     safeRoomTimerCreditMs: 0,
+    safeRoomElapsedMs: 0,
     clearedSafeRoomIds: new Set<number>(),
     clearedSafeRoomMap: null,
     floor2EquipmentFlags: {

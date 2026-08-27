@@ -130,6 +130,9 @@ export function safeRoomSystem(world: GameWorld): void {
   const y = world.stores.position.y[playerEid];
   world.playerInTimeStoppingSafeRoom =
     x !== undefined && y !== undefined && isPointInTimeStoppingSafeSpace(world, x, y);
+  if (world.playerInTimeStoppingSafeRoom) {
+    world.safeRoomElapsedMs += GAME.DELTA_MS;
+  }
   if (isFloorTimerPaused(world)) {
     world.safeRoomTimerCreditMs += GAME.DELTA_MS;
   }
