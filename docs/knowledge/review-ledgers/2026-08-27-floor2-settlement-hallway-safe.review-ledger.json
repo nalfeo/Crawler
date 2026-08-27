@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "floor2-settlement-hallway-safe",
+  "task_title": "Make the Floor 2 settlement hallway safe",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Approved with detail changes. C1: gate exact tile-index metadata on the persisted settlement snapshot, whose creation is all-or-nothing after room activation. C2: repaint only stored internal non-door connector tiles during settlement initialization; internal doors remain DOOR. C3: add same-map pre/post initialization safety coverage. C4: use ReadonlySet<number> flat indices for allocation-free hot-path lookup. C5: assert both internal doorway tiles safe and both exterior doors plus adjacent cave approaches unsafe. No different architecture warranted."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
