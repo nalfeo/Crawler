@@ -28,8 +28,10 @@ inventory
 - Could not fetch the issue's signed run bundle from this sandbox because DNS resolution for the blob host failed.
 - Before: `InventoryUI` built generated equipment `description` from slot labels, stat bonuses, and weight.
 - After: `InventoryUI` builds generated equipment `description` from authored item flavor or a neutral fallback; mechanical metadata remains in `statLine`.
+- Real artifact observation: `npm run test:e2e -- tests/e2e/inventory-flow.test.ts` drove the browser InventoryUI and passed tooltip hover/pin/equipment states after the change.
 - `npm test -- tests/unit/inventory-ui-generated-tooltip.test.ts` ✅
 - `npm test -- tests/unit/inventory-ui-generated-tooltip.test.ts tests/unit/items.test.ts tests/unit/inventory.test.ts` ✅
+- `npm run test:e2e -- tests/e2e/inventory-flow.test.ts` ✅
 - `npm run typecheck` ✅
 - `npm run format:check` ✅
 - `npm run lint` ✅
