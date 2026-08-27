@@ -34,6 +34,21 @@ describe('combatSynthSpecForCue', () => {
       expect(spec.label).toContain('combat:');
     }
   });
+
+  it('gives XP, gold, and material pickups pairwise-distinct tone signatures', () => {
+    const specs = (['xp', 'gold', 'material'] as const).map((pickupAudioKind) =>
+      combatSynthSpecForCue({ kind: 'pickup', intensity: 0.5, pickupAudioKind }),
+    );
+    const signatures = specs.map(
+      ({ waveform, frequencyHz, glideToHz }) => `${waveform}:${frequencyHz}:${glideToHz}`,
+    );
+    expect(new Set(signatures).size).toBe(3);
+    expect(specs.map((spec) => spec.label)).toEqual([
+      'combat:pickup-xp',
+      'combat:pickup-gold',
+      'combat:pickup-material',
+    ]);
+  });
 });
 
 function createFakeEngine(): AudioCueEngine & { specs: SynthCueSpec[] } {
@@ -99,6 +114,34 @@ describe('createCombatAudio', () => {
     world.vfxEvents.push({ kind: 'pickupSparkle', x: 0, y: 0, color: 0xffd166 });
     audio.update(world, 0);
     expect(engine.specs.map((s) => s.label)).toContain('combat:pickup');
+  });
+
+  it('dispatches distinct typed pickup tones while retaining one shared pickup cooldown', () => {
+    const engine = createFakeEngine();
+    const audio = createCombatAudio(engine);
+    const world = createTestWorld();
+
+    world.vfxEvents.push(
+      { kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'xp' },
+      { kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'gold' },
+      { kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'material' },
+    );
+    audio.update(world, 0);
+    expect(engine.specs).toHaveLength(1);
+    expect(engine.specs[0]?.label).toBe('combat:pickup-xp');
+
+    world.vfxEvents.length = 0;
+    world.vfxEvents.push({ kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'gold' });
+    audio.update(world, 50);
+    world.vfxEvents.length = 0;
+    world.vfxEvents.push({ kind: 'pickupSparkle', x: 0, y: 0, pickupAudioKind: 'material' });
+    audio.update(world, 100);
+
+    expect(engine.specs.map((spec) => spec.label)).toEqual([
+      'combat:pickup-xp',
+      'combat:pickup-gold',
+      'combat:pickup-material',
+    ]);
   });
 
   it('does NOT drain any of the three source queues', () => {

@@ -21,9 +21,8 @@
  *   spell-cast/ability-flash VFX kinds, which also fire for passive
  *   re-activation and carry no semantic contract.
  * - `world.vfxEvents` (`pickupSparkle` only) → loot pickup. No authoritative
- *   pickup-type queue exists, so this is the one place this module still
- *   reads a cosmetic queue — deliberately reduced to a single generic cue
- *   (never inferring pickup TYPE from tint; see `combat-audio-cues.ts`).
+ *   pickup-type queue exists, so this module reads explicit semantic metadata
+ *   from this cosmetic event without inferring pickup type from its tint.
  *
  * Ownership/read model — mirrors `EffectsVfx.ts` exactly, NOT
  * `reward-opening-audio.ts`'s hook-driven model, because this module's input
