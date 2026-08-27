@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "goobers-auto-trigger-recovery",
+  "task_title": "Automate Goobers issue triggers and recovery",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted static cross-event defaults for every inputs.* use, exact expression assertions, trusted default-branch checkout, and updates to both READMEs. Rejected full Actions-level reruns because terminal replay can duplicate side effects; retries stay within the same Goobers run via maxRepasses=2 plus maxAttempts=2 only on plan, implement, and review, while hourly scheduling provides cross-run rediscovery."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
