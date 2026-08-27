@@ -49,6 +49,7 @@ interface GoobersDefinition {
       run?: { script?: string };
       inputsFrom?: Record<string, string>;
       capabilities?: string[];
+      expectedOutputs?: string[];
       retry?: { maxAttempts?: number; backoffSeconds?: number };
     }>;
     gates: Array<{
@@ -127,13 +128,19 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(definition.spec.runControls?.maxRepasses).toBe(6);
     expect(hydrate).toBeDefined();
-    expect(hydrate?.inputsFrom).toEqual({ claimedItem: 'query-backlog.claimed-item' });
-    expect(hydrate?.run?.script).toContain('gh issue view "$issue"');
-    expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_CLAIMEDITEM');
-    expect(hydrate?.run?.script).toContain('GOOBERS_CRED_GITHUB_ISSUES_WRITE');
+    expect(tasks.get('query-backlog')?.expectedOutputs).toEqual(['id', 'title', 'body', 'url']);
+    expect(hydrate?.inputsFrom).toEqual({
+      issueNumber: 'query-backlog.id',
+      issueTitle: 'query-backlog.title',
+      issueBody: 'query-backlog.body',
+      issueUrl: 'query-backlog.url',
+    });
+    expect(hydrate?.run?.script).not.toContain('gh issue view');
+    expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_ISSUENUMBER');
+    expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_ISSUEBODY');
     expect(hydrate?.run?.script).not.toContain('.goobers/context');
     expect(hydrate?.run?.script).toContain('requirements-result.json');
-    expect(hydrate?.capabilities).toContain('github:issues:write');
+    expect(hydrate?.capabilities).toBeUndefined();
     expect(hydrate?.retry).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });

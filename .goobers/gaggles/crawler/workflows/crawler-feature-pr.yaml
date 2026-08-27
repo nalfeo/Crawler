@@ -30,50 +30,48 @@ spec:
       policyActions:
         - claim-backlog-items
       expectedOutputs:
-        - claimed-item
+        - id
+        - title
+        - body
+        - url
       next: hydrate-requirements
     - name: hydrate-requirements
       type: deterministic
       inputsFrom:
-        claimedItem: query-backlog.claimed-item
+        issueNumber: query-backlog.id
+        issueTitle: query-backlog.title
+        issueBody: query-backlog.body
+        issueUrl: query-backlog.url
       goal: Fetch the full claimed issue body into deterministic requirements context.
       run:
         script: |
           set -eu
           repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
-          claimed_item="${GOOBERS_INPUT_CLAIMEDITEM:-}"
-          export GH_TOKEN="${GH_TOKEN:-${GOOBERS_CRED_GITHUB_ISSUES_WRITE:-}}"
-          issue="$(printf '%s\n' "$claimed_item" |
-            sed -nE 's/.*#([0-9]+).*/\1/p; s#.*issues/([0-9]+).*#\1#; s/.*"number"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p; s/^([0-9]+)$/\1/p' |
-            head -n 1)"
+          issue="${GOOBERS_INPUT_ISSUENUMBER:-}"
+          title="${GOOBERS_INPUT_ISSUETITLE:-}"
+          url="${GOOBERS_INPUT_ISSUEURL:-}"
+          body="${GOOBERS_INPUT_ISSUEBODY:-}"
           if [ -z "$issue" ]; then
-            echo "could not find a claimed issue number in claimed-item output: ${claimed_item}" >&2
-            exit 1
-          fi
-          if [ -z "$GH_TOKEN" ]; then
-            echo "missing GitHub token for requirements hydration" >&2
+            echo "query-backlog did not emit an issue id" >&2
             exit 1
           fi
 
-          gh issue view "$issue" --repo "$repo" --json number,title,body,labels,url > issue.json
-          labels="$(jq -r '[.labels[].name] | join(", ")' issue.json)"
           {
             echo "# Claimed issue requirements"
             echo
             echo "- Repository: ${repo}"
-            echo "- Issue: #$(jq -r '.number' issue.json) $(jq -r '.title' issue.json)"
-            echo "- URL: $(jq -r '.url' issue.json)"
-            echo "- Labels: ${labels:-none}"
+            echo "- Issue: #${issue} ${title}"
+            echo "- URL: ${url}"
             echo
             echo "## Body"
             echo
-            jq -r '.body // "(empty)"' issue.json
+            printf '%s\n' "${body:-"(empty)"}"
           } > requirements.md
 
           jq -n \
-            --arg issueNumber "$(jq -r '.number' issue.json)" \
-            --arg issueTitle "$(jq -r '.title' issue.json)" \
-            --arg issueUrl "$(jq -r '.url' issue.json)" \
+            --arg issueNumber "$issue" \
+            --arg issueTitle "$title" \
+            --arg issueUrl "$url" \
             --rawfile requirements requirements.md \
             '{
               schema: "crawler.goobers.requirements/v1",
@@ -87,8 +85,6 @@ spec:
           cat requirements.md
       inputs:
         resultFile: 'requirements-result.json'
-      capabilities:
-        - github:issues:write
       expectedOutputs:
         - issueNumber
         - issueTitle
