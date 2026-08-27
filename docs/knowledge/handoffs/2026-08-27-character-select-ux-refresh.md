@@ -51,3 +51,17 @@ Earlier iterations were judged and refined through v1.0.0-v1.0.3.
   from the local Vite environment.
 - `npm run docs:check` — blocked by the pre-existing stale
   `docs/guides/github-token-scopes.md` reference in `README.md`.
+
+## Clean-main blocker comparison
+
+To separate change regressions from shared infrastructure, the blocked commands
+were rerun from a detached clean `origin/main` worktree at commit `46a00c9ce`.
+`npm run verify:fast` passed cleanly there, confirming the feature-branch
+silent-merge-revert findings are branch-state issues unrelated to Character
+Select. `npm run docs:check` reproduced the same stale README path failure.
+The intro E2E reproduced both timeouts waiting for `__introDebug` /
+`__floor1Debug`, confirming a pre-existing runtime handoff or local-server
+problem. `npm run review:visual` also reproduced the shared 5299 lab instability:
+the inventory suite had navigation timeouts and the existing
+`getInventoryMaxScrollRow` probe mismatch on clean main. These failures are
+safe to track separately from this Character Select change.
