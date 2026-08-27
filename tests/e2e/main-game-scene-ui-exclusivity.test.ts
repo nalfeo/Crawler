@@ -322,6 +322,21 @@ describe('MainGameScene UI exclusivity', () => {
       const target = toCanvas(point);
       await page.mouse.click(target.x, target.y);
     };
+    // The scene samples keys with Phaser's JustDown, which a keyup clears. A
+    // zero-delay press can therefore land entirely between two scene updates on
+    // a loaded runner, so hold the key until the effect is observed.
+    const holdKeyUntil = async (
+      key: string,
+      predicate: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => boolean,
+      label: string,
+    ): Promise<void> => {
+      await page.keyboard.down(key);
+      try {
+        await waitForState(page, predicate, { label });
+      } finally {
+        await page.keyboard.up(key);
+      }
+    };
     await clickDesignPoint({ x: 800, y: 450 });
     await page.waitForTimeout(100);
     expect((await mainSceneProbe.getState(page)).conversationOpen).toBe(false);
@@ -343,7 +358,7 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await page.keyboard.press('Escape');
+    await holdKeyUntil('Escape', (state) => !state.conversationOpen, 'Escape closed NPC dialogue');
 
     await clickDesignPoint({
       x: talkBounds.x + talkBounds.width / 2,
@@ -352,10 +367,9 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await page.keyboard.press('Escape');
+    await holdKeyUntil('Escape', (state) => !state.conversationOpen, 'Escape closed Talk dialogue');
 
-    await page.keyboard.press('e');
-    await waitForState(page, (state) => state.conversationOpen, { label: 'E opened dialogue' });
+    await holdKeyUntil('e', (state) => state.conversationOpen, 'E opened dialogue');
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
