@@ -1,0 +1,76 @@
+{
+  "id": "floor4-arena",
+  "name": "Floor 4 Main Event Undercard",
+  "archetypes": [
+    {
+      "id": "floor4-extra",
+      "name": "Background Extra",
+      "hp": 20,
+      "speed": 0.16,
+      "detectRange": 60.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "chase",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor4-usher",
+      "name": "Front-Row Usher",
+      "hp": 14,
+      "speed": 0.19,
+      "detectRange": 70.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.6,
+      "spriteHeight": 1.6,
+      "aiType": "chase",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor4-pyro-tech",
+      "name": "Pyro Technician",
+      "hp": 22,
+      "speed": 0.12,
+      "detectRange": 78.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.9,
+      "spriteHeight": 1.9,
+      "aiType": "ranged",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor4-stunt-double",
+      "name": "Stunt Double",
+      "hp": 34,
+      "speed": 0.15,
+      "detectRange": 72.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.1,
+      "spriteHeight": 2.1,
+      "aiType": "leaper",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor4-ring-enforcer",
+      "name": "Ring Enforcer",
+      "hp": 58,
+      "speed": 0.11,
+      "detectRange": 66.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.6,
+      "spriteHeight": 2.6,
+      "aiType": "chase",
+      "spawnWeight": 0.0
+    }
+  ],
+  "enemyCap": 40,
+  "spawnIntervalMs": 0,
+  "spawnRadiusMin": 0.0,
+  "despawnDistanceFt": 0.0,
+  "engageRadiusFt": 100.0,
+  "engageTarget": 8,
+  "maxSpawnsPerTick": 8,
+  "roomWaveChance": 0.0,
+  "roomWaveMin": 0,
+  "roomWaveMax": 0
+}

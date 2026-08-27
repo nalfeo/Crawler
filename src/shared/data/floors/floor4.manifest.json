@@ -74,6 +74,68 @@
       "headlineWindowMs": 30000,
       "intermissionMs": 1000,
       "overtimeCapMs": 60000
+    },
+    "waves": {
+      "enemyPackId": "floor4-arena",
+      "cadence": {
+        "wavesPerAct": 8,
+        "intervalMs": 12000
+      },
+      "budget": {
+        "base": 6.0,
+        "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
+        "intraActRamp": 0.09,
+        "openingWaveMultiplier": 0.34,
+        "maxEntriesPerWave": 16
+      },
+      "concurrency": {
+        "liveCap": 24,
+        "debtCap": 18
+      },
+      "gates": {
+        "telegraphLeadMs": 1000
+      },
+      "rosters": [
+        {
+          "act": 1,
+          "entries": [{ "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 1.0 }]
+        },
+        {
+          "act": 2,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.6 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.4 }
+          ]
+        },
+        {
+          "act": 3,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.4 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.35 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.25 }
+          ]
+        },
+        {
+          "act": 4,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.3 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.25 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.25 },
+            { "archetypeId": "floor4-stunt-double", "threatCost": 4.0, "weight": 0.12 },
+            { "archetypeId": "floor4-ring-enforcer", "threatCost": 6.0, "weight": 0.08 }
+          ]
+        },
+        {
+          "act": 5,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.22 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.22 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.22 },
+            { "archetypeId": "floor4-stunt-double", "threatCost": 4.0, "weight": 0.17 },
+            { "archetypeId": "floor4-ring-enforcer", "threatCost": 6.0, "weight": 0.17 }
+          ]
+        }
+      ]
     }
   }
 }
