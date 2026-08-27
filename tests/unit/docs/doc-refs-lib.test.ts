@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  externalLinkLabelRanges,
   frontmatterDescription,
   globParentDir,
   headingSet,
+  isWithinRanges,
   looksLikePath,
   nextFenceState,
   referencedAgents,
@@ -12,6 +14,7 @@ import {
   routingMatrixPairs,
   routingMatrixRows,
   sectionBody,
+  stripSymbolSuffix,
   tableRows,
 } from '../../../scripts/agent/docs/doc-refs-lib.js';
 
@@ -28,6 +31,62 @@ describe('looksLikePath', () => {
     expect(looksLikePath('docs/knowledge/handoffs/YYYY-MM-DD-slug.md')).toBe(false);
     expect(looksLikePath('docs/knowledge/handoffs/<slug>.md')).toBe(false);
     expect(looksLikePath('https://example.com/a.md')).toBe(false);
+  });
+});
+
+describe('stripSymbolSuffix', () => {
+  // Regression: `docs/knowledge/adr/2026-08-27-boss-room-safe-cleanup.md`
+  // referenced `src/game/ai/simulation-step.ts::runSimulationStep`, and the
+  // guard stat()'d the whole string — hard-failing `npm run docs:check` even
+  // though the file exists.
+  it('keeps only the file part of a path::symbol reference', () => {
+    expect(stripSymbolSuffix('src/game/ai/simulation-step.ts::runSimulationStep')).toBe(
+      'src/game/ai/simulation-step.ts',
+    );
+  });
+
+  it('leaves plain paths untouched', () => {
+    expect(stripSymbolSuffix('src/game/ai/simulation-step.ts')).toBe(
+      'src/game/ai/simulation-step.ts',
+    );
+    expect(stripSymbolSuffix('::leading')).toBe('::leading');
+  });
+});
+
+describe('externalLinkLabelRanges', () => {
+  // Regression: README.md linked the Goobers repo's own
+  // `docs/guides/github-token-scopes.md` with the path as the link label. The
+  // backticked label was validated against THIS repo's disk and reported as a
+  // stale path, hard-failing `npm run docs:check`.
+  it('covers a backticked label whose target is an external URL', () => {
+    const line =
+      'See [`docs/guides/github-token-scopes.md`](https://github.com/org/repo/blob/main/docs/guides/github-token-scopes.md) for more.';
+    const ranges = externalLinkLabelRanges(line);
+    const backtickStart = line.indexOf('`docs/guides');
+    const backtickEnd = line.indexOf('`)') + 1;
+
+    expect(ranges).toHaveLength(1);
+    expect(isWithinRanges(ranges, backtickStart, backtickEnd)).toBe(true);
+  });
+
+  it('covers mailto and pure-anchor targets', () => {
+    expect(externalLinkLabelRanges('[`docs/a.md`](mailto:x@example.com)')).toHaveLength(1);
+    expect(externalLinkLabelRanges('[`docs/a.md`](#section)')).toHaveLength(1);
+  });
+
+  it('does not cover labels whose target is a local repo path', () => {
+    expect(externalLinkLabelRanges('[`AGENTS.md`](../AGENTS.md)')).toEqual([]);
+    expect(externalLinkLabelRanges('[docs](docs/README.md)')).toEqual([]);
+  });
+
+  it('leaves backticked paths outside any link untouched', () => {
+    const line = 'Read `docs/missing.md` and [`docs/other.md`](https://example.com/x.md).';
+    const ranges = externalLinkLabelRanges(line);
+    const outsideStart = line.indexOf('`docs/missing.md`');
+
+    expect(isWithinRanges(ranges, outsideStart, outsideStart + '`docs/missing.md`'.length)).toBe(
+      false,
+    );
   });
 });
 

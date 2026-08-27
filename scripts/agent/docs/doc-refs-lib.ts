@@ -41,6 +41,50 @@ export function looksLikePath(s: string): boolean {
 }
 
 /**
+ * Strip a `::symbol` suffix from a doc reference: `src/a.ts::doThing` names a
+ * symbol *inside* `src/a.ts`, so only the file part is checkable on disk. The
+ * notation is used by ADRs and handoffs to pin a specific entry point.
+ */
+export function stripSymbolSuffix(candidate: string): string {
+  const index = candidate.indexOf('::');
+  return index > 0 ? candidate.slice(0, index) : candidate;
+}
+
+/**
+ * Character ranges of Markdown **link labels** whose target is not a local
+ * file — `[`docs/x.md`](https://other-repo/...)`, `[a](mailto:…)`, `[b](#anchor)`.
+ *
+ * A backticked path inside such a label describes a file in *another* repo (or
+ * is pure prose), so it must not be validated against this repo's disk. Ranges
+ * are `[start, end)` offsets into `line`, covering the label text between the
+ * brackets.
+ */
+export function externalLinkLabelRanges(line: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const re = new RegExp(/\[([^\]\n]*)\]\(([^)\s]+)\)/, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(line)) !== null) {
+    const label = match[1] ?? '';
+    const target = match[2] ?? '';
+    // A target that resolves to a local repo path is still checked by the
+    // link-target validation, so only skip genuinely non-local targets.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.startsWith('#')) continue;
+    const labelStart = match.index + 1;
+    ranges.push([labelStart, labelStart + label.length]);
+  }
+  return ranges;
+}
+
+/** Is `[start, end)` fully inside any of `ranges`? */
+export function isWithinRanges(
+  ranges: ReadonlyArray<readonly [number, number]>,
+  start: number,
+  end: number,
+): boolean {
+  return ranges.some(([from, to]) => start >= from && end <= to);
+}
+
+/**
  * For a glob like `foo/bar/*`, `foo/bar/**\/*.ts`, or `foo/bar/quests.*.json`,
  * return the deepest non-wildcard *directory* that must exist, or `null` when
  * the glob constrains nothing checkable.

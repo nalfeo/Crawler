@@ -93,3 +93,12 @@ rehearsal**:
 - `npm run format -- --write <files>` still ran the repo's broad format globs before the
   explicit file list. It happened to touch only intended files this time, but use
   `npx prettier --write <files>` for surgical formatting.
+
+### Opportunities for Future Improvement
+
+- Give `runHeadless` a shared assertion helper for "scenario reached its terminal outcome
+  AND populated its per-floor RunStats block". The crash-vs-success stats divergence found
+  here is a class of bug, not a one-off, and every future floor will re-add both objects.
+- Make surgical formatting the documented default: `npm run format` runs the repo-wide
+  globs before any explicit file list, so the handoff guidance should point at
+  `npx prettier --write <files>` for single-file fixes.

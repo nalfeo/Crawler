@@ -8,6 +8,10 @@ const DEFAULT_OFFSETS = Object.freeze({
   game: 0,
   lab: 1,
   devtools: 2,
+  // The e2e suite spawns its OWN short-lived lab server, so it must not reuse
+  // `lab` (offset 1) — a session running `npm run lab` while its e2e suite runs
+  // would otherwise silently test against the long-lived interactive server.
+  e2eLab: 3,
   sidecar: 10,
 });
 
@@ -58,16 +62,19 @@ export function getSessionServerPorts(options = {}) {
   const gamePort = parsePort(env.CRAWLER_DEV_PORT) ?? block + DEFAULT_OFFSETS.game;
   const labPort = parsePort(env.CRAWLER_LAB_PORT) ?? block + DEFAULT_OFFSETS.lab;
   const devtoolsPort = parsePort(env.CRAWLER_DEVTOOLS_PORT) ?? block + DEFAULT_OFFSETS.devtools;
+  const e2eLabPort = parsePort(env.CRAWLER_E2E_LAB_PORT) ?? block + DEFAULT_OFFSETS.e2eLab;
   const sidecarPort = parsePort(env.SPRITES_SIDECAR_PORT) ?? block + DEFAULT_OFFSETS.sidecar;
 
   return {
     gamePort,
     labPort,
     devtoolsPort,
+    e2eLabPort,
     sidecarPort,
     gameBaseUrl: `http://localhost:${gamePort}`,
     labBaseUrl: `http://localhost:${labPort}`,
     devtoolsBaseUrl: `http://localhost:${devtoolsPort}`,
+    e2eLabBaseUrl: `http://localhost:${e2eLabPort}`,
     sidecarBaseUrl: `http://127.0.0.1:${sidecarPort}`,
   };
 }
