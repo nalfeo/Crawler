@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ab7ef3efa01b65d65290051311c73522596609db",
+    "commitDate": "2026-08-27T10:18:49Z",
+    "commitSubject": "perf(ci): cache npm downloads by lockfile (#3651)",
+    "capturedAt": "2026-08-27T11:31:22.078Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33064322763",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/ab7ef3efa01b65d65290051311c73522596609db.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/ab7ef3efa01b65d65290051311c73522596609db.fun-report.json"
+    }
+  },
+  {
     "commit": "5f2a9c1bbd918fa42b9ddbdde19a63d17c53bf06",
     "commitDate": "2026-08-27T07:09:01Z",
     "commitSubject": "ci(goobers): trial hosted progress from private draft (#3650)",
