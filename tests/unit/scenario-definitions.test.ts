@@ -218,6 +218,10 @@ describe('scenario definitions', () => {
       for (let act = 1; act <= phase.actCount; act += 1) {
         world.elapsedMs += phase.waveWindowMs;
         arenaDirectorSystem(world);
+        const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+        expect(activeHeadliner).not.toBeNull();
+        world.stores.health.current[activeHeadliner!] = 0;
+        arenaDirectorSystem(world);
         world.elapsedMs += phase.headlineWindowMs;
         arenaDirectorSystem(world);
         world.elapsedMs += phase.intermissionMs;

@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "floor4-slice4-headliners",
+  "task_title": "Implement Floor 4 Headliner encounters",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate rubber-duck plan review approved with changes. Resolutions: grant appearance fee exactly once; pin arenaElapsedMs at the act mark for overtime; build the Headliner card once at initialization; use spawnBossChestForDefeatedBoss rather than raw chest APIs; validate Floor 4 boss abilities against the Headliner manifest pool instead of Floor 2 family taxonomy."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
