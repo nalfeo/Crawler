@@ -27,7 +27,8 @@
       "maxInventorySize": 4,
       "entries": [
         { "itemId": "fireball", "weight": 2, "basePrice": 45 },
-        { "itemId": "laser", "weight": 1, "basePrice": 65 }
+        { "itemId": "laser", "weight": 1, "basePrice": 65 },
+        { "itemId": "landmine", "weight": 1, "basePrice": 80 }
       ]
     },
     {

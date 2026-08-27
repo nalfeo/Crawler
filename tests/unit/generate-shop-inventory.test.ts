@@ -62,6 +62,15 @@ describe('generateShopInventory · item invariants', () => {
     }
   });
 
+  it('every archetype pool is larger than its minimum roll (stock stays random)', () => {
+    // An archetype whose pool equals minInventorySize always sells its whole
+    // pool, so the seeded roll degenerates to a fixed inventory. Floor 2 stock
+    // must vary per run, so every pool keeps at least one spare entry.
+    for (const arch of loadShopArchetypes()) {
+      expect(arch.entries.length, arch.id).toBeGreaterThan(arch.minInventorySize);
+    }
+  });
+
   it('every item is unique within a shop (weighted w/o replacement)', () => {
     for (const arch of loadShopArchetypes()) {
       const inv = generateShopInventory(new SeededRandom(999), arch);
