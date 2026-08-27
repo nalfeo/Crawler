@@ -130,6 +130,37 @@ describe('RunSurveyUI', () => {
     ui.destroy();
   });
 
+  it('keeps the dialog open when Escape is pressed during submission', async () => {
+    let resolveSubmit: ((ok: boolean) => void) | undefined;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    const onSkip = vi.fn();
+    const ui = createRunSurveyUI({ onSubmit, onSkip });
+    ui.show();
+
+    const submitBtn = Array.from(document.body.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Submit feedback',
+    )!;
+    submitBtn.click();
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+
+    document.body
+      .querySelector('input[data-field="enjoyment"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(onSkip).not.toHaveBeenCalled();
+    expect(ui.isVisible()).toBe(true);
+
+    resolveSubmit?.(false);
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Submission failed'));
+
+    ui.destroy();
+  });
+
   it('removes the dialog from the DOM on destroy', () => {
     const ui = createRunSurveyUI({ onSubmit: () => true });
     ui.show();

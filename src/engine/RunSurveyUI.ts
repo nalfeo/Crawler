@@ -63,6 +63,9 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
   const trapFocus = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (submitBtnRef?.disabled) {
+        return;
+      }
       hide();
       hooks.onSkip?.();
       return;
