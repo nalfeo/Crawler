@@ -27,6 +27,7 @@ Estimated: 4🍎 — rescored: 3🍎 — actual: 3🍎. This tooling-only canvas
 - `npx vitest run tests/unit/sprites/asset-request-context.test.ts tests/unit/sprites/azure-chat-synth.test.ts tests/unit/sprites/build-prompt.test.ts tests/integration/generate-one.test.ts` — 97 passing.
 - Final `npm run verify:fast` — 79 files / 1,293 tests passing, plus all data-contract, integrity, and coverage checks.
 - Live Workflow canvas observation confirmed mixed-case and kebab names resolve the same three deterministic references, reference PNGs load, custom category text survives type switching, and unsaved composer values survive full-template modal rerenders.
+- Final lifecycle hardening: all Workflow extension tests passed; 137 focused asset-context/sidecar tests passed; `npm run typecheck` passed.
 
 ## Observe before done
 
@@ -38,4 +39,4 @@ After the workflow/UX expansion: the real Workflow canvas serves the unified Bac
 
 ## Review
 
-The category/reference expansion received two final code-review rounds. Round 1 found two state/blank-name issues; round 2 found four candidate-invalidation, normalization, rerender-state, and contradictory-prompt issues. All six were fixed. A final live pass then caught and fixed the composer category-draft switching regression and the incorrectly scoped draft helpers. The first independent-grade pass found a destructive no-op edit, ambiguous template parsing, missing resolved-path containment, a Floor 4 capability regression, and accidentally nested tests; all were corrected. The passing regrade's three minor findings were also closed: successful requests clear the composer, edit payloads validate at the state boundary, and polling no longer tears down an open edit modal. See `docs/knowledge/review-ledgers/2026-08-21-azure-sprite-workflow.review-ledger.json`.
+The category/reference expansion received two final code-review rounds. Round 1 found two state/blank-name issues; round 2 found four candidate-invalidation, normalization, rerender-state, and contradictory-prompt issues. All six were fixed. A final live pass then caught and fixed the composer category-draft switching regression and the incorrectly scoped draft helpers. Independent grading found and drove fixes for destructive no-op edits, ambiguous template parsing, resolved-path containment, Floor 4 capability parity, nested tests, hidden edit failures, unreadable-reference races, and optional context shape drift. The final independent grade at `bd827aa0` passed cleanly with no findings and scores of 5/4/5/5/5. See `docs/knowledge/review-ledgers/2026-08-21-azure-sprite-workflow.review-ledger.json`.

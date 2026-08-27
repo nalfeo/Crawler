@@ -54,7 +54,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "bd827aa05f32cb378714968ff07ad1f0d699dabb",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change coherently unifies sprite category design-language injection across build-prompt.ts, judge.ts, and azure-chat-synth.ts via a single new sprite-category-design-language.ts source of truth, and adds a reference-preview capability wired through the sidecar server, sidecar-client, extension route, and renderer. Correctness is strong: the new /api/workflow/reference-preview endpoint validates name+concrete type (rejecting 'auto'), normalizes the name, reuses the deterministic seed-based selectReferences, and fails safe on unreadable/invalid PNGs; path safety is enforced twice (isSafeGeneratedAssetPath filter plus resolveGeneratedAssetPath confinement), and the name is only used as a selector seed so there is no path-injection surface. The generate-one.ts dedup into resolve-reference-selection.ts and reference-annotations.ts removes real duplication without behavioral change (readFileSync still used, no dangling imports, typecheck passes). editRequestItem validates every durable field at the state boundary and correctly resets downstream state only when a prompt-affecting field actually changes. Making floor enemyPackId optional (with a clear thrown error when a family is requested on a pack-less floor) plus floor3/floor4 additions are defensively handled and tested. Coverage is excellent: new sidecar route happy/skip/reject paths, category injection + request-local override, enemy-pack-less source ids, editRequestItem edge cases (metadata-only, unchanged, auto-typed, icon, validation), and pure request-filter/request-template round-trips are all covered by tests that would fail without the change. All touched paths are tooling/scripts and .github extensions (within the 3-apple tooling cap), the new logic is deterministic (no Math.random/Date.now), and no layer boundaries or system-wiring rules apply. Scope is moderately broad (edit/filter/template authoring surface alongside the category+preview unification) but every piece serves the stated Briefs authoring-context unification, with no unrelated rewrites. No high-confidence blocker, major, or minor findings."
     }
   }
 }
