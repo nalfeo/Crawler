@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "a1cdabeace29ed951be6ac415395028d2037e3d7",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff correctly implements behavior-neutral monotonic timing attribution for the sprite generation pipeline. It uses fail-open sampling, properly handles resume logic without double-charging operation time, and preserves strict total-to-stage reconciliation. Test coverage is thorough, verifying exact stage totals, control flow resets, and edge cases for invalid or backward clocks. All repository policies are respected, and the implementation is clean and well-structured."
     }
   }
 }
