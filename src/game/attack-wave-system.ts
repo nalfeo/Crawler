@@ -90,26 +90,34 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
   // Recompute field if not cached
   if (!state.safeRoomDistanceField || state.safeRoomDistanceField === null) {
     const safeRoomTiles: Array<{ x: number; y: number }> = [];
-
-    // Seed every traversable tile in each safe room so distance is to the room,
-    // not to an arbitrary center tile.
-    const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
-    for (const room of safeRooms) {
+    const addRoomTiles = (room: {
+      bounds: { x: number; y: number; width: number; height: number };
+      interiorCells?: ReadonlyArray<{ x: number; y: number }>;
+    }): void => {
+      if (room.interiorCells && room.interiorCells.length > 0) {
+        safeRoomTiles.push(...room.interiorCells);
+        return;
+      }
       for (let y = room.bounds.y; y < room.bounds.y + room.bounds.height; y += 1) {
         for (let x = room.bounds.x; x < room.bounds.x + room.bounds.width; x += 1) {
           safeRoomTiles.push({ x, y });
         }
       }
+    };
+
+    // Seed every traversable tile in each safe room so distance is to the room,
+    // not to an arbitrary center tile.
+    const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+    for (const room of safeRooms) {
+      addRoomTiles(room);
     }
 
-    // Also include cleared safe rooms
-    for (const clearedId of world.clearedSafeRoomIds) {
-      const room = floorMap.roomGraph.get(clearedId);
-      if (room) {
-        for (let y = room.bounds.y; y < room.bounds.y + room.bounds.height; y += 1) {
-          for (let x = room.bounds.x; x < room.bounds.x + room.bounds.width; x += 1) {
-            safeRoomTiles.push({ x, y });
-          }
+    // Cleared room IDs are only meaningful for the map on which they were recorded.
+    if (world.clearedSafeRoomMap === floorMap) {
+      for (const clearedId of world.clearedSafeRoomIds) {
+        const room = floorMap.roomGraph.get(clearedId);
+        if (room) {
+          addRoomTiles(room);
         }
       }
     }
