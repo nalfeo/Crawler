@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { GAME } from '../../src/shared/constants.js';
 import {
@@ -50,5 +51,28 @@ describe('HudUI mobile layout guards', () => {
         neighborLeftEdge: 999,
       }),
     ).toBe(2);
+  });
+
+  // Regression: HudLootCounter and HudSkillTracker used to hardcode their own
+  // `GAME.HEIGHT - <magic offset>` Y positions instead of importing the shared
+  // stack from this module, which silently drifted out of sync with the XP bar
+  // and health bar (which already read VITALS_PANEL_Y) and reopened a ~28px
+  // gap between the XP bar and the loot/currency pill above it.
+  it('wires the loot counter and skill tracker into the shared vitals stack', () => {
+    const lootSource = readFileSync('src/engine/HudLootCounter.ts', 'utf8');
+    expect(lootSource).toMatch(
+      /import\s+\{\s*VITALS_X,\s*VITALS_PANEL_Y\s*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+    );
+    expect(lootSource).toMatch(/const PANEL_X = VITALS_X;/);
+    expect(lootSource).toMatch(/const PANEL_Y = VITALS_PANEL_Y\.loot;/);
+    expect(lootSource).not.toMatch(/GAME\.HEIGHT/);
+
+    const skillSource = readFileSync('src/engine/HudSkillTracker.ts', 'utf8');
+    expect(skillSource).toMatch(
+      /import\s+\{\s*VITALS_X,\s*VITALS_PANEL_Y\s*\}\s+from\s+'\.\/HudVitalsLayout\.js'/,
+    );
+    expect(skillSource).toMatch(/const PANEL_X = VITALS_X;/);
+    expect(skillSource).toMatch(/const PANEL_Y = VITALS_PANEL_Y\.skill;/);
+    expect(skillSource).not.toMatch(/GAME\.HEIGHT/);
   });
 });
