@@ -1430,10 +1430,10 @@ describe('floor1Scenario', () => {
       questSystem(world);
       expect(getShopkeeperStage(world)).toBe('awaiting-prize');
 
-      // Pick up the gross fetch item → inventory unlocks.
+      // Pick up the gross fetch item; the Bag remains locked until the errand ends.
       addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
       questSystem(world);
-      expect(world.featureUnlocks.inventory).toBe(true);
+      expect(world.featureUnlocks.inventory).toBe(false);
 
       // Return the prize: consumes the item, opens the shop.
       expect(returnShopkeeperPrize(world, player)).toBe(true);
@@ -1458,6 +1458,7 @@ describe('floor1Scenario', () => {
       questSystem(world);
       expect(getShopkeeperStage(world)).toBe('complete');
       expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(true);
+      expect(world.featureUnlocks.inventory).toBe(true);
     });
 
     it('restores the Rat Tail waypoint when the player speaks to the merchant again', () => {
