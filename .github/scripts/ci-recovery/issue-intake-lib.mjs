@@ -31,6 +31,10 @@ export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
 }
 
+function uniqueActorIds(actors) {
+  return [...new Set(actors.map((actor) => actor.id).filter(Boolean))];
+}
+
 function hasTrustedCommentAuthor(comment) {
   return (
     TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
@@ -874,7 +878,7 @@ export async function runIssueIntake({
         graphql,
         token,
         assignableId: issue.node_id || issue.id,
-        actorIds: [...new Set(currentCopilotAssignees.map((actor) => actor.id).filter(Boolean))],
+        actorIds: uniqueActorIds(currentCopilotAssignees),
       });
     }
     assignment = await replaceIssueAssignees({

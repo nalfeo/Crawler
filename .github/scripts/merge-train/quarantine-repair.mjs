@@ -82,7 +82,10 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { encodeRefPath, paginate, request } from '../ci-recovery/github.mjs';
-import { quarantineRepairNoticeMarker } from '../ci-recovery/markers.mjs';
+import {
+  hasQuarantineRepairNoticeMarker,
+  quarantineRepairNoticeMarker,
+} from '../ci-recovery/markers.mjs';
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from '../ci-recovery/state.mjs';
 import {
   UNADVANCEABLE_STRIKE_THRESHOLD,
@@ -441,7 +444,9 @@ async function postSupersedeNoticeOnce({
   // could permanently silence the audit notice.
   if (
     comments.some(
-      (comment) => isTrustedNoticeAuthor(comment) && String(comment.body || '').includes(marker),
+      (comment) =>
+        isTrustedNoticeAuthor(comment) &&
+        hasQuarantineRepairNoticeMarker(comment.body, replacementPrNumber),
     )
   ) {
     return false;

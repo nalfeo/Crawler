@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
   MANAGED_COMMENT_PREFIX,
   quarantineRepairNoticeMarker,
   QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
@@ -278,6 +279,7 @@ test('repairQuarantinedPr is idempotent: re-running does not recreate the branch
       head: { sha: HEAD_SHA },
     },
   });
+
   // Simulate the linking comment already having been posted on a prior run
   // (by our own trusted automation identity).
   const comments = [
@@ -313,6 +315,57 @@ test('repairQuarantinedPr is idempotent: re-running does not recreate the branch
   assert.ok(
     !calls.some((call) => call.path === `/repos/${OWNER}/${REPO}/pulls` && call.method === 'POST'),
   );
+  assert.ok(
+    !calls.some(
+      (call) =>
+        call.path === `/repos/${OWNER}/${REPO}/issues/3588/comments` && call.method === 'POST',
+    ),
+  );
+});
+
+test('repairQuarantinedPr treats legacy notice markers as already-linked and does not repost notice', async () => {
+  const branchName = repairBranchNameFor();
+  const validReplacementBody = `${renderRepairMarker(3588, HEAD_SHA)}`;
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: true,
+    refSha: HEAD_SHA,
+    existingPr: {
+      number: 3700,
+      state: 'open',
+      base: { ref: 'main' },
+      body: validReplacementBody,
+      head: { sha: HEAD_SHA },
+    },
+  });
+  const comments = [
+    quarantineStatusComment(),
+    {
+      body: `already linked\n\n${LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}3700 -->`,
+      performed_via_github_app: {},
+    },
+  ];
+  const paginateWithComments = async (token, path) => {
+    if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments`) return comments;
+    return paginateFn(token, path);
+  };
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn: paginateWithComments,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.deepEqual(result, {
+    action: 'linked-existing',
+    originalPrNumber: 3588,
+    replacementPrNumber: 3700,
+    branchName,
+    headSha: HEAD_SHA,
+    noticePosted: false,
+  });
   assert.ok(
     !calls.some(
       (call) =>

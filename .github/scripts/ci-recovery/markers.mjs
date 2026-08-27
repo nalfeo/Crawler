@@ -158,9 +158,19 @@ export const STALE_BASE_RETARGET_MARKER = '<!-- crawler-ci-stale-base-retarget:v
  * CI-recovery run every time a repair notice is posted.
  */
 export const QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX = '<!-- crawler-quarantine-repair-notice:v1';
+export const LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX =
+  '<!-- crawler-quarantine-repair-notice:';
 
 export function quarantineRepairNoticeMarker(replacementPrNumber) {
   return `${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX} replacement=${replacementPrNumber} -->`;
+}
+
+export function hasQuarantineRepairNoticeMarker(body, replacementPrNumber) {
+  const expected = quarantineRepairNoticeMarker(replacementPrNumber);
+  if (String(body || '').includes(expected)) return true;
+  return String(body || '').includes(
+    `${LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}${replacementPrNumber} -->`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +236,7 @@ export const MANAGED_COMMENT_MARKERS = [
   ALREADY_LANDED_COMMENT_MARKER,
   STALE_BASE_RETARGET_MARKER,
   QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
+  LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
 ];
