@@ -18,7 +18,7 @@ abilities
 
 ## Validation
 
-- `npx vitest run tests/game/ability-registry.test.ts` ✅
+- `npx vitest run tests/game/ability-registry.test.ts tests/game/weapon-skill-abilities.test.ts` ✅
 - `npm run verify:fast` ✅
 
 ## Observe before done
