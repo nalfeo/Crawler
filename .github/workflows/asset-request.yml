@@ -17,9 +17,10 @@
 #      re-labels or re-opens the issue as themselves, or a manual
 #      `gh workflow run asset-request.yml`. Both paths make the maintainer
 #      the acting sender, which is auditable.
-#   4. Azure keys are wired at STEP level (only on the three `run:` steps that
+#   4. Azure keys are wired at STEP level (only on the two `run:` steps that
 #      need them), not job level — so `actions/checkout`, `actions/setup-node`,
-#      and any npm install-script don't inherit high-value credentials.
+#      and the setup action don't inherit high-value credentials. The combined
+#      ingest/worker coordinator strips provider secrets from the ingest child.
 #   5. Secrets stay scoped to THIS workflow (not `copilot-setup-steps.yml`) so
 #      the coding-agent runner env can't exfiltrate them either.
 #
@@ -103,15 +104,29 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      # Step 1: scan open `asset-request` issues, enqueue any new ones into the
-      # Azure queue (deduped by issueNumber+fingerprint via the blob state file).
-      # Non-zero exit iff the poll itself failed (gh CLI error, Azure network
-      # failure, etc). Zero enqueued is a normal outcome and returns 0.
-      - name: Ingest asset-request issues
+      # Step 1: start the worker, scan open `asset-request` issues, then publish
+      # a durable producer-complete marker after every enqueue/state save resolves.
+      # The worker ignores pre-completion empties and confirms queue emptiness
+      # with a dequeue begun after the marker, removing the old ~15s idle tail.
+      - name: Ingest issues + drain worker
         env:
           # gh CLI auth — used by scripts/sprites/sidecar/asset-request-issue-api.ts
           # (spawns `gh issue list`).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Direct Azure OpenAI generation credentials. The coordinator passes
+          # these to the worker but explicitly strips them from the ingest child.
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT }}
+          SPRITES_PROVIDER: azure-openai
+          SPRITES_TEXT_PROVIDER: azure-openai
+          SPRITES_SYNTH_PROVIDER: azure-openai
+          SPRITES_VISION_PROVIDER: azure-openai
 
           # In-CI logs default to warn (see src/shared/logger.ts's
           # `isQuietLoggingEnvironment`). Force info so the ingester's
@@ -171,64 +186,12 @@ jobs:
           # to check whether this specific run actually produced artifacts.
           SPRITES_INGEST_RUN_URL: >-
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: npm run sprites:ingest-once
 
-      # Step 2: drain the queue. Exits with 0 after SPRITES_WORKER_MAX_EMPTY_POLLS
-      # consecutive empty polls — or when the timeout-minutes cap fires, whichever
-      # is first. In-flight generation on SIGTERM is safe: Azure Queue's
-      # visibility timeout re-surfaces the message on the next run.
-      - name: Drain worker
-        env:
-          # gh CLI auth — the worker uses it to post failure comments on issues
-          # via `createGhAssetRequestIssueApi` in worker-cli.ts.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          # Force info-level logs so the worker's per-stage output
-          # ("processing", "done", "error") appears in the run log. The
-          # in-CI default is warn (see src/shared/logger.ts). Without this
-          # the drain step is a black box between "worker started" and
-          # exit, which is exactly the regression we hit on the first live
-          # E2E run.
-          LOG_LEVEL: info
-
-          # Direct Azure OpenAI (image, variation, synthesis, selector, and
-          # vision) — the same backend the local sidecar and the #1307 canary
-          # used end-to-end. The Foundry backend (ADR 0033) is retired for this
-          # pipeline: the Foundry resource has no deployable models/quota, which
-          # forced the brief-selector onto a reasoning model that rejects the
-          # `max_tokens`/`temperature` params the code sends (HTTP 400). See
-          # issue #1885 for the durable archival. gpt-4o serves both variation
-          # expansion and synthesis; the brief-selector uses its own deployment
-          # (no distinct-model guard on the azure-openai path).
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
-          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
-          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
-          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
-          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT }}
-          SPRITES_PROVIDER: azure-openai
-          SPRITES_TEXT_PROVIDER: azure-openai
-          SPRITES_SYNTH_PROVIDER: azure-openai
-          SPRITES_VISION_PROVIDER: azure-openai
-
-          # Azure Storage (queue + blob).
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
-          AZURE_STORAGE_QUEUE_NAME: ${{ secrets.AZURE_STORAGE_QUEUE_NAME }}
-          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
-
-          # Force Azure backends.
-          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
-          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
-
-          # Drain-mode: exit after 3 consecutive idle polls (~15s at 5s poll
-          # interval). Without this the worker CLI idles forever and burns the
-          # 25min job timeout.
+          # Coordinated drain mode. The 3-poll fallback remains unchanged for
+          # standalone workers; this workflow exits only after its producer has
+          # durably completed and the two worker slots confirm empty.
           SPRITES_WORKER_DRAIN: 'true'
-          SPRITES_WORKER_MAX_EMPTY_POLLS: '3'
-          SPRITES_WORKER_POLL_MS: '5000'
+          SPRITES_WORKER_POLL_MS: '1000'
           SPRITES_WORKER_CONCURRENCY: '2'
 
           # ADR-0043 bypass for Constitutional §3. The asset-request worker is
@@ -242,7 +205,7 @@ jobs:
           # in CI regardless of this flag — the bypass is narrowly scoped to
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
-        run: npm run sprites:worker
+        run: bash scripts/sprites/asset-request-pipeline.sh
 
       # Publishing is deliberately sequential and runs even when the current
       # drain observed an unrelated failure. It authoritatively scans every

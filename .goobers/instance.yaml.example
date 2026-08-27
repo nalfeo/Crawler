@@ -6,5 +6,9 @@ repos:
     name: Crawler
     token:
       env: GOOBERS_GITHUB_TOKEN
+credentials:
+  - capability: agent:model
+    token:
+      env: COPILOT_GITHUB_TOKEN
 runConditions:
   maxParallelRuns: 1
