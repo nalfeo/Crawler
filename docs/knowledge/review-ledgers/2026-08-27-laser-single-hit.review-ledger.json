@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "laser-single-hit",
+  "task_title": "Prevent repeated laser hits per firing",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes. Added explicit rewrite of the contradictory repeated-damage test; all beam pipeline/determinism tests to validation because RNG/RunStats can shift; multi-tick skill-XP assertion; proven beamSystem cleanup import pattern; late-entrant test via direct full scan/fresh candidates; both AI primary/additional-target model paths. Retained established add-after-qualifying-attempt semantics; enemy targets cannot dodge player beams, so an artificial zero-damage mutation test would not validate issue #3702."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

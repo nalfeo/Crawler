@@ -109,6 +109,8 @@ describe('beamSystem hit-gated weapon-skill XP', () => {
     });
 
     beamSystem(world);
+    world.elapsedMs += 100;
+    beamSystem(world);
 
     expect(world.stores.health.current[enemy]).toBe(35);
     const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');

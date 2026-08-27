@@ -65,6 +65,26 @@ let beamRankGen = 0;
 let beamRankStamp = new Uint32Array(0);
 let beamRankIdx = new Int32Array(0);
 const beamCandidateScratch: number[] = [];
+const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
+
+function getHitSet(world: GameWorld, eid: number): Set<number> {
+  let worldHits = hitSets.get(world);
+  if (worldHits === undefined) {
+    worldHits = new Map();
+    hitSets.set(world, worldHits);
+  }
+  let hits = worldHits.get(eid);
+  if (hits === undefined) {
+    hits = new Set();
+    worldHits.set(eid, hits);
+  }
+  return hits;
+}
+
+/** Clean up hit tracking for removed beam entities. */
+export function clearBeamHits(world: GameWorld, eid: number): void {
+  hitSets.get(world)?.delete(eid);
+}
 
 /**
  * Build the canonical rank map from the current [Health, Position] set and report
@@ -210,6 +230,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
       useGrid && collisionResult
         ? gatherBeamCandidates(collisionResult.grid, midX, midY, beamReachRadius)
         : query(world.ecs, [Health, Position]);
+    const hitSet = getHitSet(world, eid);
 
     for (const target of targets) {
       if (
@@ -222,6 +243,10 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
       }
 
       if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player)) {
+        continue;
+      }
+
+      if (hitSet.has(target)) {
         continue;
       }
 
@@ -249,6 +274,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
             sourceEid: ownerEid >= 0 ? ownerEid : undefined,
           },
         );
+        hitSet.add(target);
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
         }
