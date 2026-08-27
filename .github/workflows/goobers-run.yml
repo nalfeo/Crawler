@@ -64,10 +64,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Require CRAWLER_CI_PAT
+      - name: Require GOOBERS_GITHUB_TOKEN
         # crawler-feature-pr's implement/push-branch stages declare
         # repo:push; the built-in github.token only has contents: read on
         # this job (see permissions:, above), so it can neither push a
@@ -76,12 +76,12 @@ jobs:
         # message instead of letting goobers run fail deep into the run.
         run: |
           set -euo pipefail
-          if [ -z "${CRAWLER_CI_PAT_SET:-}" ]; then
-            echo "::error::CRAWLER_CI_PAT secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
+          if [ -z "${GOOBERS_GITHUB_TOKEN_SET:-}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
             exit 1
           fi
         env:
-          CRAWLER_CI_PAT_SET: ${{ secrets.CRAWLER_CI_PAT }}
+          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
 
       - name: Resolve pinned archive checksum
         # Independent pin: this digest is reviewed and committed here, not
@@ -162,6 +162,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install project dependencies
+        run: npm ci
+
       - name: Install Copilot CLI
         # Pinned npm package install instead of piping the mutable
         # https://gh.io/copilot-install script to bash: npm resolves this
@@ -188,13 +191,13 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$GOOBERS_INSTANCE"
-          mkdir -p "$GOOBERS_INSTANCE"
+          mkdir -p "$GOOBERS_INSTANCE/config"
 
-      - name: Point the instance at this repository and the checked-in source
-        # workflowSource: local-dir reads the checked-in .goobers/ tree
-        # directly (kind local-dir per Goobers internal/instance/config.go),
-        # so runtime definitions always match the branch's committed source —
-        # no separate `config materialize` copy step needed.
+      - name: Materialize checked-in source into the instance
+        # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
+        # populated config/ tree. workflowSource records the checked-in source;
+        # `config materialize` applies .goobers/instance.yaml.example and
+        # replaces config/ with manifest.yaml + gaggles/.
         run: |
           set -euo pipefail
           cat > "${GOOBERS_INSTANCE}/instance.yaml" <<EOF
@@ -205,7 +208,7 @@ jobs:
               owner: ${{ github.repository_owner }}
               name: ${{ github.event.repository.name }}
               token:
-                env: CRAWLER_CI_PAT
+                env: GOOBERS_GITHUB_TOKEN
           workflowSource:
             kind: local-dir
             path: ${{ github.workspace }}/.goobers
@@ -216,6 +219,7 @@ jobs:
           runConditions:
             maxParallelRuns: 1
           EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
 
       - name: Run the workflow
@@ -224,13 +228,14 @@ jobs:
           # CopilotAdapter preflight probe on a clean runner (see the
           # "Install Copilot CLI" step comment above).
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
 
       - name: Upload run journal
+        id: upload-run-journal
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -238,3 +243,66 @@ jobs:
           path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Comment with Goobers run diagnostics
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
+          if [ -z "$events_file" ]; then
+            echo "No Goobers journal events found; skipping issue comment."
+            exit 0
+          fi
+
+          issue_number="$(
+            jq -r '
+              select(.externalRef? and .externalRef.kind == "issue")
+              | .externalRef.id
+            ' "$events_file" | tail -n 1
+          )"
+          if [ -z "$issue_number" ] || [ "$issue_number" = "null" ]; then
+            echo "No claimed issue found in Goobers journal; skipping issue comment."
+            exit 0
+          fi
+
+          run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
+          terminal_summary="$(
+            jq -r '
+              select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
+              | [
+                  (.type // ""),
+                  ("stage=" + (.stage // "-")),
+                  ("status=" + (.status // .result.status // "-")),
+                  ("code=" + (.error.code // .result.error.code // "-")),
+                  (.error.message // .result.error.message // .result.summary // "")
+                ]
+              | map(select(. != "" and . != "code=-"))
+              | join(" | ")
+            ' "$events_file" | tail -n 8
+          )"
+
+          body="$(mktemp)"
+          {
+            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
+            echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
+            echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
+            if [ -n "$terminal_summary" ]; then
+              echo
+              echo "Terminal journal events:"
+              echo '```'
+              echo "$terminal_summary"
+              echo '```'
+            fi
+            echo
+            echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          } > "$body"
+
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
