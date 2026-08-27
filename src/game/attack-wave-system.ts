@@ -14,7 +14,7 @@ import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { getRatTemplate } from './spawners/template-accessor.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
-import { AttackWaveRat, Enemy, Player, Size, Sprite } from '../core/components.js';
+import { AttackWaveRat, Damage, Enemy, Player, Size, Sprite } from '../core/components.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { addComponent, query, setComponent } from 'bitecs';
@@ -23,6 +23,7 @@ import { RoomRole } from '../shared/map-types.js';
 import { GAME } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { floor1Config } from '../shared/floor-config.js';
+import { buildDoorAwarePassable, getDoorNavInfos } from '../core/door-navigation.js';
 
 // Type assertion for tuning (schema loaded at build time)
 type TuningSchema = typeof tuning & {
@@ -38,6 +39,17 @@ const TUNING = tuning as TuningSchema;
 
 const SPAWNER_CHILD_CHASE_DELAY_MIN_MS = 250;
 const SPAWNER_CHILD_CHASE_DELAY_MAX_MS = 500;
+
+/** Snapshot current door navigation blockers for cache invalidation. */
+function doorNavigationSnapshot(world: GameWorld): string {
+  const infos = getDoorNavInfos(world);
+  if (infos.length === 0) {
+    return '';
+  }
+  return infos
+    .map((info) => `${info.tileX},${info.tileY}:${info.navigationBlocked ? 1 : 0}`)
+    .join('|');
+}
 
 /** Compute off-screen spawn radius from viewport. */
 function computeMinSpawnRingRadiusFt(viewportWidthFt: number, viewportHeightFt: number): number {
@@ -77,11 +89,13 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
     nextWaveAtMs: TUNING.attackWaves.intervalMs,
     aliveWaveRatCount: 0,
   });
+  const navSnapshot = doorNavigationSnapshot(world);
 
   // Invalidate flow field cache if map changed or safe rooms cleared
   if (
     state.safeRoomDistanceFieldMap !== floorMap ||
     state.safeRoomDistanceFieldClearedMap !== world.clearedSafeRoomMap ||
+    state.safeRoomDoorSnapshot !== navSnapshot ||
     (state.clearedSafeRoomIdsSnapshot !== undefined &&
       state.clearedSafeRoomIdsSnapshot !== Array.from(world.clearedSafeRoomIds).join(','))
   ) {
@@ -89,6 +103,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
     state.safeRoomDistanceFieldMap = null;
     state.safeRoomDistanceFieldClearedMap = null;
     state.clearedSafeRoomIdsSnapshot = undefined;
+    state.safeRoomDoorSnapshot = undefined;
   }
 
   // Recompute field if not cached
@@ -134,15 +149,19 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
       state.safeRoomDistanceFieldMap = floorMap;
       state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
       state.clearedSafeRoomIdsSnapshot = '';
+      state.safeRoomDoorSnapshot = navSnapshot;
       return false;
     }
 
-    const field = computeMultiSourceFlowField(floorMap, safeRoomTiles);
+    const field = computeMultiSourceFlowField(floorMap, safeRoomTiles, {
+      isTilePassable: buildDoorAwarePassable(world),
+    });
 
     state.safeRoomDistanceField = field.distance;
     state.safeRoomDistanceFieldMap = floorMap;
     state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
     state.clearedSafeRoomIdsSnapshot = Array.from(world.clearedSafeRoomIds).join(',');
+    state.safeRoomDoorSnapshot = navSnapshot;
   }
 
   // Read distance at player tile
@@ -317,6 +336,13 @@ function spawnWavePack(world: GameWorld): void {
         shape: SHAPE_CIRCLE,
       });
       setEnemyAppearanceKey(world, eid, ratTemplate.id);
+      if (ratTemplate.contactDamage > 0) {
+        setComponent(world.ecs, eid, Damage, {
+          amount: ratTemplate.contactDamage,
+          cooldownMs: 0,
+          lastFireMs: 0,
+        });
+      }
       liveCount++;
       state.aliveWaveRatCount = liveCount;
 
