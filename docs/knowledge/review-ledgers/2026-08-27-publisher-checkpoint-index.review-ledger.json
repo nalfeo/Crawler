@@ -33,13 +33,37 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "31ad7a5a095115628172b6c4d4fe6b609fe74741",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "scripts/sprites/asset-request-publisher.ts",
+          "detail": "`readReadyCheckpoint` wraps `store.get(key)` inside the JSON.parse try/catch, so a `StoreNotFoundError` for a stale index entry — an explicitly designed-for state per the comments in `markIssuePipelineTerminal` — is logged as `Skipping malformed asset-request checkpoint`. That makes a normal, expected condition indistinguishable from real corruption in publisher logs. Remedy: catch `StoreNotFoundError` separately in `readReadyCheckpoint` and log it as a stale ready-index entry (or prune the key), keeping the malformed-checkpoint warning for genuine parse/schema failures."
+        },
+        {
+          "severity": "minor",
+          "file": "scripts/sprites/asset-request-ready-index.ts",
+          "detail": "Once `legacyBackfillComplete` is true, `discoverReadyCheckpoints` never re-lists `ISSUE_STATUS_KEY_PREFIX` again, so discovery is permanently index-only. Concurrent new-code writers are safe (CAS union covers both orderings), but any writer that produces a `selected-pending-publish` checkpoint without calling the new `addAssetRequestReadyKey` — most plausibly a pipeline run started on the pre-change build that finishes after the first backfill — becomes invisible to the publisher forever, with no warning and no self-heal short of manually deleting the index blob. Remedy: add a bounded authoritative reconcile (re-list on an explicit `--reconcile` flag, or every Nth/periodic publisher run) that CAS-unions any unregistered ready keys back into the index."
+        },
+        {
+          "severity": "minor",
+          "file": "tests/unit/sprites/asset-request-publisher.test.ts",
+          "detail": "The 232-record regression asserts wall-clock properties (`min(cold) > max(warm)` and `median(cold)/median(warm) > 20`) in the unit suite, backed by ~700ms of busy-wait spinning. The deterministic `listCalls === 0`, `getKeys` exact-sequence, and cold `234` read-count assertions already encode the behavioral contract completely; the timing assertions add no coverage the op counts lack and introduce a contention-sensitive flake surface plus per-run cost in `npm test`. Remedy: keep the operation-count and byte-equivalence assertions here and move (or drop) the timing ratio/non-overlap assertions into `tests/bench/`, which is the documented home for performance baselines."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "The diff does what it claims: discovery moves from an unconditional authoritative listing plus N checkpoint reads to a versioned, CAS-maintained ready index, with a one-time authoritative backfill and full revalidation of every indexed checkpoint before publication. The concurrency reasoning holds up under inspection — `mutateReadyIndex` re-applies the update against a freshly read snapshot on every CAS retry, so backfill and concurrent `add` cannot lose each other in either ordering; `assertSharedStoreCas` correctly gates on the `conditionalWrites` capability rather than feature-detecting the optional methods (and `CachingRunStore` genuinely forwards `atomic` from the Azure inner store, so this does not fail loudly in production); ordering is preserved because both the warm and cold paths emit lexicographically sorted keys, matching the pre-change sorted listing; and the write ordering in `markIssuePipelineTerminal` is fail-closed in the direction that matters (register-then-write for ready, durable-write-then-best-effort-remove for terminal). `markIssuePipelineTerminal` is the only writer of `selected-pending-publish`, and the ingester only reads the checkpoint namespace, so there is no in-tree writer that bypasses registration. Scope is surgical — the two test-store `StoreNotFoundError` changes and the cache-policy entry are load-bearing, not drive-bys — and the cache-policy classification with a cross-machine regression is exactly right for coordination state. All 50 tests in the five touched files pass on the graded tree. The deductions are for the index-only invariant having no reconcile path or alarm for an unregistered ready checkpoint, the misleading malformed-checkpoint warning on the expected stale-entry path, and wall-clock ratio assertions living in the unit suite where deterministic op-count assertions already cover the contract. None of these is a blocker and no criterion falls below 3, so the verdict is pass."
     }
   }
 }
