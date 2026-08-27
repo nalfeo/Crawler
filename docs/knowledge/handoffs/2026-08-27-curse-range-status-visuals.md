@@ -37,11 +37,18 @@ Fixed both halves of playtest issue #3690.
 
 Observed in the **real `MainGameScene`** (booted through the shipped floor
 bootstrap by `main-scene-probe-lab`, not a synthetic lab scene), pinned by
-`tests/e2e/status-effect-aura-main-scene.test.ts` — before applying the real slow
-debuff to a live enemy the aura layer holds **0 draw commands** and **0%** of the
-80×80 px box around that enemy differs; after, the layer draws and **20.7%** of
-the same box changes. That 0% before is exactly the "no visual effect" the issue
-reports.
+`tests/e2e/status-effect-aura-main-scene.test.ts`. Before the real slow debuff
+lands on a live enemy the aura layer holds **0 draw commands**. The aura is then
+isolated from the status tint: with the debuff held constant, only the shared
+aura layer's alpha is toggled, and the metric counts pixels that got _brighter_
+(the layer is additive; the tint is a multiply that can only darken). Two
+aura-off frames brighten **0 px** of the 80×80 px box around the enemy; switching
+the aura on brightens **39 px**, peaking at **+84 luma**. A mutation check
+(aura alphas forced to 0) drops that to 0 px and fails the test.
+
+The earlier revision of this test compared an undebuffed frame against a debuffed
+one and reported a 20.7% pixel delta; that number was dominated by the status
+tint, not the aura, which is why the isolated toggle replaced it.
 
 ## Key Decisions Made
 

@@ -29,8 +29,14 @@ export interface StatusAuraTarget {
   readonly color: number;
 }
 
-/** Display-list name of the single shared aura layer. */
-export const STATUS_AURA_LAYER_NAME = 'statusEffectAura';
+/**
+ * Display-list name of the single shared aura layer.
+ *
+ * Exported as observation scaffolding only (underscore-prefixed per the
+ * test-only-export guard): the probe lab and its tests locate the layer by
+ * name; production code only ever assigns it here.
+ */
+export const _STATUS_AURA_LAYER_NAME = 'statusEffectAura';
 
 /** Full pulse cycle. Slow enough to read as a breath, not a strobe. */
 const PULSE_PERIOD_MS = 900;
@@ -53,7 +59,7 @@ export function createStatusEffectVfx(scene: Phaser.Scene): {
     if (!enabled) return undefined;
     if (gfx === undefined) {
       gfx = scene.add.graphics();
-      gfx.name = STATUS_AURA_LAYER_NAME;
+      gfx.name = _STATUS_AURA_LAYER_NAME;
       gfx.setDepth(WORLD_VFX_DEPTH.statusAura);
       if (typeof gfx.setBlendMode === 'function') gfx.setBlendMode('ADD');
       (scene.cameras?.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(gfx);

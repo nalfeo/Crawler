@@ -9,7 +9,7 @@ import { addComponent, addEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { DeathTimer, Enemy, Position, Sprite } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
-import { STATUS_AURA_LAYER_NAME } from '../../src/engine/StatusEffectVfx.js';
+import { _STATUS_AURA_LAYER_NAME } from '../../src/engine/StatusEffectVfx.js';
 import { applyStatusEffect } from '../../src/core/status-effects.js';
 import { set } from '../../src/core/world.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -45,7 +45,7 @@ function slow(world: GameWorld, eid: number, durationMs = 1_000): void {
 }
 
 function auraGraphics(graphics: MockGraphics[]): MockGraphics | undefined {
-  return graphics.find((gfx) => gfx.name === STATUS_AURA_LAYER_NAME);
+  return graphics.find((gfx) => gfx.name === _STATUS_AURA_LAYER_NAME);
 }
 
 function createWorldWithRevealedTile(): GameWorld {

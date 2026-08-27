@@ -35,7 +35,7 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { Enemy, Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
 import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
-import { STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
+import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
@@ -140,6 +140,15 @@ function readAmbientOverride(): number | null {
 function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
   const raw = new URLSearchParams(window.location.search).get('floor');
   return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
+}
+
+/** The single shared status-aura Graphics layer, if the bridge has created it. */
+function findStatusAuraLayer(
+  phaserScene: Phaser.Scene | null,
+): Phaser.GameObjects.Graphics | undefined {
+  return phaserScene?.children?.list?.find((child) => child.name === _STATUS_AURA_LAYER_NAME) as
+    | Phaser.GameObjects.Graphics
+    | undefined;
 }
 
 /**
@@ -988,6 +997,14 @@ export interface MainSceneProbeApi {
   applyStatusAuraDebuff(enemyEid: number): boolean;
   /** Status-aura layer state read off the REAL scene display list. */
   getStatusAuraRenderSummary(): StatusAuraRenderSummary;
+  /**
+   * Set the alpha of the shared status-aura layer. Observation affordance only:
+   * the shipped renderer never touches alpha, so this survives every redraw and
+   * lets a screenshot probe toggle ONLY the aura while the debuff, the status
+   * tint and every animation stay exactly as they are. Returns false when the
+   * layer does not exist yet.
+   */
+  setStatusAuraLayerAlpha(alpha: number): boolean;
   /** Arrange and fire a real Magic Missile against a live nearby enemy. */
   primeMagicMissileLightProbe(): boolean;
   /** Live projectile-light state sampled from the rendered scene light field. */
@@ -2098,9 +2115,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getStatusAuraRenderSummary: (): StatusAuraRenderSummary => {
       const phaserScene = getPhaserScene();
       const world = getScene()?.world;
-      const layer = phaserScene?.children?.list?.find(
-        (child) => child.name === STATUS_AURA_LAYER_NAME,
-      ) as Phaser.GameObjects.Graphics | undefined;
+      const layer = findStatusAuraLayer(phaserScene);
       let affectedEnemyCount = 0;
       if (world) {
         for (const eid of query(world.ecs, [Enemy, Position])) {
@@ -2116,6 +2131,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           (layer as unknown as { commandBuffer?: unknown[] })?.commandBuffer?.length ?? 0,
         layerDepth: layer?.depth ?? null,
       };
+    },
+
+    setStatusAuraLayerAlpha: (alpha: number): boolean => {
+      const layer = findStatusAuraLayer(getPhaserScene());
+      if (!layer) return false;
+      layer.setAlpha(alpha);
+      return true;
     },
 
     getAbilityFloaters: () => {
