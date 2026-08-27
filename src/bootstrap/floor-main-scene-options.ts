@@ -6,6 +6,7 @@ import {
   questSystem,
   spawnerArenaSystem,
   spawnerSystem,
+  attackWaveSystem,
   weaponSystem,
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
@@ -152,6 +153,7 @@ export function createFloorMainSceneOptions(
       // tick.
       spawnerArenaSystem,
       spawnerSystem,
+      attackWaveSystem,
       ...(scenario.afterSpawnerSystems ?? []),
     ],
     postSystems: [

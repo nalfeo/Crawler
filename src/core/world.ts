@@ -911,6 +911,32 @@ export interface GameWorld {
     /** Enables AI settlement-maintenance behavior. Requires all other flags. */
     floor2EquipmentAiMaintenance: boolean;
   };
+  /**
+   * Attack waves feature flags. Defaults to `false`.
+   * Controls periodic rat pack spawning with safe-room suppression.
+   */
+  attackWaveFlags: {
+    /** Enables periodic rat attack waves. Default false. */
+    attackWaves: boolean;
+  };
+  /**
+   * Attack wave system runtime state.
+   * Tracks wave timing, safe-room distance field cache, and spawned rat count.
+   */
+  attackWaveState?: {
+    /** Next wave spawn time (ms) */
+    nextWaveAtMs: number;
+    /** Cached flow field for safe-room pathable distance (invalidated on map/clearedSafeRoomIds change) */
+    safeRoomDistanceField?: Int32Array | null;
+    /** Floor map that the safeRoomDistanceField was computed against (for invalidation) */
+   safeRoomDistanceFieldMap?: FloorMap | null;
+    /** Count of alive rats spawned by attack waves */
+    aliveWaveRatCount: number;
+    /** Snapshot of cleared safe room IDs for cache invalidation */
+    clearedSafeRoomIdsSnapshot?: string;
+  };
+  /** Set of entity IDs spawned by attack waves for tracking */
+  attackWaveSpawnedRats?: Set<number>;
 }
 
 export interface CreateWorldOptions {
@@ -1111,6 +1137,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       floor2EquipmentUx: false,
       floor2EquipmentWorld: false,
       floor2EquipmentAiMaintenance: false,
+    },
+    attackWaveFlags: {
+      attackWaves: false,
     },
   };
   logger.info('Created game world', {
