@@ -1727,7 +1727,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleKeyboardE(): void {
-    if (this.isBlockingSurfaceOpen()) {
+    if (this.conversationNpcEid === null && this.isBlockingSurfaceOpen()) {
       return;
     }
     this.queuedInteraction = true;
@@ -1806,7 +1806,7 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.isBlockingSurfaceOpen()) {
+    if (this.conversationNpcEid === null && this.isBlockingSurfaceOpen()) {
       return;
     }
     if (event.code === 'KeyE') {
@@ -2153,6 +2153,7 @@ export class MainGameScene extends Phaser.Scene {
     this.conversationNpcEid = null;
     this.activeConversationLines = null;
     this.dialogueBox?.hide();
+    this.clearPendingInteractionInput();
   }
 
   private processOpenAbilitiesModal(): void {
@@ -2197,8 +2198,11 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private isBlockingSurfaceOpen(): boolean {
+    return this.conversationNpcEid !== null || this.isNonConversationBlockingSurfaceOpen();
+  }
+
+  private isNonConversationBlockingSurfaceOpen(): boolean {
     return (
-      this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
@@ -2228,7 +2232,7 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
-    const blockingSurfaceOpen = this.isBlockingSurfaceOpen();
+    const blockingSurfaceOpen = this.isNonConversationBlockingSurfaceOpen();
     if (blockingSurfaceOpen !== this.blockingSurfaceWasOpen) {
       this.blockingSurfaceWasOpen = blockingSurfaceOpen;
       this.clearPendingInteractionInput();
