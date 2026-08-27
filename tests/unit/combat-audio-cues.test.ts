@@ -109,8 +109,12 @@ describe('cueForCombatEvent', () => {
 });
 
 describe('cueForVfxEvent', () => {
-  function vfxEvent(kind: VfxEvent['kind'], color?: number): VfxEvent {
-    return { kind, x: 0, y: 0, color };
+  function vfxEvent(
+    kind: VfxEvent['kind'],
+    color?: number,
+    pickupAudioKind?: VfxEvent['pickupAudioKind'],
+  ): VfxEvent {
+    return { kind, x: 0, y: 0, color, pickupAudioKind };
   }
 
   it('maps pickupSparkle to a generic pickup cue', () => {
@@ -126,7 +130,18 @@ describe('cueForVfxEvent', () => {
     expect(gold?.kind).toBe('pickup');
     expect(gem?.kind).toBe('pickup');
     expect(adHoc?.kind).toBe('pickup');
+    expect(gold?.pickupAudioKind).toBeUndefined();
+    expect(gem?.pickupAudioKind).toBeUndefined();
+    expect(adHoc?.pickupAudioKind).toBeUndefined();
   });
+
+  it.each(['xp', 'gold', 'material'] as const)(
+    'preserves explicit %s pickup semantics',
+    (pickupAudioKind) => {
+      const cue = cueForVfxEvent(vfxEvent('pickupSparkle', 0x123456, pickupAudioKind));
+      expect(cue).toMatchObject({ kind: 'pickup', pickupAudioKind });
+    },
+  );
 
   it('ignores every other vfx kind (out of scope for this queue)', () => {
     expect(cueForVfxEvent(vfxEvent('levelUpBurst'))).toBeNull();

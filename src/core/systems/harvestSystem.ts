@@ -87,6 +87,7 @@ export function harvestSystem(world: GameWorld): void {
           x: nx,
           y: ny,
           color: 0x66ffaa,
+          pickupAudioKind: 'material',
         });
 
         clearEntityStores(world, eid);
