@@ -1,7 +1,8 @@
 name: Goobers Run
 
-# Manual-only dispatch of the Goobers `crawler-feature-pr` workflow from
-# GitHub Actions. Downloads a pinned, checksum-verified Goobers release binary
+# Dispatches the Goobers `crawler-feature-pr` workflow when an issue receives
+# `goobers:approved`, with an hourly recovery sweep and a manual escape hatch.
+# Downloads a pinned, checksum-verified Goobers release binary
 # (no Go build step — see .github/workflows/goobers-validate.yml), scaffolds a
 # throwaway instance root in the runner's temp directory, materializes this
 # repo's versioned `.goobers/` source into it, and triggers the workflow via
@@ -12,12 +13,18 @@ name: Goobers Run
 # and README.md#goobers for the source layout and runtime-boundary rules.
 
 on:
+  issues:
+    types: [labeled]
+  schedule:
+    # Recover missed webhooks and retry still-eligible work without running at
+    # the crowded top of the hour.
+    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       goobers_version:
         description: 'Goobers release tag to pin (see https://github.com/Agent-Clubhouse/Goobers/releases)'
         type: string
-        default: 'v0.2.2'
+        default: 'v0.3.3'
       copilot_cli_version:
         description: 'Pinned @github/copilot npm package version'
         type: string
@@ -33,24 +40,31 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: goobers-run-${{ inputs.workflow }}
+  group: goobers-run
   cancel-in-progress: false
 
 jobs:
   run:
-    name: Run ${{ inputs.workflow }} via Goobers
+    name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.label.name == 'goobers:approved' &&
+      github.event.issue.state == 'open')
     runs-on: ubuntu-latest
     # Generous ceiling for a full plan -> implement -> review -> PR loop;
     # the workflow's own maxConcurrentRuns/gates bound retries within this.
     timeout-minutes: 90
     env:
-      GOOBERS_VERSION: ${{ inputs.goobers_version }}
+      GOOBERS_VERSION: ${{ inputs.goobers_version || 'v0.3.3' }}
       GOOBERS_REPO: Agent-Clubhouse/Goobers
       GOOBERS_INSTANCE: ${{ github.workspace }}/.goobers-instance
-      GOOBERS_WORKFLOW: ${{ inputs.workflow }}
+      GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref_name }}
+          persist-credentials: false
 
       - name: Require CRAWLER_CI_PAT
         # crawler-feature-pr's implement/push-branch stages declare
@@ -77,8 +91,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${GOOBERS_VERSION}" in
-            v0.2.2)
-              echo "GOOBERS_SHA256=82f636c7b4451e500081ca4b2fdd498c4be27d0d6e619e412faaac57b064dafa" >> "$GITHUB_ENV"
+            v0.3.3)
+              echo "GOOBERS_SHA256=47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82" >> "$GITHUB_ENV"
               ;;
             *)
               echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-validate.yml) after independently verifying the release artifact." >&2
@@ -140,7 +154,7 @@ jobs:
         # docs/guides/copilot-hosted-runner-auth-spike.md in the Goobers
         # repo).
         env:
-          COPILOT_CLI_VERSION: ${{ inputs.copilot_cli_version }}
+          COPILOT_CLI_VERSION: ${{ inputs.copilot_cli_version || '1.0.80' }}
         run: |
           set -euo pipefail
           npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
@@ -197,7 +211,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+          name: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
           path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
           if-no-files-found: warn
           retention-days: 30
