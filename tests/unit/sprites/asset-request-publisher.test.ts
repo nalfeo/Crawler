@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeCanonicalPrOnConflict,
@@ -12,7 +13,12 @@ import {
 import type { CheckinAsset, Exec } from '../../../scripts/sprites/checkin.js';
 import { shardPathForKey } from '../../../scripts/sprites/generated-shards.js';
 import { issueCheckpointKey } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
-import type { RunStore } from '../../../scripts/sprites/store/types.js';
+import { getGlobalLogLevel, setGlobalLogLevel } from '../../../src/shared/logger.js';
+import {
+  ASSET_REQUEST_READY_INDEX_KEY,
+  ISSUE_STATUS_KEY_PREFIX,
+} from '../../../scripts/sprites/sidecar/issue-status-key.js';
+import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
 
 function makeStore(): RunStore & { mem: Map<string, Buffer> } {
   const mem = new Map<string, Buffer>();
@@ -24,7 +30,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
     },
     async get(key) {
       const value = mem.get(key);
-      if (!value) throw new Error(`Missing ${key}`);
+      if (!value) throw new StoreNotFoundError(key);
       return value;
     },
     async has(key) {
@@ -38,6 +44,40 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
     },
     resolve(key) {
       return key;
+    },
+  };
+}
+
+function makeMeasuredStore(delayMs: number): RunStore & {
+  mem: Map<string, Buffer>;
+  getKeys: string[];
+  listCalls: number;
+  resetCounts(): void;
+} {
+  const base = makeStore();
+  const getKeys: string[] = [];
+  let listCalls = 0;
+  return {
+    ...base,
+    getKeys,
+    get listCalls() {
+      return listCalls;
+    },
+    async get(key) {
+      getKeys.push(key);
+      const deadline = performance.now() + delayMs;
+      while (performance.now() < deadline) {
+        // Model fixed remote-operation cost without depending on host timer granularity.
+      }
+      return base.get(key);
+    },
+    async list(prefix, options) {
+      listCalls++;
+      return base.list(prefix, options);
+    },
+    resetCounts() {
+      getKeys.length = 0;
+      listCalls = 0;
     },
   };
 }
@@ -139,7 +179,107 @@ describe('asset-request publication discovery', () => {
 
     await expect(discoverReadyCheckpoints(store)).resolves.toEqual([]);
   });
+
+  it('rebuilds a malformed ready index from the authoritative checkpoint listing', async () => {
+    const store = makeStore();
+    await store.put(ASSET_REQUEST_READY_INDEX_KEY, Buffer.from('{"version":999}'));
+    await store.put(
+      issueCheckpointKey(31, 'fingerprint-31'),
+      checkpoint(31, 'selected-pending-publish'),
+    );
+
+    await expect(discoverReadyCheckpoints(store)).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 31 }),
+    ]);
+    expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual({
+      version: 1,
+      legacyBackfillComplete: true,
+      keys: [issueCheckpointKey(31, 'fingerprint-31')],
+    });
+  });
+
+  it('backfills 232 legacy-invalid checkpoints once, then uses a semantically equivalent compact index with non-overlapping timings', async () => {
+    const coldTimings: number[] = [];
+    const warmTimings: number[] = [];
+    const originalLogLevel = getGlobalLogLevel();
+    let expected: Awaited<ReturnType<typeof discoverReadyCheckpoints>> | undefined;
+    let warmStore: ReturnType<typeof makeMeasuredStore> | undefined;
+
+    try {
+      setGlobalLogLevel('error');
+      for (let sample = 0; sample < 3; sample++) {
+        const store = makeMeasuredStore(1);
+        for (let index = 0; index < 232; index++) {
+          await store.put(
+            issueCheckpointKey(index + 1, `legacy-${index}`),
+            Buffer.from(
+              JSON.stringify({
+                issueNumber: index + 1,
+                fingerprint: `legacy-${index}`,
+                stage: 'completed',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+              }),
+            ),
+          );
+        }
+        await store.put(
+          issueCheckpointKey(998, 'fingerprint-998'),
+          checkpoint(998, 'selected-pending-publish'),
+        );
+        await store.put(issueCheckpointKey(999, 'fingerprint-999'), checkpoint(999, 'published'));
+        store.resetCounts();
+
+        const started = performance.now();
+        const discovered = await discoverReadyCheckpoints(store);
+        coldTimings.push(performance.now() - started);
+
+        expect(discovered.map((item) => item.issueNumber)).toEqual([998]);
+        expect(store.listCalls).toBe(1);
+        expect(
+          store.getKeys.filter((key) => key.startsWith(`${ISSUE_STATUS_KEY_PREFIX}/`)),
+        ).toHaveLength(234);
+        const index = JSON.parse(
+          (await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'),
+        ) as { legacyBackfillComplete: boolean; keys: string[] };
+        expect(index).toEqual({
+          version: 1,
+          legacyBackfillComplete: true,
+          keys: [issueCheckpointKey(998, 'fingerprint-998')],
+        });
+
+        expected ??= discovered;
+        warmStore ??= store;
+      }
+
+      warmStore!.resetCounts();
+      for (let sample = 0; sample < 5; sample++) {
+        const started = performance.now();
+        const discovered = await discoverReadyCheckpoints(warmStore!);
+        warmTimings.push(performance.now() - started);
+        expect(Buffer.from(JSON.stringify(discovered))).toEqual(
+          Buffer.from(JSON.stringify(expected)),
+        );
+      }
+
+      expect(warmStore!.listCalls).toBe(0);
+      expect(warmStore!.getKeys).toEqual(
+        Array.from({ length: 5 }).flatMap(() => [
+          ASSET_REQUEST_READY_INDEX_KEY,
+          issueCheckpointKey(998, 'fingerprint-998'),
+        ]),
+      );
+      expect(Math.min(...coldTimings)).toBeGreaterThan(Math.max(...warmTimings));
+      expect(median(coldTimings) / median(warmTimings)).toBeGreaterThan(20);
+    } finally {
+      setGlobalLogLevel(originalLogLevel);
+    }
+  });
 });
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor(sorted.length / 2)]!;
+}
 
 describe('exact generated-asset collision validation', () => {
   const roots: string[] = [];

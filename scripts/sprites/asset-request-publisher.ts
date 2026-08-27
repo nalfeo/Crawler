@@ -14,6 +14,10 @@ import path from 'node:path';
 import { z } from 'zod';
 import { createLogger } from '../../src/shared/logger.js';
 import { approveVariant } from './approve.js';
+import {
+  completeAssetRequestReadyIndexBackfill,
+  readAssetRequestReadyIndex,
+} from './asset-request-ready-index.js';
 import type { CheckinAsset, Exec } from './checkin.js';
 import { realExec } from './checkin-runtime.js';
 import { shardPathForKey } from './generated-shards.js';
@@ -58,6 +62,11 @@ interface ReadyCheckpoint {
   readonly issueNumber: number;
   readonly fingerprint: string;
   readonly details: z.infer<typeof selectedDetailsSchema>;
+}
+
+interface ReadyCheckpointRecord {
+  readonly key: string;
+  readonly checkpoint: ReadyCheckpoint;
 }
 
 interface PreparedPublish {
@@ -214,36 +223,73 @@ export async function publishSelectedAssetRequests(
 }
 
 export async function discoverReadyCheckpoints(store: RunStore): Promise<ReadyCheckpoint[]> {
+  const indexRead = await readAssetRequestReadyIndex(store);
+  if (indexRead.status === 'valid' && indexRead.index.legacyBackfillComplete) {
+    return (await readReadyCheckpointRecords(store, indexRead.index.keys)).map(
+      (record) => record.checkpoint,
+    );
+  }
+  if (indexRead.status === 'invalid') {
+    logger.warn(
+      `Rebuilding invalid asset-request ready index from authoritative checkpoints: ${indexRead.error}`,
+    );
+  }
+
   const keys = await store.list(ISSUE_STATUS_KEY_PREFIX, { authoritative: true });
-  const ready: ReadyCheckpoint[] = [];
+  const scanned = await readReadyCheckpointRecords(store, keys);
+  const completedIndex = await completeAssetRequestReadyIndexBackfill(
+    store,
+    scanned.map((record) => record.key),
+  );
+  const scannedByKey = new Map(scanned.map((record) => [record.key, record.checkpoint]));
+  const additionalKeys = completedIndex.keys.filter((key) => !scannedByKey.has(key));
+  for (const record of await readReadyCheckpointRecords(store, additionalKeys)) {
+    scannedByKey.set(record.key, record.checkpoint);
+  }
+  return completedIndex.keys.flatMap((key) => {
+    const checkpoint = scannedByKey.get(key);
+    return checkpoint === undefined ? [] : [checkpoint];
+  });
+}
+
+async function readReadyCheckpointRecords(
+  store: RunStore,
+  keys: readonly string[],
+): Promise<ReadyCheckpointRecord[]> {
+  const ready: ReadyCheckpointRecord[] = [];
   for (const key of keys.filter((candidate) => candidate.endsWith('.json')).sort()) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse((await store.get(key)).toString('utf8'));
-    } catch (error) {
-      logger.warn(
-        `Skipping malformed asset-request checkpoint ${key}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      continue;
-    }
-    const parsed = issuePipelineCheckpointSchema.safeParse(raw);
-    if (!parsed.success) {
-      logger.warn(`Skipping invalid asset-request checkpoint ${key}: ${parsed.error.message}`);
-      continue;
-    }
-    if (parsed.data.stage !== 'completed') continue;
-    if (parsed.data.details?.['outcome'] === 'published') continue;
-    const details = selectedDetailsSchema.safeParse(parsed.data.details);
-    if (!details.success) continue;
-    ready.push({
-      issueNumber: parsed.data.issueNumber,
-      fingerprint: parsed.data.fingerprint,
-      details: details.data,
-    });
+    const checkpoint = await readReadyCheckpoint(store, key);
+    if (checkpoint !== null) ready.push({ key, checkpoint });
   }
   return ready;
+}
+
+async function readReadyCheckpoint(store: RunStore, key: string): Promise<ReadyCheckpoint | null> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse((await store.get(key)).toString('utf8'));
+  } catch (error) {
+    logger.warn(
+      `Skipping malformed asset-request checkpoint ${key}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+  const parsed = issuePipelineCheckpointSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn(`Skipping invalid asset-request checkpoint ${key}: ${parsed.error.message}`);
+    return null;
+  }
+  if (parsed.data.stage !== 'completed') return null;
+  if (parsed.data.details?.['outcome'] === 'published') return null;
+  const details = selectedDetailsSchema.safeParse(parsed.data.details);
+  if (!details.success) return null;
+  return {
+    issueNumber: parsed.data.issueNumber,
+    fingerprint: parsed.data.fingerprint,
+    details: details.data,
+  };
 }
 
 async function prepareCheckpoint(
