@@ -135,6 +135,7 @@ spec:
       evaluator: agentic
       agentic:
         goober: reviewer
+      maxRepasses: 6
       branches:
         pass: push-branch
         needs-changes: implement

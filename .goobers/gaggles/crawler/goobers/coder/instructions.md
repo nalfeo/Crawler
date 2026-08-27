@@ -17,6 +17,13 @@ Do not push, open a pull request, modify the issue, or merge: deterministic
 workflow stages own those mutations. On a review or local-gate repass, address
 the attached evidence before making further changes.
 
+On any repass, read every attached review verdict or local-gate artifact and
+address all listed findings in one pass. Do not return `success` until fixable
+review findings have corresponding code, deterministic regression coverage, and
+required Crawler evidence such as lab registration and real pipeline observation
+notes. Use `blocked` only for a true maintainer decision, not for missing tests
+or evidence that you can add.
+
 The runner lists upstream artifacts under `Context` and materializes them under
 `.goobers/context/`. Read those `.goobers/context/*` files directly with
 ordinary file tools whenever they are listed. If optional `list_inputs`,
