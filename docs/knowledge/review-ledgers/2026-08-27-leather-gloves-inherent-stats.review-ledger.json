@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "leather-gloves-inherent-stats",
+  "task_title": "Generated equipment keeps its base inherent stat line",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.6-sol) confirmed the root cause and raised 3 blocking concerns: (1) armor/accessory asymmetry is semantically unstable -> adopted its rule that ALL non-weapon bases inherit their authored non-armor line verbatim; (2) the Common legality check should read affix evidence from resolvedEffects rather than diffing stat maps -> implemented as generatedEquipmentInstanceHasAffixDrivenStatBonus; (3) a naive non-empty-statBonuses guard would wrongly fail weapons and could trip the rare-accessory exclusion-group limit -> guard now tests meaningfulness (weapon snapshot OR non-zero stat OR grant) and is scoped to Common plus the shipped quartermaster path."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer_model": "gemini-3.1-pro-preview",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "code-review agent on the full commit diff, briefed on double-counting, illegal-enhancement, encumbrance, quartermaster pricing and the Common reward contract: No significant issues found."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
