@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "spell-effect-numbers",
+  "task_title": "Show range/damage numbers for spells that target others",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Blocking: (1) base-only numbers mislead -> every summary now ends with an explicit \"Base — scales with INT & mastery\" suffix; (2) fireball radiusTiles is both reach and blast -> labelled \"Target & blast radius\". Non-blocking, all adopted: abilities-lab tooltip wired too; drift tests assert exact per-spell strings; callback named getAbilityEffectSummary; tileSizeFt passed explicitly from floorMap config; e2e observe-before-done via main-scene-probe on the real modals at 1280x720 and 960x540."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

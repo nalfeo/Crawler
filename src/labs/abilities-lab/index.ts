@@ -44,6 +44,7 @@ import {
   type AbilityDefinition,
 } from '../../game/index.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import { getAbilityEffectSummary } from '../../game/abilities/effect-summary.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
@@ -446,7 +447,8 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = def.name;
-      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown).`;
+      const stats = getAbilityEffectSummary(def.id);
+      btn.title = `${def.description}${stats === undefined ? '' : `\n${stats}`}\n\nClick to force-fire (bypasses cooldown).`;
       btn.style.padding = '10px 12px';
       btn.style.minWidth = '80px';
       btn.style.background = def.kind === 'spell' ? '#1e3a8a' : '#166534';
