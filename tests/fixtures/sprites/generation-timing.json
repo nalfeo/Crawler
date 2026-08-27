@@ -1,0 +1,15 @@
+{
+  "scope": "initial-run",
+  "totalMs": 140,
+  "stages": {
+    "variationExpansion": 5,
+    "referenceSelectionAndPngReads": 7,
+    "provider": 50,
+    "initialSheetPersistence": 8,
+    "slicingAndPostprocess": 21,
+    "candidatePersistence": 26,
+    "judging": 8,
+    "runOrchestration": 15
+  },
+  "invalidSamples": 0
+}

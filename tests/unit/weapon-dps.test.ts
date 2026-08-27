@@ -50,12 +50,12 @@ describe('computeTheoreticalSingleTargetDps', () => {
     expect(result.dps).toBeCloseTo(10.2);
   });
 
-  it('counts beam ticks across the beam duration', () => {
+  it('counts one single-target hit per beam activation', () => {
     const result = computeTheoreticalSingleTargetDps(weapon('laser'), {});
 
-    expect(result.hitsPerActivation).toBe(4);
-    expect(result.expectedDamagePerActivation).toBeCloseTo(11.4);
-    expect(result.dps).toBeCloseTo(7.6);
+    expect(result.hitsPerActivation).toBe(1);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(2.85);
+    expect(result.dps).toBeCloseTo(1.9);
   });
 
   it('reports zero DPS but preserves activation stats when attacks are disabled', () => {
