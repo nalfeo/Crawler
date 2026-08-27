@@ -33,7 +33,10 @@ import {
 } from '../../../scripts/sprites/store/types.js';
 import { WORKFLOW_STATE_KEY } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import { INGEST_STATE_KEY } from '../../../scripts/sprites/sidecar/ingest-state-key.js';
-import { ISSUE_STATUS_KEY_PREFIX } from '../../../scripts/sprites/sidecar/issue-status-key.js';
+import {
+  ASSET_REQUEST_READY_INDEX_KEY,
+  ISSUE_STATUS_KEY_PREFIX,
+} from '../../../scripts/sprites/sidecar/issue-status-key.js';
 import { themeEquipmentSetStateKey } from '../../../scripts/sprites/theme-equipment-set.js';
 
 const noop = (): void => {};
@@ -150,6 +153,7 @@ describe('run-store cache policy', () => {
     expect(isCacheableKey(STATE_KEY)).toBe(false);
     expect(isCacheableKey(INGEST_STATE_KEY)).toBe(false);
     expect(isCacheableKey(`${ISSUE_STATUS_KEY_PREFIX}/1234-abcdef.json`)).toBe(false);
+    expect(isCacheableKey(ASSET_REQUEST_READY_INDEX_KEY)).toBe(false);
   });
 
   it('excludes theme-set state for any set id, without excluding its artifacts', () => {
@@ -223,6 +227,15 @@ describe('CachingRunStore conditional writes', () => {
     // Regression: this returned 'revision-40' forever before the fix.
     expect((await machineA.get(STATE_KEY)).toString('utf8')).toBe('revision-59');
     expect(await machineA.has(STATE_KEY)).toBe(true);
+  });
+
+  it('reads a ready index written by another machine (no cache pinning)', async () => {
+    authoritative.commit(ASSET_REQUEST_READY_INDEX_KEY, Buffer.from('revision-1'));
+    expect((await machineA.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8')).toBe('revision-1');
+
+    await machineB.put(ASSET_REQUEST_READY_INDEX_KEY, Buffer.from('revision-2'));
+
+    expect((await machineA.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8')).toBe('revision-2');
   });
 
   it('still serves cacheable artifacts from the cache', async () => {
