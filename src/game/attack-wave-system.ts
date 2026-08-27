@@ -14,8 +14,8 @@ import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { getRatTemplate } from './spawners/template-accessor.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
-import { Player } from '../core/components.js';
-import { entityExists, query } from 'bitecs';
+import { AttackWaveRat, Enemy, Player } from '../core/components.js';
+import { addComponent, query } from 'bitecs';
 import { computeMultiSourceFlowField } from '../core/map/flow-field.js';
 import { RoomRole } from '../shared/map-types.js';
 import { GAME } from '../shared/constants.js';
@@ -79,11 +79,13 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
   // Invalidate flow field cache if map changed or safe rooms cleared
   if (
     state.safeRoomDistanceFieldMap !== floorMap ||
+    state.safeRoomDistanceFieldClearedMap !== world.clearedSafeRoomMap ||
     (state.clearedSafeRoomIdsSnapshot !== undefined &&
       state.clearedSafeRoomIdsSnapshot !== Array.from(world.clearedSafeRoomIds).join(','))
   ) {
     state.safeRoomDistanceField = null;
     state.safeRoomDistanceFieldMap = null;
+    state.safeRoomDistanceFieldClearedMap = null;
     state.clearedSafeRoomIdsSnapshot = undefined;
   }
 
@@ -128,6 +130,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
         floorMap.tileMap.width * floorMap.tileMap.height,
       ).fill(-1);
       state.safeRoomDistanceFieldMap = floorMap;
+      state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
       state.clearedSafeRoomIdsSnapshot = '';
       return false;
     }
@@ -136,6 +139,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
 
     state.safeRoomDistanceField = field.distance;
     state.safeRoomDistanceFieldMap = floorMap;
+    state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
     state.clearedSafeRoomIdsSnapshot = Array.from(world.clearedSafeRoomIds).join(',');
   }
 
@@ -181,8 +185,9 @@ function resolveWaveSpawnPoint(
     throw new Error('attackWaves.spawnRingRadiusFt must cover the Floor 1 viewport diagonal');
   }
 
-  // Try up to 5 attempts to find a valid spawn point on the ring
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // Randomized attempts preserve variety; the deterministic scan below ensures
+  // a valid point is not lost merely because the ring crosses obstacles.
+  for (let attempt = 0; attempt < 32; attempt++) {
     // Pick a random angle
     const angle = world.rng.next() * Math.PI * 2;
 
@@ -207,7 +212,20 @@ function resolveWaveSpawnPoint(
     }
   }
 
-  return null;
+  for (let ty = 0; ty < floorMap.tileMap.height; ty += 1) {
+    for (let tx = 0; tx < floorMap.tileMap.width; tx += 1) {
+      if (!floorMap.tileMap.isPassable(tx, ty)) {
+        continue;
+      }
+      const spawnX = (tx + 0.5) * tileSizeFt;
+      const spawnY = (ty + 0.5) * tileSizeFt;
+      if (Math.hypot(spawnX - playerX, spawnY - playerY) >= spawnRingRadiusFt) {
+        return { x: spawnX, y: spawnY };
+      }
+    }
+  }
+
+  throw new Error('attack wave could not find a traversable off-screen spawn tile');
 }
 
 /**
@@ -217,16 +235,7 @@ function resolveWaveSpawnPoint(
  * this keeps the cap check honest against entities that are still alive.
  */
 function countLiveWaveRats(world: GameWorld): number {
-  const tracked = world.attackWaveSpawnedRats;
-  if (!tracked || tracked.size === 0) {
-    return 0;
-  }
-  for (const eid of tracked) {
-    if (!entityExists(world.ecs, eid)) {
-      tracked.delete(eid);
-    }
-  }
-  return tracked.size;
+  return query(world.ecs, [Enemy, AttackWaveRat]).length;
 }
 
 /** Spawn a pack of rats for the attack wave. */
@@ -297,11 +306,8 @@ function spawnWavePack(world: GameWorld): void {
       liveCount++;
       state.aliveWaveRatCount = liveCount;
 
-      // Tag the rat as spawned by attack waves so we can track it
-      if (!world.attackWaveSpawnedRats) {
-        world.attackWaveSpawnedRats = new Set<number>();
-      }
-      world.attackWaveSpawnedRats.add(eid);
+      // The ECS tag prevents recycled entity ids from being mistaken for rats.
+      addComponent(world.ecs, eid, AttackWaveRat);
     }
   }
 }
@@ -312,6 +318,9 @@ function spawnWavePack(world: GameWorld): void {
 export function attackWaveSystem(world: GameWorld): void {
   // Early return when flag is off: zero RNG draws, zero mutations
   if (!world.attackWaveFlags.attackWaves) {
+    return;
+  }
+  if (world.floorId !== '' && world.floorId !== 'floor1') {
     return;
   }
 

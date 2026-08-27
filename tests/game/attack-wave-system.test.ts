@@ -100,6 +100,20 @@ describe('attackWaveSystem', () => {
       expect(enemyCount(world)).toBe(TUNING.attackWaves.packSize * 2);
     });
 
+    it('is inert outside Floor 1 even when enabled', () => {
+      const world = createTestWorld();
+      world.floorId = 'floor2';
+      world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+      spawnPlayer(world, 400, 400);
+      world.attackWaveFlags.attackWaves = true;
+      world.elapsedMs = TUNING.attackWaves.intervalMs;
+
+      attackWaveSystem(world);
+
+      expect(enemyCount(world)).toBe(0);
+      expect(world.attackWaveState).toBeUndefined();
+    });
+
     it('spawns rats with always-aggro CHASE behavior so they close distance on the player', () => {
       const world = createTestWorld();
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
@@ -262,6 +276,36 @@ describe('attackWaveSystem', () => {
       // Pathable distance goes all the way around through x=18 — far greater
       // than the suppression threshold — so the wave must NOT be suppressed.
       expect(enemyCount(world)).toBeGreaterThan(0);
+    });
+
+    it('reuses the cached field and invalidates it for map and cleared-room ownership changes', () => {
+      const world = createTestWorld();
+      const firstMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+      world.floorMap = firstMap;
+      spawnPlayer(world, 400, 400);
+      world.attackWaveFlags.attackWaves = true;
+      world.elapsedMs = TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+
+      const firstField = world.attackWaveState?.safeRoomDistanceField;
+      expect(firstField).toBeDefined();
+
+      world.elapsedMs += TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      expect(world.attackWaveState?.safeRoomDistanceField).toBe(firstField);
+
+      world.floorMap = makeMapWithSafeRoom({ widthTiles: 90, heightTiles: 90 });
+      world.elapsedMs += TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      const secondField = world.attackWaveState?.safeRoomDistanceField;
+      expect(secondField).toBeDefined();
+      expect(secondField).not.toBe(firstField);
+
+      world.clearedSafeRoomMap = world.floorMap;
+      world.clearedSafeRoomIds.add(1);
+      world.elapsedMs += TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      expect(world.attackWaveState?.safeRoomDistanceField).not.toBe(secondField);
     });
   });
 

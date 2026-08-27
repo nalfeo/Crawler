@@ -960,14 +960,14 @@ export interface GameWorld {
     /** Cached flow field for safe-room pathable distance (invalidated on map/clearedSafeRoomIds change) */
     safeRoomDistanceField?: Int32Array | null;
     /** Floor map that the safeRoomDistanceField was computed against (for invalidation) */
-   safeRoomDistanceFieldMap?: FloorMap | null;
+    safeRoomDistanceFieldMap?: FloorMap | null;
+    /** Cleared-room ownership map used to build the cached distance field. */
+    safeRoomDistanceFieldClearedMap?: FloorMap | null;
     /** Count of alive rats spawned by attack waves */
     aliveWaveRatCount: number;
     /** Snapshot of cleared safe room IDs for cache invalidation */
     clearedSafeRoomIdsSnapshot?: string;
   };
-  /** Set of entity IDs spawned by attack waves for tracking */
-  attackWaveSpawnedRats?: Set<number>;
 }
 
 export interface CreateWorldOptions {
