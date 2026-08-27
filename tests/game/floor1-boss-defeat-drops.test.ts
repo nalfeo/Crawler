@@ -14,6 +14,10 @@ import { entityExists, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { XpGem } from '../../src/core/components.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { GAME } from '../../src/shared/constants.js';
+import { createInputState } from '../../src/shared/input.js';
 import {
   floorObjectiveSystem,
   initializeFloor1Scenario,
@@ -29,6 +33,10 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
 const TILE_STEP = 32;
+const FLOOR1_OPTS = (() => {
+  const options = createFloor1MainSceneOptions();
+  return { preSystems: options.preSystems, postSystems: options.postSystems } as const;
+})();
 
 /** Drive the scenario up to the point where the Slime Rat battle can start. */
 function advanceToSlimeRatGate(world: GameWorld, player: number): void {
@@ -127,7 +135,8 @@ describe('floor1 cleared boss arena becomes a safe room', () => {
     const outsideEnemy = spawnEnemy(world, -10_000, -10_000, 20);
 
     removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
-    floorObjectiveSystem(world);
+    objective.bossBattles.get('slime-rat')!.bossEid = null;
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS, FLOOR1_OPTS);
 
     expect(entityExists(world.ecs, trappedEnemy)).toBe(false);
     expect(entityExists(world.ecs, outsideEnemy)).toBe(true);
