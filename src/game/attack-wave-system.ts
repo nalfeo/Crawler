@@ -15,7 +15,7 @@ import { getRatTemplate } from './spawners/template-accessor.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { Player } from '../core/components.js';
-import { query } from 'bitecs';
+import { entityExists, query } from 'bitecs';
 import { computeFlowField } from '../core/map/flow-field.js';
 import { RoomRole } from '../shared/map-types.js';
 
@@ -69,7 +69,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
   }
 
   const state = (world.attackWaveState ??= {
-    nextWaveAtMs: world.elapsedMs + TUNING.attackWaves.intervalMs,
+    nextWaveAtMs: TUNING.attackWaves.intervalMs,
     aliveWaveRatCount: 0,
   });
 
@@ -193,6 +193,25 @@ function resolveWaveSpawnPoint(
   return null;
 }
 
+/**
+ * Prune dead/recycled entity ids from the tracked wave-rat set and return the
+ * live count. `aliveWaveRatCount` on its own only ever incremented, so a
+ * killed wave-rat would permanently and incorrectly count against the cap;
+ * this keeps the cap check honest against entities that are still alive.
+ */
+function countLiveWaveRats(world: GameWorld): number {
+  const tracked = world.attackWaveSpawnedRats;
+  if (!tracked || tracked.size === 0) {
+    return 0;
+  }
+  for (const eid of tracked) {
+    if (!entityExists(world.ecs, eid)) {
+      tracked.delete(eid);
+    }
+  }
+  return tracked.size;
+}
+
 /** Spawn a pack of rats for the attack wave. */
 function spawnWavePack(world: GameWorld): void {
   const playerPos = getPlayerPosition(world);
@@ -211,21 +230,25 @@ function spawnWavePack(world: GameWorld): void {
   const minRingRadiusFt = computeMinSpawnRingRadiusFt(viewportWidthFt, viewportHeightFt);
 
   const state = (world.attackWaveState ??= {
-    nextWaveAtMs: world.elapsedMs + TUNING.attackWaves.intervalMs,
+    nextWaveAtMs: TUNING.attackWaves.intervalMs,
     aliveWaveRatCount: 0,
   });
 
   const packSize = TUNING.attackWaves.packSize;
   const maxAlive = TUNING.attackWaves.maxAliveFromWaves;
 
+  let liveCount = countLiveWaveRats(world);
+  state.aliveWaveRatCount = liveCount;
+
   // Check cap
-  if (state.aliveWaveRatCount >= maxAlive) {
+  if (liveCount >= maxAlive) {
     return;
   }
 
   const ratTemplate = getRatTemplate();
+  const spawnBudget = Math.min(packSize, maxAlive - liveCount);
 
-  for (let i = 0; i < packSize; i++) {
+  for (let i = 0; i < spawnBudget; i++) {
     const spawnPoint = resolveWaveSpawnPoint(world, playerPos.x, playerPos.y, minRingRadiusFt);
     if (!spawnPoint) {
       continue;
@@ -254,7 +277,8 @@ function spawnWavePack(world: GameWorld): void {
     );
 
     if (eid) {
-      state.aliveWaveRatCount++;
+      liveCount++;
+      state.aliveWaveRatCount = liveCount;
 
       // Tag the rat as spawned by attack waves so we can track it
       if (!world.attackWaveSpawnedRats) {
@@ -275,7 +299,7 @@ export function attackWaveSystem(world: GameWorld): void {
   }
 
   const state = (world.attackWaveState ??= {
-    nextWaveAtMs: world.elapsedMs + TUNING.attackWaves.intervalMs,
+    nextWaveAtMs: TUNING.attackWaves.intervalMs,
     aliveWaveRatCount: 0,
   });
 
