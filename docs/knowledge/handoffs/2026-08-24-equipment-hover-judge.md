@@ -155,6 +155,18 @@ evidence-backed blockers with an anchored 80.0 score. Focused real-game tests co
 the floating cards remain topmost, contained, aligned, non-occluding, and
 integer-rasterized.
 
+### Duplicate comparison parity
+
+The Duplicate hover fixture now publishes the hovered Iron Helm Bag cell and applies the
+same focused target/card crop plus baseline, separation, clearance, and header-alignment
+contracts as the Bag-hovered mixed-delta comparison. The shared tooltip renderer carries
+over the hidden legacy backdrop, left-aligned title/stat edge, right-aligned state labels,
+gold borders, and conditional inline delta styling without scenario-specific rendering.
+
+`files/visual-review/after/v0.3.9/equipment-hover-duplicate.{png,review.json}` is the
+regenerated real Phaser/Azure artifact. It reports zero deterministic and
+evidence-backed blockers with an anchored 80.0 score.
+
 ## Validation
 
 - `npm run verify:fast` — passed.
@@ -167,6 +179,7 @@ integer-rasterized.
 - `npm run test:unit -- tests/unit/item-tooltip.test.ts` — 5 passed.
 - `npm run test:e2e -- tests/e2e/inventory-flow.test.ts -t "anchors generated delta comparisons|keeps rendered text contained"` — 2 passed.
 - `npm run review:visual:llm -- ... --lineage-state v0.3.8` — anchored 80.0, zero deterministic/evidence-backed blockers.
+- `npm run review:visual:llm -- ... --lineage-state v0.3.9` — anchored 80.0, zero deterministic/evidence-backed blockers.
 
 ## Systems touched
 

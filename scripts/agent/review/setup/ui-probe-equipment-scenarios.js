@@ -114,7 +114,9 @@
   const hoveredBagIndex =
     scenario === 'equipment-hover-empty-slot'
       ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'leather-boots')
-      : -1;
+      : scenario === 'equipment-hover-duplicate'
+        ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'iron-helm')
+        : -1;
   const hoveredBag =
     hoveredBagIndex !== undefined && hoveredBagIndex >= 0
       ? probe?.getEquipmentBagCellBounds?.(hoveredBagIndex)
@@ -123,7 +125,13 @@
         : null;
   const hoverTarget = hoveredBag ?? hoveredSlot;
   const hoverTargetId = hoveredBag
-    ? `hover-target:bag:${scenario === 'equipment-hover-empty-slot' ? 'leather-boots' : 'generated-chest'}`
+    ? `hover-target:bag:${
+        scenario === 'equipment-hover-empty-slot'
+          ? 'leather-boots'
+          : scenario === 'equipment-hover-duplicate'
+            ? 'iron-helm'
+            : 'generated-chest'
+      }`
     : hoveredSlotId
       ? `hover-target:${hoveredSlotId}`
       : null;
@@ -184,26 +192,30 @@
     // the target-and-card crop as its detailed inspection frame.
     window.__visualReviewClip = { x: left, y: top, width: right - left, height: bottom - top };
   }
-  if (scenario === 'equipment-hover-mixed-delta') {
+  if (scenario === 'equipment-hover-mixed-delta' || scenario === 'equipment-hover-duplicate') {
     if (tooltipCards.length !== 2) {
       flags.push(
-        `Stats-delta comparison must render exactly two cards; found ${tooltipCards.length}.`,
+        `Bag-hovered comparison must render exactly two cards; found ${tooltipCards.length}.`,
       );
     } else {
       const [current, candidate] = tooltipCards;
       const horizontalGap = candidate.x - (current.x + current.width);
       if (Math.abs(current.y - candidate.y) > 1) {
         flags.push(
-          `Stats-delta comparison cards must share a horizontal baseline; vertical delta is ${Math.abs(current.y - candidate.y).toFixed(1)}px.`,
+          `Bag-hovered comparison cards must share a horizontal baseline; vertical delta is ${Math.abs(current.y - candidate.y).toFixed(1)}px.`,
         );
       }
       if (horizontalGap < 8) {
         flags.push(
-          `Stats-delta comparison cards overlap or lack separation; horizontal gap is ${horizontalGap.toFixed(1)}px.`,
+          `Bag-hovered comparison cards overlap or lack separation; horizontal gap is ${horizontalGap.toFixed(1)}px.`,
         );
       }
       const tooltipRuns = probe?.getEquipmentTextRuns?.() ?? [];
-      const candidateTitle = tooltipRuns.find((run) => run.text === 'Runed Chain Hauberk');
+      const candidateTitle = tooltipRuns.find((run) =>
+        scenario === 'equipment-hover-mixed-delta'
+          ? run.text === 'Runed Chain Hauberk'
+          : run.text === 'Iron Helm',
+      );
       const candidateLabel = tooltipRuns.find((run) => run.text === 'CANDIDATE');
       if (
         candidateTitle &&
@@ -211,7 +223,7 @@
         Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y) > 1
       ) {
         flags.push(
-          `Stats-delta candidate title and state label must share a top edge; vertical delta is ${Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y).toFixed(1)}px.`,
+          `Bag-hovered candidate title and state label must share a top edge; vertical delta is ${Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y).toFixed(1)}px.`,
         );
       }
       if (
@@ -219,7 +231,7 @@
         (current.x + current.width > hoverTarget.x - 14 ||
           candidate.x + candidate.width > hoverTarget.x - 14)
       ) {
-        flags.push('Stats-delta comparison cards intrude into the hovered Bag item clearance.');
+        flags.push('Bag-hovered comparison cards intrude into the hovered Bag item clearance.');
       }
     }
   }
