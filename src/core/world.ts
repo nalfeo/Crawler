@@ -849,6 +849,28 @@ export interface GameWorld {
    */
   playerInSafeRoom: boolean;
   /**
+   * True when the player stands in a safe room that *stops the floor timer* —
+   * an authored `RoomRole.SAFE` room or the entrance room on a floor whose
+   * `behavior.spawnRoomIsSafe` is set. Updated each tick by `safeRoomSystem`.
+   *
+   * Narrower than {@link playerInSafeRoom} by exactly one case: a boss arena
+   * that turned safe mid-run ({@link clearedSafeRoomIds}). That arena is still a
+   * safe room for customization and spawn suppression, but parking in it must
+   * not freeze the countdown.
+   */
+  playerInTimeStoppingSafeRoom: boolean;
+  /**
+   * Milliseconds of floor-timer credit banked by standing in a time-stopping
+   * safe room on a floor with `behavior.safeRoomPausesFloorTimer`.
+   *
+   * Floor-collapse consumers add this to their manifest duration instead of
+   * comparing raw {@link elapsedMs}, which is what makes the pause visible to
+   * the sim, the HUD countdown and the AI's collapse planning identically. It is
+   * per-floor: a floor transition builds a fresh world, so it always starts at
+   * 0.
+   */
+  safeRoomTimerCreditMs: number;
+  /**
    * Room ids that have become safe rooms *during* the run rather than at
    * generation time.
    *
@@ -1101,6 +1123,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
+    playerInTimeStoppingSafeRoom: false,
+    safeRoomTimerCreditMs: 0,
     clearedSafeRoomIds: new Set<number>(),
     clearedSafeRoomMap: null,
     floor2EquipmentFlags: {

@@ -105,6 +105,11 @@ function buildFloor4MapConfig(): MapConfig {
  * Raw elapsed-time stall backstop (FR8.4). Sized to cover the bounded worst
  * case plus untimed Green Room visits; reaching it is a bug or an abandoned
  * run, never ordinary play.
+ *
+ * Deliberately compares raw `world.elapsedMs` rather than the safe-room-credited
+ * deadline other floors use: a backstop that can be paused indefinitely by
+ * standing still is not a backstop. Floor 4's manifest therefore sets
+ * `behavior.safeRoomPausesFloorTimer: false`.
  */
 function floor4ObjectiveTick(world: GameWorld): void {
   const manifest = getFloorManifest('floor4');

@@ -729,11 +729,13 @@ export async function runHeadless(
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
   let frameCount = 0;
-  // Frames spent in a safe room, where the floor-collapse deadline is paused
-  // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
-  // `world.playerInSafeRoom` is true). Counting under the exact same condition,
-  // read after the sim step that runs safeRoomSystem + floorObjectiveSystem,
-  // makes `safeRoomMs` match the game's deadline pause frame-for-frame.
+  // Frames spent in a time-stopping safe room, where the floor-collapse deadline
+  // is paused (Floor 1 extends `objective.deadlineMs`, manifest-timer floors bank
+  // `world.safeRoomTimerCreditMs`, both each frame
+  // `world.playerInTimeStoppingSafeRoom` is true). Counting under the exact same
+  // condition, read after the sim step that runs safeRoomSystem +
+  // floorObjectiveSystem, makes `safeRoomMs` match the game's deadline pause
+  // frame-for-frame.
   let safeRoomFrames = 0;
   const currentActiveTimeMs = (): number =>
     Math.max(0, world.elapsedMs - safeRoomFrames * GAME.DELTA_MS);
@@ -1133,12 +1135,14 @@ export async function runHeadless(
       });
       // Commit this frame's counters the moment runSimulationStep returns: at that
       // point world.elapsedMs has advanced and safeRoomSystem/floorObjectiveSystem
-      // have already run inside the step, so world.playerInSafeRoom reflects THIS
-      // frame's deadline pause. Incrementing here (rather than after the auto*
-      // helpers below) keeps frameCount/safeRoomFrames consistent with
-      // world.elapsedMs even if a later helper throws and we emit crash stats.
+      // have already run inside the step, so world.playerInTimeStoppingSafeRoom
+      // reflects THIS frame's deadline pause. Incrementing here (rather than
+      // after the auto* helpers below) keeps frameCount/safeRoomFrames consistent
+      // with world.elapsedMs even if a later helper throws and we emit crash
+      // stats. A cleared boss arena no longer pauses the deadline, so it no
+      // longer discounts active time either.
       frameCount++;
-      if (world.playerInSafeRoom === true || floor4CountdownSafeFrame) {
+      if (world.playerInTimeStoppingSafeRoom === true || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death

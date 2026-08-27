@@ -77,6 +77,7 @@ import {
   type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
+import { hasFloorTimerExpired } from '../core/floor-timer.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { loadResources } from '../shared/data/resources.js';
@@ -822,9 +823,10 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
-  // Check collapse timer and end floor if expired
-  const manifest = getFloorManifest('floor2');
-  if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+  // Check collapse timer and end floor if expired. The deadline is
+  // safe-room-credited (`hasFloorTimerExpired`), so the settlement entrance —
+  // Floor 2's safe room — stops the countdown while the player is inside it.
+  if (hasFloorTimerExpired(world, 'floor2')) {
     setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
   }

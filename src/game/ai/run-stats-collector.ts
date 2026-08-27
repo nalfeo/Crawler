@@ -133,7 +133,10 @@ export function collectHumanRunStats(
     totalFrames: world.frameCount,
     wallTimeMs: 0,
     gameTimeMs: world.elapsedMs,
-    safeRoomMs: 0,
+    // Time the floor timer was stopped by a safe room, banked by
+    // `safeRoomSystem`. Human runs previously reported a flat 0 here, which made
+    // their active time incomparable with a headless run of the same floor.
+    safeRoomMs: world.safeRoomTimerCreditMs,
     finalFloor: world.floor,
     finalScore: world.stores.broadcastScore?.current[playerEid] ?? 0,
     outcome,

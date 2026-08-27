@@ -5,8 +5,10 @@ import {
   safeRoomSystem,
   isInSafeContext,
   isPointInSafeSpace,
+  isPointInTimeStoppingSafeSpace,
   isEntityInSafeSpace,
 } from '../../src/core/safe-space.js';
+import { GAME } from '../../src/shared/constants.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -272,6 +274,99 @@ describe('equipment safe-room gate', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// isPointInTimeStoppingSafeSpace / floor-timer credit
+// ---------------------------------------------------------------------------
+
+describe('isPointInTimeStoppingSafeSpace', () => {
+  let world: GameWorld;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
+  });
+
+  it('stops time inside an authored SAFE room', () => {
+    expect(isPointInTimeStoppingSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(true);
+  });
+
+  it('does not stop time inside a cleared boss room (issue #3674)', () => {
+    world.clearedSafeRoomIds.add(1);
+    world.clearedSafeRoomMap = world.floorMap;
+    // Still a safe room for customization/spawn suppression...
+    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
+    // ...but the floor timer keeps running there.
+    expect(isPointInTimeStoppingSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+  });
+
+  it('does not stop time in an ordinary room or with no floor map', () => {
+    expect(isPointInTimeStoppingSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
+    world.floorMap = null;
+    expect(isPointInTimeStoppingSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(false);
+  });
+
+  it('stops time in the entrance room when the floor declares it safe', () => {
+    // `spawnRoomIsSafe` floors (Floor 2/3) get a time-stopping entrance room.
+    const graph = new RoomGraph();
+    graph.add({ x: 10, y: 10, width: 4, height: 4 }, [], [], RoomRole.SPAWN);
+    const tileMap = new TileMap(20, 20);
+    world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 12, y: 12 });
+    world.floorId = 'floor2';
+
+    expect(isPointInTimeStoppingSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
+    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(true);
+  });
+});
+
+describe('safeRoomSystem floor-timer credit', () => {
+  let world: GameWorld;
+  let playerEid: number;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
+    world.floorId = 'floor1';
+    world.state = 'playing';
+    playerEid = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
+  });
+
+  it('banks one tick of credit per frame inside an authored safe room', () => {
+    safeRoomSystem(world);
+    safeRoomSystem(world);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    expect(world.safeRoomTimerCreditMs).toBe(2 * GAME.DELTA_MS);
+  });
+
+  it('banks no credit inside a cleared boss room', () => {
+    world.clearedSafeRoomIds.add(1);
+    world.clearedSafeRoomMap = world.floorMap;
+    world.stores.position.x[playerEid] = NORMAL_FT.x;
+    world.stores.position.y[playerEid] = NORMAL_FT.y;
+
+    safeRoomSystem(world);
+
+    expect(world.playerInSafeRoom).toBe(true);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(false);
+    expect(world.safeRoomTimerCreditMs).toBe(0);
+  });
+
+  it('banks no credit on a floor whose timer is a raw stall backstop', () => {
+    world.floorId = 'floor4';
+    safeRoomSystem(world);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    expect(world.safeRoomTimerCreditMs).toBe(0);
+  });
+
+  it('clears the time-stopping flag when no player entity exists', () => {
+    const emptyWorld = createTestWorld();
+    emptyWorld.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
+    emptyWorld.state = 'playing';
+    emptyWorld.playerInTimeStoppingSafeRoom = true;
+    safeRoomSystem(emptyWorld);
+    expect(emptyWorld.playerInTimeStoppingSafeRoom).toBe(false);
+  });
+});
+
 // Property: safeRoomSystem always produces a boolean, never throws
 // ---------------------------------------------------------------------------
 
