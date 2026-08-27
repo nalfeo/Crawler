@@ -399,6 +399,13 @@ export interface MainGameSceneOptions {
     world: GameWorld,
   ) => Array<{ id: string; label: string; description: string }>;
   /**
+   * Player-facing numeric stat line for an ability (damage, range/radius, heal,
+   * slow, buff duration), derived from the game-layer ability catalog. Injected
+   * because `src/engine/` may not import `src/game/`; when it is omitted (labs,
+   * harnesses) the spell UI falls back to prose-only copy.
+   */
+  getAbilityEffectSummary?: (world: GameWorld, abilityId: string) => string | undefined;
+  /**
    * Apply level-up stat allocations (game-layer `spendPoints` injected from
    * main.ts). When omitted, the level-up screen is skipped and the run resumes
    * immediately — labs/harnesses without progression wiring keep working.
@@ -3941,6 +3948,15 @@ export class MainGameScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * Numeric stat line for an ability, via the injected game-layer catalog
+   * lookup. `undefined` when the ability has no spell effects or when the
+   * option was not wired (labs/harnesses).
+   */
+  private describeAbilityStats(abilityId: string): string | undefined {
+    return this.options.getAbilityEffectSummary?.(this.world, abilityId);
+  }
+
   private openAbilitiesConfigModal(): void {
     if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
       return;
@@ -3973,7 +3989,14 @@ export class MainGameScene extends Phaser.Scene {
           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
           description: presentation?.description ?? 'Configured auto ability.',
           category: presentation?.category ?? 'utility',
-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
+          details: [
+            presentation?.kind === 'spell' ? 'SPELL' : 'AUTO',
+            `${cooldownSeconds}s CD`,
+            formatAbilityTrigger(abilityId),
+            this.describeAbilityStats(abilityId),
+          ]
+            .filter((part): part is string => part !== undefined)
+            .join('  •  '),
           equipped: state.equippedActiveAbilityIds.includes(abilityId),
         };
       });
@@ -5778,7 +5801,9 @@ export class MainGameScene extends Phaser.Scene {
       id: offer.spellId,
       name: getAbilityPresentation(offer.spellId)?.name ?? offer.spellId,
       priceGold: offer.cost,
-      detail: 'A permanent spell for this run. One purchase per offer.',
+      // Lead with what the spell actually does to a target — a price with no
+      // damage/range numbers gave the player nothing to compare offers on.
+      detail: this.describeAbilityStats(offer.spellId) ?? 'A permanent spell for this run.',
       owned: offer.purchased,
       purchasable:
         !offer.purchased && broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
