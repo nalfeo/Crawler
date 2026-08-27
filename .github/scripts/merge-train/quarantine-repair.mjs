@@ -54,6 +54,7 @@
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX } from '../ci-recovery/markers.mjs';
 import { encodeRefPath, paginate, request } from '../ci-recovery/github.mjs';
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from '../ci-recovery/state.mjs';
 import {
@@ -65,7 +66,6 @@ import { BLOCKED_LABEL, STATUS_MARKER, hasLeadingMarker } from './state.mjs';
 
 export const REPAIR_BRANCH_PREFIX = 'crawler-quarantine-repair/';
 const REPAIR_MARKER_PREFIX = '<!-- crawler:quarantine-repair-of:';
-const NOTICE_MARKER_PREFIX = '<!-- crawler:quarantine-repair-notice:';
 const RESTRICTED_BRANCH_PATTERN = /^copilot\//i;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
@@ -110,7 +110,7 @@ export function parseRepairMarker(body) {
 }
 
 function renderNoticeMarker(replacementPrNumber) {
-  return `${NOTICE_MARKER_PREFIX}${replacementPrNumber} -->`;
+  return `${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}${replacementPrNumber} -->`;
 }
 
 /**
@@ -219,13 +219,13 @@ export function buildReplacementBody({ original, headSha }) {
 
 export function buildSupersedeNoticeBody({ replacementPrNumber, headSha }) {
   return [
+    renderNoticeMarker(replacementPrNumber),
+    '',
     `Quarantine repair: this PR's head branch cannot be updated by the merge train ` +
       `(repeated update-branch 403 -- \`${BLOCKED_LABEL}\`).`,
     `Replacement PR #${replacementPrNumber} carries the exact same commits ` +
       `(head \`${headSha}\`) on a writable branch against \`main\`.`,
     `This PR is left open for audit; land the work via #${replacementPrNumber}.`,
-    '',
-    renderNoticeMarker(replacementPrNumber),
   ].join('\n');
 }
 
@@ -266,21 +266,30 @@ async function findVerifiedReplacementPr({
     `/repos/${owner}/${repo}/pulls?head=${encodeURIComponent(`${owner}:${branchName}`)}&state=all&per_page=10`,
   );
   const candidates = Array.isArray(response.data) ? response.data : [];
-  const open = candidates.find((pr) => String(pr.state).toLowerCase() === 'open');
-  if (!open) return null;
-  const marker = parseRepairMarker(open.body);
+  const verified = candidates.find((pr) => {
+    const marker = parseRepairMarker(pr.body);
+    return (
+      marker?.prNumber === originalPrNumber &&
+      marker.sha === headSha &&
+      String(pr.base?.ref || '') === baseBranch
+    );
+  });
+  if (verified) return verified;
+  const any = candidates[0];
+  if (!any) return null;
+  const marker = parseRepairMarker(any.body);
   if (!marker || marker.prNumber !== originalPrNumber || marker.sha !== headSha) {
     throw new Error(
-      `Branch ${branchName} already has open PR #${open.number}, but its body does not carry ` +
+      `Branch ${branchName} already has PR #${any.number}, but its body does not carry ` +
         `the expected repair marker for #${originalPrNumber}@${headSha}; refusing to link to it`,
     );
   }
-  if (String(open.base?.ref || '') !== baseBranch) {
+  if (String(any.base?.ref || '') !== baseBranch) {
     throw new Error(
-      `Branch ${branchName}'s open PR #${open.number} targets base \`${open.base?.ref}\`, expected \`${baseBranch}\`; refusing to link to it`,
+      `Branch ${branchName}'s PR #${any.number} targets base \`${any.base?.ref}\`, expected \`${baseBranch}\`; refusing to link to it`,
     );
   }
-  return open;
+  return any;
 }
 
 async function postSupersedeNoticeOnce({
@@ -351,9 +360,31 @@ export async function repairQuarantinedPr({
 
   const headSha = original.head.sha;
   const branchName = repairBranchName(originalPrNumber, headSha);
+  const replacement = await findVerifiedReplacementPr({
+    requestFn,
+    token,
+    owner,
+    repo,
+    branchName,
+    baseBranch,
+    originalPrNumber,
+    headSha,
+  });
+  const replacementState = String(replacement?.state || '').toLowerCase();
+  const replacementMerged = Boolean(replacement?.merged_at);
+  if (replacement && replacementState !== 'open') {
+    return {
+      action: replacementMerged ? 'already-repaired' : 'replacement-closed',
+      originalPrNumber,
+      replacementPrNumber: replacement.number,
+      branchName,
+      headSha,
+      noticePosted: false,
+    };
+  }
 
   const existingBranchSha = await getRefSha({ requestFn, token, owner, repo, branchName });
-  if (existingBranchSha && existingBranchSha !== headSha) {
+  if (existingBranchSha && existingBranchSha !== headSha && !replacement) {
     // The branch name is derived from (prNumber, headSha) with a 12-hex-char
     // truncation. A mismatch here means either an extraordinarily unlikely
     // truncation collision or a corrupted prior run -- refuse to overwrite an
@@ -384,18 +415,9 @@ export async function repairQuarantinedPr({
     }
   }
 
-  let replacement = await findVerifiedReplacementPr({
-    requestFn,
-    token,
-    owner,
-    repo,
-    branchName,
-    baseBranch,
-    originalPrNumber,
-    headSha,
-  });
   let created = false;
-  if (!replacement) {
+  let openReplacement = replacement;
+  if (!openReplacement) {
     try {
       const response = await requestFn(token, `/repos/${owner}/${repo}/pulls`, {
         method: 'POST',
@@ -407,12 +429,12 @@ export async function repairQuarantinedPr({
           maintainer_can_modify: true,
         },
       });
-      replacement = response.data;
+      openReplacement = response.data;
       created = true;
     } catch (error) {
       if (error.status === 422 && /already exists/i.test(String(error.message))) {
         // Race: another run created the PR between our check and this POST.
-        replacement = await findVerifiedReplacementPr({
+        openReplacement = await findVerifiedReplacementPr({
           requestFn,
           token,
           owner,
@@ -422,7 +444,7 @@ export async function repairQuarantinedPr({
           originalPrNumber,
           headSha,
         });
-        if (!replacement) throw error;
+        if (!openReplacement) throw error;
       } else {
         throw error;
       }
@@ -436,14 +458,14 @@ export async function repairQuarantinedPr({
     owner,
     repo,
     originalPrNumber,
-    replacementPrNumber: replacement.number,
+    replacementPrNumber: openReplacement.number,
     headSha,
   });
 
   return {
     action: created ? 'repaired' : 'linked-existing',
     originalPrNumber,
-    replacementPrNumber: replacement.number,
+    replacementPrNumber: openReplacement.number,
     branchName,
     headSha,
     noticePosted,

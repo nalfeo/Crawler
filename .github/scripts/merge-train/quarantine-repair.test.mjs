@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX } from '../ci-recovery/markers.mjs';
 import {
   REPAIR_BRANCH_PREFIX,
   buildReplacementBody,
@@ -94,6 +95,7 @@ test('buildReplacementBody preserves the original body verbatim (so Fixes #N sti
 
 test('buildSupersedeNoticeBody names the replacement PR and the exact head sha', () => {
   const body = buildSupersedeNoticeBody({ replacementPrNumber: 3700, headSha: HEAD_SHA });
+  assert.ok(body.startsWith(`${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}3700 -->`));
   assert.match(body, /#3700/);
   assert.match(body, new RegExp(HEAD_SHA));
   assert.match(body, new RegExp(BLOCKED_LABEL));
@@ -264,7 +266,7 @@ test('repairQuarantinedPr is idempotent: re-running does not recreate the branch
   const comments = [
     quarantineStatusComment(),
     {
-      body: 'already linked\n\n<!-- crawler:quarantine-repair-notice:3700 -->',
+      body: `already linked\n\n${QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX}3700 -->`,
       performed_via_github_app: {},
     },
   ];
@@ -358,6 +360,62 @@ test('repairQuarantinedPr refuses to overwrite a repair branch pointing at an un
       originalPrNumber: 3588,
     }),
     /refusing to overwrite/,
+  );
+});
+
+test('repairQuarantinedPr remains idempotent when the replacement branch has advanced after repair', async () => {
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: true,
+    refSha: 'f'.repeat(40),
+    existingPr: {
+      number: 3700,
+      state: 'open',
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+    },
+  });
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'linked-existing');
+  assert.ok(
+    !calls.some((call) => call.path === `/repos/${OWNER}/${REPO}/pulls` && call.method === 'POST'),
+  );
+});
+
+test('repairQuarantinedPr treats a merged replacement as already repaired and does not create a sibling PR', async () => {
+  const { requestFn, paginateFn, calls } = stubGithub({
+    refExists: true,
+    refSha: 'f'.repeat(40),
+    existingPr: {
+      number: 3700,
+      state: 'closed',
+      merged_at: '2026-08-27T00:00:00Z',
+      base: { ref: 'main' },
+      body: renderRepairMarker(3588, HEAD_SHA),
+    },
+  });
+
+  const result = await repairQuarantinedPr({
+    requestFn,
+    paginateFn,
+    token: 'token',
+    owner: OWNER,
+    repo: REPO,
+    originalPrNumber: 3588,
+  });
+
+  assert.equal(result.action, 'already-repaired');
+  assert.equal(result.replacementPrNumber, 3700);
+  assert.ok(
+    !calls.some((call) => call.path === `/repos/${OWNER}/${REPO}/pulls` && call.method === 'POST'),
   );
 });
 

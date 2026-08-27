@@ -132,6 +132,9 @@ export const LOOP_INCIDENT_FINGERPRINT_PREFIX = '<!-- crawler-pr-loop-fingerprin
  */
 export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 -->';
 
+/** Leading prefix for merge-train quarantine-repair notice comments. */
+export const QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX = '<!-- crawler-quarantine-repair-notice:';
+
 // ---------------------------------------------------------------------------
 // Stale stacked-base recovery comments
 // ---------------------------------------------------------------------------
@@ -200,6 +203,7 @@ export const MANAGED_COMMENT_MARKERS = [
   LOOP_INCIDENT_MARKER,
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,
+  QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
   STALE_BASE_RETARGET_MARKER,
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
