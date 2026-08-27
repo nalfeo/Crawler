@@ -319,8 +319,11 @@ export function createHudUI(scene: Phaser.Scene): {
       if (hidden || !abilityBar.isVisible()) {
         return null;
       }
-      // Same projection as applyScale(): the group is anchored to the canvas
-      // bottom, lifted by the safe-area inset, then scaled about the origin.
+      // Inverse of applyScale()'s bottomCenter transform. A child at local y
+      // `ABILITY_BAR_PANEL_TOP` renders at
+      //   group.y + scale * ABILITY_BAR_PANEL_TOP
+      // and applyScale() sets group.y = h * (1 - scale) - safe.bottom, which
+      // simplifies to the expression below.
       return (
         GAME.HEIGHT -
         getSafeAreaInsets(scene).bottom -

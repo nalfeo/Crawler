@@ -10,10 +10,11 @@ interface Bounds {
   height: number;
 }
 
-function surfaceOf(
-  layout: { surfaces: Array<{ name: string; bounds: Bounds }> },
-  name: string,
-): Bounds {
+interface SafeAreaLayout {
+  surfaces: Array<{ name: string; bounds: Bounds }>;
+}
+
+function surfaceOf(layout: SafeAreaLayout, name: string): Bounds {
   const surface = layout.surfaces.find((entry) => entry.name === name);
   if (!surface) {
     throw new Error(
@@ -21,6 +22,32 @@ function surfaceOf(
     );
   }
   return surface.bounds;
+}
+
+/**
+ * Poll the probe until every named surface is reported. The interaction hint is
+ * only pushed once it is actually visible, so this is a state-driven wait for
+ * the hint to appear rather than a fixed sleep.
+ */
+async function waitForSurfaces(
+  page: Page,
+  names: readonly string[],
+  timeoutMs = 15_000,
+): Promise<SafeAreaLayout> {
+  const deadline = Date.now() + timeoutMs;
+  let layout = await mainSceneProbe.getSafeAreaLayout(page);
+  while (!names.every((name) => layout.surfaces.some((entry) => entry.name === name))) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `timed out waiting for probe surfaces ${names.join(', ')} (have: ${layout.surfaces
+          .map((entry) => entry.name)
+          .join(', ')})`,
+      );
+    }
+    await page.waitForTimeout(100);
+    layout = await mainSceneProbe.getSafeAreaLayout(page);
+  }
+  return layout;
 }
 
 /**
@@ -61,9 +88,8 @@ describe('bottom-center HUD stack order', () => {
   it('stacks the Talk hint above the bottom-anchored ability bar', async () => {
     const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
     expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
-    await page.waitForTimeout(400);
 
-    const layout = await mainSceneProbe.getSafeAreaLayout(page);
+    const layout = await waitForSurfaces(page, ['bottomCenter', 'interactionHint']);
     const abilityBar = surfaceOf(layout, 'bottomCenter');
     const hint = surfaceOf(layout, 'interactionHint');
 
