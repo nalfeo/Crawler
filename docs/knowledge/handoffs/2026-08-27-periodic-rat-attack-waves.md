@@ -38,5 +38,5 @@ observed a 10-rat wave spawning through
 
 ## What's Next / Blockers
 
-`npm run verify:fast` reached 3,394 passing tests but failed two unrelated
-`tests/unit/baseline-regression-check.test.ts` CLI assertions.
+`npm run verify:fast` passes, including the focused attack-wave tests and the
+repository's type, lint, data-contract, integrity, and coverage checks.
