@@ -33,6 +33,7 @@ import type { CommandResult } from './floor3-ability-command-state.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
+import { toggleQuestArrow } from '../core/systems/questSystem.js';
 
 export interface HudEncounterProbeBounds {
   timerPanel: ScreenBounds;
@@ -59,6 +60,7 @@ export interface NavigationHudBounds {
   readonly arrows: readonly ScreenBounds[];
   readonly mapOverlay: ScreenBounds | null;
   readonly mapClose: ScreenBounds | null;
+  readonly questArrowToggles: readonly { questId: string; bounds: ScreenBounds }[];
 }
 
 export function createHudUI(scene: Phaser.Scene): {
@@ -110,7 +112,15 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  const questTracker = createHudQuestTracker(scene);
+  let currentWorld: GameWorld | null = null;
+  const questTracker = createHudQuestTracker(scene, {
+    onToggleArrow: (questId) => {
+      if (currentWorld) {
+        toggleQuestArrow(currentWorld, questId);
+        questTracker.sync(currentWorld);
+      }
+    },
+  });
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
   // rather than being grouped into a corner container here.
@@ -118,7 +128,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const familyRelationships = createHudFamilyRelationships(scene, {
     parent: bottomRight,
     getAvoidBounds: () => {
-      const bounds = [minimap.getDockedBounds()];
+      const bounds = [minimap.getDockedBounds(), questTracker.getBounds()];
       const b = bottomCenter.getBounds();
       bounds.push({ x: b.x, y: b.y, width: b.width, height: b.height });
       return bounds.filter((item): item is ScreenBounds => item !== null);
@@ -201,6 +211,7 @@ export function createHudUI(scene: Phaser.Scene): {
   }
 
   function sync(world: GameWorld, playerEid: number): void {
+    currentWorld = world;
     syncFamilyRelationshipsVisibility();
     if (hidden) {
       return;
@@ -220,13 +231,15 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
-    familyRelationships.sync(world);
-    floor3Party.sync(world, playerEid);
     const mapOpen = minimap.isOverlayOpen();
     questTracker.setVisible(!mapOpen);
     directionArrows.setVisible(!mapOpen);
     if (!mapOpen) {
       questTracker.sync(world, playerEid);
+    }
+    familyRelationships.sync(world);
+    floor3Party.sync(world, playerEid);
+    if (!mapOpen) {
       const familyLayout = familyRelationships.getLayout();
       const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
       const forbiddenRegions = [
@@ -247,6 +260,7 @@ export function createHudUI(scene: Phaser.Scene): {
       arrows: directionArrows.getBounds(),
       mapOverlay: minimap.getOverlayViewportBounds(),
       mapClose: minimap.getOverlayCloseBounds(),
+      questArrowToggles: questTracker.getArrowToggleBounds(),
     };
   }
 

@@ -102,11 +102,15 @@ export function fitQuestTrackerLines(
 
 export function createHudQuestTracker(
   scene: Phaser.Scene,
-  options: { parent?: Phaser.GameObjects.Container } = {},
+  options: {
+    parent?: Phaser.GameObjects.Container;
+    onToggleArrow?: (questId: string) => void;
+  } = {},
 ): {
   sync(world: GameWorld, playerEid?: number): void;
   setVisible(visible: boolean): void;
   getBounds(): ScreenBounds | null;
+  getArrowToggleBounds(): readonly { questId: string; bounds: ScreenBounds }[];
   destroy(): void;
 } {
   const root = scene.add.container(0, 0).setScrollFactor(0).setDepth(PIXEL_UI_DEPTH.panel);
@@ -178,6 +182,7 @@ export function createHudQuestTracker(
   let currentScale = 1;
   let lastWorld: GameWorld | null = null;
   let lastPlayerEid: number | undefined;
+  const arrowToggles = new Map<string, Phaser.GameObjects.Text>();
   chevron.setText(collapsed ? '▸' : '▾');
 
   // Tapping the title strip collapses/expands the tracker (mobile-friendly).
@@ -230,6 +235,9 @@ export function createHudQuestTracker(
       .slice(0, MAX_ACTIVE_QUESTS);
     if (active.length === 0) {
       body.setText('');
+      for (const toggle of arrowToggles.values()) {
+        toggle.setVisible(false);
+      }
       activeVisible = false;
       applyVisibility();
       return;
@@ -239,13 +247,46 @@ export function createHudQuestTracker(
     applyVisibility();
 
     const lines: string[] = [];
+    const visibleQuestIds = new Set(active.map((quest) => quest.questId));
+    for (const [questId, toggle] of arrowToggles) {
+      if (!visibleQuestIds.has(questId)) {
+        toggle.destroy();
+        arrowToggles.delete(questId);
+      }
+    }
     for (const quest of active) {
       const def = getQuestDef(quest.questId);
       if (!def) {
         continue;
       }
       const marker = quest.tracked ? '◆' : '◇';
+      const lineIndex = lines.length;
       lines.push(`${marker} ${def.title}`);
+      let toggle = arrowToggles.get(quest.questId);
+      if (!toggle) {
+        toggle = scene.add
+          .text(NAV_QUEST_WIDTH - PAD, TITLE_H + 14, '', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '8px',
+            fontStyle: 'bold',
+            color: COLORS.title,
+            stroke: '#02040a',
+            strokeThickness: 2,
+            padding: { top: 3, bottom: 2 },
+          })
+          .setOrigin(1, 0)
+          .setScrollFactor(0)
+          .setDepth(PIXEL_UI_DEPTH.content)
+          .setInteractive({ useHandCursor: true })
+          .setName(`quest-arrow-toggle:${quest.questId}`);
+        toggle.on('pointerdown', () => options.onToggleArrow?.(quest.questId));
+        root.add(toggle);
+        arrowToggles.set(quest.questId, toggle);
+      }
+      toggle
+        .setText(quest.showArrow === false ? '↑ OFF' : '↑ ON')
+        .setPosition(NAV_QUEST_WIDTH - PAD, TITLE_H + 14 + lineIndex * 17)
+        .setVisible(masterVisible && activeVisible && !collapsed);
       if (quest.tracked) {
         const views = getQuestObjectiveViews(world, quest, playerEid);
         for (const view of views) {
@@ -265,6 +306,9 @@ export function createHudQuestTracker(
     panel.setSize(NAV_QUEST_WIDTH, panelHeight);
     titleStrip.setPosition(2, 2).setSize(NAV_QUEST_WIDTH - 4, TITLE_H);
     body.setVisible(masterVisible && activeVisible && !collapsed);
+    for (const toggle of arrowToggles.values()) {
+      toggle.setVisible(masterVisible && activeVisible && !collapsed);
+    }
   }
 
   function getBounds(): ScreenBounds | null {
@@ -287,8 +331,33 @@ export function createHudQuestTracker(
     titleText.destroy();
     chevron.destroy();
     body.destroy();
+    for (const toggle of arrowToggles.values()) {
+      toggle.destroy();
+    }
+    arrowToggles.clear();
     root.destroy();
   }
 
-  return { sync, setVisible, getBounds, destroy };
+  function getArrowToggleBounds(): readonly { questId: string; bounds: ScreenBounds }[] {
+    if (!masterVisible || !activeVisible || collapsed) {
+      return [];
+    }
+    return [...arrowToggles.entries()].flatMap(([questId, toggle]) =>
+      toggle.visible
+        ? [
+            {
+              questId,
+              bounds: {
+                x: toggle.getBounds().x,
+                y: toggle.getBounds().y,
+                width: toggle.getBounds().width,
+                height: toggle.getBounds().height,
+              },
+            },
+          ]
+        : [],
+    );
+  }
+
+  return { sync, setVisible, getBounds, getArrowToggleBounds, destroy };
 }

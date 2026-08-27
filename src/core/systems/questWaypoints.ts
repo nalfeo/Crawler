@@ -12,7 +12,7 @@
  */
 import type { GameWorld } from '../world.js';
 import { getActiveQuests, getQuestObjectiveViews } from './questSystem.js';
-import { getQuestDef } from '../../shared/quest-types.js';
+import { getQuestDef, MAX_ACTIVE_QUESTS } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
 import { pickRoomAnchorCell, resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
 
@@ -208,7 +208,7 @@ function normalizeSharedRoomTargets(
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
-  const activeQuests = getActiveQuests(world);
+  const activeQuests = getActiveQuests(world).slice(0, MAX_ACTIVE_QUESTS);
 
   // Build a map from completion-goal-flag → questId for every currently-active
   // quest.  A quest's `goal` objective is "blocked" when another active quest
@@ -226,7 +226,7 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
   const waypoints: QuestWaypoint[] = [];
   for (const quest of activeQuests) {
     const def = getQuestDef(quest.questId);
-    if (!def || def.hidden) {
+    if (!def || def.hidden || quest.showArrow === false) {
       continue;
     }
     const activeView = getQuestObjectiveViews(world, quest, playerEid).find((view) => view.active);

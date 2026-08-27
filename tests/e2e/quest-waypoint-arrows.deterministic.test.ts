@@ -64,6 +64,40 @@ describe('quest waypoint arrows deterministic guard', () => {
       .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_SHOP_QUEST_ID]);
   });
 
+  it('places the quest log under the minimap and toggles one quest navigation arrow by click', async () => {
+    await mainSceneProbe.primeMerchantAndSpellBrokerQuestArrows(page);
+
+    const surfaces = (await mainSceneProbe.getSafeAreaLayout(page)).surfaces;
+    const minimap = surfaces.find((surface) => surface.name === 'minimap')!.bounds;
+    const tracker = surfaces.find((surface) => surface.name === 'questTracker')!.bounds;
+    const shopToggle = surfaces.find(
+      (surface) => surface.name === `questArrowToggle:${FLOOR1_SHOP_QUEST_ID}`,
+    )!.bounds;
+    expect(tracker.y).toBeGreaterThanOrEqual(minimap.y + minimap.height);
+
+    const canvasRect = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(canvasRect).not.toBeNull();
+    await page.mouse.click(
+      canvasRect!.x + (shopToggle.x + shopToggle.width / 2) * (canvasRect!.width / GAME_W),
+      canvasRect!.y + (shopToggle.y + shopToggle.height / 2) * (canvasRect!.height / GAME_H),
+    );
+
+    await expect
+      .poll(() => mainSceneProbe.getVisibleQuestArrowIds(page).then((ids) => ids.sort()))
+      .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID]);
+    await expect
+      .poll(() => mainSceneProbe.getMinimapRadarWaypointArrowIds(page).then((ids) => ids.sort()))
+      .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID]);
+
+    await page.mouse.click(
+      canvasRect!.x + (shopToggle.x + shopToggle.width / 2) * (canvasRect!.width / GAME_W),
+      canvasRect!.y + (shopToggle.y + shopToggle.height / 2) * (canvasRect!.height / GAME_H),
+    );
+    await expect
+      .poll(() => mainSceneProbe.getVisibleQuestArrowIds(page).then((ids) => ids.sort()))
+      .toEqual([FLOOR1_BOSS_BATTLE_QUEST_ID, FLOOR1_SHOP_QUEST_ID]);
+  });
+
   it('shows merchant and Spell Broker quest waypoints as full-screen overlay in-view dots, then as overlay edge arrows once zoomed past them', async () => {
     await mainSceneProbe.primeMerchantAndSpellBrokerQuestArrows(page);
     await page.keyboard.press('m');

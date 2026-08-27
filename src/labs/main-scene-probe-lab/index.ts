@@ -185,6 +185,7 @@ interface MainSceneInternals {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
       familyPanel: ScreenBounds | null;
+      questArrowToggles: readonly { questId: string; bounds: ScreenBounds }[];
     };
     getEncounterProbeBounds?(): {
       timerPanel: ScreenBounds;
@@ -1526,6 +1527,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('minimap', hud?.getMinimapBounds?.());
       push('radar', navigation?.radar);
       push('questTracker', navigation?.questTracker);
+      for (const toggle of navigation?.questArrowToggles ?? []) {
+        push(`questArrowToggle:${toggle.questId}`, toggle.bounds);
+      }
       push('familyPanel', navigation?.familyPanel);
       push('floorTimer', encounter?.timerPanel);
       push('bossBar', encounter?.bossPanel);
