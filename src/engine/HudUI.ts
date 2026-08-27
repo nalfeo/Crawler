@@ -16,7 +16,7 @@ import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
-import { ABILITY_BAR_PANEL_TOP, createHudAbilityBar } from './HudAbilityBar.js';
+import { ABILITY_BAR_LAYOUT, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import {
@@ -160,6 +160,10 @@ export function createHudUI(scene: Phaser.Scene): {
   // Live scale of the bottom-center group, mirrored out so callers can project
   // the ability bar's authored design constants into screen space.
   let bottomCenterScale = 1;
+  // Screen-space Y of the ability panel's top edge, recomputed only when the
+  // ui-scale / safe-area layout changes so per-frame callers never trigger a
+  // synchronous DOM layout or style read.
+  let abilityBarScreenTop = 0;
 
   function applyScale(): void {
     const s = computeVitalsScale({
@@ -183,6 +187,13 @@ export function createHudUI(scene: Phaser.Scene): {
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale) - safe.bottom);
     topCenter.setScale(s).setPosition(cx * (1 - s), safe.top);
     bottomRight.setScale(s).setPosition(w * (1 - s) - safe.right, h * (1 - s) - safe.bottom);
+
+    // Inverse of the bottomCenter transform above. A child at local y
+    // `ABILITY_BAR_LAYOUT.panelTop` renders at
+    //   bottomCenter.y + bottomCenterScale * panelTop
+    // and bottomCenter.y is `h * (1 - bottomCenterScale) - safe.bottom`, which
+    // simplifies to the expression below.
+    abilityBarScreenTop = h - safe.bottom - bottomCenterScale * (h - ABILITY_BAR_LAYOUT.panelTop);
   }
 
   applyScale();
@@ -319,16 +330,8 @@ export function createHudUI(scene: Phaser.Scene): {
       if (hidden || !abilityBar.isVisible()) {
         return null;
       }
-      // Inverse of applyScale()'s bottomCenter transform. A child at local y
-      // `ABILITY_BAR_PANEL_TOP` renders at
-      //   group.y + scale * ABILITY_BAR_PANEL_TOP
-      // and applyScale() sets group.y = h * (1 - scale) - safe.bottom, which
-      // simplifies to the expression below.
-      return (
-        GAME.HEIGHT -
-        getSafeAreaInsets(scene).bottom -
-        bottomCenterScale * (GAME.HEIGHT - ABILITY_BAR_PANEL_TOP)
-      );
+      // Cached in applyScale(); no DOM reads on this (per-frame) path.
+      return abilityBarScreenTop;
     },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,

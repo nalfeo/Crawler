@@ -25,10 +25,13 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('const INTERACTION_HINT_BOTTOM_MARGIN = 12;');
     expect(source).toContain('const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);');
     // The hint sits above the bottom safe-area inset, not the raw canvas edge,
-    // so it stays clear of the iOS home indicator in landscape.
-    expect(source).toContain(
-      'const baseline = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;',
+    // so it stays clear of the iOS home indicator in landscape. The baseline is
+    // cached from the safe-area callback so the per-frame restack does no DOM
+    // layout/style reads.
+    expect(source).toMatch(
+      /this\.interactionHintBaselineY =\s*GAME\.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - insets\.bottom;/,
     );
+    expect(source).toContain('const baseline = this.interactionHintBaselineY;');
     // The Talk/Descend hint stacks above the bottom-anchored ability bar
     // whenever that bar is rendered, and falls back to the baseline otherwise.
     expect(source).toContain('const INTERACTION_HINT_ABILITY_BAR_GAP = 10;');

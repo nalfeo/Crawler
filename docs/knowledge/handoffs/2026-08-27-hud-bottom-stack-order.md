@@ -22,16 +22,20 @@ Issue #3679 reported the inverted bottom-center stack: the ability bar floated a
 Talk button that was pinned to the very bottom edge.
 
 - `src/engine/HudAbilityBar.ts` — replaced the magic `BAR_Y = GAME.HEIGHT - 140` slot
-  offset with a bottom-anchored derivation: `ABILITY_BAR_PANEL_TOP = GAME.HEIGHT -
-ABILITY_BAR_PANEL_BOTTOM_MARGIN - ABILITY_BAR_PANEL_HEIGHT`, with the slot row derived
-  from the panel top. Added an `isVisible()` read-back.
-- `src/engine/HudUI.ts` — added `getAbilityBarScreenTop()`, which projects the authored
-  panel top through the live `bottomCenter` scale and safe-area inset using the exact
-  same math as `applyScale()`, returning `null` when the bar is not rendered.
+  offset with a bottom-anchored derivation: `panelTop = GAME.HEIGHT - panelBottomMargin -
+panelHeight`, with the slot row derived from the panel top. The authored geometry is
+  exported as one `ABILITY_BAR_LAYOUT` object (a single production-consumed export, so
+  `check:test-only-exports` stays green); added an `isVisible()` read-back.
+- `src/engine/HudUI.ts` — added `getAbilityBarScreenTop()`, which returns the panel top
+  projected through the live `bottomCenter` scale and safe-area inset, or `null` when the
+  bar is not rendered. The projection is computed inside `applyScale()` and cached, so the
+  per-frame getter performs no `getBoundingClientRect()` / `getComputedStyle()` read.
 - `src/engine/scenes/MainGameScene.ts` — `interactionHintY()` now returns
   `min(bottomBaseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP)`, and the hint's
   Y is refreshed each frame right after `hudUi.sync()` so it restacks when spells unlock
-  or the HUD is hidden behind a modal.
+  or the HUD is hidden behind a modal. Both inputs are cached numbers (the bottom baseline
+  is recomputed only in the `onSafeAreaChange` callback), and `setY` is applied only when
+  the value actually changes, so the frame path stays DOM-read free.
 
 **Observed in the real MainGameScene** (probe lab boot, 1280×720, spells unlocked, NPC
 interaction primed — not a lab-only rendering of the widget):
@@ -95,7 +99,7 @@ layout module in the style of `HudVitalsLayout.ts` rather than adding another `m
 
 - The `hud-overlap-visual` e2e encodes ability-bar design Y values in a comment and a
   pixel band, so any bar re-anchor silently requires a matching test edit. Deriving that
-  band from the exported `ABILITY_BAR_PANEL_TOP` / `ABILITY_BAR_PANEL_HEIGHT` constants
-  would make the guard self-updating.
+  band from the exported `ABILITY_BAR_LAYOUT` constants would make the guard
+  self-updating.
 - That same test's comment claimed `ABILITY_BAR_MAX_SCALE = 1.2` while the constant had
   since become `1.0` — stale-by-comment drift that a constant-derived band would remove.

@@ -836,6 +836,12 @@ export class MainGameScene extends Phaser.Scene {
   private offInteractionHintScale?: () => void;
   private offInteractionHintSafeArea?: () => void;
 
+  /**
+   * Bottom-anchored baseline Y for the interaction hint, cached from the
+   * safe-area callback so the per-frame restack does no DOM layout/style reads.
+   */
+  private interactionHintBaselineY = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN;
+
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
 
@@ -1467,7 +1473,7 @@ export class MainGameScene extends Phaser.Scene {
    * above the ability bar whenever that bar is rendered.
    */
   private interactionHintY(): number {
-    const baseline = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
+    const baseline = this.interactionHintBaselineY;
     const abilityBarTop = this.hudUi?.getAbilityBarScreenTop() ?? null;
     if (abilityBarTop === null) {
       return baseline;
@@ -2752,6 +2758,8 @@ export class MainGameScene extends Phaser.Scene {
     this.hudUi = createHudUI(this);
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
+    this.interactionHintBaselineY =
+      GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
     this.interactionHint = this.add
       .text(GAME.WIDTH / 2, this.interactionHintY(), '', {
         fontFamily: 'monospace',
@@ -2776,7 +2784,8 @@ export class MainGameScene extends Phaser.Scene {
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
-    this.offInteractionHintSafeArea = onSafeAreaChange(this, () => {
+    this.offInteractionHintSafeArea = onSafeAreaChange(this, (insets) => {
+      this.interactionHintBaselineY = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - insets.bottom;
       applyInteractionHintScale(getUiScale(this));
     });
 
@@ -4363,8 +4372,15 @@ export class MainGameScene extends Phaser.Scene {
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     // The ability bar appears/disappears at runtime (spell unlock, modal open),
-    // so restack the Talk/Descend hint above it right after the HUD syncs.
-    this.interactionHint?.setY(this.interactionHintY());
+    // so restack the Talk/Descend hint above it right after the HUD syncs. Both
+    // inputs (cached safe-area baseline, cached ability-bar top) are plain
+    // numbers, so this frame path performs no DOM reads.
+    if (this.interactionHint) {
+      const hintY = this.interactionHintY();
+      if (this.interactionHint.y !== hintY) {
+        this.interactionHint.setY(hintY);
+      }
+    }
     this.updateDirectorCommentary();
 
     const canFileIssue = this.canFileIssue(issueOpen);

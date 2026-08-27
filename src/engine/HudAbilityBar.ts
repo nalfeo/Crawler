@@ -18,28 +18,30 @@ const BAR_WIDTH =
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
 const PANEL_PADDING = 8;
 /** Title strip + slot row. */
-export const ABILITY_BAR_PANEL_HEIGHT = SLOT_HEIGHT + 38;
-const PANEL_HEIGHT = ABILITY_BAR_PANEL_HEIGHT;
+const PANEL_HEIGHT = SLOT_HEIGHT + 38;
 /**
  * Design-space clearance kept between the ability panel and the canvas bottom
  * edge. The parent `bottomCenter` group additionally offsets the device
  * safe-area bottom inset (see HudUI.applyScale), so this margin is purely the
  * authored visual gutter.
  */
-export const ABILITY_BAR_PANEL_BOTTOM_MARGIN = 12;
-const PANEL_BOTTOM_MARGIN = ABILITY_BAR_PANEL_BOTTOM_MARGIN;
-/**
- * Top edge of the ability panel in design space. The bar is anchored to the
- * bottom of the canvas; bottom-center affordances that must not cover it
- * (the Talk/Descend interaction hint) stack *above* this line.
- */
-export const ABILITY_BAR_PANEL_TOP = GAME.HEIGHT - PANEL_BOTTOM_MARGIN - PANEL_HEIGHT;
-const PANEL_TOP = ABILITY_BAR_PANEL_TOP;
+const PANEL_BOTTOM_MARGIN = 12;
+const PANEL_TOP = GAME.HEIGHT - PANEL_BOTTOM_MARGIN - PANEL_HEIGHT;
 /** Slot row sits below the panel title strip. */
-export const ABILITY_BAR_SLOT_ROW_TOP = PANEL_TOP + 30;
-const BAR_Y = ABILITY_BAR_SLOT_ROW_TOP;
-/** Height of a single ability slot; the slot row must fit inside the panel. */
-export const ABILITY_BAR_SLOT_HEIGHT = SLOT_HEIGHT;
+const BAR_Y = PANEL_TOP + 30;
+
+/**
+ * Authored bottom-center layout of the ability bar in design space. The bar is
+ * anchored to the bottom of the canvas; bottom-center affordances that must not
+ * cover it (the Talk/Descend interaction hint) stack *above* `panelTop`.
+ */
+export const ABILITY_BAR_LAYOUT = {
+  panelTop: PANEL_TOP,
+  panelHeight: PANEL_HEIGHT,
+  panelBottomMargin: PANEL_BOTTOM_MARGIN,
+  slotRowTop: BAR_Y,
+  slotHeight: SLOT_HEIGHT,
+} as const;
 
 const COLORS = {
   ...BLUE_STEEL,
