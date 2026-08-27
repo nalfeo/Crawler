@@ -1,5 +1,39 @@
 [
   {
+    "commit": "9f3947fd18beb36d250f9d756ee7a2fda43e4a97",
+    "commitDate": "2026-08-27T19:07:32Z",
+    "commitSubject": "Sort unopened reward boxes to top of Awards panel (#3696)",
+    "capturedAt": "2026-08-27T20:56:49.200Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33110374069",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/9f3947fd18beb36d250f9d756ee7a2fda43e4a97.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/9f3947fd18beb36d250f9d756ee7a2fda43e4a97.fun-report.json"
+    }
+  },
+  {
     "commit": "9973788c1996174a13b7fed759e943c9b1b515cc",
     "commitDate": "2026-08-27T12:54:41Z",
     "commitSubject": "Add monotonic sprite generation timing attribution (#3709)",
