@@ -354,8 +354,12 @@ describe('MainGameScene UI exclusivity', () => {
     });
     await page.keyboard.press('Escape');
 
-    await page.keyboard.press('e');
-    await waitForState(page, (state) => state.conversationOpen, { label: 'E opened dialogue' });
+    await page.keyboard.down('e');
+    try {
+      await waitForState(page, (state) => state.conversationOpen, { label: 'E opened dialogue' });
+    } finally {
+      await page.keyboard.up('e');
+    }
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
