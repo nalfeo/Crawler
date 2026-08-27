@@ -38,7 +38,50 @@ spec:
         - query-backlog
       goal: Fetch the full claimed issue body into deterministic requirements context.
       run:
-        command: ['node', 'scripts/agent/goobers/hydrate-requirements.mjs']
+        script: |
+          set -eu
+          context_dir=".goobers/context"
+          repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          issue="$(
+            grep -RhoE 'claimed [0-9]+|issues/[0-9]+|"number"[[:space:]]*:[[:space:]]*[0-9]+' "$context_dir" |
+              sed -E 's/.*claimed ([0-9]+).*/\1/; s#.*issues/([0-9]+).*#\1#; s/.*"number"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/' |
+              head -n 1
+          )"
+          if [ -z "$issue" ]; then
+            echo "could not find a claimed issue number in ${context_dir}" >&2
+            exit 1
+          fi
+
+          gh issue view "$issue" --repo "$repo" --json number,title,body,labels,url > issue.json
+          labels="$(jq -r '[.labels[].name] | join(", ")' issue.json)"
+          {
+            echo "# Claimed issue requirements"
+            echo
+            echo "- Repository: ${repo}"
+            echo "- Issue: #$(jq -r '.number' issue.json) $(jq -r '.title' issue.json)"
+            echo "- URL: $(jq -r '.url' issue.json)"
+            echo "- Labels: ${labels:-none}"
+            echo
+            echo "## Body"
+            echo
+            jq -r '.body // "(empty)"' issue.json
+          } > requirements.md
+
+          jq -n \
+            --arg issueNumber "$(jq -r '.number' issue.json)" \
+            --arg issueTitle "$(jq -r '.title' issue.json)" \
+            --arg issueUrl "$(jq -r '.url' issue.json)" \
+            --rawfile requirements requirements.md \
+            '{
+              schema: "crawler.goobers.requirements/v1",
+              issueNumber: $issueNumber,
+              issueTitle: $issueTitle,
+              issueUrl: $issueUrl,
+              requirementsFile: "requirements.md",
+              requirements: $requirements
+            }' > requirements-result.json
+
+          cat requirements.md
       inputs:
         resultFile: 'requirements-result.json'
       expectedOutputs:

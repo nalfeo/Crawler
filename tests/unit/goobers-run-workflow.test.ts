@@ -46,6 +46,7 @@ interface GoobersDefinition {
     runControls?: { maxRepasses?: number };
     tasks: Array<{
       name: string;
+      run?: { script?: string };
       retry?: { maxAttempts?: number; backoffSeconds?: number };
     }>;
     gates: Array<{
@@ -124,6 +125,8 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(definition.spec.runControls?.maxRepasses).toBe(6);
     expect(hydrate).toBeDefined();
+    expect(hydrate?.run?.script).toContain('gh issue view "$issue"');
+    expect(hydrate?.run?.script).toContain('requirements-result.json');
     expect(hydrate?.retry).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
