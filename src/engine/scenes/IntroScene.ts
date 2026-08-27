@@ -13,7 +13,7 @@
  */
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
-import { PIXEL_UI } from '../pixel-ui.js';
+import { createBeveledPanel, PIXEL_UI } from '../pixel-ui.js';
 import { getRenderScale } from '../render-scale.js';
 import { BootScene } from './BootScene.js';
 import {
@@ -82,7 +82,7 @@ const BUTTON_TEXT_SELECTED = '#f8fafc';
 const CONFIRM_COLOR = 0x1e4620;
 const CONFIRM_HOVER_COLOR = 0x276129;
 const CONFIRM_TEXT = '#86efac';
-const DIRECTOR_LABEL = 'DIRECTOR';
+const DIRECTOR_LABEL = 'Director';
 const BUTTON_DEFAULT_BORDER = '#1e293b';
 const BUTTON_SELECTED_BORDER = '#4a6fa5';
 const BUTTON_DEFAULT_BACKGROUND = '#1e293b';
@@ -90,8 +90,8 @@ const BUTTON_SELECTED_BACKGROUND = '#3b4f72';
 const NAME_INPUT_ARIA_LABEL = 'Player name';
 const GENDER_GROUP_ARIA_LABEL = 'Player gender';
 
-const PANEL_W = 640;
-const PANEL_H = 420;
+const PANEL_W = 700;
+const PANEL_H = 456;
 const PANEL_X = (GAME.WIDTH - PANEL_W) / 2;
 const PANEL_Y = (GAME.HEIGHT - PANEL_H) / 2;
 const DEPTH = 2000;
@@ -139,32 +139,54 @@ export class IntroScene extends Phaser.Scene {
     this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, BG_COLOR, 1).setOrigin(0, 0).setDepth(DEPTH);
 
     // Panel background.
-    this.add
-      .rectangle(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PANEL_COLOR, PANEL_ALPHA)
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 1)
-      .setStrokeStyle(1, BORDER_COLOR, 1);
+    createBeveledPanel(this, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, {
+      fill: PANEL_COLOR,
+      fillAlpha: PANEL_ALPHA,
+      highlight: PIXEL_UI.bevelLight,
+      shadow: PIXEL_UI.bevelDark,
+      border: BORDER_COLOR,
+      depth: DEPTH + 1,
+    });
 
-    let y = PANEL_Y + 26;
+    let y = PANEL_Y + 22;
 
-    // Title.
+    // Small show-brand marker and title establish the screen's purpose first.
     this.add
-      .text(cx, y, 'Crawler', {
+      .text(PANEL_X + 26, y, 'THE DIRECTOR PRESENTS', {
         fontFamily: 'monospace',
-        fontSize: '28px',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: SLATE_DIM,
+      })
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2);
+
+    y += 18;
+
+    this.add
+      .text(cx, y, 'Character Select', {
+        fontFamily: 'monospace',
+        fontSize: '26px',
         fontStyle: 'bold',
         color: GOLD_COLOR,
       })
       .setOrigin(0.5, 0)
       .setDepth(DEPTH + 2);
 
-    y += 46;
+    y += 40;
+
+    this.add
+      .rectangle(PANEL_X + 26, y, PANEL_W - 52, 2, PIXEL_UI.gold, 0.8)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2);
+
+    y += 14;
 
     // Director commentary box.
     const boxX = PANEL_X + 24;
     const boxW = PANEL_W - 48;
     this.add
-      .rectangle(boxX, y, boxW, 92, 0x0d1520, 1)
+      .rectangle(boxX, y, boxW, 96, 0x0d1520, 1)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setStrokeStyle(1, 0x1e3354, 1);
@@ -172,7 +194,7 @@ export class IntroScene extends Phaser.Scene {
     this.add
       .text(boxX + 10, y + 8, DIRECTOR_LABEL, {
         fontFamily: 'monospace',
-        fontSize: '11px',
+        fontSize: '13px',
         fontStyle: 'bold',
         color: GOLD_COLOR,
       })
@@ -182,19 +204,36 @@ export class IntroScene extends Phaser.Scene {
     this.add
       .text(boxX + 10, y + 24, DIRECTOR_WELCOME, {
         fontFamily: 'monospace',
-        fontSize: '13px',
+        fontSize: '14px',
         color: SLATE_LIGHT,
         wordWrap: { width: boxW - 20 },
-        lineSpacing: 3,
+        lineSpacing: 7,
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
 
-    y += 108;
+    y += 118;
 
     // Name label.
     this.add
-      .text(boxX, y, 'What is your name?', {
+      .text(boxX, y, 'Contestant name', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: SLATE_LIGHT,
+      })
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2);
+
+    y += 27;
+
+    // Name input — native HTML <input> positioned over the canvas.
+    this.createNameInput(boxX, y, boxW);
+
+    y += 62;
+
+    // Gender label.
+    this.add
+      .text(boxX, y, 'Pronouns', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: SLATE_LIGHT,
@@ -204,27 +243,10 @@ export class IntroScene extends Phaser.Scene {
 
     y += 22;
 
-    // Name input — native HTML <input> positioned over the canvas.
-    this.createNameInput(boxX, y, boxW);
-
-    y += 50;
-
-    // Gender label.
-    this.add
-      .text(boxX, y, 'How do you identify?', {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: SLATE_LIGHT,
-      })
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 2);
-
-    y += 24;
-
     // Gender selection radios.
     this.createGenderControls(boxX, y, boxW);
 
-    y += 52;
+    y += 50;
 
     // Confirm button.
     this.createConfirmButton(cx, y);
@@ -254,11 +276,11 @@ export class IntroScene extends Phaser.Scene {
       left: `${canvasRect.left + gameX * scaleX}px`,
       top: `${canvasRect.top + gameY * scaleY}px`,
       width: `${gameW * scaleX}px`,
-      height: `${34 * scaleY}px`,
+      height: `${38 * scaleY}px`,
       background: INPUT_BG,
       color: SLATE_LIGHT,
       border: '1px solid #1e3354',
-      padding: '0 8px',
+      padding: '4px 8px',
       fontFamily: 'monospace',
       fontSize: `${14 * Math.min(scaleX, scaleY)}px`,
       outline: 'none',
@@ -312,12 +334,12 @@ export class IntroScene extends Phaser.Scene {
       border: '0',
       display: 'grid',
       gridTemplateColumns: `repeat(${GENDER_OPTIONS.length}, 1fr)`,
-      gap: `${8 * scaleX}px`,
+      gap: `${16 * scaleX}px`,
       zIndex: '10000',
     });
 
     const legend = document.createElement('legend');
-    legend.textContent = 'How do you identify?';
+    legend.textContent = 'Pronouns';
     Object.assign(legend.style, {
       position: 'absolute',
       width: '1px',
@@ -408,8 +430,8 @@ export class IntroScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private createConfirmButton(cx: number, y: number): void {
-    const btnW = 260;
-    const btnH = 42;
+    const btnW = 280;
+    const btnH = 46;
     const bx = cx - btnW / 2;
 
     const bg = this.add
@@ -420,7 +442,7 @@ export class IntroScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     this.add
-      .text(cx, y + btnH / 2, 'ENTER THE DUNGEON', {
+      .text(cx, y + btnH / 2, 'Begin the descent', {
         fontFamily: 'monospace',
         fontSize: '15px',
         fontStyle: 'bold',
@@ -435,9 +457,9 @@ export class IntroScene extends Phaser.Scene {
 
     // Dim hint text.
     this.add
-      .text(cx, y + btnH + 8, '(or press Enter)', {
+      .text(cx, y + btnH - 1, 'Press Enter to continue', {
         fontFamily: 'monospace',
-        fontSize: '11px',
+        fontSize: '12px',
         color: SLATE_DIM,
       })
       .setOrigin(0.5, 0)

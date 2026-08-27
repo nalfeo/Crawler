@@ -1,5 +1,14 @@
 [
   {
+    "id": "character-select",
+    "label": "Character Select",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "dev-server",
+    "setupFile": "scripts/agent/review/setup/character-select.js",
+    "enabled": true,
+    "description": "Contestant identity setup with native name and pronoun controls. Uses the Equipment baseline's dark pixel palette, beveled framing, and clear primary-action hierarchy as the cross-surface visual reference."
+  },
+  {
     "id": "equipment",
     "label": "Equipment",
     "viewport": { "width": 1280, "height": 800 },
