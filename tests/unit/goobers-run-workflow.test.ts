@@ -63,6 +63,11 @@ interface GoobersDefinition {
   };
 }
 
+interface GoobersInstance {
+  repos: Array<{ token?: { env?: string } }>;
+  credentials?: Array<{ capability?: string; token?: { env?: string } }>;
+}
+
 function loadYaml<T>(...segments: string[]): T {
   return parse(readFileSync(path.join(REPO_ROOT, ...segments), 'utf8')) as T;
 }
@@ -189,8 +194,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     expect(runStep?.env).toMatchObject({
-      GH_TOKEN: '${{ secrets.CRAWLER_CI_PAT }}',
-      CRAWLER_CI_PAT: '${{ secrets.CRAWLER_CI_PAT }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
@@ -241,7 +246,11 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.if).toContain("env.GOOBERS_VERSION != 'goobers-dev-6d33b160'");
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
-    expect(run?.env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    expect(run?.env).toMatchObject({
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
     expect(run?.run).toContain(
       'goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"',
     );
@@ -251,5 +260,20 @@ describe('Goobers automatic dispatch and recovery', () => {
       'if-no-files-found': 'warn',
       'retention-days': 30,
     });
+  });
+
+  it('keeps Goobers repository and model credentials separate', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+    const requireToken = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Require GOOBERS_GITHUB_TOKEN',
+    );
+
+    expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
+    expect(instance.credentials).toContainEqual({
+      capability: 'agent:model',
+      token: { env: 'COPILOT_GITHUB_TOKEN' },
+    });
+    expect(requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET).toBe('${{ secrets.GOOBERS_GITHUB_TOKEN }}');
   });
 });

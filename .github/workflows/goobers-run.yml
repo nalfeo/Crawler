@@ -67,7 +67,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Require CRAWLER_CI_PAT
+      - name: Require GOOBERS_GITHUB_TOKEN
         # crawler-feature-pr's implement/push-branch stages declare
         # repo:push; the built-in github.token only has contents: read on
         # this job (see permissions:, above), so it can neither push a
@@ -76,12 +76,12 @@ jobs:
         # message instead of letting goobers run fail deep into the run.
         run: |
           set -euo pipefail
-          if [ -z "${CRAWLER_CI_PAT_SET:-}" ]; then
-            echo "::error::CRAWLER_CI_PAT secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
+          if [ -z "${GOOBERS_GITHUB_TOKEN_SET:-}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
             exit 1
           fi
         env:
-          CRAWLER_CI_PAT_SET: ${{ secrets.CRAWLER_CI_PAT }}
+          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
 
       - name: Resolve pinned archive checksum
         # Independent pin: this digest is reviewed and committed here, not
@@ -208,7 +208,7 @@ jobs:
               owner: ${{ github.repository_owner }}
               name: ${{ github.event.repository.name }}
               token:
-                env: CRAWLER_CI_PAT
+                env: GOOBERS_GITHUB_TOKEN
           workflowSource:
             kind: local-dir
             path: ${{ github.workspace }}/.goobers
@@ -228,8 +228,8 @@ jobs:
           # CopilotAdapter preflight probe on a clean runner (see the
           # "Install Copilot CLI" step comment above).
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
