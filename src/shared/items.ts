@@ -268,6 +268,13 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('anchor-mace', 'Anchor Mace', 'For when you need to make a point. Slowly.', R),
   wpn('twin-fangs', 'Twin Fangs', 'A pair of daggers that hum in harmony.', E),
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
+  // Merchant-stocked weapons: every id a Floor 2 shop archetype can roll needs
+  // a bag slug here, otherwise the purchase lands nowhere.
+  wpn('knife', 'Knife', 'Short, quick, and unsentimental about it.', C),
+  wpn('hammer', 'Hammer', 'Slow to swing. Very final on arrival.', C),
+  wpn('crossbow', 'Crossbow', 'Point, crank, regret. In that order.', U),
+  wpn('boomerang', 'Boomerang', 'Comes back. Usually to you.', C),
+  wpn('bowling-ball', 'Bowling Ball', 'Sponsored by the league. Rolls right through a lineup.', U),
 
   // ── Consumables (20) ────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),

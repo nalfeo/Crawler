@@ -186,6 +186,55 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
+  // --- Merchant-stocked weapons (no ITEM_CATALOG slug; equipment-only, like
+  //     the Wave-B floor 2 weapons below). Every weapon a shop archetype can
+  //     stock needs a def here, otherwise the settlement purchase path cannot
+  //     resolve the offer and the row renders as unbuyable. ---
+  weapon({
+    id: 'knife',
+    name: 'Knife',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'common',
+    weaponId: 'knife',
+    weightLb: 0.75,
+  }),
+  weapon({
+    id: 'hammer',
+    name: 'Hammer',
+    slots: ['mainHand', 'offHand'],
+    statBonuses: {},
+    rarity: 'common',
+    weaponId: 'hammer',
+    weightLb: 8,
+  }),
+  weapon({
+    id: 'crossbow',
+    name: 'Crossbow',
+    slots: ['mainHand', 'offHand'],
+    statBonuses: {},
+    rarity: 'uncommon',
+    weaponId: 'crossbow',
+    weightLb: 7,
+  }),
+  weapon({
+    id: 'boomerang',
+    name: 'Boomerang',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'common',
+    weaponId: 'boomerang',
+    weightLb: 1,
+  }),
+  weapon({
+    id: 'bowling-ball',
+    name: 'Bowling Ball',
+    slots: ['mainHand', 'offHand'],
+    statBonuses: {},
+    rarity: 'uncommon',
+    weaponId: 'bowling-ball',
+    weightLb: 14,
+  }),
   // --- Floor 2 weapons ---
   ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
 ];
@@ -375,6 +424,28 @@ export function isEquippableItem(itemId: string): boolean {
 /** All registered equipment base IDs, including generated-only bases. */
 export function getEquippableItemIds(): string[] {
   return [...EQUIPMENT_BY_ITEM_ID.keys()];
+}
+
+/**
+ * Weapon id (`weaponDefs.ts`) → the equipment def that activates it. First
+ * registration wins, matching the registration order of
+ * {@link getEquippableItemIds}. Used by merchant flows that stock raw weapon
+ * ids (Floor 2 shop archetypes) and must map them onto a real bag item.
+ */
+const EQUIPMENT_BY_WEAPON_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
+  const map = new Map<string, EquipmentItemDef>();
+  for (const def of EQUIPMENT_BY_ITEM_ID.values()) {
+    const weaponId = (def as Partial<WeaponEquipmentDef>).weaponId;
+    if (weaponId !== undefined && !map.has(weaponId)) {
+      map.set(weaponId, def);
+    }
+  }
+  return map;
+})();
+
+/** Equipment definition that activates the given weapon id, if any. */
+export function getEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
+  return EQUIPMENT_BY_WEAPON_ID.get(weaponId);
 }
 
 /** Equipment IDs that can be inserted through the static inventory item catalog. */

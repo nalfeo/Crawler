@@ -4,9 +4,11 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *existing* item ids: the weapons in
- * `weapons.json` and the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
- * The loader validates that invariant at load-time so a data typo can't ship.
+ * Archetype entries reference *purchasable* item ids: a weapon from
+ * `weapons.json` that a weapon-equipment def activates, an inventory item slug
+ * from `items.ts`, or the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * The loader validates that invariant at load-time (through the same resolver
+ * the purchase path uses) so stock a player could never buy can't ship.
  *
  * Prices are the *base* per-item price. Runtime price is
  * `basePrice * archetype.priceMultiplier * (tuning.shopPricing.tierMultiplier ?? 1)`.
@@ -15,6 +17,7 @@ import { z } from 'zod';
 import archetypesJson from './shop-archetypes.floor2.json';
 import weaponsJson from './weapons.json';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../quest-types.js';
+import { isShopCatalogItem } from '../shop-catalog.js';
 
 export const FLOOR2_QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
 
@@ -61,13 +64,22 @@ const shopArchetypePackSchema = z
   })
   .strict();
 
-/** Known item ids referenceable by shop archetypes. */
+/**
+ * Item ids a shop archetype may stock: every id the merchant purchase path can
+ * resolve onto a bag item. A weapon from `weapons.json` only qualifies once a
+ * weapon-equipment def activates it — otherwise the offer would render with a
+ * name and price but refuse the purchase as `unknown-item`.
+ */
 export function knownShopItemIds(): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const weapon of weaponsJson as Array<{ id: string }>) {
-    ids.add(weapon.id);
+    if (isShopCatalogItem(weapon.id)) {
+      ids.add(weapon.id);
+    }
   }
-  ids.add(SHOPKEEPER_EQUIPMENT_ITEM_ID);
+  if (isShopCatalogItem(SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
+    ids.add(SHOPKEEPER_EQUIPMENT_ITEM_ID);
+  }
   return ids;
 }
 
@@ -87,7 +99,7 @@ export function loadShopArchetypes(): readonly ShopArchetypeDef[] {
     for (const entry of archetype.entries) {
       if (!known.has(entry.itemId)) {
         throw new Error(
-          `Shop archetype "${archetype.id}" references unknown itemId "${entry.itemId}"`,
+          `Shop archetype "${archetype.id}" references unpurchasable itemId "${entry.itemId}"`,
         );
       }
     }
