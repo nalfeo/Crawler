@@ -209,10 +209,14 @@ export {
 export * from './achievements.js';
 export {
   FLOOR2_BOSS_ABILITY_CATALOG,
+  FLOOR4_BOSS_ABILITY_CATALOG,
   formatBossAbilityAnnouncement,
   getFloor2BossAbilityByBossId,
   getFloor2BossAbilityById,
+  getFloor4BossAbilityByBossId,
+  getFloor4BossAbilityById,
   loadFloor2BossAbilityCatalog,
+  loadFloor4BossAbilityCatalog,
   toBossAbilityCodexEntry,
 } from './boss-abilities.js';
 export type {

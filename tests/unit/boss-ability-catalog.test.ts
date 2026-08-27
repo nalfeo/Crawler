@@ -4,15 +4,20 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   FLOOR2_BOSS_ABILITY_CATALOG,
+  FLOOR4_BOSS_ABILITY_CATALOG,
   bossAbilityCatalogSchema,
   formatBossAbilityAnnouncement,
   getFloor2BossAbilityByBossId,
   getFloor2BossAbilityById,
+  getFloor4BossAbilityByBossId,
+  getFloor4BossAbilityById,
   loadFloor2BossAbilityCatalog,
+  loadFloor4BossAbilityCatalog,
   toBossAbilityCodexEntry,
 } from '../../src/shared/boss-abilities.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { floor2EnemyPack } from '../../src/shared/enemy-packs.js';
+import { floor4Manifest } from '../../src/shared/floor-manifest.js';
 import {
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
@@ -298,6 +303,40 @@ describe('Floor 2 boss ability catalog', () => {
       ]);
       expect(codex.counterplay.length).toBeGreaterThanOrEqual(40);
     }
+  });
+});
+
+describe('Floor 4 boss ability catalog', () => {
+  it('parses and covers every Headliner pool entry exactly once', () => {
+    expect(() => loadFloor4BossAbilityCatalog()).not.toThrow();
+    expect(FLOOR4_BOSS_ABILITY_CATALOG.floorId).toBe('floor-4');
+    const expectedBossIds = new Set(
+      floor4Manifest.floor4!.headliners.pool.map((entry) => entry.archetypeId),
+    );
+    const catalogBossIds = new Set(
+      FLOOR4_BOSS_ABILITY_CATALOG.entries.map((ability) => ability.bossArchetypeId),
+    );
+
+    expect(FLOOR4_BOSS_ABILITY_CATALOG.entries).toHaveLength(expectedBossIds.size);
+    expect(catalogBossIds).toEqual(expectedBossIds);
+    for (const ability of FLOOR4_BOSS_ABILITY_CATALOG.entries) {
+      expect(getFloor4BossAbilityById(ability.id)).toBe(ability);
+      expect(getFloor4BossAbilityByBossId(ability.bossArchetypeId)).toBe(ability);
+      expect(formatBossAbilityAnnouncement(ability)).toBe(
+        `${ability.attackName} — ${ability.announcementText}`,
+      );
+      expect(ability.timing.randomJitterMs).toBe(0);
+      expect(ability.targeting.tracksPlayer).toBe(false);
+    }
+  });
+
+  it('rejects missing Floor 4 Headliner coverage', () => {
+    expect(() =>
+      loadFloor4BossAbilityCatalog({
+        ...FLOOR4_BOSS_ABILITY_CATALOG,
+        entries: FLOOR4_BOSS_ABILITY_CATALOG.entries.slice(1),
+      }),
+    ).toThrow(/has no ability catalog entry/);
   });
 });
 

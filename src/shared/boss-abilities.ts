@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import bossAbilityCatalogJson from './data/boss-abilities.floor2.json';
+import floor4BossAbilityCatalogJson from './data/boss-abilities.floor4.json';
 import { loadFamilies } from './data/families.js';
-import { floor2EnemyPack } from './enemy-packs.js';
+import { floor2EnemyPack, getFloorEnemyPack } from './enemy-packs.js';
+import { floor4Manifest } from './floor-manifest.js';
 
 const idSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const designValueSchema = z
@@ -275,19 +277,17 @@ export type BossAbilityDef = z.infer<typeof bossAbilityDefSchema>;
 export const bossAbilityCatalogSchema = z
   .object({
     schemaVersion: z.literal('boss-abilities/v1'),
-    floorId: z.literal('floor-2'),
+    floorId: z.enum(['floor-2', 'floor-4']),
     entries: z.array(bossAbilityDefSchema).min(1),
   })
   .strict()
   .superRefine((catalog, ctx) => {
     const abilityIds = new Set<string>();
     const bossIds = new Set<string>();
-    const familyIds = new Set<string>();
     for (const [index, ability] of catalog.entries.entries()) {
       for (const [value, seen, label, path] of [
         [ability.id, abilityIds, 'ability id', 'id'],
         [ability.bossArchetypeId, bossIds, 'boss archetype', 'bossArchetypeId'],
-        [ability.familyId, familyIds, 'family', 'familyId'],
       ] as const) {
         if (seen.has(value)) {
           ctx.addIssue({
@@ -307,6 +307,7 @@ function validateFloor2Coverage(catalog: BossAbilityCatalog): void {
   const bosses = floor2EnemyPack.archetypes.filter((archetype) => archetype.isBoss === true);
   const bossesById = new Map(bosses.map((boss) => [boss.id, boss]));
   const familyIds = new Set(loadFamilies().map((family) => family.id));
+  const catalogFamilyIds = new Set<string>();
   const errors: string[] = [];
 
   for (const ability of catalog.entries) {
@@ -315,6 +316,7 @@ function validateFloor2Coverage(catalog: BossAbilityCatalog): void {
       errors.push(`catalog references unknown Floor 2 boss "${ability.bossArchetypeId}"`);
       continue;
     }
+
     if (ability.bossName !== boss.name) {
       errors.push(
         `${ability.bossArchetypeId} name mismatch: catalog="${ability.bossName}", enemies.floor2="${boss.name}"`,
@@ -328,6 +330,10 @@ function validateFloor2Coverage(catalog: BossAbilityCatalog): void {
     if (!familyIds.has(ability.familyId)) {
       errors.push(`${ability.bossArchetypeId} references unknown family "${ability.familyId}"`);
     }
+    if (catalogFamilyIds.has(ability.familyId)) {
+      errors.push(`duplicate family "${ability.familyId}"`);
+    }
+    catalogFamilyIds.add(ability.familyId);
     bossesById.delete(ability.bossArchetypeId);
   }
 
@@ -344,21 +350,86 @@ function validateFloor2Coverage(catalog: BossAbilityCatalog): void {
   }
 }
 
+function validateFloor4Coverage(catalog: BossAbilityCatalog): void {
+  const floor4 = floor4Manifest.floor4;
+  const headliners = floor4?.headliners;
+  if (!headliners) {
+    throw new Error('Invalid Floor 4 boss ability coverage: missing Headliner manifest block');
+  }
+  const pack = getFloorEnemyPack(headliners.enemyPackId);
+  const bossesById = new Map(pack?.archetypes.map((boss) => [boss.id, boss]) ?? []);
+  const expected = new Map(
+    headliners.pool.map((entry) => [entry.archetypeId, entry.displayName] as const),
+  );
+  const errors: string[] = [];
+
+  for (const ability of catalog.entries) {
+    const expectedName = expected.get(ability.bossArchetypeId);
+    if (expectedName === undefined) {
+      errors.push(`catalog references unknown Floor 4 Headliner "${ability.bossArchetypeId}"`);
+      continue;
+    }
+    const boss = bossesById.get(ability.bossArchetypeId);
+    if (boss === undefined) {
+      errors.push(`catalog references Headliner missing from pack "${ability.bossArchetypeId}"`);
+      continue;
+    }
+    if (ability.bossName !== expectedName || ability.bossName !== boss.name) {
+      errors.push(
+        `${ability.bossArchetypeId} name mismatch: catalog="${ability.bossName}", manifest="${expectedName}", enemies.floor4="${boss.name}"`,
+      );
+    }
+    expected.delete(ability.bossArchetypeId);
+  }
+
+  for (const missingBossId of expected.keys()) {
+    errors.push(`Floor 4 Headliner "${missingBossId}" has no ability catalog entry`);
+  }
+  if (catalog.entries.length !== headliners.pool.length) {
+    errors.push(
+      `catalog has ${catalog.entries.length} entries but Floor 4 has ${headliners.pool.length} Headliners`,
+    );
+  }
+  if (errors.length > 0) {
+    throw new Error(`Invalid Floor 4 boss ability coverage:\n- ${errors.join('\n- ')}`);
+  }
+}
 export function loadFloor2BossAbilityCatalog(
   json: unknown = bossAbilityCatalogJson,
 ): BossAbilityCatalog {
   const catalog = bossAbilityCatalogSchema.parse(json);
+  if (catalog.floorId !== 'floor-2') {
+    throw new Error(`Expected floor-2 boss ability catalog, got ${catalog.floorId}`);
+  }
   validateFloor2Coverage(catalog);
   return catalog;
 }
 
+export function loadFloor4BossAbilityCatalog(
+  json: unknown = floor4BossAbilityCatalogJson,
+): BossAbilityCatalog {
+  const catalog = bossAbilityCatalogSchema.parse(json);
+  if (catalog.floorId !== 'floor-4') {
+    throw new Error(`Expected floor-4 boss ability catalog, got ${catalog.floorId}`);
+  }
+  validateFloor4Coverage(catalog);
+  return catalog;
+}
+
 export const FLOOR2_BOSS_ABILITY_CATALOG = loadFloor2BossAbilityCatalog();
+export const FLOOR4_BOSS_ABILITY_CATALOG = loadFloor4BossAbilityCatalog();
 
 const ABILITY_BY_ID = new Map(
   FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.id, ability]),
 );
 const ABILITY_BY_BOSS_ID = new Map(
   FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.bossArchetypeId, ability]),
+);
+const FLOOR4_ABILITY_BY_ID = new Map(
+  FLOOR4_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.id, ability]),
+);
+const FLOOR4_ABILITY_BY_BOSS_ID = new Map(
+  FLOOR4_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.bossArchetypeId, ability]),
 );
 
 export function getFloor2BossAbilityById(abilityId: string): BossAbilityDef | undefined {
@@ -367,6 +438,14 @@ export function getFloor2BossAbilityById(abilityId: string): BossAbilityDef | un
 
 export function getFloor2BossAbilityByBossId(bossArchetypeId: string): BossAbilityDef | undefined {
   return ABILITY_BY_BOSS_ID.get(bossArchetypeId);
+}
+
+export function getFloor4BossAbilityById(abilityId: string): BossAbilityDef | undefined {
+  return FLOOR4_ABILITY_BY_ID.get(abilityId);
+}
+
+export function getFloor4BossAbilityByBossId(bossArchetypeId: string): BossAbilityDef | undefined {
+  return FLOOR4_ABILITY_BY_BOSS_ID.get(bossArchetypeId);
 }
 
 export function formatBossAbilityAnnouncement(ability: BossAbilityDef): string {
