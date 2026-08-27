@@ -213,7 +213,7 @@ spec:
       run:
         script: |
           set -eu
-          npm ci
+          npm ci --ignore-scripts
           goobers push-branch
       capabilities:
         - repo:push
@@ -226,7 +226,7 @@ spec:
       run:
         script: |
           set -eu
-          npm ci
+          npm ci --ignore-scripts
           goobers push-branch
           goobers open-pr
       capabilities:

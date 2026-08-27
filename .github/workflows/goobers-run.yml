@@ -106,10 +106,11 @@ jobs:
                   "repos/${GITHUB_REPOSITORY}/issues/${candidate_issue}/timeline" \
                   --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
                   while read -r candidate; do
-                    details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName)"
+                    details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName,headRepository)"
                     state="$(jq -r '.state' <<<"${details}")"
                     branch="$(jq -r '.headRefName' <<<"${details}")"
-                    if [ "${state}" = "OPEN" ] && [[ "${branch}" == goobers/crawler/* ]]; then
+                    repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"${details}")"
+                    if [ "${state}" = "OPEN" ] && [ "${repository}" = "${GITHUB_REPOSITORY}" ] && [[ "${branch}" == goobers/crawler/* ]]; then
                       printf '%s\n' "${candidate}"
                       break
                     fi
@@ -137,10 +138,11 @@ jobs:
               "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/timeline" \
               --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
               while read -r candidate; do
-                details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName)"
+                details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName,headRepository)"
                 state="$(jq -r '.state' <<<"${details}")"
                 branch="$(jq -r '.headRefName' <<<"${details}")"
-                if [ "${state}" = "OPEN" ] && [[ "${branch}" == goobers/crawler/* ]]; then
+                repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"${details}")"
+                if [ "${state}" = "OPEN" ] && [ "${repository}" = "${GITHUB_REPOSITORY}" ] && [[ "${branch}" == goobers/crawler/* ]]; then
                   printf '%s\n' "${candidate}"
                   break
                 fi
@@ -166,7 +168,6 @@ jobs:
             echo "::error::Open PR #${pr_number} has no readable head branch; use abandon_existing=true to start over." >&2
             exit 1
           fi
-          gh pr checkout "${pr_number}" --repo "${GITHUB_REPOSITORY}"
           {
             echo "GOOBERS_RESUME_PR=${pr_number}"
             echo "GOOBERS_RESUME_BRANCH=${branch}"
@@ -270,6 +271,14 @@ jobs:
 
       - name: Install project dependencies
         run: npm ci
+
+      - name: Checkout recovered Goobers branch
+        if: env.GOOBERS_RESUME_PR != ''
+        env:
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr checkout "${GOOBERS_RESUME_PR}" --repo "${GITHUB_REPOSITORY}"
 
       - name: Install Copilot CLI
         # Pinned npm package install instead of piping the mutable

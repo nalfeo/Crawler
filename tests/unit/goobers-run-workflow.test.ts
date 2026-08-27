@@ -313,10 +313,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recovery?.run).toContain('goobers/status:in-review');
     expect(recovery?.run).toContain('Scheduled recovery selected issue');
     expect(recovery?.run).toContain('goobers/crawler/*');
-    expect(recovery?.run).toContain('gh pr checkout "${pr_number}"');
+    expect(recovery?.run).not.toContain('gh pr checkout "${pr_number}"');
     expect(recovery?.run).toContain('gh pr close "${pr_number}"');
     expect(recovery?.run).toContain('starting over');
     expect(recovery?.run).toContain('GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}');
+    expect(recovery?.run).toContain('headRepository');
+    expect(recovery?.run).toContain('abandon_existing=true requires an explicit issue_number');
+    expect(
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Checkout recovered Goobers branch')
+        ?.run,
+    ).toContain('gh pr checkout "${GOOBERS_RESUME_PR}"');
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Preserve trusted Goobers source')
         ?.run,
