@@ -20,21 +20,6 @@ export interface TheoreticalWeaponDps {
   readonly hitsPerActivation: number;
 }
 
-function hitsPerActivation(def: WeaponDef): number {
-  if (def.weaponType === WeaponType.BEAM) {
-    if (!(def.beamTickMs > 0) || !(def.durationMs > 0)) {
-      return 1;
-    }
-    const tickMs = Math.max(1, def.beamTickMs);
-    // Mirrors the live pipeline: beams tick immediately on spawn, beamSystem runs
-    // before lifetimeSystem, and lifetimeSystem removes at elapsed >= expiresAt,
-    // so an exact boundary tick at durationMs is included.
-    return Math.max(1, Math.floor(def.durationMs / tickMs) + 1);
-  }
-
-  return 1;
-}
-
 export function computeTheoreticalSingleTargetDps(
   def: WeaponDef,
   stats: CombatStats,
@@ -52,7 +37,7 @@ export function computeTheoreticalSingleTargetDps(
     stats.critChance ?? 0,
     stats.critMultiplier ?? 1,
   );
-  const hitCount = hitsPerActivation(def);
+  const hitCount = 1;
   const effectiveAccuracy = computeEffectiveAccuracyFromValues(
     def.weaponType,
     def.baseAccuracy,
