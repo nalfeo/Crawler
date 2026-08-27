@@ -195,6 +195,7 @@ jobs:
           goobers run "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
 
       - name: Upload run journal
+        id: upload-run-journal
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -202,3 +203,66 @@ jobs:
           path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Comment with Goobers run diagnostics
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
+          if [ -z "$events_file" ]; then
+            echo "No Goobers journal events found; skipping issue comment."
+            exit 0
+          fi
+
+          issue_number="$(
+            jq -r '
+              select(.externalRef? and .externalRef.kind == "issue")
+              | .externalRef.id
+            ' "$events_file" | tail -n 1
+          )"
+          if [ -z "$issue_number" ] || [ "$issue_number" = "null" ]; then
+            echo "No claimed issue found in Goobers journal; skipping issue comment."
+            exit 0
+          fi
+
+          run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
+          terminal_summary="$(
+            jq -r '
+              select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
+              | [
+                  (.type // ""),
+                  ("stage=" + (.stage // "-")),
+                  ("status=" + (.status // .result.status // "-")),
+                  ("code=" + (.error.code // .result.error.code // "-")),
+                  (.error.message // .result.error.message // .result.summary // "")
+                ]
+              | map(select(. != "" and . != "code=-"))
+              | join(" | ")
+            ' "$events_file" | tail -n 8
+          )"
+
+          body="$(mktemp)"
+          {
+            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
+            echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
+            echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
+            if [ -n "$terminal_summary" ]; then
+              echo
+              echo "Terminal journal events:"
+              echo '```'
+              echo "$terminal_summary"
+              echo '```'
+            fi
+            echo
+            echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          } > "$body"
+
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
