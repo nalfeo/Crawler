@@ -36,6 +36,7 @@ import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME } from '../../src/shared/constants.js';
+import type { Floor1BossRewardSpellId } from '../../src/shared/abilities.js';
 
 function createPlayingFloor1World(seed: number): { world: GameWorld; playerEid: number } {
   const world = createGameWorld({ seed });
@@ -199,6 +200,99 @@ describe('Curse auto-triggers in the shipped visual pipeline', () => {
     const bursts = world.vfxEvents.filter((e) => e.kind === 'curseBurst');
     expect(bursts.length).toBeGreaterThanOrEqual(1);
   });
+});
+
+describe('Remaining boss-reward spells auto-trigger in the shipped visual pipeline', () => {
+  it.each([
+    {
+      spellId: 'heal',
+      seed: 17,
+      prepare: (world: GameWorld, playerEid: number) => {
+        const maxHp = world.stores.health.max[playerEid] ?? 100;
+        setComponent(world.ecs, playerEid, Health, { current: maxHp - 30, max: maxHp });
+      },
+    },
+    {
+      spellId: 'magic-missile',
+      seed: 19,
+      prepare: (world: GameWorld, playerEid: number) => {
+        spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+      },
+    },
+    {
+      spellId: 'frost-nova',
+      seed: 23,
+      prepare: (world: GameWorld, playerEid: number) => {
+        spawnStationaryEnemyNearPlayer(world, playerEid, 2);
+        spawnStationaryEnemyNearPlayer(world, playerEid, -2);
+        spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+      },
+    },
+    {
+      spellId: 'bless',
+      seed: 29,
+      prepare: (world: GameWorld, playerEid: number) => {
+        spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+      },
+    },
+    {
+      spellId: 'stoneskin',
+      seed: 31,
+      prepare: (world: GameWorld, playerEid: number) => {
+        const maxHp = world.stores.health.max[playerEid] ?? 100;
+        setComponent(world.ecs, playerEid, Health, {
+          current: Math.floor(maxHp * 0.5),
+          max: maxHp,
+        });
+      },
+    },
+    {
+      spellId: 'vampiric-touch',
+      seed: 37,
+      prepare: (world: GameWorld, playerEid: number) => {
+        const maxHp = world.stores.health.max[playerEid] ?? 100;
+        setComponent(world.ecs, playerEid, Health, {
+          current: Math.floor(maxHp * 0.5),
+          max: maxHp,
+        });
+        spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+      },
+    },
+    {
+      spellId: 'haste',
+      seed: 41,
+      frames: 300,
+      prepare: (world: GameWorld, playerEid: number) => {
+        spawnStationaryEnemyNearPlayer(world, playerEid, 3);
+      },
+    },
+  ])(
+    '$spellId fires from its authored trigger after boss-reward pick',
+    ({ spellId, seed, frames = 90, prepare }) => {
+      const { world, playerEid } = createPlayingFloor1World(seed);
+      const options = createFloor1MainSceneOptions();
+
+      world.floorScenario!.offeredRewardSpellIds = [
+        spellId as Floor1BossRewardSpellId,
+        'heal',
+        'fireball',
+      ];
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      expect(selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId)).toBe(
+        true,
+      );
+
+      // Floor 1's one-shot stat initialization must finish before lowering HP.
+      stepVisualPipeline(world, options, 1);
+      prepare(world, playerEid);
+      // Bless and Haste receive their skill_usage trigger from a real starter-weapon
+      // attack; every other spell's authored condition is observed directly here.
+      stepVisualPipeline(world, options, frames);
+
+      const state = world.abilityStatesByEntity.get(playerEid);
+      expect(state?.cooldownByAbilityId.get(spellId)).toBeDefined();
+    },
+  );
 });
 
 describe('Fireball kill attribution', () => {
