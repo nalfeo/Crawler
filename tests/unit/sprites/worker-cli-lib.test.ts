@@ -77,6 +77,21 @@ describe('createDrainOnStatus', () => {
     expect(abort).toHaveBeenCalledTimes(1);
   });
 
+  it('resets the legacy idle counter when a queued request is skipped', () => {
+    const abort = vi.fn();
+    const wrapped = createDrainOnStatus({ base: vi.fn(), maxEmptyPolls: 3, abort });
+    const skipped: WorkerStatus = { type: 'skipped', briefId: 'test', reason: 'rejected' };
+
+    wrapped(idle);
+    wrapped(idle);
+    wrapped(skipped);
+    wrapped(idle);
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
   it('only aborts once even if extra idle events arrive after the trigger', () => {
     const abort = vi.fn();
     const base = vi.fn();

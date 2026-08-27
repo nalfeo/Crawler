@@ -233,13 +233,14 @@ describe('runWorker', () => {
   it.each([
     'after-precompletion-empty',
     'immediately-before-completion',
+    'marker-visible-at-first-idle',
     'completion-while-processing',
   ] as const)('drains concurrent slots without dropping the %s race', async (race) => {
     mockGenerate.mockResolvedValue(fakeSummaryResult as never);
     const ack = vi.fn().mockResolvedValue(undefined);
     const messages: DequeuedMessage[] = [];
     const request = makeRequest(`race-${race}`);
-    let producerComplete = false;
+    let producerComplete = race === 'marker-visible-at-first-idle';
     let idleCount = 0;
     const abortController = new AbortController();
     const statuses: WorkerStatus[] = [];
@@ -272,6 +273,9 @@ describe('runWorker', () => {
           if (race === 'immediately-before-completion' && idleCount === 1) {
             void queue.enqueue(request);
             producerComplete = true;
+          }
+          if (race === 'marker-visible-at-first-idle' && idleCount === 1) {
+            void queue.enqueue(request);
           }
         }
         if (status.type === 'processing' && race === 'completion-while-processing') {

@@ -15,7 +15,15 @@
     },
     "code_review": {
       "clean": false,
-      "rounds": []
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

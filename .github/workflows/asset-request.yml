@@ -191,7 +191,6 @@ jobs:
           # standalone workers; this workflow exits only after its producer has
           # durably completed and the two worker slots confirm empty.
           SPRITES_WORKER_DRAIN: 'true'
-          SPRITES_WORKER_MAX_EMPTY_POLLS: '3'
           SPRITES_WORKER_POLL_MS: '1000'
           SPRITES_WORKER_CONCURRENCY: '2'
 

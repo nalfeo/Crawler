@@ -68,9 +68,9 @@ describe('asset-request workflow capacity', () => {
     expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('FOUNDRY_'))).toBe(false);
     expect(drain?.env).toMatchObject({
       SPRITES_WORKER_DRAIN: 'true',
-      SPRITES_WORKER_MAX_EMPTY_POLLS: '3',
       SPRITES_WORKER_POLL_MS: '1000',
     });
+    expect(drain?.env).not.toHaveProperty('SPRITES_WORKER_MAX_EMPTY_POLLS');
     expect(drain?.run).toBe('bash scripts/sprites/asset-request-pipeline.sh');
   });
 

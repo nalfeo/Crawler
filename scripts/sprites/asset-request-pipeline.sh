@@ -67,7 +67,11 @@ fi
 # ignored, and the worker confirms emptiness with a dequeue begun after this
 # marker before exiting. Requests submitted after this producer boundary belong
 # to the next serialized workflow run.
-: > "$marker"
+: > "$marker" || {
+  echo "asset-request pipeline: could not write producer marker: $marker" >&2
+  echo "Remediation: verify RUNNER_TEMP is writable and rerun the workflow." >&2
+  exit 1
+}
 
 wait "$worker_pid"
 worker_status=$?
