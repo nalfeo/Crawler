@@ -109,7 +109,7 @@ const DOUBLE_CLICK_MS = 220;
 const GENERATED_EQUIPMENT_FALLBACK_DESCRIPTION =
   'A dungeon-forged reward with terms the producers refuse to print.';
 
-export function generatedEquipmentTooltipDescription(
+function generatedEquipmentTooltipDescription(
   instance: Pick<GeneratedEquipmentInstanceV1, 'baseId'>,
 ): string {
   const baseDescription = getItemById(instance.baseId)?.description.trim();
@@ -331,25 +331,22 @@ export function createInventoryUI(
     };
   };
 
-  function generatedEquipmentSummaryLine(
+  function generatedEquipmentSummaryLines(
     entry: GeneratedEquipmentInventoryEntry,
-  ): string | undefined {
-    if (!currentWorld) return undefined;
+  ): readonly string[] {
+    if (!currentWorld) return [];
     const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
-    if (!instance) return undefined;
+    if (!instance) return [];
     const stats = Object.entries(instance.frozen.statBonuses).flatMap(([stat, value]) =>
       value == null || value === 0
         ? []
         : [`${value >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`],
     );
-    const summary = [
+    return [
       instance.frozen.slots.map(getSlotLabel).join(' / '),
-      stats.join(', '),
+      ...stats,
       `${instance.frozen.weightLb} lb`,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    return summary.length > 0 ? summary : undefined;
+    ].filter((line) => line.length > 0);
   }
 
   function resolveEntryDef(entry: InventoryBagEntry): ItemDef | undefined {
@@ -961,9 +958,10 @@ export function createInventoryUI(
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
     const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
-    const generatedSummary =
-      entry.kind === 'generated-instance' ? generatedEquipmentSummaryLine(entry) : undefined;
-    const statLine = [dpsLine, generatedSummary].filter(Boolean).join(' · ') || undefined;
+    const statLines = [
+      ...(dpsLine ? [dpsLine] : []),
+      ...(entry.kind === 'generated-instance' ? generatedEquipmentSummaryLines(entry) : []),
+    ];
     tooltipObjects.push(
       ...renderItemTooltip({
         scene,
@@ -979,7 +977,7 @@ export function createInventoryUI(
         quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
-        statLine,
+        statLines,
         crispText,
       }),
     );
