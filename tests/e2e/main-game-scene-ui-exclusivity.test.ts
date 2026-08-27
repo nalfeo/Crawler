@@ -746,13 +746,12 @@ describe('MainGameScene UI exclusivity', () => {
     });
 
     await mainSceneProbe.queueInteraction(page);
-    await page.waitForTimeout(150);
-    const after = await mainSceneProbe.getState(page);
-
-    expect(
-      !after.conversationOpen ||
-        (after.conversationLineIndex ?? -1) > (before.conversationLineIndex ?? -1),
-      'interaction input should advance to the next line or close the conversation',
-    ).toBe(true);
+    await waitForState(
+      page,
+      (s) =>
+        !s.conversationOpen ||
+        (s.conversationLineIndex ?? -1) > (before.conversationLineIndex ?? -1),
+      { label: 'interaction input advanced or closed the conversation' },
+    );
   });
 });
