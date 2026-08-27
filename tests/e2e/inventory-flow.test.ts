@@ -221,6 +221,7 @@ describe('inventory flow (e2e)', () => {
   });
 
   it('scrolls the standalone inventory bag when it overflows its visible rows', async () => {
+    await page.setViewportSize({ width: 960, height: 540 });
     await loadUiProbeLab(page);
     await hideLabChrome(page);
 
@@ -241,6 +242,39 @@ describe('inventory flow (e2e)', () => {
       await probe.getInventoryCellBounds(page, total - 1),
       'the last inventory cell should be off-screen before scrolling',
     ).toBeNull();
+
+    const visibleIds = await probe.getInventoryVisibleItemIds(page);
+    const visibleIndices = await probe.getInventoryVisibleCellIndices(page);
+    expect(visibleIds.length, 'visible ids/indices should stay in the same compact order').toBe(
+      visibleIndices.length,
+    );
+    if (visibleIndices[0] !== undefined) {
+      expect(
+        await probe.getInventoryCellBounds(page, visibleIndices[0]),
+        'the first visible compact entry should map to a concrete cell bounds via absolute index',
+      ).not.toBeNull();
+    }
+
+    const scrollDownButton = await probe.getInventoryScrollDownControlBounds(page);
+    expect(
+      scrollDownButton,
+      'overflow should expose a pointer/touch scroll-down control',
+    ).not.toBeNull();
+    if (scrollDownButton) {
+      const rect = await getCanvasRect(page);
+      const game = await getGameSize(page);
+      const downCenter = boundsCenterScreen(rect, game, scrollDownButton);
+      await page.mouse.click(downCenter.x, downCenter.y);
+      await page.waitForTimeout(150);
+      expect(
+        await probe.getInventoryScrollRow(page),
+        'tapping/clicking the scroll-down control should move the inventory without wheel input',
+      ).toBeGreaterThan(0);
+    }
+
+    await probe.scrollInventory(page, -999);
+    await page.waitForTimeout(150);
+    expect(await probe.getInventoryScrollRow(page)).toBe(0);
 
     const firstCell = await probe.getInventoryCellBounds(page, 0);
     expect(firstCell, 'the first cell should remain available for wheel targeting').not.toBeNull();

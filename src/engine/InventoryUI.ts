@@ -114,31 +114,45 @@ export function createInventoryUI(
   refresh(world: GameWorld): void;
   isOpen(): boolean;
   /**
-   * Test/automation affordance: world-space bounds of the index-th inventory
-   * cell background (in render order), or null when no such cell is rendered.
-   * Lets e2e harnesses hover/click a specific canvas cell.
+   * Test/automation affordance: world-space bounds of the cell that corresponds
+   * to an absolute index in the current filtered-entry list, or null when that
+   * entry is currently off-screen/not rendered.
    */
   getCellScreenBounds(index: number): ScreenBounds | null;
   /**
-   * Test/automation affordance: render-order index of a visible canonical entry.
+   * Test/automation affordance: absolute filtered-entry index of a canonical
+   * entry when that entry is currently visible (else null).
    * Generated entries use their immutable instance key, so duplicate-base items
    * remain independently addressable.
    */
   getCellIndexForEntry(entry: InventoryBagEntry): number | null;
   /**
-   * Legacy base-item-id lookup retained for existing inventory probes. Matches
-   * the first visible cell whose *base* item id equals `itemId` — for a
-   * generated instance this is its base id, not the opaque instance key.
+   * Legacy base-item-id lookup retained for existing inventory probes. Returns
+   * the absolute filtered-entry index for the first visible cell whose *base*
+   * item id equals `itemId` (generated entries use their base id).
    */
   getCellIndexForItem(itemId: string): number | null;
-  /** Test/automation affordance: visible rendered inventory base item ids, in cell order. */
+  /**
+   * Test/automation affordance: visible rendered inventory base item ids, in
+   * compact on-screen cell order (0..N-1). Not index-aligned with
+   * `getCellScreenBounds`.
+   */
   getVisibleItemIds(): readonly string[];
+  /**
+   * Test/automation affordance: absolute filtered-entry indices for visible
+   * cells, in the same compact order as `getVisibleItemIds`.
+   */
+  getVisibleCellIndices(): readonly number[];
   /** Scroll the visible inventory grid by whole rows. */
   scroll(rows: number): boolean;
   /** Current top row of the visible inventory grid. */
   getScrollRow(): number;
   /** Maximum scrollable row of the visible inventory grid. */
   getMaxScrollRow(): number;
+  /** Bounds for the standalone inventory scroll-up touch control, when shown. */
+  getScrollUpControlBounds(): ScreenBounds | null;
+  /** Bounds for the standalone inventory scroll-down touch control, when shown. */
+  getScrollDownControlBounds(): ScreenBounds | null;
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -499,6 +513,9 @@ export function createInventoryUI(
   // parallel to cellBackgrounds. Powers getVisibleItemIds/getCellIndexForItem.
   const cellItemIds: string[] = [];
   const visibleCellItemIds: string[] = [];
+  const visibleCellIndices: number[] = [];
+  let scrollUpControlBounds: ScreenBounds | null = null;
+  let scrollDownControlBounds: ScreenBounds | null = null;
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -589,6 +606,9 @@ export function createInventoryUI(
     cellEntryIdentities.length = 0;
     cellItemIds.length = 0;
     visibleCellItemIds.length = 0;
+    visibleCellIndices.length = 0;
+    scrollUpControlBounds = null;
+    scrollDownControlBounds = null;
   }
 
   function clearTooltip(): void {
@@ -886,6 +906,7 @@ export function createInventoryUI(
       cellObjects.push(cellBg, iconObject);
       cellBackgrounds[index] = cellBg;
       visibleCellItemIds.push(def.id);
+      visibleCellIndices.push(index);
     }
 
     // Fill trailing cells of the final row with empty-slot backgrounds so the
@@ -915,12 +936,9 @@ export function createInventoryUI(
     }
 
     if (maxScrollRow > 0) {
-      const scrollDirections = `${scrollRow > 0 ? '↑' : ''}${scrollRow < maxScrollRow ? '↓' : ''}`;
-      const scrollText =
-        `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows}` +
-        (scrollDirections ? ` ${scrollDirections}` : '');
+      const scrollText = `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows}`;
       const scrollHint = crispText(
-        gridLeft + gridPixelWidth,
+        gridLeft + gridPixelWidth - 44,
         panelY + panelHeight - PANEL_PADDING - 10,
         scrollText,
         {
@@ -932,6 +950,55 @@ export function createInventoryUI(
       scrollHint.setOrigin(1, 1);
       container.add(scrollHint);
       cellObjects.push(scrollHint);
+
+      const scrollBtnY = panelY + panelHeight - PANEL_PADDING - 16;
+      const scrollBtnSize = 16;
+      const scrollBtnGap = 4;
+      const scrollDownX = gridLeft + gridPixelWidth - scrollBtnSize / 2;
+      const scrollUpX = scrollDownX - scrollBtnSize - scrollBtnGap;
+      const makeScrollButton = (
+        centerX: number,
+        glyph: string,
+        enabled: boolean,
+        deltaRows: number,
+      ): void => {
+        const bgColor = enabled ? COLORS.tabBg : COLORS.emptyCellBg;
+        const borderColor = enabled ? COLORS.accent : COLORS.emptyCellBorder;
+        const buttonBg = scene.add.rectangle(
+          centerX,
+          scrollBtnY,
+          scrollBtnSize,
+          scrollBtnSize,
+          bgColor,
+        );
+        buttonBg.setStrokeStyle(1, borderColor);
+        buttonBg.setInteractive({ useHandCursor: enabled });
+        buttonBg.on('pointerdown', () => {
+          scroll(deltaRows);
+        });
+        const buttonGlyph = crispText(centerX, scrollBtnY + 1, glyph, {
+          fontFamily: FONT_FAMILY,
+          fontSize: '10px',
+          color: hex(enabled ? COLORS.textPrimary : COLORS.textSecondary),
+        });
+        buttonGlyph.setOrigin(0.5, 0.5);
+        buttonGlyph.setInteractive({ useHandCursor: enabled });
+        buttonGlyph.on('pointerdown', () => {
+          scroll(deltaRows);
+        });
+        container.add(buttonBg);
+        container.add(buttonGlyph);
+        cellObjects.push(buttonBg, buttonGlyph);
+        const b = buttonBg.getBounds();
+        const screenBounds: ScreenBounds = { x: b.x, y: b.y, width: b.width, height: b.height };
+        if (deltaRows < 0) {
+          scrollUpControlBounds = screenBounds;
+        } else {
+          scrollDownControlBounds = screenBounds;
+        }
+      };
+      makeScrollButton(scrollUpX, '↑', scrollRow > 0, -1);
+      makeScrollButton(scrollDownX, '↓', scrollRow < maxScrollRow, 1);
     }
 
     // Thin divider anchoring the count footer to the grid above it, so the
@@ -1150,12 +1217,17 @@ export function createInventoryUI(
   ): void => {
     if (!visible || maxScrollRow <= 0 || deltaY === 0) return;
     const s = getRenderScale(scene);
-    const gridBounds = new Phaser.Geom.Rectangle(panelX, gridY, panelWidth, gridHeight);
-    if (!Phaser.Geom.Rectangle.Contains(gridBounds, pointer.x / s, pointer.y / s)) return;
+    const px = pointer.x / (s * uiScale);
+    const py = pointer.y / (s * uiScale);
+    const gridPixelWidth = COLS * CELL_SIZE + (COLS - 1) * CELL_GAP;
+    const gridLeft = panelX + (panelWidth - gridPixelWidth) / 2;
+    if (px < gridLeft || px > gridLeft + gridPixelWidth || py < gridY || py > gridY + gridHeight) {
+      return;
+    }
     scroll(deltaY > 0 ? 1 : -1);
   };
 
-  scene.input.on('wheel', handleWheel);
+  scene.input.on?.('wheel', handleWheel);
 
   return {
     toggle,
@@ -1176,9 +1248,12 @@ export function createInventoryUI(
       return i >= 0 ? i : null;
     },
     getVisibleItemIds: (): readonly string[] => [...visibleCellItemIds],
+    getVisibleCellIndices: (): readonly number[] => [...visibleCellIndices],
     scroll,
     getScrollRow: () => scrollRow,
     getMaxScrollRow: () => maxScrollRow,
+    getScrollUpControlBounds: () => scrollUpControlBounds,
+    getScrollDownControlBounds: () => scrollDownControlBounds,
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {
@@ -1191,7 +1266,7 @@ export function createInventoryUI(
     getEquipmentSlotFilter: () => externalSlotFilter,
     destroy() {
       scene.input.keyboard?.off('keydown', handleKeyDown);
-      scene.input.off('wheel', handleWheel);
+      scene.input.off?.('wheel', handleWheel);
       scene.scale.off('resize', applyLayout);
       clearTabObjects();
       clearCellObjects();

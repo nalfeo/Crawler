@@ -101,15 +101,28 @@ export interface UiProbeApi {
   openInventory(): void;
   closeOverlays(): void;
   isInventoryOpen(): boolean;
+  /**
+   * Bounds for an absolute filtered-entry index in the standalone inventory;
+   * returns null when that entry is currently off-screen.
+   */
   getInventoryCellBounds(index: number): ScreenBounds | null;
-  /** Render-order index of the first visible cell holding `itemId`, or null. */
+  /** Absolute filtered-entry index of the first visible cell holding `itemId`, or null. */
   getInventoryCellIndexForItem(itemId: string): number | null;
+  /** Compact visible-order list of rendered inventory item ids. */
+  getInventoryVisibleItemIds(): readonly string[];
+  /**
+   * Absolute filtered-entry indices in the same compact visible order as
+   * `getInventoryVisibleItemIds()`.
+   */
+  getInventoryVisibleCellIndices(): readonly number[];
   /** Scroll the standalone inventory grid by whole rows. */
   scrollInventory(rows: number): void;
   /** Current top row of the standalone inventory grid. */
   getInventoryScrollRow(): number;
   /** Maximum scrollable row of the standalone inventory grid. */
   getInventoryMaxScrollRow(): number;
+  getInventoryScrollUpControlBounds(): ScreenBounds | null;
+  getInventoryScrollDownControlBounds(): ScreenBounds | null;
   isTooltipVisible(): boolean;
   isTooltipPinned(): boolean;
 
@@ -524,11 +537,17 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.inventoryUI?.getCellScreenBounds(index) ?? null,
         getInventoryCellIndexForItem: (itemId: string) =>
           this.inventoryUI?.getCellIndexForItem(itemId) ?? null,
+        getInventoryVisibleItemIds: () => this.inventoryUI?.getVisibleItemIds() ?? [],
+        getInventoryVisibleCellIndices: () => this.inventoryUI?.getVisibleCellIndices() ?? [],
         scrollInventory: (rows: number) => {
           this.inventoryUI?.scroll(rows);
         },
         getInventoryScrollRow: () => this.inventoryUI?.getScrollRow() ?? 0,
         getInventoryMaxScrollRow: () => this.inventoryUI?.getMaxScrollRow() ?? 0,
+        getInventoryScrollUpControlBounds: () =>
+          this.inventoryUI?.getScrollUpControlBounds() ?? null,
+        getInventoryScrollDownControlBounds: () =>
+          this.inventoryUI?.getScrollDownControlBounds() ?? null,
         isTooltipVisible: () => this.inventoryUI?.isTooltipVisible() ?? false,
         isTooltipPinned: () => this.inventoryUI?.isTooltipPinned() ?? false,
 
