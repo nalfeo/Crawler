@@ -14,8 +14,16 @@
       "notes": "Approved with detail changes. C1: gate exact tile-index metadata on the persisted settlement snapshot, whose creation is all-or-nothing after room activation. C2: repaint only stored internal non-door connector tiles during settlement initialization; internal doors remain DOOR. C3: add same-map pre/post initialization safety coverage. C4: use ReadonlySet<number> flat indices for allocation-free hot-path lookup. C5: assert both internal doorway tiles safe and both exterior doors plus adjacent cave approaches unsafe. No different architecture warranted."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
