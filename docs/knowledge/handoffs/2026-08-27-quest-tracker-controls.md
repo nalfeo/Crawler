@@ -47,7 +47,12 @@ the existing single focused/expanded `tracked` state is unchanged.
   rendered row, and a truncated-out quest's toggle stayed visible/interactive.
   `fitQuestTrackerLinesWithRowMap` now maps each quest's title row through the
   same wrap/truncate pass that produces the rendered body, and quests whose
-  title row is truncated away get no toggle at all.
+  title row is truncated away get no toggle at all. An independent re-grade
+  after this fix caught a follow-on regression in the same area: `sync()`'s
+  final loop unconditionally re-showed every cached toggle (including ones
+  just hidden because their row was truncated away), silently overriding the
+  per-quest truncation check. Fixed by tracking truncated quest ids for that
+  frame and excluding them from the unconditional re-show pass.
 - Routed the toggle click through the sim's own input pipeline instead of
   HudUI retaining a `GameWorld` reference and calling `toggleQuestArrow`
   directly from a HUD callback (`.github/instructions/engine.instructions.md`

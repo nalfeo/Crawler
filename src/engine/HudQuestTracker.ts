@@ -304,12 +304,14 @@ export function createHudQuestTracker(
     const fit = fitQuestTrackerLinesWithRowMap(lines);
     body.setText(fit.visible.join('\n'));
 
+    const truncatedQuestIds = new Set<string>();
     for (const quest of active) {
       const rawIndex = titleRawIndexByQuestId.get(quest.questId);
       const renderRow = rawIndex === undefined ? -1 : fit.rawLineRenderRow[rawIndex]!;
       if (renderRow === -1) {
         // The quest's title row was truncated out of the rendered body —
         // never show or wire up a toggle whose row doesn't exist.
+        truncatedQuestIds.add(quest.questId);
         const stale = arrowToggles.get(quest.questId);
         if (stale) {
           stale.setVisible(false);
@@ -350,7 +352,10 @@ export function createHudQuestTracker(
     panel.setSize(NAV_QUEST_WIDTH, panelHeight);
     titleStrip.setPosition(2, 2).setSize(NAV_QUEST_WIDTH - 4, TITLE_H);
     body.setVisible(masterVisible && activeVisible && !collapsed);
-    for (const toggle of arrowToggles.values()) {
+    for (const [questId, toggle] of arrowToggles) {
+      if (truncatedQuestIds.has(questId)) {
+        continue;
+      }
       toggle.setVisible(masterVisible && activeVisible && !collapsed);
     }
   }
