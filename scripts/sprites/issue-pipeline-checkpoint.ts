@@ -117,8 +117,8 @@ export const issueCheckpointTimingSchema = z
   })
   .strict()
   .superRefine((timing, context) => {
-    const stageTotal = Object.values(timing.stages).reduce(
-      (total, entry) => total + (entry?.totalMs ?? 0),
+    const stageTotal = ISSUE_PIPELINE_STAGES.reduce(
+      (total, stage) => total + (timing.stages[stage]?.totalMs ?? 0),
       0,
     );
     if (timing.totalMs !== stageTotal) {
@@ -431,8 +431,6 @@ export async function runCheckpointStage<T>(
     }
   }
 
-  throw new IssuePipelineCheckpointError(`Stage ${stage} did not produce an output`);
-
   function withCheckpointTiming(value: IssuePipelineCheckpoint): IssuePipelineCheckpoint {
     const priorStage = baseTiming.stages[stage];
     const stageOperationMs = (priorStage?.operationMs ?? 0) + operationMs;
@@ -447,7 +445,10 @@ export async function runCheckpointStage<T>(
     };
     const timing: IssueCheckpointTiming = {
       stages,
-      totalMs: Object.values(stages).reduce((total, entry) => total + (entry?.totalMs ?? 0), 0),
+      totalMs: ISSUE_PIPELINE_STAGES.reduce(
+        (total, stageName) => total + (stages[stageName]?.totalMs ?? 0),
+        0,
+      ),
       invalidSamples: baseTiming.invalidSamples + invalidSamples,
     };
     return {
@@ -458,6 +459,8 @@ export async function runCheckpointStage<T>(
       },
     };
   }
+
+  throw new IssuePipelineCheckpointError(`Stage ${stage} did not produce an output`);
 }
 
 export function readCheckpointTiming(checkpoint: IssuePipelineCheckpoint): IssueCheckpointTiming {

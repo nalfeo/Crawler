@@ -97,153 +97,26 @@ export async function postprocessScoreAndStoreVariant(
 ): Promise<ProcessedVariant> {
   const { store, storeKey, index, raw, brief, palette } = args;
   const processingStartedAt = args.timing?.start() ?? null;
-  const traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
-  const manualAnchorForVariant =
-    args.manualAnchor &&
-    (args.manualAnchor.applyToAllVariants === true || args.manualAnchor.variantIndex === index)
-      ? args.manualAnchor
-      : null;
-  const processed = traced.finalPng;
-  const scorecard = applyManualAnchorToScorecard(
-    scoreCandidate(processed, brief, palette),
-    manualAnchorForVariant,
-  );
+  let traced: ReturnType<typeof postprocessWithTrace>;
+  let manualAnchorForVariant: ManualAnchorOverride | null;
+  let processed: Buffer;
+  let scorecard: ReturnType<typeof scoreCandidate>;
+  try {
+    traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
+    manualAnchorForVariant =
+      args.manualAnchor &&
+      (args.manualAnchor.applyToAllVariants === true || args.manualAnchor.variantIndex === index)
+        ? args.manualAnchor
+        : null;
+    processed = traced.finalPng;
+    scorecard = applyManualAnchorToScorecard(
+      scoreCandidate(processed, brief, palette),
+      manualAnchorForVariant,
+    );
+  } finally {
+    args.timing?.finish('slicingAndPostprocess', processingStartedAt);
+  }
   const id = pad2(index);
-  args.timing?.finish('slicingAndPostprocess', processingStartedAt);
-
-  const persistenceStartedAt = args.timing?.start() ?? null;
-  await store.put(storeKey(`raw/${id}.png`), raw);
-  await store.put(storeKey(`processed/${id}.png`), processed);
-  await store.put(
-    storeKey(`processed/${id}.scorecard.json`),
-    Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
-  );
-  const pipelineSteps = traced.steps.map((step, idx) => {
-    const file = `${id}.step-${String(idx + 1).padStart(2, '0')}-${step.id}.png`;
-    return {
-      id: step.id,
-      label: step.label,
-      file,
-      png: step.png,
-      moduleId: step.moduleId,
-      skipped: step.skipped,
-    };
-  });
-  for (const step of pipelineSteps) {
-    await store.put(storeKey(`processed/${step.file}`), step.png);
-  }
-  await store.put(
-    storeKey(`processed/${id}.pipeline.json`),
-    Buffer.from(
-      `${JSON.stringify(
-        {
-          profile: 'default',
-          ...(args.traceRefs?.overrideProfilePath
-            ? { overrideProfilePath: args.traceRefs.overrideProfilePath }
-            : {}),
-          ...(args.traceRefs?.effectivePipelineSnapshotPath
-            ? { effectivePipelineSnapshotPath: args.traceRefs.effectivePipelineSnapshotPath }
-            : {}),
-          steps: pipelineSteps.map((step) => ({
-            id: step.id,
-            label: step.label,
-            file: step.file,
-            moduleId: step.moduleId,
-            skipped: step.skipped,
-          })),
-        },
-        null,
-        2,
-      )}\n`,
-    ),
-  );
-
-  let anchorSidecarPath: string | null = null;
-  if (scorecard.derivedAnchor) {
-    const anchorKey = storeKey(`processed/${id}.anchor.json`);
-    await store.put(
-      anchorKey,
-      Buffer.from(
-        `${JSON.stringify({ x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y, source: 'derived' as const }, null, 2)}\n`,
-      ),
-    );
-    anchorSidecarPath = store.resolve(anchorKey);
-  } else {
-    await store.remove(storeKey(`processed/${id}.anchor.json`));
-  }
-  if (manualAnchorForVariant) {
-    await store.put(
-      storeKey(`processed/${id}.manual-anchor.json`),
-      Buffer.from(
-        `${JSON.stringify(
-          {
-            x: manualAnchorForVariant.x,
-            y: manualAnchorForVariant.y,
-            variantIndex: manualAnchorForVariant.variantIndex,
-            ...(manualAnchorForVariant.applyToAllVariants === true
-              ? { applyToAllVariants: true }
-              : {}),
-            source: 'manual' as const,
-            updatedAt: manualAnchorForVariant.updatedAt,
-          },
-          null,
-          2,
-        )}\n`,
-      ),
-    );
-  } else {
-    await store.remove(storeKey(`processed/${id}.manual-anchor.json`));
-  }
-  let centerOfGravitySidecarPath: string | null = null;
-  if (scorecard.derivedAnchors.centerOfGravity) {
-    const cogKey = storeKey(`processed/${id}.anchor.cog.json`);
-    await store.put(
-      cogKey,
-      Buffer.from(
-        `${JSON.stringify(
-          {
-            x: scorecard.derivedAnchors.centerOfGravity.x,
-            y: scorecard.derivedAnchors.centerOfGravity.y,
-            source: 'derived' as const,
-          },
-          null,
-          2,
-        )}\n`,
-      ),
-    );
-    centerOfGravitySidecarPath = store.resolve(cogKey);
-  } else {
-    await store.remove(storeKey(`processed/${id}.anchor.cog.json`));
-  }
-
-  // Weapon anchor sidecar: written when the editor has set an explicit weapon
-  // anchor for this variant (or for all variants via applyToAllVariants).
-  // Cleared on reprocess when no weapon anchor is in effect so stale values
-  // never survive a postprocess cycle.
-  const weaponAnchorForVariant =
-    args.manualWeaponAnchor &&
-    (args.manualWeaponAnchor.applyToAllVariants === true ||
-      args.manualWeaponAnchor.variantIndex === index)
-      ? args.manualWeaponAnchor
-      : null;
-  if (weaponAnchorForVariant) {
-    await store.put(
-      storeKey(`processed/${id}.anchor.weapon.json`),
-      Buffer.from(
-        `${JSON.stringify(
-          {
-            x: weaponAnchorForVariant.x,
-            y: weaponAnchorForVariant.y,
-            source: 'manual' as const,
-          },
-          null,
-          2,
-        )}\n`,
-      ),
-    );
-  } else {
-    await store.remove(storeKey(`processed/${id}.anchor.weapon.json`));
-  }
 
   function applyManualAnchorToScorecard(
     scorecard: ReturnType<typeof scoreCandidate>,
@@ -273,40 +146,177 @@ export async function postprocessScoreAndStoreVariant(
     };
   }
 
-  const { width: overlayW, height: overlayH } = (() => {
-    const img = PNG.sync.read(processed);
-    return { width: img.width, height: img.height };
-  })();
-  const overlayKey = storeKey(`processed/${id}.anchor-overlay.png`);
-  await store.put(
-    overlayKey,
-    buildAnchorOverlay({
-      width: overlayW,
-      height: overlayH,
-      anchor: scorecard.derivedAnchor
-        ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
-        : null,
-    }),
-  );
+  const persistenceStartedAt = args.timing?.start() ?? null;
+  try {
+    await store.put(storeKey(`raw/${id}.png`), raw);
+    await store.put(storeKey(`processed/${id}.png`), processed);
+    await store.put(
+      storeKey(`processed/${id}.scorecard.json`),
+      Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
+    );
+    const pipelineSteps = traced.steps.map((step, idx) => {
+      const file = `${id}.step-${String(idx + 1).padStart(2, '0')}-${step.id}.png`;
+      return {
+        id: step.id,
+        label: step.label,
+        file,
+        png: step.png,
+        moduleId: step.moduleId,
+        skipped: step.skipped,
+      };
+    });
+    for (const step of pipelineSteps) {
+      await store.put(storeKey(`processed/${step.file}`), step.png);
+    }
+    await store.put(
+      storeKey(`processed/${id}.pipeline.json`),
+      Buffer.from(
+        `${JSON.stringify(
+          {
+            profile: 'default',
+            ...(args.traceRefs?.overrideProfilePath
+              ? { overrideProfilePath: args.traceRefs.overrideProfilePath }
+              : {}),
+            ...(args.traceRefs?.effectivePipelineSnapshotPath
+              ? { effectivePipelineSnapshotPath: args.traceRefs.effectivePipelineSnapshotPath }
+              : {}),
+            steps: pipelineSteps.map((step) => ({
+              id: step.id,
+              label: step.label,
+              file: step.file,
+              moduleId: step.moduleId,
+              skipped: step.skipped,
+            })),
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    );
 
-  const result: ProcessedVariant = {
-    index,
-    score: scorecard.score,
-    outOf: scorecard.outOf,
-    breakdown: scorecard.breakdown,
-    passed: scorecard.passed,
-    rawPath: store.resolve(storeKey(`raw/${id}.png`)),
-    processedPath: store.resolve(storeKey(`processed/${id}.png`)),
-    scorecardPath: store.resolve(storeKey(`processed/${id}.scorecard.json`)),
-    derivedAnchor: scorecard.derivedAnchor,
-    derivedAnchors: scorecard.derivedAnchors,
-    anchorSidecarPath,
-    centerOfGravitySidecarPath,
-    anchorOverlayPath: store.resolve(overlayKey),
-    processed,
-  };
-  args.timing?.finish('candidatePersistence', persistenceStartedAt);
-  return result;
+    let anchorSidecarPath: string | null = null;
+    if (scorecard.derivedAnchor) {
+      const anchorKey = storeKey(`processed/${id}.anchor.json`);
+      await store.put(
+        anchorKey,
+        Buffer.from(
+          `${JSON.stringify({ x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y, source: 'derived' as const }, null, 2)}\n`,
+        ),
+      );
+      anchorSidecarPath = store.resolve(anchorKey);
+    } else {
+      await store.remove(storeKey(`processed/${id}.anchor.json`));
+    }
+    if (manualAnchorForVariant) {
+      await store.put(
+        storeKey(`processed/${id}.manual-anchor.json`),
+        Buffer.from(
+          `${JSON.stringify(
+            {
+              x: manualAnchorForVariant.x,
+              y: manualAnchorForVariant.y,
+              variantIndex: manualAnchorForVariant.variantIndex,
+              ...(manualAnchorForVariant.applyToAllVariants === true
+                ? { applyToAllVariants: true }
+                : {}),
+              source: 'manual' as const,
+              updatedAt: manualAnchorForVariant.updatedAt,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
+      );
+    } else {
+      await store.remove(storeKey(`processed/${id}.manual-anchor.json`));
+    }
+    let centerOfGravitySidecarPath: string | null = null;
+    if (scorecard.derivedAnchors.centerOfGravity) {
+      const cogKey = storeKey(`processed/${id}.anchor.cog.json`);
+      await store.put(
+        cogKey,
+        Buffer.from(
+          `${JSON.stringify(
+            {
+              x: scorecard.derivedAnchors.centerOfGravity.x,
+              y: scorecard.derivedAnchors.centerOfGravity.y,
+              source: 'derived' as const,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
+      );
+      centerOfGravitySidecarPath = store.resolve(cogKey);
+    } else {
+      await store.remove(storeKey(`processed/${id}.anchor.cog.json`));
+    }
+
+    // Weapon anchor sidecar: written when the editor has set an explicit weapon
+    // anchor for this variant (or for all variants via applyToAllVariants).
+    // Cleared on reprocess when no weapon anchor is in effect so stale values
+    // never survive a postprocess cycle.
+    const weaponAnchorForVariant =
+      args.manualWeaponAnchor &&
+      (args.manualWeaponAnchor.applyToAllVariants === true ||
+        args.manualWeaponAnchor.variantIndex === index)
+        ? args.manualWeaponAnchor
+        : null;
+    if (weaponAnchorForVariant) {
+      await store.put(
+        storeKey(`processed/${id}.anchor.weapon.json`),
+        Buffer.from(
+          `${JSON.stringify(
+            {
+              x: weaponAnchorForVariant.x,
+              y: weaponAnchorForVariant.y,
+              source: 'manual' as const,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
+      );
+    } else {
+      await store.remove(storeKey(`processed/${id}.anchor.weapon.json`));
+    }
+
+    const { width: overlayW, height: overlayH } = (() => {
+      const img = PNG.sync.read(processed);
+      return { width: img.width, height: img.height };
+    })();
+    const overlayKey = storeKey(`processed/${id}.anchor-overlay.png`);
+    await store.put(
+      overlayKey,
+      buildAnchorOverlay({
+        width: overlayW,
+        height: overlayH,
+        anchor: scorecard.derivedAnchor
+          ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
+          : null,
+      }),
+    );
+
+    const result: ProcessedVariant = {
+      index,
+      score: scorecard.score,
+      outOf: scorecard.outOf,
+      breakdown: scorecard.breakdown,
+      passed: scorecard.passed,
+      rawPath: store.resolve(storeKey(`raw/${id}.png`)),
+      processedPath: store.resolve(storeKey(`processed/${id}.png`)),
+      scorecardPath: store.resolve(storeKey(`processed/${id}.scorecard.json`)),
+      derivedAnchor: scorecard.derivedAnchor,
+      derivedAnchors: scorecard.derivedAnchors,
+      anchorSidecarPath,
+      centerOfGravitySidecarPath,
+      anchorOverlayPath: store.resolve(overlayKey),
+      processed,
+    };
+    return result;
+  } finally {
+    args.timing?.finish('candidatePersistence', persistenceStartedAt);
+  }
 }
 
 export interface JudgePassArgs {

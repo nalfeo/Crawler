@@ -541,8 +541,12 @@ export async function generateSheetCore(
         store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet),
       );
       const slicingStartedAt = timing.start();
-      const slice = sliceSheetFromBrief(sheet, brief);
-      timing.finish('slicingAndPostprocess', slicingStartedAt);
+      let slice: BriefSliceResult;
+      try {
+        slice = sliceSheetFromBrief(sheet, brief);
+      } finally {
+        timing.finish('slicingAndPostprocess', slicingStartedAt);
+      }
       // Structural-only gate (ADR 0052): the slicer
       // is data-driven and never invents cuts, so it emits the sheet's HONEST
       // grid at its real count — which may differ from the brief's commanded
