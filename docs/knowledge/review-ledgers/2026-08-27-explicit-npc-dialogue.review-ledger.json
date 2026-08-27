@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "explicit-npc-dialogue",
+  "task_title": "Require explicit NPC dialogue activation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted: pointer hit-testing converts Phaser world pixels to feet and uses actual NPC Size half-extents, separately requiring nearbyPlayer; closest qualifying NPC is selected with eid tie-break; real-input E2E will expose precise NPC and Awards screen-space points. Rejected sprite-interactive rearchitecture because it is invasive and unnecessary."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -294,6 +294,7 @@ interface MainSceneInternals {
   issueButton?: { visible: boolean };
   issueReportPicker?: { isOpen(): boolean };
   getIssueButtonBounds?(): ScreenBounds | null;
+  getAchievementsButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -935,6 +936,12 @@ export interface MainSceneProbeApi {
   requestQuartermasterToggle(): void;
   /** Bounds of the live Issue button, or null when it is unavailable. */
   getIssueButtonBounds(): ScreenBounds | null;
+  /** Bounds of the live Awards button, or null when it is unavailable. */
+  getAchievementsButtonBounds(): ScreenBounds | null;
+  /** Bounds of the visible Talk/Descend hint, or null when unavailable. */
+  getInteractionHintBounds(): ScreenBounds | null;
+  /** Screen-space point for the first live NPC, or null before NPCs spawn. */
+  getFirstNpcScreenPoint(): ProbePoint | null;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
@@ -1733,6 +1740,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return { x, y };
     },
 
+    getFirstNpcScreenPoint: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const firstNpc = world?.npcs.entries().next().value;
+      const camera = getPhaserScene()?.cameras.main;
+      if (!world || !firstNpc || !camera) {
+        return null;
+      }
+      const [npcEid] = firstNpc;
+      const view = camera.worldView;
+      return {
+        x: (ftToPx(world.stores.position.x[npcEid] ?? 0) - view.x) * camera.zoom + camera.x,
+        y: (ftToPx(world.stores.position.y[npcEid] ?? 0) - view.y) * camera.zoom + camera.y,
+      };
+    },
+
     primeQuestWaypointArrows: () => {
       const scene = getScene();
       const world = scene?.world;
@@ -1930,6 +1953,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     getIssueButtonBounds: () => getScene()?.getIssueButtonBounds?.() ?? null,
+
+    getAchievementsButtonBounds: () => getScene()?.getAchievementsButtonBounds?.() ?? null,
+
+    getInteractionHintBounds: () => getScene()?.getInteractionHintBounds?.() ?? null,
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
