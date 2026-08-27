@@ -77,6 +77,21 @@ describe('createDrainOnStatus', () => {
     expect(abort).toHaveBeenCalledTimes(1);
   });
 
+  it('resets the legacy idle counter when a queued request is skipped', () => {
+    const abort = vi.fn();
+    const wrapped = createDrainOnStatus({ base: vi.fn(), maxEmptyPolls: 3, abort });
+    const skipped: WorkerStatus = { type: 'skipped', briefId: 'test', reason: 'rejected' };
+
+    wrapped(idle);
+    wrapped(idle);
+    wrapped(skipped);
+    wrapped(idle);
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
   it('only aborts once even if extra idle events arrive after the trigger', () => {
     const abort = vi.fn();
     const base = vi.fn();
@@ -86,6 +101,46 @@ describe('createDrainOnStatus', () => {
     wrapped(idle);
     wrapped(idle);
     expect(abort).toHaveBeenCalledTimes(1);
+  });
+
+  it('never drains on idle polls before a coordinated producer completes', () => {
+    const abort = vi.fn();
+    let producerComplete = false;
+    const wrapped = createDrainOnStatus({
+      base: vi.fn(),
+      maxEmptyPolls: 3,
+      abort,
+      isProducerComplete: () => producerComplete,
+    });
+
+    for (let index = 0; index < 20; index += 1) wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+
+    producerComplete = true;
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
+  it('confirms emptiness with a dequeue cycle begun after completion', () => {
+    const abort = vi.fn();
+    let producerComplete = false;
+    const wrapped = createDrainOnStatus({
+      base: vi.fn(),
+      maxEmptyPolls: 3,
+      abort,
+      isProducerComplete: () => producerComplete,
+    });
+
+    wrapped(idle);
+    producerComplete = true;
+    wrapped(processing);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).not.toHaveBeenCalled();
+    wrapped(idle);
+    expect(abort).toHaveBeenCalledOnce();
   });
 
   it('passes non-idle/non-processing events straight through to base', () => {

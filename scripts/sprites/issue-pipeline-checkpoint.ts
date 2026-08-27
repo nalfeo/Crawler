@@ -1,9 +1,15 @@
 import { z } from 'zod';
+import { createLogger } from '../../src/shared/logger.js';
+import {
+  addAssetRequestReadyKey,
+  removeAssetRequestReadyKey,
+} from './asset-request-ready-index.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-status-key.js';
 import type { RunStore } from './store/types.js';
 
 export const ISSUE_PIPELINE_CHECKPOINT_VERSION = 1;
 export const ISSUE_PIPELINE_MAX_STAGE_ATTEMPTS = 3;
+const logger = createLogger('infra:sprites:issue-pipeline-checkpoint');
 
 export const ISSUE_PIPELINE_STAGES = [
   'synthesize',
@@ -379,7 +385,7 @@ export async function markIssuePipelineTerminal(
 ): Promise<void> {
   const checkpoint = await loadIssueCheckpoint(controller);
   const updatedAt = controller.now().toISOString();
-  await writeIssueCheckpoint(controller, {
+  const terminalCheckpoint: IssuePipelineCheckpoint = {
     ...checkpoint,
     stage: 'completed',
     updatedAt,
@@ -388,7 +394,28 @@ export async function markIssuePipelineTerminal(
       outcome,
       ...details,
     },
-  });
+  };
+
+  if (outcome === 'selected-pending-publish') {
+    // Register before the checkpoint write. A crash can leave a conservative
+    // stale index entry, but discovery revalidates the checkpoint before acting.
+    await addAssetRequestReadyKey(controller.store, controller.key);
+    await writeIssueCheckpoint(controller, terminalCheckpoint);
+    return;
+  }
+
+  await writeIssueCheckpoint(controller, terminalCheckpoint);
+  try {
+    await removeAssetRequestReadyKey(controller.store, controller.key);
+  } catch (error) {
+    // The terminal checkpoint is already durable. Leaving a stale ready key is
+    // safe because publisher discovery revalidates and skips terminal outcomes.
+    logger.warn(
+      `Checkpoint ${controller.key} is terminal but ready-index cleanup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 const PERMANENT_ERROR_KINDS = new Set([
