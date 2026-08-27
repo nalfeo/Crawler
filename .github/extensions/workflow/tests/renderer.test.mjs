@@ -292,6 +292,22 @@ test('a chosen synthesized brief has persistent summary, card, badge, and button
   assert.match(html, /\.chosen-brief-summary \{/);
 });
 
+test('Generate sprite opens an exact editable local-generation request instead of queueing', () => {
+  const html = renderHtml('workflow-generation-request');
+  assert.match(html, /k === 'disabled'/);
+  assert.match(html, /Review exact Azure request/);
+  assert.match(html, /Exact Azure image generation prompt/);
+  assert.match(html, /Ordered provider images/);
+  assert.match(html, /Add approved reference/);
+  assert.match(html, /Review prompt edits/);
+  assert.match(html, /Generate sprite locally/);
+  assert.match(html, /\/api\/workflow\/generation-preview/);
+  assert.match(html, /previewToken/);
+  assert.match(html, /Generating locally/);
+  assert.doesNotMatch(html, /Queueing Azure generation/);
+  assert.doesNotMatch(html, /Waiting for Azure queue output/);
+});
+
 test('Briefs workflow mutations serialize duplicate clicks until the state refresh settles', () => {
   const html = renderHtml('x');
   assert.match(html, /var workflowMutationInFlight = false/);

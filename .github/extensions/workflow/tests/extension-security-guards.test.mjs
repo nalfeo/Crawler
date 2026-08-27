@@ -99,6 +99,22 @@ test('reference-preview proxy preserves sidecar client errors and forwards 4xx s
   assert.match(handlerSource, /error: error\?\.code \?\? 'reference-preview-failed'/);
 });
 
+test('reviewed generation persists an attempt before local execution and advances directly to sheet', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const previewStart = source.indexOf("path: '/api/workflow/generation-preview'");
+  const generateStart = source.indexOf("path: '/api/workflow/generate'", previewStart);
+  const nextRoute = source.indexOf("path: '/api/workflow/postprocess'", generateStart);
+  assert.ok(previewStart >= 0 && generateStart > previewStart && nextRoute > generateStart);
+  const generation = source.slice(generateStart, nextRoute);
+  assert.match(generation, /missing-preview/);
+  assert.match(generation, /stage: 'generating'/);
+  assert.match(generation, /generationNonce/);
+  assert.match(generation, /generateWorkflow\(briefPath, body\.previewToken\)/);
+  assert.match(generation, /stage: 'sheet'/);
+  assert.doesNotMatch(generation, /status === 'queued'/);
+  assert.doesNotMatch(generation, /workflow_dispatch|asset-request\.yml/);
+});
+
 test('invalid Author request input returns the established bad-request error type', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf("path: '/api/workflow/request'");

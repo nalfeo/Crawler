@@ -143,6 +143,12 @@ export interface GenerateOneOptions {
    * Pass an `AzureBlobRunStore` to write artifacts to Azure Blob Storage.
    */
   readonly store?: RunStore;
+  /** Exact final provider prompt override, used by the reviewed canvas request. */
+  readonly promptOverride?: string;
+  /** Ordered approved generated-asset paths selected by the operator. */
+  readonly referenceAssetPaths?: readonly string[];
+  /** Frozen request prepared by {@link prepareGenerationRequest}. */
+  readonly prepared?: PreparedGenerationRequest;
 }
 
 export interface GenerateOneResult {
@@ -219,7 +225,34 @@ export interface GenerateSheetCoreResult {
   readonly identity: RunSummaryIdentity;
 }
 
+export interface PreparedReferenceInput {
+  readonly kind: 'seed' | 'approved';
+  readonly assetPath: string;
+  readonly contentHash: string;
+  readonly png: Buffer;
+  readonly sprite?: ReferenceSpriteRef;
+}
+
+export interface PreparedGenerationRequest {
+  readonly loaded: LoadedBrief;
+  readonly brief: Brief;
+  readonly effectiveBrief: Brief;
+  readonly palette: PaletteColors;
+  readonly styleGuide: string;
+  readonly prompt: string;
+  readonly promptSha256: string;
+  readonly singleVariantPrompt: string;
+  readonly expected: number;
+  readonly referenceInputs: readonly PreparedReferenceInput[];
+  readonly referencePngs: Buffer[];
+  readonly referenceSprites?: ReferenceSpriteSelection;
+  readonly eligibleReferenceSprites: readonly ReferenceSpriteRef[];
+  readonly seedFrameRefs: readonly SeedFrameRef[];
+  readonly variations: RunSummaryIdentity['variations'];
+}
+
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /**
  * Project a selected manifest entry into the auditable run-summary shape. The
@@ -244,60 +277,45 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
   };
 }
 
-export async function generateSheetCore(
+function sha256(bytes: string | Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export async function prepareGenerationRequest(
   options: GenerateOneOptions,
-): Promise<GenerateSheetCoreResult> {
+): Promise<PreparedGenerationRequest> {
   const repoRoot = options.repoRoot;
-  const outputRoot = options.outputRoot ?? path.join(repoRoot, 'generated');
-  const maxAttempts = options.maxAttempts ?? 2;
-  const now = options.now ?? (() => new Date());
-  const createdAt = now();
   const readReference = options.readReference ?? ((p) => readFileSync(p));
   const resolveRealpath = options.realpath ?? realpathSync;
-  // Default to a local store rooted at <outputRoot>/runs — same layout as before.
-  const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
-
   const loaded = options.preloaded ?? loadBrief(options.briefPath, { projectRoot: repoRoot });
   const brief = loaded.brief;
   const palette = loaded.palette;
   const expected = variantCount(brief);
-
-  // Expansion runs once per orchestrator invocation, before prompt
-  // construction, because the prompt embeds the final variations list.
-  // Graceful degradation: when no text provider is configured or the
-  // call fails, we use the author's seed unchanged — the run still
-  // produces sprites, just without the LLM-brainstormed extras.
   const expansion = await expandVariations({
     brief,
     provider: options.textProvider ?? null,
     ...(options.warn ? { warn: options.warn } : {}),
   });
-  // Shallow brief copy with the resolved variations list so downstream
-  // pure code (build-prompt, run-summary) doesn't need to know an
-  // expansion step happened. Original brief object stays untouched.
   const effectiveBrief = { ...brief, variations: [...expansion.variations] };
-
   const styleGuide = loadStyleGuide(repoRoot);
-  const prompt = brief.iconBatch
+  const generatedPrompt = brief.iconBatch
     ? buildIconBatchSheetPrompt(effectiveBrief, styleGuide)
     : buildSheetPrompt(effectiveBrief, styleGuide);
+  const prompt = options.promptOverride ?? generatedPrompt;
+  if (prompt.trim() === '') {
+    throw new Error('prepareGenerationRequest: prompt override must not be empty');
+  }
   const singleVariantPrompt = buildPrompt(effectiveBrief, styleGuide);
-
-  // References are OUR own highest-quality approved sprites, chosen
-  // deterministically per brief — Kenney placeholder spritesheets are retired.
-  // The pure selector does no IO, so we load the manifest and pre-filter to
-  // entries whose PNG actually exists on disk here, then hand the survivors
-  // to `selectReferences`, which favours the brief's own `type` (with injected,
-  // seeded randomness) and broadens to other high-quality generated art when
-  // the same-type pool is thin.
   const supportsReferenceImages = options.provider.capabilities?.referenceImages !== false;
   const referenceCount = options.referenceCount ?? REFERENCE_COUNT;
   const publicAssetsRoot = path.resolve(repoRoot, 'public', 'assets');
   const resolveAssetPath = (assetPath: string) => path.resolve(publicAssetsRoot, assetPath);
   const referenceAssetExists =
     options.referenceAssetExists ?? ((absolutePath) => existsSync(absolutePath));
-  let referencePngs: Buffer[] = [];
+  const referenceInputs: PreparedReferenceInput[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
+  let eligibleReferenceSprites: ReferenceSpriteRef[] = [];
+
   if (supportsReferenceImages) {
     const resolvedReferences = resolveReferenceSelection({
       repoRoot,
@@ -316,99 +334,164 @@ export async function generateSheetCore(
         : {}),
       assetExists: referenceAssetExists,
     });
-    const selection = resolvedReferences.selection;
-    if (selection.selected.length === 0) {
+    eligibleReferenceSprites = resolvedReferences.eligibleCandidates.map(toReferenceSpriteRef);
+    const eligibleByPath = new Map(
+      resolvedReferences.eligibleCandidates.map((entry) => [entry.assetPath, entry]),
+    );
+    const selected =
+      options.referenceAssetPaths === undefined
+        ? resolvedReferences.selection.selected
+        : options.referenceAssetPaths.map((assetPath) => {
+            const entry = eligibleByPath.get(assetPath);
+            if (!entry) {
+              throw new Error(
+                `prepareGenerationRequest: reference "${assetPath}" is not an eligible approved generated sprite`,
+              );
+            }
+            return entry;
+          });
+    if (new Set(selected.map((entry) => entry.assetPath)).size !== selected.length) {
+      throw new Error('prepareGenerationRequest: duplicate reference asset paths are not allowed');
+    }
+    if (selected.length === 0) {
       if (resolvedReferences.presentCandidateCount === 0 && brief.type === 'icon') {
-        // Bootstrap case: no approved icon sprites exist in the manifest yet.
-        // Icons are a new sprite type bootstrapped without pre-existing references;
-        // proceed without reference images rather than aborting.
         options.warn?.(
-          `generateSheetCore: no reference sprites exist in pool for brief "${brief.name}" ` +
+          `prepareGenerationRequest: no reference sprites exist in pool for brief "${brief.name}" ` +
             `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
         );
       } else {
         throw new Error(
-          `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
-            `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
-            `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
-            `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+          `prepareGenerationRequest: no eligible generated reference sprites for brief "${brief.name}" ` +
+            `(type="${brief.type}"). Approve at least one high-quality sprite first.`,
         );
       }
-    } else {
-      referencePngs = selection.selected.map((entry) => {
+    }
+    if (selected.length > 0) {
+      for (const entry of selected) {
         const absolutePath = resolveAssetPath(entry.assetPath);
-        assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
-        return readReference(absolutePath);
-      });
+        assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'prepareGenerationRequest');
+        const png = readReference(absolutePath);
+        const contentHash = sha256(png);
+        if (entry.contentHash && entry.contentHash !== contentHash) {
+          throw new Error(
+            `prepareGenerationRequest: reference "${entry.assetPath}" content hash does not match the approved manifest`,
+          );
+        }
+        referenceInputs.push({
+          kind: 'approved',
+          assetPath: entry.assetPath,
+          contentHash,
+          png,
+          sprite: toReferenceSpriteRef(entry),
+        });
+      }
       referenceSprites = {
         selectorVersion: SELECTOR_VERSION,
-        seed: selection.seed,
-        requestedCount: selection.requestedCount,
-        eligibleCount: selection.eligibleCount,
-        sameTypeCount: selection.sameTypeCount,
-        selected: selection.selected.map(toReferenceSpriteRef),
+        seed: resolvedReferences.selection.seed,
+        requestedCount: selected.length,
+        eligibleCount: resolvedReferences.selection.eligibleCount,
+        sameTypeCount: resolvedReferences.selection.sameTypeCount,
+        selected: selected.map(toReferenceSpriteRef),
       };
     }
   }
 
-  // Approved asset directory for seed frames: they must live under briefs/ so
-  // that the path space is bounded and sensitive repo files cannot be forwarded
-  // to the image provider as PNG bytes.
   const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
-  // PNG signature (first 8 bytes of every well-formed PNG file).
-  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-  // Prepend any declared seed frames so the provider receives them first and
-  // the prompt's "Seed frames" section matches the actual image slot indices.
+  const seedInputs: PreparedReferenceInput[] = [];
   const seedFrameRefs: SeedFrameRef[] = [];
   if (brief.seedFrames.length > 0 && supportsReferenceImages) {
-    const seedPngs = brief.seedFrames.map((sf) => {
-      // Reject absolute paths outright; seeds must be brief-relative.
-      if (path.isAbsolute(sf.path)) {
+    for (const seedFrame of brief.seedFrames) {
+      if (path.isAbsolute(seedFrame.path)) {
         throw new Error(
-          `generateSheetCore: seed frame path "${sf.path}" must be relative to the repository root, not absolute`,
+          `prepareGenerationRequest: seed frame path "${seedFrame.path}" must be relative to the repository root, not absolute`,
         );
       }
-      const resolved = path.resolve(repoRoot, sf.path);
-      // Lexical containment: must resolve inside the approved briefs/ directory.
+      const resolved = path.resolve(repoRoot, seedFrame.path);
       if (!resolved.startsWith(approvedSeedRoot + path.sep)) {
         throw new Error(
-          `generateSheetCore: seed frame path "${sf.path}" resolves outside the approved seed directory (briefs/)`,
+          `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves outside the approved seed directory (briefs/)`,
         );
       }
-      // Canonical containment: resolve symlinks and re-check to prevent symlink
-      // traversal that bypasses the lexical check above.
       let canonical: string;
       try {
         canonical = resolveRealpath(resolved);
       } catch {
         throw new Error(
-          `generateSheetCore: seed frame path "${sf.path}" does not exist or cannot be resolved`,
+          `prepareGenerationRequest: seed frame path "${seedFrame.path}" does not exist or cannot be resolved`,
         );
       }
       if (!canonical.startsWith(approvedSeedRoot + path.sep)) {
         throw new Error(
-          `generateSheetCore: seed frame path "${sf.path}" resolves (via symlink) outside the approved seed directory (briefs/)`,
+          `prepareGenerationRequest: seed frame path "${seedFrame.path}" resolves (via symlink) outside the approved seed directory (briefs/)`,
         );
       }
-      // Read bytes and verify PNG magic to prevent forwarding non-image files.
-      const bytes = readReference(resolved);
-      if (
-        bytes.length < PNG_MAGIC.length ||
-        !bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)
-      ) {
+      const png = readReference(resolved);
+      if (png.length < PNG_MAGIC.length || !png.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
         throw new Error(
-          `generateSheetCore: seed frame "${sf.path}" is not a valid PNG (magic bytes mismatch)`,
+          `prepareGenerationRequest: seed frame "${seedFrame.path}" is not a valid PNG (magic bytes mismatch)`,
         );
       }
-      seedFrameRefs.push({
-        path: sf.path,
-        contentHash: createHash('sha256').update(bytes).digest('hex'),
+      const contentHash = sha256(png);
+      seedFrameRefs.push({ path: seedFrame.path, contentHash });
+      seedInputs.push({
+        kind: 'seed',
+        assetPath: seedFrame.path,
+        contentHash,
+        png,
       });
-      return bytes;
-    });
-    referencePngs = [...seedPngs, ...referencePngs];
+    }
   }
+
+  const orderedInputs = [...seedInputs, ...referenceInputs];
+  return {
+    loaded,
+    brief,
+    effectiveBrief,
+    palette,
+    styleGuide,
+    prompt,
+    promptSha256: sha256(Buffer.from(prompt, 'utf8')),
+    singleVariantPrompt,
+    expected,
+    referenceInputs: orderedInputs,
+    referencePngs: orderedInputs.map((input) => input.png),
+    ...(referenceSprites ? { referenceSprites } : {}),
+    eligibleReferenceSprites,
+    seedFrameRefs,
+    variations: {
+      seed: expansion.seed,
+      proposed: expansion.proposed,
+      final: expansion.variations,
+      minVariations: brief.minVariations,
+      skippedReason: expansion.skippedReason,
+    },
+  };
+}
+
+export async function generateSheetCore(
+  options: GenerateOneOptions,
+): Promise<GenerateSheetCoreResult> {
+  const repoRoot = options.repoRoot;
+  const outputRoot = options.outputRoot ?? path.join(repoRoot, 'generated');
+  const maxAttempts = options.maxAttempts ?? 2;
+  const now = options.now ?? (() => new Date());
+  const createdAt = now();
+  // Default to a local store rooted at <outputRoot>/runs — same layout as before.
+  const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
+  const prepared = options.prepared ?? (await prepareGenerationRequest(options));
+  const {
+    brief,
+    effectiveBrief,
+    palette,
+    expected,
+    prompt,
+    singleVariantPrompt,
+    referencePngs,
+    referenceSprites,
+    seedFrameRefs,
+    styleGuide,
+    variations,
+  } = prepared;
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
@@ -471,7 +554,7 @@ export async function generateSheetCore(
   }
 
   // Convert absolute briefPath to repo-relative with forward slashes (required by validation)
-  const repoRelativeBriefPath = path.relative(repoRoot, loaded.briefPath).replace(/\\/g, '/');
+  const repoRelativeBriefPath = path.relative(repoRoot, options.briefPath).replace(/\\/g, '/');
 
   const identity: RunSummaryIdentity = {
     brief: brief.name,
@@ -491,13 +574,7 @@ export async function generateSheetCore(
       cols: sliceResult.grid.cols,
       emptyCells: sliceResult.grid.emptyCells,
     },
-    variations: {
-      seed: expansion.seed,
-      proposed: expansion.proposed,
-      final: expansion.variations,
-      minVariations: brief.minVariations,
-      skippedReason: expansion.skippedReason,
-    },
+    variations,
     ...(referenceSprites ? { referenceSprites } : {}),
     ...(seedFrameRefs.length > 0 ? { seedFrames: seedFrameRefs } : {}),
     ...(brief.frameSequence.enabled

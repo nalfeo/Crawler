@@ -29,6 +29,7 @@ import {
   workflowSynthesizeUrl,
   workflowBriefUrl,
   workflowPromoteUrl,
+  workflowGenerationPreviewUrl,
   workflowGenerateUrl,
   workflowMetadataUrl,
   workflowLatestRunUrl,
@@ -164,6 +165,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(workflowSynthesizeUrl(BASE), `${BASE}/api/workflow/synthesize`);
   assert.equal(workflowBriefUrl(BASE), `${BASE}/api/workflow/brief`);
   assert.equal(workflowPromoteUrl(BASE), `${BASE}/api/workflow/promote-brief`);
+  assert.equal(workflowGenerationPreviewUrl(BASE), `${BASE}/api/workflow/generation-preview`);
   assert.equal(workflowGenerateUrl(BASE), `${BASE}/api/workflow/generate`);
   assert.equal(workflowMetadataUrl(BASE), `${BASE}/api/workflow/metadata`);
   assert.equal(
@@ -177,9 +179,12 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   await client.synthesizeWorkflow({ name: 'rusty-anvil', brief: detailedRequest });
   await client.saveWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'name: rusty-anvil');
   await client.promoteWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'prop', 'rusty-anvil');
-  await client.generateWorkflow('briefs/draft/rusty-anvil.yaml');
+  await client.generateWorkflow('briefs/draft/rusty-anvil.yaml', 'preview-token');
   await client.generateWorkflowMetadata(['rusty-anvil']);
   await client.approveWorkflowVariant('rusty-anvil', 'run-1', 0);
+  await client.previewWorkflowGeneration({
+    sourceBriefPath: 'generated/brief-candidates/rusty-anvil/v1.yaml',
+  });
   assert.deepEqual(await client.latestWorkflowRun('rusty-anvil', '2026-08-21T00:00:00.000Z'), {
     briefId: 'rusty-anvil',
     runId: 'run-1',
@@ -193,6 +198,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(calls[3].options.method, 'PUT');
   assert.equal(calls[4].options.method, 'POST');
   assert.equal(calls[5].options.method, 'POST');
+  assert.match(calls[5].options.body, /preview-token/);
   assert.equal(calls[6].options.method, 'POST');
   assert.match(calls[6].options.body, /"minScore":70/);
   assert.match(calls[7].url, /\/api\/runs\/rusty-anvil\/run-1\/approve$/);

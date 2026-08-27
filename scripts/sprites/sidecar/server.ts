@@ -57,7 +57,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
@@ -85,7 +85,11 @@ import {
 import { createDefaultCheckinDeps } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { briefDirectoryForType } from '../brief-paths.js';
-import { generateOne } from '../generate-one.js';
+import {
+  generateOne,
+  prepareGenerationRequest,
+  type PreparedGenerationRequest,
+} from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
   mergeChangedCatalogEntries,
@@ -99,6 +103,8 @@ import {
   createTextProvider,
   createVisionProvider,
 } from '../provider/factory.js';
+import type { ImageProvider } from '../provider/types.js';
+import type { TextProvider } from '../provider/text-types.js';
 import { NoopAssetQueue } from '../queue/noop-queue.js';
 import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
@@ -321,6 +327,9 @@ export interface SidecarDeps {
    * so local sidecar usage keeps the prior synchronous generate behavior.
    */
   readonly queue?: AssetQueue;
+  /** Provider injections keep exact-request integration tests network-free. */
+  readonly imageProvider?: ImageProvider;
+  readonly textProvider?: TextProvider | null;
   /**
    * In-process queue worker. Defaults to a controller wired to `queue`/`store`.
    * `buildServer` never starts it — the `azure-queue` backend disables the
@@ -398,6 +407,14 @@ interface WorkflowPromoteBody {
 
 interface WorkflowGenerateBody {
   readonly briefPath?: unknown;
+  readonly previewToken?: unknown;
+}
+
+interface WorkflowGenerationPreviewBody {
+  readonly sourceBriefPath?: unknown;
+  readonly previewToken?: unknown;
+  readonly prompt?: unknown;
+  readonly referenceAssetPaths?: unknown;
 }
 
 interface WorkflowBriefSaveBody {
@@ -691,6 +708,40 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
   };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
+  const preparedRequests = new Map<
+    string,
+    {
+      prepared: PreparedGenerationRequest;
+      sourcePath: string;
+      sourceHash: string;
+      expiresAt: number;
+      inFlight: boolean;
+    }
+  >();
+  const resolveWorkflowBriefPath = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const absolutePath = resolveRepoPath(deps.repoRoot, value);
+    if (!absolutePath) return null;
+    const relativePath = toRepoRelativePath(deps.repoRoot, absolutePath);
+    return relativePath.endsWith('.yaml') &&
+      (relativePath.startsWith('briefs/') || relativePath.startsWith('generated/brief-candidates/'))
+      ? absolutePath
+      : null;
+  };
+  const imageProvider = () =>
+    deps.imageProvider ?? createImageProvider({ env: deps.env ?? process.env });
+  const textProvider = () =>
+    deps.textProvider === undefined
+      ? createTextProvider({ env: deps.env ?? process.env })
+      : deps.textProvider;
+  const readPreparedRequest = (token: string) => {
+    const record = preparedRequests.get(token);
+    if (!record || record.expiresAt <= Date.now()) {
+      preparedRequests.delete(token);
+      return null;
+    }
+    return record;
+  };
   // The sidecar owns an in-process worker so a queue consumer always exists
   // wherever the sidecar runs. It is NOT started here — see worker-controller.ts.
   const worker: WorkerController =
@@ -2847,7 +2898,127 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return { yamlPath: relPosix, description, yaml: body.yaml };
   });
 
+  app.post<{ Body: WorkflowGenerationPreviewBody }>(
+    '/api/workflow/generation-preview',
+    async (req, reply) => {
+      const origin = req.headers.origin;
+      if (typeof origin === 'string') {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'Direct browser requests are not allowed on this route.',
+        };
+      }
+      const body = (req.body ?? {}) as WorkflowGenerationPreviewBody;
+      const previous =
+        typeof body.previewToken === 'string' ? readPreparedRequest(body.previewToken) : null;
+      if (previous?.inFlight) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-in-use',
+          message: 'This reviewed generation request is already being generated.',
+        };
+      }
+      const sourcePath =
+        resolveWorkflowBriefPath(body.sourceBriefPath) ?? previous?.sourcePath ?? null;
+      if (!sourcePath || !existsSync(sourcePath)) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message:
+            'sourceBriefPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+        };
+      }
+      if (body.prompt !== undefined && typeof body.prompt !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'prompt must be a string' };
+      }
+      if (
+        body.referenceAssetPaths !== undefined &&
+        (!Array.isArray(body.referenceAssetPaths) ||
+          !body.referenceAssetPaths.every((value) => typeof value === 'string'))
+      ) {
+        reply.code(400);
+        return { error: 'bad-request', message: 'referenceAssetPaths must be a string array' };
+      }
+      try {
+        const currentSourceHash = createHash('sha256')
+          .update(readFileSync(sourcePath))
+          .digest('hex');
+        if (previous && previous.sourceHash !== currentSourceHash) {
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message: 'The chosen brief changed after this request was previewed. Preview it again.',
+          };
+        }
+        const prepared = await prepareGenerationRequest({
+          briefPath: sourcePath,
+          provider: imageProvider(),
+          textProvider: previous ? null : textProvider(),
+          repoRoot: deps.repoRoot,
+          ...(previous
+            ? {
+                preloaded: {
+                  ...previous.prepared.loaded,
+                  brief: previous.prepared.effectiveBrief,
+                },
+              }
+            : {}),
+          ...(typeof body.prompt === 'string' ? { promptOverride: body.prompt } : {}),
+          ...(Array.isArray(body.referenceAssetPaths)
+            ? { referenceAssetPaths: body.referenceAssetPaths as string[] }
+            : {}),
+        });
+        const token = randomUUID();
+        const expiresAt = Date.now() + 30 * 60_000;
+        if (typeof body.previewToken === 'string') {
+          preparedRequests.delete(body.previewToken);
+        }
+        preparedRequests.set(token, {
+          prepared,
+          sourcePath,
+          sourceHash: currentSourceHash,
+          expiresAt,
+          inFlight: false,
+        });
+        return {
+          previewToken: token,
+          prompt: prepared.prompt,
+          promptHash: prepared.promptSha256,
+          references: prepared.referenceInputs.map((input, index) => ({
+            index,
+            kind: input.kind,
+            assetPath: input.assetPath,
+            contentHash: input.contentHash,
+            sprite: input.sprite ?? null,
+            imageDataUrl: `data:image/png;base64,${input.png.toString('base64')}`,
+          })),
+          selectedAssetPaths: prepared.referenceInputs
+            .filter((input) => input.kind === 'approved')
+            .map((input) => input.assetPath),
+          referenceCatalog: prepared.eligibleReferenceSprites,
+          expiresAt: new Date(expiresAt).toISOString(),
+        };
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: 'generation-preview-failed',
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+
   app.post<{ Body: WorkflowGenerateBody }>('/api/workflow/generate', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string') {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'Direct browser requests are not allowed on this route.',
+      };
+    }
     const body = (req.body ?? {}) as WorkflowGenerateBody;
     if (typeof body.briefPath !== 'string' || body.briefPath.trim() === '') {
       reply.code(400);
@@ -2869,9 +3040,28 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // (keyed by repo-relative path), idempotent, covering BOTH the queue and the
     // inline branches below.
     await mirrorBriefToStore(store, deps.repoRoot, briefPath);
+    let preparedRecord: ReturnType<typeof readPreparedRequest> = null;
+    let validatingPreparedRequest = false;
     try {
       const env = deps.env ?? process.env;
-      if (queue.backend !== 'noop') {
+      preparedRecord =
+        typeof body.previewToken === 'string' ? readPreparedRequest(body.previewToken) : null;
+      if (typeof body.previewToken === 'string' && !preparedRecord) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-expired',
+          message: 'The reviewed generation request expired. Preview it again before generating.',
+        };
+      }
+      if (preparedRecord?.inFlight) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-in-use',
+          message: 'This reviewed generation request is already being generated.',
+        };
+      }
+      if (preparedRecord) preparedRecord.inFlight = true;
+      if (!preparedRecord && queue.backend !== 'noop') {
         const briefId = resolveQueuedBriefId(briefPath);
         const requestedAt = new Date().toISOString();
         await queue.enqueue({
@@ -2891,16 +3081,65 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           queueBackend: queue.backend,
         };
       }
+      if (preparedRecord) {
+        validatingPreparedRequest = true;
+        const currentSourceHash = createHash('sha256')
+          .update(readFileSync(preparedRecord.sourcePath))
+          .digest('hex');
+        if (currentSourceHash !== preparedRecord.sourceHash) {
+          preparedRequests.delete(body.previewToken as string);
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message: 'The chosen brief changed after preview. Preview it again before generating.',
+          };
+        }
+        const approvedPaths = preparedRecord.prepared.referenceInputs
+          .filter((input) => input.kind === 'approved')
+          .map((input) => input.assetPath);
+        const current = await prepareGenerationRequest({
+          briefPath: preparedRecord.sourcePath,
+          provider: imageProvider(),
+          textProvider: null,
+          repoRoot: deps.repoRoot,
+          preloaded: {
+            ...preparedRecord.prepared.loaded,
+            brief: preparedRecord.prepared.effectiveBrief,
+          },
+          promptOverride: preparedRecord.prepared.prompt,
+          referenceAssetPaths: approvedPaths,
+        });
+        const expectedHashes = preparedRecord.prepared.referenceInputs.map(
+          (input) => input.contentHash,
+        );
+        const currentHashes = current.referenceInputs.map((input) => input.contentHash);
+        if (
+          current.promptSha256 !== preparedRecord.prepared.promptSha256 ||
+          expectedHashes.length !== currentHashes.length ||
+          expectedHashes.some((hash, index) => hash !== currentHashes[index])
+        ) {
+          preparedRequests.delete(body.previewToken as string);
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message:
+              'The prompt or ordered reference images changed after preview. Preview again before generating.',
+          };
+        }
+        validatingPreparedRequest = false;
+      }
       // Generate stores the raw sheet ONLY (Option B, ADR 0024). PostProcess
       // and Judge are explicit operator-driven steps (POST /api/runs/:briefId/
       // :runId/postprocess and /judge); they are NOT run inline here.
       const result = await generateOne({
         briefPath,
-        provider: createImageProvider({ env }),
-        textProvider: createTextProvider({ env }),
+        provider: imageProvider(),
+        textProvider: preparedRecord ? null : textProvider(),
         repoRoot: deps.repoRoot,
         store,
+        ...(preparedRecord ? { prepared: preparedRecord.prepared } : {}),
       });
+      if (preparedRecord) preparedRequests.delete(body.previewToken as string);
       return {
         status: 'completed' as const,
         briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
@@ -2910,9 +3149,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         summary: result.summary,
       };
     } catch (err) {
-      reply.code(500);
+      if (preparedRecord) preparedRecord.inFlight = false;
+      const requestDrifted = typeof body.previewToken === 'string' && validatingPreparedRequest;
+      reply.code(requestDrifted ? 409 : 500);
       return {
-        error: 'generate-failed',
+        error: requestDrifted ? 'generation-request-drifted' : 'generate-failed',
         message: err instanceof Error ? err.message : String(err),
       };
     }

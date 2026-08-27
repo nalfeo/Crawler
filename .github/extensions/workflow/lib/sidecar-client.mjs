@@ -167,6 +167,10 @@ export function workflowGenerateUrl(baseUrl) {
   return `${baseUrl}/api/workflow/generate`;
 }
 
+export function workflowGenerationPreviewUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/generation-preview`;
+}
+
 export function workflowMetadataUrl(baseUrl) {
   return `${baseUrl}/api/workflow/metadata`;
 }
@@ -676,11 +680,21 @@ export function createSidecarClient(options) {
     return readResponse(response, 'Failed to promote brief');
   }
 
-  async function generateWorkflow(briefPath) {
+  async function previewWorkflowGeneration(payload) {
+    const response = await fetchImpl(workflowGenerationPreviewUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to prepare generation request');
+  }
+
+  async function generateWorkflow(briefPath, previewToken) {
     const response = await fetchImpl(workflowGenerateUrl(baseUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ briefPath }),
+      body: JSON.stringify({ briefPath, ...(previewToken ? { previewToken } : {}) }),
       cache: 'no-store',
     });
     return readResponse(response, 'Failed to generate sheet');
@@ -793,6 +807,7 @@ export function createSidecarClient(options) {
     synthesizeWorkflow,
     saveWorkflowBrief,
     promoteWorkflowBrief,
+    previewWorkflowGeneration,
     generateWorkflow,
     generateWorkflowMetadata,
     postprocessRun,

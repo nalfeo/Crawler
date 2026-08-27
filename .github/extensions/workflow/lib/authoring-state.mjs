@@ -161,6 +161,7 @@ export function normalizeItem(value) {
     run: normalizeRun(value.run),
     generationRequestedAt: asNullableString(value.generationRequestedAt),
     generationStartedAt: asNullableString(value.generationStartedAt),
+    generationNonce: asNullableString(value.generationNonce),
     approvedAssetPath: asNullableString(value.approvedAssetPath),
     approvalSummary: asNullableString(value.approvalSummary),
     checkinBranch: asNullableString(value.checkinBranch),
@@ -272,6 +273,7 @@ export function createRequestItem(state, input) {
     run: null,
     generationRequestedAt: null,
     generationStartedAt: null,
+    generationNonce: null,
     approvedAssetPath: null,
     approvalSummary: null,
     checkinBranch: null,
@@ -470,6 +472,7 @@ export function rewindItem(item, target) {
       run: null,
       generationRequestedAt: null,
       generationStartedAt: null,
+      generationNonce: null,
       ...clearApproval(),
     };
   }
@@ -484,6 +487,7 @@ export function rewindItem(item, target) {
       stage,
       generationRequestedAt: null,
       generationStartedAt: null,
+      generationNonce: null,
       ...clearApproval(),
     };
   }
@@ -508,6 +512,7 @@ export function resetDownstreamForBriefChange(item, chosenCandidatePath) {
     run: null,
     generationRequestedAt: null,
     generationStartedAt: null,
+    generationNonce: null,
     ...clearApproval(),
   };
 }
@@ -561,6 +566,7 @@ export function approvalPatch(result, variantIndex) {
     checkinIssueBody: null,
     checkinSummary: null,
     generationRequestedAt: null,
+    generationNonce: null,
     queueDurability,
     lastError: null,
   };

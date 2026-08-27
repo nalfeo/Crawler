@@ -13,6 +13,7 @@ import {
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import {
+  listEligibleReferences,
   REFERENCE_COUNT,
   referenceSelectorSeed,
   selectReferences,
@@ -33,6 +34,7 @@ export interface ResolveReferenceSelectionOptions {
 
 export interface ResolvedReferenceSelection {
   readonly selection: ReferenceSelection;
+  readonly eligibleCandidates: readonly ManifestEntry[];
   readonly presentCandidateCount: number;
   readonly publicAssetsRoot: string;
 }
@@ -69,6 +71,7 @@ export function resolveReferenceSelection(
       });
     });
   const assetExists = options.assetExists ?? existsSync;
+  const dislikedNames = new Set([...loadDislikedNames(), ...loadPendingDislikedNames()]);
   const presentCandidates = loadCandidates().filter(
     (entry) =>
       isSafeGeneratedAssetPath(entry.assetPath) &&
@@ -81,8 +84,9 @@ export function resolveReferenceSelection(
       briefType: options.briefType,
       count: options.count ?? REFERENCE_COUNT,
       seed: referenceSelectorSeed(options.briefName),
-      dislikedSpriteNames: new Set([...loadDislikedNames(), ...loadPendingDislikedNames()]),
+      dislikedSpriteNames: dislikedNames,
     }),
+    eligibleCandidates: listEligibleReferences(presentCandidates, options.briefName, dislikedNames),
     presentCandidateCount: presentCandidates.length,
     publicAssetsRoot,
   };
