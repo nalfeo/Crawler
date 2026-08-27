@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Investigation narrowed the target from scene-owned Phaser surfaces to the DOM RunSurveyUI. Concern 1 resolved: Escape follows the existing Skip semantic (hide then onSkip), not a raw close. Concern 2 resolved: RunSurveyUI owns its DOM keydown listener, so no scene/window arbiter is required. Concern 3 resolved: the run survey is outside the JustDown conversation path; its focused jsdom regression asserts only its own skip callback. Concern 4 resolved: scope is exactly the end-of-run RunSurveyUI, whose explicit Skip action is the intended Escape behavior. The review identified a different load-bearing target, so divergence=major_fork."
     },
     "code_review": {
       "clean": false,

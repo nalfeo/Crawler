@@ -61,6 +61,12 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
   };
 
   const trapFocus = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hide();
+      hooks.onSkip?.();
+      return;
+    }
     if (event.key !== 'Tab') {
       return;
     }

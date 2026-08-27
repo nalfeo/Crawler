@@ -113,6 +113,23 @@ describe('RunSurveyUI', () => {
     ui.destroy();
   });
 
+  it('dismisses the dialog with Escape without submitting', () => {
+    const onSubmit = vi.fn();
+    const onSkip = vi.fn();
+    const ui = createRunSurveyUI({ onSubmit, onSkip });
+    ui.show();
+
+    document.body
+      .querySelector('input[data-field="enjoyment"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(onSkip).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(ui.isVisible()).toBe(false);
+
+    ui.destroy();
+  });
+
   it('removes the dialog from the DOM on destroy', () => {
     const ui = createRunSurveyUI({ onSubmit: () => true });
     ui.show();
