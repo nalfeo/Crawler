@@ -34,9 +34,11 @@ valid selected checkpoint, and one valid published checkpoint.
 - After, five warm-index runs: 2 reads and 0 listings per run, 183-204 ms,
   ready issue `[998]`.
 - Wall-time reduction: at least 108x in the representative 90 ms/read model.
-- The committed regression also requires exact cold/warm operation counts,
-  byte-equivalent discovery output, non-overlapping timing distributions, and
-  a median reduction greater than 20x.
+- The committed regression asserts exact cold/warm operation counts (1 listing
+  plus 234 reads cold, 0 listings plus 2 reads per warm run) and byte-equivalent
+  discovery output. Wall-time assertions were deliberately kept out of the unit
+  suite because they are host-load sensitive; the operation counts are the
+  deterministic contract.
 
 ## What changed
 
@@ -54,6 +56,13 @@ valid selected checkpoint, and one valid published checkpoint.
   revalidated and skipped, while durable ready transitions cannot be hidden.
 - The index is explicitly classified as non-cacheable coordination state, with
   a cross-machine cache regression test.
+- `discoverReadyCheckpoints(store, { reconcile: true })` — exposed as
+  `npm run sprites:publish-selected -- --reconcile` — performs a bounded
+  authoritative re-listing and CAS-unions any ready checkpoint the index never
+  learned about (for example one written by a build predating ready-key
+  registration) back into the index.
+- A ready-index entry whose checkpoint no longer exists is logged as debug-level
+  coordination drift, so real checkpoint corruption stays distinguishable.
 - Added coverage for concurrent CAS additions, malformed-index repair, atomic
   CAS refusal, legacy backfill, terminal cleanup failure, reset-path wiring, and
   the 232-record performance/equivalence contract.

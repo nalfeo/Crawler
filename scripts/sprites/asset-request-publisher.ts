@@ -32,7 +32,7 @@ import {
 import { assertSafeBriefPaths, QueueCommitError, runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
-import type { RunStore } from './store/types.js';
+import { StoreNotFoundError, type RunStore } from './store/types.js';
 
 const MANIFEST_REL = path.join('public', 'assets', 'generated', 'manifest.json');
 const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
@@ -62,6 +62,15 @@ interface ReadyCheckpoint {
   readonly issueNumber: number;
   readonly fingerprint: string;
   readonly details: z.infer<typeof selectedDetailsSchema>;
+}
+
+export interface DiscoverReadyCheckpointsOptions {
+  /**
+   * Force a bounded authoritative re-listing of the checkpoint namespace and
+   * CAS-union every ready key found back into the index. Without it, discovery
+   * is index-only once the legacy backfill has completed.
+   */
+  readonly reconcile?: boolean;
 }
 
 interface ReadyCheckpointRecord {
@@ -100,6 +109,7 @@ export interface AssetRequestPublisherOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly exec?: Exec;
   readonly now?: () => Date;
+  readonly reconcile?: boolean;
 }
 
 export async function publishSelectedAssetRequests(
@@ -108,7 +118,9 @@ export async function publishSelectedAssetRequests(
   const env = options.env ?? process.env;
   const exec = options.exec ?? realExec;
   const now = options.now ?? (() => new Date());
-  const ready = await discoverReadyCheckpoints(options.store);
+  const ready = await discoverReadyCheckpoints(options.store, {
+    reconcile: options.reconcile ?? false,
+  });
   const prepared: PreparedPublish[] = [];
 
   try {
@@ -222,9 +234,16 @@ export async function publishSelectedAssetRequests(
   }
 }
 
-export async function discoverReadyCheckpoints(store: RunStore): Promise<ReadyCheckpoint[]> {
+export async function discoverReadyCheckpoints(
+  store: RunStore,
+  options: DiscoverReadyCheckpointsOptions = {},
+): Promise<ReadyCheckpoint[]> {
   const indexRead = await readAssetRequestReadyIndex(store);
-  if (indexRead.status === 'valid' && indexRead.index.legacyBackfillComplete) {
+  if (
+    !options.reconcile &&
+    indexRead.status === 'valid' &&
+    indexRead.index.legacyBackfillComplete
+  ) {
     return (await readReadyCheckpointRecords(store, indexRead.index.keys)).map(
       (record) => record.checkpoint,
     );
@@ -233,6 +252,11 @@ export async function discoverReadyCheckpoints(store: RunStore): Promise<ReadyCh
     logger.warn(
       `Rebuilding invalid asset-request ready index from authoritative checkpoints: ${indexRead.error}`,
     );
+  } else if (options.reconcile) {
+    // Bounded, explicitly requested authoritative re-listing: CAS-unions any
+    // ready checkpoint the index never learned about (for example one written
+    // by a build that predates ready-key registration) back into the index.
+    logger.info('Reconciling asset-request ready index against authoritative checkpoints');
   }
 
   const keys = await store.list(ISSUE_STATUS_KEY_PREFIX, { authoritative: true });
@@ -265,9 +289,21 @@ async function readReadyCheckpointRecords(
 }
 
 async function readReadyCheckpoint(store: RunStore, key: string): Promise<ReadyCheckpoint | null> {
+  let data: Buffer;
+  try {
+    data = await store.get(key);
+  } catch (error) {
+    if (error instanceof StoreNotFoundError) {
+      // Expected coordination drift: a ready-index entry can outlive its
+      // checkpoint when terminal cleanup failed. Not corruption.
+      logger.debug(`Skipping stale asset-request ready index entry ${key}: checkpoint is gone`);
+      return null;
+    }
+    throw error;
+  }
   let raw: unknown;
   try {
-    raw = JSON.parse((await store.get(key)).toString('utf8'));
+    raw = JSON.parse(data.toString('utf8'));
   } catch (error) {
     logger.warn(
       `Skipping malformed asset-request checkpoint ${key}: ${

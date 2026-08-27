@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeCanonicalPrOnConflict,
@@ -13,7 +12,12 @@ import {
 import type { CheckinAsset, Exec } from '../../../scripts/sprites/checkin.js';
 import { shardPathForKey } from '../../../scripts/sprites/generated-shards.js';
 import { issueCheckpointKey } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
-import { getGlobalLogLevel, setGlobalLogLevel } from '../../../src/shared/logger.js';
+import {
+  createLogCursor,
+  getGlobalLogLevel,
+  readLogsSince,
+  setGlobalLogLevel,
+} from '../../../src/shared/logger.js';
 import {
   ASSET_REQUEST_READY_INDEX_KEY,
   ISSUE_STATUS_KEY_PREFIX,
@@ -48,7 +52,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
   };
 }
 
-function makeMeasuredStore(delayMs: number): RunStore & {
+function makeMeasuredStore(): RunStore & {
   mem: Map<string, Buffer>;
   getKeys: string[];
   listCalls: number;
@@ -65,10 +69,6 @@ function makeMeasuredStore(delayMs: number): RunStore & {
     },
     async get(key) {
       getKeys.push(key);
-      const deadline = performance.now() + delayMs;
-      while (performance.now() < deadline) {
-        // Model fixed remote-operation cost without depending on host timer granularity.
-      }
       return base.get(key);
     },
     async list(prefix, options) {
@@ -198,88 +198,125 @@ describe('asset-request publication discovery', () => {
     });
   });
 
-  it('backfills 232 legacy-invalid checkpoints once, then uses a semantically equivalent compact index with non-overlapping timings', async () => {
-    const coldTimings: number[] = [];
-    const warmTimings: number[] = [];
+  it('backfills 232 legacy-invalid checkpoints once, then serves byte-equivalent discovery from a compact index', async () => {
     const originalLogLevel = getGlobalLogLevel();
-    let expected: Awaited<ReturnType<typeof discoverReadyCheckpoints>> | undefined;
-    let warmStore: ReturnType<typeof makeMeasuredStore> | undefined;
 
     try {
       setGlobalLogLevel('error');
-      for (let sample = 0; sample < 3; sample++) {
-        const store = makeMeasuredStore(1);
-        for (let index = 0; index < 232; index++) {
-          await store.put(
-            issueCheckpointKey(index + 1, `legacy-${index}`),
-            Buffer.from(
-              JSON.stringify({
-                issueNumber: index + 1,
-                fingerprint: `legacy-${index}`,
-                stage: 'completed',
-                updatedAt: '2026-06-01T00:00:00.000Z',
-              }),
-            ),
-          );
-        }
+      const store = makeMeasuredStore();
+      for (let index = 0; index < 232; index++) {
         await store.put(
-          issueCheckpointKey(998, 'fingerprint-998'),
-          checkpoint(998, 'selected-pending-publish'),
+          issueCheckpointKey(index + 1, `legacy-${index}`),
+          Buffer.from(
+            JSON.stringify({
+              issueNumber: index + 1,
+              fingerprint: `legacy-${index}`,
+              stage: 'completed',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            }),
+          ),
         );
-        await store.put(issueCheckpointKey(999, 'fingerprint-999'), checkpoint(999, 'published'));
-        store.resetCounts();
+      }
+      await store.put(
+        issueCheckpointKey(998, 'fingerprint-998'),
+        checkpoint(998, 'selected-pending-publish'),
+      );
+      await store.put(issueCheckpointKey(999, 'fingerprint-999'), checkpoint(999, 'published'));
+      store.resetCounts();
 
-        const started = performance.now();
-        const discovered = await discoverReadyCheckpoints(store);
-        coldTimings.push(performance.now() - started);
-
-        expect(discovered.map((item) => item.issueNumber)).toEqual([998]);
-        expect(store.listCalls).toBe(1);
-        expect(
-          store.getKeys.filter((key) => key.startsWith(`${ISSUE_STATUS_KEY_PREFIX}/`)),
-        ).toHaveLength(234);
-        const index = JSON.parse(
-          (await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'),
-        ) as { legacyBackfillComplete: boolean; keys: string[] };
-        expect(index).toEqual({
+      const expected = await discoverReadyCheckpoints(store);
+      expect(expected.map((item) => item.issueNumber)).toEqual([998]);
+      expect(store.listCalls).toBe(1);
+      expect(
+        store.getKeys.filter((key) => key.startsWith(`${ISSUE_STATUS_KEY_PREFIX}/`)),
+      ).toHaveLength(234);
+      expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual(
+        {
           version: 1,
           legacyBackfillComplete: true,
           keys: [issueCheckpointKey(998, 'fingerprint-998')],
-        });
+        },
+      );
 
-        expected ??= discovered;
-        warmStore ??= store;
-      }
-
-      warmStore!.resetCounts();
+      // Warm runs must be byte-equivalent while touching only the index and the
+      // single ready checkpoint it references — the operation counts, not wall
+      // time, are the deterministic performance contract.
+      store.resetCounts();
       for (let sample = 0; sample < 5; sample++) {
-        const started = performance.now();
-        const discovered = await discoverReadyCheckpoints(warmStore!);
-        warmTimings.push(performance.now() - started);
+        const discovered = await discoverReadyCheckpoints(store);
         expect(Buffer.from(JSON.stringify(discovered))).toEqual(
           Buffer.from(JSON.stringify(expected)),
         );
       }
 
-      expect(warmStore!.listCalls).toBe(0);
-      expect(warmStore!.getKeys).toEqual(
+      expect(store.listCalls).toBe(0);
+      expect(store.getKeys).toEqual(
         Array.from({ length: 5 }).flatMap(() => [
           ASSET_REQUEST_READY_INDEX_KEY,
           issueCheckpointKey(998, 'fingerprint-998'),
         ]),
       );
-      expect(Math.min(...coldTimings)).toBeGreaterThan(Math.max(...warmTimings));
-      expect(median(coldTimings) / median(warmTimings)).toBeGreaterThan(20);
+    } finally {
+      setGlobalLogLevel(originalLogLevel);
+    }
+  });
+
+  it('recovers an unindexed ready checkpoint through a bounded --reconcile re-listing', async () => {
+    const store = makeMeasuredStore();
+    await store.put(
+      issueCheckpointKey(40, 'fingerprint-40'),
+      checkpoint(40, 'selected-pending-publish'),
+    );
+    await discoverReadyCheckpoints(store);
+
+    // A build that predates ready-key registration writes a ready checkpoint
+    // without touching the index, so index-only discovery cannot see it.
+    await store.put(
+      issueCheckpointKey(41, 'fingerprint-41'),
+      checkpoint(41, 'selected-pending-publish'),
+    );
+    await expect(discoverReadyCheckpoints(store)).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 40 }),
+    ]);
+
+    store.resetCounts();
+    await expect(discoverReadyCheckpoints(store, { reconcile: true })).resolves.toEqual([
+      expect.objectContaining({ issueNumber: 40 }),
+      expect.objectContaining({ issueNumber: 41 }),
+    ]);
+    expect(store.listCalls).toBe(1);
+    expect(JSON.parse((await store.get(ASSET_REQUEST_READY_INDEX_KEY)).toString('utf8'))).toEqual({
+      version: 1,
+      legacyBackfillComplete: true,
+      keys: [issueCheckpointKey(40, 'fingerprint-40'), issueCheckpointKey(41, 'fingerprint-41')],
+    });
+
+    // The union is durable: the next index-only run sees both.
+    await expect(discoverReadyCheckpoints(store)).resolves.toHaveLength(2);
+  });
+
+  it('logs a stale ready-index entry as coordination drift, not checkpoint corruption', async () => {
+    const originalLogLevel = getGlobalLogLevel();
+    try {
+      setGlobalLogLevel('debug');
+      const store = makeStore();
+      await store.put(
+        issueCheckpointKey(50, 'fingerprint-50'),
+        checkpoint(50, 'selected-pending-publish'),
+      );
+      await discoverReadyCheckpoints(store);
+      await store.remove(issueCheckpointKey(50, 'fingerprint-50'));
+
+      const cursor = createLogCursor();
+      await expect(discoverReadyCheckpoints(store)).resolves.toEqual([]);
+      const logs = readLogsSince(cursor);
+      expect(logs.some((line) => line.startsWith('[debug]') && line.includes('stale'))).toBe(true);
+      expect(logs.some((line) => line.includes('malformed'))).toBe(false);
     } finally {
       setGlobalLogLevel(originalLogLevel);
     }
   });
 });
-
-function median(values: readonly number[]): number {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.floor(sorted.length / 2)]!;
-}
 
 describe('exact generated-asset collision validation', () => {
   const roots: string[] = [];
