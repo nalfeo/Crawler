@@ -109,6 +109,16 @@ These are registered in `manifest.json`; do not replace them with unreviewed
 e2e-only screenshots. Each capture must include its `.review.json` evaluator
 artifact.
 
+## Planned equipment visual coverage
+
+Add deterministic fixtures and manifest entries for these approved edge cases:
+
+| Surface                               | Required state                                                                                                              |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `equipment-hover-ring-replacement`    | Hover a third ring while Ring 1 and Ring 2 are filled; make the replacement choice clear without covering either ring slot. |
+| `equipment-hover-mixed-direct-deltas` | Show both positive and negative direct deltas; only the bold parenthesized deltas are green/red.                            |
+| `equipment-hover-bag-boundary`        | Hover the topmost or bottommost visible Bag item; preserve containment and target clearance with safe-side placement.       |
+
 ## Review JSON
 
 Each baseline includes `<surface>.review.json` with deterministic geometry findings + optional LLM assessment:
