@@ -147,6 +147,7 @@ import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
 import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
+import { emitCorpseExplosion } from '../core/apply-damage.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2926,6 +2927,30 @@ function markBossRoomCleared(world: GameWorld, room: RoomData | null): void {
   world.clearedSafeRoomIds.add(room.id);
 }
 
+function explodeEnemiesInClearedBossRoom(world: GameWorld, room: RoomData | null): void {
+  if (!room) {
+    return;
+  }
+
+  for (const eid of query(world.ecs, [Enemy, Position])) {
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    // Preserve a boss's death animation and spawner death handshakes.
+    if (
+      hasComponent(world.ecs, eid, DeathTimer) ||
+      hasComponent(world.ecs, eid, Spawner) ||
+      !isInRoom(world, x, y, room)
+    ) {
+      continue;
+    }
+
+    emitCorpseExplosion(world, eid, x, y, 0);
+    world.floorScenario?.enemyArchetypes.delete(eid);
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+  }
+}
+
 /**
  * Record where a live boss currently stands so its reward chest can drop there.
  *
@@ -3910,6 +3935,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     markBossRoomCleared(world, slimeRatRoom);
+    explodeEnemiesInClearedBossRoom(world, slimeRatRoom);
     setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
     questSystem(world);
   }
@@ -3964,6 +3990,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     markBossRoomCleared(world, floorMap?.bossStairRoom ?? null);
+    explodeEnemiesInClearedBossRoom(world, floorMap?.bossStairRoom ?? null);
     setGoalFlag(world, 'floor1-defeat-boss', true);
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
