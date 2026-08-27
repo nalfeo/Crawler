@@ -1119,6 +1119,41 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
+  it('shows per-replacement ring deltas and combined two-hand DPS deltas', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const comparisonPage = await context.newPage();
+    try {
+      await loadUiProbeLab(comparisonPage);
+      await hideLabChrome(comparisonPage);
+      const ringRows = await comparisonPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+        probe.equipInventoryItem('band-of-fortune');
+        probe.equipInventoryItem('signet-of-focus');
+        const candidate = probe.addGeneratedRingReplacement();
+        if (candidate === null) throw new Error('Unable to seed ring candidate.');
+        probe.previewGeneratedEquipmentBagItem(candidate);
+        return probe.getEquipmentTextRuns().map((run) => run.text);
+      });
+      expect(ringRows).toEqual(expect.arrayContaining(['(+1)', '(-5%)', '(+2)', '(-1)', '(-3%)']));
+
+      const handRows = await comparisonPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.closeOverlays();
+        probe.openEquipmentOnly();
+        if (!probe.seedMultiHandReplacement()) throw new Error('Unable to seed hand replacement.');
+        probe.previewEquipmentBagItem('bone-club');
+        return probe.getEquipmentTextRuns().map((run) => run.text);
+      });
+      expect(handRows).toEqual(
+        expect.arrayContaining(['22.2 Max 1T DPS', '(-2.8)', 'Armor', '(-3)']),
+      );
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
   it('keeps rendered text contained, collision-free, and readable at every supported viewport', async () => {
     for (const viewport of [
       { width: 1280, height: 800 },

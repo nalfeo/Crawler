@@ -34,6 +34,7 @@ import {
   type SlotDefinition,
 } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
+import { getWeaponDef } from '../shared/weaponDefs.js';
 import {
   PRIMARY_STATS,
   SECONDARY_STATS,
@@ -1209,9 +1210,9 @@ export function createEquipmentUI(
         const delta = inlineDeltas[typedStatId] ?? 0;
         const inlineDelta =
           Math.abs(delta) > 1e-9
-            ? ` (${delta > 0 ? '+' : '-'}${formatStatValue(typedStatId, Math.abs(delta))})`
+            ? ` (${delta > 0 ? '+' : '-'}${formatTooltipStatValue(typedStatId, Math.abs(delta))})`
             : '';
-        const text = `${value! > 0 ? '+' : ''}${formatStatValue(typedStatId, value!)} ${formatStatLabel(typedStatId)}`;
+        const text = `${value! > 0 ? '+' : ''}${formatTooltipStatValue(typedStatId, value!)} ${formatTooltipStatLabel(typedStatId)}`;
         if (Math.abs(delta) <= 1e-9) return text;
         return {
           text,
@@ -1219,6 +1220,84 @@ export function createEquipmentUI(
           deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
         };
       });
+  }
+
+  function formatTooltipStatValue(statId: StatId, value: number): string {
+    return formatStatValue(statId, value).replace(/\.0(%|x)$/, '$1');
+  }
+
+  function formatTooltipStatLabel(statId: StatId): string {
+    return formatStatLabel(statId).replace('Cooldown Reduction', 'CD Reduction');
+  }
+
+  function weaponSingleTargetDps(def: EquipmentItemDef): number | null {
+    const weapon = def.weaponId ? getWeaponDef(def.weaponId) : undefined;
+    return weapon && weapon.cooldownMs > 0 ? weapon.baseDamage / (weapon.cooldownMs / 1000) : null;
+  }
+
+  function formatDps(value: number): string {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
+  function comparisonTooltipStatLines(
+    candidate: EquipmentItemDef,
+    replaced: readonly EquipmentItemDef[],
+  ): TooltipStatLine[] {
+    const replacedBonuses: Partial<Record<StatId, number>> = {};
+    for (const def of replaced) {
+      for (const [statId, value] of Object.entries(def.statBonuses)) {
+        const typedStatId = statId as StatId;
+        replacedBonuses[typedStatId] = (replacedBonuses[typedStatId] ?? 0) + (value ?? 0);
+      }
+    }
+    const statIds = [
+      ...new Set([...Object.keys(candidate.statBonuses), ...Object.keys(replacedBonuses)]),
+    ] as StatId[];
+    const lines = statIds
+      .filter(
+        (statId) =>
+          (candidate.statBonuses[statId] ?? 0) !== 0 || (replacedBonuses[statId] ?? 0) !== 0,
+      )
+      .map((statId): TooltipStatLine => {
+        const candidateValue = candidate.statBonuses[statId] ?? 0;
+        const delta = candidateValue - (replacedBonuses[statId] ?? 0);
+        const text =
+          candidateValue === 0
+            ? formatStatLabel(statId)
+            : `${candidateValue > 0 ? '+' : ''}${formatTooltipStatValue(statId, candidateValue)} ${formatTooltipStatLabel(statId)}`;
+        return delta === 0
+          ? text
+          : {
+              text,
+              deltaText: ` (${delta > 0 ? '+' : '-'}${formatTooltipStatValue(statId, Math.abs(delta))})`,
+              deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
+            };
+      });
+    const candidateDps = weaponSingleTargetDps(candidate) ?? 0;
+    const replacedDps = replaced.reduce(
+      (total, def) => total + (weaponSingleTargetDps(def) ?? 0),
+      0,
+    );
+    if (candidateDps !== 0 || replacedDps !== 0) {
+      const delta = candidateDps - replacedDps;
+      lines.push(
+        delta === 0
+          ? `${formatDps(candidateDps)} Max 1T DPS`
+          : {
+              text: candidateDps === 0 ? 'Max 1T DPS' : `${formatDps(candidateDps)} Max 1T DPS`,
+              deltaText: ` (${delta > 0 ? '+' : '-'}${formatDps(Math.abs(delta))})`,
+              deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
+            },
+      );
+    }
+    return lines;
+  }
+
+  function tooltipStatLinesWithDps(def: EquipmentItemDef): TooltipStatLine[] {
+    const dps = weaponSingleTargetDps(def);
+    return dps === null
+      ? tooltipStatLines(def)
+      : [`${formatDps(dps)} Max 1T DPS`, ...tooltipStatLines(def)];
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {
@@ -1331,14 +1410,41 @@ export function createEquipmentUI(
       candidate.slots.includes('ringRight');
     const cards = isDualRingComparison
       ? [
-          { def: equipped[0]!, label: 'EQUIPPED', deltas: {} },
-          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
-          { def: equipped[1]!, label: 'EQUIPPED', deltas: {} },
-          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
+          {
+            def: equipped[0]!,
+            label: 'EQUIPPED',
+            statLines: tooltipStatLinesWithDps(equipped[0]!),
+          },
+          {
+            def: candidate,
+            label: 'CANDIDATE',
+            statLines: comparisonTooltipStatLines(candidate, [equipped[0]!]),
+          },
+          {
+            def: equipped[1]!,
+            label: 'EQUIPPED',
+            statLines: tooltipStatLinesWithDps(equipped[1]!),
+          },
+          {
+            def: candidate,
+            label: 'CANDIDATE',
+            statLines: comparisonTooltipStatLines(candidate, [equipped[1]!]),
+          },
         ]
       : [
-          ...equipped.map((def) => ({ def, label: 'EQUIPPED', deltas: {} })),
-          { def: candidate, label: 'CANDIDATE', deltas: inlineDeltas },
+          ...equipped.map((def) => ({
+            def,
+            label: 'EQUIPPED',
+            statLines: tooltipStatLinesWithDps(def),
+          })),
+          {
+            def: candidate,
+            label: 'CANDIDATE',
+            statLines:
+              equipped.length > 1
+                ? comparisonTooltipStatLines(candidate, equipped)
+                : tooltipStatLines(candidate, inlineDeltas),
+          },
         ];
     const columns = isDualRingComparison ? 2 : cards.length;
     const rows = Math.ceil(cards.length / columns);
@@ -1346,8 +1452,7 @@ export function createEquipmentUI(
     const cardWidth = Math.min(176, Math.floor((availableWidth - gap * (columns - 1)) / columns));
     const cardHeight = Math.max(
       ...cards.map(
-        ({ def, deltas }) =>
-          getEquipmentTooltipCardLayout(cardWidth, tooltipStatLines(def, deltas), '').height,
+        ({ statLines }) => getEquipmentTooltipCardLayout(cardWidth, statLines, '').height,
       ),
     );
     const comparisonWidth = cardWidth * columns + gap * (columns - 1);
@@ -1376,10 +1481,18 @@ export function createEquipmentUI(
         card.label,
         [],
         false,
-        tooltipStatLines(card.def, card.deltas),
+        card.statLines,
       );
     }
-    tooltipBounds = measureTooltipBounds(tooltipObjects);
+    // The interaction contract is the visible card group. Phaser's wrapped-text
+    // logical bounds can extend past its clipped card despite no painted pixels
+    // escaping, which would otherwise falsely report Bag-target occlusion.
+    tooltipBounds = {
+      x: comparisonX,
+      y: comparisonY,
+      width: comparisonWidth,
+      height: comparisonHeight,
+    };
   }
 
   function getCenterFacingTooltipPlacement(

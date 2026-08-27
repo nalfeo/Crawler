@@ -77,7 +77,7 @@ describe('item tooltip redesign', () => {
     expect(layout.headerCenterY).toBe(12);
     expect(layout.statStartY).toBeGreaterThan(iconBottom);
     expect(layout.descriptionY - (layout.statStartY + 18 + 14)).toBe(12);
-    expect(layout.height).toBe(layout.descriptionY + 2 * 14 + 10);
+    expect(layout.height).toBe(layout.descriptionY + 2 * 14 + 14);
   });
 
   it('reserves separate measured space for candidate differences', () => {
@@ -99,7 +99,7 @@ describe('item tooltip redesign', () => {
     );
 
     expect(layout.descriptionHeight).toBe(42);
-    expect(layout.height).toBe(layout.descriptionY + layout.descriptionHeight + 10);
+    expect(layout.height).toBe(layout.descriptionY + layout.descriptionHeight + 14);
   });
 
   it('renders icon, stats, flavor, and candidate differences inside the requested card', () => {

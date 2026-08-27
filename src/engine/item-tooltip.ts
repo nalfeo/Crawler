@@ -14,7 +14,7 @@ const EQUIPMENT_CARD_ICON_SIZE = 28;
 const EQUIPMENT_CARD_ICON_CENTER_Y = 48;
 const EQUIPMENT_CARD_STAT_START_Y = 70;
 const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
-const EQUIPMENT_CARD_BOTTOM_PADDING = 10;
+const EQUIPMENT_CARD_BOTTOM_PADDING = 14;
 const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
 
 export type TooltipStatLine =
@@ -333,7 +333,7 @@ export function renderItemTooltip(
       const text = typeof line === 'string' ? line : line.text;
       const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
         fontFamily,
-        fontSize: compactLayout ? '12px' : '11px',
+        fontSize: compactLayout ? '14px' : '11px',
         color: '#d9e2ef',
       });
       container.add(statText);
@@ -345,7 +345,7 @@ export function renderItemTooltip(
           line.deltaText,
           {
             fontFamily,
-            fontSize: compactLayout ? '12px' : '11px',
+            fontSize: compactLayout ? '14px' : '11px',
             fontStyle: 'bold',
             color: line.deltaColor,
           },
