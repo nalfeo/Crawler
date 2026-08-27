@@ -14,7 +14,7 @@
       "notes": "Adopted unique per-run marker cleanup/preflight; executable shell success/failure/signal/pre-exit tests; concurrency=2 worker integration benchmark; explicit post-marker next-run boundary; documented acceptable preexisting-backlog processing before ingest completes."
     },
     "code_review": {
-      "clean": false,
+      "clean": true,
       "rounds": [
         {
           "round": 1,
@@ -22,6 +22,13 @@
           "concerns_count": 5,
           "resolved_count": 5,
           "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     },
