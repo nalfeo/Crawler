@@ -1,9 +1,17 @@
 import { z } from 'zod';
+import { performance } from 'node:perf_hooks';
+import { createLogger } from '../../src/shared/logger.js';
+import {
+  addAssetRequestReadyKey,
+  removeAssetRequestReadyKey,
+} from './asset-request-ready-index.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-status-key.js';
 import type { RunStore } from './store/types.js';
+import type { MonotonicNow } from './pipeline-timing.js';
 
 export const ISSUE_PIPELINE_CHECKPOINT_VERSION = 1;
 export const ISSUE_PIPELINE_MAX_STAGE_ATTEMPTS = 3;
+const logger = createLogger('infra:sprites:issue-pipeline-checkpoint');
 
 export const ISSUE_PIPELINE_STAGES = [
   'synthesize',
@@ -63,7 +71,70 @@ export interface IssueCheckpointController {
   readonly issueNumber: number;
   readonly fingerprint: string;
   readonly now: () => Date;
+  readonly monotonicNow: MonotonicNow;
 }
+
+export interface IssueCheckpointStageTiming {
+  readonly operationMs: number;
+  /** Wrapper work up to, but excluding, the terminal write that persists this timing. */
+  readonly orchestrationMs: number;
+  readonly totalMs: number;
+}
+
+export interface IssueCheckpointTiming {
+  readonly totalMs: number;
+  readonly stages: Partial<Record<IssuePipelineStage, IssueCheckpointStageTiming>>;
+  readonly invalidSamples: number;
+}
+
+const CHECKPOINT_TIMING_DETAILS_KEY = 'checkpointTiming';
+const checkpointStageTimingSchema = z
+  .object({
+    operationMs: z.number().finite().nonnegative(),
+    orchestrationMs: z.number().finite().nonnegative(),
+    totalMs: z.number().finite().nonnegative(),
+  })
+  .strict()
+  .superRefine((timing, context) => {
+    if (timing.totalMs !== timing.operationMs + timing.orchestrationMs) {
+      context.addIssue({
+        code: 'custom',
+        path: ['totalMs'],
+        message: 'totalMs must equal operationMs + orchestrationMs',
+      });
+    }
+  });
+const issueCheckpointStageShape = {
+  synthesize: checkpointStageTimingSchema.optional(),
+  'select-brief': checkpointStageTimingSchema.optional(),
+  promote: checkpointStageTimingSchema.optional(),
+  generate: checkpointStageTimingSchema.optional(),
+  postprocess: checkpointStageTimingSchema.optional(),
+  judge: checkpointStageTimingSchema.optional(),
+  'select-variants': checkpointStageTimingSchema.optional(),
+  publish: checkpointStageTimingSchema.optional(),
+} satisfies Record<IssuePipelineStage, z.ZodOptional<typeof checkpointStageTimingSchema>>;
+
+export const issueCheckpointTimingSchema = z
+  .object({
+    totalMs: z.number().finite().nonnegative(),
+    stages: z.object(issueCheckpointStageShape).strict(),
+    invalidSamples: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((timing, context) => {
+    const stageTotal = ISSUE_PIPELINE_STAGES.reduce(
+      (total, stage) => total + (timing.stages[stage]?.totalMs ?? 0),
+      0,
+    );
+    if (timing.totalMs !== stageTotal) {
+      context.addIssue({
+        code: 'custom',
+        path: ['totalMs'],
+        message: `totalMs must equal checkpoint stage total ${stageTotal}`,
+      });
+    }
+  });
 
 export interface RunCheckpointStageResult<T> {
   readonly output: T;
@@ -79,6 +150,7 @@ export function createIssueCheckpointController(options: {
   readonly issueNumber: number;
   readonly fingerprint: string;
   readonly now?: () => Date;
+  readonly monotonicNow?: MonotonicNow;
 }): IssueCheckpointController {
   return {
     store: options.store,
@@ -86,6 +158,7 @@ export function createIssueCheckpointController(options: {
     issueNumber: options.issueNumber,
     fingerprint: options.fingerprint,
     now: options.now ?? (() => new Date()),
+    monotonicNow: options.monotonicNow ?? (() => performance.now()),
   };
 }
 
@@ -225,10 +298,50 @@ export async function runCheckpointStage<T>(
     readonly maxAttempts?: number;
   } = {},
 ): Promise<RunCheckpointStageResult<T>> {
+  let operationMs = 0;
+  let orchestrationMs = 0;
+  let invalidSamples = 0;
+  const sample = (): number | null => {
+    try {
+      const value = controller.monotonicNow();
+      if (Number.isFinite(value)) return value;
+    } catch {
+      // Timing is observational and must never change checkpoint behavior.
+    }
+    invalidSamples++;
+    return null;
+  };
+  const addElapsed = (kind: 'operation' | 'orchestration', startedAt: number | null): void => {
+    if (startedAt === null) return;
+    let completedAt: number;
+    try {
+      completedAt = controller.monotonicNow();
+    } catch {
+      invalidSamples++;
+      return;
+    }
+    const elapsed = completedAt - startedAt;
+    if (!Number.isFinite(elapsed) || elapsed < 0) {
+      invalidSamples++;
+      return;
+    }
+    if (kind === 'operation') operationMs += elapsed;
+    else orchestrationMs += elapsed;
+  };
+
+  const loadStartedAt = sample();
   let checkpoint = await loadIssueCheckpoint(controller);
+  addElapsed('orchestration', loadStartedAt);
+  const baseTiming = readCheckpointTiming(checkpoint);
   const prior = checkpoint.stages[stage];
   if (prior?.status === 'completed') {
-    const parsed = outputSchema.safeParse(prior.output);
+    const parseStartedAt = sample();
+    let parsed: ReturnType<typeof outputSchema.safeParse>;
+    try {
+      parsed = outputSchema.safeParse(prior.output);
+    } finally {
+      addElapsed('orchestration', parseStartedAt);
+    }
     if (!parsed.success) {
       throw new IssuePipelineCheckpointError(
         `Completed stage ${stage} has invalid output: ${parsed.error.message}`,
@@ -262,10 +375,25 @@ export async function runCheckpointStage<T>(
         },
       },
     };
+    const runningWriteStartedAt = sample();
     await writeIssueCheckpoint(controller, checkpoint);
+    addElapsed('orchestration', runningWriteStartedAt);
 
     try {
-      const output = outputSchema.parse(await operation(attempts));
+      const operationStartedAt = sample();
+      let rawOutput: unknown;
+      try {
+        rawOutput = await operation(attempts);
+      } finally {
+        addElapsed('operation', operationStartedAt);
+      }
+      const parseStartedAt = sample();
+      let output: T;
+      try {
+        output = outputSchema.parse(rawOutput);
+      } finally {
+        addElapsed('orchestration', parseStartedAt);
+      }
       const completedAt = controller.now().toISOString();
       checkpoint = {
         ...checkpoint,
@@ -281,6 +409,7 @@ export async function runCheckpointStage<T>(
           },
         },
       };
+      checkpoint = withCheckpointTiming(checkpoint);
       await writeIssueCheckpoint(controller, checkpoint);
       return { output, resumed: false };
     } catch (error) {
@@ -302,12 +431,49 @@ export async function runCheckpointStage<T>(
           },
         },
       };
+      checkpoint = withCheckpointTiming(checkpoint);
       await writeIssueCheckpoint(controller, checkpoint);
       if (!isTransient(error) || attempts >= maxAttempts) throw error;
     }
   }
 
+  function withCheckpointTiming(value: IssuePipelineCheckpoint): IssuePipelineCheckpoint {
+    const priorStage = baseTiming.stages[stage];
+    const stageOperationMs = (priorStage?.operationMs ?? 0) + operationMs;
+    const stageOrchestrationMs = (priorStage?.orchestrationMs ?? 0) + orchestrationMs;
+    const stages = {
+      ...baseTiming.stages,
+      [stage]: {
+        operationMs: stageOperationMs,
+        orchestrationMs: stageOrchestrationMs,
+        totalMs: stageOperationMs + stageOrchestrationMs,
+      },
+    };
+    const timing: IssueCheckpointTiming = {
+      stages,
+      totalMs: ISSUE_PIPELINE_STAGES.reduce(
+        (total, stageName) => total + (stages[stageName]?.totalMs ?? 0),
+        0,
+      ),
+      invalidSamples: baseTiming.invalidSamples + invalidSamples,
+    };
+    return {
+      ...value,
+      details: {
+        ...value.details,
+        [CHECKPOINT_TIMING_DETAILS_KEY]: timing,
+      },
+    };
+  }
+
   throw new IssuePipelineCheckpointError(`Stage ${stage} did not produce an output`);
+}
+
+export function readCheckpointTiming(checkpoint: IssuePipelineCheckpoint): IssueCheckpointTiming {
+  const empty: IssueCheckpointTiming = { totalMs: 0, stages: {}, invalidSamples: 0 };
+  const raw = checkpoint.details?.[CHECKPOINT_TIMING_DETAILS_KEY];
+  const parsed = issueCheckpointTimingSchema.safeParse(raw);
+  return parsed.success ? parsed.data : empty;
 }
 
 /**
@@ -336,7 +502,8 @@ const INFRA_RESETTABLE_KINDS = new Set<string>(['push-retries-exhausted']);
  * If `stage` is exhausted (attempts ≥ maxAttempts) **and** its last recorded
  * error was transient (not in PERMANENT_ERROR_KINDS), this removes the stage
  * entry from the checkpoint so the next `runCheckpointStage` call can retry
- * from a clean slate.
+ * from a clean control-flow slate. Historical timing remains cumulative across
+ * resets so operators can see the full cost of the logical stage.
  *
  * Returns `true` when a reset was performed, `false` when no reset was needed
  * (stage not present, still in-flight, succeeded, or failed permanently).
@@ -379,7 +546,7 @@ export async function markIssuePipelineTerminal(
 ): Promise<void> {
   const checkpoint = await loadIssueCheckpoint(controller);
   const updatedAt = controller.now().toISOString();
-  await writeIssueCheckpoint(controller, {
+  const terminalCheckpoint: IssuePipelineCheckpoint = {
     ...checkpoint,
     stage: 'completed',
     updatedAt,
@@ -388,7 +555,28 @@ export async function markIssuePipelineTerminal(
       outcome,
       ...details,
     },
-  });
+  };
+
+  if (outcome === 'selected-pending-publish') {
+    // Register before the checkpoint write. A crash can leave a conservative
+    // stale index entry, but discovery revalidates the checkpoint before acting.
+    await addAssetRequestReadyKey(controller.store, controller.key);
+    await writeIssueCheckpoint(controller, terminalCheckpoint);
+    return;
+  }
+
+  await writeIssueCheckpoint(controller, terminalCheckpoint);
+  try {
+    await removeAssetRequestReadyKey(controller.store, controller.key);
+  } catch (error) {
+    // The terminal checkpoint is already durable. Leaving a stale ready key is
+    // safe because publisher discovery revalidates and skips terminal outcomes.
+    logger.warn(
+      `Checkpoint ${controller.key} is terminal but ready-index cleanup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 const PERMANENT_ERROR_KINDS = new Set([

@@ -22,10 +22,9 @@
  * (`fireballBlast` etc.) are cosmetic presentation, not a semantic contract
  * (plan review finding — see
  * `docs/knowledge/adr/2026-08-23-combat-loot-audio-cues.md`). Loot pickups
- * have no equivalent
- * authoritative queue, so `pickupSparkle` is used, but ONLY as a single
- * generic "pickup happened" signal — never to infer WHICH item was picked up
- * from its cosmetic tint, since at least two producers
+ * have no equivalent authoritative queue, so `pickupSparkle` is used with
+ * optional semantic pickup metadata — never inferring item type from its
+ * cosmetic tint, since at least two producers
  * (`bossChestPickupSystem.ts`, `harvestSystem.ts`) already pass ad hoc colors
  * outside the small gold/gem/item palette `vfx-events.ts` defines, which
  * would make color-based type inference silently wrong for those callers
@@ -36,7 +35,7 @@
  */
 import type { AbilityActivationEvent } from './ability-activation-events.js';
 import type { CombatEvent } from './combat-events.js';
-import type { VfxEvent } from './vfx-events.js';
+import type { PickupAudioKind, VfxEvent } from './vfx-events.js';
 
 export type CombatAudioCueKind =
   | 'weaponHit'
@@ -55,6 +54,8 @@ export interface CombatAudioCue {
   readonly kind: CombatAudioCueKind;
   /** 0..1 intensity for this specific cue instance. */
   readonly intensity: number;
+  /** Semantic variant for pickup synthesis; absent for generic pickup feedback. */
+  readonly pickupAudioKind?: PickupAudioKind;
 }
 
 function clamp01(value: number): number {
@@ -131,12 +132,14 @@ export function cueForCombatEvent(event: CombatEvent): CombatAudioCue | null {
  * {@link cueForAbilityActivation}), and weapon audio is sourced from
  * `world.combatEvents` (see {@link cueForCombatEvent}), both of which already
  * fire once per real weapon attack (hit OR miss) with no separate "swing"
- * signal needed. Deliberately a SINGLE generic cue regardless of the
- * sparkle's tint — see the module doc comment for why color-based pickup-type
- * inference was rejected.
+ * signal needed. Pickup semantics come only from explicit metadata, never the
+ * sparkle's tint — see the module doc comment for why color-based inference
+ * was rejected.
  */
 export function cueForVfxEvent(event: VfxEvent): CombatAudioCue | null {
-  return event.kind === 'pickupSparkle' ? { kind: 'pickup', intensity: 0.5 } : null;
+  return event.kind === 'pickupSparkle'
+    ? { kind: 'pickup', intensity: 0.5, pickupAudioKind: event.pickupAudioKind }
+    : null;
 }
 
 /**

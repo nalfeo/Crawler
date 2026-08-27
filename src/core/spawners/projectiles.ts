@@ -20,6 +20,7 @@ import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { tagAttackEntity } from '../weapon-telemetry.js';
 import { tagDamageMeta } from '../damage-meta.js';
+import { clearBeamHits } from '../systems/beamSystem.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnProjectile(
@@ -196,6 +197,7 @@ export function spawnBeam(
   teamId: number,
 ): number {
   const eid = createEntity(world);
+  clearBeamHits(world, eid);
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(
     world.ecs,

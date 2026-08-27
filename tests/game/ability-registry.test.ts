@@ -68,6 +68,19 @@ describe('ability registry', () => {
     expect(getAbilityDefinition('fireball')?.name).toBe('Fireball');
   });
 
+  it('describes the Spellcraft Bolt passive and matches its applied accuracy bonus', () => {
+    expect(ABILITY_PRESENTATION_BY_ID['spellcraft-bolt-base']).toMatchObject({
+      description: 'Gain accuracy while wielding a spellcraft weapon.',
+      passiveEffectSummary: 'Accuracy +0.1',
+      passiveRequirementSummary: 'a spellcraft weapon',
+    });
+    expect(getAbilityDefinition('spellcraft-bolt-base')).toMatchObject({
+      ...ABILITY_PRESENTATION_BY_ID['spellcraft-bolt-base'],
+      weaponPrerequisite: 'spellcraft',
+      effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
+    });
+  });
+
   it('rejects duplicate ids', () => {
     expect(() =>
       parseAbilityCatalog([
