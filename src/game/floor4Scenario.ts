@@ -358,7 +358,7 @@ function floor4ArchetypeAiType(archetype: EnemyArchetypeDef): number {
     case 'guardian':
       return AI_TYPE.GUARDIAN;
     case 'support':
-      return AI_TYPE.SUPPORT;
+      return AI_TYPE.RANGED;
     default:
       return AI_TYPE.CHASE;
   }
