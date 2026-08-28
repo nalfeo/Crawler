@@ -26,22 +26,31 @@ export interface ShopCatalogItem {
 
 /**
  * Resolve a merchant stock id onto the bag item it grants, or `null` when the
- * id is neither a catalog item nor an equippable weapon.
+ * id is neither an equippable weapon nor a catalog item.
  *
- * A weapon id resolves to the *equipment def's* item slug, which is
- * deliberately allowed to differ from the weapon id — stocking `'sword'` grants
+ * The weapon-equipment lookup runs *first*, deliberately, and is allowed to
+ * resolve to a different slug than the weapon id — stocking `'sword'` grants
  * the `'iron-sword'` bag item, exactly as the Floor 1 merchant already does.
  * The display name comes from the same resolved def, so the advertised name
- * always describes the item the player actually receives.
+ * always describes the item the player actually receives. Checking this
+ * branch first means a same-id `items.ts` catalog entry (if one ever existed)
+ * could never shadow the alias; today no aliased weapon id (`sword`, `bow`,
+ * `pistol`, `baseball-bat`, ...) has one, and none should be added.
+ *
+ * A weapon id with no equipment def falls back to its own catalog entry
+ * (`knife`, `hammer`, `crossbow`, `boomerang`, `bowling-ball` today) — those
+ * are purchasable but not yet equippable, the same catalog-only state as the
+ * pre-existing flavour weapons that ship with no `WEAPON_EQUIPMENT_DEFS`
+ * entry.
  */
 export function resolveShopCatalogItem(itemId: string): ShopCatalogItem | null {
-  const catalogItem = getItemById(itemId);
-  if (catalogItem) {
-    return { itemId: catalogItem.id, displayName: catalogItem.name };
-  }
   const equipmentDef = getEquipmentDefForWeaponId(itemId);
   if (equipmentDef) {
     return { itemId: equipmentDef.id, displayName: equipmentDef.name };
+  }
+  const catalogItem = getItemById(itemId);
+  if (catalogItem) {
+    return { itemId: catalogItem.id, displayName: catalogItem.name };
   }
   return null;
 }
