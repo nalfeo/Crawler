@@ -59,17 +59,27 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "Formal independent-grade pass #1 (gpt-5.5, uninvolved model, graded against commit bd352846) returned verdict=fail with 1 major finding: invocationV1's operation enum included a fictional 'run-feature-pr' value with a synthetic 'goobers-run workflow payload' fixture, and the doc's Invocation Contract prose falsely claimed the schema covers dispatch to Goobers Run -- but goobers-run.yml is never dispatched with a crawler.goobers.invocation/v1 envelope anywhere in the codebase (its own workflow_dispatch inputs are goobers_version/workflow/issue_number/abandon_existing, validated separately via REQUIRED_DISPATCH_INPUTS, and 'goobers run' is a bare CLI invocation, not a JSON dispatch). Verified via grep across .mjs/.js/.ts sources that 'run-feature-pr' had zero real producers. [addressed] Removed the fictional operation value and its synthetic fixture from the schema/validator/test, replaced the 'batch operation forbids pr_number' example with the real validate-candidate operation, corrected the doc's Invocation Contract prose and the Goobers Run mutation-table row to state explicitly that this contract does not apply to Goobers Run. Re-verified: validator 6/6 workflows, 19/19 fixtures (net -1 since the fictional fixture was removed, no real coverage lost); goobers-contracts.test.ts + goobers-run-workflow.test.ts 36/36; lint clean."
+        },
+        {
+          "round": 7,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Formal independent-grade pass #2 (gpt-5.5, graded against commit d82bb04) returned verdict=pass (correctness 4, scope_discipline 4, test_coverage 4, policy_compliance 5, maintainability 4) with one minor finding: the handoff doc's Deterministic Validation Gate section named a stale workflow filename (check-goobers-contracts.yml) instead of the actual added workflow (goobers-contract-validation.yml). [addressed] Corrected the doc reference."
+        },
+        {
+          "round": 8,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Independent-grade pass #3 (gpt-5.4, graded against commit d82bb04) returned verdict=pass (correctness 4, scope_discipline 4, test_coverage 3, policy_compliance 5, maintainability 4) with one minor finding: the goobers-contract-validation.yml workflow's 'Run contract unit tests' step only ran tests/unit/goobers-contracts.test.ts, leaving tests/unit/goobers-run-workflow.test.ts un-executed by the dedicated gate even though its path filters watch that file and this PR relies on it for workflow-dispatch/lease-wiring contract coverage. [addressed] Added the second test file to the same vitest invocation; both suites (36/36) verified passing together."
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": false
     }
   }
 }

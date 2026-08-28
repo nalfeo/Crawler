@@ -399,7 +399,7 @@ Executable checks enforced by existing test suites (no new test files; integrate
 ### Validation Job Specification
 
 **Trigger**: Every push to main, every PR opened/updated (via CI workflow)  
-**Location**: `.github/workflows/check-goobers-contracts.yml` (new workflow)  
+**Location**: `.github/workflows/goobers-contract-validation.yml` (new workflow)  
 **Timeout**: 5 minutes
 
 **Steps**:

@@ -51,7 +51,7 @@ jobs:
           node .github/scripts/validate-goobers-contracts.mjs
 
       - name: Run contract unit tests
-        run: npx vitest run tests/unit/goobers-contracts.test.ts --reporter=verbose
+        run: npx vitest run tests/unit/goobers-contracts.test.ts tests/unit/goobers-run-workflow.test.ts --reporter=verbose
 
       - name: Summary
         if: always()
