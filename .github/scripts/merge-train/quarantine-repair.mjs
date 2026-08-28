@@ -30,10 +30,9 @@
  *      `Fixes #N` trailer still closes the same issue) plus a machine- and
  *      human-readable supersede marker naming the exact source SHA.
  *   4. Post a one-time linking comment on the ORIGINAL PR pointing at the
- *      replacement, for audit provenance. The original is left open and its
- *      commits are never touched -- nothing is lost; a separate,
- *      already-quarantined PR simply gains a live sibling that can actually
- *      be advanced by the train.
+ *      replacement, then close the rejected original. Its commits are never
+ *      touched -- nothing is lost; the writable replacement is the only PR
+ *      left for the train to advance.
  *
  * Idempotency / concurrency safety: every step re-derives its own "already
  * done?" check from a REAL GitHub object (an existing ref, an existing PR for
@@ -96,12 +95,7 @@ import { BLOCKED_LABEL, STATUS_MARKER, hasLeadingMarker } from './state.mjs';
 
 export const REPAIR_BRANCH_PREFIX = 'crawler-quarantine-repair/';
 const REPAIR_MARKER_PREFIX = '<!-- crawler:quarantine-repair-of:';
-const RESTRICTED_BRANCH_PATTERN = /^copilot\//i;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
-
-export function isRestrictedCopilotBranch(ref) {
-  return RESTRICTED_BRANCH_PATTERN.test(String(ref || ''));
-}
 
 export function hasLabelNamed(pr, labelName) {
   return (pr?.labels || []).some(
@@ -147,12 +141,13 @@ export function parseRepairMarker(body) {
  * `BLOCKED_LABEL` (`merge-train-blocked`) is NOT specific to the restricted-
  * branch 403 quarantine this module repairs -- `reconcile.mjs` applies the
  * SAME label to a validation failure (`blockEntry`) and to a no-op diff
- * de-admit (`deAdmitNoop`), both of which commonly also carry a `copilot/*`
- * head ref. This function checks only the label/repo/branch/sha shape;
+ * de-admit (`deAdmitNoop`). This function checks only the label/repo/sha shape;
  * callers MUST additionally call `isConfirmedRestrictedBranchQuarantine`
  * (which reads the authoritative `evaluateUnadvanceableStrike` marker) before
  * treating a PR as eligible, or a validation-failure/no-op PR would get a
- * pointless sibling PR carrying the same bad diff.
+ * pointless sibling PR carrying the same bad diff. The branch name is
+ * intentionally not used as a proxy for restricted ownership: GitHub can
+ * restrict same-repository branches outside the `copilot/*` namespace.
  */
 export function repairEligibility(pr, repositoryFullName) {
   if (String(pr?.state || '').toLowerCase() !== 'open') {
@@ -166,12 +161,6 @@ export function repairEligibility(pr, repositoryFullName) {
   }
   if (!isSameRepository(pr, repositoryFullName)) {
     return { eligible: false, reason: `PR #${pr?.number} head is a fork; not eligible for repair` };
-  }
-  if (!isRestrictedCopilotBranch(pr?.head?.ref)) {
-    return {
-      eligible: false,
-      reason: `PR #${pr?.number} head \`${pr?.head?.ref}\` is not a restricted copilot/* branch`,
-    };
   }
   if (!SHA_PATTERN.test(String(pr?.head?.sha || ''))) {
     return { eligible: false, reason: `PR #${pr?.number} returned an invalid head sha` };
@@ -188,6 +177,17 @@ export function repairEligibility(pr, repositoryFullName) {
  * record left over from a PREVIOUS head sha (the branch moved since
  * quarantine -- e.g. a human force-pushed a fix -- and may no longer be
  * un-advanceable at all).
+ *
+ * The status comment is matched to a TRUSTED author (`isTrustedNoticeAuthor`
+ * -- the same GitHub App / bot-login / association allowlist already used for
+ * the repair-notice comment below) before its strike record is trusted at
+ * all. Without that check, any public commenter could pre-seed a leading
+ * `STATUS_MARKER` comment carrying a threshold-reaching strike record for the
+ * PR's visible head sha; if the PR were later given `BLOCKED_LABEL` for an
+ * unrelated reason (a validation failure or no-op de-admit), this function
+ * would otherwise treat the forged comment as proof of a restricted-branch
+ * quarantine it never actually underwent, and repair would open a live
+ * sibling PR carrying that same untrusted diff.
  */
 export async function isConfirmedRestrictedBranchQuarantine({
   paginateFn,
@@ -197,7 +197,9 @@ export async function isConfirmedRestrictedBranchQuarantine({
   pr,
 }) {
   const comments = await paginateFn(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
-  const statusComment = comments.find((comment) => hasLeadingMarker(comment.body, STATUS_MARKER));
+  const statusComment = comments.find(
+    (comment) => hasLeadingMarker(comment.body, STATUS_MARKER) && isTrustedNoticeAuthor(comment),
+  );
   const strike = parseUnadvanceableStrike(statusComment?.body || '');
   if (strike.strikes < UNADVANCEABLE_STRIKE_THRESHOLD) {
     return {
@@ -227,7 +229,7 @@ export function buildReplacementBody({ original, headSha }) {
   return [
     `Automated quarantine repair for #${original.number}.`,
     '',
-    `#${original.number}'s head branch \`${original.head.ref}\` is a restricted Copilot ` +
+    `#${original.number}'s head branch \`${original.head.ref}\` is a restricted ` +
       'coding-agent branch that the merge train cannot push to (repeated update-branch ' +
       '403; see the merge-train-blocked status comment on that PR). This PR carries the ' +
       `exact same commits (head \`${headSha}\`) on a writable branch against \`main\` so ` +
@@ -257,7 +259,7 @@ export function buildSupersedeNoticeBody({ replacementPrNumber, headSha }) {
       `(repeated update-branch 403 -- \`${BLOCKED_LABEL}\`).`,
     `Replacement PR #${replacementPrNumber} carries the exact same commits ` +
       `(head \`${headSha}\`) on a writable branch against \`main\`.`,
-    `This PR is left open for audit; land the work via #${replacementPrNumber}.`,
+    `This PR is closed after repair; land the work via #${replacementPrNumber}.`,
   ].join('\n');
 }
 
@@ -464,7 +466,7 @@ async function postSupersedeNoticeOnce({
  * assuming "open" is the only possibility:
  *
  *   - open: the normal steady state -- ensure the one-time linking notice is
- *     posted on the original, same as always.
+ *     posted, then close the rejected original.
  *   - merged: the replacement already landed the work on `main`. This is
  *     terminal -- there is nothing left to repair, and the branch's tip
  *     almost always no longer equals the original's `headSha` (the merge
@@ -517,6 +519,7 @@ async function finalizeExistingReplacement({
     replacementPrNumber: replacement.number,
     headSha,
   });
+  await closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber });
 
   return {
     action: state === 'merged' ? 'already-repaired' : 'linked-existing',
@@ -526,6 +529,13 @@ async function finalizeExistingReplacement({
     headSha,
     noticePosted,
   };
+}
+
+async function closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber }) {
+  await requestFn(token, `/repos/${owner}/${repo}/pulls/${originalPrNumber}`, {
+    method: 'PATCH',
+    body: { state: 'closed' },
+  });
 }
 
 /**
@@ -671,6 +681,7 @@ export async function repairQuarantinedPr({
     replacementPrNumber: replacement.number,
     headSha,
   });
+  await closeOriginalPr({ requestFn, token, owner, repo, originalPrNumber });
 
   return {
     action: created ? 'repaired' : 'linked-existing',
