@@ -45,6 +45,20 @@ async function withHeldTouch(
   }
 }
 
+async function holdKeyUntil(
+  page: Page,
+  key: string,
+  predicate: Parameters<typeof waitForState>[1],
+  label: string,
+): Promise<void> {
+  await page.keyboard.down(key);
+  try {
+    await waitForState(page, predicate, { label });
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
 function overlaps(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
