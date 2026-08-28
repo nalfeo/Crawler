@@ -133,6 +133,54 @@ test('computeGeometryBlockers: icon escaping its parent box is flagged; containe
   assert.deepEqual(contained, []);
 });
 
+// Regression: the Awards pane's procedurally drawn reward chest rendered taller
+// than its anchor and leaked out of the achievement row (reported 2026-08-28).
+// Publishing the chest as an `icon` parented to its `row` makes that defect a
+// deterministic failure instead of a taste note the LLM may or may not notice.
+test('computeGeometryBlockers: reward chest escaping its achievement row is flagged', () => {
+  const leaking = computeGeometryBlockers([
+    region('row:first-bonk', box(20, 100, 600, 132), { kind: 'row', parentId: 'awards-panel' }),
+    region('row:first-bonk.chest', box(480, 88, 50, 50), {
+      kind: 'icon',
+      parentId: 'row:first-bonk',
+    }),
+  ]);
+  assert.deepEqual(leaking, [
+    'Icon escapes its box: row:first-bonk.chest (outside row:first-bonk).',
+  ]);
+
+  const contained = computeGeometryBlockers([
+    region('row:first-bonk', box(20, 100, 600, 132), { kind: 'row', parentId: 'awards-panel' }),
+    region('row:first-bonk.chest', box(480, 110, 50, 50), {
+      kind: 'icon',
+      parentId: 'row:first-bonk',
+    }),
+  ]);
+  assert.deepEqual(contained, []);
+});
+
+// Rows in a scrolling list stack edge-to-edge by design, so `row` is a
+// container kind: sibling rows must NOT be reported as touching.
+test('computeGeometryBlockers: adjacent list rows are not flagged as touching', () => {
+  const out = computeGeometryBlockers([
+    region('row:a', box(20, 100, 600, 132), { kind: 'row', parentId: 'awards-panel' }),
+    region('row:b', box(20, 232, 600, 132), { kind: 'row', parentId: 'awards-panel' }),
+  ]);
+  assert.deepEqual(out, []);
+});
+
+// ...but content INSIDE a row is still compared, so a chest colliding with the
+// OPEN button is caught.
+test('computeGeometryBlockers: colliding content within one row is flagged', () => {
+  const out = computeGeometryBlockers([
+    region('row:a', box(20, 100, 600, 132), { kind: 'row', parentId: 'awards-panel' }),
+    region('row:a.cta', box(440, 170, 160, 30), { kind: 'button', parentId: 'row:a' }),
+    region('row:a.title', box(430, 165, 40, 40), { kind: 'text', parentId: 'row:a' }),
+  ]);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /overlap/);
+});
+
 test('computeGeometryBlockers: overlap pairs come before icon escapes (stable order)', () => {
   const out = computeGeometryBlockers([
     region('a', box(0, 0, 64, 64), { kind: 'slot', parentId: 'panel' }),

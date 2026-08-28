@@ -9,6 +9,15 @@
     "description": "Equipment panel immediately after opening: no forced hover, tooltip, candidate preview, or slot filter."
   },
   {
+    "id": "awards-pane",
+    "label": "Awards Pane",
+    "viewport": { "width": 1280, "height": 720 },
+    "captureSource": "main-scene-probe-lab",
+    "setupFile": "scripts/agent/review/setup/awards-pane.js",
+    "enabled": true,
+    "description": "Awards pane opened in a safe room with a mix of locked, unlocked-unclaimed, and claimed achievements, after the unlock toast has drained."
+  },
+  {
     "id": "equipment-hover-equipped",
     "label": "Equipment Hover (Equiped)",
     "viewport": { "width": 1280, "height": 800 },

@@ -234,6 +234,12 @@ interface MainSceneInternals {
     toggle(world: GameWorld): void;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    getLayoutRegions(): {
+      id: string;
+      box: { x: number; y: number; width: number; height: number };
+      kind: string;
+      parentId?: string;
+    }[];
     getScrollIndex(): number;
   };
   shopPanelUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
@@ -797,6 +803,17 @@ export interface MainSceneProbeApi {
   unlockSafeRoomSurfaces(): void;
   /** Open the real Awards pane through the scene-owned UI toggle. */
   openAchievements(): void;
+  /**
+   * Rendered Awards-pane geometry in design space, for visual-review setup
+   * files that need measured regions (and a real crop) instead of a
+   * hand-written panel rectangle.
+   */
+  getAchievementsLayoutRegions(): {
+    id: string;
+    box: { x: number; y: number; width: number; height: number };
+    kind: string;
+    parentId?: string;
+  }[];
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -2441,6 +2458,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world || scene?.achievementsUI?.isOpen()) return;
       scene.achievementsUI?.toggle(world);
     },
+
+    getAchievementsLayoutRegions: () => getScene()?.achievementsUI?.getLayoutRegions() ?? [],
 
     claimAchievementReward: (achievementId: string) => {
       const scene = getScene();

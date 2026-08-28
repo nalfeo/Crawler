@@ -262,7 +262,7 @@ export function createRewardOpeningUI(
   container.add(backdrop);
 
   const modal = scene.add.rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 520, 430, 0x0d0d1a, 0.96);
-  modal.setStrokeStyle(2, 0x3a3a6a);
+  modal.setStrokeStyle?.(2, 0x3a3a6a);
   container.add(modal);
   const modalRule = scene.add.rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 88, 420, 1, 0x333355, 1);
   container.add(modalRule);
