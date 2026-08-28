@@ -97,3 +97,104 @@ lineage is fully registered and browsable: pairs exist for v1.0.0 through
 v1.0.5 (7 pairs total), each showing before/after screenshots and review
 scores. The scenario lineage was not missing — it just needed the canvas
 `refresh` action and, for v1.0.5, a fresh `review.json` (now produced above).
+
+## Round 2: button design standard + geometry fixes
+
+Second feedback round flagged: pronoun label sitting underneath the button,
+text boxes not left-aligned, contestant-name label too close to its input,
+inconsistent/fuzzy fonts, and flat/no-depth buttons with a request for a
+reusable button design standard.
+
+- Added `createBeveledButton()` to `src/engine/pixel-ui.ts`, mirroring the
+  existing `createBeveledPanel()` bevel language (raised highlight edge +
+  sunken shadow edge) so every future primary-action button in the game can
+  reuse one punchier, consistent depth treatment instead of a flat rect.
+- Rewired `IntroScene.createConfirmButton()` onto `createBeveledButton()`.
+- Collected every `Text` object into a `texts` array and re-applied
+  `applyCrispText`/`unsubscribeCrispText` consistently across all labels
+  (title, Director copy, both field labels, Enter hint) to remove the
+  font-fuzziness inconsistency — some labels previously weren't wired into the
+  crisp-text pipeline at all.
+- Adjusted panel height (`PANEL_H` 456→468) and vertical rhythm so the pronoun
+  label/controls block no longer crowds the confirm button below it.
+- Updated `scripts/agent/review/setup/character-select.js` region boxes to
+  match the new geometry.
+
+**Investigated an apparent new bug** (faint duplicate/offset label text
+overlapping the "Contestant name" input and "Pronouns" fieldset in the
+Playwright-captured screenshot, v1.0.6–v1.0.8). Live-browser inspection via
+Chrome DevTools MCP (`http://localhost:12540/index.html`) showed a clean
+render with no such artifact, which initially looked like a
+capture-pipeline-only issue. Closer full-panel inspection of the actual PNG
+disproved that theory: this was a **real, reproducible geometry bug**, not a
+capture artifact — the "Contestant name" and "Pronouns" labels sat only 24px
+above their DOM input/fieldset controls, which was tight enough that the
+labels rendered visually crowded/near-clipped against the control's top
+border at the game's default viewport scale. Fixed by widening both gaps to
+30px. Re-captured at `--lineage-state v1.0.9` (confirmed NOT byte-identical to
+prior captures) and visually confirmed both labels now render fully legible
+with clear breathing room above their controls.
+
+**Root-cause note on the "byte-identical" warnings during triage:** v1.0.6,
+v1.0.7, and v1.0.8 were reported byte-identical because no source change had
+been made between those three runs — only CLI flags (`--wait-ms`,
+`--lineage-state`) were varied while iterating on capture reliability. The
+identical-hash warning is correct, deterministic behavior (SHA-256 over the
+PNG bytes), not a tool bug or a stale-cache bug. The actual fix required a
+real source-code change (the 24px→30px gap), which is what produced the first
+genuinely new capture at v1.0.9.
+
+Final re-verification after the fix:
+
+- `npm run typecheck` — passed.
+- `npx eslint` on all touched files — passed.
+- `visual-review-agent.ts` at `--lineage-state v1.0.9`: **PASS, 80.0/100
+  anchored score, 0 evidence-backed blockers**, 2 advisory taste notes only
+  (button centering nudge, pronoun-label vertical alignment nudge — both
+  cosmetic, non-blocking).
+- `npm run verify:fast` — the only failing gate is
+  `health-silent-reverts` (3 blocking findings), which originates entirely
+  from merge commit `67592f9f8` ("cherry-pick equipment UX redesign PR #3735")
+  already present on the shared base branch
+  (`nalfeo-ux-refresh-hud-inventory-shop`) and inherited by all three wave-1
+  sessions; confirmed via `git diff --stat` that none of the flagged files
+  (`ux-designer.agent.md`, `screenshot-viewer/*.mjs`, `ui-probe-lab/index.ts`,
+  `ui-probe.ts`, `inventory-flow.test.ts`) are touched by this session's 3
+  commits (`IntroScene.ts`, `pixel-ui.ts`, `character-select.js` +
+  the setup-script sensor regions below). Not this session's regression.
+
+## Scenario-specific sensors (deterministic, non-LLM)
+
+Per explicit request, hardened the Character Select scenario's deterministic
+sensor coverage rather than relying solely on the LLM judge to catch layout
+regressions. `visual-review-agent.ts`'s shared `computeGeometryBlockers()`
+(from `visual-review-lib.mjs`) already runs sibling overlap/touch and
+container-overrun checks over every region declared in a scenario's
+`window.__visualReview.regions` array — this is the repo's existing
+scenario-sensor pattern (used identically by the equipment/inventory
+scenarios), not a bespoke per-surface system.
+
+Added two new declared regions (`kind: 'text'`, which participates in the
+generic sibling-overlap check, unlike `panel`/`tooltip`/`icon`) whose boxes
+are reconstructed in design space from the same layout constants IntroScene
+uses:
+
+- `contestant-name-label` — sits 30px above `contestant-name`.
+- `pronoun-controls-label` — sits 30px above `pronoun-controls`.
+
+This makes the exact "label crowds its control" regression class fixed this
+round a **hard, deterministic sensor failure** on any future regression
+(caught by the shared overlap/touch check, not left to LLM judgment). Verified
+by re-running the scenario (`--lineage-state v1.1.0`): 7 regions harvested, 0
+deterministic blockers — confirms both the fix and the new sensor wiring are
+correct.
+
+## Final status
+
+- Branch: `nalfeo-character-select-refresh-1c8` (3 new commits this round:
+  button-standard/geometry rewrite, label-gap fix, sensor-region addition).
+- Gate: 80.0/100 anchored visual-review score (≥8/10 target), 0
+  evidence-backed blockers — **meets the hard gate**.
+- Per explicit standing instruction, **no PR opened**. Held locally for the
+  creator session to cherry-pick/publish alongside the HUD and Awards wave-1
+  sessions.
