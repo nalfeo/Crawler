@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crawler.lifecycle.decision.v1",
+  "title": "Crawler lifecycle state decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "resource",
+    "operation",
+    "actor",
+    "sourceEvent",
+    "expected",
+    "idempotencyKey",
+    "lease",
+    "outcome",
+    "error",
+    "decision"
+  ],
+  "properties": {
+    "contractVersion": { "const": "v1" },
+    "resource": { "$ref": "crawler.lifecycle.invocation.v1#/properties/resource" },
+    "operation": { "$ref": "crawler.lifecycle.invocation.v1#/properties/operation" },
+    "actor": { "$ref": "crawler.lifecycle.invocation.v1#/properties/actor" },
+    "sourceEvent": { "$ref": "crawler.lifecycle.invocation.v1#/properties/sourceEvent" },
+    "expected": { "$ref": "crawler.lifecycle.invocation.v1#/properties/expected" },
+    "idempotencyKey": { "$ref": "crawler.lifecycle.invocation.v1#/properties/idempotencyKey" },
+    "lease": { "$ref": "crawler.lifecycle.invocation.v1#/properties/lease" },
+    "outcome": { "$ref": "crawler.lifecycle.invocation.v1#/properties/outcome" },
+    "error": { "$ref": "crawler.lifecycle.invocation.v1#/properties/error" },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "generation"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "terminal"] },
+        "generation": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "contractVersion": "v1",
+  "resource": { "kind": "pull-request", "repository": "nalfeo/Crawler", "id": "pr-3840" },
+  "operation": "dispatch",
+  "actor": { "kind": "workflow", "id": "ci-recovery-router" },
+  "sourceEvent": { "name": "workflow_run", "id": "run-100" },
+  "expected": {
+    "headSha": "0123456789abcdef0123456789abcdef01234567",
+    "baseRef": "refs/heads/main",
+    "generation": 3
+  },
+  "idempotencyKey": "v1:crawler:v1:pull-request:nalfeo/Crawler:dispatch:3:1",
+  "lease": { "owner": "ci-recovery-router", "fencingToken": 4, "state": "active" },
+  "outcome": "success",
+  "error": null
+}

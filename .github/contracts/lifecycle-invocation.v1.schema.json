@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crawler.lifecycle.invocation.v1",
+  "title": "Crawler lifecycle mutation invocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "resource",
+    "operation",
+    "actor",
+    "sourceEvent",
+    "expected",
+    "idempotencyKey",
+    "lease",
+    "outcome",
+    "error"
+  ],
+  "properties": {
+    "contractVersion": { "const": "v1" },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "repository", "id"],
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" }
+      }
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["claim", "start", "update", "release", "takeover", "dispatch", "publish"]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["workflow", "app", "goobers", "human"] },
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" }
+      }
+    },
+    "sourceEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "id"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headSha", "baseRef", "generation"],
+      "properties": {
+        "headSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+        "baseRef": { "type": ["string", "null"], "pattern": "^refs/heads/[a-zA-Z0-9._/-]+$" },
+        "generation": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "pattern": "^v1:crawler:v1:[a-z0-9-]+:[^:]+:[^:]+:[^:]+:[0-9]+$"
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "fencingToken", "state"],
+      "properties": {
+        "owner": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "state": {
+          "type": "string",
+          "enum": ["unowned", "claimed", "active", "released", "expired", "takeover"]
+        }
+      }
+    },
+    "outcome": { "type": "string", "enum": ["success", "skipped", "failed"] },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "message": { "type": ["string", "null"], "minLength": 1 },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}

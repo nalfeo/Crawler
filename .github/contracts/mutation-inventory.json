@@ -1,0 +1,181 @@
+{
+  "inventoryVersion": "v1",
+  "repository": "nalfeo/Crawler",
+  "noShadowMode": {
+    "required": true,
+    "exitCondition": "contracts:validate passes with every mutation path owned and every invariant fixture fail-closed"
+  },
+  "lockModel": {
+    "resourceKey": "crawler:v1:<resource-kind>:<repository>:<resource-id>",
+    "idempotencyKey": "<contractVersion>:<resourceKey>:<operation>:<headSha-or-generation>:<attempt>",
+    "states": ["unowned", "claimed", "active", "released", "expired", "takeover"],
+    "transitions": [
+      "unowned->claimed",
+      "claimed->active",
+      "active->released",
+      "claimed->expired",
+      "active->expired",
+      "expired->takeover"
+    ],
+    "rules": [
+      "one active writer per resource",
+      "every write presents the current fencing token",
+      "stale owners fail closed",
+      "release is idempotent",
+      "repeated idempotency keys do not create a second mutation",
+      "lease expiry is deterministic and does not use wall-clock values",
+      "terminal decisions are monotonic"
+    ]
+  },
+  "workflows": [
+    {
+      "file": ".github/workflows/ci-recovery-router.yml",
+      "permissions": ["actions: write", "contents: read", "pull-requests: read"],
+      "concurrency": "crawler-ci-recovery-router",
+      "owner": "ci-recovery-router",
+      "paths": [
+        {
+          "kind": "dispatch",
+          "line": 97,
+          "anchor": "node .github/scripts/ci-recovery/router.mjs",
+          "contract": "invocation"
+        }
+      ],
+      "nonMutations": ["checkout", "router validation and capacity reads"]
+    },
+    {
+      "file": ".github/workflows/ci-recovery.yml",
+      "permissions": ["actions: write", "contents: read"],
+      "concurrency": "crawler-ci-pr-${{ inputs.pr_number }}",
+      "owner": "ci-recovery-reconcile",
+      "paths": [
+        {
+          "kind": "reconcile",
+          "line": 99,
+          "anchor": "node .github/scripts/ci-recovery/reconcile.mjs",
+          "contract": "invocation"
+        }
+      ],
+      "nonMutations": ["checkout", "app-token generation", "GitHub metadata reads"]
+    },
+    {
+      "file": ".github/workflows/merge-train.yml",
+      "permissions": [
+        "actions: write",
+        "checks: write",
+        "contents: read",
+        "issues: write",
+        "pull-requests: write"
+      ],
+      "concurrency": "crawler-merge-train",
+      "owner": "merge-train-reconcile",
+      "paths": [
+        {
+          "kind": "reconcile",
+          "line": 109,
+          "anchor": "node .github/scripts/merge-train/reconcile.mjs",
+          "contract": "decision"
+        },
+        {
+          "kind": "quarantine-repair",
+          "line": 118,
+          "anchor": "node .github/scripts/merge-train/quarantine-repair.mjs",
+          "contract": "decision"
+        }
+      ],
+      "nonMutations": ["checkout", "train gate", "app-token generation"]
+    },
+    {
+      "file": ".github/workflows/merge-train-validate.yml",
+      "permissions": ["actions: write", "checks: write", "contents: read"],
+      "concurrency": "none",
+      "owner": "merge-train-validation",
+      "paths": [
+        {
+          "kind": "publish-check-initial",
+          "line": 305,
+          "anchor": "await github.rest.checks.create",
+          "contract": "decision"
+        },
+        {
+          "kind": "publish-check",
+          "line": 555,
+          "anchor": "await github.rest.checks.update",
+          "contract": "decision"
+        },
+        {
+          "kind": "publish-check-create",
+          "line": 560,
+          "anchor": "await github.rest.checks.create(payload)",
+          "contract": "decision"
+        },
+        {
+          "kind": "wake-reconcile",
+          "line": 586,
+          "anchor": "github.rest.actions.createWorkflowDispatch",
+          "contract": "invocation"
+        }
+      ],
+      "nonMutations": [
+        "candidate checkout",
+        "dependency install",
+        "candidate tests",
+        "artifact upload"
+      ]
+    },
+    {
+      "file": ".github/workflows/goobers-run.yml",
+      "permissions": ["checks: write", "contents: read", "issues: write", "pull-requests: write"],
+      "concurrency": "goobers-run",
+      "owner": "goobers-run",
+      "paths": [
+        {
+          "kind": "run",
+          "line": 358,
+          "anchor": "goobers run --github-progress",
+          "contract": "invocation"
+        },
+        {
+          "kind": "diagnostic-comment",
+          "line": 431,
+          "anchor": "gh issue comment",
+          "contract": "decision"
+        },
+        {
+          "kind": "recovery-pr-close",
+          "line": 161,
+          "anchor": "gh pr close",
+          "contract": "decision"
+        },
+        {
+          "kind": "recovery-branch-delete",
+          "line": 163,
+          "anchor": "gh api -X DELETE",
+          "contract": "decision"
+        }
+      ],
+      "nonMutations": [
+        "checkout",
+        "release download",
+        "checksum verification",
+        "Goobers validation",
+        "journal artifact upload"
+      ]
+    },
+    {
+      "file": ".github/workflows/goobers-validate.yml",
+      "permissions": ["contents: read"],
+      "concurrency": "none",
+      "owner": "goobers-validate",
+      "paths": [
+        {
+          "kind": "source-validation",
+          "line": 85,
+          "anchor": "./bin/goobers validate --source-tree .goobers",
+          "contract": "invocation"
+        }
+      ],
+      "nonMutations": ["checkout", "release download", "checksum verification"]
+    }
+  ]
+}
