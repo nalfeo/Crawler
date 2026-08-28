@@ -231,3 +231,46 @@ Character Select".
 - Per explicit standing instruction, **no PR opened**. Held locally for the
   creator session to cherry-pick/publish alongside the HUD and Awards wave-1
   sessions.
+
+## Round 4: name-input text still blurry (DOM overlay sub-pixel rounding)
+
+Fourth feedback round: "Fonts are blurry" (reported after round 3's Phaser
+canvas-text crispness fix had already shipped). Zoomed inspection of the
+v1.2.0 capture showed the "Press Enter to continue" hint and pronoun radio
+labels were now crisp (round 3's fix held), but the "Contestant name" input
+text ("Rhea Vale") was still visibly blurred/fringed.
+
+- **Root cause**: the name `<input>` and pronoun `<fieldset>`/`<label>` are
+  **native HTML DOM elements** overlaid on the Phaser canvas — a separate
+  rendering path from Phaser's canvas-drawn `Text` objects, so round 3's
+  `MIN_TEXT_RESOLUTION`/`applyCrispText()` fix does not touch them. Their
+  inline styles computed fractional CSS pixel values from the canvas-to-CSS
+  scale ratio (e.g. `${14 * Math.min(scaleX, scaleY)}px`), and fractional CSS
+  px values force the browser into sub-pixel anti-aliased font rendering,
+  which reads as blur independent of the Phaser-side fix.
+- **Fix**: added a `px()` helper (rounds to the nearest integer) in
+  `IntroScene.ts` and wrapped every DOM style dimension/`fontSize` value in
+  `createNameInput()` and `createGenderControls()` with it (input
+  left/top/width/height/fontSize; fieldset left/top/width/gap; label
+  minHeight/fontSize).
+
+Re-verified: `npx tsc --noEmit` clean, `eslint` clean on `IntroScene.ts`.
+Corrected the visual-review invocation for this scenario along the way — the
+real flag names are `--setup-file` (not `--setup`) and `--no-probe-wait` (not
+`--skip-probe-wait`); `--url`/`--setup-file` against a real `npm run dev`
+instance is required because `IntroScene` auto-skips in any lab context, so a
+lab URL/id will never render Character Select content.
+`visual-review-agent.ts` at `--lineage-state v1.3.0`: **PASS, 80.0/100
+anchored score, 0 evidence-backed blockers**, 1 advisory taste note
+(pronoun/name section alignment, non-blocking) — unchanged from v1.2.0
+(deterministic gate is geometry-based and was already passing; this fix
+targets sub-pixel rendering, which the LLM judge does not separately score).
+Native-resolution crop of the "Rhea Vale" name-input text confirms it now
+renders crisp with no color fringing.
+
+Commit: `6a38d0308` "fix: round DOM overlay CSS pixel values to eliminate
+sub-pixel blur in Character Select".
+
+Branch: `nalfeo-character-select-refresh-1c8` (4 commits total this session).
+Gate still met: 80.0/100, 0 evidence-backed blockers. Per standing
+instruction, still **no PR opened** — held locally for the creator session.
