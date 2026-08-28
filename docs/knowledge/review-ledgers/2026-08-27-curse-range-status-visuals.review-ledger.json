@@ -29,20 +29,20 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
+      "grader_model": "claude-sonnet-4.6",
       "implementer_model": "copilot-coding-agent",
-      "head_sha": "70d45b86853b2465b71440eee9500fcbe5316763",
+      "head_sha": "735f65e405dd2f6702040e654da1ff369517e743",
       "findings": [],
       "criteria": {
         "correctness": 5,
-        "scope_discipline": 5,
+        "scope_discipline": 4,
         "test_coverage": 5,
         "policy_compliance": 5,
         "maintainability": 5
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The diff precisely implements the requested status effect auras and Curse reachability fix. The VFX implementation correctly uses a single shared Graphics layer to avoid per-entity lifecycle edge cases with recycled EIDs, and extracts visual resolution into pure deterministic functions. Test coverage is robust (e2e screenshot comparisons plus unit tests), and all changes adhere to repository layer boundaries and determinism policies."
+      "notes": "All three task pieces — the Curse trigger/cooldown retune, the status-visual resolver, and the aura renderer — are correctly implemented. The resolver's `!(effect.remainingMs > 0)` guard correctly handles both expired (0) and persistent (Infinity) effects. The `hpRegen` multiply guard is logically sound given the additive-then-multiply composition documented in status-effects.ts. The single shared Graphics object with per-frame clear/redraw is the right trade-off for EID-recycling safety, and the aura is correctly gated on the same living/visible checks the sprite uses, preventing fog-reveal. The ability retune is consistent: trigger ring matches burst radius (16 ft), minEnemies drops from 4 to 2, and cooldown steps up from 840 to 960 frames with the rationale documented. The scope_discipline score is 4 rather than 5 only because the `advanceSimulationFrames` wrapper in the e2e helper gained two extra `requestAnimationFrame` ticks as a side-effect of this change; it is a real improvement that serves these tests, but it silently touches behaviour for all existing callers of that helper. No finding rises to blocker or major severity."
     }
   }
 }
