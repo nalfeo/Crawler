@@ -79,7 +79,32 @@
       ]
     },
     "independent_grade": {
-      "completed": false
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "a603696da577d59556f4a1f757ae8deca9e1e874",
+      "criteria": {
+        "correctness": 3,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "docs/knowledge/handoffs/goobers-phase0-mutations-and-contracts.md",
+          "detail": "Router.mjs dispatch line refs (1718-1727/1847-1862) were stale after the buildReaperDispatchBody/buildRouterDispatchBody extract shifted the real call sites to 1754-1756/1875-1877; ci-recovery.yml and merge-train.yml token/reconcile/quarantine-repair rows also pointed at the wrong steps."
+        },
+        {
+          "severity": "minor",
+          "file": ".github/workflows/goobers-contract-validation.yml",
+          "detail": "Summary step used if: always(), printing green checkmarks even on a failed job."
+        }
+      ],
+      "findings_count": 2,
+      "notes": "Fourth formal independent-grade pass, graded against commit a603696. Verdict pass (no criterion below 3, no blocker-severity finding); 1 major + 1 minor finding, both fixed immediately after this grade landed (corrected the stale line numbers to the verified real call sites; changed the Summary step to if: success()). Grader (grok-4.5) does not appear in plan_review (gemini-3.1-pro-preview) or any code_review round's model list (claude-sonnet-4.6, gpt-5.5, gpt-5.4), satisfying independence."
     }
   }
 }
