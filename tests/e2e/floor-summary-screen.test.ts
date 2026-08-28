@@ -11,7 +11,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  holdKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 describe('Between-floor summary screen', () => {
   let browser: Browser;
@@ -46,7 +51,7 @@ describe('Between-floor summary screen', () => {
 
     const summary = await mainSceneProbe.getFloorSummaryState(page);
     expect(summary.visible).toBe(true);
-    expect(summary.prompt).toBe('Press SPACE or ENTER to descend');
+    expect(summary.prompt).toBe('Press SPACE or ENTER — or tap — to descend');
     const labels = summary.lines.map((line) => line.split('  ')[0]?.trim());
     expect(labels).toEqual(
       expect.arrayContaining(['Time on floor', 'Enemies slain', 'Level', 'Gold']),
@@ -70,7 +75,14 @@ describe('Between-floor summary screen', () => {
     expect(stillWaiting.awaitingAcknowledgement).toBe(true);
     expect((await mainSceneProbe.getState(page)).floorId).toBe('floor1');
 
-    await page.keyboard.press('Space');
+    // Held, not pressed: SPACE is sampled with Phaser `JustDown`, and a
+    // back-to-back keydown/keyup can clear `_justDown` before `update()` runs.
+    await holdKeyUntil(
+      page,
+      'Space',
+      async () => !(await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement,
+      { label: 'the summary acknowledgement' },
+    );
     await waitForState(page, (s) => s.settlementRoomCount > 0 && s.displayObjectCount > 0, {
       timeoutMs: 20_000,
       label: 'Floor 2 scene after acknowledged summary',

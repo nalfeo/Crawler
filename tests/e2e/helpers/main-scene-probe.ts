@@ -433,6 +433,41 @@ export const mainSceneProbe = {
 };
 
 /**
+ * Holds `key` down until `settled()` reports the scene consumed it, then
+ * releases it.
+ *
+ * `page.keyboard.press()` sends keydown and keyup back-to-back. Phaser's
+ * `Key.onUp` clears `_justDown` (node_modules/phaser/src/input/keyboard/keys/Key.js),
+ * so a key sampled with `Phaser.Input.Keyboard.JustDown()` can have its press
+ * silently erased before the next `update()` ever reads it — an intermittent,
+ * environment-timing-dependent dropped input. Holding the key means the scene
+ * cannot miss it no matter which frame it samples on.
+ */
+export async function holdKeyUntil(
+  page: Page,
+  key: string,
+  settled: () => Promise<boolean>,
+  options: { timeoutMs?: number; pollMs?: number; label?: string } = {},
+): Promise<void> {
+  const { timeoutMs = 10_000, pollMs = 100, label = `${key} to be consumed` } = options;
+  const deadline = Date.now() + timeoutMs;
+  await page.keyboard.down(key);
+  try {
+    for (;;) {
+      if (await settled()) {
+        return;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out holding ${key} waiting for ${label}`);
+      }
+      await page.waitForTimeout(pollMs);
+    }
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
+/**
  * Poll the probe until `predicate(state)` holds (or throw on timeout). Used to
  * wait out the few frames Phaser needs to populate the display list / settle
  * the camera after a teleport, without any wall-clock coupling in assertions.
@@ -533,6 +568,13 @@ export async function acknowledgeFloorSummary(
   // Past the acknowledgement arm delay (the stair-confirm keypress must not
   // double as the acknowledgement).
   await page.waitForTimeout(700);
-  await page.keyboard.press('Space');
+  // Held rather than pressed: the scene samples SPACE with `JustDown`, which a
+  // back-to-back keydown/keyup can erase before `update()` ever reads it.
+  await holdKeyUntil(
+    page,
+    'Space',
+    async () => !(await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement,
+    { label: 'the floor summary acknowledgement' },
+  );
   return state;
 }

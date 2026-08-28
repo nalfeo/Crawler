@@ -249,6 +249,14 @@ const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
  */
 const FLOOR_SUMMARY_ACK_ARM_MS = 450;
 
+/**
+ * Acknowledgement prompt on the between-floor summary. The screen blocks the
+ * descent, and it accepts touch (the summary owns its own pointer latch), so
+ * the copy must name the tap affordance too — otherwise a touch-only player is
+ * stranded on a screen with no discoverable way to continue.
+ */
+const FLOOR_SUMMARY_ACK_PROMPT = 'Press SPACE or ENTER — or tap — to descend';
+
 /** Panel height used by the taller between-floor summary layout. */
 const FLOOR_SUMMARY_PANEL_H = 400;
 
@@ -4751,7 +4759,7 @@ export class MainGameScene extends Phaser.Scene {
       this.pendingFloorTransition = advance;
       this.floorSummaryAckRequested = false;
       this.floorSummaryAckArmedAtMs = this.time.now + FLOOR_SUMMARY_ACK_ARM_MS;
-      this.floorSummaryPromptText?.setText('Press SPACE or ENTER to descend').setVisible(true);
+      this.floorSummaryPromptText?.setText(FLOOR_SUMMARY_ACK_PROMPT).setVisible(true);
       return;
     }
 
@@ -4786,7 +4794,15 @@ export class MainGameScene extends Phaser.Scene {
     if (!summaryText) {
       return;
     }
-    const accuracy = this.sessionRecorder?.getStats().weaponTelemetry?.accuracy;
+    // Accuracy is only a truthful player-facing number when the floor actually
+    // measured something: `accuracy` is 0 both for "missed every swing" and for
+    // "no swings at all", and BEAM/TRAP casts count as swings while their
+    // damage stays untagged. Omit the row rather than show a false 0%.
+    const weaponTelemetry = this.sessionRecorder?.getStats().weaponTelemetry;
+    const accuracy =
+      weaponTelemetry && weaponTelemetry.swings > 0 && weaponTelemetry.unattributedSwings === 0
+        ? weaponTelemetry.accuracy
+        : undefined;
     const goldLedger = this.world.goldLedger;
     const rows = buildFloorSummaryRows({
       elapsedMs: this.world.elapsedMs,

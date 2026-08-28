@@ -26,8 +26,13 @@ describe('MainGameScene between-floor summary wiring', () => {
   });
 
   it('counts kills per simulation step from the pre-step event cursor', () => {
-    expect(source).toContain('const combatEventsBeforeStep = this.world.combatEvents.length;');
-    expect(source).toMatch(/countPlayerAttributedKills\(\s*this\.world\.combatEvents,/);
+    // One assertion so the cursor cannot be declared, the counter cannot be
+    // called, and the cursor cannot be dropped as the third argument
+    // independently — dropping only the argument would silently recount
+    // prior-step deaths on any frame that runs more than one simulation step.
+    expect(source).toMatch(
+      /const combatEventsBeforeStep = this\.world\.combatEvents\.length;[\s\S]*?countPlayerAttributedKills\(\s*this\.world\.combatEvents,\s*this\.playerEid,\s*combatEventsBeforeStep,?\s*\)/,
+    );
   });
 
   it('keeps the timed auto-advance for AI-driven runs', () => {
@@ -45,6 +50,21 @@ describe('MainGameScene between-floor summary wiring', () => {
   });
 
   it('freezes the fixed step while the summary waits for the player', () => {
-    expect(source).toMatch(/if \(this\.pendingFloorTransition\) \{[\s\S]*?return;/);
+    // Pinned to the update-loop freeze specifically (bridge sync + camera +
+    // overlay, then `return`). Matching a bare `if (this.pendingFloorTransition)`
+    // would be satisfied by the earlier pointer-handler branch and stay green
+    // even if this freeze were deleted.
+    expect(source).toMatch(
+      /if \(this\.pendingFloorTransition\) \{\s*this\.bridge\.sync\(this\.world\);\s*this\.updateCamera\(\);\s*this\.updateOverlayText\(\);\s*return;\s*\}/,
+    );
+  });
+
+  it('omits the accuracy row when weapon telemetry could not measure it', () => {
+    // `accuracy` is 0 both for "missed everything" and for "no swings at all",
+    // and BEAM/TRAP casts count as swings while their damage stays untagged —
+    // either case would render a false 0% to the player.
+    expect(source).toMatch(
+      /weaponTelemetry\.swings > 0 && weaponTelemetry\.unattributedSwings === 0/,
+    );
   });
 });

@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  holdKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -354,7 +359,14 @@ describe('MainGameScene UI exclusivity', () => {
     });
     await page.keyboard.press('Escape');
 
-    await page.keyboard.press('e');
+    // Held, not pressed: the scene samples E with Phaser `JustDown`, and a
+    // back-to-back keydown/keyup clears `_justDown` before `update()` reads it.
+    await holdKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
     await waitForState(page, (state) => state.conversationOpen, { label: 'E opened dialogue' });
   });
 
