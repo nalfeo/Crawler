@@ -104,7 +104,10 @@ export function shouldRequestReview({
   if (initialTrigger && normalRequests.length === 0) {
     return { reason: 'ready', episode: null, requestReviewer: false };
   }
-  if (hasMergeConflict || !requiredChecksPassing || (blockers || []).length > 0) {
+  const blockersOtherThanLedger = (blockers || []).filter(
+    (blocker) => blocker.kind !== 'review-ledger',
+  );
+  if (hasMergeConflict || !requiredChecksPassing || blockersOtherThanLedger.length > 0) {
     return null;
   }
 

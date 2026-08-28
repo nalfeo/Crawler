@@ -168,21 +168,22 @@ test('decideLedger: code diff, valid ledger ADDED -> allow with context', () => 
   assert.equal(optsSeen?.requireCurrentSchema, true);
 });
 
-test('decideLedger: code diff, invalid ledger ADDED -> deny aggregating errors', () => {
+test('decideLedger: code diff, invalid ledger ADDED -> allow with actionable advisory', () => {
   const d = decideLedger(['src/core/x.ts', LEDGER], [LEDGER], {
     validateFile: () => badResult,
   });
-  assert.equal(d.decision, 'deny');
-  assert.match(d.reason, /incomplete/);
-  assert.match(d.reason, /plan_review\.completed must be true/);
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /publication is allowed/i);
+  assert.match(d.additionalContext, /plan_review\.completed must be true/);
 });
 
-test('decideLedger: two ledgers added, one invalid -> deny (one valid cannot mask)', () => {
+test('decideLedger: two ledgers added, one invalid -> advisory reports the invalid ledger', () => {
   const L2 = 'docs/knowledge/review-ledgers/2026-06-29-other.review-ledger.json';
   const d = decideLedger(['src/game/y.ts', LEDGER, L2], [LEDGER, L2], {
     validateFile: (p) => (p === L2 ? badResult : okResult),
   });
-  assert.equal(d.decision, 'deny');
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, new RegExp(L2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('decideLedger: ledger-only added but code in diff still requires VALID ledger', () => {
@@ -193,7 +194,7 @@ test('decideLedger: ledger-only added but code in diff still requires VALID ledg
 });
 
 // ---------------------------------------------------------------------------
-// gatherDecision (injectable git fns — covers the failClosed allow-through)
+// gatherDecision (injectable git fns — covers advisory git-error handling)
 // ---------------------------------------------------------------------------
 
 test('gatherDecision: git error (e.g. unresolved merge-base) -> allow with context', () => {
@@ -283,10 +284,10 @@ test('missingLedgerNotice states the current tier matrix (adversarial fold, ADR 
 // guard metadata
 // ---------------------------------------------------------------------------
 
-test('guard metadata: pr category, failClosed, matches create_pull_request only', () => {
+test('guard metadata: pr category, advisory failure mode, matches create_pull_request only', () => {
   assert.equal(prReviewLedger.id, 'pr-review-ledger');
   assert.equal(prReviewLedger.category, 'pr');
-  assert.equal(prReviewLedger.failClosed, true);
+  assert.equal(prReviewLedger.failClosed, false);
   assert.equal(prReviewLedger.matches('create_pull_request'), true);
   assert.equal(prReviewLedger.matches('edit'), false);
   assert.equal(prReviewLedger.matches('powershell'), false);

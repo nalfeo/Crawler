@@ -26,8 +26,8 @@ npm run review:ledger -- stage <path> multi_model_review --json '{...}'
 npm run review:grade -- prompt <path>
 npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>
 
-# 3. Validate (exit 0 = guard will allow your PR). `validate` with no path
-#    picks the newest ledger in the directory.
+# 3. Validate (exit 0 = required CI will accept the ledger). `validate` with no
+#    path picks the newest ledger in the directory. Publication itself is advisory.
 npm run review:ledger -- validate <path>
 ```
 
@@ -176,7 +176,12 @@ minor, major_fork}` is **required** (instrumentation — the design fork-rate
   `completed===true`; `plan_models` = exactly 2 distinct non-empty ids;
   `judge_model` non-empty and not in `plan_models`.
 - **code_review**: EITHER a clean terminal — `clean===true`; `rounds` non-empty;
-  last round `clean===true`, `models` ≥1 non-empty, `resolved_count >= concerns_count`
+  last round `clean===true`, either `models` ≥1 non-empty or native PR provenance
+  (`reviewer_actors` ≥1, each a trusted native reviewer login
+  `copilot-pull-request-reviewer`/`copilot-pull-request-reviewer[bot]`, plus a
+  `review_url` of the form
+  `https://github.com/<owner>/<repo>/pull/<n>#pullrequestreview-<id>`),
+  `resolved_count >= concerns_count`
   — OR an escalation terminal (see below).
 - **multi_model_review**: EITHER a clean terminal — `clean===true`;
   `adjudicator_model` non-empty; `rounds` non-empty; last round `clean===true`,
@@ -196,7 +201,10 @@ looping forever. The validator accepts an escalated stage when:
 
 - `clean` is **`false`** (escalation is NOT clean; `clean:true` + escalation fails).
 - there are **≥2 attempted rounds** (never escalate on round 1), and **every** round
-  records `models` (≥1 for code_review; ≥2 distinct for multi_model_review) + its
+  records model or native-review actor provenance for code_review (`models` ≥1,
+  or `reviewer_actors` ≥1 trusted native reviewer login(s) plus a
+  `#pullrequestreview-<id>` `review_url`); multi_model_review still records
+  ≥2 distinct `models`, plus its
   non-negative-int counts.
 - the final round is **non-clean** with genuine unresolved concerns
   (`resolved_count < concerns_count` for code_review; `< valid_count` for
