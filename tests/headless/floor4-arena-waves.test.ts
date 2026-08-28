@@ -48,6 +48,16 @@ class OvertimeFloor4Provider extends IdleFloor4Provider {
   }
 }
 
+class DefeatHeadlinerFloor4Provider extends IdleFloor4Provider {
+  override poll(input: InputState, world: GameWorld): void {
+    super.poll(input, world);
+    const bossEid = world.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+    if (bossEid !== null && bossEid !== undefined) {
+      world.stores.health.current[bossEid] = 0;
+    }
+  }
+}
+
 describe('Floor 4 wave window (real headless pipeline)', () => {
   const floor4Phase = getFloorManifest('floor4')!.floor4!.phase;
   const floor4Waves = getFloorManifest('floor4')!.floor4!.waves;
@@ -97,6 +107,27 @@ describe('Floor 4 wave window (real headless pipeline)', () => {
     // so it never burns the collapse-relevant active-time budget (FR8.4).
     expect(first.safeRoomMs).toBeGreaterThanOrEqual(floor4Phase.countdownMs);
     expect(first.safeRoomMs).toBe(second.safeRoomMs);
+  });
+
+  it('resolves a defeated Headliner reward through the canonical headless pipeline', async () => {
+    const horizonMs =
+      floor4Phase.countdownMs +
+      floor4Phase.waveWindowMs +
+      floor4Phase.headlineWindowMs +
+      floor4Phase.intermissionMs;
+    const result = await runHeadless(new DefeatHeadlinerFloor4Provider(), {
+      floorId: 'floor4',
+      seed: 404,
+      maxFrames: Math.ceil(horizonMs / GAME.DELTA_MS) + 4,
+    });
+
+    expect(result.floor4Arena?.headlinerTelemetry).toMatchObject({
+      spawned: 1,
+      defeated: 1,
+      chestsSpawned: 1,
+      chestsForceResolved: 1,
+    });
+    expect(result.totalGold).toBeGreaterThan(0);
   });
 
   it('resolves the overtime finisher through the canonical headless pipeline', async () => {
