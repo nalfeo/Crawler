@@ -77,3 +77,23 @@ dedicated gap. A fresh real-game capture is stored at
 
 Targeted validation after this correction: typecheck passed and all 18
 Character Select wiring tests passed.
+
+Re-scored against the running dev server with
+`npm run review:visual:llm -- --url http://localhost:12540/index.html
+--setup-file scripts/agent/review/setup/character-select.js --no-probe-wait
+--lineage-scenario character-select --lineage-state v1.0.5` (the standard
+`review:visual:llm` scenario flag targets the shared lab server, which does not
+host Character Select — this surface requires `--url`/`--setup-file` against a
+real `npm run dev` instance): **80.0/100, 0 evidence-backed blockers**, 2
+advisory-only taste notes (pronoun-controls vertical alignment/padding). This
+matches the pre-fix v1.0.4 score and confirms the readability fixes did not
+regress the gate. Report written to
+`files/visual-review/after/v1.0.5/character-select.review.json`.
+
+## A|B canvas verification
+
+Opened the `ab-ux-testing` canvas and confirmed the `character-select` A|B
+lineage is fully registered and browsable: pairs exist for v1.0.0 through
+v1.0.5 (7 pairs total), each showing before/after screenshots and review
+scores. The scenario lineage was not missing — it just needed the canvas
+`refresh` action and, for v1.0.5, a fresh `review.json` (now produced above).
