@@ -12,6 +12,7 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel, createStatBar } from './pixel-ui.js';
 import { resolveBossHealthBar } from './boss-health-bar-state.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import { HUD_FONT_FAMILY, HUD_TEXT } from './ui-theme.js';
 import {
   BOSS_PANEL_HEIGHT,
   ENCOUNTER_PANEL_WIDTH,
@@ -56,8 +57,8 @@ export function createHudBossBar(
 
   const label = scene.add
     .text(PANEL_X + 10, 17, 'BOSS', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.label,
       fontStyle: 'bold',
       color: '#fde68a',
     })
@@ -69,8 +70,8 @@ export function createHudBossBar(
 
   const nameText = scene.add
     .text(PANEL_X + 58, 17, '', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.value,
       color: '#f8fafc',
     })
     .setOrigin(0, 0.5)
@@ -81,8 +82,8 @@ export function createHudBossBar(
 
   const hpText = scene.add
     .text(PANEL_X + PANEL_WIDTH - 10, 17, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.label,
       color: '#cbd5e1',
     })
     .setOrigin(1, 0.5)

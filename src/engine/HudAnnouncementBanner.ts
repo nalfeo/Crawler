@@ -19,6 +19,7 @@ import type { AnnouncementEvent, AnnouncementKind } from '../shared/announcement
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import { HUD_FONT_FAMILY } from './ui-theme.js';
 import {
   ANNOUNCEMENT_PANEL_HEIGHT,
   ENCOUNTER_PANEL_WIDTH,
@@ -124,7 +125,7 @@ export function createHudAnnouncementBanner(
 
   const labelText = scene.add
     .text(CENTER_X, 16, '', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '14px',
       fontStyle: 'bold',
       color: COLORS.fallback,
@@ -139,7 +140,7 @@ export function createHudAnnouncementBanner(
 
   const verbText = scene.add
     .text(CENTER_X, 35, '', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '11px',
       color: '#94a3b8',
       align: 'center',

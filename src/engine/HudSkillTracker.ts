@@ -31,7 +31,7 @@ import { getAbilityPresentation } from '../shared/ability-presentation.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
 import { applyCrispText } from './ui-scale.js';
-import { BLUE_STEEL, hex } from './ui-theme.js';
+import { BLUE_STEEL, HUD_FONT_FAMILY, HUD_TEXT, hex } from './ui-theme.js';
 import { countMatchingSpellSkills, selectSpellSkillRows } from './hud-spell-skill-rows.js';
 
 // ---------------------------------------------------------------------------
@@ -56,14 +56,12 @@ const SPELL_ROW_CAP = 2;
 const ROW_COUNT = 2 + SPELL_ROW_CAP;
 
 const PANEL_W = PAD + NAME_W + 4 + LV_W + 4 + BAR_W + PAD;
-const PANEL_H = PAD + TITLE_H + ROW_GAP + ROW_COUNT * (ROW_H + ROW_GAP) + PAD - ROW_GAP;
-
+const PANEL_MAX_H = PAD + TITLE_H + ROW_GAP + ROW_COUNT * (ROW_H + ROW_GAP) + PAD - ROW_GAP;
 const PANEL_X = 16;
-/** Sits 8px above the loot counter panel (which starts at GAME.HEIGHT - 124). */
-const PANEL_Y = GAME.HEIGHT - 124 - 8 - PANEL_H;
+const PANEL_BOTTOM = GAME.HEIGHT - 124 - 8;
 
 const COLORS = {
-  title: hex(BLUE_STEEL.accent),
+  title: hex(BLUE_STEEL.accentGold),
   titleStrip: BLUE_STEEL.sectionHeader,
   classSkill: '#86efac',
   typeSkill: '#93c5fd',
@@ -112,27 +110,43 @@ export function createHudSkillTracker(
   destroy(): void;
 } {
   const parent = options.parent;
-  const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, { parent });
+  const panel = createBeveledPanel(
+    scene,
+    PANEL_X,
+    PANEL_BOTTOM - PANEL_MAX_H,
+    PANEL_W,
+    PANEL_MAX_H,
+    {
+      parent,
+    },
+  );
   const panelBounds = scene.add
-    .zone(PANEL_X, PANEL_Y, PANEL_W, PANEL_H)
+    .zone(PANEL_X, PANEL_BOTTOM - PANEL_MAX_H, PANEL_W, PANEL_MAX_H)
     .setOrigin(0, 0)
     .setName('hud-skill-panel-bounds');
   parent?.add(panelBounds);
 
   // Title strip
   const titleStrip = scene.add
-    .rectangle(PANEL_X + 2, PANEL_Y + 2, PANEL_W - 4, TITLE_H, COLORS.titleStrip, 1)
+    .rectangle(
+      PANEL_X + 2,
+      PANEL_BOTTOM - PANEL_MAX_H + 2,
+      PANEL_W - 4,
+      TITLE_H,
+      COLORS.titleStrip,
+      1,
+    )
     .setName('hud-skill-title-strip')
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.panel + 1);
 
   const titleText = scene.add
-    .text(PANEL_X + PAD, PANEL_Y + 2 + TITLE_H / 2, 'SKILLS', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
+    .text(PANEL_X + PAD, PANEL_BOTTOM - PANEL_MAX_H + 2 + TITLE_H / 2, 'SKILLS', {
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.title,
       fontStyle: 'bold',
-      color: COLORS.title,
+      color: hex(BLUE_STEEL.accentGold),
     })
     .setName('hud-skill-title-text')
     .setOrigin(0, 0.5)
@@ -143,9 +157,9 @@ export function createHudSkillTracker(
   // trackable spell skills than there are spell rows to display, so the row
   // cap is visible instead of silently hiding skills.
   const overflowText = scene.add
-    .text(PANEL_X + PANEL_W - PAD, PANEL_Y + 2 + TITLE_H / 2, '', {
-      fontFamily: 'monospace',
-      fontSize: '9px',
+    .text(PANEL_X + PANEL_W - PAD, PANEL_BOTTOM - PANEL_MAX_H + 2 + TITLE_H / 2, '', {
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.label,
       fontStyle: 'bold',
       color: COLORS.spellSkill,
     })
@@ -166,14 +180,16 @@ export function createHudSkillTracker(
     levelText: Phaser.GameObjects.Text;
     barFill: Phaser.GameObjects.Rectangle;
     barBg: Phaser.GameObjects.Rectangle;
+    setPosition(y: number): void;
   } {
-    const rowY = PANEL_Y + PAD + TITLE_H + ROW_GAP + rowIndex * (ROW_H + ROW_GAP);
+    const rowY =
+      PANEL_BOTTOM - PANEL_MAX_H + PAD + TITLE_H + ROW_GAP + rowIndex * (ROW_H + ROW_GAP);
     const cy = rowY + ROW_H / 2;
 
     const nameText = scene.add
       .text(PANEL_X + PAD, cy, '', {
-        fontFamily: 'monospace',
-        fontSize: '10px',
+        fontFamily: HUD_FONT_FAMILY,
+        fontSize: HUD_TEXT.label,
         color: labelColor,
       })
       .setName(`hud-skill-${debugName}-name-text`)
@@ -183,8 +199,8 @@ export function createHudSkillTracker(
 
     const levelText = scene.add
       .text(PANEL_X + PAD + NAME_W + 4, cy, '', {
-        fontFamily: 'monospace',
-        fontSize: '10px',
+        fontFamily: HUD_FONT_FAMILY,
+        fontSize: HUD_TEXT.label,
         fontStyle: 'bold',
         color: labelColor,
       })
@@ -210,7 +226,19 @@ export function createHudSkillTracker(
 
     parent?.add([nameText, levelText, barBgRect, barFillRect]);
 
-    return { nameText, levelText, barFill: barFillRect, barBg: barBgRect };
+    return {
+      nameText,
+      levelText,
+      barFill: barFillRect,
+      barBg: barBgRect,
+      setPosition: (y) => {
+        const cy = y + ROW_H / 2;
+        nameText.setY(cy);
+        levelText.setY(cy);
+        barBgRect.setY(cy);
+        barFillRect.setY(cy);
+      },
+    };
   }
 
   const classRow = makeSkillRow(0, COLORS.barClass, COLORS.classSkill, 'class');
@@ -244,6 +272,23 @@ export function createHudSkillTracker(
     for (const row of [classRow, typeRow, ...spellRows]) {
       setRowVisible(row, visible);
     }
+  }
+
+  function layout(activeSpellRows: number): void {
+    const rowCount = 2 + activeSpellRows;
+    const height = PAD + TITLE_H + ROW_GAP + rowCount * (ROW_H + ROW_GAP) + PAD - ROW_GAP;
+    const y = PANEL_BOTTOM - height;
+    panel.setPosition(PANEL_X, y);
+    panel.setSize(PANEL_W, height);
+    panelBounds.setPosition(PANEL_X, y).setSize(PANEL_W, height);
+    titleStrip.setPosition(PANEL_X + 2, y + 2);
+    titleText.setPosition(PANEL_X + PAD, y + 2 + TITLE_H / 2);
+    overflowText.setPosition(PANEL_X + PANEL_W - PAD, y + 2 + TITLE_H / 2);
+    classRow.setPosition(y + PAD + TITLE_H + ROW_GAP);
+    typeRow.setPosition(y + PAD + TITLE_H + ROW_GAP + ROW_H + ROW_GAP);
+    spellRows.forEach((row, index) =>
+      row.setPosition(y + PAD + TITLE_H + ROW_GAP + (2 + index) * (ROW_H + ROW_GAP)),
+    );
   }
 
   function updateRow(
@@ -321,6 +366,7 @@ export function createHudSkillTracker(
     const equippedActiveAbilityIds =
       world.abilityStatesByEntity.get(playerEid)?.equippedActiveAbilityIds ?? [];
     const spellSkillEntries = selectSpellSkillRows(equippedActiveAbilityIds, spellRows.length);
+    layout(spellSkillEntries.length);
     for (let i = 0; i < spellRows.length; i++) {
       const row = spellRows[i]!;
       const entry = spellSkillEntries[i];

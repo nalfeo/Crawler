@@ -37,6 +37,7 @@ interface HudLabSettings {
 
 export interface HudProbeApi {
   ready(): boolean;
+  setScenario(scenario: 'safe-room-unlocked' | 'dungeon'): void;
   setBossFightActive(active: boolean): void;
   setLootSkillStressState(): void;
   getLootSkillLayout(): HudLootSkillLayout;
@@ -329,6 +330,35 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       };
       const probeApi: HudProbeApi = {
         ready: () => sceneBuilt,
+        setScenario: (scenario) => {
+          if (!world?.floorScenario) throw new Error('HUD lab world not ready');
+          if (scenario === 'safe-room-unlocked') {
+            settings.hpPercent = 100;
+            settings.maxHp = 250;
+            settings.timeRemainingS = 300;
+            settings.bossFightActive = false;
+            settings.bossHpPercent = 100;
+            settings.spellsUnlocked = true;
+            world.playerInSafeRoom = true;
+            world.state = 'safe_room';
+            world.featureUnlocks.inventory = true;
+            world.featureUnlocks.equipment = true;
+            world.featureUnlocks.equipmentPanel = true;
+            world.featureUnlocks.spells = true;
+            world.playerGold = 1250;
+            world.floorScenario.objective.junkCollected = 18;
+          } else {
+            settings.hpPercent = 64;
+            settings.maxHp = 100;
+            settings.timeRemainingS = 180;
+            settings.bossFightActive = true;
+            settings.bossHpPercent = 48;
+            settings.spellsUnlocked = true;
+            world.playerInSafeRoom = false;
+            world.state = 'playing';
+          }
+          hudUi?.sync(world, playerEid);
+        },
         setBossFightActive: (active: boolean) => {
           settings.bossFightActive = active;
         },

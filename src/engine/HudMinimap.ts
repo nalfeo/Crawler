@@ -29,6 +29,7 @@ import {
   shouldDrawTerritoryOverlayBands,
   shouldUseFamilyRoomTint,
 } from './minimap-territory-guards.js';
+import { HUD_FONT_FAMILY } from './ui-theme.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -243,7 +244,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   // Compass "N" marker at the top of the dial for orientation.
   const hudCompass = scene.add
     .text(0, 0, 'N', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -255,7 +256,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   // Small "MAP (M)" hint tab beneath the dial.
   const hudMapLabel = scene.add
     .text(0, 0, 'MAP (M)', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -287,7 +288,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const panelTitle = scene.add
     .text(0, 0, 'DUNGEON MAP', {
-      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -299,7 +300,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const panelHint = scene.add
     .text(0, 0, 'DRAG/PINCH: PAN & ZOOM  |  WHEEL / +/-: ZOOM  |  M: CLOSE', {
-      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '8px',
       color: '#aebdd5',
       padding: { top: 3, bottom: 2 },
@@ -317,7 +318,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const closeLabel = scene.add
     .text(0, 0, '✕', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '26px',
       color: '#fcd34d',
     })

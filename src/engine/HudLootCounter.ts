@@ -18,12 +18,13 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, PIXEL_ICON, createBeveledPanel, addPixelIcon } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
 import { formatCompactLootValue } from './hud-loot-format.js';
+import { HUD_FONT_FAMILY, HUD_TEXT } from './ui-theme.js';
 
 const PAD = 7;
 const ICON_SIZE = 16;
 const GAP_ICON_TEXT = 5;
-/** Reserved width for a compact value string (up to 4 glyphs at 12px monospace). */
-const VALUE_W = 38;
+/** Reserved width for a compact value string, including bold glyph stroke padding. */
+const VALUE_W = 48;
 /** Gap between the gold pair and the junk pair. */
 const PAIR_GAP = 12;
 
@@ -64,8 +65,8 @@ export function createHudLootCounter(
     .setName('hud-loot-gold-value-bounds');
   const goldText = scene.add
     .text(goldTextX, cy, '0', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.value,
       fontStyle: 'bold',
       color: '#ffe082',
       stroke: '#02040a',
@@ -88,8 +89,8 @@ export function createHudLootCounter(
     .setName('hud-loot-junk-value-bounds');
   const junkText = scene.add
     .text(junkTextX, cy, '0', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.value,
       fontStyle: 'bold',
       color: '#cbd5e1',
       stroke: '#02040a',
