@@ -931,6 +931,132 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
+  it('uses square labeled slots without an idle inspector', async () => {
+    const { context, page: layoutPage } = await openDecisionState({ width: 1280, height: 800 });
+    try {
+      await probe.previewEquipmentBagItem(layoutPage, null);
+      // The Ten-Slot contract retired several placeholder gear defs (see
+      // RETIRED_EQUIPMENT_ITEM_IDS), so the decision-state auto-equip (first 4
+      // bag items) can now land on gear that indirectly buffs Move Speed via
+      // Dexterity (iron-greaves/leather-gloves) or directly (leather-boots).
+      // Unequip those slots so this test's baseline -> "equip boots" assertions
+      // below observe a real neutral -> buffed transition instead of racing
+      // whatever the auto-equip happened to select.
+      await probe.unequipEquipmentSlot(layoutPage, 'legs');
+      await probe.unequipEquipmentSlot(layoutPage, 'gloves');
+      await probe.unequipEquipmentSlot(layoutPage, 'feet');
+      await layoutPage.waitForTimeout(100);
+
+      for (const slot of EQUIPMENT_UI_SLOTS) {
+        const bounds = await probe.getEquipmentSlotBounds(layoutPage, slot.id);
+        expect(bounds, `slot "${slot.id}" should be rendered`).not.toBeNull();
+        if (!bounds) continue;
+        expect(
+          Math.abs(bounds.width - bounds.height),
+          `slot "${slot.id}" must remain square rather than reverting to a legacy rectangle`,
+        ).toBeLessThanOrEqual(1);
+        const icon = await probe.getEquipmentSlotIconBounds(layoutPage, slot.id);
+        if (!icon) continue;
+        const safeInset = 6;
+        expect(
+          icon.x,
+          `slot "${slot.id}" icon must clear the left slot outline by ${safeInset}px`,
+        ).toBeGreaterThanOrEqual(bounds.x + safeInset);
+        expect(
+          icon.y,
+          `slot "${slot.id}" icon must clear the top slot outline by ${safeInset}px`,
+        ).toBeGreaterThanOrEqual(bounds.y + safeInset);
+        expect(
+          icon.x + icon.width,
+          `slot "${slot.id}" icon must clear the right slot outline by ${safeInset}px`,
+        ).toBeLessThanOrEqual(bounds.x + bounds.width - safeInset);
+        expect(
+          icon.y + icon.height,
+          `slot "${slot.id}" icon must clear the bottom slot outline by ${safeInset}px`,
+        ).toBeLessThanOrEqual(bounds.y + bounds.height - safeInset);
+      }
+
+      expect(
+        await probe.getEquipmentInspectorBounds(layoutPage),
+        'the resting panel should not spend space on a hover instruction',
+      ).toBeNull();
+
+      const text = (await probe.getEquipmentTextRuns(layoutPage)).map((run) => run.text);
+      expect(text).toContain('CD Reduction');
+      expect(text).not.toContain('green = gear bonus');
+      expect(text).not.toContain('Current totals');
+      expect(text).not.toContain('Hover a slot for details');
+      expect(text).not.toContain('— empty —');
+      const zeroStats = (await probe.getEquipmentTextRuns(layoutPage)).filter(
+        (run) => run.region === 'stats' && run.text === '0',
+      );
+      expect(zeroStats.length, 'the probe state should expose zero-valued stats').toBeGreaterThan(
+        0,
+      );
+      for (const run of zeroStats) {
+        expect(
+          run.color.toLowerCase(),
+          'zero-valued stats must not imply a positive gear bonus with green text',
+        ).not.toBe('#49d06f');
+      }
+      const moveSpeed = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) => run.region === 'stats' && run.text === 'Move Speed',
+      );
+      expect(moveSpeed, 'Move Speed should be present in the stats column').toBeDefined();
+      const moveSpeedValue = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) =>
+          moveSpeed !== undefined &&
+          run.region === 'stats' &&
+          run.text !== 'Move Speed' &&
+          Math.abs(run.bounds.y - moveSpeed.bounds.y) <= 1,
+      );
+      expect(moveSpeedValue, 'Move Speed should have a rendered value on its row').toBeDefined();
+      expect(
+        moveSpeedValue?.color.toLowerCase(),
+        'baseline Move Speed must use the neutral stat color',
+      ).not.toBe('#49d06f');
+      const statRuns = await probe.getEquipmentTextRuns(layoutPage);
+      const valueOnStatRow = (label: string): string | undefined => {
+        const labelRun = statRuns.find((run) => run.region === 'stats' && run.text === label);
+        return statRuns.find(
+          (run) =>
+            labelRun !== undefined &&
+            run.region === 'stats' &&
+            run.text !== label &&
+            Math.abs(run.bounds.y - labelRun.bounds.y) <= 1,
+        )?.text;
+      };
+      expect(statRuns.some((run) => run.region === 'stats' && run.text === 'XP Bonus')).toBe(true);
+      expect(statRuns.some((run) => run.region === 'stats' && run.text === 'Max HP')).toBe(true);
+      expect(valueOnStatRow('Move Speed')).toMatch(/^\d+\.\d%$/);
+      expect(valueOnStatRow('Crit Multiplier')).toMatch(/^\d+\.\d{2}x$/);
+
+      await layoutPage.evaluate(() => {
+        window.__uiProbe!.seedAllGear();
+        window.__uiProbe!.equipFromEquipmentBag('leather-boots');
+      });
+      await layoutPage.waitForTimeout(100);
+      const gearMoveSpeed = (await probe.getEquipmentTextRuns(layoutPage)).find(
+        (run) =>
+          moveSpeed !== undefined &&
+          run.region === 'stats' &&
+          run.text !== 'Move Speed' &&
+          Math.abs(run.bounds.y - moveSpeed.bounds.y) <= 1,
+      );
+      expect(gearMoveSpeed, 'Move Speed should update after equipping boots').toBeDefined();
+      expect(
+        Number.parseFloat(gearMoveSpeed?.text ?? ''),
+        'the boots should visibly increase Move Speed',
+      ).toBeGreaterThan(0);
+      expect(
+        gearMoveSpeed?.color.toLowerCase(),
+        'only a visible Move Speed increase caused by equipped gear should be green',
+      ).toBe('#49d06f');
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
   /**
    * Stat labels are not shouted.
    *
@@ -965,8 +1091,30 @@ describe('equipment decision gate (e2e)', () => {
       const equippedSlot = 'head';
       const emptySlot = 'feet';
 
+      // The visual-review equipped-hover scenario uses the real equipped item
+      // path: target emphasis remains visible while its adjacent card is shown.
+      expect(await probe.selectEquipmentSlot(hoverPage, equippedSlot)).toBe(true);
+      expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(equippedSlot);
       expect(await probe.previewEquipmentSlot(hoverPage, equippedSlot)).toBe(true);
       expect(await probe.isEquipmentTooltipVisible(hoverPage)).toBe(true);
+      const [equippedBounds, equippedTooltip] = await Promise.all([
+        probe.getEquipmentSlotBounds(hoverPage, equippedSlot),
+        probe.getEquipmentTooltipBounds(hoverPage),
+      ]);
+      expect(equippedBounds).not.toBeNull();
+      expect(equippedTooltip).not.toBeNull();
+      expect(
+        overlaps(equippedBounds!, equippedTooltip!),
+        `the equipped-item tooltip must not occlude the hovered target: target=${JSON.stringify(equippedBounds)} tooltip=${JSON.stringify(equippedTooltip)}`,
+      ).toBe(false);
+      expect(
+        equippedTooltip!.x,
+        'a left-half hover target should put its tooltip on the screen-center side with a clear gap',
+      ).toBeGreaterThanOrEqual(equippedBounds!.x + equippedBounds!.width + 10);
+      expect(
+        await probe.isEquipmentTooltipTopmost(hoverPage),
+        'the equipped-item tooltip must render above every equipment-panel element',
+      ).toBe(true);
       await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-tooltip-equipped'));
 
       expect(await probe.previewEquipmentSlot(hoverPage, emptySlot)).toBe(true);
@@ -975,8 +1123,8 @@ describe('equipment decision gate (e2e)', () => {
 
       // Slot filtering: selecting a slot narrows the bag to what fits it.
       expect(await probe.selectEquipmentSlot(hoverPage, emptySlot)).toBe(true);
-      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
       expect(await probe.getEquipmentSlotFilter(hoverPage)).toBe(emptySlot);
+      await captureEquipmentPanel(hoverPage, captureArtifactPath('equipment-slot-filtered'));
 
       await probe.selectEquipmentSlot(hoverPage, null);
       const bagIds = await probe.getEquipmentBagItemIds(hoverPage);
@@ -998,6 +1146,142 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
+  it('keeps a Bag-hovered candidate visible when its destination slot is empty', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const emptyHoverPage = await context.newPage();
+    try {
+      await loadUiProbeLab(emptyHoverPage);
+      await hideLabChrome(emptyHoverPage);
+      await emptyHoverPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+      });
+      await emptyHoverPage.waitForTimeout(250);
+      expect(await probe.getEquippedSlotIds(emptyHoverPage)).not.toContain('feet');
+      expect(await probe.selectEquipmentSlot(emptyHoverPage, 'feet')).toBe(true);
+      const bagIds = await probe.getEquipmentBagItemIds(emptyHoverPage);
+      const leatherBootsIndex = bagIds.lastIndexOf('leather-boots');
+      expect(
+        leatherBootsIndex,
+        'the empty Feet filter should expose Leather Boots',
+      ).toBeGreaterThanOrEqual(0);
+
+      await probe.previewEquipmentBagItem(emptyHoverPage, 'leather-boots');
+      const [bagTarget, tooltip] = await Promise.all([
+        probe.getEquipmentBagCellBounds(emptyHoverPage, leatherBootsIndex),
+        probe.getEquipmentTooltipBounds(emptyHoverPage),
+      ]);
+      expect(bagTarget).not.toBeNull();
+      expect(tooltip).not.toBeNull();
+      expect(
+        overlaps(bagTarget!, tooltip!),
+        `the candidate tooltip must not cover the Bag item being hovered: target=${JSON.stringify(bagTarget)} tooltip=${JSON.stringify(tooltip)}`,
+      ).toBe(false);
+      expect(
+        tooltip!.x + tooltip!.width,
+        'a right-side Bag item must put its tooltip to the left toward screen center',
+      ).toBeLessThanOrEqual(bagTarget!.x - 10);
+      expect(await probe.isEquipmentTooltipTopmost(emptyHoverPage)).toBe(true);
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('anchors generated delta comparisons beside the hovered Bag item without geometry escapes', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const deltaPage = await context.newPage();
+    try {
+      await loadUiProbeLab(deltaPage);
+      await hideLabChrome(deltaPage);
+      const candidateKey = await deltaPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+        probe.equipInventoryItem('iron-breastplate');
+        return probe.addGeneratedChestReplacement();
+      });
+      if (candidateKey === null) {
+        throw new Error('Unable to seed generated chest replacement.');
+      }
+      await deltaPage.waitForTimeout(250);
+      await deltaPage.evaluate((instanceKey) => {
+        window.__uiProbe!.previewGeneratedEquipmentBagItem(instanceKey);
+      }, candidateKey);
+
+      const geometry = await deltaPage.evaluate((instanceKey) => {
+        const probe = window.__uiProbe!;
+        return {
+          panel: probe.getEquipmentPanelBounds(),
+          target: probe.getGeneratedEquipmentBagCellBounds(instanceKey),
+          cards: probe.getEquipmentTooltipCardBounds(),
+          topmost: probe.isEquipmentTooltipTopmost(),
+        };
+      }, candidateKey);
+      expect(geometry.target).not.toBeNull();
+      expect(geometry.cards).toHaveLength(2);
+      expect(geometry.topmost).toBe(true);
+      for (const card of geometry.cards) {
+        expect(containsWithin(geometry.panel, card, 1)).toBe(true);
+        expect(overlaps(geometry.target!, card)).toBe(false);
+        expect(card.x + card.width).toBeLessThanOrEqual(geometry.target!.x - 10);
+      }
+      expect(overlaps(geometry.cards[0]!, geometry.cards[1]!)).toBe(false);
+      expect(
+        Math.abs(geometry.cards[0]!.y - geometry.cards[1]!.y),
+        'current and candidate comparisons must share a horizontal baseline',
+      ).toBeLessThanOrEqual(1);
+      expect(
+        geometry.cards[1]!.x - (geometry.cards[0]!.x + geometry.cards[0]!.width),
+        'current and candidate comparisons must preserve a readable horizontal gap',
+      ).toBeGreaterThanOrEqual(8);
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('shows per-replacement ring deltas and combined two-hand DPS deltas', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const comparisonPage = await context.newPage();
+    try {
+      await loadUiProbeLab(comparisonPage);
+      await hideLabChrome(comparisonPage);
+      const ringRows = await comparisonPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.seedAllGear();
+        probe.openEquipmentOnly();
+        probe.equipInventoryItem('band-of-fortune');
+        probe.equipInventoryItem('signet-of-focus');
+        const candidate = probe.addGeneratedRingReplacement();
+        if (candidate === null) throw new Error('Unable to seed ring candidate.');
+        probe.previewGeneratedEquipmentBagItem(candidate);
+        return probe.getEquipmentTextRuns().map((run) => run.text);
+      });
+      expect(ringRows).toEqual(expect.arrayContaining(['(+1)', '(-5%)', '(+2)', '(-1)', '(-3%)']));
+
+      const handRows = await comparisonPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        probe.closeOverlays();
+        probe.openEquipmentOnly();
+        if (!probe.seedMultiHandReplacement()) throw new Error('Unable to seed hand replacement.');
+        probe.previewEquipmentBagItem('bone-club');
+        return probe.getEquipmentTextRuns().map((run) => run.text);
+      });
+      expect(handRows).toEqual(
+        expect.arrayContaining([
+          'DPS: 22.2',
+          '(-2.8)',
+          'Knockback: 5 ft',
+          'AoE Range: 5.5 ft',
+          'Armor',
+          '(-3)',
+        ]),
+      );
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
   it('keeps rendered text contained, collision-free, and readable at every supported viewport', async () => {
     for (const viewport of [
       { width: 1280, height: 800 },
@@ -1005,10 +1289,11 @@ describe('equipment decision gate (e2e)', () => {
     ]) {
       const { context, page: decisionPage } = await openDecisionState(viewport);
       try {
-        const [panel, header, doll, bag, stats, inspector, canvas, runs, raster] =
+        const [panel, header, headerFrame, doll, bag, stats, inspector, canvas, runs, raster] =
           await Promise.all([
             probe.getEquipmentPanelBounds(decisionPage),
             probe.getEquipmentHeaderBounds(decisionPage),
+            probe.getEquipmentHeaderFrameBounds(decisionPage),
             probe.getEquipmentDollBounds(decisionPage),
             probe.getEquipmentBagColumnBounds(decisionPage),
             probe.getEquipmentStatsBounds(decisionPage),
@@ -1017,13 +1302,20 @@ describe('equipment decision gate (e2e)', () => {
             probe.getEquipmentTextRuns(decisionPage),
             probe.getEquipmentTextRasterMetadata(decisionPage),
           ]);
+        expect(headerFrame, 'equipment header frame should exist').not.toBeNull();
+        if (headerFrame) {
+          expect(
+            containsWithin(panel, headerFrame, 1),
+            `equipment header frame must remain contained at ${viewport.width}×${viewport.height}`,
+          ).toBe(true);
+        }
         const regions = { header, doll, bag, stats, inspector };
         expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
         expect(raster, 'the live panel should expose raster metadata').not.toBeNull();
-        expect(raster?.intendedFontIdentity).toBe('Press Start 2P');
-        expect(raster?.loadedFontIdentity).toBe('Press Start 2P');
+        expect(raster?.intendedFontIdentity).toBe('Arial');
+        expect(raster?.loadedFontIdentity).toBe('Arial');
         expect(raster?.fontLoadState).toBe('loaded');
-        expect(raster?.fontSourceUrl).toMatch(/\/fonts\/PressStart2P-Regular\.ttf$/);
+        expect(raster?.fontSourceUrl).toBeNull();
         expect(raster?.textResolution).toBeGreaterThanOrEqual(6);
         expect(
           Number.isInteger(raster?.containerScale),
