@@ -1259,7 +1259,7 @@ function fireEnemyProjectileFrom(
   }
 
   const projectileDamage = hasComponent(world.ecs, eid, Damage)
-    ? (world.stores.damage.amount[eid] ?? FIREBALL_DEF?.baseDamage ?? ENEMY_PROJECTILE.DAMAGE)
+    ? (world.stores.damage.amount[eid] ?? 0)
     : (FIREBALL_DEF?.baseDamage ?? ENEMY_PROJECTILE.DAMAGE);
   if (FIREBALL_DEF) {
     const projectile = spawnAoeProjectile(
