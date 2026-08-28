@@ -5,10 +5,10 @@ import { renderHtml } from '../renderer.mjs';
 
 const OPTS = { instanceId: 'screenshot-viewer-test', pollIntervalMs: 10_000 };
 
-test('renders page title and main heading', () => {
+test('renders A|B UX Testing title and main heading', () => {
   const html = renderHtml(OPTS);
-  assert.match(html, /<title>Screenshot Viewer/);
-  assert.match(html, /<h1[^>]*>UX Screenshot Review/);
+  assert.match(html, /<title>A\|B UX Testing/);
+  assert.match(html, /<h1[^>]*>A\|B UX Testing/);
 });
 
 test('embeds the instanceId in the title (escaped)', () => {
@@ -157,8 +157,9 @@ test('stacks lineage comparisons and labels each concrete variant', () => {
   assert.match(html, /grid-template-columns: 1fr/);
   assert.match(html, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(html, /pair-image-label/);
-  assert.match(html, /Main/);
-  assert.match(html, /taskLabel/);
+  assert.match(html, /live \(dev\)/);
+  assert.match(html, /pair\.scenarioLabel/);
+  assert.match(html, /live-dev/);
 });
 
 test('uses delegated image error handling instead of inline fallback markup', () => {
@@ -170,12 +171,39 @@ test('uses delegated image error handling instead of inline fallback markup', ()
   assert.match(html, /image\?\.classList\.contains\('pair-image'\)/);
 });
 
-test('keeps incomplete comparisons out of the Before / After pane', () => {
+test('exposes a manifest-driven scenario filter for comparing treatments in one session', () => {
   const html = renderHtml(OPTS);
-  assert.match(
-    html,
-    /const comparablePairs = pairs\.filter\(\(pair\) => pair\.before && pair\.after\)/,
-  );
-  assert.match(html, /comparablePairs\.map/);
-  assert.doesNotMatch(html, /empty-state">missing/);
+  assert.match(html, /id="scenario-filter"/);
+  assert.match(html, /state\.scenarios/);
+  assert.match(html, /scenario\.id/);
+  assert.match(html, /All scenarios/);
+  assert.match(html, /scenarioFilter\.addEventListener\('change'/);
+});
+
+test('shows capture time for each A/B screenshot', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /formatTime\(screenshot\.takenAt\)/);
+  assert.match(html, /time unknown/);
+});
+
+test('renders judge score details and full raw response expanders', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /Score details \+ judge comments/);
+  assert.match(html, /Full raw judge response JSON/);
+  assert.match(html, /JSON\.stringify\(details\.rawReview, null, 2\)/);
+  assert.match(html, /renderReviewDetails\(review, reviewKey\)/);
+  assert.match(html, /data-details-key/);
+  assert.match(html, /openDetails/);
+});
+
+test('warns that the panel is stale when the backend is unreachable', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /showing STALE content/);
+});
+
+test('renders complete and current-only pairs in backend order without client-side re-sorting', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /const orderedPairs = pairs;/);
+  assert.doesNotMatch(html, /orderedPairs\.push/);
+  assert.match(html, /No ' \+ escapeHtml\(label\) \+ ' capture is available/);
 });

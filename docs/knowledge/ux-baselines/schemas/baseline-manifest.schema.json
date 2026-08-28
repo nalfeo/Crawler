@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UX Baseline Manifest",
+  "description": "Registry of tracked UX surfaces for release-baseline capture.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "label", "viewport", "captureSource", "setupFile", "enabled"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique surface identifier (used as directory/filename).",
+        "minLength": 1,
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "label": {
+        "type": "string",
+        "description": "Human-readable name for the UX surface.",
+        "minLength": 1
+      },
+      "viewport": {
+        "type": "object",
+        "required": ["width", "height"],
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Viewport width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Viewport height in pixels."
+          }
+        }
+      },
+      "captureSource": {
+        "type": "string",
+        "enum": ["ui-probe-lab", "lab", "dev-server"],
+        "description": "How the screenshot is captured."
+      },
+      "setupFile": {
+        "type": "string",
+        "description": "Path to the lab or setup script (e.g., src/labs/ui-probe-lab.ts).",
+        "minLength": 1
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Whether this surface is actively tracked in release baselines."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional description of the surface and capture requirements."
+      }
+    }
+  }
+}

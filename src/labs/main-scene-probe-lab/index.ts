@@ -32,7 +32,10 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import { Enemy, Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
+import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
+import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
@@ -140,6 +143,15 @@ function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
   return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
 }
 
+/** The single shared status-aura Graphics layer, if the bridge has created it. */
+function findStatusAuraLayer(
+  phaserScene: Phaser.Scene | null,
+): Phaser.GameObjects.Graphics | undefined {
+  return phaserScene?.children?.list?.find((child) => child.name === _STATUS_AURA_LAYER_NAME) as
+    | Phaser.GameObjects.Graphics
+    | undefined;
+}
+
 /**
  * The slice of MainGameScene's runtime shape this probe reads. The fields are
  * declared `private` in the class but are plain instance properties at runtime,
@@ -169,6 +181,7 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
     cursor: number;
@@ -549,6 +562,21 @@ export interface MainSceneState {
   readonly settlementShopArchetypeIds: readonly string[];
 }
 
+/**
+ * Live projection of the between-floor summary screen: the stat lines a player
+ * can read, the acknowledgement prompt, and whether the descent is waiting.
+ */
+export interface FloorSummaryProbeState {
+  readonly visible: boolean;
+  readonly lines: readonly string[];
+  readonly prompt: string | null;
+  readonly awaitingAcknowledgement: boolean;
+  /** Panel rectangle behind the completion copy (design space). */
+  readonly panelBounds: ScreenBounds | null;
+  /** Union of every visible completion-screen text (design space). */
+  readonly contentBounds: ScreenBounds | null;
+}
+
 /** One bottom-left vitals row's live visibility + rendered design-space bounds. */
 export interface VitalsRowProbe {
   readonly visible: boolean;
@@ -655,6 +683,28 @@ export interface CarriedWeaponRenderInfo {
   /** On-screen size of the carried sprite in pixels. */
   readonly displayWidthPx: number;
   readonly displayHeightPx: number;
+}
+
+/**
+ * A live enemy arranged next to the player for the status-effect aura
+ * observation (issue #3690), reported in on-screen pixels so a screenshot probe
+ * can sample the exact footprint the aura is drawn into.
+ */
+export interface StatusAuraEnemyProbe {
+  readonly enemyEid: number;
+}
+
+/** What the REAL scene's display list says about the status-aura layer. */
+export interface StatusAuraRenderSummary {
+  /** Whether the shared aura Graphics layer exists on the display list. */
+  readonly layerPresent: boolean;
+  /** Whether that layer is currently visible (it hides when nothing is affected). */
+  readonly layerVisible: boolean;
+  /** Live enemies whose status effects resolve to a visual treatment. */
+  readonly affectedEnemyCount: number;
+  /** Draw commands buffered on the aura layer (0 when nothing was drawn). */
+  readonly drawCommandCount: number;
+  readonly layerDepth: number | null;
 }
 
 /**
@@ -894,6 +944,8 @@ export interface MainSceneProbeApi {
    * intrude into the display-cutout / home-indicator bands.
    */
   getSafeAreaLayout(): SafeAreaLayoutProbe;
+  /** Live between-floor summary screen projection (stat lines + prompt). */
+  getFloorSummaryState(): FloorSummaryProbeState;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Advance the paused simulation by N fixed steps using the real scene seam. */
@@ -979,6 +1031,31 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Spawn a live enemy a few feet from the player for the status-effect aura
+   * observation. Arrangement affordance only — the aura itself is drawn by the
+   * shipped render bridge from the real world state.
+   */
+  primeStatusAuraEnemy(): StatusAuraEnemyProbe | null;
+  /**
+   * Live entity position in GAME pixels on the world camera's viewport (camera
+   * scroll removed and camera zoom applied), or null when the entity/camera is
+   * unavailable. Lets a screenshot probe sample the exact footprint an entity
+   * renders into.
+   */
+  getEntityCameraPosition(eid: number): ProbePoint | null;
+  /** Apply the real Curse slow debuff (speed x0.4) to a live enemy. */
+  applyStatusAuraDebuff(enemyEid: number): boolean;
+  /** Status-aura layer state read off the REAL scene display list. */
+  getStatusAuraRenderSummary(): StatusAuraRenderSummary;
+  /**
+   * Set the alpha of the shared status-aura layer. Observation affordance only:
+   * the shipped renderer never touches alpha, so this survives every redraw and
+   * lets a screenshot probe toggle ONLY the aura while the debuff, the status
+   * tint and every animation stay exactly as they are. Returns false when the
+   * layer does not exist yet.
+   */
+  setStatusAuraLayerAlpha(alpha: number): boolean;
   /** Arrange and fire a real Magic Missile against a live nearby enemy. */
   primeMagicMissileLightProbe(): boolean;
   /** Live projectile-light state sampled from the rendered scene light field. */
@@ -1103,6 +1180,11 @@ export interface MainSceneProbeApi {
   };
   /** Current probe-controlled value returned by MainGameSceneOptions.isAutoDriven. */
   isRewardOpeningAutoDrivenForProbe(): boolean;
+  /**
+   * Latch the scene's auto-driven signal, so an e2e can exercise the paths the
+   * shipped AI/headless runners take (e.g. the timed between-floor advance).
+   */
+  setAutoDrivenForProbe(enabled: boolean): void;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
   tickRewardOpening(deltaMs: number): void;
   /** Jump the open reward-opening sequence straight to `summary`. */
@@ -1540,6 +1622,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
+
+    getFloorSummaryState: (): FloorSummaryProbeState =>
+      getScene()?.getFloorSummaryState?.() ?? {
+        visible: false,
+        lines: [],
+        prompt: null,
+        awaitingAcknowledgement: false,
+        panelBounds: null,
+        contentBounds: null,
+      },
 
     getSafeAreaLayout: (): SafeAreaLayoutProbe => {
       const scene = getScene();
@@ -2120,6 +2212,77 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!scene || !phaserScene || !world || holderEid < 0) return null;
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const px = world.stores.position.x[holderEid] ?? 0;
+      const py = world.stores.position.y[holderEid] ?? 0;
+      return { enemyEid: spawnEnemy(world, px + 6, py, 1_000) };
+    },
+
+    getEntityCameraPosition: (eid: number): ProbePoint | null => {
+      const world = getScene()?.world;
+      const cam = getPhaserScene()?.cameras?.main;
+      const x = world?.stores.position.x[eid];
+      const y = world?.stores.position.y[eid];
+      if (!cam || x === undefined || y === undefined) return null;
+      const zoom = cam.zoom || 1;
+      return {
+        x: (ftToPx(x) - cam.worldView.x) * zoom,
+        y: (ftToPx(y) - cam.worldView.y) * zoom,
+      };
+    },
+
+    applyStatusAuraDebuff: (enemyEid: number): boolean => {
+      const world = getScene()?.world;
+      if (!world) return false;
+      return applyStatusEffect(world, enemyEid, {
+        stat: 'speed',
+        op: 'multiply',
+        value: 0.4,
+        durationMs: 3_600,
+        sourceType: 'ability',
+        sourceId: 'probe:status-aura',
+        stackRule: { mode: 'replace' },
+      });
+    },
+
+    getStatusAuraRenderSummary: (): StatusAuraRenderSummary => {
+      const phaserScene = getPhaserScene();
+      const world = getScene()?.world;
+      const layer = findStatusAuraLayer(phaserScene);
+      let affectedEnemyCount = 0;
+      if (world) {
+        for (const eid of query(world.ecs, [Enemy, Position])) {
+          if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+          if (resolveStatusVisual(getStatusEffects(world, eid)) !== null) affectedEnemyCount += 1;
+        }
+      }
+      return {
+        layerPresent: layer !== undefined,
+        layerVisible: layer?.visible ?? false,
+        affectedEnemyCount,
+        drawCommandCount:
+          (layer as unknown as { commandBuffer?: unknown[] })?.commandBuffer?.length ?? 0,
+        layerDepth: layer?.depth ?? null,
+      };
+    },
+
+    setStatusAuraLayerAlpha: (alpha: number): boolean => {
+      const layer = findStatusAuraLayer(getPhaserScene());
+      if (!layer) return false;
+      layer.setAlpha(alpha);
+      return true;
+    },
+
     getAbilityFloaters: () => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) return [];
@@ -2662,6 +2825,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     isRewardOpeningAutoDrivenForProbe: () => autoDrivenForProbe,
+
+    setAutoDrivenForProbe: (enabled: boolean) => {
+      autoDrivenForProbe = enabled;
+    },
 
     tickRewardOpening: (deltaMs: number) => {
       getScene()?.rewardOpeningUI?.tick(deltaMs);

@@ -35,6 +35,16 @@ The agent is generic: it captures a screenshot from any URL and sends it to Azur
 - typography clarity
 - thematic fidelity (must feel like a pixel dungeon crawler, not generic app UI)
 
+For equipment, inventory, item-tooltip, loot-triage, and build-inspection
+surfaces, the prompt also loads the checked-in RPG inventory UX lookbook rubric:
+
+- `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`
+- `scripts/agent/review/rpg-inventory-ux-lookbook-rubric.json`
+
+This keeps the judge and UX Designer persona aligned on task readiness, decision
+delta, state/candidate/delta separation, visible constraints, expert throughput,
+and text safety without depending on a session-local PDF attachment.
+
 Output artifacts are written to:
 
 - `files/visual-review/equipment-ui-*.png`

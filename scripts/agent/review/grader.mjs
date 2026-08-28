@@ -88,7 +88,12 @@ export function resolveBase({ cwd = '.', baseRef = 'main', runGit = git } = {}) 
 /**
  * Collect the branch's real diff, plus its file list and head sha. This is what
  * makes the grade independent of the ledger's self-report.
- * @param {{cwd?:string, baseRef?:string, runGit?:(cwd:string,args:string[])=>string, diffCharLimit?:number}} [opts]
+ *
+ * `paths`, when non-empty, scopes the diff to those pathspecs. This is for
+ * ledgers whose declared change is a bounded slice of a much larger shared
+ * branch (multiple sessions' work bundled onto one PR) — the grade must stay
+ * scoped to what the ledger actually declares, not every commit on the branch.
+ * @param {{cwd?:string, baseRef?:string, runGit?:(cwd:string,args:string[])=>string, diffCharLimit?:number, paths?:string[]}} [opts]
  * @returns {{baseSha:string, headSha:string, files:string[], diff:string, truncated:boolean}}
  */
 export function collectDiff({
@@ -96,14 +101,16 @@ export function collectDiff({
   baseRef = 'main',
   runGit = git,
   diffCharLimit = DEFAULT_DIFF_CHAR_LIMIT,
+  paths = [],
 } = {}) {
   const baseSha = resolveBase({ cwd, baseRef, runGit });
   const headSha = runGit(cwd, ['rev-parse', 'HEAD']).trim();
-  const files = runGit(cwd, ['diff', '--name-only', `${baseSha}..HEAD`])
+  const pathArgs = paths.length > 0 ? ['--', ...paths] : [];
+  const files = runGit(cwd, ['diff', '--name-only', `${baseSha}..HEAD`, ...pathArgs])
     .split('\n')
     .map((f) => f.trim())
     .filter(Boolean);
-  const full = runGit(cwd, ['diff', `${baseSha}..HEAD`]);
+  const full = runGit(cwd, ['diff', `${baseSha}..HEAD`, ...pathArgs]);
   const truncated = full.length > diffCharLimit;
   return {
     baseSha,

@@ -1,0 +1,81 @@
+name: 'Host resource profile'
+description: >-
+  Sample this runner's CPU / memory / pressure utilization for the duration of a
+  job and publish a headroom summary, so we can tell whether a job is actually
+  using the machine it was given (issue #3800).
+
+inputs:
+  mode:
+    description: '`start` to begin sampling, `report` to stop and publish.'
+    required: true
+  label:
+    description: 'Name for this profile — used in the summary and artifact name.'
+    required: true
+  interval:
+    description: 'Sampling interval in milliseconds.'
+    default: '5000'
+  upload-artifact:
+    description: 'Whether `report` uploads the raw JSON report as an artifact.'
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    # Telemetry must never take a job down, so failures here degrade to a
+    # warning: a broken sampler is a missing table in the summary, never a red
+    # job. `start` must run AFTER dependency install (the sampler runs through
+    # tsx), so the install phase itself is outside the profiled window.
+    - name: Start host resource sampler
+      if: ${{ inputs.mode == 'start' }}
+      shell: bash
+      continue-on-error: true
+      env:
+        HOST_PROFILE_LABEL: ${{ inputs.label }}
+        HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
+      run: |
+        mkdir -p files
+        rm -f files/host-profile.stop files/host-resources.json files/host-resources.samples.jsonl
+        nohup npm run --silent host:profile -- \
+          --label "$HOST_PROFILE_LABEL" \
+          --interval "$HOST_PROFILE_INTERVAL" \
+          --out files/host-resources.json \
+          --stop-file files/host-profile.stop \
+          --quiet >files/host-profile.log 2>&1 &
+        echo "Host resource sampler started (label=$HOST_PROFILE_LABEL, interval=${HOST_PROFILE_INTERVAL}ms)"
+
+    # Rebuilt from the JSONL sidecar rather than trusting the sampler's own
+    # final write: a job killed by timeout or cancellation never gets to write
+    # that file, and a partial profile is far more useful than none.
+    - name: Publish host resource profile
+      if: ${{ inputs.mode == 'report' }}
+      shell: bash
+      continue-on-error: true
+      env:
+        HOST_PROFILE_LABEL: ${{ inputs.label }}
+        HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
+      run: |
+        touch files/host-profile.stop || true
+        # The sampler only notices the stop file on its next tick, so wait for
+        # its own final write (removed at `start`) before rebuilding. Without
+        # this the last interval — the whole profile, for a short job — is lost.
+        deadline=$(( $(date +%s) + 5 ))
+        while [ ! -f files/host-resources.json ] && [ "$(date +%s)" -lt "$deadline" ]; do
+          sleep 0.5
+        done
+        npm run --silent host:profile -- \
+          --from-jsonl \
+          --label "$HOST_PROFILE_LABEL" \
+          --interval "$HOST_PROFILE_INTERVAL" \
+          --out files/host-resources.json \
+          --step-summary \
+          --quiet || echo "::warning::host resource profile unavailable"
+
+    - name: Upload host resource profile
+      if: ${{ inputs.mode == 'report' && inputs.upload-artifact == 'true' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: host-profile-${{ inputs.label }}-${{ github.run_attempt }}
+        path: files/host-resources.json
+        if-no-files-found: ignore
+        retention-days: 7

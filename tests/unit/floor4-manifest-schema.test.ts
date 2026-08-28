@@ -86,3 +86,46 @@ describe('floor4 manifest schema wave rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('floor4 manifest schema Headliner rules', () => {
+  it('accepts the authored Headliner pool and overtime ramp', () => {
+    const manifest = cloneFloor4Manifest();
+    const headliners = manifest.floor4.headliners;
+
+    expect(headliners.pool).toHaveLength(9);
+    expect(headliners.slots.map((slot) => slot.act)).toEqual([1, 2, 3, 4, 5]);
+    expect(manifest.floor4.overtime.capMs).toBe(manifest.floor4.phase.overtimeCapMs);
+    expect(floorManifestDefSchema.safeParse(manifest).success).toBe(true);
+  });
+
+  it('rejects a Headliner pool archetype that is not in the arena pack', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.pool[0]!.archetypeId = 'floor4-unbooked-act';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a finale slot whose fixed Headliner is not eligible', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[4]!.eligibleGrades = ['warmup'];
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a random slot exhausted by a reserved fixed Headliner', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[0]!.eligibleGrades = ['finale'];
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a fixed Headliner booked for multiple acts', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[3]!.fixedArchetypeId =
+      bad.floor4.headliners.slots[4]!.fixedArchetypeId;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects overtime ramps that outlive the overtime cap', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.overtime.rampSteps[0]!.atMs = bad.floor4.overtime.capMs;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
