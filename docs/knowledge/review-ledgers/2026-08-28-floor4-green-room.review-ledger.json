@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "floor4-green-room",
+  "task_title": "Floor 4 Green Room intermission transaction and shops",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review approved with changes. Alt A: a physical-room transaction coordinated by the existing arenaDirectorSystem plus a dedicated Floor 4 Green Room helper — chosen because it preserves single phase authority while isolating stock/interaction/seal state. Alt B: a menu overlay — rejected because FR5.1 requires a physical room; transactional relocation/scrub gives equivalent safety. Alt C: shared world RNG or wholesale Floor 2 settlement reuse — rejected because stock would be path-dependent and Floor-2-only state/IDs are incompatible. Resolutions: define stable table-backed vendor IDs and positions, explicit Floor 4 exit/stairs presentation/action contract, generic run-scoped stock lifecycle rather than directly calling Floor 2 helpers, player-driven intermission (no timed/prearmed transition), scrub all hostile/projectile/effect/debt state before relocation, sale semantics including equipped/generated disposal, headless interaction route, affordability and divergent-combat tests, and completion-copy update. divergence=minor: helper/contract boundaries were added; ADR 0090 architecture remains sound."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
