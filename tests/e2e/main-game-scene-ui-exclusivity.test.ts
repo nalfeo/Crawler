@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  tapKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -42,27 +47,6 @@ async function withHeldTouch(
   } finally {
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await session.detach();
-  }
-}
-
-async function pressKeyUntil(
-  page: Page,
-  key: string,
-  predicate: Parameters<typeof waitForState>[1],
-  label: string,
-): Promise<void> {
-  const timeoutMs = 8_000;
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    await page.keyboard.press(key);
-    const state = await mainSceneProbe.getState(page);
-    if (predicate(state)) {
-      return;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for ${label}; last state: ${JSON.stringify(state)}`);
-    }
-    await page.waitForTimeout(100);
   }
 }
 
@@ -369,7 +353,12 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await pressKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
+    );
     await expect
       .poll(() => mainSceneProbe.getInteractionHintBounds(page), {
         message: 'Talk button should reappear after dialogue closes',
@@ -384,8 +373,21 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await pressKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
-    await pressKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
+    );
+    await tapKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
