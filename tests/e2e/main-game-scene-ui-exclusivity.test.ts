@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  tapKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -71,20 +76,6 @@ function overlaps(
     Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
     Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
   );
-}
-
-async function holdKeyUntil(
-  page: Page,
-  key: string,
-  predicate: Parameters<typeof waitForState>[1],
-  label: string,
-): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
-  }
 }
 
 describe('MainGameScene UI exclusivity', () => {
@@ -380,11 +371,11 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil(
+    await tapKeyUntil(
       page,
       'Escape',
-      (state) => !state.conversationOpen,
-      'NPC dialogue closed before Talk click',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
     );
     // The hint is hidden for the duration of a conversation and only restored on
     // the next scene update; reading its bounds in the same tick can still come
@@ -398,13 +389,21 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await holdKeyUntil(
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
       page,
       'Escape',
-      (state) => !state.conversationOpen,
-      'Talk dialogue closed before E interaction',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
     );
-    await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
+    await tapKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
