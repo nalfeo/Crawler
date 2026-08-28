@@ -13,16 +13,33 @@
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "minor",
-      "notes": "Two plan reviews ran: gpt-5.4 (v1, rejected, 6 concerns) then claude-opus-4.8 adversarial (v2, approved_with_changes, 10 concerns incl. 3 alternatives argued). Alt A (equip-gate the active on weapon swap instead of fire-gating) rejected: per-frame equip/unequip would fight the player-configured ability bar, churn cooldown state on every swap, and complicate slot-cap re-equip; adopted the reviewer fallback instead (HUD surfaces the unmet prerequisite on the slot). Alt B (reuse an existing catalog active) rejected: no existing active carries arcane class identity; new IDs also avoid the persisted-kind mismatch that killed v1. Alt C (unconditional active) rejected: breaks the ADR weapon-class contract on post-unlock weapon swap. Adopted: new ability IDs instead of repurposing (v1-1); weaponPrerequisite on actives incl. the .strict() zod schema (v1-2, v2-3); do NOT gate forceActivateAbility (v2-1); HUD slot shows unmet-prereq state and the bar unhides for non-spell actives (v2-2); AI loadout evaluator zeroes weapon-gated actives on mismatched weapons (v2-4); expect an intended headless fingerprint delta and diff-review it (v2-5); unlock VFX flash for active grants (v2-6); widen the revokeRequests TYPE and derive revoke kind (v2-7); cite the ADR by dated filename due to the 0061 number collision (v2-8); skill lab + achievements decision documented (v1-3); slot-cap/carryover tests (v1-6). Rejected with reason: cutting the L15 evolved tier (v2-10) — applyMilestone revokes the L5 grant at L15, so a passive L15 would delete the player active."
+      "notes": "Two plan reviews ran: gpt-5.4 (v1, rejected, 6 concerns) then claude-opus-4.8 adversarial (v2, approved_with_changes, 10 concerns incl. 3 alternatives argued). Alt A (equip-gate the active on weapon swap instead of fire-gating) rejected: per-frame equip/unequip would fight the player-configured ability bar, churn cooldown state on every swap, and complicate slot-cap re-equip; adopted the reviewer fallback instead (HUD surfaces the unmet prerequisite on the slot). Alt B (reuse an existing catalog active) rejected: no existing active carries arcane class identity; new IDs also avoid the persisted-kind mismatch that killed v1. Alt C (unconditional active) rejected: breaks the ADR weapon-class contract on post-unlock weapon swap. Adopted: new ability IDs instead of repurposing (v1-1); weaponPrerequisite on actives incl. the .strict() zod schema (v1-2, v2-3); do NOT gate forceActivateAbility (v2-1); HUD slot shows unmet-prereq state and the bar unhides for non-spell actives (v2-2); AI loadout evaluator zeroes weapon-gated actives on mismatched weapons (v2-4); expect an intended headless fingerprint delta and diff-review it (v2-5); unlock VFX flash for active grants (v2-6); widen the revokeRequests TYPE and derive revoke kind (v2-7); cite the ADR by dated filename due to the 0061 number collision (v2-8); skill lab + achievements decision documented (v1-3); slot-cap/carryover tests (v1-6). Rejected with reason: cutting the L15 evolved tier (v2-10) \u2014 applyMilestone revokes the L5 grant at L15, so a passive L15 would delete the player active."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["github-code-review-tool"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Automated code_review tool invoked during recovery after the grant-kind fallback, HUD/banner, evaluator, apple metrics, balance evidence, slot-cap, and lab-owned-active fixes. It returned no review comments; the local autofind binary was unavailable, so this was supplemented by the multi-model diff review below."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Three independent code-review agents reviewed the recovery diff. claude-sonnet-4.6 reported no significant issues and explicitly validated the abilityGrantKind fallback and test weapon IDs; gpt-5.3-codex reported clean; gemini-3.1-pro-preview reported clean. A follow-up independent grade found two test/lab precision gaps (slot-cap active ownership and skill-lab owned-active display), both fixed before final grading."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
