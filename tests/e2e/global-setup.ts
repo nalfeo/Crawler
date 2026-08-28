@@ -31,7 +31,6 @@ declare global {
   // Vitest initializes this setup independently for each selected e2e project.
   // Keep lifecycle state on the process-global object so all projects share one
   // server instead of mistaking it for a foreign listener.
-  // eslint-disable-next-line no-var
   var __crawlerE2ELabServer: SharedServer | undefined;
 }
 
