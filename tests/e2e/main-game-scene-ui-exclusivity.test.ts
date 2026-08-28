@@ -55,6 +55,20 @@ function overlaps(
   );
 }
 
+async function holdKeyUntil(
+  page: Page,
+  key: string,
+  predicate: Parameters<typeof waitForState>[1],
+  label: string,
+): Promise<void> {
+  await page.keyboard.down(key);
+  try {
+    await waitForState(page, predicate, { label });
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -300,6 +314,79 @@ describe('MainGameScene UI exclusivity', () => {
       'queued interaction must not start NPC dialogue while a character panel is open',
     ).toBe(false);
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
+  });
+
+  it('requires an explicit NPC interaction before dialogue opens', async () => {
+    await bootPlayingSafeScene();
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+    expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+    await page.waitForFunction(
+      () => window.__mainSceneProbe?.getInteractionHintBounds() !== null,
+      undefined,
+      { timeout: 5_000 },
+    );
+    const awardsBounds = await mainSceneProbe.getAchievementsButtonBounds(page);
+    const talkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    const canvas = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(awardsBounds, 'Awards button should expose screen-space bounds').not.toBeNull();
+    expect(talkBounds, 'Talk button should expose screen-space bounds').not.toBeNull();
+    expect(canvas, 'main-scene probe canvas should exist').not.toBeNull();
+    if (!awardsBounds || !talkBounds || !canvas) return;
+
+    const toCanvas = ({ x, y }: { x: number; y: number }) => ({
+      x: canvas.x + x * (canvas.width / 1280),
+      y: canvas.y + y * (canvas.height / 720),
+    });
+    const clickDesignPoint = async (point: { x: number; y: number }): Promise<void> => {
+      const target = toCanvas(point);
+      await page.mouse.click(target.x, target.y);
+    };
+    await clickDesignPoint({ x: 800, y: 450 });
+    await page.waitForTimeout(100);
+    expect((await mainSceneProbe.getState(page)).conversationOpen).toBe(false);
+
+    await clickDesignPoint({
+      x: awardsBounds.x + awardsBounds.width / 2,
+      y: awardsBounds.y + awardsBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.achievementsOpen && !state.conversationOpen, {
+      label: 'Awards opened without NPC dialogue',
+    });
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await waitForState(page, (state) => !state.achievementsOpen, { label: 'Awards closed' });
+
+    const npcScreenPoint = await mainSceneProbe.getPrimedNpcScreenPoint(page);
+    expect(npcScreenPoint, 'NPC should expose a screen-space hit point').not.toBeNull();
+    if (!npcScreenPoint) return;
+    await clickDesignPoint(npcScreenPoint);
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'NPC click opened dialogue',
+    });
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'NPC dialogue closed before Talk click',
+    );
+    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
+
+    await clickDesignPoint({
+      x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
+      y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'Talk button opened dialogue',
+    });
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'Talk dialogue closed before E interaction',
+    );
+    await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import floor1EnemyPackJson from './data/enemies.floor1.json';
 import floor2EnemyPackJson from './data/enemies.floor2.json';
 import floor3EnemyPackJson from './data/enemies.floor3.json';
+import floor4EnemyPackJson from './data/enemies.floor4.json';
 
 /**
  * Single enemy archetype configuration for spawning.
@@ -135,6 +136,14 @@ const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
   ['floor1-ambient', loadEnemyPackByJson(floor1EnemyPackJson)],
   ['floor2-families', loadEnemyPackByJson(floor2EnemyPackJson)],
   ['floor3-wild', loadEnemyPackByJson(floor3EnemyPackJson)],
+  // Floor 4 runs NO ambient director: its manifest deliberately omits
+  // `enemyPackId` and every spawn comes from a seeded wave manifest released by
+  // `arenaDirectorSystem` (spec FR3.2). The pack's ambient fields
+  // (`spawnIntervalMs`, `spawnRadiusMin`, `despawnDistanceFt`, `roomWave*`) are
+  // inert here, and every archetype carries `spawnWeight: 0` — wave composition
+  // weights live per act in the floor4 manifest's `waves.rosters`, because the
+  // same archetype is deliberately weighted differently in act 1 than in act 5.
+  ['floor4-arena', loadEnemyPackByJson(floor4EnemyPackJson)],
 ]);
 
 /**

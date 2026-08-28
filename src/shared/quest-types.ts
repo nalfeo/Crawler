@@ -69,6 +69,8 @@ export interface QuestState {
   status: QuestStatus;
   /** Whether this quest is the focused/expanded quest in the tracker. */
   tracked: boolean;
+  /** Whether navigation arrows and waypoint markers are shown; disabled only when false. */
+  showArrow?: boolean;
   /** objectiveId → current progress count (for counter/collect display). */
   progress: Record<string, number>;
   /** objectiveId → latched completion (for talk/goal one-shot objectives). */

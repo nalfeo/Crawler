@@ -68,6 +68,7 @@ import {
   areLightingRectsEqual,
   canFileLiveIssue,
   extrapolateRenderPosition,
+  findClickedNearbyNpc,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getLightingViewRect,
@@ -79,6 +80,7 @@ import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
+import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
 import { shouldShowFloor3Party } from '../floor3-party-state.js';
@@ -444,6 +446,18 @@ export interface RewardAudioCueLogEntry {
   readonly frequencyHz: number;
   readonly durationMs: number;
   readonly gain: number;
+}
+
+/**
+ * One on-screen corner button's live label, visibility and rendered bounds.
+ * Underscore-prefixed: test/automation scaffolding consumed by the probe lab
+ * and e2e helpers, with no production caller outside this file.
+ */
+export interface _CornerButtonProbe {
+  readonly id: string;
+  readonly label: string;
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds;
 }
 
 declare global {
@@ -873,8 +887,10 @@ export class MainGameScene extends Phaser.Scene {
   /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
   private activeConversationLines: readonly string[] | null = null;
 
-  /** One-frame latch set by pointer tap/click to advance or start dialogue. */
+  /** One-frame latch set by a pointer tap on an NPC or during active dialogue. */
   private tappedInteraction = false;
+  /** NPC selected by this frame's pointer tap, when dialogue is not yet open. */
+  private tappedNpcEid: number | null = null;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -1406,6 +1422,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid = null;
       this.activeConversationLines = null;
       this.tappedInteraction = false;
+      this.tappedNpcEid = null;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1447,11 +1464,54 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  /**
+   * Screen-space bounds + label of every on-screen corner button, in stacking
+   * order. Test/automation affordance so e2e probes can assert the shipped
+   * buttons stay uniformly sized and evenly spaced (the corner buttons are
+   * canvas text, so their real geometry is only observable from a live scene).
+   * Bounds are reported regardless of the per-button visibility gating, which
+   * only depends on unlocks/safe context and never on layout.
+   */
+  getCornerButtonLayout(): readonly _CornerButtonProbe[] {
+    const entries: ReadonlyArray<readonly [string, Phaser.GameObjects.Text | undefined]> = [
+      ['inventory', this.inventoryButton],
+      ['equip', this.equipButton],
+      ['achievements', this.achievementsButton],
+      ['floor3Roster', this.floor3RosterButton],
+      ['floor3Command', this.floor3CommandButton],
+      ['abilities', this.abilitiesButton],
+      ['quartermaster', this.quartermasterButton],
+      ['issue', this.issueButton],
+    ];
+    const layout: _CornerButtonProbe[] = [];
+    for (const [id, button] of entries) {
+      if (!button) {
+        continue;
+      }
+      const bounds = button.getBounds();
+      layout.push({
+        id,
+        label: button.text,
+        visible: button.visible,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      });
+    }
+    return layout;
+  }
+
   getIssueButtonBounds(): ScreenBounds | null {
     if (!this.issueButton?.visible) {
       return null;
     }
     const bounds = this.issueButton.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getAchievementsButtonBounds(): ScreenBounds | null {
+    if (!this.achievementsButton?.visible) {
+      return null;
+    }
+    const bounds = this.achievementsButton.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
@@ -1494,7 +1554,24 @@ export class MainGameScene extends Phaser.Scene {
     ) {
       return;
     }
-    this.tappedInteraction = true;
+    if (this.conversationNpcEid !== null) {
+      this.tappedInteraction = true;
+      return;
+    }
+    pointer.updateWorldPoint(this.cameras.main);
+    const npcEid = findClickedNearbyNpc(
+      pxToFt(pointer.worldX),
+      pxToFt(pointer.worldY),
+      this.world.npcs,
+      this.world.stores.position.x,
+      this.world.stores.position.y,
+      this.world.stores.size.halfWidth,
+      this.world.stores.size.halfHeight,
+    );
+    if (npcEid >= 0) {
+      this.tappedNpcEid = npcEid;
+      this.tappedInteraction = true;
+    }
   }
 
   private handleKeyboardE(): void {
@@ -1507,6 +1584,7 @@ export class MainGameScene extends Phaser.Scene {
   private clearPendingInteractionInput(): void {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -2795,7 +2873,7 @@ export class MainGameScene extends Phaser.Scene {
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.requestInventoryToggle();
     });
-    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔️ Gear', () => {
       this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
@@ -2813,7 +2891,7 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
@@ -4348,6 +4426,12 @@ export class MainGameScene extends Phaser.Scene {
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     const issueOpen = this.issueReportPausedState !== undefined;
+    // Quest-arrow toggle clicks are captured HUD-side (input only); apply
+    // them to the sim here, in the scene's own input pipeline, before the
+    // HUD re-renders from the updated quest log.
+    for (const questId of this.hudUi?.consumeQuestArrowToggleRequests() ?? []) {
+      toggleQuestArrow(this.world, questId);
+    }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
@@ -5041,7 +5125,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction || this.queuedInteraction;
+    const tappedNpcEid = this.tappedNpcEid;
+    // A pointer tap latches onto the exact NPC whose footprint was clicked, but
+    // the simulation step runs before this code and can move that NPC out of
+    // interaction range. Cancel such a tap instead of letting it retarget a
+    // different nearby NPC.
+    const tappedNpcInvalidated =
+      tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;
+    const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;
     const interactionInputRequested =
       tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE));
     const interactionRequested =
@@ -5050,6 +5141,7 @@ export class MainGameScene extends Phaser.Scene {
         : interactionInputRequested && !this.isBlockingSurfaceOpen();
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
@@ -5150,15 +5242,17 @@ export class MainGameScene extends Phaser.Scene {
       Math.hypot(playerX - stairMarker.positionFt.x, playerY - stairMarker.positionFt.y) <=
         stairMarker.radiusFt;
 
-    if (nearNpcEid >= 0) {
+    const selectedNpcEid =
+      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+    if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
-        if (this.tryQueueSettlementShopOpenFromNpc(nearNpcEid)) {
+        if (this.tryQueueSettlementShopOpenFromNpc(selectedNpcEid)) {
           return;
         }
-        const instance = this.world.npcs.get(nearNpcEid);
+        const instance = this.world.npcs.get(selectedNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
           // Shopkeeper errand: advance the merchant's multistep flow on talk.
@@ -5182,10 +5276,10 @@ export class MainGameScene extends Phaser.Scene {
               spellQuestGiver: this.options.spellQuestGiver,
               shopkeeperJustReturned: this.shopkeeperJustReturned,
             },
-            nearNpcEid,
+            selectedNpcEid,
           );
           if (def && activeDialogue.length > 0) {
-            this.conversationNpcEid = nearNpcEid;
+            this.conversationNpcEid = selectedNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
               this.options.tutorialGoon.meet(this.world);
             }

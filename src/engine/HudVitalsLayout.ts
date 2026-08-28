@@ -35,7 +35,7 @@ export const VITALS_BOTTOM_MARGIN = 4;
  * without a deliberate, reviewed update here too.
  */
 export const VITALS_ROW_HEIGHTS = {
-  skill: 64,
+  skill: 100,
   loot: 30,
   xp: 26,
   health: 32,

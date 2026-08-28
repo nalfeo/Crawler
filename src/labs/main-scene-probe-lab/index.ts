@@ -65,6 +65,7 @@ import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
+import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
@@ -197,6 +198,7 @@ interface MainSceneInternals {
       radar: ScreenBounds | null;
       questTracker: ScreenBounds | null;
       familyPanel: ScreenBounds | null;
+      questArrowToggles: readonly { questId: string; bounds: ScreenBounds }[];
     };
     getEncounterProbeBounds?(): {
       timerPanel: ScreenBounds;
@@ -306,6 +308,8 @@ interface MainSceneInternals {
   issueButton?: { visible: boolean };
   issueReportPicker?: { isOpen(): boolean };
   getIssueButtonBounds?(): ScreenBounds | null;
+  getCornerButtonLayout?(): readonly CornerButtonProbe[];
+  getAchievementsButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -555,6 +559,20 @@ export interface MainSceneState {
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
   readonly settlementShopArchetypeIds: readonly string[];
+}
+
+/** One bottom-left vitals row's live visibility + rendered design-space bounds. */
+export interface VitalsRowProbe {
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds;
+}
+
+/** Rendered bounds of the bottom-left vitals stack rows (null when not mounted). */
+export interface VitalsStackProbe {
+  readonly skill: VitalsRowProbe | null;
+  readonly loot: VitalsRowProbe | null;
+  readonly xp: VitalsRowProbe | null;
+  readonly health: VitalsRowProbe | null;
 }
 
 /** Safe-area insets plus every edge-anchored screen-space surface (design space). */
@@ -969,6 +987,21 @@ export interface MainSceneProbeApi {
   requestQuartermasterToggle(): void;
   /** Bounds of the live Issue button, or null when it is unavailable. */
   getIssueButtonBounds(): ScreenBounds | null;
+  /** Live label/visibility/bounds of every on-screen corner button, in stack order. */
+  getCornerButtonLayout(): readonly CornerButtonProbe[];
+  /** Rendered bounds of each bottom-left vitals row present in the live scene. */
+  getVitalsStackBounds(): VitalsStackProbe;
+  /**
+   * Set the real `floor1-drops-unlocked` goal flag so the XP row (gated on it)
+   * renders — the shipped unlock path, just without playing the junk quest.
+   */
+  unlockExperienceBar(): void;
+  /** Bounds of the live Awards button, or null when it is unavailable. */
+  getAchievementsButtonBounds(): ScreenBounds | null;
+  /** Bounds of the visible Talk/Descend hint, or null when unavailable. */
+  getInteractionHintBounds(): ScreenBounds | null;
+  /** Screen-space point for the NPC primed for interaction, or null when unavailable. */
+  getPrimedNpcScreenPoint(): ProbePoint | null;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
@@ -1275,6 +1308,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       ? createFloor1GameConfig(gameHost, sceneOptions)
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
+  let primedNpcEid: number | null = null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -1585,6 +1619,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('minimap', hud?.getMinimapBounds?.());
       push('radar', navigation?.radar);
       push('questTracker', navigation?.questTracker);
+      for (const toggle of navigation?.questArrowToggles ?? []) {
+        push(`questArrowToggle:${toggle.questId}`, toggle.bounds);
+      }
       push('familyPanel', navigation?.familyPanel);
       push('floorTimer', encounter?.timerPanel);
       push('bossBar', encounter?.bossPanel);
@@ -1782,6 +1819,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return null;
       }
       const [npcEid, instance] = firstNpc;
+      primedNpcEid = npcEid;
       const x = world.stores.position.x[npcEid] ?? 0;
       const y = world.stores.position.y[npcEid] ?? 0;
       instance.nearbyPlayer = true;
@@ -1790,6 +1828,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
       return { x, y };
+    },
+
+    getPrimedNpcScreenPoint: (): ProbePoint | null => {
+      const world = getScene()?.world;
+      const camera = getPhaserScene()?.cameras.main;
+      if (
+        !world ||
+        primedNpcEid === null ||
+        !world.npcs.get(primedNpcEid)?.nearbyPlayer ||
+        !camera
+      ) {
+        return null;
+      }
+      const view = camera.worldView;
+      return {
+        x: (ftToPx(world.stores.position.x[primedNpcEid] ?? 0) - view.x) * camera.zoom + camera.x,
+        y: (ftToPx(world.stores.position.y[primedNpcEid] ?? 0) - view.y) * camera.zoom + camera.y,
+      };
     },
 
     primeQuestWaypointArrows: () => {
@@ -1989,6 +2045,60 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     getIssueButtonBounds: () => getScene()?.getIssueButtonBounds?.() ?? null,
+
+    getCornerButtonLayout: () => getScene()?.getCornerButtonLayout?.() ?? [],
+
+    unlockExperienceBar: () => {
+      getScene()?.world?.goalFlags.set('floor1-drops-unlocked', true);
+    },
+
+    getVitalsStackBounds: (): VitalsStackProbe => {
+      const phaserScene = getPhaserScene();
+      const zones = new Map<string, Phaser.GameObjects.Zone>();
+      for (const child of phaserScene?.children.getChildren() ?? []) {
+        const candidates = child instanceof Phaser.GameObjects.Container ? child.list : [child];
+        for (const candidate of candidates) {
+          if (candidate instanceof Phaser.GameObjects.Zone && candidate.name) {
+            zones.set(candidate.name, candidate);
+          }
+        }
+      }
+      const isRendered = (
+        object: Phaser.GameObjects.GameObject & { visible: boolean },
+      ): boolean => {
+        let current: Phaser.GameObjects.Container | null =
+          (object as Phaser.GameObjects.Zone).parentContainer ?? null;
+        while (current) {
+          if (!current.visible) {
+            return false;
+          }
+          current = current.parentContainer ?? null;
+        }
+        return object.visible;
+      };
+      const read = (name: string): VitalsRowProbe | null => {
+        const zone = zones.get(name);
+        if (!zone) {
+          return null;
+        }
+        const bounds = zone.getBounds();
+        return {
+          // Ancestor visibility matters: the whole vitals cluster is hidden as
+          // a group whenever a full-screen panel is open.
+          visible: isRendered(zone),
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        };
+      };
+      return {
+        skill: read('hud-skill-panel-bounds'),
+        loot: read('hud-loot-panel-bounds'),
+        xp: read('hud-xp-panel-bounds'),
+        health: read('hud-health-panel-bounds'),
+      };
+    },
+    getAchievementsButtonBounds: () => getScene()?.getAchievementsButtonBounds?.() ?? null,
+
+    getInteractionHintBounds: () => getScene()?.getInteractionHintBounds?.() ?? null,
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();

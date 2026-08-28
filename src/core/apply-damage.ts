@@ -88,7 +88,7 @@ export const DEFAULT_DAMAGE_OPTIONS: DamageOptions = FAIL_CLOSED_DAMAGE_META;
  * which zeros the death timer. Reads the dying enemy's blood colour and sprite
  * variant so the shards match the body that just burst.
  */
-function emitCorpseExplosion(
+export function emitCorpseExplosion(
   world: GameWorld,
   target: number,
   x: number,

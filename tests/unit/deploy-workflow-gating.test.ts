@@ -73,11 +73,24 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
 
   it('gates deploy, report shards, and baseline-sweep on the identical push-only condition', () => {
     const doc = loadDeployWorkflow();
+    // The sweep jobs carry one EXTRA clause (the runner-capacity verdict,
+    // nalfeo/Crawler#3774). Strip only that clause so the push-only gate is
+    // still compared byte-for-byte against deploy's.
+    const capacityClause = "needs.sweep-capacity-gate.outputs.should_sweep == 'true' && ";
     const deployIf = String(getJob(doc, 'deploy').if).trim();
     const reportIf = String(getJob(doc, 'release-report-sweep').if).trim();
     const sweepIf = String(getJob(doc, 'baseline-sweep').if).trim();
-    expect(reportIf).toBe(deployIf);
-    expect(sweepIf).toBe(deployIf);
+    expect(reportIf).toContain(capacityClause.trim());
+    expect(sweepIf).toContain(capacityClause.trim());
+    expect(reportIf.replace(capacityClause, '')).toBe(deployIf);
+    expect(sweepIf.replace(capacityClause, '')).toBe(deployIf);
+  });
+
+  it('gates the capacity job itself on the same push-only condition as deploy', () => {
+    const doc = loadDeployWorkflow();
+    expect(String(getJob(doc, 'sweep-capacity-gate').if).trim()).toBe(
+      String(getJob(doc, 'deploy').if).trim(),
+    );
   });
 
   it('skips release-gate itself for non-deployable workflow_run completions', () => {
@@ -107,6 +120,7 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     expect(getJob(doc, 'baseline-sweep').needs).toEqual([
       'release-gate',
       'deploy',
+      'sweep-capacity-gate',
       'release-report-sweep',
     ]);
   });
