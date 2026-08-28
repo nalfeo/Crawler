@@ -18,11 +18,11 @@ hud-ux
 
 ## What Was Done
 
-Changed the NPC dialogue E2E to poll the rendered Talk-control bounds after Escape, before using them for the next click. The focused real `main-scene-probe-lab` E2E artifact passed the full UI-exclusivity file (21 tests).
+Changed the NPC dialogue E2E to retry keyboard actions until the scene observes their expected state, then poll the rendered Talk-control bounds before using them for the next click. The focused real `main-scene-probe-lab` E2E artifact passed the full UI-exclusivity file (21 tests).
 
 ## Key Decisions Made
 
-Kept the explicit dialogue-close state wait and added a rendered-control poll, because the scene exposes `conversationOpen: false` one update before it makes Talk visible.
+Kept real keyboard interaction coverage, but retry it because a one-shot Playwright key event can be cleared before Phaser samples `JustDown`; add a rendered-control poll because the scene exposes `conversationOpen: false` one update before it makes Talk visible.
 
 ## What's Next / Blockers
 
@@ -36,7 +36,7 @@ State completion and rendered-control readiness can fall on adjacent Phaser upda
 
 ### Mistakes Made
 
-The earlier repair re-read bounds after the close-state wait but did not retry if the rendering frame had not executed.
+The earlier repair held a single key-down, which did not retry if its first event was cleared before the scene sampled it.
 
 ### Opportunities for Future Improvement
 
