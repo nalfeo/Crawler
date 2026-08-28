@@ -1,7 +1,10 @@
 # ADR: Ten-slot equipment contract
 
-- Status: Accepted
 - Date: 2026-08-18
+
+## Status
+
+Accepted
 
 ## Context
 
