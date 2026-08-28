@@ -199,18 +199,32 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    expect(tasks.get('push-branch')?.next).toBe('local-ci');
+    expect(tasks.get('local-ci')?.run?.command).toEqual(['npm', 'run', 'verify:fast']);
+    expect(tasks.get('local-ci')?.next).toBe('local-gate');
+    expect(tasks.get('open-pr')?.run?.command).toEqual(['goobers', 'open-pr']);
+    expect(implement?.next).toBe('review');
+    expect(checkpoint).toBeUndefined();
+    expect(review?.branches).toEqual({
+      pass: 'push-branch',
+      'needs-changes': 'implement',
+      fail: 'park-needs-human',
+      escalate: 'needs-remediation',
+    });
+    const localGate = definition.spec.gates.find((gate) => gate.name === 'local-gate');
+    expect(localGate?.branches).toEqual({
+      pass: 'open-pr',
+      fail: 'implement',
+      infra: 'local-ci',
+      escalate: 'needs-remediation',
+    });
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
+      'local-ci',
       'open-pr',
       'close-out',
       'park-needs-human',
