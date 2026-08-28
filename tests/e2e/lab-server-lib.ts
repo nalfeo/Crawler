@@ -85,7 +85,7 @@ export function portInUseMessage(port: number): string {
 export function serverNotReadyMessage(port: number, output: string): string {
   const tail = output.trim();
   return [
-    `[e2e] Lab server never announced "Local: http://localhost:${port}/" in time.`,
+    `[e2e] Lab server never announced "Local: http://127.0.0.1:${port}/" in time.`,
     tail ? `Server output:\n${tail}` : 'Server produced no output.',
   ].join('\n');
 }

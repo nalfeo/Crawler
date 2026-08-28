@@ -21,7 +21,19 @@ import {
   serverNotReadyMessage,
 } from './lab-server-lib.js';
 
-let serverProcess: ChildProcess | null = null;
+interface SharedServer {
+  process: ChildProcess;
+  ready: Promise<void>;
+  users: number;
+}
+
+declare global {
+  // Vitest initializes this setup independently for each selected e2e project.
+  // Keep lifecycle state on the process-global object so all projects share one
+  // server instead of mistaking it for a foreign listener.
+  // eslint-disable-next-line no-var
+  var __crawlerE2ELabServer: SharedServer | undefined;
+}
 
 function waitForPort(port: number, timeoutMs = 60_000): Promise<void> {
   return new Promise((res, rej) => {
@@ -59,6 +71,16 @@ async function waitForBanner(read: () => string, timeoutMs = 60_000): Promise<vo
 }
 
 export async function setup(): Promise<void> {
+  const shareActiveServer = async (): Promise<boolean> => {
+    const shared = globalThis.__crawlerE2ELabServer;
+    if (!shared) return false;
+    shared.users += 1;
+    await shared.ready;
+    return true;
+  };
+
+  if (await shareActiveServer()) return;
+
   // A listener already on the port means `--strictPort` will kill our child
   // while the readiness probe happily connects to the *other* server. Refuse
   // instead: running the suite against a foreign worktree's code is far more
@@ -66,6 +88,10 @@ export async function setup(): Promise<void> {
   if (await isPortInUse(E2E_LAB_PORT)) {
     throw new Error(portInUseMessage(E2E_LAB_PORT));
   }
+
+  // Another project can complete its pre-check and begin starting the server
+  // while this setup is awaiting the port probe above.
+  if (await shareActiveServer()) return;
 
   // Invoke Vite's JS entry through the current Node executable so the spawn is
   // cross-platform. Spawning the bare `node_modules/.bin/vite` shell wrapper
@@ -90,8 +116,6 @@ export async function setup(): Promise<void> {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
-  serverProcess = child;
-
   // Retain a bounded tail of the server's own output so a boot failure reports
   // Vite's message instead of an opaque timeout.
   let output = '';
@@ -122,18 +146,27 @@ export async function setup(): Promise<void> {
     await waitForBanner(() => output);
     await waitForPort(E2E_LAB_PORT);
   })();
+  const shared: SharedServer = { process: child, ready, users: 1 };
+  globalThis.__crawlerE2ELabServer = shared;
 
   try {
     await Promise.race([ready, exited]);
   } catch (err) {
-    await teardown();
+    if (globalThis.__crawlerE2ELabServer === shared) {
+      globalThis.__crawlerE2ELabServer = undefined;
+    }
+    child.kill('SIGTERM');
     throw err;
   }
 }
 
 export async function teardown(): Promise<void> {
-  if (serverProcess) {
-    serverProcess.kill('SIGTERM');
-    serverProcess = null;
+  const shared = globalThis.__crawlerE2ELabServer;
+  if (!shared) return;
+
+  shared.users -= 1;
+  if (shared.users === 0) {
+    shared.process.kill('SIGTERM');
+    globalThis.__crawlerE2ELabServer = undefined;
   }
 }

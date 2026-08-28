@@ -17,6 +17,7 @@ import {
   isPortInUse,
   portInUseMessage,
   serverExitedMessage,
+  serverNotReadyMessage,
 } from '../e2e/lab-server-lib.js';
 
 let listener: Server | null = null;
@@ -123,6 +124,10 @@ describe('failure messages', () => {
 
     expect(message).toContain('exit code 1');
     expect(message).toContain('Port 4321 is already in use');
+  });
+
+  it('names the IPv4 lab host when readiness times out', () => {
+    expect(serverNotReadyMessage(4321, '')).toContain('http://127.0.0.1:4321/');
   });
 
   it('reports the signal when the server was killed', () => {

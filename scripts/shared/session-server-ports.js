@@ -74,7 +74,7 @@ export function getSessionServerPorts(options = {}) {
     gameBaseUrl: `http://localhost:${gamePort}`,
     labBaseUrl: `http://localhost:${labPort}`,
     devtoolsBaseUrl: `http://localhost:${devtoolsPort}`,
-    e2eLabBaseUrl: `http://localhost:${e2eLabPort}`,
+    e2eLabBaseUrl: `http://127.0.0.1:${e2eLabPort}`,
     sidecarBaseUrl: `http://127.0.0.1:${sidecarPort}`,
   };
 }

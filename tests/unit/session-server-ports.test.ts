@@ -36,7 +36,7 @@ describe('session server ports', () => {
     expect(ports.gameBaseUrl).toBe(`http://localhost:${ports.gamePort}`);
     expect(ports.labBaseUrl).toBe(`http://localhost:${ports.labPort}`);
     expect(ports.devtoolsBaseUrl).toBe(`http://localhost:${ports.devtoolsPort}`);
-    expect(ports.e2eLabBaseUrl).toBe(`http://localhost:${ports.e2eLabPort}`);
+    expect(ports.e2eLabBaseUrl).toBe(`http://127.0.0.1:${ports.e2eLabPort}`);
     expect(ports.sidecarBaseUrl).toBe(`http://127.0.0.1:${ports.sidecarPort}`);
   });
 
