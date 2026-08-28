@@ -8,6 +8,7 @@
  *   2. On-demand scan: `POST /api/refresh` (or the agent `refresh` action) scans
  *      common screenshot directories under the workspace:
  *        - <workspace>/files/visual-review/**
+ *        - <workspace>/docs/knowledge/ux-baselines/releases/** (committed A|B lineage baselines)
  *        - <workspace>/**  (png/jpg/jpeg/webp files up to 1 level deep)
  *        - CWD /** (same depth)
  *
@@ -33,7 +34,7 @@ const POLL_INTERVAL_MS = 10_000;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 /** Sub-directories inside the workspace to scan for screenshots. */
-const SCAN_SUBDIRS = ['files/visual-review', 'files'];
+const SCAN_SUBDIRS = ['files/visual-review', 'files', 'docs/knowledge/ux-baselines/releases'];
 const SCENARIO_MANIFEST = 'docs/knowledge/ux-baselines/manifest.json';
 const LIVE_DEV_VERSION = 'live-dev';
 const SEMVER_VERSION = /^v\d+\.\d+\.\d+$/;
