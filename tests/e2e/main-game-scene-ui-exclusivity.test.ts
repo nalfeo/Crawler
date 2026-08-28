@@ -3,7 +3,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import {
   loadMainSceneProbeLab,
-  holdKeyUntil,
+  tapKeyUntil,
   mainSceneProbe,
   waitForState,
 } from './helpers/main-scene-probe.js';
@@ -353,7 +353,7 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil(
+    await tapKeyUntil(
       page,
       'Escape',
       async () => !(await mainSceneProbe.getState(page)).conversationOpen,
@@ -371,15 +371,16 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    // Held, not pressed: the scene samples Escape/E with Phaser `JustDown`, and
-    // a back-to-back keydown/keyup clears `_justDown` before `update()` reads it.
-    await holdKeyUntil(
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
       page,
       'Escape',
       async () => !(await mainSceneProbe.getState(page)).conversationOpen,
       { label: 'Talk dialogue to close before E interaction' },
     );
-    await holdKeyUntil(
+    await tapKeyUntil(
       page,
       'e',
       async () => (await mainSceneProbe.getState(page)).conversationOpen,

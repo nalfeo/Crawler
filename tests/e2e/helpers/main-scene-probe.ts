@@ -433,17 +433,26 @@ export const mainSceneProbe = {
 };
 
 /**
- * Holds `key` down until `settled()` reports the scene consumed it, then
- * releases it.
+ * Taps `key` repeatedly until `settled()` reports the scene consumed it.
  *
- * `page.keyboard.press()` sends keydown and keyup back-to-back. Phaser's
- * `Key.onUp` clears `_justDown` (node_modules/phaser/src/input/keyboard/keys/Key.js),
- * so a key sampled with `Phaser.Input.Keyboard.JustDown()` can have its press
- * silently erased before the next `update()` ever reads it — an intermittent,
- * environment-timing-dependent dropped input. Holding the key means the scene
- * cannot miss it no matter which frame it samples on.
+ * Two independent ways a discrete keypress gets dropped, both of which this
+ * retry loop covers:
+ *
+ * 1. `page.keyboard.press()` sends keydown and keyup back-to-back, and Phaser's
+ *    `Key.onUp` clears `_justDown`
+ *    (node_modules/phaser/src/input/keyboard/keys/Key.js), so the press can be
+ *    erased before the next `update()` ever samples it. Each tap therefore
+ *    holds the key for a full poll interval before releasing.
+ * 2. The scene itself drains pending presses: `clearPendingInteractionInput()`
+ *    calls `JustDown()` on `keyEsc`/`keyE`/etc. purely to discard them, and it
+ *    runs from ~14 sites (opening a conversation, floor transitions, modals).
+ *
+ * (2) is why this taps instead of simply holding. `JustDown` only re-arms on a
+ * *fresh* keydown, so once a drain has eaten the press, a held key produces no
+ * further edge no matter how long it is held — the wait is then unrecoverable
+ * rather than merely slow. Re-pressing re-arms it.
  */
-export async function holdKeyUntil(
+export async function tapKeyUntil(
   page: Page,
   key: string,
   settled: () => Promise<boolean>,
@@ -451,19 +460,20 @@ export async function holdKeyUntil(
 ): Promise<void> {
   const { timeoutMs = 10_000, pollMs = 100, label = `${key} to be consumed` } = options;
   const deadline = Date.now() + timeoutMs;
-  await page.keyboard.down(key);
-  try {
-    for (;;) {
-      if (await settled()) {
-        return;
-      }
-      if (Date.now() > deadline) {
-        throw new Error(`Timed out holding ${key} waiting for ${label}`);
-      }
+  for (;;) {
+    await page.keyboard.down(key);
+    try {
       await page.waitForTimeout(pollMs);
+    } finally {
+      await page.keyboard.up(key);
     }
-  } finally {
-    await page.keyboard.up(key);
+    if (await settled()) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out tapping ${key} waiting for ${label}`);
+    }
+    await page.waitForTimeout(pollMs);
   }
 }
 
@@ -568,9 +578,9 @@ export async function acknowledgeFloorSummary(
   // Past the acknowledgement arm delay (the stair-confirm keypress must not
   // double as the acknowledgement).
   await page.waitForTimeout(700);
-  // Held rather than pressed: the scene samples SPACE with `JustDown`, which a
+  // Tapped rather than held: the scene samples SPACE with `JustDown`, which a
   // back-to-back keydown/keyup can erase before `update()` ever reads it.
-  await holdKeyUntil(
+  await tapKeyUntil(
     page,
     'Space',
     async () => !(await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement,

@@ -13,7 +13,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import {
   loadMainSceneProbeLab,
-  holdKeyUntil,
+  tapKeyUntil,
   mainSceneProbe,
   waitForState,
 } from './helpers/main-scene-probe.js';
@@ -75,9 +75,9 @@ describe('Between-floor summary screen', () => {
     expect(stillWaiting.awaitingAcknowledgement).toBe(true);
     expect((await mainSceneProbe.getState(page)).floorId).toBe('floor1');
 
-    // Held, not pressed: SPACE is sampled with Phaser `JustDown`, and a
-    // back-to-back keydown/keyup can clear `_justDown` before `update()` runs.
-    await holdKeyUntil(
+    // Tapped until consumed: SPACE is sampled with Phaser `JustDown`, which a
+    // back-to-back keydown/keyup can clear before `update()` runs.
+    await tapKeyUntil(
       page,
       'Space',
       async () => !(await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement,
