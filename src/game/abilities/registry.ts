@@ -30,7 +30,7 @@ function weaponMilestoneActive(
     weaponPrerequisite: presentation.weaponPrerequisite,
     trigger: {
       kind: 'enemy_cluster',
-      minEnemies: maxTargets > 1 ? 2 : 1,
+      minEnemies: 1,
       withinFeet: rangeFeet,
     },
     effects: [{ type: 'active_damage', damage, rangeFeet, maxTargets, affinity, delivery }],

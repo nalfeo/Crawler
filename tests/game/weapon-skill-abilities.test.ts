@@ -308,7 +308,6 @@ describe('skillSystem level-5 ability grants', () => {
       expect(weapon, `missing weapon fixture for ${skillId}`).toBeDefined();
       setActiveWeaponDef(world, weapon!);
       const enemy = spawnEnemy(world, 2, 0, 100);
-      spawnEnemy(world, -2, 0, 100);
       world.skillUsageEvents.push({
         holderEid: player,
         skillId,
