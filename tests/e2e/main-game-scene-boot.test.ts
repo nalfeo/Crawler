@@ -31,6 +31,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ftToPx } from '../../src/shared/units.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import {
+  acknowledgeFloorSummary,
   loadMainSceneProbeLab,
   mainSceneProbe,
   waitForCameraCenter,
@@ -171,6 +172,9 @@ describe('MainGameScene characterization guards', () => {
         label: 'descend confirmation modal',
       });
       await page.keyboard.press('Enter');
+      // The floor summary now sits between the two floors and waits for the
+      // player before descending.
+      await acknowledgeFloorSummary(page);
 
       const floor2State = await waitForState(
         page,
@@ -211,6 +215,7 @@ describe('MainGameScene characterization guards', () => {
         label: 'Floor 2 exit confirmation modal',
       });
       await page.keyboard.press('Enter');
+      await acknowledgeFloorSummary(page);
 
       const floor3State = await waitForState(
         page,
