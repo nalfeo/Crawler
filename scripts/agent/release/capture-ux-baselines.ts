@@ -325,8 +325,19 @@ async function main() {
     process.exit(1);
   }
 
-  // Filter to enabled surfaces
-  const enabledSurfaces = manifest.filter((s) => s.enabled);
+  // Filter to enabled surfaces, optionally narrowed to one --surface id. Doing
+  // this before the "no enabled surfaces" check lets --surface report a clear
+  // not-found error instead of silently falling through to "capture everything".
+  const surfaceFilter = typeof flags.surface === 'string' ? flags.surface : undefined;
+  let enabledSurfaces = manifest.filter((s) => s.enabled);
+  if (surfaceFilter !== undefined) {
+    const matched = enabledSurfaces.filter((s) => s.id === surfaceFilter);
+    if (matched.length === 0) {
+      console.error(`❌ --surface "${surfaceFilter}" did not match any enabled manifest entry.`);
+      process.exit(1);
+    }
+    enabledSurfaces = matched;
+  }
   if (enabledSurfaces.length === 0) {
     console.warn('⚠️  No enabled surfaces in manifest');
     process.exit(0);
