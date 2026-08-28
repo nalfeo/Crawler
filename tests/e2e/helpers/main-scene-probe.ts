@@ -160,7 +160,7 @@ export const mainSceneProbe = {
     await page.evaluate(
       () =>
         new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         }),
     );
   },
