@@ -43,9 +43,9 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.6-flash",
+      "grader_model": "gpt-5.5",
       "implementer_model": "github-copilot-coding-agent",
-      "head_sha": "af996a0ab1eaef4ae999edc025b24a366771af0f",
+      "head_sha": "421f36f301ce07d61f9af2fc4303501ba91f6a50",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -56,7 +56,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The diff cleanly fulfills issue #3676 by converting Arcane level-5 and level-15 milestone rewards to weapon-gated active abilities ('arcane-nova' and 'arcane-nova-evolved') without introducing layer violations or carryover regression risks. System milestone grants now dynamically derive grant and revoke kinds from the catalog, fire-gating in activateAbility prevents execution without a matching weapon while preserving cooldown state, and HudAbilityBar unhides for non-spell equipped actives while dimming slots with unmet weapon prerequisites. All edge cases including bar slot caps, L15 slot replacement, player carryover migration, and AI loadout evaluation are thoroughly addressed and covered by comprehensive unit, integration, and UI tests."
+      "notes": "The merged diff cleanly converts the Arcane level-5/15 milestones from passive damage bonuses into weapon-gated active abilities, preserves active-slot ownership and upgrade/revoke semantics, migrates legacy carryover state, and keeps mismatched-weapon activations inert without consuming cooldowns. HUD, announcement, AI loadout scoring, lab display, carryover, and shipped-pipeline integration coverage all align with the new behavior; targeted tests, source typecheck, and relevant lint checks pass."
     }
   }
 }
