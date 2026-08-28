@@ -162,6 +162,13 @@ function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.Refi
   const fixedArchetypeIds = new Set(
     headliners.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
   );
+  if (fixedArchetypeIds.size !== headliners.slots.filter((slot) => slot.fixedArchetypeId).length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'slots'],
+      message: 'fixed Headliner archetypes must be unique',
+    });
+  }
   for (const [index, entry] of headliners.pool.entries()) {
     if (poolIds.has(entry.archetypeId)) {
       ctx.addIssue({

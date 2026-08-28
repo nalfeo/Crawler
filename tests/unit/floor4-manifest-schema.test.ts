@@ -116,6 +116,13 @@ describe('floor4 manifest schema Headliner rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects a fixed Headliner booked for multiple acts', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[3]!.fixedArchetypeId =
+      bad.floor4.headliners.slots[4]!.fixedArchetypeId;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects overtime ramps that outlive the overtime cap', () => {
     const bad = cloneFloor4Manifest();
     bad.floor4.overtime.rampSteps[0]!.atMs = bad.floor4.overtime.capMs;
