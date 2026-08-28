@@ -63,7 +63,7 @@ import {
   type WeaponTypeValue,
 } from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
-import { getFloorManifest } from '../../shared/floor-registry.js';
+import { resolveFloorTimerDeadlineMs } from '../../core/floor-timer.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
@@ -6493,11 +6493,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private isFloor2HuntRecoveryWindow(world: GameWorld): boolean {
-    const durationMs = getFloorManifest('floor2')?.timer?.durationMs;
+    // Same credited deadline the floor collapses on, so the urgency window does
+    // not fire early while a safe room has the countdown stopped.
+    const deadlineMs = resolveFloorTimerDeadlineMs(world, 'floor2');
     if (
       world.floorId === 'floor2' &&
-      durationMs !== undefined &&
-      durationMs - world.elapsedMs <= FLOOR2_HUNT_URGENCY_REMAINING_MS
+      deadlineMs !== null &&
+      deadlineMs - world.elapsedMs <= FLOOR2_HUNT_URGENCY_REMAINING_MS
     ) {
       return false;
     }

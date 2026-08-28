@@ -320,6 +320,11 @@ describe('MainGameScene UI exclusivity', () => {
     await bootPlayingSafeScene();
     const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
     expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+    await page.waitForFunction(
+      () => window.__mainSceneProbe?.getInteractionHintBounds() !== null,
+      undefined,
+      { timeout: 5_000 },
+    );
     const awardsBounds = await mainSceneProbe.getAchievementsButtonBounds(page);
     const talkBounds = await mainSceneProbe.getInteractionHintBounds(page);
     const canvas = await page.locator('#lab-canvas canvas').boundingBox();

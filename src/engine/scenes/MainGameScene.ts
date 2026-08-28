@@ -80,6 +80,7 @@ import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
+import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
 import { shouldShowFloor3Party } from '../floor3-party-state.js';
@@ -445,6 +446,18 @@ export interface RewardAudioCueLogEntry {
   readonly frequencyHz: number;
   readonly durationMs: number;
   readonly gain: number;
+}
+
+/**
+ * One on-screen corner button's live label, visibility and rendered bounds.
+ * Underscore-prefixed: test/automation scaffolding consumed by the probe lab
+ * and e2e helpers, with no production caller outside this file.
+ */
+export interface _CornerButtonProbe {
+  readonly id: string;
+  readonly label: string;
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds;
 }
 
 declare global {
@@ -1449,6 +1462,41 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Screen-space bounds + label of every on-screen corner button, in stacking
+   * order. Test/automation affordance so e2e probes can assert the shipped
+   * buttons stay uniformly sized and evenly spaced (the corner buttons are
+   * canvas text, so their real geometry is only observable from a live scene).
+   * Bounds are reported regardless of the per-button visibility gating, which
+   * only depends on unlocks/safe context and never on layout.
+   */
+  getCornerButtonLayout(): readonly _CornerButtonProbe[] {
+    const entries: ReadonlyArray<readonly [string, Phaser.GameObjects.Text | undefined]> = [
+      ['inventory', this.inventoryButton],
+      ['equip', this.equipButton],
+      ['achievements', this.achievementsButton],
+      ['floor3Roster', this.floor3RosterButton],
+      ['floor3Command', this.floor3CommandButton],
+      ['abilities', this.abilitiesButton],
+      ['quartermaster', this.quartermasterButton],
+      ['issue', this.issueButton],
+    ];
+    const layout: _CornerButtonProbe[] = [];
+    for (const [id, button] of entries) {
+      if (!button) {
+        continue;
+      }
+      const bounds = button.getBounds();
+      layout.push({
+        id,
+        label: button.text,
+        visible: button.visible,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      });
+    }
+    return layout;
   }
 
   getIssueButtonBounds(): ScreenBounds | null {
@@ -2825,7 +2873,7 @@ export class MainGameScene extends Phaser.Scene {
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.requestInventoryToggle();
     });
-    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔️ Gear', () => {
       this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
@@ -2843,7 +2891,7 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
@@ -4378,6 +4426,12 @@ export class MainGameScene extends Phaser.Scene {
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     const issueOpen = this.issueReportPausedState !== undefined;
+    // Quest-arrow toggle clicks are captured HUD-side (input only); apply
+    // them to the sim here, in the scene's own input pipeline, before the
+    // HUD re-renders from the updated quest log.
+    for (const questId of this.hudUi?.consumeQuestArrowToggleRequests() ?? []) {
+      toggleQuestArrow(this.world, questId);
+    }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();

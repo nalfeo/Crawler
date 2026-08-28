@@ -78,6 +78,15 @@ function withFloor1(world: GameWorld): GameWorld {
 }
 
 describe('getQuestWaypoints', () => {
+  it('omits a quest whose navigation arrows are disabled', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    const quest = acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID)!;
+    quest.showArrow = false;
+
+    expect(getQuestWaypoints(world)).toEqual([]);
+  });
+
   it('points at the Welcome Office for the find-welcome talk objective', () => {
     const world = withFloor1(createTestWorld());
     spawnPlayer(world, 0, 0);
