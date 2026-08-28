@@ -98,3 +98,6 @@ rehearsal**:
 
 - Keep the Floor 4 arena timeline assertions in the shared headless regression suite as later
   slices add authored waves and transition behavior.
+
+- Add the retrospective subsection to the handoff template validation migration so older
+  current-format handoffs cannot omit it.
