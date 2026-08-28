@@ -31,6 +31,11 @@ canonical CI recovery investigation order: establish the last-known-good
 boundary, inspect regressions and logs, and prefer a systemic fix before adding
 repair complexity.
 
+`verify:fast` also exposed an unrelated test/implementation drift already
+tracked by PR #3850: Goobers workflow assertions still expected the
+pre-fallback credential names and values. Synchronized those assertions with
+the shipped workflow so this PR does not preserve a red `main` baseline.
+
 ## Evidence
 
 The pre-change workflow declared `contents: read`, supplied `GITHUB_TOKEN` and
