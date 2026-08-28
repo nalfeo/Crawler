@@ -1,5 +1,39 @@
 [
   {
+    "commit": "e5b9a1994b3346d38fa29be8625009bf8a19d573",
+    "commitDate": "2026-08-28T01:35:15Z",
+    "commitSubject": "Make Curse trigger reliably in real gameplay crowds (#3682)",
+    "capturedAt": "2026-08-28T03:04:38.263Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33134476634",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/e5b9a1994b3346d38fa29be8625009bf8a19d573.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.44,
+      "gatePass": false,
+      "path": "by-sha/e5b9a1994b3346d38fa29be8625009bf8a19d573.fun-report.json"
+    }
+  },
+  {
     "commit": "7054a37e4b4ad2f852cd353c925b637ee3c4ca08",
     "commitDate": "2026-08-28T00:30:57Z",
     "commitSubject": "fix(merge-train): repair restricted branches by quarantine evidence (#3752)",
