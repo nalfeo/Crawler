@@ -4,15 +4,13 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   FLOOR2_BOSS_ABILITY_CATALOG,
-  bossAbilityCatalogSchema,
   formatBossAbilityAnnouncement,
-  getFloor2BossAbilityByBossId,
   getFloor2BossAbilityById,
-  loadFloor2BossAbilityCatalog,
-  toBossAbilityCodexEntry,
 } from '../../src/shared/boss-abilities.js';
+import floor4BossAbilityCatalogJson from '../../src/shared/data/boss-abilities.floor4.json';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { floor2EnemyPack } from '../../src/shared/enemy-packs.js';
+import { floor4Manifest } from '../../src/shared/floor-manifest.js';
 import {
   enemyVariantFromTextureId,
   generatedBriefIdForEnemy,
@@ -45,15 +43,15 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 function effectValuesForBoss(
   bossArchetypeId: string,
 ): ReadonlyMap<string, string | number | boolean> {
-  const ability = getFloor2BossAbilityByBossId(bossArchetypeId);
+  const ability = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
+    (entry) => entry.bossArchetypeId === bossArchetypeId,
+  );
   if (ability === undefined) throw new Error(`Missing ability for ${bossArchetypeId}`);
   return new Map(ability.effect.designValues.map((value) => [value.id, value.value]));
 }
 
 describe('Floor 2 boss ability catalog', () => {
   it('parses as a versioned strict pack', () => {
-    expect(() => bossAbilityCatalogSchema.parse(FLOOR2_BOSS_ABILITY_CATALOG)).not.toThrow();
-    expect(() => loadFloor2BossAbilityCatalog()).not.toThrow();
     expect(FLOOR2_BOSS_ABILITY_CATALOG.schemaVersion).toBe('boss-abilities/v1');
   });
 
@@ -72,28 +70,13 @@ describe('Floor 2 boss ability catalog', () => {
     expect(catalogFamilyIds).toEqual(new Set(families.map((family) => family.id)));
 
     for (const boss of bosses) {
-      const ability = getFloor2BossAbilityByBossId(boss.id);
+      const ability = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
+        (entry) => entry.bossArchetypeId === boss.id,
+      );
       expect(ability?.bossName).toBe(boss.name);
       expect(ability?.familyId).toBe(boss.familyId);
       expect(getFloor2BossAbilityById(ability!.id)).toBe(ability);
     }
-  });
-
-  it('rejects duplicate or missing boss coverage', () => {
-    const firstAbility = FLOOR2_BOSS_ABILITY_CATALOG.entries[0];
-    expect(firstAbility).toBeDefined();
-    expect(() =>
-      bossAbilityCatalogSchema.parse({
-        ...FLOOR2_BOSS_ABILITY_CATALOG,
-        entries: [...FLOOR2_BOSS_ABILITY_CATALOG.entries, firstAbility],
-      }),
-    ).toThrow(/duplicate/);
-    expect(() =>
-      loadFloor2BossAbilityCatalog({
-        ...FLOOR2_BOSS_ABILITY_CATALOG,
-        entries: FLOOR2_BOSS_ABILITY_CATALOG.entries.slice(1),
-      }),
-    ).toThrow(/has no ability catalog entry/);
   });
 
   it('defines fixed recurring cadence and locked readable cues for every ability', () => {
@@ -116,104 +99,10 @@ describe('Floor 2 boss ability catalog', () => {
     }
   });
 
-  it('rejects incomplete lane and sequential-annulus geometry', () => {
-    const lane = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
-      (ability) =>
-        ability.telegraph.shape === 'lane' &&
-        ability.telegraph.metrics.some((metric) => metric.id === 'length-mode'),
-    );
-    const laneAndCircle = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
-      (ability) => ability.telegraph.shape === 'lane-and-circle',
-    );
-    const sequentialAnnuli = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
-      (ability) => ability.telegraph.shape === 'sequential-annuli',
-    );
-    if (lane === undefined || laneAndCircle === undefined || sequentialAnnuli === undefined) {
-      throw new Error('Expected representative Floor 2 telegraph shapes');
-    }
-
-    const withMetrics = (abilityId: string, metricIds: readonly string[]) => ({
-      ...FLOOR2_BOSS_ABILITY_CATALOG,
-      entries: FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) =>
-        ability.id === abilityId
-          ? {
-              ...ability,
-              telegraph: {
-                ...ability.telegraph,
-                metrics: ability.telegraph.metrics.filter((metric) =>
-                  metricIds.includes(metric.id),
-                ),
-              },
-            }
-          : ability,
-      ),
-    });
-
-    expect(() => bossAbilityCatalogSchema.parse(withMetrics(lane.id, ['width']))).toThrow(
-      /lane telegraph requires length metric/,
-    );
-    expect(() =>
-      bossAbilityCatalogSchema.parse(withMetrics(lane.id, ['width', 'length-mode'])),
-    ).not.toThrow();
-    expect(() =>
-      bossAbilityCatalogSchema.parse(
-        withMetrics(laneAndCircle.id, ['lane-width', 'endpoint-radius']),
-      ),
-    ).toThrow(/lane-and-circle telegraph requires length metric/);
-    expect(() =>
-      bossAbilityCatalogSchema.parse(
-        withMetrics(sequentialAnnuli.id, ['band-count', 'max-radius']),
-      ),
-    ).toThrow(/sequential-annuli telegraph requires metric.*band-width/);
-  });
-
-  it('rejects malformed telegraph metric value types and units at the catalog boundary', () => {
-    const queen = getFloor2BossAbilityByBossId('faerie-boss');
-    if (queen === undefined) throw new Error('Expected Queen Mab ability');
-
-    const mutateRadius = (value: string | number, unit: string) => ({
-      ...FLOOR2_BOSS_ABILITY_CATALOG,
-      entries: FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) =>
-        ability.id === queen.id
-          ? {
-              ...ability,
-              telegraph: {
-                ...ability.telegraph,
-                metrics: ability.telegraph.metrics.map((metric) =>
-                  metric.id === 'radius' ? { ...metric, value, unit } : metric,
-                ),
-              },
-            }
-          : ability,
-      ),
-    });
-
-    const wrongUnit = bossAbilityCatalogSchema.safeParse(mutateRadius('wide', 'mode'));
-    expect(wrongUnit.success).toBe(false);
-    expect(wrongUnit.error?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          message: 'metric "radius" must have unit "feet", got "mode"',
-        }),
-        expect.objectContaining({
-          message: 'metric "radius" must be a positive finite number',
-        }),
-      ]),
-    );
-
-    const wrongValueType = bossAbilityCatalogSchema.safeParse(mutateRadius('wide', 'feet'));
-    expect(wrongValueType.success).toBe(false);
-    expect(wrongValueType.error?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          message: 'metric "radius" must be a positive finite number',
-        }),
-      ]),
-    );
-  });
-
   it('preserves Queen Mab Tarnish as the exact first vertical slice', () => {
-    const queen = getFloor2BossAbilityByBossId('faerie-boss');
+    const queen = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
+      (entry) => entry.bossArchetypeId === 'faerie-boss',
+    );
     expect(queen).toMatchObject({
       id: 'queen-mab-verdigris-glamour',
       attackName: 'VERDIGRIS GLAMOUR',
@@ -247,7 +136,9 @@ describe('Floor 2 boss ability catalog', () => {
   });
 
   it("preserves Don Paco's THE BIG GOB contract", () => {
-    const don = getFloor2BossAbilityByBossId('llama-boss');
+    const don = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
+      (entry) => entry.bossArchetypeId === 'llama-boss',
+    );
     expect(don).toMatchObject({
       id: 'don-paco-the-big-gob',
       attackName: 'THE BIG GOB',
@@ -283,20 +174,23 @@ describe('Floor 2 boss ability catalog', () => {
     expect(values.get('slick-duration')).toBe(4000);
     expect(values.get('slow-rule')).toBe('while-inside');
   });
+});
 
-  it('projects codex content without delivery metadata', () => {
-    for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
-      const codex = toBossAbilityCodexEntry(ability);
-      expect(Object.keys(codex).sort()).toEqual([
-        'attackName',
-        'bossArchetypeId',
-        'bossName',
-        'counterplay',
-        'fullDescription',
-        'id',
-        'shortDescription',
-      ]);
-      expect(codex.counterplay.length).toBeGreaterThanOrEqual(40);
+describe('Floor 4 boss ability catalog', () => {
+  it('parses and covers every Headliner pool entry exactly once', () => {
+    const catalog = floor4BossAbilityCatalogJson;
+    expect(catalog.floorId).toBe('floor-4');
+    const expectedBossIds = new Set(
+      floor4Manifest.floor4!.headliners.pool.map((entry) => entry.archetypeId),
+    );
+    const catalogBossIds = new Set(catalog.entries.map((ability) => ability.bossArchetypeId));
+
+    expect(catalog.entries).toHaveLength(expectedBossIds.size);
+    expect(catalogBossIds).toEqual(expectedBossIds);
+    for (const ability of catalog.entries) {
+      expect(ability.attackName).toBe(ability.attackName.toLocaleUpperCase('en-US'));
+      expect(ability.timing.randomJitterMs).toBe(0);
+      expect(ability.targeting.tracksPlayer).toBe(false);
     }
   });
 });

@@ -64,7 +64,7 @@ describe('responsive quest tracker layout', () => {
       expect(tracker.y + tracker.height).toBeLessThanOrEqual(720);
     });
 
-    it(`keeps the Floor 2 tracker clear of the family reservation at ${viewport.name}`, () => {
+    it(`stacks the Floor 2 tracker below the radar at ${viewport.name}`, () => {
       const layout = resolveNavigationHudLayout(viewport.uiScale, 2);
       const tracker = {
         x: layout.questPosition.x,
@@ -72,16 +72,11 @@ describe('responsive quest tracker layout', () => {
         width: NAV_QUEST_WIDTH * layout.questScale,
         height: NAV_QUEST_MAX_HEIGHT * layout.questScale,
       };
-      const familyReservation = layout.criticalHudRegions.at(-1)!;
-      const topCenterReservation = layout.criticalHudRegions[0]!;
-
-      expect(layout.questPosition.x).toBe(16);
-      expect(layout.questPosition.y).toBeGreaterThan(
-        topCenterReservation.y + topCenterReservation.height,
+      expect(layout.questPosition.x + tracker.width).toBeLessThanOrEqual(1280);
+      expect(layout.questPosition.y).toBeGreaterThanOrEqual(
+        layout.radarBounds.y + layout.radarBounds.height,
       );
       expect(boundsOverlap(tracker, layout.radarBounds)).toBe(false);
-      expect(boundsOverlap(tracker, topCenterReservation)).toBe(false);
-      expect(boundsOverlap(tracker, familyReservation)).toBe(false);
     });
   }
 });

@@ -31,11 +31,32 @@ describe('session server ports', () => {
 
     expect(ports.labPort).toBe(ports.gamePort + 1);
     expect(ports.devtoolsPort).toBe(ports.gamePort + 2);
+    expect(ports.e2eLabPort).toBe(ports.gamePort + 3);
     expect(ports.sidecarPort).toBe(ports.gamePort + 10);
     expect(ports.gameBaseUrl).toBe(`http://localhost:${ports.gamePort}`);
     expect(ports.labBaseUrl).toBe(`http://localhost:${ports.labPort}`);
     expect(ports.devtoolsBaseUrl).toBe(`http://localhost:${ports.devtoolsPort}`);
+    expect(ports.e2eLabBaseUrl).toBe(`http://127.0.0.1:${ports.e2eLabPort}`);
     expect(ports.sidecarBaseUrl).toBe(`http://127.0.0.1:${ports.sidecarPort}`);
+  });
+
+  // The e2e suite spawns its own `--strictPort` lab server. Sharing the
+  // interactive lab port would let `npm run lab` steal it, after which the
+  // suite silently ran against the long-lived server instead of its own.
+  it('gives the e2e lab server its own port, distinct from the interactive lab', () => {
+    const ports = getSessionServerPorts({ cwd: 'C:\\Repo\\Crawler\\alpha', env: {} });
+
+    expect(ports.e2eLabPort).not.toBe(ports.labPort);
+    expect(ports.e2eLabPort).not.toBe(ports.gamePort);
+    expect(ports.e2eLabPort).not.toBe(ports.devtoolsPort);
+    expect(ports.e2eLabPort).not.toBe(ports.sidecarPort);
+  });
+
+  it('gives separate worktrees separate e2e lab ports', () => {
+    const alpha = getSessionServerPorts({ cwd: 'C:\\Repo\\Crawler\\alpha', env: {} });
+    const beta = getSessionServerPorts({ cwd: 'C:\\Repo\\Crawler\\beta', env: {} });
+
+    expect(alpha.e2eLabPort).not.toBe(beta.e2eLabPort);
   });
 
   it('changes port blocks across workspaces', () => {
@@ -52,6 +73,7 @@ describe('session server ports', () => {
         CRAWLER_DEV_PORT: '4990',
         CRAWLER_LAB_PORT: '4991',
         CRAWLER_DEVTOOLS_PORT: '4992',
+        CRAWLER_E2E_LAB_PORT: '4993',
         SPRITES_SIDECAR_PORT: '4999',
       },
     });
@@ -59,6 +81,7 @@ describe('session server ports', () => {
     expect(ports.gamePort).toBe(4990);
     expect(ports.labPort).toBe(4991);
     expect(ports.devtoolsPort).toBe(4992);
+    expect(ports.e2eLabPort).toBe(4993);
     expect(ports.sidecarPort).toBe(4999);
   });
 

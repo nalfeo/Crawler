@@ -4,14 +4,20 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *purchasable* item ids: a weapon id from
- * `weapons.json` (whether it activates through a weapon-equipment def or, like
- * the merchant-stocked weapons below, only through its own catalog-only
- * `items.ts` entry), or the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
- * `knownShopItemIds()` below enumerates exactly those two id spaces — it does
+ * Archetype entries reference *purchasable* weapon item ids from
+ * `weapons.json`: a weapon id qualifies once it activates through a
+ * weapon-equipment def or, like the merchant-stocked weapons below, only
+ * through its own catalog-only `items.ts` entry. `knownShopItemIds()` below
+ * enumerates exactly that id space (via `resolveShopCatalogItem`) — it does
  * NOT admit an arbitrary `items.ts` slug that isn't also a `weapons.json` id.
  * The loader validates that invariant at load-time (through the same resolver
  * the purchase path uses) so stock a player could never buy can't ship.
+ *
+ * The merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`) is a *unique* item —
+ * sold only by the Floor 1 merchant after his fetch-quest completes — and is
+ * deliberately excluded from `knownShopItemIds()` so it can never be
+ * referenced by a generic shop-archetype entry (other merchants must never
+ * sell it).
  *
  * Prices are the *base* per-item price. Runtime price is
  * `basePrice * archetype.priceMultiplier * (tuning.shopPricing.tierMultiplier ?? 1)`.
@@ -19,7 +25,6 @@
 import { z } from 'zod';
 import archetypesJson from './shop-archetypes.floor2.json';
 import weaponsJson from './weapons.json';
-import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../quest-types.js';
 import { isShopCatalogItem } from '../shop-catalog.js';
 
 export const FLOOR2_QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
@@ -68,15 +73,16 @@ const shopArchetypePackSchema = z
   .strict();
 
 /**
- * Item ids a shop archetype may stock: every `weapons.json` id (plus the
- * merchant's-charm) that the merchant purchase path can resolve onto a bag
- * item via `resolveShopCatalogItem`. A weapon id qualifies once either a
+ * Item ids a shop archetype may stock: every `weapons.json` id that the
+ * merchant purchase path can resolve onto a bag item via
+ * `resolveShopCatalogItem`. A weapon id qualifies once either a
  * weapon-equipment def activates it, or it has its own catalog-only `items.ts`
  * entry of the same id — otherwise the offer would render with a name and
  * price but refuse the purchase as `unknown-item`. This deliberately does NOT
  * enumerate `items.ts` at large: a non-weapon catalog slug (e.g. a consumable)
  * is not a valid archetype entry even though `resolveShopCatalogItem` would
- * resolve it.
+ * resolve it. `SHOPKEEPER_EQUIPMENT_ITEM_ID` (the merchant's-charm) is
+ * likewise never admitted — see the module docblock.
  */
 export function knownShopItemIds(): ReadonlySet<string> {
   const ids = new Set<string>();
@@ -84,9 +90,6 @@ export function knownShopItemIds(): ReadonlySet<string> {
     if (isShopCatalogItem(weapon.id)) {
       ids.add(weapon.id);
     }
-  }
-  if (isShopCatalogItem(SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
-    ids.add(SHOPKEEPER_EQUIPMENT_ITEM_ID);
   }
   return ids;
 }

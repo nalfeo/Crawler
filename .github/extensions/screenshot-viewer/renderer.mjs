@@ -17,7 +17,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Screenshot Viewer — ${escapeHtml(instanceId)}</title>
+    <title>A|B UX Testing — ${escapeHtml(instanceId)}</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -175,8 +175,57 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       .pair-images figure { margin: 0; }
       .pair-image-label { color: var(--text-color-default, #c9d1d9); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
       .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; cursor: zoom-in; }
+      .pair-missing {
+        display: grid;
+        place-items: center;
+        min-height: 140px;
+        padding: 12px;
+        border: 1px dashed var(--border-color-default, #30363d);
+        color: var(--text-color-muted, #8b949e);
+        font-size: 12px;
+        text-align: center;
+      }
       .pair-images img:focus-visible { outline: 2px solid var(--color-focus-outline, #58a6ff); outline-offset: 2px; }
       figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
+      .review-details {
+        margin-top: 6px;
+        border: 1px solid var(--border-color-default, #30363d);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--background-color-default, #0d1117) 94%, white);
+      }
+      .review-details summary {
+        cursor: pointer;
+        padding: 6px 8px;
+        color: var(--text-color-default, #c9d1d9);
+        font-size: 12px;
+        font-weight: var(--font-weight-semibold, 600);
+      }
+      .review-details-body {
+        display: grid;
+        gap: 8px;
+        padding: 0 8px 8px;
+        color: var(--text-color-muted, #8b949e);
+        font-size: 11px;
+        line-height: 16px;
+      }
+      .review-axis {
+        padding-top: 6px;
+        border-top: 1px solid var(--border-color-default, #30363d);
+      }
+      .review-list {
+        margin: 2px 0 0;
+        padding-left: 16px;
+      }
+      .review-list li {
+        margin: 2px 0;
+      }
+      .review-pre {
+        margin: 0;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text-color-default, #c9d1d9);
+      }
       .feedback-panel { margin: 16px 0; display: grid; gap: 8px; }
       textarea, select { width: 100%; font: inherit; padding: 8px; color: inherit; background: var(--background-color-default, #0d1117); border: 1px solid var(--border-color-default, #30363d); border-radius: 5px; }
       .feedback-list { display: grid; gap: 6px; }
@@ -316,8 +365,10 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
   <body>
     <main>
       <header>
-        <h1>UX Screenshot Review</h1>
+        <h1>A|B UX Testing</h1>
         <div class="toolbar">
+          <label for="scenario-filter">Scenario</label>
+          <select id="scenario-filter"><option value="">All scenarios</option></select>
           <button type="button" id="refresh-button">↻ Refresh</button>
         </div>
       </header>
@@ -391,6 +442,8 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       const liveBadge = document.getElementById('live-badge');
       const errorBox = document.getElementById('error-box');
       const refreshButton = document.getElementById('refresh-button');
+      const scenarioFilter = document.getElementById('scenario-filter');
+      let lastState = null;
       const lightbox = document.getElementById('lightbox');
       const lightboxImg = document.getElementById('lightbox-img');
       const lightboxCaption = document.getElementById('lightbox-caption');
@@ -483,6 +536,63 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         \`;
       }
 
+      function renderList(title, items) {
+        const list = Array.isArray(items) ? items.filter(Boolean) : [];
+        if (list.length === 0) return '';
+        return '<div><strong>' + escapeHtml(title) + '</strong><ul class="review-list">' +
+          list.map((item) => '<li>' + escapeHtml(item) + '</li>').join('') +
+          '</ul></div>';
+      }
+
+      function renderReviewDetails(review, reviewKey) {
+        const details = review?.details;
+        if (!details) return '';
+        const summary = details.summary
+          ? '<div><strong>Summary</strong><br>' + escapeHtml(details.summary) + '</div>'
+          : '';
+        const verdict = details.verdict
+          ? '<div><strong>Verdict</strong> ' + escapeHtml(details.verdict) + '</div>'
+          : '';
+        const rawScore = details.rawScore !== null && details.rawScore !== undefined
+          ? '<div><strong>Model raw score</strong> ' + escapeHtml(details.rawScore) + '/' + escapeHtml(details.scale ?? 100) + '</div>'
+          : '';
+        const derivation = details.scoreDerivation
+          ? '<div><strong>Score derivation</strong><pre class="review-pre">' + escapeHtml(JSON.stringify(details.scoreDerivation, null, 2)) + '</pre></div>'
+          : '';
+        const axes = Array.isArray(details.axes) ? details.axes.map((axis) => {
+          const score = axis.score === null || axis.score === undefined ? 'n/a' : axis.score;
+          return '<div class="review-axis"><strong>' + escapeHtml(axis.label) + '</strong> · ' +
+            escapeHtml(score) + '/' + escapeHtml(details.scale ?? 100) +
+            renderList('Strengths', axis.strengths) +
+            renderList('Issues', axis.issues) +
+            '</div>';
+        }).join('') : '';
+        const precise = Array.isArray(details.preciseFixes) && details.preciseFixes.length > 0
+          ? '<div><strong>Precise fixes</strong><ul class="review-list">' + details.preciseFixes.map((fix) => {
+              const deltas = ['dx', 'dy', 'dw', 'dh']
+                .filter((key) => fix[key] !== null && fix[key] !== undefined && fix[key] !== 0)
+                .map((key) => key + '=' + fix[key])
+                .join(' ');
+              return '<li>' + escapeHtml([fix.action, fix.element, deltas, fix.reason].filter(Boolean).join(' · ')) + '</li>';
+            }).join('') + '</ul></div>'
+          : '';
+        const rawResponse = details.rawReview
+          ? '<details class="review-details" data-details-key="' + escapeHtml(reviewKey + ':raw') + '"><summary>Full raw judge response JSON</summary><pre class="review-pre">' + escapeHtml(JSON.stringify(details.rawReview, null, 2)) + '</pre></details>'
+          : '';
+        return '<details class="review-details" data-details-key="' + escapeHtml(reviewKey) + '"><summary>Score details + judge comments</summary><div class="review-details-body">' +
+          verdict +
+          rawScore +
+          summary +
+          derivation +
+          renderList('Deterministic findings', details.deterministicFindings) +
+          renderList('Blocking findings', details.blockingFindings) +
+          renderList('Recommended fixes', details.recommendedFixes) +
+          precise +
+          axes +
+          rawResponse +
+          '</div></details>';
+      }
+
       function renderGallery(state) {
         const screenshots = Array.isArray(state.screenshots) ? state.screenshots : [];
         const count = screenshots.length;
@@ -501,7 +611,13 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
         liveBadge.hidden = !state.liveTracking;
 
-        const pairs = Array.isArray(state.pairs) ? state.pairs : [];
+        const allPairs = Array.isArray(state.pairs) ? state.pairs : [];
+        const scenarios = Array.isArray(state.scenarios) ? state.scenarios : [];
+        const selected = scenarios.some((scenario) => scenario.id === scenarioFilter.value) ? scenarioFilter.value : '';
+        scenarioFilter.innerHTML = '<option value="">All scenarios</option>' +
+          scenarios.map((scenario) => '<option value="' + escapeHtml(scenario.id) + '">' + escapeHtml(scenario.label) + '</option>').join('');
+        scenarioFilter.value = selected;
+        const pairs = selected ? allPairs.filter((pair) => pair.scenarioId === selected) : allPairs;
         if (count === 0) {
           galleryEl.innerHTML = \`
             <div class="empty-state">
@@ -513,24 +629,49 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           return;
         }
 
-        const comparablePairs = pairs.filter((pair) => pair.before && pair.after);
-        const pairHtml = comparablePairs.map((pair) => {
-          const reviewMeta = (review) => review
-            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
+        // The backend emits complete lineages first, then valid current-only
+        // captures. Keep both: hiding an after-only card conceals real evidence
+        // while the release baseline is pending. (Supersedes the base/main
+        // comparablePairs before+after filter, which this file's
+        // review.scale ?? 100 fallback already fully carries forward.)
+        const orderedPairs = pairs;
+        const openDetails = new Set(
+          [...pairsEl.querySelectorAll('details[data-details-key][open]')]
+            .map((details) => details.getAttribute('data-details-key'))
+            .filter(Boolean),
+        );
+        const pairHtml = orderedPairs.map((pair) => {
+          const reviewMeta = (review, reviewKey) => review
+            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/' + escapeHtml(review.scale ?? 100) + '</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + renderReviewDetails(review, reviewKey) + '</div>'
             : '<div class="meta">No evaluator result attached.</div>';
-          const taskLabel = pair.key.replace(/\s+\([^)]*\)$/, '');
-          const image = (side) =>
-            '<figure><div class="pair-image-label">' + escapeHtml(side === 'before' && pair.states?.before === 'main' ? 'Main' : taskLabel.replace(/\b\w/g, (char) => char.toUpperCase()) + ' (' + (pair.states?.[side] ?? 'missing').toUpperCase() + ')') + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(pair[side].path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(pair[side].path)) + '" data-caption="' + escapeHtml(pair[side].path) + '"><figcaption>' + side + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>';
-          const stateLabel = (state) => state ? state.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Missing';
+          const stateLabel = (state) => {
+            if (state === 'live-dev') return 'live (dev)';
+            return state ?? 'missing';
+          };
+          const image = (side) => {
+            const screenshot = pair[side];
+            const label = stateLabel(pair.states?.[side]);
+            if (!screenshot) {
+              return '<figure><div class="pair-image-label">' + escapeHtml(label) + '</div><div class="pair-missing">No ' + escapeHtml(label) + ' capture is available for this scenario.</div><figcaption>Capture a release baseline to complete this comparison.</figcaption></figure>';
+            }
+            return '<figure><div class="pair-image-label">' + escapeHtml(label) + '</div><img class="pair-image" tabindex="0" role="button" src="' + escapeHtml(buildImgUrl(screenshot.path)) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '" aria-label="Zoom ' + side + ' screenshot for ' + escapeHtml(pair.key) + '" data-img-url="' + escapeHtml(buildImgUrl(screenshot.path)) + '" data-caption="' + escapeHtml(screenshot.path) + '"><figcaption>' + side + ' · ' + escapeHtml(screenshot.takenAt ? formatTime(screenshot.takenAt) : 'time unknown') + ' · click to zoom</figcaption>' + reviewMeta(pair.reviews?.[side], pair.key + ':' + side) + '</figure>';
+          };
           const beforeState = stateLabel(pair.states?.before);
           const afterState = stateLabel(pair.states?.after);
-          return '<article class="pair-card"><strong>' + escapeHtml(beforeState + ' | ' + afterState) + '</strong><div class="pair-state">' + escapeHtml(pair.key) + '</div><div class="pair-images">' + image('before') + image('after') + '</div></article>';
+          return '<article class="pair-card"><strong>' + escapeHtml((pair.scenarioLabel ?? pair.key) + ' · ' + beforeState + ' → ' + afterState) + '</strong><div class="pair-images">' + image('before') + image('after') + '</div></article>';
         }).join('');
         pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
+        for (const details of pairsEl.querySelectorAll('details[data-details-key]')) {
+          details.open = openDetails.has(details.getAttribute('data-details-key'));
+        }
         galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
-        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + comparablePairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
+        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + orderedPairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
         feedbackList.innerHTML = (state.feedback ?? []).slice().reverse().map((item) => '<div class="feedback-item"><strong>' + escapeHtml(item.scope) + '</strong> · ' + escapeHtml(item.target || item.pairKey || 'general') + '<br>' + escapeHtml(item.comment) + '</div>').join('');
       }
+
+      scenarioFilter.addEventListener('change', () => {
+        if (lastState) renderGallery(lastState);
+      });
 
       feedbackScope.addEventListener('change', () => {
         feedbackTarget.hidden = feedbackScope.value !== 'reusable';
@@ -561,6 +702,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       }
 
       function applyState(state) {
+        lastState = state;
         renderError(state.error || null);
         renderGallery(state);
       }
@@ -623,14 +765,25 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           const state = await response.json();
           applyState(state);
         } catch (error) {
-          renderError(error instanceof Error ? error.message : String(error));
+          // A dead backend previously left the last-rendered content on screen
+          // with no signal, so stale ordering/timestamps looked like live data.
+          renderError(
+            'Backend unreachable — this panel is showing STALE content from a previous session. ' +
+            'Close and reopen the A|B UX Testing canvas to reconnect. (' +
+            (error instanceof Error ? error.message : String(error)) + ')'
+          );
+          liveBadge.hidden = true;
         } finally {
           refreshButton.disabled = false;
         }
       }
 
+      async function refresh() {
+        await loadState(refreshUrl, { method: 'POST' });
+      }
+
       refreshButton.addEventListener('click', () => {
-        void loadState(refreshUrl, { method: 'POST' });
+        void refresh();
       });
 
       // SSE live updates

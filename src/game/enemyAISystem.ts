@@ -1,6 +1,7 @@
 import { addComponent, hasComponent, query, setComponent } from 'bitecs';
 import {
   DeathTimer,
+  Damage,
   DoorState,
   Enemy,
   EnemyBehavior,
@@ -1257,16 +1258,20 @@ function fireEnemyProjectileFrom(
     return;
   }
 
+  const casterDamage = hasComponent(world.ecs, eid, Damage)
+    ? (world.stores.damage.amount[eid] ?? 0)
+    : undefined;
   if (FIREBALL_DEF) {
+    const projectileDamage = casterDamage ?? FIREBALL_DEF.baseDamage;
     const projectile = spawnAoeProjectile(
       world,
       originX,
       originY,
       dirX * FIREBALL_DEF.projectileSpeed,
       dirY * FIREBALL_DEF.projectileSpeed,
-      FIREBALL_DEF.baseDamage,
+      projectileDamage,
       FIREBALL_DEF.aoeRadius,
-      FIREBALL_DEF.baseDamage,
+      projectileDamage,
       eid,
       TeamId.ENEMY,
       FIREBALL_DEF.range,
@@ -1281,13 +1286,14 @@ function fireEnemyProjectileFrom(
       canCrit: false,
     });
   } else {
+    const projectileDamage = casterDamage ?? ENEMY_PROJECTILE.DAMAGE;
     spawnEnemyProjectile(
       world,
       originX,
       originY,
       dirX * ENEMY_PROJECTILE.SPEED,
       dirY * ENEMY_PROJECTILE.SPEED,
-      ENEMY_PROJECTILE.DAMAGE,
+      projectileDamage,
       eid,
     );
   }
