@@ -10,7 +10,7 @@ QA Engineer
 
 ## Systems touched
 
-hud-ux
+ci-policy, hud-ux
 
 ## Apples
 
@@ -19,6 +19,7 @@ hud-ux
 ## What Was Done
 
 Changed the NPC dialogue E2E to retry keyboard actions until the scene observes their expected state, then poll the rendered Talk-control bounds before using them for the next click. The focused real `main-scene-probe-lab` E2E artifact passed the full UI-exclusivity file (21 tests).
+Also fixed the strict-nullability guards in the release-sweep capacity wiring test exposed by rebasing onto current `main`.
 
 ## Key Decisions Made
 
