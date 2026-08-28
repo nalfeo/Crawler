@@ -51,13 +51,16 @@ export function stripSymbolSuffix(candidate: string): string {
 }
 
 /**
- * Character ranges of Markdown **link labels** whose target is not a local
- * file — `[`docs/x.md`](https://other-repo/...)`, `[a](mailto:…)`, `[b](#anchor)`.
+ * Character ranges of Markdown **link labels** whose target lives outside this
+ * repo — `[`docs/x.md`](https://other-repo/...)`, `[a](mailto:…)`.
  *
  * A backticked path inside such a label describes a file in *another* repo (or
  * is pure prose), so it must not be validated against this repo's disk. Ranges
  * are `[start, end)` offsets into `line`, covering the label text between the
  * brackets.
+ *
+ * Deliberately narrow: a same-page anchor link (`[`docs/x.md`](#section)`) still
+ * claims a local path in its label, so it is NOT exempted.
  */
 export function externalLinkLabelRanges(line: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -68,7 +71,7 @@ export function externalLinkLabelRanges(line: string): Array<[number, number]> {
     const target = match[2] ?? '';
     // A target that resolves to a local repo path is still checked by the
     // link-target validation, so only skip genuinely non-local targets.
-    if (!/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.startsWith('#')) continue;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
     const labelStart = match.index + 1;
     ranges.push([labelStart, labelStart + label.length]);
   }

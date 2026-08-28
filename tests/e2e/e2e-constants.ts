@@ -15,7 +15,14 @@
 import { getSessionServerPorts } from '../../scripts/shared/session-server-ports.js';
 
 export const E2E_LAB_PORT = getSessionServerPorts().e2eLabPort;
-export const E2E_LAB_BASE_URL = `http://localhost:${E2E_LAB_PORT}`;
+/**
+ * Pinned to the IPv4 loopback literal, not `localhost`. IPv4- and IPv6-specific
+ * listeners can coexist on one port, so with a resolver-dependent host a foreign
+ * `::1` server could still answer the browser even though our own Vite owns
+ * `127.0.0.1`. The server is spawned with `--host 127.0.0.1` to match.
+ */
+export const E2E_LAB_HOST = '127.0.0.1';
+export const E2E_LAB_BASE_URL = `http://${E2E_LAB_HOST}:${E2E_LAB_PORT}`;
 
 /** Phaser game canvas dimensions as defined in src/shared/constants.ts */
 export const GAME_W = 1280;

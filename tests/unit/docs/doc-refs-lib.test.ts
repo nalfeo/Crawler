@@ -69,9 +69,10 @@ describe('externalLinkLabelRanges', () => {
     expect(isWithinRanges(ranges, backtickStart, backtickEnd)).toBe(true);
   });
 
-  it('covers mailto and pure-anchor targets', () => {
+  it('covers a mailto target but not a same-page anchor', () => {
     expect(externalLinkLabelRanges('[`docs/a.md`](mailto:x@example.com)')).toHaveLength(1);
-    expect(externalLinkLabelRanges('[`docs/a.md`](#section)')).toHaveLength(1);
+    // An anchor link is still on this page, so its label keeps being validated.
+    expect(externalLinkLabelRanges('[`docs/a.md`](#section)')).toEqual([]);
   });
 
   it('does not cover labels whose target is a local repo path', () => {
