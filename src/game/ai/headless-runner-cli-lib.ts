@@ -39,7 +39,8 @@ export interface CLIArgs {
   decisionMode: AIDecisionModeValue;
   /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default true. */
   optionalPurchases: boolean;
-  settlementReturnRouting: boolean;
+  /** Explicit routing override; omitted inherits the selected floor's default. */
+  settlementReturnRouting: boolean | undefined;
   persona: PlayerPersona;
 }
 
@@ -79,8 +80,10 @@ export function defaultCLIArgs(
       optionalPurchasesEnv === '1' ||
       optionalPurchasesEnv.toLowerCase() === 'true',
     settlementReturnRouting:
-      env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
-      env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
+      env.AI_SETTLEMENT_RETURN_ROUTING === undefined
+        ? undefined
+        : env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
+          env.AI_SETTLEMENT_RETURN_ROUTING.toLowerCase() === 'true',
     persona: 'experienced_player',
   };
 }

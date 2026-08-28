@@ -45,7 +45,11 @@ async function main(): Promise<void> {
   console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Persona: ${args.persona}`);
   console.log(
-    `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
+    `Settlement return routing: ${
+      (args.settlementReturnRouting ?? (args.floorId === 'floor1' || args.floorId === 'floor2'))
+        ? 'enabled'
+        : 'disabled'
+    }`,
   );
   console.log('');
 
@@ -92,7 +96,9 @@ async function main(): Promise<void> {
     weaponPersonas: args.weaponPersonas,
     optionalPurchases: args.optionalPurchases,
     ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
-    settlementReturnRouting: args.settlementReturnRouting,
+    ...(args.settlementReturnRouting === undefined
+      ? {}
+      : { settlementReturnRouting: args.settlementReturnRouting }),
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

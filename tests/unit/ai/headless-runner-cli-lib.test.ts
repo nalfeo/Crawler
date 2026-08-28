@@ -148,8 +148,8 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
-  it('keeps settlement return routing off by default and enables it by flag or environment', () => {
-    expect(cli().settlementReturnRouting).toBe(false);
+  it('leaves settlement return routing unspecified by default and accepts explicit overrides', () => {
+    expect(cli().settlementReturnRouting).toBeUndefined();
     expect(cli('--settlement-return-routing').settlementReturnRouting).toBe(true);
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: '1' })
