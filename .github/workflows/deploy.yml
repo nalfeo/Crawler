@@ -401,6 +401,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SWEEP_MIN_INTERVAL_HOURS: ${{ vars.RELEASE_SWEEP_MIN_INTERVAL_HOURS }}
           RELEASE_SWEEP_MAX_COMPETING_DEMAND: ${{ vars.RELEASE_SWEEP_MAX_COMPETING_DEMAND }}
+          RELEASE_SWEEP_MAX_QUEUED_JOBS: ${{ vars.RELEASE_SWEEP_MAX_QUEUED_JOBS }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_sweep=true" >> "$GITHUB_OUTPUT"

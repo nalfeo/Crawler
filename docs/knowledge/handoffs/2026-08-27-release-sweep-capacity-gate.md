@@ -26,9 +26,18 @@ plus `baseline-sweep`) fired on every push to main and could hold the entire
 (nalfeo/Crawler#3774). `deploy.yml` now runs a `sweep-capacity-gate` job first:
 
 ```
-constrained = nonSweepJobs + latentBacklog > RELEASE_SWEEP_MAX_COMPETING_DEMAND (4)
+constrained = queuedJobs > RELEASE_SWEEP_MAX_QUEUED_JOBS (0)
+              || nonSweepJobs + latentBacklog > RELEASE_SWEEP_MAX_COMPETING_DEMAND (4)
 sweep       = !constrained || hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24)
 ```
+
+Queue depth is the primary signal (review feedback on the PR): a _running_ job is
+already being served, but a _queued_ job is work blocked on a full pool that the
+sweep would push further back. `inspectRunnerDemand` therefore reports
+`queuedJobs` (non-sweep jobs in `queued`/`waiting`/`requested`/`pending`)
+separately from total active claim, and a single waiting job constrains the pool
+by default. Total claim plus latent CI backlog stays as the secondary signal for
+a pool that is about to saturate before anything has queued.
 
 Both sweep jobs `needs` that gate and skip together, so a partial baseline can
 never be published. Demand is measured with the existing probes in

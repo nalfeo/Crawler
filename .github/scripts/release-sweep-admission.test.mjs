@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   BASELINES_BRANCH,
   RELEASE_SWEEP_MAX_COMPETING_DEMAND,
+  RELEASE_SWEEP_MAX_QUEUED_JOBS,
   RELEASE_SWEEP_MIN_INTERVAL_HOURS,
   decideReleaseSweep,
   fetchLastSweepAt,
@@ -84,6 +85,45 @@ test('the pressure threshold counts live jobs and latent backlog together', () =
   );
 });
 
+test('any job already waiting for a runner constrains the pool on its own', () => {
+  // The pool is nearly idle by total claim, but one job is queued — that job is
+  // work someone is waiting on that the pool has no capacity for right now, so
+  // the sweep must not be piled on top of it.
+  const decision = decideReleaseSweep({
+    nonSweepJobs: 1,
+    queuedJobs: RELEASE_SWEEP_MAX_QUEUED_JOBS + 1,
+    latentBacklog: 0,
+    lastSweepAt: hoursAgo(1),
+    now: NOW,
+  });
+  assert.equal(decision.shouldSweep, false);
+  assert.equal(decision.constrained, true);
+  assert.match(decision.reason, /waiting for a runner/);
+
+  // Busy but keeping up (nothing queued) is still admitted.
+  const running = decideReleaseSweep({
+    nonSweepJobs: RELEASE_SWEEP_MAX_COMPETING_DEMAND,
+    queuedJobs: RELEASE_SWEEP_MAX_QUEUED_JOBS,
+    latentBacklog: 0,
+    lastSweepAt: hoursAgo(1),
+    now: NOW,
+  });
+  assert.equal(running.shouldSweep, true);
+  assert.equal(running.constrained, false);
+});
+
+test('a queue-constrained pool still honors the staleness override', () => {
+  const decision = decideReleaseSweep({
+    nonSweepJobs: 1,
+    queuedJobs: 25,
+    latentBacklog: 0,
+    lastSweepAt: hoursAgo(RELEASE_SWEEP_MIN_INTERVAL_HOURS),
+    now: NOW,
+  });
+  assert.equal(decision.shouldSweep, true);
+  assert.match(decision.reason, /sweeping anyway/);
+});
+
 test('an unknown last-sweep time fails open', () => {
   const decision = decideReleaseSweep({
     nonSweepJobs: 40,
@@ -103,6 +143,17 @@ test('malformed demand inputs are rejected instead of silently skipping the swee
   assert.throws(
     () => decideReleaseSweep({ nonSweepJobs: 0, latentBacklog: 1.5, lastSweepAt: NOW, now: NOW }),
     /latentBacklog/,
+  );
+  assert.throws(
+    () =>
+      decideReleaseSweep({
+        nonSweepJobs: 0,
+        queuedJobs: -1,
+        latentBacklog: 0,
+        lastSweepAt: NOW,
+        now: NOW,
+      }),
+    /queuedJobs/,
   );
 });
 
@@ -154,7 +205,7 @@ test('the probe excludes the deploy run’s own jobs from measured pressure', as
     { id: 7, name: 'CI', status: 'in_progress' },
   ]);
   responses.set('/repos/nalfeo/Crawler/actions/runs/7/jobs?filter=latest&per_page=100&page=1', {
-    jobs: [{ status: 'in_progress' }, { status: 'queued' }],
+    jobs: [{ status: 'in_progress' }, { status: 'in_progress' }],
   });
   responses.set(`/repos/nalfeo/Crawler/commits?sha=${BASELINES_BRANCH}&per_page=1`, [
     { commit: { committer: { date: hoursAgo(1).toISOString() } } },
@@ -175,6 +226,7 @@ test('the probe excludes the deploy run’s own jobs from measured pressure', as
     paginateFn: async () => [],
   });
   assert.equal(result.nonSweepJobs, 2);
+  assert.equal(result.queuedJobs, 0);
   assert.equal(result.latentBacklog, 0);
   assert.equal(result.shouldSweep, true);
   assert.deepEqual(result.warnings, []);
@@ -215,6 +267,7 @@ test('CLI writes the verdict to GITHUB_OUTPUT', async () => {
         shouldSweep: false,
         reason: 'runner pool is constrained',
         nonSweepJobs: 9,
+        queuedJobs: 4,
         latentBacklog: 6,
         warnings: [],
       }),
@@ -223,6 +276,7 @@ test('CLI writes the verdict to GITHUB_OUTPUT', async () => {
     assert.match(contents, /^should_sweep=false$/m);
     assert.match(contents, /^reason=runner pool is constrained$/m);
     assert.match(contents, /^non_sweep_jobs=9$/m);
+    assert.match(contents, /^queued_jobs=4$/m);
     assert.match(contents, /^latent_backlog=6$/m);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -268,6 +322,7 @@ test('CLI honors operator-tuned interval and demand knobs, ignoring malformed va
         GITHUB_OUTPUT: output,
         RELEASE_SWEEP_MIN_INTERVAL_HOURS: '6',
         RELEASE_SWEEP_MAX_COMPETING_DEMAND: '12oops',
+        RELEASE_SWEEP_MAX_QUEUED_JOBS: '3',
       },
       async (input) => {
         seen.push(input);
@@ -282,6 +337,9 @@ test('CLI honors operator-tuned interval and demand knobs, ignoring malformed va
     );
     assert.equal(seen[0].minIntervalHours, 6);
     assert.equal(seen[0].maxCompetingDemand, RELEASE_SWEEP_MAX_COMPETING_DEMAND);
+    // Zero is a meaningful value for this knob, so it must parse as
+    // non-negative rather than falling back like a positive-only knob.
+    assert.equal(seen[0].maxQueuedJobs, 3);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

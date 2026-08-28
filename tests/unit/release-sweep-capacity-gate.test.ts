@@ -79,7 +79,7 @@ describe('release sweep capacity gate wiring', () => {
     expect((strategy?.matrix?.include ?? []).length).toBeGreaterThanOrEqual(Number(declared));
   });
 
-  it('wires both operator knobs into the gate step', () => {
+  it('wires every operator knob into the gate step', () => {
     const env = Object.assign(
       {},
       ...(job('sweep-capacity-gate').steps ?? []).map((step) => step.env ?? {}),
@@ -88,5 +88,6 @@ describe('release sweep capacity gate wiring', () => {
     expect(env.RELEASE_SWEEP_MAX_COMPETING_DEMAND).toContain(
       'vars.RELEASE_SWEEP_MAX_COMPETING_DEMAND',
     );
+    expect(env.RELEASE_SWEEP_MAX_QUEUED_JOBS).toContain('vars.RELEASE_SWEEP_MAX_QUEUED_JOBS');
   });
 });

@@ -18,6 +18,11 @@ export const SWEEP_WORKFLOW_NAMES = new Set([
 ]);
 const ACTIVE_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const ACTIVE_JOB_STATUSES = new Set(['queued', 'pending', 'in_progress', 'waiting', 'requested']);
+// Active jobs that are *not yet running*: they have been scheduled but no runner
+// has picked them up. A non-zero count here is direct evidence that the account
+// runner pool is already oversubscribed, which `nonSweepJobs` (running + queued)
+// cannot distinguish from a pool that is merely busy but keeping up.
+const QUEUED_JOB_STATUSES = new Set(['queued', 'pending', 'waiting', 'requested']);
 
 export class SweepProbeError extends Error {
   constructor(message, options) {
@@ -126,6 +131,7 @@ async function listActiveRuns(token, owner, repo, requestFn = request) {
 
 async function countActiveJobsForRun(token, owner, repo, runId, requestFn = request) {
   let count = 0;
+  let queued = 0;
   let page = 1;
   while (true) {
     const { data } = await requestFn(
@@ -134,10 +140,11 @@ async function countActiveJobsForRun(token, owner, repo, runId, requestFn = requ
     );
     const jobs = data?.jobs || [];
     count += jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status)).length;
+    queued += jobs.filter((job) => QUEUED_JOB_STATUSES.has(job.status)).length;
     if (jobs.length < 100) break;
     page += 1;
   }
-  return count;
+  return { count, queued };
 }
 
 export async function inspectRunnerDemand({
@@ -160,13 +167,20 @@ export async function inspectRunnerDemand({
   const nonSweepRuns = runs.filter((run) => !SWEEP_WORKFLOW_NAMES.has(run.name));
   const jobCounts = await Promise.all(
     nonSweepRuns.map(async (run) => {
-      const count = await countActiveJobsForRun(token, owner, repo, run.id, requestFn);
-      return Math.max(1, count);
+      const { count, queued } = await countActiveJobsForRun(token, owner, repo, run.id, requestFn);
+      // A run whose jobs have not materialized yet still claims at least one
+      // runner; if the run itself is waiting to start, that claim is queued.
+      const runQueued = QUEUED_JOB_STATUSES.has(run.status);
+      return {
+        active: Math.max(1, count),
+        queued: count === 0 && runQueued ? 1 : queued,
+      };
     }),
   );
   return {
     activeSweepRunIds: [...new Set([...sweepRuns.map((run) => run.id), Number(currentRunId)])],
-    nonSweepJobs: jobCounts.reduce((total, count) => total + count, 0),
+    nonSweepJobs: jobCounts.reduce((total, entry) => total + entry.active, 0),
+    queuedJobs: jobCounts.reduce((total, entry) => total + entry.queued, 0),
   };
 }
 
