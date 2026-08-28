@@ -1,0 +1,439 @@
+{
+  "schemaVersion": "boss-abilities/v1",
+  "floorId": "floor-4",
+  "entries": [
+    {
+      "id": "bellhop-brawler-luggage-carousel",
+      "bossArchetypeId": "floor4-bellhop-brawler",
+      "bossName": "Bellhop Brawler",
+      "familyId": "floor4-headliners",
+      "attackName": "LUGGAGE CAROUSEL",
+      "announcementText": "Mind your ankles and your incidentals!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 7000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1200,
+        "shape": "circle",
+        "dangerColor": "hostile-red",
+        "description": "A red baggage-claim circle locks under the player with rotating suitcase icons marking the full impact radius before the pile lands.",
+        "metrics": [{ "id": "radius", "value": 10, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "A heap of luggage crashes into the marked circle for moderate damage and a short knockback burst away from center.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "short", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Drops a luggage pile on a locked player position.",
+        "fullDescription": "The Bellhop Brawler calls down a rotating baggage carousel marker, then dumps a damaging luggage pile onto the locked location.",
+        "counterplay": "Leave the circle after it locks, then keep moving so the next carousel cannot catch you standing still."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Suitcases, luggage tags, velvet rope stanchions, brass sparks, dust puffs, and receipt-confetti burst outward from the impact.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "mascot-mauler-hug-the-brand",
+      "bossArchetypeId": "floor4-mascot-mauler",
+      "bossName": "Mascot Mauler",
+      "familyId": "floor4-headliners",
+      "attackName": "HUG THE BRAND",
+      "announcementText": "The merch table says consent is implied!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 8000,
+        "cooldownMs": 10000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-direction",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1300,
+        "shape": "cone",
+        "dangerColor": "hostile-red",
+        "description": "A wide red cone with foam-paw outlines locks from the mascot toward the player, showing the exact hug lane before the lunge.",
+        "metrics": [
+          { "id": "angle", "value": 80, "unit": "degrees" },
+          { "id": "range", "value": 24, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "The mascot lunges through the locked cone for heavy touch damage and brief shove pressure without tracking after the cue.",
+        "designValues": [
+          { "id": "damage-profile", "value": "heavy", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "medium", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Locks a broad mascot-lunge cone before charging.",
+        "fullDescription": "The Mascot Mauler plants, points the suit's foam grin toward the contestant, and surges through the warned cone.",
+        "counterplay": "Wait for the cone to stop tracking, then cut across the mascot's flank before the hug resolves."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Foam paw prints, loose mascot fur, confetti seams, cartoon impact stars, and sponsor stickers fly from the lunge.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "pyro-principal-compliance-burst",
+      "bossArchetypeId": "floor4-pyro-principal",
+      "bossName": "Pyro Principal",
+      "familyId": "floor4-headliners",
+      "attackName": "COMPLIANCE BURST",
+      "announcementText": "Safety third, spectacle first!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 8500,
+        "cooldownMs": 11000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position-with-offsets",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1400,
+        "shape": "multi-circle",
+        "dangerColor": "hostile-red",
+        "description": "Three red pyrotechnic circles lock around the player's last position with fuse lines and a visible countdown sparkle in each zone.",
+        "metrics": [
+          { "id": "count", "value": 3, "unit": "count" },
+          { "id": "radius", "value": 8, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Three pyrotechnic bursts detonate in the marked circles, dealing moderate damage and briefly leaving hot floor warnings.",
+        "designValues": [
+          { "id": "circle-count", "value": 3, "unit": "count" },
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "hazard-duration", "value": 2000, "unit": "milliseconds" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Locks three pyrotechnic blast circles around you.",
+        "fullDescription": "The Pyro Principal paints the floor with three obvious danger circles before detonating a rehearsed sponsor-safe blast pattern.",
+        "counterplay": "Thread between the circles after they lock and avoid stepping back into the brief hot-floor afterglow."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Fuse trails, spark fountains, flame jets, smoke donuts, heat shimmer, and paperwork ash erupt from every marked circle.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "stunt-captain-second-unit-drop",
+      "bossArchetypeId": "floor4-stunt-captain",
+      "bossName": "Stunt Captain",
+      "familyId": "floor4-headliners",
+      "attackName": "SECOND-UNIT DROP",
+      "announcementText": "No rehearsal, no residuals!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 11500,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1250,
+        "shape": "contracting-annulus",
+        "dangerColor": "hostile-red",
+        "description": "A red stunt-pad ring contracts toward the locked landing point, showing both the outer approach and the exact final impact band.",
+        "metrics": [
+          { "id": "start-radius", "value": 18, "unit": "feet" },
+          { "id": "end-radius", "value": 6, "unit": "feet" },
+          { "id": "ring-width", "value": 3, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "The captain drops into the contracted ring for heavy damage on the band and a smaller shove near the center.",
+        "designValues": [
+          { "id": "damage-profile", "value": "heavy", "unit": "descriptor" },
+          { "id": "center-knockback", "value": "medium", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Contracts a stunt landing ring before dropping in.",
+        "fullDescription": "The Stunt Captain marks a collapsing landing ring, then enters from above with a practiced fall that punishes late dodges.",
+        "counterplay": "Move through the ring early or stay well outside the start radius before the landing cue contracts."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Crash mats, safety wires, clipboard pages, cracked chalk marks, camera flashes, and dust plumes collapse into the landing.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "ringmaster-proxy-delegated-applause",
+      "bossArchetypeId": "floor4-ringmaster-proxy",
+      "bossName": "Ringmaster Proxy",
+      "familyId": "floor4-headliners",
+      "attackName": "DELEGATED APPLAUSE",
+      "announcementText": "Management appreciates your involuntary participation!",
+      "category": "debuff",
+      "timing": {
+        "firstEligibleAfterMs": 9500,
+        "cooldownMs": 12000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "self",
+        "lockAt": "self",
+        "tracksPlayer": false,
+        "origin": "follows-caster"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "self-aura",
+        "dangerColor": "hostile-red",
+        "description": "A red applause-meter aura pulses around the proxy while sponsor hands clap inward to mark the debuff radius before it snaps.",
+        "metrics": [{ "id": "radius", "value": 18, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "A radial management clap briefly reduces player movement and attack cadence if caught inside the announced aura.",
+        "designValues": [
+          { "id": "duration", "value": 3000, "unit": "milliseconds" },
+          { "id": "movement-speed-modifier", "value": -20, "unit": "percent" },
+          { "id": "attack-speed-modifier", "value": -15, "unit": "percent" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Pulses a self-centered debuff aura around the proxy.",
+        "fullDescription": "The Ringmaster Proxy broadcasts applause through the arena, punishing anyone standing inside the clearly marked aura.",
+        "counterplay": "Back out of the aura before it resolves, then re-engage after the applause-meter pulse ends."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Neon applause bars, floating approval stamps, red stage lights, paper hands, and executive silhouettes pulse from the proxy.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "camera-kraken-all-angles",
+      "bossArchetypeId": "floor4-camera-kraken",
+      "bossName": "Camera Kraken",
+      "familyId": "floor4-headliners",
+      "attackName": "ALL ANGLES",
+      "announcementText": "Every angle is your bad side!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 10000,
+        "cooldownMs": 12500,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "radial-projectiles",
+        "dangerColor": "hostile-red",
+        "description": "Eight red camera sightlines radiate from the boss in a fixed pattern, each with lens flares showing the projectile lanes before firing.",
+        "metrics": [{ "id": "projectile-count", "value": 8, "unit": "count" }]
+      },
+      "effect": {
+        "description": "Eight camera-flash bolts fire along the locked radial lanes for moderate damage with no tracking after the warning.",
+        "designValues": [
+          { "id": "projectile-count", "value": 8, "unit": "count" },
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Fires eight locked camera-flash lanes from the boss.",
+        "fullDescription": "The Camera Kraken unfurls lenses around itself, paints fixed radial lanes, and fires a synchronized flash volley.",
+        "counterplay": "Stand between the sightlines after they lock and avoid over-correcting into a neighboring lane."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Lens flares, shutter flashes, tripod sparks, ribbon cables, photo negatives, and afterimage streaks fill the radial volley.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "sponsor-sentinel-brand-safe-zone",
+      "bossArchetypeId": "floor4-sponsor-sentinel",
+      "bossName": "Sponsor Sentinel",
+      "familyId": "floor4-headliners",
+      "attackName": "BRAND-SAFE ZONE",
+      "announcementText": "Unauthorized movement voids the offer!",
+      "category": "defense",
+      "timing": {
+        "firstEligibleAfterMs": 10000,
+        "cooldownMs": 13000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "self",
+        "lockAt": "self",
+        "tracksPlayer": false,
+        "origin": "follows-caster"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "self-aura",
+        "dangerColor": "ability-theme",
+        "description": "Gold sponsor-safe rings pulse around the sentinel, clearly showing the defensive aura that is about to harden around it.",
+        "metrics": [{ "id": "radius", "value": 14, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "The sentinel gains a brief defensive sponsorship aura that reduces incoming damage and resists knockback without stacking.",
+        "designValues": [
+          { "id": "duration", "value": 4000, "unit": "milliseconds" },
+          { "id": "damage-reduction", "value": 35, "unit": "percent" },
+          { "id": "stacking", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Telegraphs a brief self-centered defensive aura.",
+        "fullDescription": "The Sponsor Sentinel signs itself into a temporary protection clause, visibly pulsing while the defensive aura hardens.",
+        "counterplay": "Pause burst damage during the gold aura or kite until the sponsorship pulse fades out."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Gold logo halos, contract seals, sparkling disclaimers, ribbon spotlights, and embossed shields orbit the sentinel.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "contract-collector-fine-print",
+      "bossArchetypeId": "floor4-contract-collector",
+      "bossName": "Contract Collector",
+      "familyId": "floor4-headliners",
+      "attackName": "FINE PRINT",
+      "announcementText": "You agreed to this three pages ago!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 10500,
+        "cooldownMs": 13500,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-direction",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A red contract lane rolls out from the collector with clause markers along both edges, showing width and travel line before the stampede.",
+        "metrics": [
+          { "id": "width", "value": 7, "unit": "feet" },
+          { "id": "max-range", "value": 34, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "A stampede of paper clauses sweeps the locked lane for heavy damage and a brief paper-cut slow.",
+        "designValues": [
+          { "id": "damage-profile", "value": "heavy", "unit": "descriptor" },
+          { "id": "slow-duration", "value": 2500, "unit": "milliseconds" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Rolls out a locked lane of punitive fine print.",
+        "fullDescription": "The Contract Collector unfurls a legal lane, then sends the fine print tearing down it in a straight, pre-announced sweep.",
+        "counterplay": "Step perpendicular to the lane after it locks; do not run along the contract where the clauses travel."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Paper sheets, red stamps, ink splashes, binding clips, signature glows, and shredded clauses blast down the lane.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "showrunner-final-cut",
+      "bossArchetypeId": "floor4-showrunner",
+      "bossName": "The Showrunner",
+      "familyId": "floor4-headliners",
+      "attackName": "FINAL CUT",
+      "announcementText": "Notes are closed. So are the exits.",
+      "category": "summon",
+      "timing": {
+        "firstEligibleAfterMs": 11000,
+        "cooldownMs": 15000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1700,
+        "shape": "spawn-circles",
+        "dangerColor": "hostile-red",
+        "description": "Five red production marks appear around the arena with slate countdowns, clearly showing every scripted summon circle before it opens.",
+        "metrics": [
+          { "id": "count", "value": 5, "unit": "count" },
+          { "id": "radius", "value": 6, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "The Showrunner opens five fixed production marks, each calling a bounded scripted add from the authored finale roster.",
+        "designValues": [
+          { "id": "summon-count", "value": 5, "unit": "count" },
+          { "id": "roster", "value": "finale-scripted-adds", "unit": "mode" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Telegraphs five fixed circles for finale add summons.",
+        "fullDescription": "The Showrunner calls the final scripted segment, opening five clearly warned production marks that bring in bounded arena adds.",
+        "counterplay": "Move away from the marked circles before they open, then thin the summoned adds without losing the boss timer."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Clapperboards, director notes, boom mics, spotlight snaps, red carpet strips, and audience silhouettes erupt from each mark.",
+        "castAnimationRequirement": "optional"
+      }
+    }
+  ]
+}

@@ -36,6 +36,15 @@ function waveWindow(world: GameWorld): Floor4WaveWindowState {
   return window;
 }
 
+function defeatActiveHeadliner(world: GameWorld): void {
+  const encounter = arena(world).activeHeadliner;
+  if (!encounter?.bossEid) {
+    throw new Error('expected an active Headliner');
+  }
+  world.stores.health.current[encounter.bossEid] = 0;
+  advance(world, 1);
+}
+
 /** Enemies actually standing in the arena (corpses excluded). */
 function liveEnemies(world: GameWorld): number[] {
   return [...query(world.ecs, [Enemy])].filter((eid) => !hasComponent(world.ecs, eid, DeathTimer));
@@ -200,6 +209,7 @@ describe('floor4 gate telegraphs', () => {
     const world = setupFloor4(2024);
     advance(world, phase.countdownMs);
     advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
     advance(world, phase.headlineWindowMs);
     expect(arena(world).phase).toEqual({ kind: 'INTERMISSION', act: 1 });
 
@@ -296,10 +306,11 @@ describe('floor4 multi-act wave hand-off', () => {
 
       // Boundary: the act's survivors are cut and the window is torn down.
       advance(world, phase.waveWindowMs);
-      expect(arena(world).phase).toEqual({ kind: 'HEADLINE', act, cleared: true });
+      expect(arena(world).phase).toEqual({ kind: 'HEADLINE', act, cleared: false });
       expect(arena(world).waves).toBeUndefined();
-      expect(liveEnemies(world)).toHaveLength(0);
+      expect(liveEnemies(world)).toHaveLength(1);
 
+      defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
     }
@@ -319,6 +330,7 @@ describe('floor4 concurrency cap and spawn debt', () => {
     advance(world, phase.countdownMs);
     for (let act = 1; act < phase.actCount; act += 1) {
       advance(world, phase.waveWindowMs);
+      defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
     }
@@ -400,7 +412,7 @@ describe('floor4 concurrency cap and spawn debt', () => {
 
     expect(arena(world).phase.kind).toBe('HEADLINE');
     expect(arena(world).waves).toBeUndefined();
-    expect(liveEnemies(world)).toHaveLength(0);
+    expect(liveEnemies(world)).toHaveLength(1);
     // Every released entry is accounted for: it either stood in the arena
     // (spawned, and then cut) or never reached it (discarded) — banked debt
     // dropped by the cut is discarded, not silently forgotten.
@@ -428,8 +440,8 @@ describe('floor4 wave cut', () => {
     const telemetry = arena(world).waveTelemetry;
     // Everything the wave window owned is gone, and the state that owned it too.
     expect(telemetry.enemiesCut).toBe(ownedBefore);
-    expect(liveEnemies(world)).toHaveLength(0);
-    expect(query(world.ecs, [Enemy])).toHaveLength(0);
+    expect(liveEnemies(world)).toHaveLength(1);
+    expect(query(world.ecs, [Enemy])).toHaveLength(1);
     expect(arena(world).waves).toBeUndefined();
 
     // The cut is NOT a death: no XP, no gold, no drops, no death event, no kill.
