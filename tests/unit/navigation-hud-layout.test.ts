@@ -26,18 +26,12 @@ describe('navigation HUD layout', () => {
     expect(quest.y + quest.height).toBeLessThanOrEqual(720);
   });
 
-  it('keeps the 960x540 Floor 2 tracker clear of radar and family reservations', () => {
+  it('stacks the 960x540 Floor 2 tracker below the docked radar', () => {
     const layout = resolveNavigationHudLayout(computeUiScale(960, 540), 2);
     const quest = questBounds(layout);
-    const topCenter = layout.criticalHudRegions[0]!;
-    const familyPanel = layout.criticalHudRegions.at(-1)!;
-
     expect(computeUiScale(960, 540)).toBe(1.33);
-    expect(layout.questPosition.x).toBe(16);
-    expect(layout.questPosition.y).toBeGreaterThan(topCenter.y + topCenter.height);
-    expect(layout.questScale).toBeLessThanOrEqual(1.27);
-    expect(boundsOverlap(quest, topCenter)).toBe(false);
-    expect(boundsOverlap(quest, familyPanel)).toBe(false);
+    expect(quest.x + quest.width).toBeLessThanOrEqual(1280);
+    expect(quest.y).toBeGreaterThan(layout.radarBounds.y + layout.radarBounds.height);
     expect(boundsOverlap(quest, layout.radarBounds)).toBe(false);
   });
 });

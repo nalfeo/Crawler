@@ -57,13 +57,27 @@ function writeCollapsedPref(collapsed: boolean): void {
   }
 }
 
-export function fitQuestTrackerLines(
+/**
+ * Result of wrapping+truncating raw quest-tracker lines: the rendered body
+ * lines plus, for every raw (pre-wrap) line, the render-row it starts on —
+ * or -1 when that raw line was truncated away entirely. Callers that must
+ * position per-row UI (e.g. arrow toggles) against the *rendered* body need
+ * this mapping instead of the raw line index, since wrapping/truncation can
+ * both shift and drop rows.
+ */
+interface QuestTrackerLineFit {
+  readonly visible: string[];
+  readonly rawLineRenderRow: number[];
+}
+
+function fitQuestTrackerLinesWithRowMap(
   lines: readonly string[],
   maxChars = MAX_LINE_CHARS,
   maxLines = MAX_BODY_LINES,
-): string[] {
+): QuestTrackerLineFit {
   const wrapped: string[] = [];
-  for (const rawLine of lines) {
+  const wrappedSourceIndex: number[] = [];
+  lines.forEach((rawLine, rawIndex) => {
     const indent = rawLine.match(/^\s*/)?.[0] ?? '';
     const contIndent = `${indent}  `;
     // Use the tighter continuation budget so every pre-split chunk fits on
@@ -85,28 +99,46 @@ export function fitQuestTrackerLines(
         continue;
       }
       wrapped.push(current);
+      wrappedSourceIndex.push(rawIndex);
       current = `${contIndent}${word}`;
     }
     if (current.trim().length > 0) {
       wrapped.push(current);
+      wrappedSourceIndex.push(rawIndex);
     }
+  });
+  const truncated = wrapped.length > maxLines;
+  const visible = truncated ? wrapped.slice(0, maxLines) : wrapped;
+  if (truncated) {
+    visible[maxLines - 1] =
+      `${visible[maxLines - 1]!.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
   }
-  if (wrapped.length <= maxLines) {
-    return wrapped;
-  }
-  const visible = wrapped.slice(0, maxLines);
-  visible[maxLines - 1] =
-    `${visible[maxLines - 1]!.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
-  return visible;
+  const rawLineRenderRow = lines.map((_, rawIndex) => {
+    const row = wrappedSourceIndex.indexOf(rawIndex);
+    return row === -1 || row >= visible.length ? -1 : row;
+  });
+  return { visible, rawLineRenderRow };
+}
+
+export function fitQuestTrackerLines(
+  lines: readonly string[],
+  maxChars = MAX_LINE_CHARS,
+  maxLines = MAX_BODY_LINES,
+): string[] {
+  return fitQuestTrackerLinesWithRowMap(lines, maxChars, maxLines).visible;
 }
 
 export function createHudQuestTracker(
   scene: Phaser.Scene,
-  options: { parent?: Phaser.GameObjects.Container } = {},
+  options: {
+    parent?: Phaser.GameObjects.Container;
+    onToggleArrow?: (questId: string) => void;
+  } = {},
 ): {
   sync(world: GameWorld, playerEid?: number): void;
   setVisible(visible: boolean): void;
   getBounds(): ScreenBounds | null;
+  getArrowToggleBounds(): readonly { questId: string; bounds: ScreenBounds }[];
   destroy(): void;
 } {
   const root = scene.add.container(0, 0).setScrollFactor(0).setDepth(PIXEL_UI_DEPTH.panel);
@@ -178,6 +210,7 @@ export function createHudQuestTracker(
   let currentScale = 1;
   let lastWorld: GameWorld | null = null;
   let lastPlayerEid: number | undefined;
+  const arrowToggles = new Map<string, Phaser.GameObjects.Text>();
   chevron.setText(collapsed ? '▸' : '▾');
 
   // Tapping the title strip collapses/expands the tracker (mobile-friendly).
@@ -230,6 +263,9 @@ export function createHudQuestTracker(
       .slice(0, MAX_ACTIVE_QUESTS);
     if (active.length === 0) {
       body.setText('');
+      for (const toggle of arrowToggles.values()) {
+        toggle.setVisible(false);
+      }
       activeVisible = false;
       applyVisibility();
       return;
@@ -239,12 +275,21 @@ export function createHudQuestTracker(
     applyVisibility();
 
     const lines: string[] = [];
+    const titleRawIndexByQuestId = new Map<string, number>();
+    const visibleQuestIds = new Set(active.map((quest) => quest.questId));
+    for (const [questId, toggle] of arrowToggles) {
+      if (!visibleQuestIds.has(questId)) {
+        toggle.destroy();
+        arrowToggles.delete(questId);
+      }
+    }
     for (const quest of active) {
       const def = getQuestDef(quest.questId);
       if (!def) {
         continue;
       }
       const marker = quest.tracked ? '◆' : '◇';
+      titleRawIndexByQuestId.set(quest.questId, lines.length);
       lines.push(`${marker} ${def.title}`);
       if (quest.tracked) {
         const views = getQuestObjectiveViews(world, quest, playerEid);
@@ -256,7 +301,49 @@ export function createHudQuestTracker(
         }
       }
     }
-    body.setText(fitQuestTrackerLines(lines).join('\n'));
+    const fit = fitQuestTrackerLinesWithRowMap(lines);
+    body.setText(fit.visible.join('\n'));
+
+    const truncatedQuestIds = new Set<string>();
+    for (const quest of active) {
+      const rawIndex = titleRawIndexByQuestId.get(quest.questId);
+      const renderRow = rawIndex === undefined ? -1 : fit.rawLineRenderRow[rawIndex]!;
+      if (renderRow === -1) {
+        // The quest's title row was truncated out of the rendered body —
+        // never show or wire up a toggle whose row doesn't exist.
+        truncatedQuestIds.add(quest.questId);
+        const stale = arrowToggles.get(quest.questId);
+        if (stale) {
+          stale.setVisible(false);
+        }
+        continue;
+      }
+      let toggle = arrowToggles.get(quest.questId);
+      if (!toggle) {
+        toggle = scene.add
+          .text(NAV_QUEST_WIDTH - PAD, TITLE_H + 14, '', {
+            fontFamily: FONT_FAMILY,
+            fontSize: '8px',
+            fontStyle: 'bold',
+            color: COLORS.title,
+            stroke: '#02040a',
+            strokeThickness: 2,
+            padding: { top: 3, bottom: 2 },
+          })
+          .setOrigin(1, 0)
+          .setScrollFactor(0)
+          .setDepth(PIXEL_UI_DEPTH.content)
+          .setInteractive({ useHandCursor: true })
+          .setName(`quest-arrow-toggle:${quest.questId}`);
+        toggle.on('pointerdown', () => options.onToggleArrow?.(quest.questId));
+        root.add(toggle);
+        arrowToggles.set(quest.questId, toggle);
+      }
+      toggle
+        .setText(quest.showArrow === false ? '↑ OFF' : '↑ ON')
+        .setPosition(NAV_QUEST_WIDTH - PAD, TITLE_H + 14 + renderRow * 17)
+        .setVisible(masterVisible && activeVisible && !collapsed);
+    }
 
     panelHeight = collapsed
       ? TITLE_H + PAD
@@ -265,6 +352,12 @@ export function createHudQuestTracker(
     panel.setSize(NAV_QUEST_WIDTH, panelHeight);
     titleStrip.setPosition(2, 2).setSize(NAV_QUEST_WIDTH - 4, TITLE_H);
     body.setVisible(masterVisible && activeVisible && !collapsed);
+    for (const [questId, toggle] of arrowToggles) {
+      if (truncatedQuestIds.has(questId)) {
+        continue;
+      }
+      toggle.setVisible(masterVisible && activeVisible && !collapsed);
+    }
   }
 
   function getBounds(): ScreenBounds | null {
@@ -287,8 +380,33 @@ export function createHudQuestTracker(
     titleText.destroy();
     chevron.destroy();
     body.destroy();
+    for (const toggle of arrowToggles.values()) {
+      toggle.destroy();
+    }
+    arrowToggles.clear();
     root.destroy();
   }
 
-  return { sync, setVisible, getBounds, destroy };
+  function getArrowToggleBounds(): readonly { questId: string; bounds: ScreenBounds }[] {
+    if (!masterVisible || !activeVisible || collapsed) {
+      return [];
+    }
+    return [...arrowToggles.entries()].flatMap(([questId, toggle]) =>
+      toggle.visible
+        ? [
+            {
+              questId,
+              bounds: {
+                x: toggle.getBounds().x,
+                y: toggle.getBounds().y,
+                width: toggle.getBounds().width,
+                height: toggle.getBounds().height,
+              },
+            },
+          ]
+        : [],
+    );
+  }
+
+  return { sync, setVisible, getBounds, getArrowToggleBounds, destroy };
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { addComponent, query, set } from 'bitecs';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { Enemy, FamilyMembership, type GameWorld } from '../../src/core/index.js';
-import { BiomeType } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
@@ -109,6 +109,43 @@ describe('Floor 2 quadrant helpers', () => {
 });
 
 describe('Floor 2 director/runtime behavior', () => {
+  it('rejects the entrance and boss den as ambient spawn locations', () => {
+    const { world } = createFloor2World(86);
+    const floorMap = world.floorMap!;
+    const spawnRoom = floorMap.spawnRoom;
+    const bossDen = floorMap.roomGraph.getFirstRoomByRole(RoomRole.BOSS_DEN);
+    const territory = floorMap.roomGraph.getFirstRoomByRole(RoomRole.TERRITORY);
+
+    expect(spawnRoom).toBeDefined();
+    expect(bossDen).toBeDefined();
+    expect(territory).toBeDefined();
+
+    const entranceTile = floorMap.roomGraph.getRandomInteriorTile(
+      spawnRoom!.id,
+      new SeededRandom(1),
+    );
+    const denTile = floorMap.roomGraph.getRandomInteriorTile(bossDen!.id, new SeededRandom(2));
+    const validRoomTile = floorMap.roomGraph.getRandomInteriorTile(
+      territory!.id,
+      new SeededRandom(3),
+    );
+    expect(entranceTile).not.toBeNull();
+    expect(denTile).not.toBeNull();
+    expect(validRoomTile).not.toBeNull();
+
+    const entrance = floorMap.tileToWorld(entranceTile!.x, entranceTile!.y);
+    const den = floorMap.tileToWorld(denTile!.x, denTile!.y);
+    const validRoom = floorMap.tileToWorld(validRoomTile!.x, validRoomTile!.y);
+
+    expect(
+      floor2ScenarioTestSeams.isProtectedFloor2AmbientSpawn(world, entrance.x, entrance.y),
+    ).toBe(true);
+    expect(floor2ScenarioTestSeams.isProtectedFloor2AmbientSpawn(world, den.x, den.y)).toBe(true);
+    expect(
+      floor2ScenarioTestSeams.isProtectedFloor2AmbientSpawn(world, validRoom.x, validRoom.y),
+    ).toBe(false);
+  });
+
   it('maps ambient family archetypes to present-family indices', () => {
     const { world } = createFloor2World(87);
     expect(floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, 'goblin-grunt')).toBe(0);

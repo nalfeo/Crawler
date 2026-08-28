@@ -27,6 +27,7 @@ describe('weapon-telemetry', () => {
     const wt = createWeaponTelemetry();
     expect(wt.swings).toBe(0);
     expect(wt.accuracyMisses).toBe(0);
+    expect(wt.unattributedSwings).toBe(0);
     expect(wt.nextActivationId).toBe(0);
     expect(wt.currentActivationId).toBeUndefined();
     expect(wt.entityActivation.size).toBe(0);
@@ -74,6 +75,29 @@ describe('weapon-telemetry', () => {
       endWeaponActivation(world);
 
       expect(wt.nextActivationId).toBe(2);
+    });
+
+    it('tallies unattributed activations separately from ordinary swings', () => {
+      const world = createTestWorld();
+      world.weaponTelemetry = createWeaponTelemetry();
+      const wt = world.weaponTelemetry;
+
+      // An attributed cast (melee/ranged/magic/thrown).
+      beginWeaponActivation(world, true);
+      endWeaponActivation(world);
+      // A BEAM/TRAP cast: still a swing, but its damage entities never reach a
+      // tagging choke point, so it can never be counted as connecting.
+      beginWeaponActivation(world, false);
+      endWeaponActivation(world);
+
+      expect(wt.swings).toBe(2);
+      expect(wt.unattributedSwings).toBe(1);
+      // The rollup carries the flag so a player-facing consumer can suppress a
+      // 0% accuracy that is really "not measurable".
+      const summary = summarizeWeaponTelemetry(wt);
+      expect(summary.swings).toBe(2);
+      expect(summary.unattributedSwings).toBe(1);
+      expect(summary.accuracy).toBe(0);
     });
 
     it('does not tag attack entities spawned with no open activation', () => {

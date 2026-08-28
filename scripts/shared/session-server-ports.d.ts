@@ -2,10 +2,12 @@ export interface SessionServerPorts {
   readonly gamePort: number;
   readonly labPort: number;
   readonly devtoolsPort: number;
+  readonly e2eLabPort: number;
   readonly sidecarPort: number;
   readonly gameBaseUrl: string;
   readonly labBaseUrl: string;
   readonly devtoolsBaseUrl: string;
+  readonly e2eLabBaseUrl: string;
   readonly sidecarBaseUrl: string;
 }
 
