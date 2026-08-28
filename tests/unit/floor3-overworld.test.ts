@@ -21,6 +21,8 @@ import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
 import { _STARTER_OFFER_SIZE } from '../../src/game/floor3Recruiting.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
+import { GAME } from '../../src/shared/constants.js';
 
 function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
@@ -165,6 +167,41 @@ describe('Floor 3 overworld + wild spawns', () => {
     const manifest = getFloorManifest('floor3');
     expect(manifest).toBeDefined();
     world.elapsedMs = (manifest?.timer.durationMs ?? 0) + 1;
+    world.floorObjectiveTick?.(world);
+    expect(world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID)).toBe(true);
+    expect(world.state).toBe('game_over');
+  });
+
+  it('stops the countdown while the player stands in the Floor 3 entrance safe room', () => {
+    // Issue #3674: after Floor 1 the entrance room is a time-stopping safe room,
+    // so its credit must push the manifest deadline out by the time spent there.
+    const { world, playerEid } = createFloor3World(558);
+    const durationMs = getFloorManifest('floor3')?.timer.durationMs ?? 0;
+    const spawnRoom = world.floorMap?.spawnRoom;
+    expect(spawnRoom).toBeTruthy();
+
+    const center = world.floorMap!.tileToWorld(
+      spawnRoom!.bounds.x + Math.floor(spawnRoom!.bounds.width / 2),
+      spawnRoom!.bounds.y + Math.floor(spawnRoom!.bounds.height / 2),
+    );
+    world.stores.position.x[playerEid] = center.x;
+    world.stores.position.y[playerEid] = center.y;
+
+    const creditedFrames = 10;
+    for (let i = 0; i < creditedFrames; i += 1) {
+      safeRoomSystem(world);
+    }
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    expect(world.safeRoomTimerCreditMs).toBeCloseTo(creditedFrames * GAME.DELTA_MS, 6);
+
+    // The raw manifest wall alone no longer ends the floor...
+    world.elapsedMs = durationMs + 1;
+    world.floorObjectiveTick?.(world);
+    expect(world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID)).not.toBe(true);
+    expect(world.state).toBe('playing');
+
+    // ...but the credited deadline still does.
+    world.elapsedMs = durationMs + world.safeRoomTimerCreditMs + 1;
     world.floorObjectiveTick?.(world);
     expect(world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID)).toBe(true);
     expect(world.state).toBe('game_over');

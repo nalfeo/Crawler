@@ -1,0 +1,366 @@
+// Deterministic equipment tooltip scenarios for release UX baselines.
+(async () => {
+  if (document.fonts?.ready) await document.fonts.ready;
+  const probe = window.__uiProbe;
+  const scenario = new URLSearchParams(window.location.search).get('uxScenario');
+
+  await probe?.useRealGeneratedSprites?.();
+  probe?.seedAllGear?.();
+  probe?.openEquipmentOnly?.();
+
+  if (scenario === 'equipment-hover-equipped') {
+    probe?.equipInventoryItem?.('iron-helm');
+    // Drive the same public preview seam used by the real slot hover handler.
+    // Forcing a raw slot id bypassed the equipped-item lookup and produced an
+    // empty-slot screenshot rather than a truthful hover state.
+    probe?.selectEquipmentSlot?.('head');
+  } else if (scenario === 'equipment-hover-duplicate') {
+    probe?.equipInventoryItem?.('iron-helm');
+    probe?.seedAllGear?.();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    probe?.previewEquipmentBagItem?.('iron-helm');
+  } else if (scenario === 'equipment-hover-empty-slot') {
+    probe?.selectEquipmentSlot?.('feet');
+  } else if (scenario === 'equipment-hover-mixed-delta') {
+    probe?.equipInventoryItem?.('iron-breastplate');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const candidateKey = probe?.addGeneratedChestReplacement?.();
+    if (!candidateKey) throw new Error('Unable to seed the generated chest replacement.');
+    probe?.previewGeneratedEquipmentBagItem?.(candidateKey);
+    window.__visualReviewGeneratedCandidateKey = candidateKey;
+  } else if (scenario === 'equipment-hover-mixed-direct-deltas') {
+    probe?.equipInventoryItem?.('iron-breastplate');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const candidateKey = probe?.addGeneratedMixedDeltaChestReplacement?.();
+    if (!candidateKey) throw new Error('Unable to seed mixed-delta chest replacement.');
+    probe?.previewGeneratedEquipmentBagItem?.(candidateKey);
+    window.__visualReviewGeneratedCandidateKey = candidateKey;
+  } else if (
+    scenario === 'equipment-hover-ring-replacement' ||
+    scenario === 'equipment-hover-ring-ambiguity'
+  ) {
+    probe?.equipInventoryItem?.('band-of-fortune');
+    probe?.equipInventoryItem?.('signet-of-focus');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const candidateKey = probe?.addGeneratedRingReplacement?.();
+    if (!candidateKey) throw new Error('Unable to seed ring replacement.');
+    probe?.previewGeneratedEquipmentBagItem?.(candidateKey);
+    window.__visualReviewGeneratedCandidateKey = candidateKey;
+  } else if (
+    scenario === 'equipment-hover-bag-boundary' ||
+    scenario === 'equipment-hover-scrolled-bag-target'
+  ) {
+    probe?.equipInventoryItem?.('iron-helm');
+    probe?.seedOverflowBag?.(32);
+    window.__visualReviewBoundaryItemId = 'iron-helm';
+  } else if (scenario === 'equipment-hover-multi-hand-replacement') {
+    if (!probe?.seedMultiHandReplacement?.())
+      throw new Error('Unable to seed multi-hand replacement.');
+  } else {
+    throw new Error(`Unknown equipment UX scenario: ${scenario ?? '<missing>'}`);
+  }
+
+  const header = document.getElementById('app-header');
+  if (header) header.style.display = 'none';
+  const controls = document.getElementById('lab-controls');
+  if (controls) controls.style.display = 'none';
+  const host = document.getElementById('lab-canvas');
+  if (host) {
+    host.style.position = 'fixed';
+    host.style.left = '0';
+    host.style.top = '0';
+    host.style.width = '100vw';
+    host.style.height = '100vh';
+    host.style.zIndex = '9999';
+    host.style.background = '#000';
+  }
+
+  window.dispatchEvent(new Event('resize'));
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (scenario === 'equipment-hover-equipped') {
+    // Resize causes EquipmentUI to rebuild its pooled slot objects, which clears
+    // transient hover content. Invoke the real preview seam only after that final
+    // layout pass so this capture represents an actual equipped-item hover.
+    probe?.previewEquipmentSlot?.('head');
+  } else if (scenario === 'equipment-hover-empty-slot') {
+    // Recreate the actual bag-item hover after the final resize while retaining
+    // Feet's active outline as the preview target.
+    probe?.previewEquipmentBagItem?.('leather-boots');
+  } else if (
+    scenario === 'equipment-hover-bag-boundary' ||
+    scenario === 'equipment-hover-scrolled-bag-target'
+  ) {
+    probe?.scrollEquipmentBag?.(probe?.getEquipmentBagMaxScrollRow?.() ?? 0);
+    probe?.previewEquipmentBagItem?.(window.__visualReviewBoundaryItemId);
+  } else if (
+    scenario === 'equipment-hover-mixed-delta' ||
+    scenario === 'equipment-hover-mixed-direct-deltas' ||
+    scenario === 'equipment-hover-ring-replacement' ||
+    scenario === 'equipment-hover-ring-ambiguity'
+  ) {
+    probe?.previewGeneratedEquipmentBagItem?.(window.__visualReviewGeneratedCandidateKey);
+  } else if (scenario === 'equipment-hover-multi-hand-replacement') {
+    probe?.previewEquipmentBagItem?.('bone-club');
+  }
+  const slotIds = [
+    'head',
+    'neck',
+    'mainHand',
+    'chest',
+    'offHand',
+    'gloves',
+    'legs',
+    'ring1',
+    'feet',
+    'ring2',
+  ];
+  const panel = probe?.getEquipmentPanelBounds?.();
+  const regions = slotIds
+    .map((slotId) => {
+      const box = probe?.getEquipmentSlotBounds?.(slotId);
+      return box ? { id: `slot:${slotId}`, box, kind: 'slot', parentId: 'equipment-panel' } : null;
+    })
+    .filter(Boolean);
+  for (const slotId of slotIds) {
+    const box = probe?.getEquipmentSlotBounds?.(slotId);
+    const icon = probe?.getEquipmentSlotIconBounds?.(slotId);
+    if (!box || !icon) continue;
+    const safeInset = 6;
+    regions.push({
+      id: `slot:${slotId}.safe`,
+      box: {
+        x: box.x + safeInset,
+        y: box.y + safeInset,
+        width: box.width - safeInset * 2,
+        height: box.height - safeInset * 2,
+      },
+      kind: 'other',
+      parentId: `slot:${slotId}`,
+    });
+    regions.push({
+      id: `slot:${slotId}.icon`,
+      box: icon,
+      kind: 'icon',
+      parentId: `slot:${slotId}.safe`,
+    });
+  }
+  if (panel) regions.unshift({ id: 'equipment-panel', box: panel, kind: 'panel' });
+  const tooltip = probe?.getEquipmentTooltipBounds?.();
+  const flags = [];
+  const hoveredSlotId =
+    scenario === 'equipment-hover-equipped'
+      ? 'head'
+      : scenario === 'equipment-hover-empty-slot'
+        ? 'feet'
+        : null;
+  const hoveredSlot = hoveredSlotId ? probe?.getEquipmentSlotBounds?.(hoveredSlotId) : null;
+  const hoveredBagIndex =
+    scenario === 'equipment-hover-empty-slot'
+      ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'leather-boots')
+      : scenario === 'equipment-hover-duplicate'
+        ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'iron-helm')
+        : scenario === 'equipment-hover-multi-hand-replacement'
+          ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'bone-club')
+          : scenario === 'equipment-hover-bag-boundary' ||
+              scenario === 'equipment-hover-scrolled-bag-target'
+            ? probe?.getEquipmentBagItemIds?.().findLastIndex((itemId) => itemId === 'iron-helm')
+            : -1;
+  const hoveredBag =
+    hoveredBagIndex !== undefined && hoveredBagIndex >= 0
+      ? probe?.getEquipmentBagCellBounds?.(hoveredBagIndex)
+      : scenario === 'equipment-hover-mixed-delta' ||
+          scenario === 'equipment-hover-mixed-direct-deltas' ||
+          scenario === 'equipment-hover-ring-replacement' ||
+          scenario === 'equipment-hover-ring-ambiguity'
+        ? probe?.getGeneratedEquipmentBagCellBounds?.(window.__visualReviewGeneratedCandidateKey)
+        : null;
+  const hoverTarget = hoveredBag ?? hoveredSlot;
+  const hoverTargetId = hoveredBag
+    ? `hover-target:bag:${
+        scenario === 'equipment-hover-empty-slot'
+          ? 'leather-boots'
+          : scenario === 'equipment-hover-duplicate'
+            ? 'iron-helm'
+            : scenario === 'equipment-hover-bag-boundary' ||
+                scenario === 'equipment-hover-scrolled-bag-target'
+              ? 'iron-helm-boundary'
+              : scenario === 'equipment-hover-multi-hand-replacement'
+                ? 'bone-club'
+                : 'generated-chest'
+      }`
+    : hoveredSlotId
+      ? `hover-target:${hoveredSlotId}`
+      : null;
+  if (hoverTarget && hoverTargetId) {
+    // The hover target and tooltip share a parent so the deterministic reviewer
+    // hard-fails any overlap instead of leaving occlusion to the LLM.
+    regions.push({
+      id: hoverTargetId,
+      box: hoverTarget,
+      kind: 'slot',
+      parentId: 'hover-context',
+    });
+  }
+  if (tooltip)
+    regions.push({ id: 'tooltip', box: tooltip, kind: 'tooltip', parentId: 'hover-context' });
+  const tooltipCards = probe?.getEquipmentTooltipCardBounds?.() ?? [];
+  for (const [index, card] of tooltipCards.entries()) {
+    regions.push({
+      id: `tooltip-card:${index}`,
+      box: card,
+      kind: 'other',
+      parentId: 'tooltip-layout',
+    });
+  }
+  if (tooltip) {
+    let tooltipTextIndex = 0;
+    for (const run of probe?.getEquipmentTextRuns?.() ?? []) {
+      if (run.region !== 'inspector') continue;
+      const cardIndex = tooltipCards.findIndex((card) => {
+        const x = run.bounds.x + run.bounds.width / 2;
+        const y = run.bounds.y + run.bounds.height / 2;
+        return x >= card.x && x <= card.x + card.width && y >= card.y && y <= card.y + card.height;
+      });
+      // A parenthesized delta is an intentionally adjacent styled span of the
+      // preceding stat row, not an independently spaced label.
+      const isInlineDelta = /^\([+-]/.test(run.text);
+      regions.push({
+        id: `tooltip-text:${tooltipTextIndex++}`,
+        box: run.bounds,
+        kind: 'text',
+        parentId: isInlineDelta
+          ? `tooltip-inline-delta:${tooltipTextIndex}`
+          : cardIndex >= 0
+            ? `tooltip-card:${cardIndex}`
+            : 'tooltip',
+      });
+    }
+  }
+  if (hoverTarget && tooltip) {
+    const padding = 16;
+    const left = Math.max(0, Math.min(hoverTarget.x, tooltip.x) - padding);
+    const top = Math.max(0, Math.min(hoverTarget.y, tooltip.y) - padding);
+    const right = Math.max(hoverTarget.x + hoverTarget.width, tooltip.x + tooltip.width) + padding;
+    const bottom =
+      Math.max(hoverTarget.y + hoverTarget.height, tooltip.y + tooltip.height) + padding;
+    // Hover reviews inspect this interaction at readable scale. The full panel
+    // remains in declared geometry for placement context while Azure receives
+    // the target-and-card crop as its detailed inspection frame.
+    window.__visualReviewClip = { x: left, y: top, width: right - left, height: bottom - top };
+  }
+  if (
+    scenario === 'equipment-hover-mixed-delta' ||
+    scenario === 'equipment-hover-mixed-direct-deltas' ||
+    scenario === 'equipment-hover-ring-replacement' ||
+    scenario === 'equipment-hover-ring-ambiguity' ||
+    scenario === 'equipment-hover-duplicate' ||
+    scenario === 'equipment-hover-multi-hand-replacement' ||
+    scenario === 'equipment-hover-bag-boundary' ||
+    scenario === 'equipment-hover-scrolled-bag-target'
+  ) {
+    const expectedCardCount =
+      scenario === 'equipment-hover-ring-ambiguity'
+        ? 4
+        : scenario === 'equipment-hover-multi-hand-replacement'
+          ? 3
+          : 2;
+    if (tooltipCards.length !== expectedCardCount) {
+      flags.push(
+        `Bag-hovered comparison must render ${expectedCardCount} cards; found ${tooltipCards.length}.`,
+      );
+    } else {
+      const [current, candidate] = tooltipCards;
+      if (expectedCardCount === 2) {
+        const horizontalGap = candidate.x - (current.x + current.width);
+        if (Math.abs(current.y - candidate.y) > 1) {
+          flags.push(
+            `Bag-hovered comparison cards must share a horizontal baseline; vertical delta is ${Math.abs(current.y - candidate.y).toFixed(1)}px.`,
+          );
+        }
+        if (horizontalGap < 8) {
+          flags.push(
+            `Bag-hovered comparison cards overlap or lack separation; horizontal gap is ${horizontalGap.toFixed(1)}px.`,
+          );
+        }
+      } else if (expectedCardCount === 3) {
+        if (tooltipCards.some((card) => Math.abs(card.y - current.y) > 1)) {
+          flags.push('Multi-hand replacement cards must share one horizontal baseline.');
+        }
+      } else {
+        const [topLeft, topRight, bottomLeft, bottomRight] = tooltipCards;
+        if (
+          Math.abs(topLeft.y - topRight.y) > 1 ||
+          Math.abs(bottomLeft.y - bottomRight.y) > 1 ||
+          Math.abs(topLeft.x - bottomLeft.x) > 1 ||
+          Math.abs(topRight.x - bottomRight.x) > 1
+        ) {
+          flags.push('Ring ambiguity cards must form a 2×2 comparison grid.');
+        }
+      }
+      const tooltipRuns = probe?.getEquipmentTextRuns?.() ?? [];
+      const candidateTitle = tooltipRuns.find((run) =>
+        scenario === 'equipment-hover-mixed-delta'
+          ? run.text === 'Runed Chain Hauberk'
+          : scenario === 'equipment-hover-mixed-direct-deltas'
+            ? run.text === 'Tempered Chain Hauberk'
+            : scenario === 'equipment-hover-ring-replacement' ||
+                scenario === 'equipment-hover-ring-ambiguity'
+              ? run.text === 'Polished Fortune Band'
+              : run.text === 'Iron Helm',
+      );
+      const candidateLabel = tooltipRuns.find((run) => run.text === 'CANDIDATE');
+      if (
+        candidateTitle &&
+        candidateLabel &&
+        Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y) > 1
+      ) {
+        flags.push(
+          `Bag-hovered candidate title and state label must share a top edge; vertical delta is ${Math.abs(candidateTitle.bounds.y - candidateLabel.bounds.y).toFixed(1)}px.`,
+        );
+      }
+      if (hoverTarget && tooltipCards.some((card) => card.x + card.width > hoverTarget.x - 14)) {
+        flags.push('Bag-hovered comparison cards intrude into the hovered Bag item clearance.');
+      }
+    }
+  }
+  const doll = probe?.getEquipmentDollBounds?.();
+  if (doll) regions.push({ id: 'paper-doll', box: doll, kind: 'panel' });
+  const stats = probe?.getEquipmentStatsBounds?.();
+  if (stats) regions.push({ id: 'stats-panel', box: stats, kind: 'panel' });
+  const bag = probe?.getEquipmentBagColumnBounds?.();
+  if (bag) regions.push({ id: 'bag-panel', box: bag, kind: 'panel' });
+  const headerIds = new Map([
+    ['Equipment', 'header:equipment'],
+    ['Stats', 'header:stats'],
+    ['Bag', 'header:bag'],
+  ]);
+  for (const run of probe?.getEquipmentTextRuns?.() ?? []) {
+    const id = headerIds.get(run.text);
+    if (id) regions.push({ id, box: run.bounds, kind: 'header' });
+  }
+  if (scenario === 'equipment-hover-empty-slot') {
+    const tooltipRuns = (probe?.getEquipmentTextRuns?.() ?? []).filter(
+      (run) => run.region === 'inspector',
+    );
+    const title = tooltipRuns.find((run) => run.text === 'Leather Boots');
+    const state = tooltipRuns.find((run) => run.text === 'CANDIDATE');
+    if (title && state) {
+      const titleCenter = title.bounds.y + title.bounds.height / 2;
+      const stateCenter = state.bounds.y + state.bounds.height / 2;
+      const delta = Math.abs(titleCenter - stateCenter);
+      if (delta > 1) {
+        flags.push(`Tooltip title and state label centers differ by ${delta.toFixed(1)}px.`);
+      }
+    }
+  }
+  if (hoveredSlotId && !probe?.isEquipmentTooltipTopmost?.()) {
+    flags.push('Tooltip is behind another equipment-panel element.');
+  }
+  window.__visualReview = {
+    surface: 'equipment panel',
+    regions,
+    expect: { tooltipAfterHover: true },
+    flags,
+  };
+  window.__visualReviewHoverPoint = null;
+})();

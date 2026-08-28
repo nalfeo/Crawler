@@ -12,6 +12,7 @@ import type { VisionProvider } from './provider/vision-types.js';
 import { loadRunSummary, rejudgeRun, repostprocessRun } from './rerun.js';
 import type { RunSummary } from './run-artifacts.js';
 import type { RunStore } from './store/types.js';
+import type { MonotonicNow } from './pipeline-timing.js';
 
 const runStageOutputSchema = z
   .object({
@@ -61,6 +62,7 @@ export interface ResumableAssetRunOptions {
   readonly visionProvider: VisionProvider | null;
   readonly env: NodeJS.ProcessEnv;
   readonly now?: () => Date;
+  readonly monotonicNow?: MonotonicNow;
 }
 
 export interface ResumableAssetRunResult {
@@ -89,6 +91,7 @@ export async function runResumableAssetRun(
         repoRoot: options.repoRoot,
         store: options.store,
         maxAttempts: 1,
+        ...(options.monotonicNow ? { monotonicNow: options.monotonicNow } : {}),
       });
       return {
         briefId: result.summary.brief,

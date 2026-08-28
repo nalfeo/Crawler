@@ -12,8 +12,8 @@
  * `docs/knowledge/adr/` for the pattern rationale.
  *
  * Safety:
- * - The underlying `AudioContext` is created lazily (first `play()` call)
- *   and only if the browser exposes it; every operation is wrapped so a
+ * - The underlying `AudioContext` is created lazily from the first user input
+ *   (or `play()` if necessary) and only if the browser exposes it; every operation is wrapped so a
  *   missing/blocked context (headless test runner, autoplay policy, no audio
  *   hardware) degrades to a silent no-op and NEVER throws into the caller —
  *   gameplay must never break because audio failed.
@@ -95,6 +95,7 @@ export function createAudioCueEngine(): AudioCueEngine {
   let ctx: AudioContext | null = null;
   let disposed = false;
   const activeVoices = new Set<Voice>();
+  let listeningForActivation = false;
 
   function ensureContext(): AudioContext | null {
     if (disposed) return null;
@@ -107,6 +108,50 @@ export function createAudioCueEngine(): AudioCueEngine {
       ctx = null;
     }
     return ctx;
+  }
+
+  function removeActivationListeners(): void {
+    if (
+      !listeningForActivation ||
+      typeof window === 'undefined' ||
+      typeof window.removeEventListener !== 'function'
+    )
+      return;
+    window.removeEventListener('keydown', unlockFromUserGesture, true);
+    window.removeEventListener('pointerdown', unlockFromUserGesture, true);
+    window.removeEventListener('touchstart', unlockFromUserGesture, true);
+    listeningForActivation = false;
+  }
+
+  function unlockFromUserGesture(): void {
+    const audioCtx = ensureContext();
+    if (!audioCtx) {
+      removeActivationListeners();
+      return;
+    }
+    if (audioCtx.state === 'running') {
+      removeActivationListeners();
+      return;
+    }
+    if (audioCtx.state === 'closed') {
+      removeActivationListeners();
+      return;
+    }
+    void audioCtx
+      .resume()
+      .then(() => {
+        if (audioCtx.state === 'running') removeActivationListeners();
+      })
+      .catch(() => {
+        // Autoplay-blocked contexts retry on the next genuine user gesture.
+      });
+  }
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('keydown', unlockFromUserGesture, true);
+    window.addEventListener('pointerdown', unlockFromUserGesture, true);
+    window.addEventListener('touchstart', unlockFromUserGesture, true);
+    listeningForActivation = true;
   }
 
   function disconnectVoice(voice: Voice): void {
@@ -219,6 +264,7 @@ export function createAudioCueEngine(): AudioCueEngine {
       if (disposed) return;
       clearAllVoices();
       disposed = true;
+      removeActivationListeners();
       const closingCtx = ctx;
       ctx = null;
       if (closingCtx) {
