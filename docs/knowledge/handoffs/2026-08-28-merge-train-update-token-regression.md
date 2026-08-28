@@ -10,7 +10,7 @@ DevOps Engineer
 
 ## Systems touched
 
-merge-train, ci-policy
+ci-policy
 
 ## Apples
 
@@ -46,3 +46,27 @@ reconciler explicitly selects `CRAWLER_CI_PAT || GITHUB_TOKEN` for
 Recent Merge Train run `33201981006` confirmed the workflow still executes the
 trusted default-branch reconcile and quarantine-repair steps. This change is
 CI tooling only; no shipped runtime artifact is affected.
+
+## Retrospective
+
+### Lessons Learned
+
+Credential-contract regressions are easiest to diagnose by comparing the
+workflow environment against the helper that resolves the credential, not by
+starting with new retry or quarantine logic. The intended
+`CRAWLER_CI_PAT || GITHUB_TOKEN` fallback already existed, so the minimal repair
+was to restore the missing workflow input.
+
+### Mistakes Made
+
+The initial handoff used the local subsystem name `merge-train` as a system
+slug even though `docs/systems/README.md` canonicalizes this area as
+`ci-policy`. It also stopped before the required retrospective block, which
+would have let the current advisory lint skip the most useful session lessons.
+
+### Opportunities for Future Improvement
+
+The handoff checker could reject new handoffs that omit `## Retrospective`
+instead of grandfathering every file without that heading. That would catch the
+same omission immediately while preserving existing archived handoffs through a
+dated or explicit allowlist.
