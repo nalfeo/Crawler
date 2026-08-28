@@ -198,6 +198,7 @@ export function createDefaultReaders(): HostReaders {
         return {
           blockSizeBytes: Number(stats.bsize),
           totalBlocks: Number(stats.blocks),
+          freeBlocks: Number(stats.bfree),
           availableBlocks: Number(stats.bavail),
         };
       } catch {

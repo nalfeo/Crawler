@@ -111,6 +111,8 @@ export interface HostSample {
   readonly cgroupCpuPct: number | null;
   readonly cgroupCpuThrottledPct: number | null;
   readonly cgroupMemoryCurrentBytes: number | null;
+  /** True when the charge above came from an ancestor cgroup (see reader doc). */
+  readonly cgroupMemoryFromAncestor: boolean | null;
   readonly cgroupMemoryUsedPct: number | null;
   readonly loadAvg1: number;
   readonly loadPerCore: number;
@@ -193,9 +195,14 @@ export interface HostReaders {
   loadavg(): readonly number[];
   platform(): string;
   arch(): string;
-  statfs(
-    path: string,
-  ): { blockSizeBytes: number; totalBlocks: number; availableBlocks: number } | null;
+  statfs(path: string): {
+    blockSizeBytes: number;
+    totalBlocks: number;
+    /** Blocks free including the root-reserved pool (`bfree`). */
+    freeBlocks: number;
+    /** Blocks an unprivileged writer may actually use (`bavail`). */
+    availableBlocks: number;
+  } | null;
   now(): number;
   env(name: string): string | undefined;
 }
@@ -311,7 +318,7 @@ export function memoryFromOs(totalBytes: number, freeBytes: number): MemoryInfo 
 export function cgroupPathsFromProc(
   procSelfCgroup: string,
   mountRoot = '/sys/fs/cgroup',
-): { version: 'v1' | 'v2'; memoryDirs: string[]; cpuDirs: string[] } {
+): { version: 'v1' | 'v2'; memoryDirs: string[]; cpuDirs: string[]; cpuacctDirs: string[] } {
   const lines = procSelfCgroup
     .split('\n')
     .map((line) => line.trim())
@@ -319,7 +326,7 @@ export function cgroupPathsFromProc(
   const v2Line = lines.find((line) => line.startsWith('0::'));
   if (v2Line) {
     const dirs = ancestorDirs(mountRoot, v2Line.slice('0::'.length));
-    return { version: 'v2', memoryDirs: dirs, cpuDirs: dirs };
+    return { version: 'v2', memoryDirs: dirs, cpuDirs: dirs, cpuacctDirs: dirs };
   }
   const controllerDirs = (controller: string): string[] => {
     const line = lines.find((entry) => entry.split(':')[1]?.split(',').includes(controller));
@@ -330,6 +337,7 @@ export function cgroupPathsFromProc(
     version: 'v1',
     memoryDirs: controllerDirs('memory'),
     cpuDirs: controllerDirs('cpu'),
+    cpuacctDirs: controllerDirs('cpuacct'),
   };
 }
 
@@ -483,32 +491,97 @@ function tighter(current: number | null, candidate: number | null): number | nul
   return current === null ? candidate : Math.min(current, candidate);
 }
 
-/** Read the cgroup CPU counters for the leaf cgroup, when available. */
+/**
+ * Cumulative cgroup CPU counters for the leaf cgroup, normalized to the v2
+ * shape (microseconds) so v1 and v2 hosts produce the same series.
+ *
+ * v1 keeps the same numbers in `cpuacct.usage` (nanoseconds) and reports
+ * throttling in `cpu.stat` as `throttled_time` (also nanoseconds).
+ */
 export function readCgroupCpuSnapshot(readers: HostReaders): CgroupCpuSnapshot | null {
   const procSelf = readers.readText('/proc/self/cgroup');
   if (procSelf === null) return null;
-  const { version, cpuDirs } = cgroupPathsFromProc(procSelf);
-  if (version !== 'v2') return null;
-  for (const dir of cpuDirs) {
-    const raw = readers.readText(`${dir}/cpu.stat`);
-    if (raw !== null) return parseCgroupCpuStat(raw);
+  const { version, cpuDirs, cpuacctDirs } = cgroupPathsFromProc(procSelf);
+  if (version === 'v2') {
+    for (const dir of cpuDirs) {
+      const raw = readers.readText(`${dir}/cpu.stat`);
+      if (raw !== null) return parseCgroupCpuStat(raw);
+    }
+    return null;
+  }
+  return readCgroupV1CpuSnapshot(
+    cpuacctDirs.map((dir) => readers.readText(`${dir}/cpuacct.usage`)),
+    cpuacctDirs.map((dir) => readers.readText(`${dir}/cpuacct.stat`)),
+    cpuDirs.map((dir) => readers.readText(`${dir}/cpu.stat`)),
+  );
+}
+
+/** Build a v2-shaped snapshot from cgroup v1 `cpuacct.*` + `cpu.stat` contents. */
+export function readCgroupV1CpuSnapshot(
+  usageTexts: ReadonlyArray<string | null>,
+  cpuacctStatTexts: ReadonlyArray<string | null>,
+  cpuStatTexts: ReadonlyArray<string | null>,
+): CgroupCpuSnapshot | null {
+  const usageNs = firstNumber(usageTexts);
+  const cpuacctStat = firstParsed(cpuacctStatTexts, parseCgroupKeyedStat);
+  const cpuStat = firstParsed(cpuStatTexts, parseCgroupKeyedStat);
+  if (usageNs === null && cpuacctStat === null && cpuStat === null) return null;
+  // cpuacct.stat is in USER_HZ (100 Hz on every Linux target) = 10_000 usec.
+  const fromUserHz = (value: number | undefined): number | null =>
+    value === undefined ? null : value * 10_000;
+  return {
+    usageUsec: usageNs === null ? null : Math.round(usageNs / 1000),
+    userUsec: fromUserHz(cpuacctStat?.user),
+    systemUsec: fromUserHz(cpuacctStat?.system),
+    nrThrottled: cpuStat?.nr_throttled ?? null,
+    throttledUsec:
+      cpuStat?.throttled_time === undefined ? null : Math.round(cpuStat.throttled_time / 1000),
+  };
+}
+
+function firstNumber(texts: ReadonlyArray<string | null>): number | null {
+  for (const text of texts) {
+    if (text === null) continue;
+    const value = Number(text.trim());
+    if (Number.isFinite(value) && value >= 0) return value;
   }
   return null;
 }
 
-/** Current cgroup memory charge (includes reclaimable page cache). */
-export function readCgroupMemoryCurrent(readers: HostReaders): number | null {
+function firstParsed<T>(texts: ReadonlyArray<string | null>, parse: (text: string) => T): T | null {
+  for (const text of texts) {
+    if (text !== null) return parse(text);
+  }
+  return null;
+}
+
+/**
+ * Current cgroup memory charge (includes reclaimable page cache), read from the
+ * deepest cgroup directory that is actually visible.
+ *
+ * Usage is hierarchical, so an ancestor's `memory.current` also counts sibling
+ * workloads and can overstate ours. Reading only the leaf is not an option
+ * either: under a cgroup namespace (the common containerized case, including
+ * cloud agent sessions) the path in /proc/self/cgroup does not exist inside the
+ * mounted view at all, so a leaf-only read reports nothing. The compromise is
+ * to take the deepest visible directory and say so — `fromAncestor` marks a
+ * reading that may include siblings, and the report surfaces that caveat rather
+ * than presenting it as ours.
+ */
+export function readCgroupMemoryCurrent(
+  readers: HostReaders,
+): { bytes: number; fromAncestor: boolean } | null {
   const procSelf = readers.readText('/proc/self/cgroup');
   if (procSelf === null) return null;
   const { version, memoryDirs } = cgroupPathsFromProc(procSelf);
-  for (const dir of memoryDirs) {
+  for (const [index, dir] of memoryDirs.entries()) {
     const raw =
       version === 'v2'
         ? readers.readText(`${dir}/memory.current`)
         : readers.readText(`${dir}/memory.usage_in_bytes`);
     if (raw === null) continue;
     const value = Number(raw.trim());
-    if (Number.isFinite(value) && value >= 0) return value;
+    if (Number.isFinite(value) && value >= 0) return { bytes: value, fromAncestor: index > 0 };
   }
   return null;
 }
@@ -586,7 +659,6 @@ export function collectSample(
   const loadAvg1 = readers.loadavg()[0] ?? 0;
   const statfs = readers.statfs(diskPath);
   const diskFreeBytes = statfs ? statfs.blockSizeBytes * statfs.availableBlocks : null;
-  const diskTotalBytes = host.diskTotalBytes;
 
   return {
     state,
@@ -602,10 +674,11 @@ export function collectSample(
       swapUsedBytes: memory.swapUsedBytes,
       cgroupCpuPct,
       cgroupCpuThrottledPct: throttledPct,
-      cgroupMemoryCurrentBytes: cgroupMemoryCurrent,
+      cgroupMemoryCurrentBytes: cgroupMemoryCurrent?.bytes ?? null,
+      cgroupMemoryFromAncestor: cgroupMemoryCurrent?.fromAncestor ?? null,
       cgroupMemoryUsedPct:
         cgroupMemoryCurrent !== null && cgroupLimit !== null && cgroupLimit > 0
-          ? toPct(cgroupMemoryCurrent / cgroupLimit)
+          ? toPct(cgroupMemoryCurrent.bytes / cgroupLimit)
           : null,
       loadAvg1,
       loadPerCore: host.effectiveCpus > 0 ? round(loadAvg1 / host.effectiveCpus, 3) : loadAvg1,
@@ -613,12 +686,26 @@ export function collectSample(
       memoryPressureSomeAvg10: readPressure(readers, 'memory'),
       ioPressureSomeAvg10: readPressure(readers, 'io'),
       diskFreeBytes,
-      diskUsedPct:
-        diskFreeBytes !== null && diskTotalBytes !== null && diskTotalBytes > 0
-          ? toPct((diskTotalBytes - diskFreeBytes) / diskTotalBytes)
-          : null,
+      // `df` semantics: the root-reserved pool (blocks - bfree - bavail) is
+      // neither used nor available, so counting it as used would report ~95%
+      // on an ext4 volume that df calls 90%.
+      diskUsedPct: statfs
+        ? diskUsedPct(statfs.totalBlocks, statfs.freeBlocks, statfs.availableBlocks)
+        : null,
     },
   };
+}
+
+/** Used percent the way `df` reports it: used / (used + available). */
+export function diskUsedPct(
+  totalBlocks: number,
+  freeBlocks: number,
+  availableBlocks: number,
+): number | null {
+  const used = totalBlocks - freeBlocks;
+  const denominator = used + availableBlocks;
+  if (!Number.isFinite(denominator) || denominator <= 0) return null;
+  return toPct(used / denominator);
 }
 
 function readPressure(readers: HostReaders, resource: string): number | null {
@@ -844,6 +931,11 @@ export function formatMarkdownSummary(report: HostReport): string {
       `(${fmtPct(headroom.peakMemoryUsedPct)})${headroom.cpuThrottled ? ', CPU throttled' : ''}.`,
   );
   for (const note of headroom.notes) lines.push(`- ${note}`);
+  if (report.samples.some((sample) => sample.cgroupMemoryFromAncestor === true)) {
+    lines.push(
+      '- cgroup memory was read from an ancestor cgroup (namespaced view): it may include sibling workloads.',
+    );
+  }
   if (!summary.cpuBusyPct && !summary.cgroupCpuPct) {
     lines.push('- No CPU rate observed: a rate needs two counter reads over a non-zero interval.');
   }

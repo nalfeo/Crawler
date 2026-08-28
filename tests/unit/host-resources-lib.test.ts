@@ -23,6 +23,9 @@ import {
   parseProcMeminfo,
   parsePressure,
   readCgroupLimits,
+  readCgroupMemoryCurrent,
+  readCgroupV1CpuSnapshot,
+  diskUsedPct,
   statsFor,
   summarizeSamples,
   type HostReaders,
@@ -47,7 +50,12 @@ function makeReaders(overrides: Partial<HostReaders> & { files?: Record<string, 
     loadavg: () => [1, 1, 1],
     platform: () => 'linux',
     arch: () => 'x64',
-    statfs: () => ({ blockSizeBytes: 4096, totalBlocks: 1000, availableBlocks: 250 }),
+    statfs: () => ({
+      blockSizeBytes: 4096,
+      totalBlocks: 1000,
+      freeBlocks: 300,
+      availableBlocks: 250,
+    }),
     now: () => {
       now += 1000;
       return now;
@@ -220,6 +228,61 @@ describe('cgroup discovery', () => {
   });
 });
 
+describe('cgroup usage counters', () => {
+  it('normalizes cgroup v1 cpuacct counters into the v2 microsecond shape', () => {
+    const snapshot = readCgroupV1CpuSnapshot(
+      ['2500000000\n'],
+      ['user 120\nsystem 30\n'],
+      ['nr_throttled 7\nthrottled_time 4000000\n'],
+    );
+    expect(snapshot).toEqual({
+      usageUsec: 2_500_000,
+      userUsec: 1_200_000,
+      systemUsec: 300_000,
+      nrThrottled: 7,
+      throttledUsec: 4000,
+    });
+  });
+
+  it('reports no v1 cpu snapshot when the controller files are all absent', () => {
+    expect(readCgroupV1CpuSnapshot([null], [null], [null])).toBeNull();
+  });
+
+  it('prefers the leaf memory charge and flags an ancestor reading', () => {
+    const withLeaf = makeReaders({
+      files: {
+        '/proc/self/cgroup': '0::/actions_job/abc',
+        '/sys/fs/cgroup/actions_job/abc/memory.current': `${GIB}`,
+        '/sys/fs/cgroup/actions_job/memory.current': `${5 * GIB}`,
+      },
+    });
+    expect(readCgroupMemoryCurrent(withLeaf)).toEqual({ bytes: GIB, fromAncestor: false });
+
+    // Under a cgroup namespace the leaf path is invisible; the deepest visible
+    // directory is used but flagged, because it also counts sibling workloads.
+    const leafUnreadable = makeReaders({
+      files: {
+        '/proc/self/cgroup': '0::/actions_job/abc',
+        '/sys/fs/cgroup/actions_job/memory.current': `${5 * GIB}`,
+      },
+    });
+    expect(readCgroupMemoryCurrent(leafUnreadable)).toEqual({
+      bytes: 5 * GIB,
+      fromAncestor: true,
+    });
+
+    expect(readCgroupMemoryCurrent(makeReaders())).toBeNull();
+  });
+});
+
+describe('disk accounting', () => {
+  it('excludes the root-reserved pool from both used and available', () => {
+    // 1000 total, 300 free, 250 available -> df reports 700/950 = 73.68%.
+    expect(diskUsedPct(1000, 300, 250)).toBe(73.68);
+    expect(diskUsedPct(0, 0, 0)).toBeNull();
+  });
+});
+
 describe('pressure stall parsing', () => {
   it('reads the some/full avg10 values', () => {
     const parsed = parsePressure(
@@ -348,7 +411,8 @@ describe('sampling', () => {
     expect(second.sample.cpuPressureSomeAvg10).toBe(1);
     // The fake CPU counters never move, so the rate is legitimately null.
     expect(second.sample.cpuBusyPct).toBeNull();
-    expect(second.sample.diskUsedPct).toBe(75);
+    // df semantics: used=700 blocks, available=250 -> 700/950, NOT 750/1000.
+    expect(second.sample.diskUsedPct).toBe(73.68);
   });
 
   it('caps effective CPUs at the host core count', () => {
@@ -437,6 +501,7 @@ function baseSample(overrides: Partial<HostSample> = {}): HostSample {
     cgroupCpuPct: null,
     cgroupCpuThrottledPct: null,
     cgroupMemoryCurrentBytes: null,
+    cgroupMemoryFromAncestor: null,
     cgroupMemoryUsedPct: null,
     loadAvg1: 1,
     loadPerCore: 0.5,
