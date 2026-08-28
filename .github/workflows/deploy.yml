@@ -373,6 +373,10 @@ jobs:
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push'))
     permissions:
+      # `actions: read` is what the admission script's run/job probes need; a
+      # job-level block replaces the workflow default entirely, so omitting it
+      # would 403 every demand probe and silently pin the gate to fail-open.
+      actions: read
       contents: read
       issues: read
       pull-requests: read

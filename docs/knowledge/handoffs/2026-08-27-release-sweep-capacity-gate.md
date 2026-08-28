@@ -28,8 +28,20 @@ plus `baseline-sweep`) fired on every push to main and could hold the entire
 ```
 constrained = queuedJobs > RELEASE_SWEEP_MAX_QUEUED_JOBS (0)
               || nonSweepJobs + latentBacklog > RELEASE_SWEEP_MAX_COMPETING_DEMAND (4)
-sweep       = !constrained || hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24)
+sweep       = !constrained
+              || (hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24) && !sweepInFlight)
 ```
+
+The staleness override is serialized against a sweep that is still running
+(review feedback on the PR): the `baselines` tip only moves when a sweep
+_completes_, so without `sweepInFlight` every push during the 60-120 minute
+window of the first catch-up sweep would stack another full-pool sweep.
+`inspectSweepInFlight` looks for an active `Release report leg` /
+`Baseline multi-floor sweep` job in any other active `deploy.yml` run, and the
+job-name prefixes are pinned against the real workflow by the parity test.
+Partial probe failure also fails open: any single failed probe discards a skip
+verdict, because the surviving signals can read as "constrained" while the
+missing one was the reason to sweep.
 
 Queue depth is the primary signal (review feedback on the PR): a _running_ job is
 already being served, but a _queued_ job is work blocked on a full pool that the

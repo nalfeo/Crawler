@@ -22,11 +22,17 @@
  *
  * The staleness override is what keeps this from silently ending the baseline
  * series: no matter how busy the pool stays, a release sweep always runs at
- * least once per `RELEASE_SWEEP_MIN_INTERVAL_HOURS`.
+ * least once per `RELEASE_SWEEP_MIN_INTERVAL_HOURS`. That override is serialized
+ * against a sweep that is still in flight, because the `baselines` tip only
+ * advances when a sweep *completes*: without it, every push during the 60-120
+ * minute window of the first catch-up sweep would launch another one.
  *
- * Every failure path **fails open** (sweep). Skipping is an optimization; a
- * broken demand probe or an unreadable `baselines` branch must never be able to
- * quietly stop baselining, which is a release-blocking regression signal.
+ * Every failure path **fails open** (sweep), including a *partial* one: if any
+ * probe fails, a skip verdict is discarded, because the surviving signals can
+ * read as "constrained" while the missing one was the reason to sweep. Skipping
+ * is an optimization; a broken demand probe or an unreadable `baselines` branch
+ * must never be able to quietly stop baselining, which is a release-blocking
+ * regression signal.
  *
  * CLI usage (from deploy.yml):
  *   GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo GITHUB_RUN_ID=...
@@ -69,6 +75,16 @@ export const RELEASE_SWEEP_MIN_INTERVAL_HOURS = 24;
 /** Branch the completed sweep publishes its baseline to. */
 export const BASELINES_BRANCH = 'baselines';
 
+/** Workflow file that owns the release sweep jobs. */
+export const RELEASE_WORKFLOW_FILE = 'deploy.yml';
+
+/**
+ * Job-name prefixes of the two release sweep legs, used to detect a sweep that
+ * is still in flight in an earlier release run. Pinned against the real job
+ * names in deploy.yml by `tests/unit/release-sweep-capacity-gate.test.ts`.
+ */
+export const RELEASE_SWEEP_JOB_PREFIXES = ['Release report leg', 'Baseline multi-floor sweep'];
+
 const HOUR_MS = 60 * 60 * 1000;
 
 /** Strict non-negative-integer env parse; anything malformed falls back. */
@@ -92,6 +108,7 @@ function parsePositiveInt(raw, fallback) {
  * @param {number} input.nonSweepJobs live non-sweep jobs competing for runners
  * @param {number} input.queuedJobs non-sweep jobs waiting for a free runner
  * @param {number} input.latentBacklog queued CI demand not yet scheduled
+ * @param {boolean} input.sweepInFlight a release sweep from an earlier run is still running
  * @param {Date|null} input.lastSweepAt when the last baseline was published
  * @param {Date} input.now current time
  * @returns {{ shouldSweep: boolean, reason: string, constrained: boolean, hoursSinceLastSweep: number|null }}
@@ -100,6 +117,7 @@ export function decideReleaseSweep({
   nonSweepJobs,
   queuedJobs = 0,
   latentBacklog,
+  sweepInFlight = false,
   lastSweepAt,
   now = new Date(),
   maxCompetingDemand = RELEASE_SWEEP_MAX_COMPETING_DEMAND,
@@ -142,6 +160,14 @@ export function decideReleaseSweep({
     };
   }
   if (hoursSinceLastSweep === null) {
+    if (sweepInFlight) {
+      return {
+        shouldSweep: false,
+        constrained,
+        hoursSinceLastSweep,
+        reason: `runner pool is constrained (${pressure}) and no previous baseline was found, but a release sweep from an earlier run is still in flight; skipping so catch-up sweeps do not stack`,
+      };
+    }
     return {
       shouldSweep: true,
       constrained,
@@ -150,6 +176,18 @@ export function decideReleaseSweep({
     };
   }
   if (hoursSinceLastSweep >= minIntervalHours) {
+    // The `baselines` tip only moves when a sweep *finishes*, so during the
+    // 60-120 minute window of an in-flight sweep every later release would see
+    // the same stale tip and pile on another full-pool sweep. One outstanding
+    // catch-up sweep at a time is enough to refresh the series.
+    if (sweepInFlight) {
+      return {
+        shouldSweep: false,
+        constrained,
+        hoursSinceLastSweep,
+        reason: `runner pool is constrained (${pressure}) and the last baseline is ${hoursSinceLastSweep.toFixed(1)}h old, but a release sweep from an earlier run is still in flight; skipping so catch-up sweeps do not stack`,
+      };
+    }
     return {
       shouldSweep: true,
       constrained,
@@ -183,9 +221,51 @@ export async function fetchLastSweepAt({ token, owner, repo, requestFn = request
 }
 
 /**
+ * Whether a release sweep started by an *earlier* release run is still running.
+ *
+ * The `baselines` tip only advances when a sweep completes, so without this the
+ * staleness override re-admits a full-pool sweep on every push during the
+ * 60-120 minute window of the first one.
+ */
+export async function inspectSweepInFlight({
+  token,
+  owner,
+  repo,
+  currentRunId,
+  requestFn = request,
+}) {
+  const current = Number(currentRunId);
+  const runs = [];
+  for (const status of ['in_progress', 'queued', 'waiting', 'pending', 'requested']) {
+    const { data } = await requestFn(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/${RELEASE_WORKFLOW_FILE}/runs?status=${encodeURIComponent(status)}&per_page=100`,
+    );
+    for (const run of data?.workflow_runs || []) {
+      if (Number(run.id) !== current) runs.push(run);
+    }
+  }
+  const unique = [...new Map(runs.map((run) => [Number(run.id), run])).values()];
+  for (const run of unique) {
+    const { data } = await requestFn(
+      token,
+      `/repos/${owner}/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`,
+    );
+    const sweeping = (data?.jobs || []).some(
+      (job) =>
+        job.status !== 'completed' &&
+        RELEASE_SWEEP_JOB_PREFIXES.some((prefix) => String(job.name ?? '').startsWith(prefix)),
+    );
+    if (sweeping) return true;
+  }
+  return false;
+}
+
+/**
  * Probe live demand and the baseline recency, then decide. Any probe failure is
- * reported through `warnings` and degraded to the fail-open inputs (no
- * measurable pressure / unknown last sweep), so the caller still sweeps.
+ * reported through `warnings` and forces the fail-open verdict (sweep): a
+ * missing pressure signal means the skip decision cannot be trusted, and losing
+ * a baseline is worse than spending runners.
  */
 export async function resolveReleaseSweepAdmission({
   token,
@@ -206,9 +286,10 @@ export async function resolveReleaseSweepAdmission({
   let nonSweepJobs = 0;
   let queuedJobs = 0;
   let latentBacklog = 0;
+  let sweepInFlight = false;
   let lastSweepAt = null;
 
-  const [demandResult, backlogResult, lastSweepResult] = await Promise.allSettled([
+  const [demandResult, backlogResult, lastSweepResult, inFlightResult] = await Promise.allSettled([
     inspectRunnerDemand({
       token,
       owner,
@@ -219,6 +300,7 @@ export async function resolveReleaseSweepAdmission({
     }),
     inspectLatentBacklog({ token, owner, repo, now, paginateFn }),
     fetchLastSweepAt({ token, owner, repo, requestFn }),
+    inspectSweepInFlight({ token, owner, repo, currentRunId, requestFn }),
   ]);
 
   if (demandResult.status === 'fulfilled') {
@@ -237,18 +319,48 @@ export async function resolveReleaseSweepAdmission({
   } else {
     warnings.push(`baselines branch probe failed: ${lastSweepResult.reason?.message}`);
   }
+  if (inFlightResult.status === 'fulfilled') {
+    sweepInFlight = inFlightResult.value;
+  } else {
+    warnings.push(`in-flight sweep probe failed: ${inFlightResult.reason?.message}`);
+  }
 
   const decision = decideReleaseSweep({
     nonSweepJobs,
     queuedJobs,
     latentBacklog,
+    sweepInFlight,
     lastSweepAt,
     now,
     maxCompetingDemand,
     maxQueuedJobs,
     minIntervalHours,
   });
-  return { ...decision, nonSweepJobs, queuedJobs, latentBacklog, lastSweepAt, warnings };
+  // A single failed probe is enough to invalidate a skip: the surviving signals
+  // can still read as "constrained" while the missing one was the reason to
+  // sweep. Degrading one input to zero is not fail-open on its own.
+  if (!decision.shouldSweep && warnings.length > 0) {
+    return {
+      ...decision,
+      shouldSweep: true,
+      reason: `${decision.reason} — but ${warnings.length} probe(s) failed, so the skip is not trustworthy; sweeping`,
+      nonSweepJobs,
+      queuedJobs,
+      latentBacklog,
+      sweepInFlight,
+      lastSweepAt,
+      warnings,
+    };
+  }
+  return {
+    ...decision,
+    nonSweepJobs,
+    queuedJobs,
+    latentBacklog,
+    sweepInFlight,
+    lastSweepAt,
+    warnings,
+  };
 }
 
 async function writeOutputs(path, result) {
@@ -313,7 +425,7 @@ export async function runFromEnv(env = process.env, resolveFn = resolveReleaseSw
   if (env.GITHUB_STEP_SUMMARY) {
     await appendFile(
       env.GITHUB_STEP_SUMMARY,
-      `### Release sweep admission\n\n- **Sweep:** ${result.shouldSweep ? 'yes' : 'skipped'}\n- **Reason:** ${result.reason}\n- **Measured:** ${result.queuedJobs} queued job(s), ${result.nonSweepJobs} active non-sweep job(s), ${result.latentBacklog} latent backlog\n`,
+      `### Release sweep admission\n\n- **Sweep:** ${result.shouldSweep ? 'yes' : 'skipped'}\n- **Reason:** ${result.reason}\n- **Measured:** ${result.queuedJobs} queued job(s), ${result.nonSweepJobs} active non-sweep job(s), ${result.latentBacklog} latent backlog, sweep in flight: ${result.sweepInFlight ? 'yes' : 'no'}\n`,
     );
   }
   return result;

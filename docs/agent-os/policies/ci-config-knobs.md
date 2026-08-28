@@ -100,7 +100,8 @@ silently stop. Decision logic lives in `.github/scripts/release-sweep-admission.
 ```
 constrained = queuedJobs > RELEASE_SWEEP_MAX_QUEUED_JOBS (0)
               || nonSweepJobs + latentBacklog > RELEASE_SWEEP_MAX_COMPETING_DEMAND (4)
-sweep       = !constrained || hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24)
+sweep       = !constrained
+              || (hoursSinceLastBaseline >= RELEASE_SWEEP_MIN_INTERVAL_HOURS (24) && !sweepInFlight)
 ```
 
 Queue depth is the primary signal: `queuedJobs` counts non-sweep jobs in a
@@ -117,11 +118,19 @@ the whole GitHub Free account pool, so admitting it while anything else is
 queued directly delays that work. `HOUR_MS` in the same script is a unit
 conversion, not a knob.
 
+The staleness override is serialized against a sweep that is still running: the
+`baselines` tip only advances when a sweep _completes_, so without `sweepInFlight`
+every push during the 60-120 minute window of the first catch-up sweep would
+launch another full-pool sweep on top of it.
+
 All three variables are parsed fail-safe: an empty or non-numeric value falls
 back to the default above (and a non-positive value falls back for the two
-positive-only knobs). Every probe failure (runner demand, latent
-backlog, `baselines` branch read) and a manual `workflow_dispatch` **fail open**
-— the sweep runs — because losing baseline data is worse than spending runners.
+positive-only knobs). Every probe failure (runner demand, latent backlog,
+`baselines` branch read, in-flight sweep) and a manual `workflow_dispatch`
+**fail open** — the sweep runs — because losing baseline data is worse than
+spending runners. That includes a _partial_ failure: if any single probe fails,
+a skip verdict is discarded, since the surviving signals can read as
+"constrained" while the missing one was the reason to sweep.
 
 ---
 

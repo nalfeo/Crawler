@@ -17,7 +17,9 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 interface WorkflowJob {
+  name?: string;
   needs?: string[];
+  permissions?: Record<string, string>;
   if?: string;
   outputs?: Record<string, string>;
   strategy?: {
@@ -77,6 +79,29 @@ describe('release sweep capacity gate wiring', () => {
     const strategy = job('release-report-sweep').strategy;
     expect(strategy?.['max-parallel']).toBe(Number(declared));
     expect((strategy?.matrix?.include ?? []).length).toBeGreaterThanOrEqual(Number(declared));
+  });
+
+  it('grants the gate the Actions read scope its probes require', () => {
+    // A job-level permissions block replaces the workflow default entirely, so
+    // without `actions: read` every runner/job probe 403s and the gate degrades
+    // to permanent fail-open.
+    expect(job('sweep-capacity-gate').permissions?.actions).toBe('read');
+  });
+
+  it('detects an in-flight sweep by the real sweep job names', () => {
+    const source = read('.github/scripts/release-sweep-admission.mjs');
+    const prefixes = [...source.matchAll(/RELEASE_SWEEP_JOB_PREFIXES = \[([^\]]+)\]/g)]
+      .flatMap((match) => [...match[1].matchAll(/'([^']+)'/g)])
+      .map((match) => match[1]);
+    expect(prefixes.length).toBeGreaterThan(0);
+    for (const jobId of ['release-report-sweep', 'baseline-sweep']) {
+      const jobName = job(jobId).name ?? '';
+      expect(
+        prefixes.some((prefix) => jobName.startsWith(prefix)),
+        `${jobId} ("${jobName}") must match a RELEASE_SWEEP_JOB_PREFIXES entry`,
+      ).toBe(true);
+    }
+    expect(source).toContain("RELEASE_WORKFLOW_FILE = 'deploy.yml'");
   });
 
   it('wires every operator knob into the gate step', () => {
