@@ -352,7 +352,9 @@ describe('MainGameScene UI exclusivity', () => {
       restoredTalkBounds,
       'Talk button should be visible after dialogue closes',
     ).not.toBeNull();
-    if (!restoredTalkBounds) return;
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
 
     await clickDesignPoint({
       x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
