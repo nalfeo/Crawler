@@ -77,6 +77,7 @@ import {
   type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
+import { hasFloorTimerExpired } from '../core/floor-timer.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { loadResources } from '../shared/data/resources.js';
@@ -822,9 +823,10 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
   }
 
-  // Check collapse timer and end floor if expired
-  const manifest = getFloorManifest('floor2');
-  if (manifest?.timer && world.elapsedMs >= manifest.timer.durationMs) {
+  // Check collapse timer and end floor if expired. The deadline is
+  // safe-room-credited (`hasFloorTimerExpired`), so the settlement entrance —
+  // Floor 2's safe room — stops the countdown while the player is inside it.
+  if (hasFloorTimerExpired(world, 'floor2')) {
     setGoalFlag(world, FLOOR2_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
   }
@@ -1582,7 +1584,7 @@ function collectGlobalFallbackZoneWeights(world: GameWorld): Map<string, number>
   return weights;
 }
 
-function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
+export function isProtectedFloor2AmbientSpawn(world: GameWorld, x: number, y: number): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) {
     return false;
@@ -1592,7 +1594,8 @@ function isBossDenSpawn(world: GameWorld, x: number, y: number): boolean {
   if (roomId < 0) {
     return false;
   }
-  return floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN;
+  const role = floorMap.roomGraph.get(roomId)?.role;
+  return role === RoomRole.BOSS_DEN || role === RoomRole.SPAWN;
 }
 
 function findNearestPassableTile(
@@ -1845,7 +1848,7 @@ export function floor2EnemyDirectorSystem(world: GameWorld): void {
       if (!candidate) {
         break;
       }
-      if (isBossDenSpawn(world, candidate.x, candidate.y)) {
+      if (isProtectedFloor2AmbientSpawn(world, candidate.x, candidate.y)) {
         continue;
       }
       spawnPoint = candidate;

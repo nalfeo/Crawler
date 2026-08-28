@@ -13,6 +13,7 @@ import {
   hasSubstantiveCopilotReview,
   isApprovedArtOnlyDiff,
   hasTrustedTrainPromotionCheck,
+  isAgentSessionRunning,
   isDuplicateDispatch,
   isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
@@ -20,6 +21,7 @@ import {
   isRecoveryStateSemanticallyEqual,
   isSelfRecoveryCheckRun,
   selfRecoveryWorkflowRunIds,
+  AGENT_SESSION_MAX_MINUTES,
   checkRunWorkflowRunId,
   isTrainFastPathPushRun,
   requiresAdminIntervention,
@@ -376,6 +378,149 @@ test('automationStallAction treats a same-fingerprint, different-url retry as wa
     automationStallAction({ state: staleAttempt2State, fingerprint: fingerprintRun2, now }),
     'release',
     'after the retry ceiling, a same-fingerprint url-only change must release rather than loop forever',
+  );
+});
+
+// ─── Agent-session liveness (PR #3778 / incident #3796) ─────────────────────
+//
+// Review-thread churn is deliberately excluded from blockerFingerprint, so a
+// dispatched agent session that is still investigating is indistinguishable
+// from a dead one by head SHA + fingerprint alone. Before this signal existed,
+// any recovery task that legitimately outlived AUTOMATION_STALE_MINUTES could
+// never converge: each window released and re-dispatched a fresh session until
+// the attempt ceiling filed a loop incident. On PR #3778 the ceiling fired four
+// minutes before the live session pushed its repair commit.
+
+test('isAgentSessionRunning only trusts a bounded, in-flight copilot session check', () => {
+  const now = new Date('2026-08-28T03:03:14.767Z');
+  const startedAt = (minutesAgo) => new Date(now.getTime() - minutesAgo * 60 * 1000).toISOString();
+
+  assert.equal(
+    isAgentSessionRunning([{ name: 'copilot', status: 'in_progress', started_at: startedAt(40) }], {
+      now,
+    }),
+    true,
+    'an in-flight copilot session check within the cap is live',
+  );
+  assert.equal(
+    isAgentSessionRunning([{ name: 'Copilot', status: 'queued', started_at: startedAt(1) }], {
+      now,
+    }),
+    true,
+    'the session check name match must be case-insensitive',
+  );
+  assert.equal(
+    isAgentSessionRunning([{ name: 'copilot', status: 'completed', started_at: startedAt(5) }], {
+      now,
+    }),
+    false,
+    'a completed session check is not liveness',
+  );
+  assert.equal(
+    isAgentSessionRunning(
+      [
+        {
+          name: 'copilot',
+          status: 'in_progress',
+          started_at: startedAt(AGENT_SESSION_MAX_MINUTES + 1),
+        },
+      ],
+      { now },
+    ),
+    false,
+    'a session older than the hard cap is treated as hung, never as liveness',
+  );
+  assert.equal(
+    isAgentSessionRunning([{ name: 'copilot', status: 'in_progress', started_at: 'not-a-date' }], {
+      now,
+    }),
+    false,
+    'an unboundable start time must not defer the ceiling',
+  );
+  assert.equal(
+    isAgentSessionRunning(
+      [{ name: 'Unit Tests', status: 'in_progress', started_at: startedAt(5) }],
+      {
+        now,
+      },
+    ),
+    false,
+    'an unrelated in-flight check is not an agent session',
+  );
+  assert.equal(isAgentSessionRunning(null, { now }), false, 'a missing check list is not liveness');
+});
+
+test('automationStallAction waits while the dispatched agent session is still running', () => {
+  const headSha = '4b7ddea2d805232a6b346fab8debe1fcac84a2e9';
+  const fingerprint = blockerFingerprint([
+    {
+      kind: 'ci-failure',
+      id: 'Headless Floor 1 Gate',
+      summary: 'Headless Floor 1 Gate concluded failure.',
+      url: 'https://github.com/nalfeo/Crawler/actions/runs/1/job/1',
+    },
+  ]);
+  const now = new Date('2026-08-28T03:03:14.767Z');
+  const staleAt = new Date(now.getTime() - 35 * 60 * 1000).toISOString();
+  const exhaustedState = makeState({
+    prNumber: 3778,
+    headSha,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [],
+    attempt: 2,
+    progressKey: automationProgressKey(headSha, fingerprint),
+    progressAt: staleAt,
+    updatedAt: staleAt,
+  });
+
+  assert.equal(
+    automationStallAction({ state: exhaustedState, headSha, fingerprint, now }),
+    'release',
+    'without a liveness signal the exhausted ceiling still releases (unchanged behaviour)',
+  );
+  assert.equal(
+    automationStallAction({
+      state: exhaustedState,
+      headSha,
+      fingerprint,
+      now,
+      agentSessionRunning: true,
+    }),
+    'wait',
+    'a demonstrably running session defers the exhausted ceiling instead of filing a loop incident',
+  );
+
+  const retryState = makeState({ ...exhaustedState, attempt: 1 });
+  assert.equal(
+    automationStallAction({ state: retryState, headSha, fingerprint, now }),
+    'retry',
+    'without a liveness signal a stale attempt=1 state still retries',
+  );
+  assert.equal(
+    automationStallAction({
+      state: retryState,
+      headSha,
+      fingerprint,
+      now,
+      agentSessionRunning: true,
+    }),
+    'wait',
+    'a running session must not be torn down and re-dispatched mid-flight',
+  );
+
+  // Liveness defers the ceiling; it never overrides real progress signals.
+  assert.equal(
+    automationStallAction({
+      state: exhaustedState,
+      headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      fingerprint,
+      now,
+      agentSessionRunning: true,
+    }),
+    'progressed',
+    'a head-SHA advance still reports progress even while a session is running',
   );
 });
 
@@ -1859,6 +2004,77 @@ test('isScopeMismatchReviewBlocker matches active-voice "does not implement" fin
       summary,
     );
   }
+});
+
+test('isScopeMismatchReviewBlocker matches undeclared-scope (scope-creep) findings', () => {
+  // Verbatim finding from PR #3735 (loop incident #3807), truncated the same way
+  // reconcile.mjs truncates a root review comment into a blocker summary.
+  const prCreepFinding =
+    'copilot-pull-request-reviewer: This introduces a release-wide capture/server/Azure subsystem ' +
+    'that is not described in the ten-slot equipment PR and conflicts with the stated ' +
+    'presentation-only scope. The same branch also adds gallery and art-direction infrastructure, ' +
+    'making the review and rollback surface substantially broader than the title and verification ' +
+    'imply. Split this tooling into dedicated PRs, or explicitly expand the PR description and ' +
+    'verification to cover these operational changes.';
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary: prCreepFinding,
+    }),
+    true,
+  );
+  // Untrusted authors must never quarantine a PR, in either direction.
+  assert.equal(
+    isScopeMismatchReviewBlocker({ kind: 'review-thread', summary: prCreepFinding }),
+    false,
+  );
+  for (const summary of [
+    'reviewer: these migrations are beyond the declared scope of the PR description; split them into separate PRs.',
+    'reviewer: the PR body does not mention this workflow rewrite — please expand the PR description to cover it.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      true,
+      summary,
+    );
+  }
+});
+
+test('isScopeMismatchReviewBlocker ignores creep observations with no maintainer-only remedy', () => {
+  for (const summary of [
+    // Undeclared-scope language but the remedy is an ordinary inline repair.
+    'reviewer: this helper is not described in the PR description; please delete the unused export.',
+    // A maintainer-only remedy alone (no undeclared-scope finding) is not a scope mismatch.
+    'reviewer: please expand the PR description with a verification section before merging.',
+    // Neither signal: a plain review finding must still dispatch inline repair.
+    'reviewer: this loop can divide by zero when the entity list is empty.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      false,
+      summary,
+    );
+  }
+});
+
+test('isScopeMismatchReviewBlocker does not quarantine ordinary inline repairs phrased as "stated scope"', () => {
+  // Regression for PR #3808 review thread 3879946400: adding a generic
+  // "stated scope" alternative to the shared scopeMismatchPromisePattern let
+  // this ordinary inline-repair finding satisfy the unsupported-work branch's
+  // namesScopePromise check (via scopeMismatchUnsupportedPattern's "materially
+  // inconsistent") and get wrongly quarantined, even though there is no
+  // undeclared-scope finding and no maintainer-only remedy — just a request to
+  // delete an extra helper.
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary:
+        'reviewer: This extra helper is materially inconsistent with the stated scope; delete it.',
+    }),
+    false,
+  );
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {

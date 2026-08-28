@@ -210,8 +210,19 @@ export function createAchievementsUI(
     rowObjects.length = 0;
   }
 
+  /**
+   * Unlocked achievements, with unopened loot-box rewards sorted to the top
+   * (catalog order preserved within each group via a stable sort) so the
+   * player sees actionable "Open reward" boxes before already-claimed rows.
+   */
   function unlockedDefs(world: GameWorld): AchievementDef[] {
-    return ALL_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
+    const unlocked = ALL_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
+    const rank = (def: AchievementDef): number => {
+      const isUnopenedBox =
+        def.reward.type === 'lootBox' && !world.achievements.claimedIds.has(def.id);
+      return isUnopenedBox ? 0 : 1;
+    };
+    return [...unlocked].sort((a, b) => rank(a) - rank(b));
   }
 
   function computeSignature(world: GameWorld): string {

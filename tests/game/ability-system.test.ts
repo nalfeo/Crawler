@@ -604,6 +604,64 @@ describe('abilitySystem', () => {
     expect(bursts).toHaveLength(1);
   });
 
+  // Curse used to demand FOUR enemies inside 8ft — half its own 16ft burst — so
+  // it effectively never fired in a real run (issues #3690, #3677). These pin the
+  // retuned trigger so the regression can't silently come back.
+  it('auto-casts curse on a two-enemy cluster out to its 16ft trigger ring', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'curse');
+    const near = spawnEnemy(world, 3, 0, 100);
+    const far = spawnEnemy(world, 15.5, 0, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('curse')).toBe(100);
+    expect(getStatusEffects(world, near).some((effect) => effect.stat === 'speed')).toBe(true);
+    expect(getStatusEffects(world, far).some((effect) => effect.stat === 'speed')).toBe(true);
+  });
+
+  it('does not auto-cast curse on a lone enemy or on a cluster beyond the ring', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'curse');
+    spawnEnemy(world, 3, 0, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.has('curse')).toBe(false);
+
+    // A second enemy just outside the 16ft ring still does not complete a cluster.
+    spawnEnemy(world, 16.5, 0, 100);
+    world.frameCount = 200;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.has('curse')).toBe(false);
+  });
+
+  it('holds curse for its full 16s cooldown between casts', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'curse');
+    spawnEnemy(world, 3, 0, 100);
+    spawnEnemy(world, 4, 1, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('curse')).toBe(100);
+
+    world.frameCount = 600; // 500 frames later — still well inside the window
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('curse')).toBe(100);
+
+    world.frameCount = 1_060; // 960 frames later — the authored window has elapsed
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('curse')).toBe(1_060);
+  });
+
   it('force-fires vampiric touch, damaging the target, healing the caster, and emitting a lifeDrainBurst VFX event', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;

@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { stripSymbolSuffix } from './doc-refs-lib.js';
 
 const PATH_PREFIXES = ['src/', 'scripts/', 'tests/', 'docs/', '.github/', '.specify/', 'public/'];
 const PATH_EXTS = ['.ts', '.md', '.json', '.yml', '.yaml', '.sh'];
@@ -76,7 +77,9 @@ async function main(): Promise<void> {
       while ((m = re.exec(line)) !== null) {
         const raw = m[1];
         if (!raw) continue;
-        const candidate = raw.replace(/[.,;)\]]+$/, '');
+        // `src/a.ts::doThing` pins a symbol inside a file; only the file part
+        // is checkable on disk.
+        const candidate = stripSymbolSuffix(raw.replace(/[.,;)\]]+$/, ''));
         if (!looksLikePath(candidate)) continue;
         if (ALLOWLIST.has(candidate)) continue;
         const ok =

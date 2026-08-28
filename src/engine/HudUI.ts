@@ -59,6 +59,7 @@ export interface NavigationHudBounds {
   readonly arrows: readonly ScreenBounds[];
   readonly mapOverlay: ScreenBounds | null;
   readonly mapClose: ScreenBounds | null;
+  readonly questArrowToggles: readonly { questId: string; bounds: ScreenBounds }[];
 }
 
 export function createHudUI(scene: Phaser.Scene): {
@@ -95,6 +96,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
   getMinimapRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   getBottomCenterBounds(): ScreenBounds;
+  /**
+   * Drain quest-arrow-toggle click requests captured since the last call.
+   * HUD widgets only capture input — the caller (the scene's input pipeline)
+   * is responsible for applying each request to `GameWorld` simulation-side.
+   */
+  consumeQuestArrowToggleRequests(): string[];
   destroy(): void;
 } {
   const depth = 1000;
@@ -116,7 +123,17 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  const questTracker = createHudQuestTracker(scene);
+  // Quest-arrow toggle clicks are captured here, not applied here: this HUD
+  // facade renders sim state and reads input, but must not mutate `GameWorld`
+  // (see .github/instructions/engine.instructions.md). Requests queue up and
+  // are drained by the scene's input pipeline via
+  // `consumeQuestArrowToggleRequests()`, which applies them to the sim.
+  const pendingQuestArrowToggles: string[] = [];
+  const questTracker = createHudQuestTracker(scene, {
+    onToggleArrow: (questId) => {
+      pendingQuestArrowToggles.push(questId);
+    },
+  });
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
   // rather than being grouped into a corner container here.
@@ -124,7 +141,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const familyRelationships = createHudFamilyRelationships(scene, {
     parent: bottomRight,
     getAvoidBounds: () => {
-      const bounds = [minimap.getDockedBounds()];
+      const bounds = [minimap.getDockedBounds(), questTracker.getBounds()];
       const b = bottomCenter.getBounds();
       bounds.push({ x: b.x, y: b.y, width: b.width, height: b.height });
       return bounds.filter((item): item is ScreenBounds => item !== null);
@@ -241,13 +258,15 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
-    familyRelationships.sync(world);
-    floor3Party.sync(world, playerEid);
     const mapOpen = minimap.isOverlayOpen();
     questTracker.setVisible(!mapOpen);
     directionArrows.setVisible(!mapOpen);
     if (!mapOpen) {
       questTracker.sync(world, playerEid);
+    }
+    familyRelationships.sync(world);
+    floor3Party.sync(world, playerEid);
+    if (!mapOpen) {
       const familyLayout = familyRelationships.getLayout();
       const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
       const forbiddenRegions = [
@@ -268,6 +287,7 @@ export function createHudUI(scene: Phaser.Scene): {
       arrows: directionArrows.getBounds(),
       mapOverlay: minimap.getOverlayViewportBounds(),
       mapClose: minimap.getOverlayCloseBounds(),
+      questArrowToggles: questTracker.getArrowToggleBounds(),
     };
   }
 
@@ -352,6 +372,7 @@ export function createHudUI(scene: Phaser.Scene): {
       const b = bottomCenter.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    consumeQuestArrowToggleRequests: () => pendingQuestArrowToggles.splice(0),
     destroy,
   };
 }

@@ -13,7 +13,9 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain("this.interactionHint.on('pointerdown', () => {");
     expect(source).toContain('this.dialogueBox = createDialogueBox(this, {');
     expect(source).toContain('this.queuedConversationClose = true;');
-    expect(source).toContain('const tapped = this.tappedInteraction || this.queuedInteraction;');
+    expect(source).toContain(
+      'const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;',
+    );
     expect(source).toContain('const closeRequested = this.queuedConversationClose;');
   });
 
@@ -43,6 +45,22 @@ describe('MainGameScene mobile interaction guard', () => {
       'const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);',
     );
     expect(source).toContain('(this.inventoryButton?.height ?? 44) * buttonScale + 8');
+  });
+});
+
+describe('MainGameScene NPC tap targeting', () => {
+  const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+  it('cancels a tap whose clicked NPC left range instead of retargeting another NPC', () => {
+    expect(source).toContain(
+      'tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;',
+    );
+    expect(source).toContain(
+      'const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;',
+    );
+    expect(source).toContain(
+      'tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;',
+    );
   });
 });
 

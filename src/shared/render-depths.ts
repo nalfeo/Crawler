@@ -154,6 +154,13 @@ export const WORLD_VFX_DEPTH = {
   staircaseMarkerRing: -14,
   /** Generated-art decal stamped above the floor-exit objective marker ring. */
   staircaseMarkerSprite: -13,
+  /**
+   * Persistent ground aura under an entity carrying a status effect
+   * (slow/curse/regen). Ground plane — above the objective marker decal so it
+   * reads on top of floor dressing, and below the entity plane (0) so the
+   * affected sprite always draws on top of its own aura.
+   */
+  statusAura: -12,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Enemy death "pop" ring + scatter (EffectsVfx). */
