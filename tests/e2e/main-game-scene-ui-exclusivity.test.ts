@@ -45,17 +45,24 @@ async function withHeldTouch(
   }
 }
 
-async function holdKeyUntil(
+async function pressKeyUntil(
   page: Page,
   key: string,
   predicate: Parameters<typeof waitForState>[1],
   label: string,
 ): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
+  const timeoutMs = 8_000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await page.keyboard.press(key);
+    const state = await mainSceneProbe.getState(page);
+    if (predicate(state)) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}; last state: ${JSON.stringify(state)}`);
+    }
+    await page.waitForTimeout(100);
   }
 }
 
@@ -67,20 +74,6 @@ function overlaps(
     Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
     Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
   );
-}
-
-async function holdKeyUntil(
-  page: Page,
-  key: string,
-  predicate: Parameters<typeof waitForState>[1],
-  label: string,
-): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
-  }
 }
 
 describe('MainGameScene UI exclusivity', () => {
@@ -376,12 +369,7 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil(
-      page,
-      'Escape',
-      (state) => !state.conversationOpen,
-      'NPC dialogue closed before Talk click',
-    );
+    await pressKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
     await expect
       .poll(() => mainSceneProbe.getInteractionHintBounds(page), {
         message: 'Talk button should reappear after dialogue closes',
@@ -396,13 +384,8 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await holdKeyUntil(
-      page,
-      'Escape',
-      (state) => !state.conversationOpen,
-      'Talk dialogue closed before E interaction',
-    );
-    await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
+    await pressKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
+    await pressKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
