@@ -36,7 +36,7 @@ blob DNS was unavailable. The issue report identifies the prior behavior: enemie
 could remain trapped in a boss room after it became safe.
 
 Post-fix behavior was observed deterministically through the real shared headless
-pipeline, `src/game/ai/simulation-step.ts::runSimulationStep`, with the canonical
+pipeline, `runSimulationStep` in `src/game/ai/simulation-step.ts`, with the canonical
 Floor 1 system slots from `createFloor1MainSceneOptions`. The regression starts a
 Slime Rat encounter, transitions it to defeated, and confirms that an in-room enemy
 is removed with a `corpseExplode` event carrying slime blood metadata and zero

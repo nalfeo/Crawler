@@ -43,8 +43,8 @@ hand-built event in the Floor 1 scenario would omit core visual snapshots such a
 - **DEC-003**: Keep the `DeathTimer` and `Spawner` exclusions in the Floor 1
   cleanup loop. Spawners keep their existing death handshakes, and the staircase
   boss can remain visible while the room becomes safe.
-- **DEC-004**: Cover the behavior through
-  `src/game/ai/simulation-step.ts::runSimulationStep` with canonical Floor 1
+- **DEC-004**: Cover the behavior through `runSimulationStep` in
+  `src/game/ai/simulation-step.ts` with canonical Floor 1
   systems from `createFloor1MainSceneOptions`, not by calling only the scenario
   tick. The regression verifies the real post-system transition used by both
   headless and visual pipelines.

@@ -93,3 +93,8 @@ rehearsal**:
 - `npm run format -- --write <files>` still ran the repo's broad format globs before the
   explicit file list. It happened to touch only intended files this time, but use
   `npx prettier --write <files>` for surgical formatting.
+
+### Opportunities for Future Improvement
+
+- Add the retrospective subsection to the handoff template validation migration so older
+  current-format handoffs cannot omit it.
