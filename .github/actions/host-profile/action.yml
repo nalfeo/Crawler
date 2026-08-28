@@ -28,6 +28,7 @@ runs:
     - name: Start host resource sampler
       if: ${{ inputs.mode == 'start' }}
       shell: bash
+      continue-on-error: true
       env:
         HOST_PROFILE_LABEL: ${{ inputs.label }}
         HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
@@ -48,6 +49,7 @@ runs:
     - name: Publish host resource profile
       if: ${{ inputs.mode == 'report' }}
       shell: bash
+      continue-on-error: true
       env:
         HOST_PROFILE_LABEL: ${{ inputs.label }}
         HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
@@ -56,9 +58,9 @@ runs:
         # The sampler only notices the stop file on its next tick, so wait for
         # its own final write (removed at `start`) before rebuilding. Without
         # this the last interval — the whole profile, for a short job — is lost.
-        deadline=$(( $(date +%s) + (HOST_PROFILE_INTERVAL / 1000) + 5 ))
+        deadline=$(( $(date +%s) + 5 ))
         while [ ! -f files/host-resources.json ] && [ "$(date +%s)" -lt "$deadline" ]; do
-          sleep 1
+          sleep 0.5
         done
         npm run --silent host:profile -- \
           --from-jsonl \

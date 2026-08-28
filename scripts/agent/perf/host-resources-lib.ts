@@ -318,7 +318,14 @@ export function memoryFromOs(totalBytes: number, freeBytes: number): MemoryInfo 
 export function cgroupPathsFromProc(
   procSelfCgroup: string,
   mountRoot = '/sys/fs/cgroup',
-): { version: 'v1' | 'v2'; memoryDirs: string[]; cpuDirs: string[]; cpuacctDirs: string[] } {
+  procSelfMountinfo: string | null = null,
+): {
+  version: 'v1' | 'v2';
+  memoryDirs: string[];
+  cpuDirs: string[];
+  cpuacctDirs: string[];
+  cpusetDirs: string[];
+} {
   const lines = procSelfCgroup
     .split('\n')
     .map((line) => line.trim())
@@ -326,11 +333,14 @@ export function cgroupPathsFromProc(
   const v2Line = lines.find((line) => line.startsWith('0::'));
   if (v2Line) {
     const dirs = ancestorDirs(mountRoot, v2Line.slice('0::'.length));
-    return { version: 'v2', memoryDirs: dirs, cpuDirs: dirs, cpuacctDirs: dirs };
+    return { version: 'v2', memoryDirs: dirs, cpuDirs: dirs, cpuacctDirs: dirs, cpusetDirs: dirs };
   }
+  const mounts = parseV1CgroupMounts(procSelfMountinfo);
   const controllerDirs = (controller: string): string[] => {
     const line = lines.find((entry) => entry.split(':')[1]?.split(',').includes(controller));
     const relative = line ? (line.split(':')[2] ?? '/') : '/';
+    const mount = mounts.find((candidate) => candidate.controllers.includes(controller));
+    if (mount) return ancestorDirsForMount(mount.point, mount.root, relative);
     return ancestorDirs(`${mountRoot}/${controller}`, relative);
   };
   return {
@@ -338,6 +348,7 @@ export function cgroupPathsFromProc(
     memoryDirs: controllerDirs('memory'),
     cpuDirs: controllerDirs('cpu'),
     cpuacctDirs: controllerDirs('cpuacct'),
+    cpusetDirs: controllerDirs('cpuset'),
   };
 }
 
@@ -348,6 +359,39 @@ function ancestorDirs(root: string, relative: string): string[] {
     dirs.push([root, ...segments.slice(0, i)].join('/'));
   }
   return dirs;
+}
+
+function ancestorDirsForMount(mountPoint: string, mountRoot: string, cgroupPath: string): string[] {
+  const normalizedRoot = `/${mountRoot.split('/').filter(Boolean).join('/')}`;
+  const normalizedPath = `/${cgroupPath.split('/').filter(Boolean).join('/')}`;
+  const relative =
+    normalizedRoot === '/'
+      ? normalizedPath
+      : normalizedPath === normalizedRoot
+        ? '/'
+        : normalizedPath.startsWith(`${normalizedRoot}/`)
+          ? normalizedPath.slice(normalizedRoot.length)
+          : normalizedPath;
+  return ancestorDirs(mountPoint, relative);
+}
+
+function parseV1CgroupMounts(
+  mountinfo: string | null,
+): Array<{ point: string; root: string; controllers: string[] }> {
+  if (mountinfo === null) return [];
+  const mounts: Array<{ point: string; root: string; controllers: string[] }> = [];
+  for (const line of mountinfo.split('\n')) {
+    const [before, after] = line.split(' - ', 2);
+    if (before === undefined || after === undefined) continue;
+    const fields = before.split(' ');
+    const fsFields = after.split(' ');
+    if (fsFields[0] !== 'cgroup' || fields[3] === undefined || fields[4] === undefined) continue;
+    const controllers = (fsFields[2] ?? '')
+      .split(',')
+      .filter((option) => option !== 'rw' && option !== 'ro' && option !== 'relatime');
+    mounts.push({ root: fields[3], point: fields[4], controllers });
+  }
+  return mounts;
 }
 
 /** Parse cgroup v2 `memory.max`. `max` (unlimited) and junk both yield null. */
@@ -450,7 +494,11 @@ export function readCgroupLimits(
 ): CgroupLimits | null {
   const procSelf = readers.readText('/proc/self/cgroup');
   if (procSelf === null) return null;
-  const { version, memoryDirs, cpuDirs } = cgroupPathsFromProc(procSelf);
+  const { version, memoryDirs, cpuDirs, cpusetDirs } = cgroupPathsFromProc(
+    procSelf,
+    undefined,
+    readers.readText('/proc/self/mountinfo'),
+  );
 
   let memoryLimitBytes: number | null = null;
   for (const dir of memoryDirs) {
@@ -479,6 +527,12 @@ export function readCgroupLimits(
       }
     }
   }
+  if (version === 'v1') {
+    for (const dir of cpusetDirs) {
+      const cpuset = readers.readText(`${dir}/cpuset.cpus`);
+      if (cpuset !== null) effectiveCpus = tighter(effectiveCpus, parseCpusetList(cpuset));
+    }
+  }
 
   if (memoryLimitBytes === null && effectiveCpus === null) {
     return { version, memoryLimitBytes: null, effectiveCpus: null };
@@ -501,7 +555,11 @@ function tighter(current: number | null, candidate: number | null): number | nul
 export function readCgroupCpuSnapshot(readers: HostReaders): CgroupCpuSnapshot | null {
   const procSelf = readers.readText('/proc/self/cgroup');
   if (procSelf === null) return null;
-  const { version, cpuDirs, cpuacctDirs } = cgroupPathsFromProc(procSelf);
+  const { version, cpuDirs, cpuacctDirs } = cgroupPathsFromProc(
+    procSelf,
+    undefined,
+    readers.readText('/proc/self/mountinfo'),
+  );
   if (version === 'v2') {
     for (const dir of cpuDirs) {
       const raw = readers.readText(`${dir}/cpu.stat`);
@@ -573,7 +631,11 @@ export function readCgroupMemoryCurrent(
 ): { bytes: number; fromAncestor: boolean } | null {
   const procSelf = readers.readText('/proc/self/cgroup');
   if (procSelf === null) return null;
-  const { version, memoryDirs } = cgroupPathsFromProc(procSelf);
+  const { version, memoryDirs } = cgroupPathsFromProc(
+    procSelf,
+    undefined,
+    readers.readText('/proc/self/mountinfo'),
+  );
   for (const [index, dir] of memoryDirs.entries()) {
     const raw =
       version === 'v2'

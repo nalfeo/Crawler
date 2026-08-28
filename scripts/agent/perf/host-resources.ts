@@ -124,7 +124,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
         intervalMs = requirePositive('--interval', argv[++i], MIN_INTERVAL_MS);
         break;
       case '--duration':
-        durationSec = requirePositive('--duration', argv[++i], 0);
+        durationSec = requirePositive('--duration', argv[++i], 1);
         break;
       case '--out':
         out = requireValue('--out', argv[++i]);
@@ -391,7 +391,7 @@ function sampleUntilDone(tick: () => void, options: CliOptions): Promise<void> {
             Math.min(STOP_POLL_MS, options.intervalMs),
           );
 
-    if (options.durationSec !== null && options.durationSec > 0) {
+    if (options.durationSec !== null) {
       durationTimer = setTimeout(stop, options.durationSec * 1000);
     }
 

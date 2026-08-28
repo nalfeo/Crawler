@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -24,6 +26,7 @@ import {
   parsePressure,
   readCgroupLimits,
   readCgroupMemoryCurrent,
+  readCgroupCpuSnapshot,
   readCgroupV1CpuSnapshot,
   diskUsedPct,
   statsFor,
@@ -164,6 +167,35 @@ describe('cgroup discovery', () => {
     expect(version).toBe('v1');
     expect(memoryDirs[0]).toBe('/sys/fs/cgroup/memory/docker/deadbeef');
     expect(cpuDirs[0]).toBe('/sys/fs/cgroup/cpu/docker/deadbeef');
+  });
+
+  it('uses v1 controller mount points, including combined cpuacct and cpuset mounts', () => {
+    const cgroup = [
+      '9:memory:/docker/deadbeef',
+      '4:cpu,cpuacct:/docker/deadbeef',
+      '3:cpuset:/docker/deadbeef',
+    ].join('\n');
+    const mountinfo = [
+      '36 25 0:32 /docker/deadbeef /sys/fs/cgroup/cpu,cpuacct rw,relatime - cgroup cgroup rw,cpu,cpuacct',
+      '37 25 0:33 /docker/deadbeef /sys/fs/cgroup/cpuset rw,relatime - cgroup cgroup rw,cpuset',
+    ].join('\n');
+    const paths = cgroupPathsFromProc(cgroup, '/sys/fs/cgroup', mountinfo);
+    expect(paths.cpuDirs[0]).toBe('/sys/fs/cgroup/cpu,cpuacct');
+    expect(paths.cpuacctDirs[0]).toBe('/sys/fs/cgroup/cpu,cpuacct');
+    expect(paths.cpusetDirs[0]).toBe('/sys/fs/cgroup/cpuset');
+
+    const readers = makeReaders({
+      files: {
+        '/proc/self/cgroup': cgroup,
+        '/proc/self/mountinfo': mountinfo,
+        '/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us': '200000',
+        '/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us': '100000',
+        '/sys/fs/cgroup/cpu,cpuacct/cpuacct.usage': '2500000000',
+        '/sys/fs/cgroup/cpuset/cpuset.cpus': '0',
+      },
+    });
+    expect(readCgroupLimits(readers, 8 * GIB)?.effectiveCpus).toBe(1);
+    expect(readCgroupCpuSnapshot(readers)?.usageUsec).toBe(2_500_000);
   });
 
   it('treats v2 "max" and junk as unlimited', () => {
@@ -472,7 +504,22 @@ describe('CLI argument parsing', () => {
     expect(() => parseArgs(['--interval'])).toThrow('--interval requires a value');
     expect(() => parseArgs(['--interval', '10'])).toThrow('--interval requires a number');
     expect(() => parseArgs(['--duration', 'soon'])).toThrow('--duration requires a number');
+    expect(() => parseArgs(['--duration', '0'])).toThrow('--duration requires a number >= 1');
     expect(() => parseArgs(['--nope'])).toThrow('Unknown argument: --nope');
+  });
+});
+
+describe('host-profile action', () => {
+  const action = readFileSync(
+    new URL('../../.github/actions/host-profile/action.yml', import.meta.url),
+    'utf8',
+  );
+
+  it('keeps sampling and publishing failures non-blocking with a fixed stop grace period', () => {
+    expect(action).toMatch(/name: Start host resource sampler[\s\S]*?continue-on-error: true/);
+    expect(action).toMatch(/name: Publish host resource profile[\s\S]*?continue-on-error: true/);
+    expect(action).toContain('deadline=$(( $(date +%s) + 5 ))');
+    expect(action).toContain('sleep 0.5');
   });
 });
 

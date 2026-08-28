@@ -62,8 +62,8 @@ are actually doing with the machine they were given, instead of being blind.
 
 - The sampler runs through `tsx`, so `start` must come after `npm ci`; the
   dependency-install phase is outside the profiled window.
-- `--interval` shorter than 200ms is coerced by the minimum-interval guard,
-  because a sub-interval CPU delta is noise.
+- `--interval` shorter than 200ms is rejected, because a sub-interval CPU delta
+  is noise.
 
 ## Review harness
 
