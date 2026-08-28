@@ -36,7 +36,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "claude-sonnet-4.6",
-      "head_sha": "9876213d1e6e4a30b5e73f0c87e99b7fcbf3ee2e",
+      "head_sha": "7c2944ed31ee9919a8b31e17f7845086bbd7a3fc",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -47,7 +47,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation correctly and surgically adds a deterministic stacked-PR intent gate using labels and a time-based grace period. The logic explicitly targets open parents and cleanly falls through to existing retargeting when the parent lands. Tests are comprehensive and deterministically use injected time, edge cases like native stack API failures are safely caught and logged, and the change avoids LLMs in the critical path while adhering to repo guidelines."
+      "notes": "The implementation correctly introduces a deterministic stacked-PR intent gate using labels and a 5-minute grace period. The logic cleanly falls through to existing retargeting when the parent PR merges or disappears. The API integration for native unstacking handles failures gracefully. The tests are comprehensive, using an injectable clock that ensures deterministic validation while preserving proper time semantics for a CI script. The change is tightly scoped, well-documented, and fully compliant with project policies."
     }
   }
 }
