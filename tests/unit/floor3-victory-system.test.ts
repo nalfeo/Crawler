@@ -391,6 +391,34 @@ describe('floor3 studios + final four objective tick', () => {
     expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(countAfterFirstTick);
   });
 
+  it('relocates a Final Four spawn off the tile the player is standing on at unlock', () => {
+    const { world, playerEid } = createFloor3World(404);
+    const state = world.floorExtendedState!.floor3Studios!;
+    const floorMap = world.floorMap!;
+    const occupied = state.finalFourPendingSpawns[0]!;
+    expect(occupied.x).toBeDefined();
+    // Park the player exactly on a pre-resolved arena spawn point before the
+    // last Studio falls — the arena-backed path must still relocate.
+    world.stores.position.x[playerEid] = occupied.x!;
+    world.stores.position.y[playerEid] = occupied.y!;
+    const playerTile = floorMap.worldToTile(occupied.x!, occupied.y!);
+
+    defeatAllStudios(world, state);
+
+    const companions = Array.from(query(world.ecs, [Companion, Team]));
+    const spawnTiles = companions
+      .filter((eid) => state.finalFour.teamIds.includes(world.stores.team.id[eid] ?? -1))
+      .map((eid) =>
+        floorMap.worldToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
+      );
+    expect(spawnTiles.length).toBeGreaterThan(0);
+    for (const tile of spawnTiles) {
+      expect(`${tile.x},${tile.y}`).not.toBe(`${playerTile.x},${playerTile.y}`);
+      expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
+    }
+    expect(new Set(spawnTiles.map((tile) => `${tile.x},${tile.y}`)).size).toBe(spawnTiles.length);
+  });
+
   it('triggers game_over on a party wipe before victory is latched', () => {
     const { world } = createFloor3World(505);
     const partyEid = recruitPartyCompanion(world, {
