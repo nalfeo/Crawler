@@ -1,4 +1,6 @@
+import { entityExists, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
+import { Player } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import {
@@ -222,12 +224,67 @@ describe('arenaDirectorSystem', () => {
     advance(world, phase.countdownMs);
     advance(world, phase.waveWindowMs);
     defeatActiveHeadliner(world);
+    const chestId = createBossChestId('floor4-headliner-act-1');
+    const chestEid = world.bossChestEids.get(chestId);
     advance(world, phase.headlineWindowMs);
 
-    const chestId = createBossChestId('floor4-headliner-act-1');
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
     expect(world.bossChests.get(chestId)?.state).toBe('revealed');
+    expect(world.bossChestEids.has(chestId)).toBe(false);
+    expect(chestEid).toBeDefined();
+    expect(entityExists(world.ecs, chestEid!)).toBe(false);
     expect(world.floorExtendedState!.floor4Arena!.headlinerTelemetry.chestsForceResolved).toBe(1);
+  });
+
+  it('holds the Headline phase until a failed forced chest grant can retry', () => {
+    const world = setupFloor4(404);
+    const player = query(world.ecs, [Player])[0]!;
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    const inventory = world.inventories.get(player)!;
+    world.inventories.delete(player);
+    advance(world, phase.headlineWindowMs);
+
+    const state = world.floorExtendedState!.floor4Arena!;
+    const chestId = createBossChestId('floor4-headliner-act-1');
+    expect(state.phase).toEqual({ kind: 'HEADLINE', act: 1, cleared: true });
+    expect(world.bossChests.get(chestId)?.state).toBe('available');
+    expect(state.headlinerTelemetry.chestsForceResolved).toBe(0);
+
+    world.inventories.set(player, inventory);
+    advance(world, 1);
+
+    expect(state.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(world.bossChests.get(chestId)?.state).toBe('revealed');
+    expect(state.headlinerTelemetry.chestsForceResolved).toBe(1);
+  });
+
+  it('holds overtime until a failed forced chest grant can retry', () => {
+    const world = setupFloor4(404);
+    const player = query(world.ecs, [Player])[0]!;
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    advance(world, phase.headlineWindowMs);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'OVERTIME', act: 1 });
+
+    const inventory = world.inventories.get(player)!;
+    world.inventories.delete(player);
+    defeatActiveHeadliner(world);
+
+    const state = world.floorExtendedState!.floor4Arena!;
+    expect(state.phase).toEqual({ kind: 'OVERTIME', act: 1 });
+    expect(world.state).toBe('playing');
+
+    world.inventories.set(player, inventory);
+    advance(world, 1);
+
+    expect(state.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(state.headlinerTelemetry.chestsForceResolved).toBe(1);
   });
 
   it('enters overtime at the act mark, applies ramp steps, and caps at defeat', () => {

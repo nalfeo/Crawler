@@ -206,10 +206,6 @@ function recordFloor4PhaseTransition(
   if (state.phase.kind === 'WAVES') {
     cutFloor4WaveEnemies(world, state);
   }
-  if (phase.kind === 'INTERMISSION') {
-    resolveFloor4HeadlinerDefeat(world, state);
-    forceResolveFloor4HeadlinerChest(world, state);
-  }
   state.waves = undefined;
   const pending = state.pendingWaves;
   state.pendingWaves = undefined;
@@ -896,26 +892,34 @@ function resolveFloor4HeadlinerDefeat(world: GameWorld, state: Floor4ArenaState)
   }
 }
 
-function forceResolveFloor4HeadlinerChest(world: GameWorld, state: Floor4ArenaState): void {
+function forceResolveFloor4HeadlinerChest(world: GameWorld, state: Floor4ArenaState): boolean {
   const encounter = state.activeHeadliner;
   if (!encounter?.defeated || encounter.chestForceResolved) {
-    return;
+    return true;
   }
   const playerEid = playerEidForFloor4Rewards(world);
   if (playerEid === undefined) {
-    return;
+    return false;
   }
   const chestId = createBossChestId(encounter.slotId);
   const chest = world.bossChests.get(chestId);
   if (!chest || chest.state !== 'available') {
     encounter.chestForceResolved = true;
-    return;
+    return true;
   }
   const result = openBossChest(world, chestId, playerEid);
-  if (result.ok) {
-    encounter.chestForceResolved = true;
-    state.headlinerTelemetry.chestsForceResolved += 1;
+  if (!result.ok) {
+    return false;
   }
+  const chestEid = world.bossChestEids.get(chestId);
+  if (chestEid !== undefined) {
+    world.bossChestEids.delete(chestId);
+    clearEntityStores(world, chestEid);
+    removeEntity(world.ecs, chestEid);
+  }
+  encounter.chestForceResolved = true;
+  state.headlinerTelemetry.chestsForceResolved += 1;
+  return true;
 }
 
 function startFloor4Overtime(world: GameWorld, state: Floor4ArenaState, act: Floor4ActIndex): void {
@@ -1038,12 +1042,14 @@ export function arenaDirectorSystem(world: GameWorld): void {
       if (state.arenaElapsedMs >= floor4ActEndMs(state.phase.act)) {
         state.arenaElapsedMs = floor4ActEndMs(state.phase.act);
         if (state.phase.cleared) {
-          recordFloor4PhaseTransition(
-            world,
-            state,
-            { kind: 'INTERMISSION', act: state.phase.act },
-            'act-mark-reached',
-          );
+          if (forceResolveFloor4HeadlinerChest(world, state)) {
+            recordFloor4PhaseTransition(
+              world,
+              state,
+              { kind: 'INTERMISSION', act: state.phase.act },
+              'act-mark-reached',
+            );
+          }
         } else {
           startFloor4Overtime(world, state, state.phase.act);
         }
@@ -1078,12 +1084,14 @@ export function arenaDirectorSystem(world: GameWorld): void {
       applyFloor4OvertimeRamp(world, state);
       resolveFloor4HeadlinerDefeat(world, state);
       if (state.activeHeadliner?.defeated) {
-        recordFloor4PhaseTransition(
-          world,
-          state,
-          { kind: 'INTERMISSION', act: state.phase.act },
-          'overtime-headliner-defeated',
-        );
+        if (forceResolveFloor4HeadlinerChest(world, state)) {
+          recordFloor4PhaseTransition(
+            world,
+            state,
+            { kind: 'INTERMISSION', act: state.phase.act },
+            'overtime-headliner-defeated',
+          );
+        }
         break;
       }
       if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {

@@ -7,15 +7,30 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "claude-sonnet-4.6",
-      "concerns_count": 5,
-      "resolved_count": 5,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
       "plan_divergence": "minor",
-      "notes": "Separate rubber-duck plan review approved with changes. Resolutions: grant appearance fee exactly once; pin arenaElapsedMs at the act mark for overtime; build the Headliner card once at initialization; use spawnBossChestForDefeatedBoss rather than raw chest APIs; validate Floor 4 boss abilities against the Headliner manifest pool instead of Floor 2 family taxonomy."
+      "notes": "Separate rubber-duck review: gated both HEADLINE and OVERTIME exits before transition; suppressed overtime-cap defeat while a defeated Headliner chest retries; asserted sidecar/entity cleanup and retry behavior. Declined extracting a shared core cleanup helper for this surgical recovery because identical cleanup is limited to the existing two ownership boundaries and no new core system is warranted."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
