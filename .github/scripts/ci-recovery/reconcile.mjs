@@ -7,6 +7,7 @@ import {
   blockerFingerprint,
   checkRunWorkflowRunId,
   collapseCheckRunsByName,
+  isAgentSessionRunning,
   isDuplicateDispatch,
   isScopeMismatchReviewBlocker,
   isLeaseExpired,
@@ -3325,6 +3326,12 @@ function getOrDeriveProgressKey(recoveryState) {
 }
 let dispatchAttemptBase = 0;
 let dispatchProgressAt = now.toISOString();
+// Liveness for the currently dispatched agent session, read from the check
+// runs already fetched for this head (no extra API call, no extra permission).
+const agentSessionRunning = isAgentSessionRunning(checkRuns, { now });
+if (agentSessionRunning) {
+  process.stdout.write(`agent-session-running pr=#${prNumber} head=${pr.head.sha}\n`);
+}
 
 // Bounded to 2 passes (plan review, 2026-07-27): pass 1 evaluates the
 // as-loaded state; if R33 (RELEASE_STALE_AUTOMATION_RETRY, non-terminal)
@@ -3377,7 +3384,13 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     stateProgressKey,
     currentProgressKey,
     isDuplicateDispatch: labelExists && isDuplicateDispatch(state, fingerprint),
-    stallAction: automationStallAction({ state, headSha: pr.head.sha, fingerprint, now }),
+    stallAction: automationStallAction({
+      state,
+      headSha: pr.head.sha,
+      fingerprint,
+      now,
+      agentSessionRunning,
+    }),
     automationProgressRecent:
       labelExists &&
       state?.owner === 'automation' &&
