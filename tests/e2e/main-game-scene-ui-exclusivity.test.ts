@@ -353,26 +353,38 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await page.keyboard.press('Escape');
+    await holdKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
+    );
+    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
 
     await clickDesignPoint({
-      x: talkBounds.x + talkBounds.width / 2,
-      y: talkBounds.y + talkBounds.height / 2,
+      x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
+      y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
     });
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await page.keyboard.press('Escape');
-
-    // Held, not pressed: the scene samples E with Phaser `JustDown`, and a
-    // back-to-back keydown/keyup clears `_justDown` before `update()` reads it.
+    // Held, not pressed: the scene samples Escape/E with Phaser `JustDown`, and
+    // a back-to-back keydown/keyup clears `_justDown` before `update()` reads it.
+    await holdKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
+    );
     await holdKeyUntil(
       page,
       'e',
       async () => (await mainSceneProbe.getState(page)).conversationOpen,
       { label: 'E to open dialogue' },
     );
-    await waitForState(page, (state) => state.conversationOpen, { label: 'E opened dialogue' });
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
