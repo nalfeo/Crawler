@@ -348,10 +348,6 @@ describe('MainGameScene UI exclusivity', () => {
       label: 'NPC dialogue closed before Talk click',
     });
     const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
-    expect(
-      restoredTalkBounds,
-      'Talk button should be visible after dialogue closes',
-    ).not.toBeNull();
     if (!restoredTalkBounds) {
       throw new Error('Talk button should be visible after dialogue closes');
     }
