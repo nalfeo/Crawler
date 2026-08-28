@@ -876,7 +876,7 @@ const scopeMismatchClosingReferencePattern =
 const scopeMismatchUnsupportedPattern =
   /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
-  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|stated\s+scope|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
 
 // The inverse direction of the same finding: the diff carries substantial work
 // the PR never declared (scope creep) rather than promising work the diff lacks.
@@ -892,6 +892,16 @@ const scopeCreepUndeclaredPattern =
 // observing extra files never quarantines a PR that inline repair could fix.
 const scopeCreepRemedyPattern =
   /(?:\bsplit\b[^.!?\n]{0,80}?\binto\s+(?:dedicated|separate|its\s+own|different|individual)\s+prs?\b|\b(?:expand|amend|update|broaden|revise)\s+the\s+pr\s+(?:title|body|description)\b)/i;
+// Scope-creep findings reference the PR's declared scope with phrasing the
+// unsupported-work direction never uses (e.g. "stated scope" rather than
+// "declared scope" or "PR title/body/description"). This reference pattern is
+// deliberately scoped to the scope-creep branch only: folding "stated scope"
+// into scopeMismatchPromisePattern let ordinary inline-repair findings that
+// merely say something is "materially inconsistent with the stated scope"
+// (e.g. "delete this extra helper") satisfy the unsupported-work branch's
+// namesScopePromise check and get wrongly quarantined (PR #3808 review).
+const scopeCreepScopeReferencePattern =
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|stated\s+scope|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
 
 /**
  * Detect a trusted-review finding that says the PR's declared scope and its
@@ -912,10 +922,11 @@ export function isScopeMismatchReviewBlocker(blocker) {
   if (scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise)) {
     return true;
   }
+  const namesScopeCreepReference = scopeCreepScopeReferencePattern.test(text);
   return (
     scopeCreepUndeclaredPattern.test(text) &&
     scopeCreepRemedyPattern.test(text) &&
-    namesScopePromise
+    namesScopeCreepReference
   );
 }
 

@@ -1913,6 +1913,25 @@ test('isScopeMismatchReviewBlocker ignores creep observations with no maintainer
   }
 });
 
+test('isScopeMismatchReviewBlocker does not quarantine ordinary inline repairs phrased as "stated scope"', () => {
+  // Regression for PR #3808 review thread 3879946400: adding a generic
+  // "stated scope" alternative to the shared scopeMismatchPromisePattern let
+  // this ordinary inline-repair finding satisfy the unsupported-work branch's
+  // namesScopePromise check (via scopeMismatchUnsupportedPattern's "materially
+  // inconsistent") and get wrongly quarantined, even though there is no
+  // undeclared-scope finding and no maintainer-only remedy — just a request to
+  // delete an extra helper.
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary:
+        'reviewer: This extra helper is materially inconsistent with the stated scope; delete it.',
+    }),
+    false,
+  );
+});
+
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
   assert.equal(
     requiresAdminIntervention({
