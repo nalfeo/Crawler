@@ -542,8 +542,19 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      - uses: ./.github/actions/host-profile
+        with:
+          mode: start
+          label: test-unit
+
       - name: Unit tests
         run: npx vitest run --project unit --reporter=verbose
+
+      - uses: ./.github/actions/host-profile
+        if: always()
+        with:
+          mode: report
+          label: test-unit
 
   # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
   # does not block or serialize other checks. Scoped: on PRs, skipped when
@@ -656,8 +667,19 @@ jobs:
       # MECHANISM (chain order, carryover handoff, aggregate accounting), not a
       # win rate, so it is a legitimate blocking wiring guard. The win-rate legs
       # that genuinely lack measured thresholds are report-only below.
+      - uses: ./.github/actions/host-profile
+        with:
+          mode: start
+          label: test-headless
+
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
+
+      - uses: ./.github/actions/host-profile
+        if: always()
+        with:
+          mode: report
+          label: test-headless
 
   # Job 5a: Report-only multi-floor sweep legs (NEVER blocking).
   #
@@ -1007,8 +1029,19 @@ jobs:
         with:
           install-playwright: 'true'
 
+      - uses: ./.github/actions/host-profile
+        with:
+          mode: start
+          label: test-e2e-game
+
       - name: E2E visual regression — game/UI surface
         run: npx vitest run --project e2e-game --reporter=verbose
+
+      - uses: ./.github/actions/host-profile
+        if: always()
+        with:
+          mode: report
+          label: test-e2e-game
 
       - name: Upload e2e screenshots on failure
         if: failure()

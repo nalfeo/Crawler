@@ -380,6 +380,24 @@ handoff_digest || true
 _phase_end "handoff digest done"
 
 # ===========================================================================
+# Phase 7: Host resource snapshot (non-blocking)
+# ===========================================================================
+
+# One-line answer to "what machine did this session get, and is anything
+# already saturating it?" (issue #3800). Cloud sessions and hosted runners were
+# previously blind to their own CPU/memory ceiling, which made "can I parallelize
+# harder here?" a guess. Quiet-skips before `npm ci` (the sampler runs via tsx)
+# and never fails preflight.
+host_snapshot() {
+  [ -d node_modules ] || return 0
+  npm run --silent host:profile -- \
+    --once --headline --out files/host-resources-session-start.json 2>/dev/null || return 0
+}
+_phase_start "host_snapshot"
+host_snapshot || true
+_phase_end "host snapshot done"
+
+# ===========================================================================
 # Write timing artifact and final summary
 # ===========================================================================
 _write_timing_artifact

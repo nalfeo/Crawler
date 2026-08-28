@@ -32,7 +32,10 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import { Enemy, Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
+import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
+import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
@@ -138,6 +141,15 @@ function readAmbientOverride(): number | null {
 function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
   const raw = new URLSearchParams(window.location.search).get('floor');
   return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
+}
+
+/** The single shared status-aura Graphics layer, if the bridge has created it. */
+function findStatusAuraLayer(
+  phaserScene: Phaser.Scene | null,
+): Phaser.GameObjects.Graphics | undefined {
+  return phaserScene?.children?.list?.find((child) => child.name === _STATUS_AURA_LAYER_NAME) as
+    | Phaser.GameObjects.Graphics
+    | undefined;
 }
 
 /**
@@ -674,6 +686,28 @@ export interface CarriedWeaponRenderInfo {
 }
 
 /**
+ * A live enemy arranged next to the player for the status-effect aura
+ * observation (issue #3690), reported in on-screen pixels so a screenshot probe
+ * can sample the exact footprint the aura is drawn into.
+ */
+export interface StatusAuraEnemyProbe {
+  readonly enemyEid: number;
+}
+
+/** What the REAL scene's display list says about the status-aura layer. */
+export interface StatusAuraRenderSummary {
+  /** Whether the shared aura Graphics layer exists on the display list. */
+  readonly layerPresent: boolean;
+  /** Whether that layer is currently visible (it hides when nothing is affected). */
+  readonly layerVisible: boolean;
+  /** Live enemies whose status effects resolve to a visual treatment. */
+  readonly affectedEnemyCount: number;
+  /** Draw commands buffered on the aura layer (0 when nothing was drawn). */
+  readonly drawCommandCount: number;
+  readonly layerDepth: number | null;
+}
+
+/**
  * Tile-provenance counts from the last terrain bake in the REAL booted scene.
  * Terrain bakes into a single RenderTexture, so per-tile provenance is invisible
  * to display-list counting — this summary (read from the scene's stored counts)
@@ -997,6 +1031,31 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Spawn a live enemy a few feet from the player for the status-effect aura
+   * observation. Arrangement affordance only — the aura itself is drawn by the
+   * shipped render bridge from the real world state.
+   */
+  primeStatusAuraEnemy(): StatusAuraEnemyProbe | null;
+  /**
+   * Live entity position in GAME pixels on the world camera's viewport (camera
+   * scroll removed and camera zoom applied), or null when the entity/camera is
+   * unavailable. Lets a screenshot probe sample the exact footprint an entity
+   * renders into.
+   */
+  getEntityCameraPosition(eid: number): ProbePoint | null;
+  /** Apply the real Curse slow debuff (speed x0.4) to a live enemy. */
+  applyStatusAuraDebuff(enemyEid: number): boolean;
+  /** Status-aura layer state read off the REAL scene display list. */
+  getStatusAuraRenderSummary(): StatusAuraRenderSummary;
+  /**
+   * Set the alpha of the shared status-aura layer. Observation affordance only:
+   * the shipped renderer never touches alpha, so this survives every redraw and
+   * lets a screenshot probe toggle ONLY the aura while the debuff, the status
+   * tint and every animation stay exactly as they are. Returns false when the
+   * layer does not exist yet.
+   */
+  setStatusAuraLayerAlpha(alpha: number): boolean;
   /** Arrange and fire a real Magic Missile against a live nearby enemy. */
   primeMagicMissileLightProbe(): boolean;
   /** Live projectile-light state sampled from the rendered scene light field. */
@@ -2151,6 +2210,77 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inFlightCount: glowingEntities.length,
         emitterLight: field.values[y * field.widthCells + x] ?? null,
       };
+    },
+
+    primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!scene || !phaserScene || !world || holderEid < 0) return null;
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const px = world.stores.position.x[holderEid] ?? 0;
+      const py = world.stores.position.y[holderEid] ?? 0;
+      return { enemyEid: spawnEnemy(world, px + 6, py, 1_000) };
+    },
+
+    getEntityCameraPosition: (eid: number): ProbePoint | null => {
+      const world = getScene()?.world;
+      const cam = getPhaserScene()?.cameras?.main;
+      const x = world?.stores.position.x[eid];
+      const y = world?.stores.position.y[eid];
+      if (!cam || x === undefined || y === undefined) return null;
+      const zoom = cam.zoom || 1;
+      return {
+        x: (ftToPx(x) - cam.worldView.x) * zoom,
+        y: (ftToPx(y) - cam.worldView.y) * zoom,
+      };
+    },
+
+    applyStatusAuraDebuff: (enemyEid: number): boolean => {
+      const world = getScene()?.world;
+      if (!world) return false;
+      return applyStatusEffect(world, enemyEid, {
+        stat: 'speed',
+        op: 'multiply',
+        value: 0.4,
+        durationMs: 3_600,
+        sourceType: 'ability',
+        sourceId: 'probe:status-aura',
+        stackRule: { mode: 'replace' },
+      });
+    },
+
+    getStatusAuraRenderSummary: (): StatusAuraRenderSummary => {
+      const phaserScene = getPhaserScene();
+      const world = getScene()?.world;
+      const layer = findStatusAuraLayer(phaserScene);
+      let affectedEnemyCount = 0;
+      if (world) {
+        for (const eid of query(world.ecs, [Enemy, Position])) {
+          if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+          if (resolveStatusVisual(getStatusEffects(world, eid)) !== null) affectedEnemyCount += 1;
+        }
+      }
+      return {
+        layerPresent: layer !== undefined,
+        layerVisible: layer?.visible ?? false,
+        affectedEnemyCount,
+        drawCommandCount:
+          (layer as unknown as { commandBuffer?: unknown[] })?.commandBuffer?.length ?? 0,
+        layerDepth: layer?.depth ?? null,
+      };
+    },
+
+    setStatusAuraLayerAlpha: (alpha: number): boolean => {
+      const layer = findStatusAuraLayer(getPhaserScene());
+      if (!layer) return false;
+      layer.setAlpha(alpha);
+      return true;
     },
 
     getAbilityFloaters: () => {

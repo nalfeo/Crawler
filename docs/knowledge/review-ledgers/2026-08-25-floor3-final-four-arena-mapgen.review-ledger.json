@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-25",
+  "session_slug": "floor3-final-four-arena-mapgen",
+  "task_title": "Floor 3 Final Four arena chamber map generation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Reviewer identified that seven Studios exhaust all TERRITORY rooms, leaving the Final Four permanently on the spiral fallback. Resolved: carve/register an exact 10x10 generator-owned BOSS_STAIR arena; scenario selects it explicitly; use the carved room's roster tiles; delete the fallback scan; test fitted stamp, geometry/role, deterministic output, and multi-seed reachability. Alternative: scenario post-generation carve/stamp rejected because it bypasses generator reachability/retry ownership. Alternative: a new shared RoomRole rejected because BOSS_STAIR already describes a terminal boss chamber and avoids expanding every role consumer. Chosen: Floor 3 generator-owned arena chamber plus scenario wiring. divergence=minor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "460d523a486ad4d9beea3ed96a3feb781cb64a0d",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly carves a dedicated Final Four arena chamber, ensures reachability with a bypass ring, updates the room graph appropriately, and adapts the scenario spawning logic without breaking existing fallbacks for tests. The diff is tightly scoped, includes thorough unit tests verifying determinism and bounds across multiple seeds, strictly follows repo policies (including a comprehensive ADR and review ledger), and features well-structured and documented code."
+    }
+  }
+}

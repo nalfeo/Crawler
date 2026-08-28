@@ -107,6 +107,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Perf baseline             | `npm run perf:baseline`                                                                                                                     |
 | Gameplay fingerprint      | `npm run perf:fingerprint`                                                                                                                  |
 | Sim CPU profile           | `npm run perf:profile`                                                                                                                      |
+| Host resource profile     | `npm run host:profile`                                                                                                                      |
 | Benchmarks                | `npm run bench`                                                                                                                             |
 | Unit test coverage        | `npm run test:coverage`                                                                                                                     |
 | AI hill-climb sweep       | `npm run ai:hill-climb`                                                                                                                     |
