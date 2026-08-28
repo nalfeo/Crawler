@@ -59,8 +59,7 @@ vi.mock('@azure/storage-blob', async (importOriginal) => {
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
-const { handleRuns, shouldAssignGoobersApproval } =
-  await import('../../functions/dev-build-ingest/src/index.js');
+const { handleRuns } = await import('../../functions/dev-build-ingest/src/index.js');
 
 const fakeAccountKey = Buffer.from('unit-test-account-key').toString('base64');
 
@@ -119,9 +118,7 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('assigns explicit bug reports to the Goobers cohort deterministically', async () => {
-    const runId = 'goobers-arm-1';
-    expect(shouldAssignGoobersApproval(runId)).toBe(true);
+  it('keeps explicit bug reports telemetry-only', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/104' }),
@@ -130,7 +127,7 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     const result = await handleRuns(
       makeRequest({
         ...validRun,
-        meta: { runId },
+        meta: { runId: 'goobers-arm-1' },
         file_issue: true,
         issue_description: 'The player became stuck.',
       }),
@@ -139,18 +136,10 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry', 'goobers:approved']);
+    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
   });
 
-  it('keeps the deterministic bug cohort near a 50/50 split', () => {
-    const assigned = Array.from({ length: 100 }, (_, index) =>
-      shouldAssignGoobersApproval(`goobers-arm-${index}`),
-    ).filter(Boolean).length;
-    expect(assigned).toBeGreaterThanOrEqual(40);
-    expect(assigned).toBeLessThanOrEqual(60);
-  });
-
-  it('does not assign survey feedback to the Goobers bug cohort', async () => {
+  it('keeps survey feedback telemetry-only', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/103' }),

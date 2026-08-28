@@ -56,13 +56,13 @@ describe('dev-tier build workflows configure the ingest endpoint', () => {
     expect(new Set(urls).size).toBe(1);
   });
 
-  it('labels every run issue as telemetry and supports the Goobers bug cohort', () => {
+  it('labels every GitHub issue created from a run upload as telemetry', () => {
     const source = readFileSync(
       path.join(REPO_ROOT, 'functions/dev-build-ingest/src/index.ts'),
       'utf8',
     );
-    expect(source).toMatch(/'telemetry'/);
-    expect(source).toMatch(/'goobers:approved'/);
+    expect(source).toMatch(/labels:\s*\['telemetry'\]/);
+    expect(source).not.toMatch(/'goobers:approved'/);
     expect(source).not.toMatch(/labels:\s*\[survey \? 'telemetry' : 'bug'\]/);
   });
 });

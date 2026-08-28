@@ -10,11 +10,11 @@ Estimated: 2. Actual: 2.
 
 ## Summary
 
-- Explicit in-game bug reports now receive `goobers:approved` alongside
-  `telemetry` for a stable hash-based 50/50 experiment cohort.
-- Survey-only issue filing remains telemetry-only.
-- Cohort assignment is derived from the persisted run ID, so retries preserve
-  the same routing decision.
+- All in-game issue filing remains telemetry-only. Public anonymous ingest must
+  not assign the trusted `goobers:approved` label, which starts repository-write
+  automation.
+- Both explicit bug reports and survey-only issue filing have handler-level
+  label coverage.
 
 ## Verification
 

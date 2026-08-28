@@ -110,11 +110,6 @@ function bundleContentHash(bundle: ValidatedBundle['bundle']): string {
   return createHash('sha256').update(JSON.stringify(bundle)).digest('hex');
 }
 
-export function shouldAssignGoobersApproval(runId: string): boolean {
-  const digest = createHash('sha256').update(`goobers-bug-arm:${runId}`).digest();
-  return (digest[0] ?? 256) < 128;
-}
-
 async function persistBundle(
   container: ReturnType<typeof getContainer>,
   validated: ValidatedBundle,
@@ -466,12 +461,7 @@ async function fileGitHubIssue(
     body: JSON.stringify({
       title,
       body: lines.join('\n'),
-      labels: [
-        'telemetry',
-        ...(validated.bundle.file_issue && shouldAssignGoobersApproval(persisted.runId)
-          ? ['goobers:approved']
-          : []),
-      ],
+      labels: ['telemetry'],
     }),
   });
   if (!result.ok) throw new Error(`GitHub issue creation failed with HTTP ${result.status}`);
