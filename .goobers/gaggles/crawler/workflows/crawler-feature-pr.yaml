@@ -213,7 +213,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: checkpoint-branch
+      next: review
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -229,24 +229,6 @@ spec:
       policyActions:
         - push-repository-branch
       next: local-ci
-    - name: checkpoint-branch
-      type: deterministic
-      goal: Persist implementation commits and open the recovery PR immediately before review.
-      run:
-        script: |
-          set -eu
-          # The checkpoint runs before review, so dependency installation must
-          # not execute lifecycle scripts from the unreviewed branch.
-          npm ci --ignore-scripts
-          goobers push-branch
-          goobers open-pr
-      capabilities:
-        - repo:push
-        - provider:pr:write
-      policyActions:
-        - push-repository-branch
-        - open-or-update-pr
-      next: review
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
