@@ -30,6 +30,7 @@ import {
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
 import { applySolidProps } from '../core/map/applySolidProps.js';
+import { isFloorTimerPaused } from '../core/floor-timer.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import {
   getSetPieceDef,
@@ -3995,9 +3996,12 @@ function floor1ObjectiveTick(world: GameWorld): void {
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
-  // Pause the floor-collapse deadline while the player is in a safe room.
-  // Advancing deadlineMs by one tick's worth keeps the remaining time constant.
-  if (world.playerInSafeRoom) {
+  // Pause the floor-collapse deadline while the player is in a *time-stopping*
+  // safe room. Advancing deadlineMs by one tick's worth keeps the remaining time
+  // constant. A boss arena that turned safe when its boss died is deliberately
+  // excluded (see `isPointInTimeStoppingSafeSpace`): it is a breather, not a
+  // place to park the countdown.
+  if (isFloorTimerPaused(world)) {
     objective.deadlineMs += GAME.DELTA_MS;
   }
 
