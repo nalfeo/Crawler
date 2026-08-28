@@ -525,6 +525,37 @@ function findFloor3ArenaTiles(
 }
 
 /**
+ * The nearest passable tile to `origin` that is neither the player's tile nor
+ * already claimed by another roster spawn, found via a deterministic outward
+ * ring scan. Used when a pre-resolved arena spawn point happens to be the tile
+ * the player is standing on at unlock time, so a Final Four Companion never
+ * materialises on top of the player. Returns `origin` only if the map offers
+ * no alternative at all.
+ */
+function findFloor3RelocatedSpawnTile(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  origin: { x: number; y: number },
+  isPlayerTile: (tile: { x: number; y: number }) => boolean,
+  claimedTiles: ReadonlySet<string>,
+): { x: number; y: number } {
+  const maxRadius = Math.max(floorMap.width, floorMap.height);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const tile = { x: origin.x + dx, y: origin.y + dy };
+        if (!floorMap.tileMap.inBounds(tile.x, tile.y)) continue;
+        if (!floorMap.tileMap.isPassable(tile.x, tile.y)) continue;
+        if (isPlayerTile(tile)) continue;
+        if (claimedTiles.has(`${tile.x},${tile.y}`)) continue;
+        return tile;
+      }
+    }
+  }
+  return origin;
+}
+
+/**
  * Seeded Studio + Final Four selection and world placement (spec R6/R8,
  * slice 8). Each Studio's roster spawn is deferred (`pendingSpawns`) behind
  * its own per-Studio unlock threshold (`unlockLevel`) — spec R6's "any-order
@@ -603,9 +634,12 @@ function initializeFloor3Studios(
   // One team id shared by every Handler's Companions in the Final Four.
   const finalFourTeamId = FLOOR3_FINAL_FOUR_TEAM_BASE;
   const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
-  const finalFourRoom = territoryRooms.find(
-    (room) => !studios.some((studio) => studio.roomId === room.id),
-  );
+  const finalFourRoom =
+    floorMap.roomGraph
+      .getAll()
+      .find(
+        (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+      ) ?? territoryRooms.find((room) => !studios.some((studio) => studio.roomId === room.id));
   const finalFourPlacement = finalFourRoom
     ? stampFloor3EncounterSetPiece(world, finalFourRoom, FLOOR3_FINAL_FOUR_SET_PIECE_ID)
     : undefined;
@@ -664,11 +698,11 @@ function initializeFloor3Studios(
 function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3StudiosState): void {
   const floorMap = world.floorMap;
   if (!floorMap || studiosState.finalFourPendingSpawns.length === 0) return;
-  // Avoid spawning directly on top of the player — the Final Four arena is
-  // an unlabeled point found by spiral-scanning the map centre (no dedicated
-  // room geometry exists yet, spec slice 9), so it could otherwise coincide
-  // with wherever the player happens to be standing when the gate unlocks
-  // (plan-review finding, slice 8).
+  // Production Floor 3 maps pre-resolve the roster's positions from the
+  // dedicated arena chamber at floor build time, and map overrides used by
+  // focused tests fall back to a centre scan. Either way the player can be
+  // standing on a target tile when the last Studio falls, so both paths run
+  // through the same player-tile relocation below.
   const player = query(world.ecs, [Player, Position])[0];
   const avoidPlayerTile =
     player === undefined
@@ -685,12 +719,24 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
     studiosState.finalFourPendingSpawns.length,
     avoidPlayerTile,
   );
+  const plannedTiles = studiosState.finalFourPendingSpawns.map((pending, index) =>
+    pending.x !== undefined && pending.y !== undefined
+      ? floorMap.worldToTile(pending.x, pending.y)
+      : arenaTiles[index % arenaTiles.length]!,
+  );
+  const tileKey = (tile: { x: number; y: number }): string => `${tile.x},${tile.y}`;
+  const onPlayerTile = (tile: { x: number; y: number }): boolean =>
+    avoidPlayerTile !== undefined && avoidPlayerTile(tile.x, tile.y);
+  const claimedTiles = new Set(plannedTiles.filter((tile) => !onPlayerTile(tile)).map(tileKey));
+  const spawnTiles = plannedTiles.map((tile) => {
+    if (!onPlayerTile(tile)) return tile;
+    const relocated = findFloor3RelocatedSpawnTile(floorMap, tile, onPlayerTile, claimedTiles);
+    claimedTiles.add(tileKey(relocated));
+    return relocated;
+  });
   studiosState.finalFourPendingSpawns.forEach((pending, index) => {
-    const tile = arenaTiles[index % arenaTiles.length]!;
-    const arenaPos =
-      pending.x !== undefined && pending.y !== undefined
-        ? { x: pending.x, y: pending.y }
-        : floorMap.tileToWorld(tile.x, tile.y);
+    const tile = spawnTiles[index]!;
+    const arenaPos = floorMap.tileToWorld(tile.x, tile.y);
     const eid = spawnFloor3RosterCompanion(
       world,
       arenaPos.x,

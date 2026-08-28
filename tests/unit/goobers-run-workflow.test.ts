@@ -143,7 +143,6 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
-    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -199,18 +198,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    // The pre-review `checkpoint-branch` stage was removed; `implement` now
+    // hands straight to the review gate and no checkpoint task remains.
+    expect(implement?.next).toBe('review');
+    expect(tasks.get('checkpoint-branch')).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -220,8 +217,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     expect(runStep?.env).toMatchObject({
-      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
@@ -273,8 +270,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
     expect(run?.env).toMatchObject({
-      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
 
@@ -302,6 +299,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
     expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(materialize?.run).toContain('GH_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_REPOSITORY');
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
@@ -312,7 +312,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
     const requireToken = workflow.jobs.run?.steps?.find(
-      (step) => step.name === 'Require GOOBERS_GITHUB_TOKEN',
+      (step) => step.name === 'Require Goobers auth token',
     );
 
     expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
@@ -320,7 +320,9 @@ describe('Goobers automatic dispatch and recovery', () => {
       capability: 'agent:model',
       token: { env: 'COPILOT_GITHUB_TOKEN' },
     });
-    expect(requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET).toBe('${{ secrets.GOOBERS_GITHUB_TOKEN }}');
+    expect(requireToken?.env?.GOOBERS_AUTH_TOKEN_SET).toBe(
+      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+    );
   });
 
   it('supports deterministic issue-linked PR recovery and explicit abandon', () => {
@@ -334,13 +336,15 @@ describe('Goobers automatic dispatch and recovery', () => {
       abandon_existing: { default: false },
     });
     expect(recovery?.env).toMatchObject({
-      GOOBERS_GITHUB_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GOOBERS_AUTH_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       ISSUE_NUMBER: '${{ inputs.issue_number || github.event.issue.number }}',
       ABANDON_EXISTING: "${{ inputs.abandon_existing || 'false' }}",
     });
     expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
     expect(recovery?.run).toContain('cross-referenced');
-    expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN secret is required');
+    expect(recovery?.run).toContain(
+      'Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required',
+    );
     expect(recovery?.run).toContain('goobers/status:in-review');
     expect(recovery?.run).toContain('Scheduled recovery selected issue');
     expect(recovery?.run).toContain('goobers/crawler/*');
