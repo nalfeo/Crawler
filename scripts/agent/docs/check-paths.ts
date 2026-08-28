@@ -30,7 +30,15 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
-import { globParentDir, looksLikePath, nextFenceState, resolveLinkTarget } from './doc-refs-lib.js';
+import {
+  externalLinkLabelRanges,
+  globParentDir,
+  isWithinRanges,
+  looksLikePath,
+  nextFenceState,
+  resolveLinkTarget,
+  stripSymbolSuffix,
+} from './doc-refs-lib.js';
 
 const DOC_FILES = ['AGENTS.md', 'README.md', '.github/copilot-instructions.md'];
 const DOC_DIRS = [
@@ -115,12 +123,17 @@ async function main(): Promise<void> {
       fence = nextFenceState(fence, line);
       if (wasInFence || fence !== null) return;
       let match: RegExpExecArray | null;
+      // A backticked path used as the *label* of a link to another repo (or to
+      // a mail/anchor target) names a file over there, not here.
+      const externalLabels = externalLinkLabelRanges(line);
       const re = new RegExp(BACKTICK.source, 'g');
       while ((match = re.exec(line)) !== null) {
         const raw = match[1];
         if (!raw) continue;
-        // Strip a trailing punctuation if it crept in (`.`, `,`, `;`, `)`)
-        const candidate = raw.replace(/[.,;)\]]+$/, '');
+        if (isWithinRanges(externalLabels, match.index, match.index + match[0].length)) continue;
+        // Strip a trailing punctuation if it crept in (`.`, `,`, `;`, `)`), and
+        // a `::symbol` suffix (`src/a.ts::doThing` pins a symbol inside a file).
+        const candidate = stripSymbolSuffix(raw.replace(/[.,;)\]]+$/, ''));
         if (!looksLikePath(candidate)) continue;
         if (ALLOWLIST.has(candidate)) continue;
         // Resolve relative `./` to repo root
