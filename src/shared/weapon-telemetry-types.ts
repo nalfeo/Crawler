@@ -20,6 +20,14 @@ export interface WeaponTelemetry {
   swings: number;
   /** Subset of `swings` that whiffed on the accuracy roll (cosmetic-only miss). */
   accuracyMisses: number;
+  /**
+   * Subset of `swings` whose damage entities are NOT tagged with an activation
+   * id (BEAM/TRAP weapons — see the scope note in `core/weapon-telemetry.ts`).
+   * They can never be counted as connecting, so any consumer that reads
+   * `accuracy` as a player-facing number must treat a non-zero value here as
+   * "accuracy is not measurable for this run".
+   */
+  unattributedSwings: number;
   /** Next activation id to hand out (monotonic, never reused). */
   nextActivationId: number;
   /**
@@ -45,6 +53,12 @@ export interface WeaponTelemetrySummary {
   swings: number;
   /** Activations that whiffed on the accuracy roll. */
   accuracyMisses: number;
+  /**
+   * Activations from weapon types whose damage entities are not attributed
+   * (BEAM/TRAP). Non-zero means `accuracy` under-reports and must not be shown
+   * to a player as a measured value.
+   */
+  unattributedSwings: number;
   /** Activations that damaged >= 1 enemy. */
   connectingSwings: number;
   /** Activations that damaged >= 2 distinct enemies (AoE / arc sweep / pierce). */

@@ -169,6 +169,7 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
     cursor: number;
@@ -549,6 +550,21 @@ export interface MainSceneState {
   readonly settlementShopArchetypeIds: readonly string[];
 }
 
+/**
+ * Live projection of the between-floor summary screen: the stat lines a player
+ * can read, the acknowledgement prompt, and whether the descent is waiting.
+ */
+export interface FloorSummaryProbeState {
+  readonly visible: boolean;
+  readonly lines: readonly string[];
+  readonly prompt: string | null;
+  readonly awaitingAcknowledgement: boolean;
+  /** Panel rectangle behind the completion copy (design space). */
+  readonly panelBounds: ScreenBounds | null;
+  /** Union of every visible completion-screen text (design space). */
+  readonly contentBounds: ScreenBounds | null;
+}
+
 /** One bottom-left vitals row's live visibility + rendered design-space bounds. */
 export interface VitalsRowProbe {
   readonly visible: boolean;
@@ -894,6 +910,8 @@ export interface MainSceneProbeApi {
    * intrude into the display-cutout / home-indicator bands.
    */
   getSafeAreaLayout(): SafeAreaLayoutProbe;
+  /** Live between-floor summary screen projection (stat lines + prompt). */
+  getFloorSummaryState(): FloorSummaryProbeState;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Advance the paused simulation by N fixed steps using the real scene seam. */
@@ -1103,6 +1121,11 @@ export interface MainSceneProbeApi {
   };
   /** Current probe-controlled value returned by MainGameSceneOptions.isAutoDriven. */
   isRewardOpeningAutoDrivenForProbe(): boolean;
+  /**
+   * Latch the scene's auto-driven signal, so an e2e can exercise the paths the
+   * shipped AI/headless runners take (e.g. the timed between-floor advance).
+   */
+  setAutoDrivenForProbe(enabled: boolean): void;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
   tickRewardOpening(deltaMs: number): void;
   /** Jump the open reward-opening sequence straight to `summary`. */
@@ -1540,6 +1563,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
+
+    getFloorSummaryState: (): FloorSummaryProbeState =>
+      getScene()?.getFloorSummaryState?.() ?? {
+        visible: false,
+        lines: [],
+        prompt: null,
+        awaitingAcknowledgement: false,
+        panelBounds: null,
+        contentBounds: null,
+      },
 
     getSafeAreaLayout: (): SafeAreaLayoutProbe => {
       const scene = getScene();
@@ -2662,6 +2695,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     isRewardOpeningAutoDrivenForProbe: () => autoDrivenForProbe,
+
+    setAutoDrivenForProbe: (enabled: boolean) => {
+      autoDrivenForProbe = enabled;
+    },
 
     tickRewardOpening: (deltaMs: number) => {
       getScene()?.rewardOpeningUI?.tick(deltaMs);
