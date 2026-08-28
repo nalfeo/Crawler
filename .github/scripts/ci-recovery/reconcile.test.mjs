@@ -12940,6 +12940,84 @@ test('review-ledger thread blockers separate validator evidence from policy disa
   );
 });
 
+test('invalid added review ledger becomes a lifecycle recovery blocker', async (t) => {
+  const ledgerPath = 'docs/knowledge/review-ledgers/2026-08-28-invalid-ledger.review-ledger.json';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), changed_files: 1 },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [{ status: 'added', filename: ledgerPath }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/contents/${ledgerPath}`]: () => ({
+      body: {
+        encoding: 'base64',
+        content: Buffer.from('{"invalid":true}').toString('base64'),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1106 },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      String(call.body?.body || '').includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment for the invalid ledger');
+  assert.match(taskCommentCall.body.body, /\*\*review-ledger\*\*/);
+  assert.match(taskCommentCall.body.body, /Do not duplicate CI results in the ledger/);
+  assert.match(taskCommentCall.body.body, /reviewer_actors/);
+  assert.match(taskCommentCall.body.body, /repair and validate the ledger on the final head/i);
+  assert.match(taskCommentCall.body.body, /ledger validation is the only failing CI step/i);
+});
+
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
   const threadId = 'PRRT_collaborator_followup_thread';
   const priorTaskFingerprint = '38aca57540f447b85a082cf668dbbc3b09a0ee223c542434dbaddaaa7a553e3e';
