@@ -21,6 +21,7 @@ spec:
         script: |
           set -eu
           repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          export GH_TOKEN="${GOOBERS_CRED_GITHUB_ISSUES_WRITE:-${GH_TOKEN:-}}"
           if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
             issue="${GOOBERS_RECOVERY_ISSUE}"
             case "${issue}" in
@@ -39,7 +40,7 @@ spec:
             fi
             gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'
             printf '%s' "${issue_json}" | jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
-              id: (.number // '"${issue}"'),
+              id: ((.number // '"${issue}"') | tostring),
               title,
               body,
               url,
