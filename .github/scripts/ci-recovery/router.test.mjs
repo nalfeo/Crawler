@@ -53,6 +53,9 @@ import {
   classifyStaleBase,
   isStackedRetargetRefusal,
   retargetStaleBasePulls,
+  STACKED_PR_GRACE_MS,
+  STACKED_PR_LABEL,
+  unstackPullRequest,
   waitForDispatchedRunsVisible,
   waitForOutstandingCount,
 } from './router.mjs';
@@ -230,15 +233,102 @@ test('stale-base classifier retargets a base branch identical to main', () => {
   );
 });
 
-test('stale-base classifier leaves an intentional open stacked base alone', () => {
+test('stale-base classifier leaves a labeled intentional open stacked base alone', () => {
   assert.deepEqual(
     classifyStaleBase({
-      pullRequest: stackedPullRequest(),
+      pullRequest: stackedPullRequest({ labels: [{ name: STACKED_PR_LABEL }] }),
       basePulls: [mergedBasePull({ state: 'open', merged_at: null })],
       baseBranch: { object: { sha: 'base-head' } },
       comparison: { status: 'behind' },
     }),
-    { action: 'skip', reason: 'base-pr-open' },
+    { action: 'skip', reason: 'labeled-stacked-pr-open' },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Explicit-stacked-PR-intent regression suite (requirement 2026-08-28)
+// ---------------------------------------------------------------------------
+
+// R1: labeled PR with open parent → stays stacked.
+test('explicit-stacked-pr-intent: labeled PR with open parent stays stacked', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({
+        labels: [{ name: STACKED_PR_LABEL }],
+        created_at: new Date(Date.now() - 10 * 60 * 1_000).toISOString(), // 10 min ago
+      }),
+      basePulls: [mergedBasePull({ state: 'open', merged_at: null })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'behind' },
+    }),
+    { action: 'skip', reason: 'labeled-stacked-pr-open' },
+  );
+});
+
+// R2: unlabeled PR with open parent, within 5-minute grace → stays.
+test('explicit-stacked-pr-intent: unlabeled PR within grace window stays', () => {
+  const nowMs = Date.now();
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({
+        labels: [],
+        created_at: new Date(nowMs - 2 * 60 * 1_000).toISOString(), // 2 min ago
+      }),
+      basePulls: [mergedBasePull({ state: 'open', merged_at: null })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'behind' },
+      nowMs,
+    }),
+    { action: 'skip', reason: 'unlabeled-grace-period' },
+  );
+});
+
+// R3: unlabeled PR with open parent, past 5-minute grace → retargeted.
+test('explicit-stacked-pr-intent: unlabeled PR past grace window is retargeted to main', () => {
+  const nowMs = Date.now();
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({
+        labels: [],
+        created_at: new Date(nowMs - 10 * 60 * 1_000).toISOString(), // 10 min ago
+      }),
+      basePulls: [mergedBasePull({ state: 'open', merged_at: null })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'behind' },
+      nowMs,
+    }),
+    { action: 'retarget', reason: 'unlabeled-stacked-pr-expired' },
+  );
+});
+
+// R4: labeled child whose parent has landed → normalised to main.
+test('explicit-stacked-pr-intent: labeled child after parent lands is retargeted', () => {
+  // Once the parent is closed/merged, the stacked-pr label no longer shields the
+  // child — the existing stale-base classification paths take over and produce a
+  // retarget (here: merged-base-pr).
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({
+        labels: [{ name: STACKED_PR_LABEL }],
+      }),
+      basePulls: [mergedBasePull()], // parent merged, not open
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'diverged' },
+    }),
+    { action: 'retarget', reason: 'merged-base-pr', basePrNumber: mergedBasePull().number },
+  );
+});
+
+// R5: already-landed behavior is unaffected by the label change.
+test('explicit-stacked-pr-intent: already-landed main-base PR is still skipped unchanged', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest({ base: { ref: 'main' }, labels: [] }),
+      basePulls: [],
+      baseBranch: null,
+      comparison: null,
+    }),
+    { action: 'skip', reason: 'main-base' },
   );
 });
 
@@ -400,9 +490,11 @@ function stackedRetargetError() {
   return error;
 }
 
-test('stale-base retarget merges main forward when GitHub refuses a stacked retarget', async () => {
+test('stale-base retarget un-stacks then retries when GitHub refuses a stacked retarget', async () => {
   const calls = [];
   const logs = [];
+  let patchAttempts = 0;
+  const normalized = stackedPullRequest({ base: { ref: 'main' } });
   const retargeted = await retargetStaleBasePulls({
     scheduledPulls: [stackedPullRequest()],
     repository: 'nalfeo/Crawler',
@@ -411,8 +503,17 @@ test('stale-base retarget merges main forward when GitHub refuses a stacked reta
     paginateFn: async () => [mergedBasePull()],
     requestFn: async (_token, path, options = {}) => {
       calls.push({ path, options });
-      if (options.method === 'PATCH') throw stackedRetargetError();
-      if (path.endsWith('/merges')) return { data: { sha: 'merge-sha' }, status: 201 };
+      if (options.method === 'PATCH') {
+        patchAttempts += 1;
+        if (patchAttempts === 1) throw stackedRetargetError();
+        return { data: normalized };
+      }
+      if (path.includes('/stacks?pull_request=')) {
+        return {
+          data: [{ number: 42, pull_requests: [{ number: 2863 }] }],
+        };
+      }
+      if (path.endsWith('/stacks/42/unstack')) return { data: null, status: 204 };
       if (options.method === 'POST') return { data: {} };
       if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
       if (path.includes('/compare/')) return { data: { status: 'ahead' } };
@@ -420,22 +521,61 @@ test('stale-base retarget merges main forward when GitHub refuses a stacked reta
     },
     writeLog: (line) => logs.push(line),
   });
-  // The PR is not reported as retargeted, because its base did not change.
-  assert.deepEqual(retargeted, []);
-  const merge = calls.find((call) => call.path.endsWith('/merges'));
-  assert.ok(merge, 'expected a merge-forward call');
-  assert.deepEqual(
-    { base: merge.options.body.base, head: merge.options.body.head },
-    { base: 'stacked-head-ref', head: 'main' },
-  );
-  assert.ok(logs.some((line) => /action=merge-forward result=merged/.test(line)));
+  assert.deepEqual(retargeted, [normalized]);
+  assert.equal(patchAttempts, 2);
+  assert.ok(calls.some((call) => call.path.endsWith('/stacks/42/unstack')));
+  assert.ok(logs.some((line) => /action=unstack result=success stack=42/.test(line)));
   const comment = calls.find((call) => call.path.endsWith('/comments'));
-  assert.match(comment.options.body.body, /Merged `main` forward/);
+  assert.match(comment.options.body.body, /auto-retargeted this PR to `main`/);
 });
 
-test('stale-base merge-forward reports a conflict instead of throwing', async () => {
+test('native stack lookup and unstack use the preview API version', async () => {
+  const calls = [];
+  assert.deepEqual(
+    await unstackPullRequest({
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      pullRequest: stackedPullRequest(),
+      mutationToken: 'write',
+      requestFn: async (_token, path, options = {}) => {
+        calls.push({ path, options });
+        if (path.includes('/stacks?pull_request=')) {
+          return { data: [{ number: 42, pull_requests: [{ number: 2863 }] }] };
+        }
+        return { data: null, status: 204 };
+      },
+    }),
+    { ok: true, stackNumber: 42 },
+  );
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.options.headers['X-GitHub-Api-Version'], '2026-03-10');
+  }
+});
+
+test('native partial unstack fails closed when the target PR remains stacked', async () => {
+  assert.deepEqual(
+    await unstackPullRequest({
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      pullRequest: stackedPullRequest(),
+      mutationToken: 'write',
+      requestFn: async (_token, path) => {
+        if (path.includes('/stacks?pull_request=')) {
+          return { data: [{ number: 42, pull_requests: [{ number: 2863 }] }] };
+        }
+        return {
+          data: { number: 42, pull_requests: [{ number: 2863 }] },
+          status: 200,
+        };
+      },
+    }),
+    { ok: false, reason: 'pull-request-remained-stacked' },
+  );
+});
+
+test('stale-base retarget reports a failed native unstack without merging forward', async () => {
   const logs = [];
-  const comments = [];
   await retargetStaleBasePulls({
     scheduledPulls: [stackedPullRequest()],
     repository: 'nalfeo/Crawler',
@@ -444,19 +584,14 @@ test('stale-base merge-forward reports a conflict instead of throwing', async ()
     paginateFn: async () => [mergedBasePull()],
     requestFn: async (_token, path, options = {}) => {
       if (options.method === 'PATCH') throw stackedRetargetError();
-      if (path.endsWith('/merges')) throw makeError(409, 'Merge conflict');
-      if (path.endsWith('/comments')) {
-        comments.push(options.body.body);
-        return { data: {} };
-      }
+      if (path.includes('/stacks?pull_request=')) throw makeError(404, 'Not Found');
       if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
       if (path.includes('/compare/')) return { data: { status: 'ahead' } };
       throw new Error(`Unexpected request ${path}`);
     },
     writeLog: (line) => logs.push(line),
   });
-  assert.ok(logs.some((line) => /action=merge-forward result=conflict/.test(line)));
-  assert.match(comments[0], /manual unstack or conflict resolution/);
+  assert.ok(logs.some((line) => /action=unstack result=unstack-failed:404/.test(line)));
 });
 
 test('stale-base retarget skips the PR and continues on a non-stack 422', async () => {
