@@ -7,15 +7,23 @@ on:
       - '.github/workflows/ci-recovery*.yml'
       - '.github/workflows/merge-train*.yml'
       - '.github/workflows/goobers-*.yml'
+      - '.github/scripts/ci-recovery/**'
+      - '.github/scripts/merge-train/**'
       - '.github/scripts/validate-goobers-contracts*'
+      - '.goobers/**'
       - 'tests/unit/goobers-contracts.test.ts'
+      - 'tests/unit/goobers-run-workflow.test.ts'
   pull_request:
     paths:
       - '.github/workflows/ci-recovery*.yml'
       - '.github/workflows/merge-train*.yml'
       - '.github/workflows/goobers-*.yml'
+      - '.github/scripts/ci-recovery/**'
+      - '.github/scripts/merge-train/**'
       - '.github/scripts/validate-goobers-contracts*'
+      - '.goobers/**'
       - 'tests/unit/goobers-contracts.test.ts'
+      - 'tests/unit/goobers-run-workflow.test.ts'
   workflow_dispatch:
 
 permissions:
@@ -33,9 +41,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-node
         with:
-          node-version: '22'
+          install-playwright: 'false'
 
       - name: Validate workflow inputs against invocation schema
         run: |

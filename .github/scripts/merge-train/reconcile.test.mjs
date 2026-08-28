@@ -32,7 +32,13 @@ import {
   UNADVANCEABLE_ATTEMPT_CEILING,
   UNADVANCEABLE_STRIKE_THRESHOLD,
 } from './reconcile-lib.mjs';
-import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
+import {
+  candidateEvidenceId,
+  CANDIDATE_CHECK_NAME,
+  planAttributedPrefixPromotion,
+  planPrefixPromotion,
+  trainCheckState,
+} from './state.mjs';
 
 const baseSha = 'a'.repeat(40);
 const candidateSha = 'b'.repeat(40);
@@ -2019,6 +2025,101 @@ test('candidate validation dispatch payload always carries the fingerprint idemp
     fingerprint: 'gen-7',
     pr_numbers: '42,43',
   });
+});
+
+test('re-reconciling the same candidate fingerprint dispatches validation at most once', async () => {
+  // Models two full reconciliation passes over the same unresolved candidate
+  // (same mainSha, same queued entries -> same fingerprint/evidenceId), which
+  // is exactly the scenario reconcile.mjs's dispatchValidation() guards
+  // against: it posts an `in_progress` check run (external_id = evidenceId)
+  // *before* calling dispatchValidationWorkflow, so trainCheckState() reports
+  // 'pending' (not 'missing') on the next reconciliation and
+  // planPrefixPromotion returns 'wait' instead of 'validate' again.
+  const fingerprint = 'f'.repeat(64);
+  const evidenceId = candidateEvidenceId(fingerprint, candidateSha);
+  const trustedAppId = 123;
+  let postedCheckRun = null;
+
+  const dispatchCalls = [];
+  const request = async (token, endpoint, options) => {
+    dispatchCalls.push({ token, endpoint, options });
+    return { data: {} };
+  };
+
+  async function reconciliationAttempt() {
+    const now = new Date('2026-01-01T00:05:00.000Z');
+    const checkRuns = postedCheckRun ? [postedCheckRun] : [];
+    const state = trainCheckState(checkRuns, evidenceId, trustedAppId, now);
+    const plan = planPrefixPromotion([state]);
+    if (plan.action !== 'validate') return plan.action;
+
+    // Mirrors reconcile.mjs's dispatchValidation(): create the authoritative
+    // check-run record first, then dispatch.
+    postedCheckRun = {
+      name: CANDIDATE_CHECK_NAME,
+      external_id: evidenceId,
+      status: 'in_progress',
+      started_at: '2026-01-01T00:00:00.000Z',
+      app: { id: trustedAppId },
+    };
+    await dispatchValidationWorkflow({
+      request,
+      token: 'actions-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      sha: candidateSha,
+      refName: 'refs/merge-train-candidates/candidate-7',
+      attestationSha: baseSha,
+      fingerprint,
+      entries: [makePr({ number: 42 })],
+    });
+    return plan.action;
+  }
+
+  const firstAction = await reconciliationAttempt();
+  const secondAction = await reconciliationAttempt();
+
+  assert.equal(firstAction, 'validate', 'first reconciliation must dispatch a missing candidate');
+  assert.equal(
+    secondAction,
+    'wait',
+    'second reconciliation must see the pending check run and wait rather than re-validate',
+  );
+  assert.equal(
+    dispatchCalls.length,
+    1,
+    'the same candidate fingerprint must not be dispatched for validation twice',
+  );
+});
+
+test('reconcile.mjs dispatchValidation() actually posts the in_progress check run before dispatching', () => {
+  // The test above models the invariant via the real state.mjs primitives
+  // (trainCheckState/planPrefixPromotion/candidateEvidenceId), but reconcile.mjs
+  // is a top-level script with side effects and cannot be imported directly, so
+  // that model reproduces createTrainCheck-before-dispatch by hand. This
+  // companion assertion pins the *real* dispatchValidation() source to that
+  // exact ordering, so the modeled test cannot silently drift from production
+  // if someone reorders or removes the createTrainCheck call.
+  const fn = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function dispatchValidation('),
+    RECONCILE_SOURCE.indexOf(
+      '\n}\n',
+      RECONCILE_SOURCE.indexOf('async function dispatchValidation('),
+    ),
+  );
+  const createIndex = fn.indexOf('createTrainCheck(');
+  const dispatchIndex = fn.indexOf('baseDispatchValidation(');
+  assert.ok(createIndex >= 0, 'dispatchValidation must post a check run');
+  assert.ok(dispatchIndex >= 0, 'dispatchValidation must call the base dispatch');
+  assert.ok(
+    createIndex < dispatchIndex,
+    'createTrainCheck (the idempotency record) must be written before the validation dispatch fires',
+  );
+  assert.match(
+    fn.slice(createIndex, createIndex + 120),
+    /createTrainCheck\(\s*mainSha,\s*evidenceId,\s*'in_progress'/,
+    'the pre-dispatch check run must be keyed by the candidate evidenceId and marked in_progress',
+  );
 });
 
 test('clean-behind update-branch recovery keeps FIFO and only yields when rebinding cannot advance', () => {

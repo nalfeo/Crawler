@@ -38,8 +38,20 @@ export const invocationV1 = {
       description: 'Operation type',
     },
     pr_number: {
-      type: ['number', 'null'],
-      description: 'PR number; required for PR-scoped ops, forbidden for batch ops',
+      // GitHub Actions `workflow_dispatch` inputs have no native numeric type
+      // (only string/boolean/choice/environment), and every dispatch caller
+      // in this repo sends `pr_number: String(prNumber)` (see
+      // reconcile-lib.mjs dispatchRecoveryWorkflow). The wire value is always
+      // a numeric string; require it to look like one.
+      // Never 'null': GitHub Actions omits an unset workflow_dispatch input
+      // entirely (or sends '') rather than transmitting a JSON null, so a
+      // 'null' type here would validate a shape no real producer can send.
+      // Optionality is expressed by omitting the key -- see `required` above.
+      type: 'string',
+      pattern: '^[0-9]+$',
+      description:
+        'PR number as a numeric string (GitHub Actions inputs are always strings); ' +
+        'required for PR-scoped ops, forbidden for batch ops',
     },
     expected_head_sha: {
       type: 'string',
@@ -74,20 +86,22 @@ export const invocationV1 = {
       description: 'Non-secret shepherd ownership identifier',
     },
     trigger: {
+      // Real trigger values are free-form business-reason strings minted by
+      // the dispatching script (e.g. 'merge-train-noop',
+      // 'merge-train-cumulative-conflict:41', '${eventName}:sweep' from
+      // recoveryTriggerForPr in ci-recovery/router.mjs), not a closed set of
+      // GitHub event names -- a fixed enum here would reject real producer
+      // traffic.
       type: 'string',
-      enum: [
-        'workflow_dispatch',
-        'schedule',
-        'pull_request_target',
-        'push',
-        'workflow_run',
-        'issue_comment',
-      ],
-      description: 'Event that triggered this invocation',
+      minLength: 1,
+      description: 'Free-form reason string describing why this invocation was dispatched',
     },
     issue_number: {
-      type: ['number', 'null'],
-      description: 'Goobers issue number for feature tracking',
+      // Same GitHub Actions string-only input constraint as pr_number: never
+      // 'null', since an unset input is simply an absent key on the wire.
+      type: 'string',
+      pattern: '^[0-9]+$',
+      description: 'Goobers issue number as a numeric string, for feature tracking',
     },
   },
   additionalProperties: false,
@@ -106,12 +120,35 @@ export const outputV1 = {
   title: 'crawler.goobers.output/v1',
   description: 'Result payload from Goobers workflow execution',
   type: 'object',
-  required: ['contractVersion', 'status', 'outputs', 'summary'],
+  required: ['contractVersion', 'task', 'status', 'outputs', 'summary'],
   properties: {
     contractVersion: {
       type: 'string',
       enum: ['v1'],
       description: 'Schema version; unknown versions fail closed',
+    },
+    task: {
+      type: 'string',
+      enum: [
+        'query-backlog',
+        'hydrate-requirements',
+        'plan',
+        'materialize-plan',
+        'implement',
+        'push-branch',
+        'local-ci',
+        'open-pr',
+        'close-out',
+        'park-needs-human',
+        'needs-remediation',
+        'review',
+        'local-gate',
+        'pr-opened-gate',
+      ],
+      description:
+        'Discriminator naming the Goobers task/gate (see .goobers/gaggles/crawler/workflows/' +
+        'crawler-feature-pr.yaml) that produced this output; gates operation-specific field ' +
+        'applicability below',
     },
     status: {
       type: 'string',
@@ -126,17 +163,19 @@ export const outputV1 = {
         verdict: {
           type: ['string', 'null'],
           enum: ['recommended', 'risky', 'not-recommended', null],
-          description: 'Planning verdict; only for planning operations',
+          description: "Planning verdict; only non-null when task='plan'",
         },
         appleEstimate: {
           type: ['number', 'null'],
           minimum: 1,
           maximum: 5,
-          description: 'Apple complexity estimate; only for planning operations',
+          description: "Apple complexity estimate; only non-null when task='plan'",
         },
         hardGate: {
           type: ['string', 'null'],
-          description: 'Gate criteria; only for operations with explicit gates',
+          description:
+            "Gate criteria; only non-null when task is one of 'plan', 'local-gate', " +
+            "'pr-opened-gate', or 'review'",
         },
         blockedBy: {
           type: ['string', 'null'],
@@ -188,33 +227,45 @@ export const outputV1 = {
    * Checked in Node.js validation code:
    * - When status='failure' or 'blocked': error is required and non-null
    * - When status='success' or 'no-work': error must be null or omitted
-   * - verdict only non-null for planning operations
-   * - appleEstimate only non-null for planning operations
+   * - outputs.verdict only non-null when task='plan'
+   * - outputs.appleEstimate only non-null when task='plan'
+   * - outputs.hardGate only non-null when task is 'plan', 'local-gate', 'pr-opened-gate', or 'review'
    * - Deterministic gates fail on schema violation
    */
 };
 
 export const prStateCommentV1 = {
   /**
-   * GHA → Goobers Invocation Contract
+   * CI Recovery → Pinned PR State Comment Contract
    *
-   * Describes workflow dispatch inputs sent from GitHub Actions
-   * to CI Recovery, Merge Train, or Goobers workflows.
+   * Describes the authoritative state comment CI Recovery posts/updates on
+   * each PR. This mirrors the real runtime encoding in
+   * `.github/scripts/ci-recovery/markers.mjs` (STATE_MARKER/STATE_DATA_PREFIX)
+   * and `.github/scripts/ci-recovery/state.mjs` (renderStateComment/
+   * parseStateComment/validateState) rather than a hypothetical format, so a
+   * consumer implementing this contract can actually locate and parse live
+   * state.
    */
-  description: 'Authoritative PR state tracked in pinned comment on each PR',
-  format: 'markdown with HTML anchor <!-- crawler-pr-state-v1 --> for lookup',
-  requiredFields: [
-    'Disposition',
-    'Lock Holder',
-    'Lease Expires',
-    'Next Action',
-    'Last Updated',
-    'CI Results',
+  description: 'Authoritative CI recovery state tracked in a pinned comment on each PR',
+  marker: '<!-- crawler-ci-state:v1 -->',
+  dataPrefix: '<!-- crawler-ci-state-data:',
+  format:
+    'HTML anchor marker line, followed by a data line embedding base64url-encoded JSON ' +
+    '(`<!-- crawler-ci-state-data:<base64url(JSON.stringify(state))> -->`), followed by ' +
+    'human-readable Markdown bullet fields (not a table) rendered from the same state object',
+  encodedStateRequiredFields: [
+    'version',
+    'prNumber',
+    'owner',
+    'status',
+    'headSha',
+    'fingerprint',
+    'blockers',
+    'attempt',
+    'updatedAt',
   ],
-  dispositionEnum: ['admitted', 'queued', 'blocked', 'landed', 'stalled', 'unowned'],
-  lockHolderFormat: '<shepherd-id (idempotency key)> | unowned | human-escalation',
-  leaseExpiresFormat: 'ISO 8601 timestamp | N/A',
-  ciResultsFormat: 'Markdown link to check-run or verdict',
+  ownerEnum: ['none', 'shepherd', 'human'],
+  bulletFields: ['Owner', 'Status', 'Head', 'Fingerprint', 'Blockers', 'Updated'],
   addressedFindingsSection: 'Append-only list of `✅ Addressed in <sha>: <reason>` markers',
 };
 

@@ -1,0 +1,59 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "goobers-phase0-review-recovery",
+  "task_title": "Phase 0 goobers contract review recovery",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gemini-3.1-pro-preview",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gemini-3.1-pro-preview) of the 9-thread + CI-failure fix plan. Blocking, addressed: (1) idempotency test manually mimicked dispatchValidation's createTrainCheck-before-dispatch ordering instead of proving it against reconcile.mjs -> added a companion source-string assertion test pinning the real function's createTrainCheck-then-baseDispatchValidation ordering, so the modeled test cannot silently drift from production; (2) pr_number/issue_number schema allowed JSON null even though GitHub Actions omits unset workflow_dispatch inputs entirely (never null) -> removed 'null' from both types, kept as plain numeric-string. Non-blocking, considered and rejected with reasoning: (a) tightening the free-form 'trigger' field into a regex pattern -> rejected, the trigger set is large/dynamic across ci-recovery and merge-train (dozens of literals plus templated suffixes like merge-train-cumulative-conflict:${predecessor}) and a pattern would recreate the exact enum-fragility that caused the original bug; (b) importing real reconcile-lib.mjs dispatch functions into the schema test suite called 'backwards coupling' -> kept as-is, this is the literal mandate of the original human review thread #6 (\"validate derived real payloads/artifacts, not only synthetic fixtures\"); (c) requiring verdict/appleEstimate via if/then when task===plan (currently only forbidden when task!=plan) -> deferred as an enhancement outside the scope of the 9 flagged findings. False positive dismissed: reviewer flagged the local composite setup-node action as possibly running before checkout -> verified actions/checkout@v4 already precedes it in both jobs."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
