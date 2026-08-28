@@ -119,10 +119,13 @@ describe('skill L5 milestone ability grants', () => {
       expect(abilityId, `arcane L${level} milestone should grant an ability`).toBeDefined();
       const def = getAbilityDefinition(abilityId!);
       expect(def?.kind, `arcane L${level} should be an active ability`).toBe('active');
+      if (def === undefined || def.kind === 'passive') {
+        throw new Error(`arcane L${level} ability should have an active definition`);
+      }
       expect(def?.weaponPrerequisite).toBe('arcane');
       // 'active' (not 'spell') keeps the unlock out of the spellbook feature
       // gate, which on Floor 1 only opens after the first boss.
-      expect(def?.cooldownFrames).toBeGreaterThan(0);
+      expect(def.cooldownFrames).toBeGreaterThan(0);
     }
   });
 });

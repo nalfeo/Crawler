@@ -71,10 +71,14 @@ See `docs/knowledge/adr/2026-08-27-arcane-level5-active-ability.md`.
   stubs ("active wiring is a follow-up"). Arcane is now the first one actually converted;
   the plumbing added here (kind-derived milestone grants + weapon-gated actives) makes each
   remaining conversion a registry-only edit. That is the obvious follow-up wave.
-- `arcane-nova` tuning (14 base dmg / 3-tile radius / 10s, 2-enemy cluster within 8 ft) was
-  authored conservatively and is worth a Floor-1 win-rate sweep via
-  `workflow_dispatch` (`weapon-sweep.yml`) before further buffs. Do **not** tune it against
-  hand-picked seeds (rule #12).
+- Recovery balance evidence for the `arcane-nova` tuning (14 base dmg / 3-tile radius /
+  10s, 2-enemy cluster within 8 ft): `npm run ai:weapon-sweep -- --weapons fireball
+--seeds 1,2,3,4,5,6,7,8,9,10 --max-frames 19800 --out
+artifacts/experiments/arcane-nova-fireball-seeds-1-10.json` completed 10/10 victories
+  (100% win rate), 224s mean time, 6.7 mean level, 101.0 mean kills, 88.8% mean min HP,
+  0.0 close calls. Sweep Results Viewer: `project:sweep-results-viewer
+runId=2026-08-28T01:40:50.780Z`. Do **not** tune it against hand-picked seeds
+  (rule #12).
 
 ## Retrospective
 

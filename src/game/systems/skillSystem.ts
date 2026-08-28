@@ -32,7 +32,8 @@ const SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS = 2600;
  * for milestones whose ability is not (yet) registered.
  */
 function abilityGrantKind(abilityId: string): AbilityGrantKind {
-  return getAbilityDefinition(abilityId)?.kind === 'passive' ? 'passive' : 'active';
+  const kind = getAbilityDefinition(abilityId)?.kind;
+  return kind === 'active' || kind === 'spell' ? 'active' : 'passive';
 }
 
 /**
