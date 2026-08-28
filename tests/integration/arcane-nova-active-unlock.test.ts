@@ -162,6 +162,17 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
   it('upgrades the active in place at level 15 without stranding the level-5 grant', () => {
     const { world, playerEid } = createPlayingFloor1World(21);
     levelArcaneToFive(world, playerEid);
+    const stateBeforeUpgrade = world.abilityStatesByEntity.get(playerEid)!;
+    grantAbilitySources(
+      world,
+      playerEid,
+      [
+        { kind: 'active', abilityId: 'heal', sourceId: learnedAbilityGrantSourceId('heal') },
+        { kind: 'active', abilityId: 'haste', sourceId: learnedAbilityGrantSourceId('haste') },
+      ],
+      { configureActives: 'fill-open-slots' },
+    );
+    const replacedSlotIndex = stateBeforeUpgrade.equippedActiveAbilityIds.indexOf('arcane-nova');
 
     world.skillUsageEvents.push({
       holderEid: playerEid,
@@ -178,6 +189,7 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
     // rejected by the grant-ownership validator and leak the old ability).
     expect(state!.equippedActiveAbilityIds).not.toContain('arcane-nova');
     expect(state!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
+    expect(state!.equippedActiveAbilityIds.indexOf('arcane-nova-evolved')).toBe(replacedSlotIndex);
   });
 
   it('keeps the arcane active owned but unequipped when the active bar is full', () => {

@@ -156,10 +156,15 @@ function applyMilestone(
       // Handle upgrade logic: L15 replaces L5, L20 replaces L10
       const revokeRequests: AbilityGrantRequest[] = [];
       const replacedLevel = level === 15 ? 5 : level === 20 ? 10 : undefined;
+      let replacedActiveSlotIndex = -1;
       if (replacedLevel !== undefined) {
         const oldSourceId = skillAbilityGrantSourceId(skillId, replacedLevel);
         const oldMilestone = def.milestones.find((m) => m.level === replacedLevel);
         if (oldMilestone?.abilityId !== undefined) {
+          replacedActiveSlotIndex =
+            world.abilityStatesByEntity
+              .get(targetEid)
+              ?.equippedActiveAbilityIds.indexOf(oldMilestone.abilityId) ?? -1;
           revokeRequests.push({
             // The replaced ability may itself be an active (e.g. the arcane
             // level-5 unlock), so the revoke kind must match the catalog kind —
@@ -191,6 +196,14 @@ function applyMilestone(
         ],
         grantKind === 'active' ? { configureActives: 'fill-open-slots' } : {},
       );
+      if (replacedActiveSlotIndex >= 0 && grantKind === 'active') {
+        const activeIds = world.abilityStatesByEntity.get(targetEid)?.equippedActiveAbilityIds;
+        const grantedActiveSlotIndex = activeIds?.indexOf(milestone.abilityId) ?? -1;
+        if (activeIds !== undefined && grantedActiveSlotIndex >= 0) {
+          activeIds.splice(grantedActiveSlotIndex, 1);
+          activeIds.splice(replacedActiveSlotIndex, 0, milestone.abilityId);
+        }
+      }
 
       // Append to the run-level milestone grant log (read by headless runner).
       world.milestoneGrantLog.push({
