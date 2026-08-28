@@ -137,6 +137,103 @@
           ]
         }
       ]
+    },
+    "headliners": {
+      "enemyPackId": "floor4-arena",
+      "pool": [
+        {
+          "archetypeId": "floor4-bellhop-brawler",
+          "grade": "warmup",
+          "displayName": "Bellhop Brawler",
+          "entranceAnnouncement": "BELLHOP BRAWLER — tipping is mandatory in this venue!"
+        },
+        {
+          "archetypeId": "floor4-mascot-mauler",
+          "grade": "warmup",
+          "displayName": "Mascot Mauler",
+          "entranceAnnouncement": "MASCOT MAULER — the suit is smiling because it has teeth!"
+        },
+        {
+          "archetypeId": "floor4-pyro-principal",
+          "grade": "midcard",
+          "displayName": "Pyro Principal",
+          "entranceAnnouncement": "PYRO PRINCIPAL — please admire the waiver before the flames!"
+        },
+        {
+          "archetypeId": "floor4-stunt-captain",
+          "grade": "midcard",
+          "displayName": "Stunt Captain",
+          "entranceAnnouncement": "STUNT CAPTAIN — every landing is someone else's problem!"
+        },
+        {
+          "archetypeId": "floor4-ringmaster-proxy",
+          "grade": "midcard",
+          "displayName": "Ringmaster Proxy",
+          "entranceAnnouncement": "RINGMASTER PROXY — management has entered by delegation!"
+        },
+        {
+          "archetypeId": "floor4-camera-kraken",
+          "grade": "main-event",
+          "displayName": "Camera Kraken",
+          "entranceAnnouncement": "CAMERA KRAKEN — all angles are bad angles!"
+        },
+        {
+          "archetypeId": "floor4-sponsor-sentinel",
+          "grade": "main-event",
+          "displayName": "Sponsor Sentinel",
+          "entranceAnnouncement": "SPONSOR SENTINEL — this beating is brought to you by synergy!"
+        },
+        {
+          "archetypeId": "floor4-contract-collector",
+          "grade": "main-event",
+          "displayName": "Contract Collector",
+          "entranceAnnouncement": "CONTRACT COLLECTOR — your likeness rights are overdue!"
+        },
+        {
+          "archetypeId": "floor4-showrunner",
+          "grade": "finale",
+          "displayName": "The Showrunner",
+          "entranceAnnouncement": "THE SHOWRUNNER — final notes, final cut, final warning!"
+        }
+      ],
+      "slots": [
+        {
+          "act": 1,
+          "eligibleGrades": ["warmup"],
+          "appearanceFeeGold": 18
+        },
+        {
+          "act": 2,
+          "eligibleGrades": ["warmup", "midcard"],
+          "appearanceFeeGold": 28
+        },
+        {
+          "act": 3,
+          "eligibleGrades": ["midcard"],
+          "appearanceFeeGold": 40
+        },
+        {
+          "act": 4,
+          "eligibleGrades": ["main-event"],
+          "appearanceFeeGold": 55
+        },
+        {
+          "act": 5,
+          "eligibleGrades": ["finale"],
+          "fixedArchetypeId": "floor4-showrunner",
+          "appearanceFeeGold": 75
+        }
+      ]
+    },
+    "overtime": {
+      "capMs": 60000,
+      "warningAnnouncement": "OVERTIME — the network bought one more minute!",
+      "finisherAnnouncement": "FINAL CUT — the broadcast ends now!",
+      "rampSteps": [
+        { "atMs": 0, "speedMultiplier": 1.1, "damageMultiplier": 1.15 },
+        { "atMs": 20000, "speedMultiplier": 1.25, "damageMultiplier": 1.35 },
+        { "atMs": 40000, "speedMultiplier": 1.45, "damageMultiplier": 1.65 }
+      ]
     }
   }
 }
