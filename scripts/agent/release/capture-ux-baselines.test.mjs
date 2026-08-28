@@ -171,6 +171,26 @@ describe('Release UX Baselines', () => {
       assert.ok(content.includes('--ref'), 'script should support --ref flag');
       assert.ok(content.includes('--release-dir'), 'script should support --release-dir flag');
     });
+
+    test('--surface flag actually narrows capture instead of being accepted and ignored', () => {
+      const scriptPath = resolve('scripts/agent/release/capture-ux-baselines.ts');
+      const content = readFileSync(scriptPath, 'utf-8');
+
+      assert.ok(
+        content.includes('flags.surface'),
+        'script should read --surface from parsed flags',
+      );
+      assert.match(
+        content,
+        /surfaceFilter[\s\S]{0,200}enabledSurfaces\.filter/,
+        '--surface should filter enabledSurfaces down to the matching id, not just be parsed and dropped',
+      );
+      assert.match(
+        content,
+        /did not match any enabled manifest entry/,
+        'an unknown --surface id should fail loudly instead of silently capturing everything',
+      );
+    });
   });
 
   describe('npm script integration', () => {

@@ -631,7 +631,9 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
         // The backend emits complete lineages first, then valid current-only
         // captures. Keep both: hiding an after-only card conceals real evidence
-        // while the release baseline is pending.
+        // while the release baseline is pending. (Supersedes the base/main
+        // comparablePairs before+after filter, which this file's
+        // review.scale ?? 100 fallback already fully carries forward.)
         const orderedPairs = pairs;
         const openDetails = new Set(
           [...pairsEl.querySelectorAll('details[data-details-key][open]')]

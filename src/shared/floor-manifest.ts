@@ -21,9 +21,250 @@ import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
+import { getFloorEnemyPack } from './enemy-packs.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
+/** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
+interface Floor4WaveValidationInput {
+  readonly phase: {
+    readonly actCount: number;
+    readonly waveWindowMs: number;
+    readonly overtimeCapMs: number;
+  };
+  readonly waves: {
+    readonly enemyPackId: string;
+    readonly cadence: { readonly wavesPerAct: number; readonly intervalMs: number };
+    readonly budget: { readonly actMultipliers: readonly number[] };
+    readonly concurrency: { readonly liveCap: number };
+    readonly rosters: readonly {
+      readonly act: number;
+      readonly entries: readonly { readonly archetypeId: string }[];
+    }[];
+  };
+  readonly headliners?: {
+    readonly enemyPackId: string;
+    readonly pool: readonly {
+      readonly archetypeId: string;
+      readonly grade: string;
+    }[];
+    readonly slots: readonly {
+      readonly act: number;
+      readonly eligibleGrades: readonly string[];
+      readonly fixedArchetypeId?: string;
+      readonly appearanceFeeGold: number;
+    }[];
+  };
+  readonly overtime?: {
+    readonly capMs: number;
+    readonly rampSteps: readonly {
+      readonly atMs: number;
+      readonly speedMultiplier: number;
+      readonly damageMultiplier: number;
+    }[];
+  };
+}
+
+/**
+ * Cross-field validation for the Floor 4 wave schedule (spec FR3.1–FR3.5).
+ *
+ * These are contracts the per-field bounds cannot express, and every one of
+ * them would otherwise fail silently at runtime — a roster naming a
+ * nonexistent archetype would spawn nothing, and a cadence that overruns the
+ * wave window would author waves that are cut the instant they release. Failing
+ * at manifest load makes the data wrong loudly instead of quietly.
+ */
+function validateFloor4Waves(floor4: Floor4WaveValidationInput, ctx: z.RefinementCtx): void {
+  const { phase, waves } = floor4;
+  const pack = getFloorEnemyPack(waves.enemyPackId);
+  if (!pack) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'enemyPackId'],
+      message: `unknown enemy pack "${waves.enemyPackId}"`,
+    });
+  }
+
+  if (waves.budget.actMultipliers.length !== phase.actCount) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'budget', 'actMultipliers'],
+      message: `expected one act multiplier per act (${phase.actCount}), got ${waves.budget.actMultipliers.length}`,
+    });
+  }
+
+  // The last wave must still release INSIDE the wave window, otherwise the
+  // authored cadence silently drops waves at the cut (FR3.6).
+  const lastReleaseMs = (waves.cadence.wavesPerAct - 1) * waves.cadence.intervalMs;
+  if (lastReleaseMs >= phase.waveWindowMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'cadence', 'intervalMs'],
+      message: `wave ${waves.cadence.wavesPerAct - 1} would release at ${lastReleaseMs}ms, at or after the ${phase.waveWindowMs}ms wave window ends`,
+    });
+  }
+
+  if (pack && waves.concurrency.liveCap > pack.enemyCap) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'concurrency', 'liveCap'],
+      message: `live cap ${waves.concurrency.liveCap} exceeds the "${waves.enemyPackId}" pack cap ${pack.enemyCap}`,
+    });
+  }
+
+  const expectedActs = Array.from({ length: phase.actCount }, (_, index) => index + 1);
+  const authoredActs = waves.rosters.map((roster) => roster.act);
+  if (
+    authoredActs.length !== expectedActs.length ||
+    authoredActs.some((act, index) => act !== expectedActs[index])
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['waves', 'rosters'],
+      message: `rosters must list acts ${expectedActs.join(',')} exactly once, in order; got ${authoredActs.join(',')}`,
+    });
+  }
+
+  if (!pack) {
+    return;
+  }
+  const knownArchetypes = new Set(pack.archetypes.map((archetype) => archetype.id));
+  for (const [rosterIndex, roster] of waves.rosters.entries()) {
+    for (const [entryIndex, entry] of roster.entries.entries()) {
+      if (!knownArchetypes.has(entry.archetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['waves', 'rosters', rosterIndex, 'entries', entryIndex, 'archetypeId'],
+          message: `archetype "${entry.archetypeId}" is not in enemy pack "${waves.enemyPackId}"`,
+        });
+      }
+    }
+  }
+}
+
+function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.RefinementCtx): void {
+  const { headliners, overtime, phase } = floor4;
+  if (!headliners) {
+    return;
+  }
+  const pack = getFloorEnemyPack(headliners.enemyPackId);
+  if (!pack) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'enemyPackId'],
+      message: `unknown enemy pack "${headliners.enemyPackId}"`,
+    });
+    return;
+  }
+
+  const knownArchetypes = new Set(pack.archetypes.map((archetype) => archetype.id));
+  const poolIds = new Set<string>();
+  const fixedArchetypeIds = new Set(
+    headliners.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
+  );
+  if (fixedArchetypeIds.size !== headliners.slots.filter((slot) => slot.fixedArchetypeId).length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'slots'],
+      message: 'fixed Headliner archetypes must be unique',
+    });
+  }
+  for (const [index, entry] of headliners.pool.entries()) {
+    if (poolIds.has(entry.archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'pool', index, 'archetypeId'],
+        message: `duplicate Headliner archetype "${entry.archetypeId}"`,
+      });
+    }
+    poolIds.add(entry.archetypeId);
+    if (!knownArchetypes.has(entry.archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'pool', index, 'archetypeId'],
+        message: `Headliner archetype "${entry.archetypeId}" is not in enemy pack "${headliners.enemyPackId}"`,
+      });
+    }
+  }
+  if (headliners.pool.length < 8) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'pool'],
+      message: 'Floor 4 requires at least eight seeded Headliner candidates',
+    });
+  }
+
+  const expectedActs = Array.from({ length: phase.actCount }, (_, index) => index + 1);
+  const authoredActs = headliners.slots.map((slot) => slot.act);
+  if (
+    authoredActs.length !== expectedActs.length ||
+    authoredActs.some((act, index) => act !== expectedActs[index])
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'slots'],
+      message: `Headliner slots must list acts ${expectedActs.join(',')} exactly once, in order; got ${authoredActs.join(',')}`,
+    });
+  }
+
+  for (const [slotIndex, slot] of headliners.slots.entries()) {
+    const eligiblePool = headliners.pool.filter((entry) =>
+      slot.eligibleGrades.includes(entry.grade),
+    );
+    if (slot.fixedArchetypeId) {
+      if (!poolIds.has(slot.fixedArchetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['headliners', 'slots', slotIndex, 'fixedArchetypeId'],
+          message: `fixed Headliner "${slot.fixedArchetypeId}" is not in the Headliner pool`,
+        });
+      }
+      if (!eligiblePool.some((entry) => entry.archetypeId === slot.fixedArchetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['headliners', 'slots', slotIndex, 'eligibleGrades'],
+          message: `fixed Headliner "${slot.fixedArchetypeId}" is not eligible for act ${slot.act}`,
+        });
+      }
+      continue;
+    }
+    if (eligiblePool.filter((entry) => !fixedArchetypeIds.has(entry.archetypeId)).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'slots', slotIndex, 'eligibleGrades'],
+        message: `act ${slot.act} has no eligible non-fixed Headliners`,
+      });
+    }
+  }
+
+  if (overtime && overtime.capMs !== phase.overtimeCapMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['overtime', 'capMs'],
+      message: 'Floor 4 overtime cap must match phase.overtimeCapMs',
+    });
+  }
+  if (overtime) {
+    let previousAtMs = -1;
+    for (const [index, step] of overtime.rampSteps.entries()) {
+      if (step.atMs <= previousAtMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['overtime', 'rampSteps', index, 'atMs'],
+          message: 'overtime ramp steps must be strictly increasing',
+        });
+      }
+      if (step.atMs >= overtime.capMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['overtime', 'rampSteps', index, 'atMs'],
+          message: 'overtime ramp steps must occur before the cap',
+        });
+      }
+      previousAtMs = step.atMs;
+    }
+  }
+}
 /**
  * Floor manifest configuration schema.
  */
@@ -295,6 +536,140 @@ export const floorManifestDefSchema = z
             overtimeCapMs: z.number().int().positive(),
           })
           .strict(),
+        /**
+         * Wave scheduling contract (spec FR3.1–FR3.5, FR8.2). Every number the
+         * wave machinery reads lives here — the director hardcodes none of it,
+         * so the balance slice can retune cadence, budget, caps and telegraph
+         * lead without touching code.
+         */
+        waves: z
+          .object({
+            /**
+             * Enemy pack the act rosters draw archetype stats from. Floor 4
+             * deliberately leaves the top-level `enemyPackId` unset (it runs no
+             * ambient director, FR3.2), so the pack is named here where the
+             * authored schedule actually consumes it.
+             */
+            enemyPackId: z.string().min(1),
+            cadence: z
+              .object({
+                /** Waves scheduled per act (FR3.1). */
+                wavesPerAct: z.number().int().min(1),
+                /** Act-relative spacing between wave releases, in ms (FR3.1). */
+                intervalMs: z.number().int().positive(),
+              })
+              .strict(),
+            budget: z
+              .object({
+                /** `baseBudget` in the FR3.3 curve. */
+                base: z.number().positive(),
+                /** `actMultiplier[act]`, indexed act-1. Length must equal `phase.actCount`. */
+                actMultipliers: z.array(z.number().positive()).min(1),
+                /** `intraActRamp` in the FR3.3 curve. */
+                intraActRamp: z.number().min(0),
+                /**
+                 * Extra multiplier applied ONLY to act 1's wave 0 — the
+                 * deliberately tiny opener that teaches the gates (design §5.1).
+                 */
+                openingWaveMultiplier: z.number().positive().max(1),
+                /**
+                 * Hard ceiling on entries in one wave manifest. A guard, not a
+                 * dial: it bounds manifest size (and therefore spawn debt) even
+                 * if a future roster authors a near-zero threat cost.
+                 */
+                maxEntriesPerWave: z.number().int().positive(),
+              })
+              .strict(),
+            concurrency: z
+              .object({
+                /** Live wave-enemy concurrency cap (FR3.5). */
+                liveCap: z.number().int().positive(),
+                /** Maximum banked spawn debt; overflow beyond this is discarded (FR3.5). */
+                debtCap: z.number().int().nonnegative(),
+              })
+              .strict(),
+            gates: z
+              .object({
+                /** How long before a wave releases its gates telegraph (design §4). */
+                telegraphLeadMs: z.number().int().nonnegative(),
+              })
+              .strict(),
+            /**
+             * Per-act roster with authored threat costs and composition weights
+             * (FR3.3). Ordered by act; entry order inside an act is a data
+             * contract because it is the weighted-draw order.
+             */
+            rosters: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    entries: z
+                      .array(
+                        z
+                          .object({
+                            archetypeId: z.string().min(1),
+                            threatCost: z.number().positive(),
+                            weight: z.number().positive(),
+                          })
+                          .strict(),
+                      )
+                      .min(1),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+        headliners: z
+          .object({
+            enemyPackId: z.string().min(1),
+            pool: z
+              .array(
+                z
+                  .object({
+                    archetypeId: z.string().min(1),
+                    grade: z.enum(['warmup', 'midcard', 'main-event', 'finale']),
+                    displayName: z.string().min(1),
+                    entranceAnnouncement: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .min(8),
+            slots: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    eligibleGrades: z
+                      .array(z.enum(['warmup', 'midcard', 'main-event', 'finale']))
+                      .min(1),
+                    fixedArchetypeId: z.string().min(1).optional(),
+                    appearanceFeeGold: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+        overtime: z
+          .object({
+            capMs: z.number().int().positive(),
+            warningAnnouncement: z.string().min(1),
+            finisherAnnouncement: z.string().min(1),
+            rampSteps: z
+              .array(
+                z
+                  .object({
+                    atMs: z.number().int().min(0),
+                    speedMultiplier: z.number().positive(),
+                    damageMultiplier: z.number().positive(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
       })
       .strict()
       .superRefine((floor4, ctx) => {
@@ -348,6 +723,8 @@ export const floorManifestDefSchema = z
             message: 'Floor 4 act duration must equal wave window plus headline window',
           });
         }
+        validateFloor4Waves(floor4, ctx);
+        validateFloor4Headliners(floor4, ctx);
       })
       .optional(),
     /**

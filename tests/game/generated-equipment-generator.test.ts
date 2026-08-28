@@ -34,6 +34,20 @@ function nextAfterDraws(seed: number, draws: number): number {
   return rng.next();
 }
 
+/**
+ * The inherent (non-armor) stat line the accessory fixture base contributes to
+ * every instance generated from it, at every rarity — read from the catalog so
+ * the expectation cannot drift from the authored def.
+ */
+function accessoryInherentStatBonuses(): Record<string, number> {
+  const def = getEquipmentDefForItem(GENERATED_ACCESSORY_REQUEST.baseId)!;
+  return Object.fromEntries(
+    Object.entries(def.statBonuses).filter(
+      ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+    ),
+  ) as Record<string, number>;
+}
+
 describe('deterministic generated equipment', () => {
   it('normalizes canonical weapon and equipment definitions without creating a second registry', () => {
     const weapon = getGeneratedEquipmentBaseV1('plasma-pistol');
@@ -113,7 +127,11 @@ describe('deterministic generated equipment', () => {
     );
 
     expect(affixArmor.frozen.statBonuses.armor).toBe(expectedArmor);
-    expect(affixArmor.frozen.statBonuses.constitution ?? 0).toBe(effectConstitution);
+    // Non-armor stats are the base's inherent line plus any affix-driven
+    // contribution (ADR 2026-08-27-generated-equipment-inherent-stat-line): armor is the only inherent stat that scales.
+    expect(affixArmor.frozen.statBonuses.constitution ?? 0).toBe(
+      (staticArmor.statBonuses.constitution ?? 0) + effectConstitution,
+    );
     expect(affixArmor.frozen.activeWeaponSnapshot).toBeNull();
     expect(affixArmor.frozen.displayName).toMatch(/Iron Breastplate \+3$/);
     expect(
@@ -142,7 +160,9 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(active.frozen.abilityGrants).toEqual(['fireball']);
     expect(active.frozen.passiveGrants).toEqual([]);
-    expect(active.frozen.statBonuses).toEqual({});
+    // Grant-only effects add no stats, so the frozen stat map is exactly the
+    // base's inherent non-armor line (ADR 2026-08-27-generated-equipment-inherent-stat-line).
+    expect(active.frozen.statBonuses).toEqual(accessoryInherentStatBonuses());
     expect(passive.resolvedEffects).toEqual([
       expect.objectContaining({
         kind: 'passiveGrant',
@@ -152,7 +172,7 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(passive.frozen.abilityGrants).toEqual([]);
     expect(passive.frozen.passiveGrants).toEqual(['veteran-instinct']);
-    expect(passive.frozen.statBonuses).toEqual({});
+    expect(passive.frozen.statBonuses).toEqual(accessoryInherentStatBonuses());
   });
 
   it('uses stable bounded draw counts for each exact rarity budget', () => {

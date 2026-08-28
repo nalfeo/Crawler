@@ -24,7 +24,7 @@ import { getActiveWeapon } from './weaponSystem.js';
 import {
   generateEquipmentInstance,
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentInstanceHasNonArmorStatBonus,
+  generatedEquipmentInstanceHasAffixDrivenStatBonus,
 } from './generated-equipment-generator.js';
 import {
   FLOOR2_REWARD_POOL_STABLE_IDS,
@@ -110,10 +110,10 @@ export function _assertGeneratedRewardInstanceLegal(
   instance: GeneratedEquipmentInstanceV1,
   rarity: GeneratedEquipmentRarity,
 ): void {
-  if (rarity === 'common' && generatedEquipmentInstanceHasNonArmorStatBonus(instance)) {
+  if (rarity === 'common' && generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)) {
     throw new RewardBundleResolutionError(
       'illegal-base',
-      `Generated Common instance for base ${instance.baseId} has a non-armor stat bonus, violating the Common rarity contract`,
+      `Generated Common instance for base ${instance.baseId} has an affix-driven stat bonus, violating the Common rarity contract`,
     );
   }
 }
@@ -226,12 +226,11 @@ export function _rarityEligibleBaseIds(
   bases: readonly string[],
   _rarity: GeneratedEquipmentRarity,
 ): readonly string[] {
-  // Under the decoupled model, non-armor power is affix-driven (not base-stat
-  // spreading). All bases are eligible for all rarities since their inherent
-  // non-armor stats are never copied into generated instances. Common generates
-  // zero affix effects (RARITY_EFFECT_BUDGET.common === 0), so a Common item
-  // from a base with a non-armor authoring rider simply has no non-armor stats
-  // in its generated output — the rarity contract is still satisfied.
+  // All bases are eligible for all rarities. Generated non-weapons retain their
+  // inherent non-armor stats, while rarity-driven power comes from affixes.
+  // Common generates zero affix effects (RARITY_EFFECT_BUDGET.common === 0);
+  // its legality contract permits inherent stats and prohibits only
+  // affix-driven stat bonuses.
   return bases;
 }
 
@@ -591,13 +590,11 @@ export function resolveEquipmentRewardBundle(
     }
   }
 
-  // Under the decoupled model, non-armor power is affix-driven. Rarity is
-  // rolled first so the eligible base pool (via _rarityEligibleBaseIds) is
-  // known before partition. Under this model, _rarityEligibleBaseIds returns
-  // all bases regardless of rarity — Common generates zero affix effects
-  // (RARITY_EFFECT_BUDGET.common === 0) but the base's non-armor authoring
-  // riders are never spread into the generated instance, so no candidacy
-  // filtering is needed to keep Common output rarity-contract-legal.
+  // Rarity is rolled first so the eligible base pool (via
+  // _rarityEligibleBaseIds) is known before partition. That helper returns all
+  // bases regardless of rarity: Common generates zero affix effects
+  // (RARITY_EFFECT_BUDGET.common === 0), while inherent non-armor base stats
+  // remain legal in its generated output.
   const rarityRng = substreamRng(runKey, achievementId, tier, 'tier-rarity');
   const rarity = _rollTierRarity(rarityRng, tier);
 
@@ -690,10 +687,9 @@ export function resolveEquipmentRewardBundle(
     { rng: effectsRng, allowedEffectKinds: ['stat'] },
   );
 
-  // Defense in depth: under the decoupled model a Common instance always has
-  // zero non-armor stats (no base spreading, no effects), so this is a
-  // no-op — but if a future change introduces a new affix path or bug, the
-  // tripwire catches it loudly before it ships.
+  // Defense in depth: Common may retain inherent non-armor stats but must have
+  // zero affix-driven stat bonuses. The tripwire catches a future affix path or
+  // bug before it ships.
   _assertGeneratedRewardInstanceLegal(instance, rarity);
 
   // Generated successfully — publish the registry state, then record the

@@ -14,11 +14,11 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, PIXEL_ICON, createBeveledPanel, addPixelIcon } from './pixel-ui.js';
 import { applyCrispText } from './ui-scale.js';
 import { formatCompactLootValue } from './hud-loot-format.js';
 import { HUD_FONT_FAMILY, HUD_TEXT } from './ui-theme.js';
+import { VITALS_X, VITALS_PANEL_Y } from './HudVitalsLayout.js';
 
 const PAD = 7;
 const ICON_SIZE = 16;
@@ -32,9 +32,9 @@ const PANEL_W =
   PAD + ICON_SIZE + GAP_ICON_TEXT + VALUE_W + PAIR_GAP + ICON_SIZE + GAP_ICON_TEXT + VALUE_W + PAD;
 const PANEL_H = PAD + ICON_SIZE + PAD;
 
-const PANEL_X = 16;
-/** Sits just above the XP bar panel (which starts ~GAME.HEIGHT - 91). */
-const PANEL_Y = GAME.HEIGHT - 124;
+const PANEL_X = VITALS_X;
+/** Must match `VITALS_ROW_HEIGHTS.loot` in HudVitalsLayout.ts; sits just above the XP bar. */
+const PANEL_Y = VITALS_PANEL_Y.loot;
 
 export function createHudLootCounter(
   scene: Phaser.Scene,

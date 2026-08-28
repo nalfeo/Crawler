@@ -9,7 +9,7 @@
 Completed the explicit, manifest-driven Equipment A|B scenario contract. The UI-probe setup now captures the five requested interaction states without inventing scenarios from screenshot folders:
 
 - Equipment: opened panel with no forced hover, preview, filter, or tooltip.
-- Equipment Hover (Equiped): equipped Head tooltip.
+- Equipment Hover (Equipped): equipped Head tooltip.
 - Equipment Hover (Duplicate): equipped and bag Iron Helm comparison with no delta.
 - Equipment Hover (Empty Slot): Leather Boots comparison with an empty Feet slot.
 - Equipment Hover (Stats delta): generated Runed Chain Hauberk replacing Iron Breastplate with a non-zero delta.

@@ -450,3 +450,11 @@ Floor 2 generated equipment now derives non-armor power from rarity-driven
 affixes instead of inheriting non-armor base stat bonuses. Tier rarity behavior
 from this ADR is unchanged; the amendment narrows where non-armor power enters
 the generated instance.
+
+### Amendment (2026-08-27): inherent stat lines are restored on top of affixes
+
+Rarity-driven affixes remain the only _rarity_ power source, but a non-weapon
+base's authored non-armor stat line is now inherent and reaches every instance
+at every rarity — otherwise Common items from zero-armor bases generated with
+no stats at all (issue #3697). Tier rarity behavior is again unchanged. See
+[`2026-08-27-generated-equipment-inherent-stat-line.md`](2026-08-27-generated-equipment-inherent-stat-line.md).

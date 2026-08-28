@@ -207,6 +207,8 @@ function reviewResults() {
       try {
         const review = JSON.parse(readFileSync(path, 'utf8'));
         const isWrappedReview = review?.schemaVersion === 1 && typeof review.image === 'string';
+        // Raw Azure reviews are 0-100 today; older captures used a 1-5 scale.
+        // Accept both here and disambiguate below via axis scores.
         const isRawAzureReview =
           Number.isFinite(review?.overall?.score) &&
           review.overall.score >= 0 &&

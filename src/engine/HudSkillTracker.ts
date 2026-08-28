@@ -24,7 +24,6 @@
 import Phaser from 'phaser';
 import { getActiveWeaponDef } from '../core/active-weapon.js';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
 import { CLASS_SKILL_THRESHOLDS, TYPE_SKILL_THRESHOLDS } from '../shared/weapon-skills.js';
 import { SPELL_SKILL_THRESHOLDS } from '../shared/spell-skills.js';
 import { getAbilityPresentation } from '../shared/ability-presentation.js';
@@ -33,6 +32,7 @@ import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
 import { applyCrispText } from './ui-scale.js';
 import { BLUE_STEEL, HUD_FONT_FAMILY, HUD_TEXT, hex } from './ui-theme.js';
 import { countMatchingSpellSkills, selectSpellSkillRows } from './hud-spell-skill-rows.js';
+import { VITALS_X, VITALS_PANEL_Y } from './HudVitalsLayout.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -56,9 +56,11 @@ const SPELL_ROW_CAP = 2;
 const ROW_COUNT = 2 + SPELL_ROW_CAP;
 
 const PANEL_W = PAD + NAME_W + 4 + LV_W + 4 + BAR_W + PAD;
+/** Must match `VITALS_ROW_HEIGHTS.skill` in HudVitalsLayout.ts. */
 const PANEL_MAX_H = PAD + TITLE_H + ROW_GAP + ROW_COUNT * (ROW_H + ROW_GAP) + PAD - ROW_GAP;
-const PANEL_X = 16;
-const PANEL_BOTTOM = GAME.HEIGHT - 124 - 8;
+const PANEL_X = VITALS_X;
+/** Bottom edge of the panel's reserved slot; the panel resizes upward from here. */
+const PANEL_BOTTOM = VITALS_PANEL_Y.skill + PANEL_MAX_H;
 
 const COLORS = {
   title: hex(BLUE_STEEL.accentGold),
@@ -266,6 +268,7 @@ export function createHudSkillTracker(
 
   function setAllVisible(visible: boolean): void {
     panel.setVisible(visible);
+    panelBounds.setVisible(visible);
     titleStrip.setVisible(visible);
     titleText.setVisible(visible);
     overflowText.setVisible(visible);

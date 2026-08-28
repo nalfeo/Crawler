@@ -10,7 +10,7 @@
   },
   {
     "id": "equipment-hover-equipped",
-    "label": "Equipment Hover (Equiped)",
+    "label": "Equipment Hover (Equipped)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",

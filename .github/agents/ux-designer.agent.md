@@ -93,7 +93,7 @@ states under `before/` and `after/`, shows each pair beside the individual
 gallery, shows the evaluator results, and records feedback as either
 task-specific or reusable guidance. Reusable feedback must name the agent,
 skill, deterministic eval, or workflow it should change; it writes a durable
-proposal under `docs/knowledge/ux-feedback/`, which must be turned into a
+proposal under the UX feedback knowledge directory, which must be turned into a
 real change before being considered promoted. Task-specific feedback stays
 attached to the current task. Upload the final before/after images for PR
 review; `files/` is session-local and not durable.

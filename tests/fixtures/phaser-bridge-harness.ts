@@ -348,6 +348,7 @@ export class MockGraphics {
   lineToCalls: Array<{ x: number; y: number }> = [];
   fillCircleCalls: Array<{ x: number; y: number; r: number }> = [];
   lineStyleCalls: Array<{ width: number; color: number; alpha: number }> = [];
+  strokeEllipses: Array<{ x: number; y: number; w: number; h: number }> = [];
 
   clear(): this {
     this.fillRects = [];
@@ -357,6 +358,7 @@ export class MockGraphics {
     this.lineToCalls = [];
     this.fillCircleCalls = [];
     this.lineStyleCalls = [];
+    this.strokeEllipses = [];
     return this;
   }
 
@@ -419,6 +421,11 @@ export class MockGraphics {
   }
 
   strokeCircle(_x: number, _y: number, _r: number): this {
+    return this;
+  }
+
+  strokeEllipse(x: number, y: number, w: number, h: number): this {
+    this.strokeEllipses.push({ x, y, w, h });
     return this;
   }
 
