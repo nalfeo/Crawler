@@ -13,8 +13,9 @@
  */
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
-import { createBeveledPanel, PIXEL_UI } from '../pixel-ui.js';
+import { createBeveledButton, createBeveledPanel, PIXEL_UI } from '../pixel-ui.js';
 import { getRenderScale } from '../render-scale.js';
+import { applyCrispText } from '../ui-scale.js';
 import { BootScene } from './BootScene.js';
 import {
   INTRO_DATA_REGISTRY_KEY,
@@ -91,7 +92,7 @@ const NAME_INPUT_ARIA_LABEL = 'Player name';
 const GENDER_GROUP_ARIA_LABEL = 'Player gender';
 
 const PANEL_W = 700;
-const PANEL_H = 456;
+const PANEL_H = 468;
 const PANEL_X = (GAME.WIDTH - PANEL_W) / 2;
 const PANEL_Y = (GAME.HEIGHT - PANEL_H) / 2;
 const DEPTH = 2000;
@@ -107,6 +108,7 @@ export class IntroScene extends Phaser.Scene {
     label: HTMLLabelElement;
     id: PlayerGender;
   }> = [];
+  private unsubscribeCrispText?: () => void;
 
   constructor() {
     super({ key: IntroScene.KEY });
@@ -135,6 +137,7 @@ export class IntroScene extends Phaser.Scene {
 
   private buildUI(): void {
     const cx = GAME.WIDTH / 2;
+    const texts: Phaser.GameObjects.Text[] = [];
 
     // Full-screen dark backdrop.
     this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, BG_COLOR, 1).setOrigin(0, 0).setDepth(DEPTH);
@@ -149,9 +152,13 @@ export class IntroScene extends Phaser.Scene {
       depth: DEPTH + 1,
     });
 
+    // Shared left edge for every label, box, and DOM control below.
+    const boxX = PANEL_X + 24;
+    const boxW = PANEL_W - 48;
+
     let y = PANEL_Y + 22;
 
-    this.add
+    const title = this.add
       .text(cx, y, 'Character Select', {
         fontFamily: 'monospace',
         fontSize: '26px',
@@ -160,26 +167,25 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0)
       .setDepth(DEPTH + 2);
+    texts.push(title);
 
     y += 38;
 
     this.add
-      .rectangle(PANEL_X + 26, y, PANEL_W - 52, 2, PIXEL_UI.gold, 0.8)
+      .rectangle(boxX + 2, y, boxW - 4, 2, PIXEL_UI.gold, 0.8)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
 
     y += 16;
 
     // Director commentary box.
-    const boxX = PANEL_X + 24;
-    const boxW = PANEL_W - 48;
     this.add
       .rectangle(boxX, y, boxW, 96, 0x0d1520, 1)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setStrokeStyle(1, 0x1e3354, 1);
 
-    this.add
+    const directorLabel = this.add
       .text(boxX + 10, y + 8, DIRECTOR_LABEL, {
         fontFamily: 'monospace',
         fontSize: '13px',
@@ -188,8 +194,9 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
+    texts.push(directorLabel);
 
-    this.add
+    const directorBody = this.add
       .text(boxX + 12, y + 28, DIRECTOR_WELCOME, {
         fontFamily: 'monospace',
         fontSize: '16px',
@@ -199,11 +206,12 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
+    texts.push(directorBody);
 
     y += 118;
 
     // Name label.
-    this.add
+    const nameLabel = this.add
       .text(boxX, y, 'Contestant name', {
         fontFamily: 'monospace',
         fontSize: '14px',
@@ -211,16 +219,17 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
+    texts.push(nameLabel);
 
-    y += 31;
+    y += 30;
 
     // Name input — native HTML <input> positioned over the canvas.
     this.createNameInput(boxX, y, boxW);
 
-    y += 66;
+    y += 38 + 18;
 
     // Gender label.
-    this.add
+    const genderLabel = this.add
       .text(boxX, y, 'Pronouns', {
         fontFamily: 'monospace',
         fontSize: '14px',
@@ -228,16 +237,19 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
+    texts.push(genderLabel);
 
-    y += 25;
+    y += 30;
 
     // Gender selection radios.
     this.createGenderControls(boxX, y, boxW);
 
-    y += 40;
+    y += 34 + 34;
 
     // Confirm button.
-    this.createConfirmButton(cx, y);
+    this.createConfirmButton(cx, boxX, boxW, y, texts);
+
+    this.unsubscribeCrispText = applyCrispText(this, texts);
   }
 
   // ---------------------------------------------------------------------------
@@ -417,29 +429,38 @@ export class IntroScene extends Phaser.Scene {
   // Confirm button
   // ---------------------------------------------------------------------------
 
-  private createConfirmButton(cx: number, y: number): void {
+  private createConfirmButton(
+    cx: number,
+    boxX: number,
+    boxW: number,
+    y: number,
+    texts: Phaser.GameObjects.Text[],
+  ): void {
     const btnW = 280;
     const btnH = 46;
     const bx = cx - btnW / 2;
-    const buttonY = y + 20;
+    const buttonY = y + 22;
 
-    this.add
-      .text(cx, y, 'Press Enter to continue', {
+    const hint = this.add
+      .text(boxX + boxW / 2, y, 'Press Enter to continue', {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: SLATE_DIM,
       })
       .setOrigin(0.5, 0)
       .setDepth(DEPTH + 2);
+    texts.push(hint);
 
-    const bg = this.add
-      .rectangle(bx, buttonY, btnW, btnH, CONFIRM_COLOR, 1)
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 1)
-      .setStrokeStyle(1, 0x276129, 1)
-      .setInteractive({ useHandCursor: true });
+    const button = createBeveledButton(this, bx, buttonY, btnW, btnH, {
+      fill: CONFIRM_COLOR,
+      fillHover: CONFIRM_HOVER_COLOR,
+      highlight: 0x3a8a3d,
+      shadow: 0x0f2610,
+      border: 0x276129,
+      depth: DEPTH + 1,
+    });
 
-    this.add
+    const label = this.add
       .text(cx, buttonY + btnH / 2, 'Begin the descent', {
         fontFamily: 'monospace',
         fontSize: '15px',
@@ -448,10 +469,9 @@ export class IntroScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0.5)
       .setDepth(DEPTH + 2);
+    texts.push(label);
 
-    bg.on('pointerover', () => bg.setFillStyle(CONFIRM_HOVER_COLOR, 1));
-    bg.on('pointerout', () => bg.setFillStyle(CONFIRM_COLOR, 1));
-    bg.on('pointerdown', () => this.handleConfirm());
+    button.rectangle.on('pointerdown', () => this.handleConfirm());
   }
 
   // ---------------------------------------------------------------------------
@@ -474,6 +494,8 @@ export class IntroScene extends Phaser.Scene {
 
   private handleShutdown(): void {
     this.removeDomControls();
+    this.unsubscribeCrispText?.();
+    this.unsubscribeCrispText = undefined;
     if (typeof window !== 'undefined' && window.__introDebug) {
       delete window.__introDebug;
     }
