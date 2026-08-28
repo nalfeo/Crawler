@@ -352,9 +352,12 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => !state.conversationOpen, {
       label: 'NPC dialogue closed',
     });
-
+    await expect
+      .poll(() => mainSceneProbe.getInteractionHintBounds(page), {
+        message: 'Talk button should reappear after dialogue closes',
+      })
+      .not.toBeNull();
     const reopenedTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
-    expect(reopenedTalkBounds, 'Talk button should reappear after dialogue closes').not.toBeNull();
     if (!reopenedTalkBounds) return;
     await clickDesignPoint({
       x: reopenedTalkBounds.x + reopenedTalkBounds.width / 2,
