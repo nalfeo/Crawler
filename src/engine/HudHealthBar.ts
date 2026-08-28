@@ -62,6 +62,13 @@ export function createHudHealthBar(
   const panelY = barY + BAR_HEIGHT / 2 - PANEL_H / 2;
 
   const panel = createBeveledPanel(scene, panelX, panelY, PANEL_W, PANEL_H, { parent });
+  // Invisible measurement zone (same pattern as the loot/skill panels) so e2e
+  // probes can read this row's real rendered bounds out of the live scene.
+  const panelBounds = scene.add
+    .zone(panelX, panelY, PANEL_W, PANEL_H)
+    .setOrigin(0, 0)
+    .setName('hud-health-panel-bounds');
+  parent?.add(panelBounds);
 
   const iconCx = panelX + PAD + ICON_SIZE / 2;
   const iconCy = panelY + PANEL_H / 2;
@@ -143,6 +150,7 @@ export function createHudHealthBar(
     detachCrispText();
     pulseTween?.stop();
     panel.destroy();
+    panelBounds.destroy();
     bar.destroy();
     label.destroy();
     icon.destroy();
