@@ -27,10 +27,20 @@ describe('resolveManifestFloorCollapseState', () => {
 
     expect(durationMs).toBeGreaterThan(0);
     expect(state).not.toBeNull();
-    // Floor 2 grants no safe-room credit: `floor2ObjectiveTick` collapses the
-    // run at raw `elapsedMs >= manifest.timer.durationMs`, so the AI's deadline
-    // must be that literal wall, NOT a Floor-1-style planning-clamped value.
+    // With no safe-room credit banked the deadline is the raw manifest wall,
+    // NOT a Floor-1-style planning-clamped value.
     expect(state?.deadlineMs).toBe(durationMs);
+  });
+
+  it('carries the safe-room timer credit the floor collapses on', () => {
+    // The AI must plan against the same credited deadline `floor2ObjectiveTick`
+    // ends the run on, or it panics early while the settlement entrance has the
+    // countdown stopped (issue #3674).
+    const world = floor2World();
+    world.safeRoomTimerCreditMs = 30_000;
+    const durationMs = getFloorManifest('floor2')?.timer?.durationMs ?? 0;
+
+    expect(resolveManifestFloorCollapseState(world)?.deadlineMs).toBe(durationMs + 30_000);
   });
 
   it('returns null for a Floor-1-style floor that owns its own objective deadline', () => {
