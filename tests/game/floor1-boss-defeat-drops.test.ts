@@ -10,9 +10,14 @@
  * safe space (collapse timer paused, customization open) once the boss is dead.
  */
 
-import { removeEntity } from 'bitecs';
+import { addComponent, entityExists, query, removeEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnPlayer, setBloodColor } from '../../src/core/helpers.js';
+import { DeathTimer, XpGem } from '../../src/core/components.js';
+import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { GAME } from '../../src/shared/constants.js';
+import { createInputState } from '../../src/shared/input.js';
 import {
   floorObjectiveSystem,
   initializeFloor1Scenario,
@@ -28,6 +33,11 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
 const TILE_STEP = 32;
+const GREEN_SLIME_BLOOD = 0x22aa44;
+const FLOOR1_OPTS = (() => {
+  const options = createFloor1MainSceneOptions();
+  return { preSystems: options.preSystems, postSystems: options.postSystems } as const;
+})();
 
 /** Drive the scenario up to the point where the Slime Rat battle can start. */
 function advanceToSlimeRatGate(world: GameWorld, player: number): void {
@@ -56,6 +66,26 @@ function startedSlimeRatWorld(seed: number): { world: GameWorld; player: number 
   selectFloor1StarterWeapon(world, 0);
   advanceToSlimeRatGate(world, player);
   expect(world.floorScenario!.objective.bossBattles.get('slime-rat')!.started).toBe(true);
+  return { world, player };
+}
+
+function startedStaircaseBossWorld(seed: number): { world: GameWorld; player: number } {
+  const { world, player } = startedSlimeRatWorld(seed);
+  const objective = world.floorScenario!.objective;
+  const slimeRatBoss = objective.bossBattles.get('slime-rat')!.bossEid;
+  if (slimeRatBoss === null) {
+    throw new Error('Expected Slime Rat boss to exist');
+  }
+
+  removeEntity(world.ecs, slimeRatBoss);
+  floorObjectiveSystem(world);
+  meetSpellQuestGiver(world);
+  questSystem(world);
+
+  world.stores.position.x[player] = objective.staircasePos.x;
+  world.stores.position.y[player] = objective.staircasePos.y;
+  floorObjectiveSystem(world);
+  expect(objective.bossBattles.get('staircase')!.started).toBe(true);
   return { world, player };
 }
 
@@ -116,5 +146,59 @@ describe('floor1 cleared boss arena becomes a safe room', () => {
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
     expect(isPointInSafeSpace(world, x, y)).toBe(true);
+  });
+
+  it('explodes remaining enemies in the cleared arena without spawning XP', () => {
+    const { world } = startedSlimeRatWorld(123);
+    const objective = world.floorScenario!.objective;
+    const { x, y } = objective.slimeRatRoomPos;
+    const trappedEnemy = spawnEnemy(world, x, y, 20);
+    setBloodColor(world, trappedEnemy, GREEN_SLIME_BLOOD);
+    world.stores.enemyBehavior.speed[trappedEnemy] = 0;
+    world.floorScenario!.enemyArchetypes.set(trappedEnemy, 'slime');
+    const outsideEnemy = spawnEnemy(world, -10_000, -10_000, 20);
+
+    removeEntity(world.ecs, objective.bossBattles.get('slime-rat')!.bossEid!);
+    objective.bossBattles.get('slime-rat')!.bossEid = null;
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS, FLOOR1_OPTS);
+
+    expect(entityExists(world.ecs, trappedEnemy)).toBe(false);
+    expect(entityExists(world.ecs, outsideEnemy)).toBe(true);
+    expect(world.combatEvents).toContainEqual(
+      expect.objectContaining({
+        type: 'corpseExplode',
+        targetEid: trappedEnemy,
+        x,
+        y,
+        bloodColor: GREEN_SLIME_BLOOD,
+      }),
+    );
+    expect(world.floorScenario!.enemyArchetypes.has(trappedEnemy)).toBe(false);
+    expect(objective.slimesKilled).toBe(objective.requiredSlimes);
+    expect(query(world.ecs, [XpGem])).toHaveLength(0);
+  });
+
+  it('preserves the dying staircase boss while clearing other in-room enemies', () => {
+    const { world } = startedStaircaseBossWorld(123);
+    const objective = world.floorScenario!.objective;
+    const battle = objective.bossBattles.get('staircase')!;
+    const bossEid = battle.bossEid;
+    if (bossEid === null) {
+      throw new Error('Expected staircase boss to exist');
+    }
+    const trappedEnemy = spawnEnemy(world, objective.staircasePos.x, objective.staircasePos.y, 20);
+    world.stores.enemyBehavior.speed[trappedEnemy] = 0;
+
+    addComponent(world.ecs, bossEid, set(DeathTimer, { remainingMs: GAME.DELTA_MS * 2 }));
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS, FLOOR1_OPTS);
+
+    expect(objective.staircaseUnlocked).toBe(true);
+    expect(battle.defeated).toBe(true);
+    expect(entityExists(world.ecs, bossEid)).toBe(true);
+    expect(entityExists(world.ecs, trappedEnemy)).toBe(false);
+    expect(isPointInSafeSpace(world, objective.staircasePos.x, objective.staircasePos.y)).toBe(
+      true,
+    );
+    expect(query(world.ecs, [XpGem])).toHaveLength(0);
   });
 });

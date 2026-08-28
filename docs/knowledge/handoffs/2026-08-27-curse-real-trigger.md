@@ -23,12 +23,16 @@ Estimated: 2🍎, actual: 2🍎.
   `FLOOR1_BOSS_REWARD_SPELL_IDS` now proves its authored trigger reaches a
   cooldown stamp after the boss-reward selection path; Bless and Haste use
   starter-weapon events rather than `forceActivateAbility`.
+- Repaired the `main-game-scene-ui-exclusivity` E2E race: after priming an NPC,
+  the test now waits for the real Talk hint's rendered bounds before interacting
+  with its screen-space target.
 
 ## Files touched
 
 - `src/game/abilities/registry.ts`
 - `tests/integration/fireball-pulse-shield-integration.test.ts`
 - `docs/knowledge/handoffs/2026-08-27-curse-real-trigger.md`
+- `tests/e2e/main-game-scene-ui-exclusivity.test.ts`
 
 ## Verification
 
@@ -37,6 +41,8 @@ Estimated: 2🍎, actual: 2🍎.
   - After trigger tuning and all-spell review repair: 11/11 tests passed.
 - `npx vitest run tests/game/ability-registry.test.ts tests/game/ability-system.test.ts`
   - 45/45 tests passed.
+- `npx vitest run --project e2e-game tests/e2e/main-game-scene-ui-exclusivity.test.ts`
+  - 21/21 tests passed after the rendered-Talk-hint wait.
 - `npm run verify:fast`
   - Passed.
 

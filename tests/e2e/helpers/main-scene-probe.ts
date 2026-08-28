@@ -31,7 +31,9 @@ import type {
   TerrainRenderSummary,
   DoorRenderSummary,
   StaircaseMarkerRenderInfo,
+  VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
+import type { _CornerButtonProbe as CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
@@ -183,6 +185,16 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   getIssueButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getIssueButtonBounds()),
+  getCornerButtonLayout: (page: Page): Promise<readonly CornerButtonProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCornerButtonLayout()),
+  getVitalsStackBounds: (page: Page): Promise<VitalsStackProbe> =>
+    page.evaluate(() => window.__mainSceneProbe!.getVitalsStackBounds()),
+  unlockExperienceBar: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.unlockExperienceBar()),
+  getAchievementsButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getAchievementsButtonBounds()),
+  getInteractionHintBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getInteractionHintBounds()),
   requestInventoryToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
   requestEquipToggle: (page: Page): Promise<void> =>
@@ -238,6 +250,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
   queueInteraction: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueInteraction()),
+  getPrimedNpcScreenPoint: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPrimedNpcScreenPoint()),
   getCameraCenter: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getCameraCenter()),
   getMapSizeFeet: (page: Page): Promise<ProbePoint | null> =>

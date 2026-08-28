@@ -20,8 +20,8 @@
  *   2. a combat event pushed onto the real `world.combatEvents` queue (the
  *      same queue the real damage/weapon systems push onto) dispatches a
  *      `combat:damage-taken` cue on the next real render frame;
- *   3. a pickup VFX event pushed onto the real `world.vfxEvents` queue
- *      dispatches a `combat:pickup` cue on the next real render frame.
+ *   3. typed pickup VFX events pushed onto the real `world.vfxEvents` queue
+ *      dispatch distinct XP, gold, and material cues.
  *
  * Determinism: fixed world seed, simulation frozen except for explicitly
  * requested fixed steps; assertions are on cue labels/frequencies actually
@@ -32,6 +32,28 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
+async function installAudioContextStateProbe(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      AudioContext?: typeof AudioContext;
+      __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+    };
+    if (typeof w.AudioContext !== 'function') return;
+    const NativeAudioContext = w.AudioContext;
+    const contexts: AudioContext[] = [];
+    class TrackingAudioContext extends NativeAudioContext {
+      constructor(...args: ConstructorParameters<typeof NativeAudioContext>) {
+        super(...args);
+        contexts.push(this);
+      }
+    }
+    w.AudioContext = TrackingAudioContext;
+    w.__audioContextStateProbe = {
+      getStates: () => contexts.map((ctx) => ctx.state),
+    };
+  });
+}
+
 describe('combat/loot audio cues fire through the real scene + bridge wiring', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -41,6 +63,7 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     page = await context.newPage();
+    await installAudioContextStateProbe(page);
     await loadMainSceneProbeLab(page);
     await mainSceneProbe.resolveLoadout(page);
     await mainSceneProbe.setSimulationPaused(page, true);
@@ -77,12 +100,47 @@ describe('combat/loot audio cues fire through the real scene + bridge wiring', (
     expect(log.some((entry) => entry.label === 'combat:damage-taken')).toBe(true);
   }, 30_000);
 
-  it('dispatches a pickup cue for a real vfxEvents pickupSparkle entry', async () => {
-    await mainSceneProbe.clearCombatAudioCueLog(page);
-    await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle' });
+  it('activates Web Audio from a trusted gesture before pickup playback assertions', async () => {
+    expect(await mainSceneProbe.primeMagicMissileLightProbe(page)).toBe(true);
     await mainSceneProbe.advanceSimulationFrames(page, 2);
+    const beforeGestureStates = await page.evaluate(() => {
+      const w = window as unknown as {
+        __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+      };
+      return w.__audioContextStateProbe?.getStates() ?? [];
+    });
+    expect(beforeGestureStates.length).toBeGreaterThan(0);
 
-    const log = await mainSceneProbe.getCombatAudioCueLog(page);
-    expect(log.some((entry) => entry.label === 'combat:pickup')).toBe(true);
+    await page.keyboard.press('Space');
+    await page.waitForFunction(
+      () =>
+        (
+          (
+            window as unknown as {
+              __audioContextStateProbe?: { getStates: () => AudioContextState[] };
+            }
+          ).__audioContextStateProbe?.getStates() ?? []
+        ).includes('running'),
+      undefined,
+      { timeout: 10_000 },
+    );
+  }, 30_000);
+
+  it('dispatches distinct typed pickup cues through the real vfxEvents pipeline', async () => {
+    const typedPickupCooldownClearFrames = 8;
+    const expected = [
+      ['xp', 'combat:pickup-xp'],
+      ['gold', 'combat:pickup-gold'],
+      ['material', 'combat:pickup-material'],
+    ] as const;
+
+    for (const [pickupAudioKind, label] of expected) {
+      await mainSceneProbe.clearCombatAudioCueLog(page);
+      await mainSceneProbe.pushTestVfxEvent(page, { kind: 'pickupSparkle', pickupAudioKind });
+      await mainSceneProbe.advanceSimulationFrames(page, typedPickupCooldownClearFrames);
+
+      const log = await mainSceneProbe.getCombatAudioCueLog(page);
+      expect(log.some((entry) => entry.label === label)).toBe(true);
+    }
   }, 30_000);
 });

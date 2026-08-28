@@ -6,6 +6,7 @@ import { GAME_H, GAME_W } from './e2e-constants.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 import type { FamilyHudProbeState } from '../../src/labs/main-scene-probe-lab/index.js';
+import { boundsOverlap } from '../../src/engine/navigation-hud-layout.js';
 
 const VIEWPORTS = [
   { width: 1280, height: 720 },
@@ -119,6 +120,48 @@ describe('MainGameScene Floor 2 family HUD fullscreen-map gate', () => {
         );
         expect(restored.bounds).toEqual(docked.bounds);
         await captureEvidence(page, viewport, 'restored');
+      } finally {
+        await context.close();
+      }
+    }, 60_000);
+  }
+});
+
+describe('MainGameScene Floor 2 family panel vs quest tracker layout', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  for (const viewport of VIEWPORTS) {
+    it(`keeps the docked family panel clear of the active quest tracker at ${viewport.width}x${viewport.height}`, async () => {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        await loadMainSceneProbeLab(page, { floor: 'floor2' }, LAB_BASE_URL);
+        await mainSceneProbe.resolveLoadout(page);
+        await mainSceneProbe.activateFamilyRelationships(page);
+        await waitForFamilyHud(
+          page,
+          (state) =>
+            !state.mapOverlayOpen && state.visible && state.bounds !== null && state.panelVisible,
+          'docked Floor 2 family panel',
+        );
+
+        const surfaces = (await mainSceneProbe.getSafeAreaLayout(page)).surfaces;
+        const familyPanel = surfaces.find((surface) => surface.name === 'familyPanel')?.bounds;
+        const questTracker = surfaces.find((surface) => surface.name === 'questTracker')?.bounds;
+        // Floor 2 auto-accepts the settlement-search quest on floor init (see
+        // acceptQuest(FLOOR2_FIND_SETTLEMENT_QUEST_ID) in floor2Scenario.ts),
+        // so the tracker is guaranteed to be mounted and visible here.
+        expect(questTracker).toBeDefined();
+        expect(familyPanel).toBeDefined();
+        expect(boundsOverlap(familyPanel!, questTracker!)).toBe(false);
       } finally {
         await context.close();
       }
