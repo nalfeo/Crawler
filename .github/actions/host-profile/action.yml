@@ -50,12 +50,14 @@ runs:
       shell: bash
       env:
         HOST_PROFILE_LABEL: ${{ inputs.label }}
+        HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
       run: |
         touch files/host-profile.stop || true
         sleep 2
         npm run --silent host:profile -- \
           --from-jsonl \
           --label "$HOST_PROFILE_LABEL" \
+          --interval "$HOST_PROFILE_INTERVAL" \
           --out files/host-resources.json \
           --step-summary \
           --quiet || echo "::warning::host resource profile unavailable"

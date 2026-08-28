@@ -253,6 +253,15 @@ function emitReport(report: HostReport, options: CliOptions): void {
   }
 }
 
+/** Recover the original start time from the first sample's own interval. */
+export function rebuiltStartedAt(samples: readonly HostSample[]): string | null {
+  const first = samples[0];
+  if (first === undefined) return null;
+  const firstMs = Date.parse(first.timestamp);
+  if (!Number.isFinite(firstMs)) return null;
+  return new Date(firstMs - first.elapsedMs).toISOString();
+}
+
 async function run(options: CliOptions): Promise<void> {
   const readers = createDefaultReaders();
   const host: HostInfo = collectHostInfo(readers, options.diskPath);
@@ -270,7 +279,9 @@ async function run(options: CliOptions): Promise<void> {
     const samples = readSamplesFromJsonl(raw);
     emitReport(
       buildReport({
-        startedAt: samples[0]?.timestamp ?? startedAt,
+        // Sample timestamps mark the END of an interval, so the run began one
+        // interval before the first sample, not at it.
+        startedAt: rebuiltStartedAt(samples) ?? startedAt,
         endedAt: samples[samples.length - 1]?.timestamp ?? startedAt,
         intervalMs: options.intervalMs,
         context,

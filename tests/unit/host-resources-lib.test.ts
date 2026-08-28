@@ -31,7 +31,11 @@ import {
   type HostReaders,
   type HostSample,
 } from '../../scripts/agent/perf/host-resources-lib.js';
-import { parseArgs, readSamplesFromJsonl } from '../../scripts/agent/perf/host-resources.js';
+import {
+  parseArgs,
+  readSamplesFromJsonl,
+  rebuiltStartedAt,
+} from '../../scripts/agent/perf/host-resources.js';
 
 const GIB = 1024 * 1024 * 1024;
 
@@ -483,6 +487,19 @@ describe('JSONL recovery', () => {
 
   it('returns nothing for an empty sidecar', () => {
     expect(readSamplesFromJsonl('')).toEqual([]);
+  });
+
+  it('recovers the start time one interval before the first sample', () => {
+    // Sample timestamps mark the end of their interval, so a rebuilt report
+    // that started at the first sample would lose that interval entirely and
+    // call a single-sample profile zero seconds long.
+    const samples = [
+      baseSample({ timestamp: '2026-08-28T00:00:05.000Z', elapsedMs: 5000 }),
+      baseSample({ timestamp: '2026-08-28T00:00:10.000Z', elapsedMs: 5000 }),
+    ];
+    expect(rebuiltStartedAt(samples)).toBe('2026-08-28T00:00:00.000Z');
+    expect(rebuiltStartedAt([])).toBeNull();
+    expect(rebuiltStartedAt([baseSample({ timestamp: 'not-a-time' })])).toBeNull();
   });
 });
 
