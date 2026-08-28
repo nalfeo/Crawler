@@ -99,6 +99,16 @@ describe('visual-review-agent lineage capture flags', () => {
   });
 });
 
+describe('visual-review-agent deterministic-only flag', () => {
+  it('defaults to false (LLM review runs)', () => {
+    expect(parseArgs([]).deterministicOnly).toBe(false);
+  });
+
+  it('parses --deterministic-only', () => {
+    expect(parseArgs(['--deterministic-only']).deterministicOnly).toBe(true);
+  });
+});
+
 describe('visual-review-agent focused interaction prompt', () => {
   it('distinguishes the detail frame from full-panel measured context', () => {
     const opts = parseArgs([]);

@@ -93,14 +93,22 @@ async function captureSurface(opts: {
   ref: string;
   releaseDir: string;
   surface: BaselineSurface;
+  withLlmReview: boolean;
 }): Promise<{ success: boolean; surface: string; score?: number }> {
-  const { ref, releaseDir, surface } = opts;
+  const { ref, releaseDir, surface, withLlmReview } = opts;
   const surfaceDir = join(releaseDir, surface.id);
   mkdirSync(surfaceDir, { recursive: true });
 
+  // visual-review-agent doesn't write directly into surfaceDir: it writes a
+  // timestamped capture at its output root, then (because we pass
+  // --lineage-*) copies it into `<outputDir>/<lineageSide>/<lineageState>/
+  // <lineageScenario>.{png,review.json}`. Point the baseline paths at that
+  // lineage copy instead of a `${surface.id}.png` that visual-review-agent
+  // never creates.
+  const lineageDir = join(surfaceDir, 'before', 'live-dev');
   const screenshotName = `${surface.id}.png`;
-  const screenshotPath = join(surfaceDir, screenshotName);
-  const reviewPath = join(surfaceDir, `${surface.id}.review.json`);
+  const screenshotPath = join(lineageDir, screenshotName);
+  const reviewPath = join(lineageDir, `${surface.id}.review.json`);
   const metadataPath = join(surfaceDir, 'metadata.json');
 
   console.log(
@@ -133,6 +141,9 @@ async function captureSurface(opts: {
     'live-dev',
     '--lineage-side',
     'before',
+    // Deterministic by default: only spend Azure/LLM budget when explicitly
+    // requested. --with-llm-review opts into the Azure vision judge instead.
+    ...(withLlmReview ? [] : ['--deterministic-only']),
   ];
 
   // We need a running dev server. Check if one is already running, or start one.
@@ -206,10 +217,11 @@ async function captureSurface(opts: {
       captureSource: surface.captureSource,
       sourceCommit: getCurrentCommitSha(),
       capturedAt: getTimestamp(),
-      screenshotPath: screenshotName,
-      reviewPath: `${surface.id}.review.json`,
+      screenshotPath: `before/live-dev/${screenshotName}`,
+      reviewPath: `before/live-dev/${surface.id}.review.json`,
       screenshotHash,
       determinismCheck: 'passed',
+      llmReviewed: withLlmReview,
     };
 
     writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
@@ -256,6 +268,13 @@ async function main() {
   console.log(`📸 Capturing UX baselines for release: ${ref}`);
   console.log(`📁 Output directory: ${releaseDir}`);
 
+  const withLlmReview = flags['with-llm-review'] === true || flags['with-llm-review'] === 'true';
+  console.log(
+    withLlmReview
+      ? '🧠 LLM visual review ENABLED (--with-llm-review): Azure credentials are required.'
+      : '🔒 Deterministic-only capture (default): no Azure/LLM call. Pass --with-llm-review to include one.',
+  );
+
   // Read manifest
   let manifest;
   try {
@@ -296,6 +315,7 @@ async function main() {
           ref,
           releaseDir,
           surface,
+          withLlmReview,
         });
         results.push(result);
         if (result.success) capturedCount++;
