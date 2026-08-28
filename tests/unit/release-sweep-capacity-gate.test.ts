@@ -90,12 +90,10 @@ describe('release sweep capacity gate wiring', () => {
 
   it('detects an in-flight sweep by the real sweep job names', () => {
     const source = read('.github/scripts/release-sweep-admission.mjs');
-    const prefixList = source.match(/RELEASE_SWEEP_JOB_PREFIXES = \[([^\]]+)\]/)?.[1] ?? '';
-    const prefixes = [...prefixList.matchAll(/'([^']+)'/g)].map((match) => {
-      const prefix = match[1];
-      expect(prefix).toBeDefined();
-      return prefix!;
-    });
+    const prefixes = [...source.matchAll(/RELEASE_SWEEP_JOB_PREFIXES = \[([^\]]+)\]/g)]
+      .flatMap((match) => [...(match[1] ?? '').matchAll(/'([^']+)'/g)])
+      .map((match) => match[1])
+      .filter((prefix): prefix is string => prefix !== undefined);
     expect(prefixes.length).toBeGreaterThan(0);
     for (const jobId of ['release-report-sweep', 'baseline-sweep']) {
       const jobName = job(jobId).name ?? '';
