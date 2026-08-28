@@ -8,8 +8,10 @@
  * non-weapon base with no inherent `armor` (legacy `leather-gloves`,
  * `feet.merchant-sandals`, `accessory.compass-charm`, …) realized at Common
  * with a literally empty `statBonuses` map, because Common has a zero-effect
- * affix budget and inherent non-armor stats were dropped. Those items still
- * occupied a slot and still cost full price at the Floor 2 Quartermaster.
+ * affix budget and inherent non-armor stats were dropped. Five affected bases
+ * were Floor 2 Quartermaster stock; `accessory.lucky-feather`,
+ * `accessory.warding-bell`, and Basic Leather's `accessory.iron-ring` were
+ * reward-only dead items.
  *
  * Determinism: fixed seeds and fixed run keys; every assertion is on generated
  * content, never on wall-clock or unseeded RNG.
@@ -40,7 +42,7 @@ function isMeaningful(instance: GeneratedEquipmentInstanceV1): boolean {
   );
 }
 
-describe('generated equipment never realizes a stat-less item', () => {
+describe('generated equipment never realizes a dead item', () => {
   it('every shipped base is meaningful at Common (the zero-affix rarity)', () => {
     const blank: string[] = [];
     for (const [index, baseId] of SHIPPED_BASE_IDS.entries()) {

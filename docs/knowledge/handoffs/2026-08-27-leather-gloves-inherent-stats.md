@@ -25,9 +25,12 @@ non-weapon base with **no authored armor** realized at Common (zero affix
 budget) with a **literally empty stat map**. Eight shipped bases were affected:
 `leather-gloves`, `feet.merchant-sandals`, `accessory.compass-charm`,
 `accessory.gearwork-locket`, `accessory.surveyor-map`,
-`accessory.lucky-feather`, `accessory.warding-bell`, `accessory.iron-ring` —
-all of them sellable by the Floor 2 Quartermaster, which prices offers purely
-from item level and rarity.
+`accessory.lucky-feather`, `accessory.warding-bell`, `accessory.iron-ring`.
+Five (`leather-gloves`, `feet.merchant-sandals`, `accessory.compass-charm`,
+`accessory.gearwork-locket`, and `accessory.surveyor-map`) were sellable by the
+Floor 2 Quartermaster, which prices offers purely from item level and rarity;
+the two rare Wave B bases and Basic Leather's `accessory.iron-ring` were
+reward-only dead items.
 
 Non-weapon bases now spread their authored non-armor stat line into every
 instance at every rarity; rarity affixes stack on top, so rarity stays

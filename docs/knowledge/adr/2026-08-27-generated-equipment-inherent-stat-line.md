@@ -28,12 +28,13 @@ was built from **only** two sources:
 
 Common rarity has a **zero-effect affix budget** (`RARITY_EFFECT_BUDGET.common
 === 0`). So every base with no inherent armor realized at Common with an
-**empty stat map** — a dead item that occupies a slot, consumes a reward roll,
-and costs full price at the Floor 2 Quartermaster (which prices offers purely
-from item level and rarity). Eight shipped bases were affected:
+**empty stat map** — a dead item that occupies a slot and consumes a reward
+roll. Five of the eight affected bases were also sold at full price by the Floor
+2 Quartermaster (which prices offers purely from item level and rarity):
 `leather-gloves`, `feet.merchant-sandals`, `accessory.compass-charm`,
-`accessory.gearwork-locket`, `accessory.surveyor-map`,
-`accessory.lucky-feather`, `accessory.warding-bell`, `accessory.iron-ring`.
+`accessory.gearwork-locket`, `accessory.surveyor-map`. The remaining reward-only
+bases were `accessory.lucky-feather`, `accessory.warding-bell`, and Basic
+Leather's `accessory.iron-ring`.
 
 The decoupling model implicitly assumed every base's _inherent_ power is armor.
 That is true for helmets and breastplates and false for gloves, sandals, rings
@@ -72,8 +73,9 @@ author an empty stat map.
 
 ### Positive
 
-- No shipped base can realize a stat-less item; Common gear keeps its authored
-  identity (gloves swing faster, charms are lucky, sandals are quick).
+- No shipped base can realize a dead item; Common non-weapon gear keeps its
+  authored identity (gloves swing faster, charms are lucky, sandals are quick),
+  while weapons remain meaningful through their weapon snapshots.
 - Quartermaster gold and reward rolls always buy something.
 - The same base now reads identically across acquisition sources — the frozen
   stats match what the catalog authored.
