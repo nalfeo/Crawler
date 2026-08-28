@@ -33,13 +33,31 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "6e5c188045e5564ab0373e3068c1c416590f0300",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "src/engine/ui-theme.ts",
+          "detail": "The refresh moves shared HUD typography/palette into new tokens and changes multiple HUD surfaces plus the new lab scenarios, but the diff does not add or update any deterministic regression that would fail if the refreshed visual language regressed. Add a committed headless visual/e2e check alongside tests/e2e/hud-overlap-visual.test.ts that loads the safe-room and dungeon HUD scenarios and asserts the refreshed HUD surfaces."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 2,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "fail",
+      "findings_count": 1,
+      "notes": "The implementation is coherent and policy-compliant, but the visual refresh lacks deterministic automated regression coverage for the two new scenarios.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: test_coverage",
+        "unresolved_findings": 1
+      }
     }
   }
 }
