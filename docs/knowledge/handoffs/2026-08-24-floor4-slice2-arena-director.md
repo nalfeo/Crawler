@@ -102,3 +102,5 @@ rehearsal**:
 - Surgical formatting is easy to get wrong (`npm run format -- --write <files>` still runs
   the repo globs). A `format:files` script wrapping `npx prettier --write` would remove the
   footgun for every future session.
+- Keep the Floor 4 arena timeline assertions in the shared headless regression suite as later
+  slices add authored waves and transition behavior.
