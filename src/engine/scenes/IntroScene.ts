@@ -51,6 +51,18 @@ const DIRECTOR_WELCOME =
   'audience is watching. Before you descend, tell us who you\n' +
   'are, and how you want the show to address you.';
 
+/**
+ * Rounds a CSS pixel value to the nearest integer. Native DOM elements
+ * (the name `<input>` and pronoun `<fieldset>`) are positioned/sized from
+ * fractional canvas-scale math; fractional CSS pixel values force the
+ * browser into sub-pixel font rendering, which reads as blurry text even
+ * though Phaser's own crisp-text pipeline is unaffected (that only covers
+ * canvas-rendered text, not overlaid HTML elements).
+ */
+function px(value: number): number {
+  return Math.round(value);
+}
+
 /** Returns true when the current page is a lab (skip intro). */
 function isLabContext(): boolean {
   if (typeof window === 'undefined') {
@@ -271,19 +283,21 @@ export class IntroScene extends Phaser.Scene {
     input.autocomplete = 'off';
     input.setAttribute('aria-label', NAME_INPUT_ARIA_LABEL);
 
-    // Position the input element over the canvas area.
+    // Position the input element over the canvas area. Every value is
+    // rounded to a whole CSS pixel — fractional pixels force sub-pixel font
+    // rendering in the browser, which reads as blurry text (see `px()`).
     Object.assign(input.style, {
       position: 'fixed',
-      left: `${canvasRect.left + gameX * scaleX}px`,
-      top: `${canvasRect.top + gameY * scaleY}px`,
-      width: `${gameW * scaleX}px`,
-      height: `${38 * scaleY}px`,
+      left: `${px(canvasRect.left + gameX * scaleX)}px`,
+      top: `${px(canvasRect.top + gameY * scaleY)}px`,
+      width: `${px(gameW * scaleX)}px`,
+      height: `${px(38 * scaleY)}px`,
       background: INPUT_BG,
       color: SLATE_LIGHT,
       border: '1px solid #1e3354',
       padding: '4px 8px',
       fontFamily: 'monospace',
-      fontSize: `${14 * Math.min(scaleX, scaleY)}px`,
+      fontSize: `${px(14 * Math.min(scaleX, scaleY))}px`,
       outline: 'none',
       boxSizing: 'border-box',
       zIndex: '10000',
@@ -327,15 +341,15 @@ export class IntroScene extends Phaser.Scene {
     fieldset.setAttribute('aria-label', GENDER_GROUP_ARIA_LABEL);
     Object.assign(fieldset.style, {
       position: 'fixed',
-      left: `${canvasRect.left + startX * scaleX}px`,
-      top: `${canvasRect.top + gameY * scaleY}px`,
-      width: `${totalW * scaleX}px`,
+      left: `${px(canvasRect.left + startX * scaleX)}px`,
+      top: `${px(canvasRect.top + gameY * scaleY)}px`,
+      width: `${px(totalW * scaleX)}px`,
       margin: '0',
       padding: '0',
       border: '0',
       display: 'grid',
       gridTemplateColumns: `repeat(${GENDER_OPTIONS.length}, 1fr)`,
-      gap: `${16 * scaleX}px`,
+      gap: `${px(16 * scaleX)}px`,
       zIndex: '10000',
     });
 
@@ -385,10 +399,10 @@ export class IntroScene extends Phaser.Scene {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '8px',
-        minHeight: `${34 * scaleY}px`,
+        minHeight: `${px(34 * scaleY)}px`,
         padding: '0 8px',
         fontFamily: 'monospace',
-        fontSize: `${13 * Math.min(scaleX, scaleY)}px`,
+        fontSize: `${px(13 * Math.min(scaleX, scaleY))}px`,
         color: BUTTON_TEXT_DEFAULT,
         cursor: 'pointer',
         userSelect: 'none',
