@@ -22,6 +22,14 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": true
+        },
+        {
+          "round": 2,
+          "reviewer_actors": ["copilot-pull-request-reviewer[bot]"],
+          "review_url": "https://github.com/nalfeo/Crawler/pull/3855#pullrequestreview-5054783430",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
         }
       ]
     },

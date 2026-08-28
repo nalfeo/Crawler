@@ -139,7 +139,9 @@ stage). Never re-score down just to dodge a stage (rule #11).
    writes for you and tell the human.
 8. **Validate the ledger** and make sure it is committed on your branch. After
    publication, native Copilot PR review may supply `code_review` provenance via
-   `reviewer_actors` plus `review_url`; CI results remain authoritative and are
+   `reviewer_actors` (trusted native reviewer logins only) plus a
+   `https://github.com/<owner>/<repo>/pull/<n>#pullrequestreview-<id>`
+   `review_url`; CI results remain authoritative and are
    not duplicated in the ledger:
    ```
    npm run review:ledger -- validate <path>

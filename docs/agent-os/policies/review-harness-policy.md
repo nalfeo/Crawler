@@ -165,7 +165,12 @@ evidence to fill the required stages accurately.
 
 GitHub Copilot PR reviews count as code-review evidence when the ledger records
 the selected model, or `reviewer_actors` plus `review_url` when GitHub does not
-expose the model, along with finding/resolution counts and final cleanliness. Do
+expose the model, along with finding/resolution counts and final cleanliness.
+Only the trusted native reviewer logins (`copilot-pull-request-reviewer`, with or
+without the `[bot]` suffix) are accepted as `reviewer_actors`, and `review_url`
+must be an immutable
+`https://github.com/<owner>/<repo>/pull/<n>#pullrequestreview-<id>` URL, so an
+arbitrary actor/URL string cannot stand in for a review that never happened. Do
 not duplicate a completed Copilot review solely to make the ledger look
 self-authored; preserve the actual review provenance.
 

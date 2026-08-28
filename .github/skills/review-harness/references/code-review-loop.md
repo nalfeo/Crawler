@@ -29,9 +29,12 @@ a repository-controlled model selector, so repository instructions influence its
 and method, not its underlying model.
 
 After publication, a native Copilot PR review may satisfy a `code_review` round
-without inventing a model id. Record `reviewer_actors` with the GitHub actor
-login and `review_url` with the immutable review URL, plus the normal
-finding/resolution counts and `clean` state.
+without inventing a model id. Record `reviewer_actors` with the trusted native
+reviewer login (`copilot-pull-request-reviewer`, optionally `[bot]`-suffixed) and
+`review_url` with the immutable review URL
+(`https://github.com/<owner>/<repo>/pull/<n>#pullrequestreview-<id>`), plus the
+normal finding/resolution counts and `clean` state. Any other actor login or URL
+shape is rejected by the validator.
 
 Use this prompt for each general reviewer:
 
