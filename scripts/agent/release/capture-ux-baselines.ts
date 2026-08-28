@@ -18,6 +18,9 @@ import { resolve, join } from 'node:path';
 import process from 'node:process';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { getSessionServerPorts } from '../../shared/session-server-ports.js';
+
+const { labBaseUrl } = getSessionServerPorts();
 
 const MANIFEST_PATH = resolve('docs/knowledge/ux-baselines/manifest.json');
 const BASELINES_DIR = resolve('docs/knowledge/ux-baselines/releases');
@@ -75,6 +78,17 @@ function getCurrentCommitSha() {
   }
 }
 
+function resolveRefSha(ref: string): string {
+  try {
+    return execSync(`git rev-parse ${ref}`, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    throw new Error(`Could not resolve --ref "${ref}" to a commit (is it a valid ref/tag?)`);
+  }
+}
+
 function getTimestamp() {
   return new Date().toISOString();
 }
@@ -120,7 +134,7 @@ async function captureSurface(opts: {
     'tsx',
     'scripts/agent/review/visual-review-agent.ts',
     '--url',
-    `http://localhost:5173/lab.html?lab=ui-probe-lab&uxScenario=${encodeURIComponent(surface.id)}`,
+    `${labBaseUrl}/lab.html?lab=ui-probe-lab&uxScenario=${encodeURIComponent(surface.id)}`,
     '--output-dir',
     surfaceDir,
     '--screenshot-name',
@@ -151,7 +165,7 @@ async function captureSurface(opts: {
   let serverProcess: ReturnType<typeof spawn> | undefined;
   try {
     // Quick health check
-    execSync('curl -s http://localhost:5173/ > /dev/null', { timeout: 5000 });
+    execSync(`curl -s ${labBaseUrl}/ > /dev/null`, { timeout: 5000 });
   } catch {
     // Server not running, start it in the background
     console.log('Starting Vite dev server for capture...');
@@ -164,7 +178,7 @@ async function captureSurface(opts: {
     let ready = false;
     for (let i = 0; i < 30; i++) {
       try {
-        execSync('curl -s http://localhost:5173/ > /dev/null', { timeout: 5000 });
+        execSync(`curl -s ${labBaseUrl}/ > /dev/null`, { timeout: 5000 });
         ready = true;
         break;
       } catch {
@@ -267,6 +281,27 @@ async function main() {
 
   console.log(`📸 Capturing UX baselines for release: ${ref}`);
   console.log(`📁 Output directory: ${releaseDir}`);
+
+  // The capture always runs against the current checkout, so labeling it
+  // "v0.1.0" while HEAD is actually somewhere else would silently mislabel
+  // the pixels and defeat baseline provenance. Fail fast unless the resolved
+  // --ref matches HEAD exactly.
+  const headSha = getCurrentCommitSha();
+  let resolvedRefSha: string;
+  try {
+    resolvedRefSha = resolveRefSha(ref);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`❌ ${msg}`);
+    process.exit(1);
+  }
+  if (headSha !== resolvedRefSha) {
+    console.error(
+      `❌ --ref "${ref}" resolves to ${resolvedRefSha}, but the current checkout (HEAD) is ${headSha}. ` +
+        'Check out the requested ref before capturing so the baseline is not mislabeled.',
+    );
+    process.exit(1);
+  }
 
   const withLlmReview = flags['with-llm-review'] === true || flags['with-llm-review'] === 'true';
   console.log(
