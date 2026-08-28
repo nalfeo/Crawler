@@ -55,6 +55,20 @@ function overlaps(
   );
 }
 
+async function holdKeyUntil(
+  page: Page,
+  key: string,
+  predicate: Parameters<typeof waitForState>[1],
+  label: string,
+): Promise<void> {
+  await page.keyboard.down(key);
+  try {
+    await waitForState(page, predicate, { label });
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -306,6 +320,11 @@ describe('MainGameScene UI exclusivity', () => {
     await bootPlayingSafeScene();
     const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
     expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+    await page.waitForFunction(
+      () => window.__mainSceneProbe?.getInteractionHintBounds() !== null,
+      undefined,
+      { timeout: 5_000 },
+    );
     const awardsBounds = await mainSceneProbe.getAchievementsButtonBounds(page);
     const talkBounds = await mainSceneProbe.getInteractionHintBounds(page);
     const canvas = await page.locator('#lab-canvas canvas').boundingBox();
@@ -321,21 +340,6 @@ describe('MainGameScene UI exclusivity', () => {
     const clickDesignPoint = async (point: { x: number; y: number }): Promise<void> => {
       const target = toCanvas(point);
       await page.mouse.click(target.x, target.y);
-    };
-    // The scene samples keys with Phaser's JustDown, which a keyup clears. A
-    // zero-delay press can therefore land entirely between two scene updates on
-    // a loaded runner, so hold the key until the effect is observed.
-    const holdKeyUntil = async (
-      key: string,
-      predicate: (state: Awaited<ReturnType<typeof mainSceneProbe.getState>>) => boolean,
-      label: string,
-    ): Promise<void> => {
-      await page.keyboard.down(key);
-      try {
-        await waitForState(page, predicate, { label });
-      } finally {
-        await page.keyboard.up(key);
-      }
     };
     await clickDesignPoint({ x: 800, y: 450 });
     await page.waitForTimeout(100);
@@ -358,18 +362,31 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil('Escape', (state) => !state.conversationOpen, 'Escape closed NPC dialogue');
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'NPC dialogue closed before Talk click',
+    );
+    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
 
     await clickDesignPoint({
-      x: talkBounds.x + talkBounds.width / 2,
-      y: talkBounds.y + talkBounds.height / 2,
+      x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
+      y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
     });
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await holdKeyUntil('Escape', (state) => !state.conversationOpen, 'Escape closed Talk dialogue');
-
-    await holdKeyUntil('e', (state) => state.conversationOpen, 'E opened dialogue');
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'Talk dialogue closed before E interaction',
+    );
+    await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
