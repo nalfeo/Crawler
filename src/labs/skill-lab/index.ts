@@ -72,6 +72,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   function render() {
     const abilityState = world.abilityStatesByEntity.get(player);
     const activeIds = abilityState?.equippedActiveAbilityIds ?? [];
+    const ownedActiveIds = abilityState?.ownedActiveAbilityIds ?? activeIds;
     const passiveIds = abilityState?.passiveAbilityIds ?? [];
 
     const skillRows = allSkills
@@ -99,7 +100,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
               const granted =
                 abilityDef.kind === 'passive'
                   ? passiveIds.includes(abilityGrantId)
-                  : activeIds.includes(abilityGrantId);
+                  : ownedActiveIds.includes(abilityGrantId);
               const prereqMet = granted
                 ? weaponPrerequisiteMet(world, player, abilityGrantId)
                 : false;
@@ -125,7 +126,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
     const abilityRows = allAbilities
       .map((ability) => {
-        const isActiveEquipped = activeIds.includes(ability.id);
+        const isActiveOwned = ownedActiveIds.includes(ability.id);
         const isPassiveGranted = passiveIds.includes(ability.id);
         const cooldown = abilityState?.cooldownByAbilityId.get(ability.id);
         const remaining =
@@ -138,8 +139,8 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         <tr>
           <td style="padding:5px 10px;color:#9ba">${ability.name}</td>
           <td style="padding:5px 10px;color:#8ab">${ability.kind}</td>
-          <td style="padding:5px 10px;color:${isActiveEquipped || isPassiveGranted ? '#4f8' : '#666'}">${
-            isActiveEquipped || isPassiveGranted ? 'yes' : 'no'
+          <td style="padding:5px 10px;color:${isActiveOwned || isPassiveGranted ? '#4f8' : '#666'}">${
+            isActiveOwned || isPassiveGranted ? 'yes' : 'no'
           }</td>
           <td style="padding:5px 10px;text-align:right;color:#888">${cooldownText}</td>
         </tr>`;
