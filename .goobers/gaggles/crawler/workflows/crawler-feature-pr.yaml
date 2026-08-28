@@ -20,6 +20,7 @@ spec:
       run:
         script: |
           set -eu
+          repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
           if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
             issue="${GOOBERS_RECOVERY_ISSUE}"
             case "${issue}" in
@@ -28,7 +29,7 @@ spec:
                 exit 1
                 ;;
             esac
-            issue_json="$(gh issue view "${issue}" --repo "${GITHUB_REPOSITORY}" --json state,title,body,url,labels,assignees)"
+            issue_json="$(gh issue view "${issue}" --repo "${repo}" --json state,title,body,url,labels,assignees)"
             state="$(printf '%s' "${issue_json}" | jq -r '.state')"
             approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
             assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
@@ -36,7 +37,7 @@ spec:
               echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
               exit 1
             fi
-            gh issue edit "${issue}" --repo "${GITHUB_REPOSITORY}" --add-label 'goobers/status:in-review'
+            gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'
             printf '%s' "${issue_json}" | jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
               id: (.number // '"${issue}"'),
               title,
