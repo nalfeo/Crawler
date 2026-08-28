@@ -13,7 +13,7 @@
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "minor",
-      "notes": "Two plan reviews ran: gpt-5.4 (v1, rejected, 6 concerns) then claude-opus-4.8 adversarial (v2, approved_with_changes, 10 concerns incl. 3 alternatives argued). Alt A (equip-gate the active on weapon swap instead of fire-gating) rejected: per-frame equip/unequip would fight the player-configured ability bar, churn cooldown state on every swap, and complicate slot-cap re-equip; adopted the reviewer fallback instead (HUD surfaces the unmet prerequisite on the slot). Alt B (reuse an existing catalog active) rejected: no existing active carries arcane class identity; new IDs also avoid the persisted-kind mismatch that killed v1. Alt C (unconditional active) rejected: breaks the ADR weapon-class contract on post-unlock weapon swap. Adopted: new ability IDs instead of repurposing (v1-1); weaponPrerequisite on actives incl. the .strict() zod schema (v1-2, v2-3); do NOT gate forceActivateAbility (v2-1); HUD slot shows unmet-prereq state and the bar unhides for non-spell actives (v2-2); AI loadout evaluator zeroes weapon-gated actives on mismatched weapons (v2-4); expect an intended headless fingerprint delta and diff-review it (v2-5); unlock VFX flash for active grants (v2-6); widen the revokeRequests TYPE and derive revoke kind (v2-7); cite the ADR by dated filename due to the 0061 number collision (v2-8); skill lab + achievements decision documented (v1-3); slot-cap/carryover tests (v1-6). Rejected with reason: cutting the L15 evolved tier (v2-10) \u2014 applyMilestone revokes the L5 grant at L15, so a passive L15 would delete the player active."
+      "notes": "Two plan reviews ran: gpt-5.4 (v1, rejected, 6 concerns) then claude-opus-4.8 adversarial (v2, approved_with_changes, 10 concerns incl. 3 alternatives argued). Alt A (equip-gate the active on weapon swap instead of fire-gating) rejected: per-frame equip/unequip would fight the player-configured ability bar, churn cooldown state on every swap, and complicate slot-cap re-equip; adopted the reviewer fallback instead (HUD surfaces the unmet prerequisite on the slot). Alt B (reuse an existing catalog active) rejected: no existing active carries arcane class identity; new IDs also avoid the persisted-kind mismatch that killed v1. Alt C (unconditional active) rejected: breaks the ADR weapon-class contract on post-unlock weapon swap. Adopted: new ability IDs instead of repurposing (v1-1); weaponPrerequisite on actives incl. the .strict() zod schema (v1-2, v2-3); do NOT gate forceActivateAbility (v2-1); HUD slot shows unmet-prereq state and the bar unhides for non-spell actives (v2-2); AI loadout evaluator zeroes weapon-gated actives on mismatched weapons (v2-4); expect an intended headless fingerprint delta and diff-review it (v2-5); unlock VFX flash for active grants (v2-6); widen the revokeRequests TYPE and derive revoke kind (v2-7); cite the ADR by dated filename due to the 0061 number collision (v2-8); skill lab + achievements decision documented (v1-3); slot-cap/carryover tests (v1-6). Rejected with reason: cutting the L15 evolved tier (v2-10) — applyMilestone revokes the L5 grant at L15, so a passive L15 would delete the player active."
     },
     "code_review": {
       "clean": true,
@@ -42,13 +42,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "github-copilot-coding-agent",
+      "head_sha": "6daf3c8a06d106f494a401fea9047567f5474559",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff fixes the real root cause: applyMilestone no longer hard-codes passive grants/revokes, so Arcane L5/L15 can grant weapon-gated actives (arcane-nova / arcane-nova-evolved) without kind-flip carryover hazards. Fire-gating in activateAbility (before cooldown stamp), deliberate forceActivateAbility bypass, kind:'active' (not spell) for pre-boss reachability, shared presentation weaponPrerequisite for HUD without layer violations, fill-open-slots slot-cap behavior, skillAbilityUnlocked announcements, AI evaluator zeroing, and skill-lab owned-active display are all coherent and covered. Integration coverage exercises the shipped Floor-1 pipeline (equip + fire before spells unlock, non-arcane refusal, L15 replace, full-bar ownership); unit/evaluator/registry tests pin the supporting surfaces. Scope matches a declared 4🍎 cross-layer contract change with required ADR/handoff/ledger, no drive-by refactors, and no policy breaches (determinism, imports, lab update, observe-before-done)."
     }
   }
 }
