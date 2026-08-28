@@ -7,40 +7,33 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "claude-sonnet-5",
-      "concerns_count": 4,
-      "resolved_count": 4,
-      "plan_divergence": "none",
-      "notes": "Plan review (rubber-duck). Blocking resolved: (1) grace window must use PR created_at, not current time, with injected nowMs for deterministic tests — implemented; (2) labeled-but-parent-landed path must NOT preserve stacking — confirmed existing stale-base classification paths handle this without new code; (3) existing base-pr-open test must be updated, not just augmented — existing test updated to use new reason code and label; (4) constants must be exported for test coverage — STACKED_PR_LABEL and STACKED_PR_GRACE_MS exported. Non-blocking: merge-train code deliberately untouched per scope constraint."
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "The review identified the open-parent classifier seam, the unsafe immediate-retarget race, the existing already-landed machinery, label/reason observability, parent-landed normalization, and the boundary with native stack handling. The plan added the five-minute grace, scoped label handling to open parents, retained existing landed-content analysis, and left merge-train promotion unchanged."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-5"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]
     },
     "independent_grade": {
-      "completed": true,
-      "grader_model": "claude-sonnet-5",
-      "implementer_model": "claude-sonnet-5",
-      "head_sha": "pending-commit",
-      "findings": [],
-      "criteria": {
-        "correctness": 5,
-        "scope_discipline": 5,
-        "test_coverage": 5,
-        "policy_compliance": 5,
-        "maintainability": 5
-      },
-      "verdict": "pass",
-      "findings_count": 0,
-      "notes": "Implementation is minimal and correct. classifyStaleBase change is a pure function modification with injectable clock; constants are exported; 5 regression tests cover all new decision paths; labeled-after-parent-lands path reuses existing machinery without duplication; merge-train code untouched; policy doc added in canonical location."
+      "completed": false
     }
   }
 }
