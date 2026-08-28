@@ -21,6 +21,7 @@ spec:
         script: |
           set -eu
           repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          export GH_TOKEN="${GOOBERS_CRED_GITHUB_ISSUES_WRITE:-${GH_TOKEN:-}}"
           if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
             issue="${GOOBERS_RECOVERY_ISSUE}"
             case "${issue}" in
