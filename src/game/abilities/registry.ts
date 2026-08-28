@@ -102,7 +102,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   },
   {
     ...ABILITY_PRESENTATION_BY_ID.curse,
-    trigger: { kind: 'enemy_cluster', minEnemies: 4, withinFeet: 8 },
+    trigger: { kind: 'enemy_cluster', minEnemies: 3, withinFeet: 8 },
     effects: [
       {
         type: 'spell_enemy_slow_burst',
