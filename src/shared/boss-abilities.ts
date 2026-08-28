@@ -274,7 +274,7 @@ const bossAbilityDefSchema = z
 
 export type BossAbilityDef = z.infer<typeof bossAbilityDefSchema>;
 
-export const bossAbilityCatalogSchema = z
+const bossAbilityCatalogSchema = z
   .object({
     schemaVersion: z.literal('boss-abilities/v1'),
     floorId: z.enum(['floor-2', 'floor-4']),
@@ -394,9 +394,7 @@ function validateFloor4Coverage(catalog: BossAbilityCatalog): void {
     throw new Error(`Invalid Floor 4 boss ability coverage:\n- ${errors.join('\n- ')}`);
   }
 }
-export function loadFloor2BossAbilityCatalog(
-  json: unknown = bossAbilityCatalogJson,
-): BossAbilityCatalog {
+function loadFloor2BossAbilityCatalog(json: unknown = bossAbilityCatalogJson): BossAbilityCatalog {
   const catalog = bossAbilityCatalogSchema.parse(json);
   if (catalog.floorId !== 'floor-2') {
     throw new Error(`Expected floor-2 boss ability catalog, got ${catalog.floorId}`);
@@ -405,7 +403,7 @@ export function loadFloor2BossAbilityCatalog(
   return catalog;
 }
 
-export function loadFloor4BossAbilityCatalog(
+function loadFloor4BossAbilityCatalog(
   json: unknown = floor4BossAbilityCatalogJson,
 ): BossAbilityCatalog {
   const catalog = bossAbilityCatalogSchema.parse(json);
@@ -417,59 +415,16 @@ export function loadFloor4BossAbilityCatalog(
 }
 
 export const FLOOR2_BOSS_ABILITY_CATALOG = loadFloor2BossAbilityCatalog();
-export const FLOOR4_BOSS_ABILITY_CATALOG = loadFloor4BossAbilityCatalog();
+loadFloor4BossAbilityCatalog();
 
 const ABILITY_BY_ID = new Map(
   FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.id, ability]),
-);
-const ABILITY_BY_BOSS_ID = new Map(
-  FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.bossArchetypeId, ability]),
-);
-const FLOOR4_ABILITY_BY_ID = new Map(
-  FLOOR4_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.id, ability]),
-);
-const FLOOR4_ABILITY_BY_BOSS_ID = new Map(
-  FLOOR4_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.bossArchetypeId, ability]),
 );
 
 export function getFloor2BossAbilityById(abilityId: string): BossAbilityDef | undefined {
   return ABILITY_BY_ID.get(abilityId);
 }
 
-export function getFloor2BossAbilityByBossId(bossArchetypeId: string): BossAbilityDef | undefined {
-  return ABILITY_BY_BOSS_ID.get(bossArchetypeId);
-}
-
-export function getFloor4BossAbilityById(abilityId: string): BossAbilityDef | undefined {
-  return FLOOR4_ABILITY_BY_ID.get(abilityId);
-}
-
-export function getFloor4BossAbilityByBossId(bossArchetypeId: string): BossAbilityDef | undefined {
-  return FLOOR4_ABILITY_BY_BOSS_ID.get(bossArchetypeId);
-}
-
 export function formatBossAbilityAnnouncement(ability: BossAbilityDef): string {
   return `${ability.attackName} — ${ability.announcementText}`;
-}
-
-export interface BossAbilityCodexEntry {
-  readonly id: string;
-  readonly bossArchetypeId: string;
-  readonly bossName: string;
-  readonly attackName: string;
-  readonly shortDescription: string;
-  readonly fullDescription: string;
-  readonly counterplay: string;
-}
-
-export function toBossAbilityCodexEntry(ability: BossAbilityDef): BossAbilityCodexEntry {
-  return {
-    id: ability.id,
-    bossArchetypeId: ability.bossArchetypeId,
-    bossName: ability.bossName,
-    attackName: ability.attackName,
-    shortDescription: ability.codex.shortDescription,
-    fullDescription: ability.codex.fullDescription,
-    counterplay: ability.codex.counterplay,
-  };
 }
