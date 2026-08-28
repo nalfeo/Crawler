@@ -312,6 +312,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
     expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(materialize?.run).toContain('GH_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_REPOSITORY');
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',

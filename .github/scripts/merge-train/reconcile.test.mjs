@@ -19,6 +19,8 @@ import {
   mergeTrainGitEnvironment,
   parseStalledQueuePasses,
   parseUnadvanceableStrike,
+  reconcileUnadvanceableStrike,
+  unadvanceableStrikePersisted,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   queuePositionAfterRecovery,
@@ -1839,6 +1841,115 @@ test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () 
       'failure must never leave the PR dequeued but unblocked, which would let CI Recovery ' +
       're-queue it and recreate the label-churn livelock (matches the fail-safe order already ' +
       'used by blockEntry/deAdmitNoop)',
+  );
+});
+
+test('a stale read cannot rewind a same-sha strike record backwards', () => {
+  // The regression: overlapping merge-train runs share one status comment and
+  // updateStatus is a blind PATCH, so a run holding a stale read wrote strike 1
+  // back over a persisted strike 2 -- pinning the counter at 1/3 forever and
+  // starving the whole FIFO queue behind an unquarantinable head.
+  const sha = 'a'.repeat(40);
+  const stale = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: '',
+    recordedStrikes: 0,
+    recordedAttempts: 0,
+  });
+  assert.equal(stale.strikes, 1, 'a stale read evaluates as a first strike');
+
+  const merged = reconcileUnadvanceableStrike(stale, {
+    recordedSha: sha,
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  assert.equal(merged.strikes, 2, 'the persisted strike must win over the stale evaluation');
+  assert.equal(merged.attempts, 2);
+});
+
+test('a new head sha still resets strikes so an out-of-band rebase is not penalized', () => {
+  const strike = evaluateUnadvanceableStrike({
+    headSha: 'b'.repeat(40),
+    recordedSha: 'a'.repeat(40),
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  const merged = reconcileUnadvanceableStrike(strike, {
+    recordedSha: 'a'.repeat(40),
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  assert.equal(merged.strikes, 1, 'a different head sha must not inherit the old strike count');
+  assert.equal(merged.attempts, strike.attempts, 'cumulative attempts still carry across shas');
+});
+
+test('strike writes are only confirmed when the record reads back at or above what was written', () => {
+  const sha = 'c'.repeat(40);
+  const strike = { headSha: sha, strikes: 2, attempts: 2, quarantine: false };
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: sha,
+      recordedStrikes: 2,
+      recordedAttempts: 2,
+    }),
+    true,
+  );
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: sha,
+      recordedStrikes: 1,
+      recordedAttempts: 1,
+    }),
+    false,
+    'a racing writer that clobbered the record back down must force a retry',
+  );
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: 'd'.repeat(40),
+      recordedStrikes: 9,
+      recordedAttempts: 9,
+    }),
+    false,
+    'a record for a different head sha is not confirmation of our write',
+  );
+});
+
+test('the restricted-branch 403 handler persists strikes through the confirming writer', () => {
+  const handler = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('if (strike.quarantine)'),
+    RECONCILE_SOURCE.indexOf('} else if (err.status === 422)'),
+  );
+  assert.doesNotMatch(
+    handler,
+    /await updateStatus\(/,
+    'the 403 path must never blind-write the status comment: updateStatus has no read-back, so ' +
+      'an overlapping merge-train run rewinds the strike counter and quarantine can never fire',
+  );
+  assert.equal(
+    (handler.match(/await updateUnadvanceableStatus\(/g) || []).length,
+    2,
+    'both the quarantine and the still-waiting branch must persist through the confirming writer',
+  );
+  const writer = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function updateUnadvanceableStatus('),
+  );
+  const body = writer.slice(0, writer.indexOf('\nasync function eligible('));
+  assert.doesNotMatch(
+    body,
+    /throw new Error/,
+    'the writer runs inside the queued-PR loop; an escaping throw would abandon every remaining ' +
+      'queued PR, which is a worse failure than one extra pass before quarantine',
+  );
+  assert.match(
+    body,
+    /for\s*\([^)]*UNADVANCEABLE_STATUS_WRITE_ATTEMPTS[^)]*\)\s*\{\s*try\s*\{/,
+    'every persistence attempt must be wrapped in a local try/catch so API failures cannot escape ' +
+      'the queued-PR loop',
+  );
+  assert.match(
+    body,
+    /catch \(error\) \{\s*process\.stderr\.write\(\s*`merge-train strike persist attempt failed/,
+    'attempt-local failures must be logged and retried instead of aborting reconcile',
   );
 });
 
