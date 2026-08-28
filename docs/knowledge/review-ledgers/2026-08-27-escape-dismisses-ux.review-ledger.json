@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "escape-dismisses-ux",
+  "task_title": "Fix Escape dismissing UX",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Investigation narrowed the target from scene-owned Phaser surfaces to the DOM RunSurveyUI. Concern 1 resolved: Escape follows the existing Skip semantic (hide then onSkip), not a raw close. Concern 2 resolved: RunSurveyUI owns its DOM keydown listener, so no scene/window arbiter is required. Concern 3 resolved: the run survey is outside the JustDown conversation path; its focused jsdom regression asserts only its own skip callback. Concern 4 resolved: scope is exactly the end-of-run RunSurveyUI, whose explicit Skip action is the intended Escape behavior. The review identified a different load-bearing target, so divergence=major_fork."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "summary": "Independent review validated the Escape lock, deferred-submission regression coverage, and the required ledger completion; all three findings were resolved."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "3e416a575060e41d95e5ae6bb4d767d85befdbe4",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly catches the Escape key in the survey dialog, properly prevents dismissal while submission is in progress, and accurately invokes the skip callback to match the visual Skip button. The changes are strictly scoped to the target component and are comprehensively verified by the added unit tests."
+    }
+  }
+}
