@@ -1130,10 +1130,7 @@ export function arenaDirectorSystem(world: GameWorld): void {
           elapsedMs: world.elapsedMs,
         });
         state.overtimeFinisherAnnounced = true;
-        state.phaseElapsedMs = Math.min(
-          state.phaseElapsedMs,
-          phaseConfig.overtimeCapMs - finisherLeadMs,
-        );
+        state.phaseElapsedMs = phaseConfig.overtimeCapMs - finisherLeadMs;
         break;
       }
       if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {
