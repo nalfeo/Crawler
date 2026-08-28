@@ -30,6 +30,9 @@ export const HUD_TEXT = {
   title: '11px',
 } as const;
 
+/** Keep bottom-anchored HUD panels clear of the screen edge/home indicator. */
+export const HUD_BOTTOM_INSET = 12;
+
 /** Convert a 0xRRGGBB colour number to a Phaser "#rrggbb" CSS colour string. */
 export function hex(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
