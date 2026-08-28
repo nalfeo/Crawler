@@ -24,19 +24,30 @@
  *   debting and cutting consume no randomness at all, so cap pressure and
  *   player skill cannot shift a seed's downstream draws.
  */
-import { addComponent, entityExists, hasComponent, removeEntity, setComponent, set } from 'bitecs';
+import {
+  addComponent,
+  entityExists,
+  hasComponent,
+  query,
+  removeEntity,
+  setComponent,
+  set,
+} from 'bitecs';
 import {
   BloodColor,
   BroadcastScore,
+  Damage,
   DeathTimer,
   Enemy,
+  EnemyBehavior,
   Health,
+  Player,
   Position,
   Size,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
-import { clearEntityStores } from '../core/helpers.js';
+import { applyDamage, clearEntityStores } from '../core/helpers.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
@@ -47,14 +58,21 @@ import {
 import { getGenerator } from '../core/map/generators/registry.js';
 import { getFloorEnemyPack, type EnemyArchetypeDef } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
+import { buildFloor4HeadlinerCard } from '../shared/floor4-headliners.js';
 import {
   buildFloor4ActWaveManifests,
   type Floor4WaveScheduleConfig,
 } from '../shared/floor4-waves.js';
 import { BiomeType, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
+import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import {
+  createBossChestId,
+  openBossChest,
+  spawnBossChestForDefeatedBoss,
+} from './boss-chest-resolver.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
@@ -66,6 +84,8 @@ import type {
   Floor4ArenaRunStats,
   Floor4ArenaState,
   Floor4GateTelegraph,
+  Floor4HeadlinerEncounterState,
+  Floor4HeadlinerTelemetry,
   Floor4PendingWaveSpawn,
   Floor4PendingWaveWindow,
   Floor4WaveManifest,
@@ -166,6 +186,18 @@ function createFloor4WaveTelemetry(): Floor4WaveTelemetry {
   };
 }
 
+function createFloor4HeadlinerTelemetry(): Floor4HeadlinerTelemetry {
+  return {
+    spawned: 0,
+    defeated: 0,
+    appearanceFeeGoldGranted: 0,
+    chestsSpawned: 0,
+    chestsForceResolved: 0,
+    overtimeStarted: 0,
+    overtimeStepsApplied: 0,
+  };
+}
+
 function recordFloor4PhaseTransition(
   world: GameWorld,
   state: Floor4ArenaState,
@@ -182,9 +214,13 @@ function recordFloor4PhaseTransition(
   state.waves = undefined;
   const pending = state.pendingWaves;
   state.pendingWaves = undefined;
+  if (phase.kind === 'WAVES') {
+    state.activeHeadliner = undefined;
+  }
 
   state.phase = cloneFloor4Phase(phase);
   state.phaseElapsedMs = 0;
+  state.overtimeFinisherAnnounced = false;
   state.timeline.push({
     frame: world.frameCount,
     worldElapsedMs: world.elapsedMs,
@@ -195,17 +231,23 @@ function recordFloor4PhaseTransition(
 
   if (phase.kind === 'WAVES') {
     state.waves = armFloor4ActWaves(world, phase.act, pending);
+  } else if (phase.kind === 'HEADLINE') {
+    spawnFloor4Headliner(world, state, phase.act);
   }
 }
 
 function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
+  const config = getFloor4Config();
   const state: Floor4ArenaState = {
     phase: { kind: 'COUNTDOWN' },
     arenaElapsedMs: 0,
     phaseElapsedMs: 0,
+    overtimeFinisherAnnounced: false,
     lastWorldElapsedMs: world.elapsedMs,
     timeline: [],
+    headlinerCard: buildFloor4HeadlinerCard(config.headliners, world.seed),
     waveTelemetry: createFloor4WaveTelemetry(),
+    headlinerTelemetry: createFloor4HeadlinerTelemetry(),
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;
@@ -319,7 +361,8 @@ function floor4ArchetypeAiType(archetype: EnemyArchetypeDef): number {
     case 'guardian':
       return AI_TYPE.GUARDIAN;
     case 'support':
-      return AI_TYPE.SUPPORT;
+      // SUPPORT is movement-only; Headliners need the ranged fallback to attack.
+      return AI_TYPE.RANGED;
     default:
       return AI_TYPE.CHASE;
   }
@@ -690,6 +733,254 @@ export function getFloor4LiveWaveEnemyCount(world: GameWorld): number {
   return live;
 }
 
+function getFloor4HeadlinerConfig() {
+  return getFloor4Config().headliners;
+}
+
+function floor4HeadlinerArchetype(archetypeId: string): EnemyArchetypeDef {
+  const packId = getFloor4HeadlinerConfig().enemyPackId;
+  const archetype = getFloorEnemyPack(packId)?.archetypes.find(
+    (candidate) => candidate.id === archetypeId,
+  );
+  if (!archetype) {
+    throw new Error(`Floor 4 Headliner archetype "${archetypeId}" missing from pack "${packId}"`);
+  }
+  return archetype;
+}
+
+function resolveFloor4HeadlinerSpawnPosition(world: GameWorld): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: 0, y: 0 };
+  }
+  const centerTile = {
+    x: Math.floor(floorMap.config.widthTiles / 2),
+    y: Math.floor(floorMap.config.heightTiles / 2),
+  };
+  return floorMap.tileToWorld(centerTile.x, centerTile.y);
+}
+
+function spawnFloor4Headliner(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  act: Floor4ActIndex,
+): void {
+  if (state.activeHeadliner?.act === act) {
+    return;
+  }
+  const card = state.headlinerCard.find((entry) => entry.act === act);
+  if (!card) {
+    throw new Error(`Floor 4 Headliner card is missing act ${act}`);
+  }
+  const archetype = floor4HeadlinerArchetype(card.archetypeId);
+  const spawn = resolveFloor4HeadlinerSpawnPosition(world);
+  const isRanged = archetype.aiType === 'ranged' || archetype.aiType === 'support';
+  const eid = spawnBehaviorEnemy(
+    world,
+    spawn.x,
+    spawn.y,
+    archetype.hp,
+    floor4ArchetypeAiType(archetype),
+    archetype.speed,
+    archetype.detectRange,
+    isRanged ? archetype.detectRange * 0.65 : 0,
+    { weight: 240 },
+  );
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  const baseDamage = 12 + act * 3;
+  addComponent(world.ecs, eid, set(Damage, { amount: baseDamage, cooldownMs: 0, lastFireMs: 0 }));
+  setEnemyAppearanceKey(world, eid, archetype.id);
+  state.activeHeadliner = {
+    ...card,
+    bossEid: eid,
+    defeated: false,
+    feeGranted: false,
+    chestSpawned: false,
+    chestForceResolved: false,
+    baseSpeed: archetype.speed,
+    baseDamage,
+    appliedOvertimeSteps: 0,
+    lastKnownPos: spawn,
+  };
+  state.headlinerTelemetry.spawned += 1;
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: card.entranceAnnouncement,
+    eventId: `${card.slotId}:entry`,
+    durationMs: 3500,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+function sampleFloor4HeadlinerPosition(
+  world: GameWorld,
+  encounter: Floor4HeadlinerEncounterState,
+): void {
+  const eid = encounter.bossEid;
+  if (eid === null || !entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Position)) {
+    return;
+  }
+  encounter.lastKnownPos = {
+    x: world.stores.position.x[eid] ?? 0,
+    y: world.stores.position.y[eid] ?? 0,
+  };
+}
+
+function isFloor4HeadlinerDefeated(
+  world: GameWorld,
+  encounter: Floor4HeadlinerEncounterState,
+): boolean {
+  const eid = encounter.bossEid;
+  if (eid === null) {
+    return encounter.defeated;
+  }
+  if (!entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Enemy)) {
+    return true;
+  }
+  return hasComponent(world.ecs, eid, DeathTimer) || (world.stores.health.current[eid] ?? 0) <= 0;
+}
+
+function playerEidForFloor4Rewards(world: GameWorld): number | undefined {
+  return query(world.ecs, [Player])[0];
+}
+
+function resolveFloor4HeadlinerDefeat(world: GameWorld, state: Floor4ArenaState): void {
+  const encounter = state.activeHeadliner;
+  if (!encounter) {
+    return;
+  }
+  sampleFloor4HeadlinerPosition(world, encounter);
+  if (!isFloor4HeadlinerDefeated(world, encounter)) {
+    return;
+  }
+  if (!encounter.defeated) {
+    const defeatedEid = encounter.bossEid;
+    encounter.defeated = true;
+    encounter.bossEid = null;
+    state.headlinerTelemetry.defeated += 1;
+    if (defeatedEid !== null && entityExists(world.ecs, defeatedEid)) {
+      clearEntityStores(world, defeatedEid);
+      removeEntity(world.ecs, defeatedEid);
+    }
+    if (state.phase.kind === 'HEADLINE') {
+      state.phase = { kind: 'HEADLINE', act: encounter.act, cleared: true };
+    }
+  }
+  if (!encounter.feeGranted) {
+    world.playerGold += encounter.appearanceFeeGold;
+    encounter.feeGranted = true;
+    state.headlinerTelemetry.appearanceFeeGoldGranted += encounter.appearanceFeeGold;
+  }
+  if (!encounter.chestSpawned) {
+    const result = spawnBossChestForDefeatedBoss(
+      world,
+      encounter.slotId,
+      encounter.lastKnownPos?.x,
+      encounter.lastKnownPos?.y,
+    );
+    if (result.created) {
+      state.headlinerTelemetry.chestsSpawned += 1;
+    } else if (result.reason !== 'alreadyExists') {
+      throw new Error(`Floor 4 Headliner chest failed for ${encounter.slotId}: ${result.reason}`);
+    }
+    encounter.chestSpawned = true;
+  }
+}
+
+function forceResolveFloor4HeadlinerChest(world: GameWorld, state: Floor4ArenaState): boolean {
+  const encounter = state.activeHeadliner;
+  if (!encounter?.defeated || encounter.chestForceResolved) {
+    return true;
+  }
+  const playerEid = playerEidForFloor4Rewards(world);
+  if (playerEid === undefined) {
+    return false;
+  }
+  const chestId = createBossChestId(encounter.slotId);
+  const chest = world.bossChests.get(chestId);
+  if (!chest || chest.state !== 'available') {
+    encounter.chestForceResolved = true;
+    return true;
+  }
+  const result = openBossChest(world, chestId, playerEid);
+  if (!result.ok) {
+    return false;
+  }
+  const chestEid = world.bossChestEids.get(chestId);
+  if (chestEid !== undefined) {
+    world.bossChestEids.delete(chestId);
+    clearEntityStores(world, chestEid);
+    removeEntity(world.ecs, chestEid);
+  }
+  encounter.chestForceResolved = true;
+  state.headlinerTelemetry.chestsForceResolved += 1;
+  return true;
+}
+
+function startFloor4Overtime(world: GameWorld, state: Floor4ArenaState, act: Floor4ActIndex): void {
+  state.arenaElapsedMs = floor4ActEndMs(act);
+  state.headlinerTelemetry.overtimeStarted += 1;
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: getFloor4Config().overtime.warningAnnouncement,
+    eventId: `floor4-overtime-act-${act}`,
+    durationMs: 3000,
+    elapsedMs: world.elapsedMs,
+  });
+  recordFloor4PhaseTransition(world, state, { kind: 'OVERTIME', act }, 'act-mark-overtime');
+}
+
+function applyFloor4OvertimeRamp(world: GameWorld, state: Floor4ArenaState): void {
+  const encounter = state.activeHeadliner;
+  if (!encounter?.bossEid || encounter.defeated) {
+    return;
+  }
+  const steps = getFloor4Config().overtime.rampSteps;
+  while (
+    encounter.appliedOvertimeSteps < steps.length &&
+    state.phaseElapsedMs >= steps[encounter.appliedOvertimeSteps]!.atMs
+  ) {
+    const step = steps[encounter.appliedOvertimeSteps]!;
+    const eid = encounter.bossEid;
+    if (entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, EnemyBehavior)) {
+      world.stores.enemyBehavior.speed[eid] = encounter.baseSpeed * step.speedMultiplier;
+    }
+    if (entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, Damage)) {
+      world.stores.damage.amount[eid] = encounter.baseDamage * step.damageMultiplier;
+    }
+    encounter.appliedOvertimeSteps += 1;
+    state.headlinerTelemetry.overtimeStepsApplied += 1;
+  }
+}
+
+function resolveFloor4OvertimeFinisher(world: GameWorld): void {
+  const playerEid = playerEidForFloor4Rewards(world);
+  if (playerEid !== undefined) {
+    applyDamage(
+      world,
+      playerEid,
+      world.stores.health.current[playerEid] ?? 0,
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+      { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
+    );
+  }
+  world.state = 'game_over';
+}
+
 export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | undefined {
   const state = floor4ArenaState(world);
   if (!state) {
@@ -703,6 +994,8 @@ export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | 
       phase: cloneFloor4Phase(entry.phase),
     })),
     waveTelemetry: { ...state.waveTelemetry },
+    headlinerTelemetry: { ...state.headlinerTelemetry },
+    headlinerCard: state.headlinerCard.map((entry) => ({ ...entry })),
   };
 }
 
@@ -758,8 +1051,8 @@ export function arenaDirectorSystem(world: GameWorld): void {
         recordFloor4PhaseTransition(
           world,
           state,
-          { kind: 'HEADLINE', act: state.phase.act, cleared: true },
-          'slice2-empty-headline',
+          { kind: 'HEADLINE', act: state.phase.act, cleared: false },
+          'headline-entry',
         );
       } else {
         serviceFloor4WaveWindow(world, state);
@@ -767,14 +1060,21 @@ export function arenaDirectorSystem(world: GameWorld): void {
       break;
     case 'HEADLINE':
       state.arenaElapsedMs += elapsedDeltaMs;
+      resolveFloor4HeadlinerDefeat(world, state);
       if (state.arenaElapsedMs >= floor4ActEndMs(state.phase.act)) {
         state.arenaElapsedMs = floor4ActEndMs(state.phase.act);
-        recordFloor4PhaseTransition(
-          world,
-          state,
-          { kind: 'INTERMISSION', act: state.phase.act },
-          'act-mark-reached',
-        );
+        if (state.phase.cleared) {
+          if (forceResolveFloor4HeadlinerChest(world, state)) {
+            recordFloor4PhaseTransition(
+              world,
+              state,
+              { kind: 'INTERMISSION', act: state.phase.act },
+              'act-mark-reached',
+            );
+          }
+        } else {
+          startFloor4Overtime(world, state, state.phase.act);
+        }
       }
       break;
     case 'INTERMISSION': {
@@ -802,12 +1102,43 @@ export function arenaDirectorSystem(world: GameWorld): void {
       }
       break;
     }
-    case 'OVERTIME':
+    case 'OVERTIME': {
+      applyFloor4OvertimeRamp(world, state);
+      resolveFloor4HeadlinerDefeat(world, state);
+      if (state.activeHeadliner?.defeated) {
+        if (forceResolveFloor4HeadlinerChest(world, state)) {
+          recordFloor4PhaseTransition(
+            world,
+            state,
+            { kind: 'INTERMISSION', act: state.phase.act },
+            'overtime-headliner-defeated',
+          );
+        }
+        break;
+      }
+      const finisherLeadMs = 3000;
+      if (
+        !state.overtimeFinisherAnnounced &&
+        state.phaseElapsedMs >= phaseConfig.overtimeCapMs - finisherLeadMs
+      ) {
+        pushAnnouncement(world.announcements, {
+          kind: 'bossAbilityCast',
+          archetypeIndex: -1,
+          text: getFloor4Config().overtime.finisherAnnouncement,
+          eventId: `floor4-overtime-cap-act-${state.phase.act}`,
+          durationMs: finisherLeadMs,
+          elapsedMs: world.elapsedMs,
+        });
+        state.overtimeFinisherAnnounced = true;
+        state.phaseElapsedMs = phaseConfig.overtimeCapMs - finisherLeadMs;
+        break;
+      }
       if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {
         recordFloor4PhaseTransition(world, state, { kind: 'DEFEAT' }, 'overtime-cap');
-        world.state = 'game_over';
+        resolveFloor4OvertimeFinisher(world);
       }
       break;
+    }
   }
 }
 
@@ -892,6 +1223,9 @@ export function initializeFloor4Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   world.state = 'playing';
   world.goalFlags.set(FLOOR4_STALL_BACKSTOP_GOAL_ID, false);
   world.floorObjectiveTick = floor4ObjectiveTick;

@@ -27,7 +27,11 @@ import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
-  readonly phase: { readonly actCount: number; readonly waveWindowMs: number };
+  readonly phase: {
+    readonly actCount: number;
+    readonly waveWindowMs: number;
+    readonly overtimeCapMs: number;
+  };
   readonly waves: {
     readonly enemyPackId: string;
     readonly cadence: { readonly wavesPerAct: number; readonly intervalMs: number };
@@ -36,6 +40,27 @@ interface Floor4WaveValidationInput {
     readonly rosters: readonly {
       readonly act: number;
       readonly entries: readonly { readonly archetypeId: string }[];
+    }[];
+  };
+  readonly headliners?: {
+    readonly enemyPackId: string;
+    readonly pool: readonly {
+      readonly archetypeId: string;
+      readonly grade: string;
+    }[];
+    readonly slots: readonly {
+      readonly act: number;
+      readonly eligibleGrades: readonly string[];
+      readonly fixedArchetypeId?: string;
+      readonly appearanceFeeGold: number;
+    }[];
+  };
+  readonly overtime?: {
+    readonly capMs: number;
+    readonly rampSteps: readonly {
+      readonly atMs: number;
+      readonly speedMultiplier: number;
+      readonly damageMultiplier: number;
     }[];
   };
 }
@@ -117,6 +142,129 @@ function validateFloor4Waves(floor4: Floor4WaveValidationInput, ctx: z.Refinemen
   }
 }
 
+function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.RefinementCtx): void {
+  const { headliners, overtime, phase } = floor4;
+  if (!headliners) {
+    return;
+  }
+  const pack = getFloorEnemyPack(headliners.enemyPackId);
+  if (!pack) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'enemyPackId'],
+      message: `unknown enemy pack "${headliners.enemyPackId}"`,
+    });
+    return;
+  }
+
+  const knownArchetypes = new Set(pack.archetypes.map((archetype) => archetype.id));
+  const poolIds = new Set<string>();
+  const fixedArchetypeIds = new Set(
+    headliners.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
+  );
+  if (fixedArchetypeIds.size !== headliners.slots.filter((slot) => slot.fixedArchetypeId).length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'slots'],
+      message: 'fixed Headliner archetypes must be unique',
+    });
+  }
+  for (const [index, entry] of headliners.pool.entries()) {
+    if (poolIds.has(entry.archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'pool', index, 'archetypeId'],
+        message: `duplicate Headliner archetype "${entry.archetypeId}"`,
+      });
+    }
+    poolIds.add(entry.archetypeId);
+    if (!knownArchetypes.has(entry.archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'pool', index, 'archetypeId'],
+        message: `Headliner archetype "${entry.archetypeId}" is not in enemy pack "${headliners.enemyPackId}"`,
+      });
+    }
+  }
+  if (headliners.pool.length < 8) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'pool'],
+      message: 'Floor 4 requires at least eight seeded Headliner candidates',
+    });
+  }
+
+  const expectedActs = Array.from({ length: phase.actCount }, (_, index) => index + 1);
+  const authoredActs = headliners.slots.map((slot) => slot.act);
+  if (
+    authoredActs.length !== expectedActs.length ||
+    authoredActs.some((act, index) => act !== expectedActs[index])
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['headliners', 'slots'],
+      message: `Headliner slots must list acts ${expectedActs.join(',')} exactly once, in order; got ${authoredActs.join(',')}`,
+    });
+  }
+
+  for (const [slotIndex, slot] of headliners.slots.entries()) {
+    const eligiblePool = headliners.pool.filter((entry) =>
+      slot.eligibleGrades.includes(entry.grade),
+    );
+    if (slot.fixedArchetypeId) {
+      if (!poolIds.has(slot.fixedArchetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['headliners', 'slots', slotIndex, 'fixedArchetypeId'],
+          message: `fixed Headliner "${slot.fixedArchetypeId}" is not in the Headliner pool`,
+        });
+      }
+      if (!eligiblePool.some((entry) => entry.archetypeId === slot.fixedArchetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['headliners', 'slots', slotIndex, 'eligibleGrades'],
+          message: `fixed Headliner "${slot.fixedArchetypeId}" is not eligible for act ${slot.act}`,
+        });
+      }
+      continue;
+    }
+    if (eligiblePool.filter((entry) => !fixedArchetypeIds.has(entry.archetypeId)).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'slots', slotIndex, 'eligibleGrades'],
+        message: `act ${slot.act} has no eligible non-fixed Headliners`,
+      });
+    }
+  }
+
+  if (overtime && overtime.capMs !== phase.overtimeCapMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['overtime', 'capMs'],
+      message: 'Floor 4 overtime cap must match phase.overtimeCapMs',
+    });
+  }
+  if (overtime) {
+    let previousAtMs = -1;
+    for (const [index, step] of overtime.rampSteps.entries()) {
+      if (step.atMs <= previousAtMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['overtime', 'rampSteps', index, 'atMs'],
+          message: 'overtime ramp steps must be strictly increasing',
+        });
+      }
+      if (step.atMs >= overtime.capMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['overtime', 'rampSteps', index, 'atMs'],
+          message: 'overtime ramp steps must occur before the cap',
+        });
+      }
+      previousAtMs = step.atMs;
+    }
+  }
+}
 /**
  * Floor manifest configuration schema.
  */
@@ -473,6 +621,55 @@ export const floorManifestDefSchema = z
               .min(1),
           })
           .strict(),
+        headliners: z
+          .object({
+            enemyPackId: z.string().min(1),
+            pool: z
+              .array(
+                z
+                  .object({
+                    archetypeId: z.string().min(1),
+                    grade: z.enum(['warmup', 'midcard', 'main-event', 'finale']),
+                    displayName: z.string().min(1),
+                    entranceAnnouncement: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .min(8),
+            slots: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    eligibleGrades: z
+                      .array(z.enum(['warmup', 'midcard', 'main-event', 'finale']))
+                      .min(1),
+                    fixedArchetypeId: z.string().min(1).optional(),
+                    appearanceFeeGold: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+        overtime: z
+          .object({
+            capMs: z.number().int().positive(),
+            warningAnnouncement: z.string().min(1),
+            finisherAnnouncement: z.string().min(1),
+            rampSteps: z
+              .array(
+                z
+                  .object({
+                    atMs: z.number().int().min(0),
+                    speedMultiplier: z.number().positive(),
+                    damageMultiplier: z.number().positive(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
       })
       .strict()
       .superRefine((floor4, ctx) => {
@@ -527,6 +724,7 @@ export const floorManifestDefSchema = z
           });
         }
         validateFloor4Waves(floor4, ctx);
+        validateFloor4Headliners(floor4, ctx);
       })
       .optional(),
     /**
