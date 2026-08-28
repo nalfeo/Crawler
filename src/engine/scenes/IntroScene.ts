@@ -16,6 +16,7 @@ import { GAME } from '../../shared/constants.js';
 import { createBeveledButton, createBeveledPanel, PIXEL_UI } from '../pixel-ui.js';
 import { getRenderScale } from '../render-scale.js';
 import { applyCrispText } from '../ui-scale.js';
+import { MIN_TEXT_RESOLUTION } from '../ui-theme.js';
 import { BootScene } from './BootScene.js';
 import {
   INTRO_DATA_REGISTRY_KEY,
@@ -92,7 +93,7 @@ const NAME_INPUT_ARIA_LABEL = 'Player name';
 const GENDER_GROUP_ARIA_LABEL = 'Player gender';
 
 const PANEL_W = 700;
-const PANEL_H = 468;
+const PANEL_H = 476;
 const PANEL_X = (GAME.WIDTH - PANEL_W) / 2;
 const PANEL_Y = (GAME.HEIGHT - PANEL_H) / 2;
 const DEPTH = 2000;
@@ -221,7 +222,7 @@ export class IntroScene extends Phaser.Scene {
       .setDepth(DEPTH + 2);
     texts.push(nameLabel);
 
-    y += 30;
+    y += 34;
 
     // Name input — native HTML <input> positioned over the canvas.
     this.createNameInput(boxX, y, boxW);
@@ -239,7 +240,7 @@ export class IntroScene extends Phaser.Scene {
       .setDepth(DEPTH + 2);
     texts.push(genderLabel);
 
-    y += 30;
+    y += 34;
 
     // Gender selection radios.
     this.createGenderControls(boxX, y, boxW);
@@ -249,7 +250,7 @@ export class IntroScene extends Phaser.Scene {
     // Confirm button.
     this.createConfirmButton(cx, boxX, boxW, y, texts);
 
-    this.unsubscribeCrispText = applyCrispText(this, texts);
+    this.unsubscribeCrispText = applyCrispText(this, texts, MIN_TEXT_RESOLUTION);
   }
 
   // ---------------------------------------------------------------------------

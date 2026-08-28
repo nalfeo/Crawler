@@ -31,17 +31,17 @@
   // box from the same layout constants used by IntroScene.buildUI() so the
   // shared computeGeometryBlockers() overlap/containment check catches the
   // "label crowds its control" regression class (see 2026-08 fix widening the
-  // label-to-control gap from 24px to 30px after this exact bug shipped).
+  // label-to-control gap from 24px to 34px after this exact bug shipped twice).
   const labelHeight = 18;
   const nameLabelBox = {
     x: nameBox.x,
-    y: nameBox.y - 30,
+    y: nameBox.y - 34,
     width: 140,
     height: labelHeight,
   };
   const pronounLabelBox = {
     x: pronounBox.x,
-    y: pronounBox.y - 30,
+    y: pronounBox.y - 34,
     width: 100,
     height: labelHeight,
   };
@@ -49,17 +49,17 @@
   window.__visualReview = {
     surface: 'Character Select',
     regions: [
-      { id: 'character-panel', box: { x: 290, y: 126, width: 700, height: 468 }, kind: 'panel' },
+      { id: 'character-panel', box: { x: 290, y: 122, width: 700, height: 476 }, kind: 'panel' },
       {
         id: 'director-commentary',
-        box: { x: 314, y: 210, width: 652, height: 96 },
+        box: { x: 314, y: 198, width: 652, height: 96 },
         kind: 'content',
       },
       { id: 'contestant-name-label', box: nameLabelBox, kind: 'text' },
       { id: 'contestant-name', box: nameBox, kind: 'control' },
       { id: 'pronoun-controls-label', box: pronounLabelBox, kind: 'text' },
       { id: 'pronoun-controls', box: pronounBox, kind: 'control' },
-      { id: 'primary-action', box: { x: 500, y: 514, width: 280, height: 46 }, kind: 'action' },
+      { id: 'primary-action', box: { x: 500, y: 530, width: 280, height: 46 }, kind: 'action' },
     ],
     expect: {},
   };
