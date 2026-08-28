@@ -4,7 +4,8 @@
     "kind": "issue",
     "repository": "nalfeo/crawler",
     "id": "issue-3840",
-    "key": "crawler:v1:issue:nalfeo/crawler:issue-3840"
+    "key": "crawler:v1:issue:nalfeo/crawler:issue-3840",
+    "unexpected": true
   },
   "operation": "claim",
   "actor": { "kind": "goobers", "id": "crawler-feature-pr" },
@@ -13,6 +14,5 @@
   "idempotencyKey": "v1:crawler:v1:issue:nalfeo/crawler:issue-3840:claim:0:1",
   "lease": { "owner": "crawler-feature-pr", "fencingToken": 1, "state": "claimed" },
   "outcome": "success",
-  "error": null,
-  "decision": { "status": "approved", "generation": 1 }
+  "error": { "retryable": true }
 }

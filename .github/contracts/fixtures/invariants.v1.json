@@ -2,15 +2,19 @@
   "contractVersion": "v1",
   "cases": [
     { "name": "two active writers", "valid": false, "owners": ["a", "b"], "state": "active" },
+    { "name": "zero active writers", "valid": false, "owners": [], "state": "active" },
     { "name": "replayed idempotency key", "valid": false, "idempotencyKeys": ["k", "k"] },
     { "name": "stale fencing token", "valid": false, "fencingToken": 2, "currentFencingToken": 3 },
+    { "name": "missing fencing token", "valid": false, "currentFencingToken": 3 },
     { "name": "illegal ownership transition", "valid": false, "from": "released", "to": "active" },
+    { "name": "unknown ownership state", "valid": false, "state": "paused" },
     {
       "name": "terminal decision regression",
       "valid": false,
       "fromDecision": "terminal",
       "toDecision": "pending"
     },
+    { "name": "malformed transition", "valid": false, "from": "claimed" },
     {
       "name": "unclaimed Goobers issue",
       "valid": false,

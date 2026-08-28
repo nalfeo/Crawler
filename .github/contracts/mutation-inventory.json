@@ -27,6 +27,35 @@
       "terminal decisions are monotonic"
     ]
   },
+  "implementationPaths": [
+    {
+      "file": ".github/scripts/ci-recovery/reconcile.mjs",
+      "owner": "ci-recovery-reconcile",
+      "contract": "invocation",
+      "mutationLines": [
+        678, 684, 705, 718, 753, 775, 782, 820, 913, 985, 1148, 1556, 1591, 1636, 1751, 1835, 2355,
+        2430, 2872, 2881, 3111, 3122, 3136, 3181, 3212, 3569, 3580, 3598, 3656, 3678, 3924
+      ]
+    },
+    {
+      "file": ".github/scripts/ci-recovery/router.mjs",
+      "owner": "ci-recovery-router",
+      "contract": "invocation",
+      "mutationLines": [1718, 1847]
+    },
+    {
+      "file": ".github/scripts/merge-train/reconcile.mjs",
+      "owner": "merge-train-reconcile",
+      "contract": "decision",
+      "mutationLines": [184, 194, 202, 251, 264, 273, 365, 376, 401, 418, 423, 535, 974]
+    },
+    {
+      "file": ".github/scripts/merge-train/reconcile-lib.mjs",
+      "owner": "merge-train-reconcile",
+      "contract": "decision",
+      "mutationLines": [445, 470, 1128, 1129, 1360, 1365, 1376, 1377, 1447, 1568]
+    }
+  ],
   "workflows": [
     {
       "file": ".github/workflows/ci-recovery-router.yml",

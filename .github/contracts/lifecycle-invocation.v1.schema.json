@@ -21,11 +21,15 @@
     "resource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "repository", "id"],
+      "required": ["kind", "repository", "id", "key"],
       "properties": {
         "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
-        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" }
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$" },
+        "key": {
+          "type": "string",
+          "pattern": "^crawler:v1:[a-z][a-z0-9-]*:[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*:[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
+        }
       }
     },
     "operation": {
@@ -62,7 +66,7 @@
     },
     "idempotencyKey": {
       "type": "string",
-      "pattern": "^v1:crawler:v1:[a-z0-9-]+:[^:]+:[^:]+:[^:]+:[0-9]+$"
+      "pattern": "^v1:crawler:v1:[a-z0-9-]+:[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*:[a-zA-Z0-9][a-zA-Z0-9._:-]+:[a-z0-9-]+:(?:[0-9a-f]{40}|[0-9]+):[0-9]+$"
     },
     "lease": {
       "type": "object",

@@ -17,98 +17,87 @@ function fail(message) {
   errors.push(message);
 }
 
-function object(value, path) {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    fail(`${path} must be an object`);
-  return value ?? {};
+const schemas = {
+  invocation: JSON.parse(
+    readFileSync(join(contracts, 'lifecycle-invocation.v1.schema.json'), 'utf8'),
+  ),
+  decision: JSON.parse(readFileSync(join(contracts, 'lifecycle-decision.v1.schema.json'), 'utf8')),
+};
+
+function resolveRef(ref) {
+  const [schemaId, fragment] = ref.split('#');
+  const schema = Object.values(schemas).find((candidate) => candidate.$id === schemaId);
+  if (!schema || !fragment?.startsWith('/'))
+    throw new Error(`unresolvable schema reference: ${ref}`);
+  return fragment
+    .slice(1)
+    .split('/')
+    .reduce((value, key) => value[key.replaceAll('~1', '/').replaceAll('~0', '~')], schema);
 }
 
-function string(value, path, pattern) {
-  if (typeof value !== 'string' || (pattern && !pattern.test(value))) fail(`${path} is malformed`);
-}
-
-function validateContract(value, path, decision) {
-  const data = object(value, path);
-  const required = [
-    'contractVersion',
-    'resource',
-    'operation',
-    'actor',
-    'sourceEvent',
-    'expected',
-    'idempotencyKey',
-    'lease',
-    'outcome',
-    'error',
-  ];
-  if (decision) required.push('decision');
-  for (const key of required) if (!(key in data)) fail(`${path}.${key} is required`);
-  if (data.contractVersion !== 'v1') fail(`${path}.contractVersion must be v1`);
-  const resource = object(data.resource, `${path}.resource`);
-  string(resource.kind, `${path}.resource.kind`, /^[a-z][a-z0-9-]*$/);
-  string(resource.repository, `${path}.resource.repository`, /^[^/\s]+\/[^/\s]+$/);
-  string(resource.id, `${path}.resource.id`, /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/);
-  if (
-    !['claim', 'start', 'update', 'release', 'takeover', 'dispatch', 'publish'].includes(
-      data.operation,
-    )
-  )
-    fail(`${path}.operation is unsupported`);
-  const actor = object(data.actor, `${path}.actor`);
-  if (!['workflow', 'app', 'goobers', 'human'].includes(actor.kind))
-    fail(`${path}.actor.kind is unsupported`);
-  string(actor.id, `${path}.actor.id`, /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/);
-  const event = object(data.sourceEvent, `${path}.sourceEvent`);
-  string(event.name, `${path}.sourceEvent.name`, /^[a-z][a-z0-9_-]*$/);
-  string(event.id, `${path}.sourceEvent.id`, /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/);
-  const expected = object(data.expected, `${path}.expected`);
-  if (
-    !(
-      expected.headSha === null ||
-      (typeof expected.headSha === 'string' && /^[0-9a-f]{40}$/.test(expected.headSha))
-    )
-  )
-    fail(`${path}.expected.headSha is malformed`);
-  if (
-    !(
-      expected.baseRef === null ||
-      (typeof expected.baseRef === 'string' &&
-        /^refs\/heads\/[a-zA-Z0-9._/-]+$/.test(expected.baseRef))
-    )
-  )
-    fail(`${path}.expected.baseRef is malformed`);
-  if (!Number.isInteger(expected.generation) || expected.generation < 0)
-    fail(`${path}.expected.generation is malformed`);
-  string(
-    data.idempotencyKey,
-    `${path}.idempotencyKey`,
-    /^v1:crawler:v1:[a-z0-9-]+:[^:]+:[^:]+:[^:]+:[0-9]+$/,
-  );
-  const lease = object(data.lease, `${path}.lease`);
-  string(lease.owner, `${path}.lease.owner`, /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/);
-  if (!Number.isInteger(lease.fencingToken) || lease.fencingToken < 1)
-    fail(`${path}.lease.fencingToken is malformed`);
-  if (!['unowned', 'claimed', 'active', 'released', 'expired', 'takeover'].includes(lease.state))
-    fail(`${path}.lease.state is unsupported`);
-  if (!['success', 'skipped', 'failed'].includes(data.outcome))
-    fail(`${path}.outcome is unsupported`);
-  if (
-    data.error !== null &&
-    (!data.error || typeof data.error !== 'object' || typeof data.error.retryable !== 'boolean')
-  )
-    fail(`${path}.error must be null or a fail-closed error`);
-  if (decision) {
-    const result = object(data.decision, `${path}.decision`);
-    if (
-      !['pending', 'approved', 'rejected', 'terminal'].includes(result.status) ||
-      !Number.isInteger(result.generation) ||
-      result.generation < 0
-    )
-      fail(`${path}.decision is malformed`);
+function validateSchema(value, schema, path, issues) {
+  if (schema.$ref) return validateSchema(value, resolveRef(schema.$ref), path, issues);
+  if (schema.const !== undefined && value !== schema.const)
+    issues.push(`${path} must equal ${schema.const}`);
+  if (schema.enum && !schema.enum.includes(value)) issues.push(`${path} has an unsupported value`);
+  if (schema.type) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    const matches = types.some((type) =>
+      type === 'null'
+        ? value === null
+        : type === 'object'
+          ? value && typeof value === 'object' && !Array.isArray(value)
+          : type === 'integer'
+            ? Number.isInteger(value)
+            : typeof value === type,
+    );
+    if (!matches) {
+      issues.push(`${path} has an invalid type`);
+      return;
+    }
   }
-  const allowed = new Set([...required]);
-  for (const key of Object.keys(data)) if (!allowed.has(key)) fail(`${path}.${key} is unknown`);
-  return errors.length === 0;
+  if (typeof value === 'string') {
+    if (schema.pattern && !new RegExp(schema.pattern).test(value))
+      issues.push(`${path} is malformed`);
+    if (schema.minLength !== undefined && value.length < schema.minLength)
+      issues.push(`${path} is too short`);
+  }
+  if (typeof value === 'number' && schema.minimum !== undefined && value < schema.minimum)
+    issues.push(`${path} is below minimum`);
+  if (schema.type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const key of schema.required ?? [])
+      if (!(key in value)) issues.push(`${path}.${key} is required`);
+    for (const [key, child] of Object.entries(value)) {
+      if (!(key in (schema.properties ?? {}))) {
+        if (schema.additionalProperties === false) issues.push(`${path}.${key} is unknown`);
+      } else validateSchema(child, schema.properties[key], `${path}.${key}`, issues);
+    }
+  }
+}
+
+function validateContract(value, path, schema) {
+  const issues = [];
+  validateSchema(value, schema, path, issues);
+  errors.push(...issues);
+  return issues.length === 0;
+}
+
+function validateIdentity(value, path) {
+  const resource = value.resource;
+  if (!resource || typeof resource !== 'object') return;
+  const repository = resource.repository;
+  const expectedKey = `crawler:v1:${resource.kind}:${repository}:${resource.id}`;
+  if (repository !== repository.toLowerCase())
+    errors.push(`${path}.resource.repository must be lowercase`);
+  if (resource.key !== expectedKey)
+    errors.push(`${path}.resource.key must match canonical resource identity`);
+  const expectedPrefix = `v1:${expectedKey}:${value.operation}:`;
+  if (!value.idempotencyKey.startsWith(expectedPrefix))
+    errors.push(`${path}.idempotencyKey must bind to the canonical resource and operation`);
+  const suffix = value.idempotencyKey.slice(expectedPrefix.length);
+  const expectedGeneration = value.expected.headSha ?? value.expected.generation;
+  if (suffix !== `${expectedGeneration}:1`)
+    errors.push(`${path}.idempotencyKey must bind to expected head/generation and attempt`);
 }
 
 function validateFixtures() {
@@ -119,16 +108,26 @@ function validateFixtures() {
     readFileSync(join(contracts, 'fixtures/valid-decision.json'), 'utf8'),
   );
   const before = errors.length;
-  validateContract(validInvocation, 'valid invocation', false);
-  validateContract(validDecision, 'valid decision', true);
+  validateContract(validInvocation, 'valid invocation', schemas.invocation);
+  validateIdentity(validInvocation, 'valid invocation');
+  validateContract(validDecision, 'valid decision', schemas.decision);
+  validateIdentity(validDecision, 'valid decision');
   if (errors.length !== before) fail('valid fixtures must pass');
   const invalid = JSON.parse(
     readFileSync(join(contracts, 'fixtures/invalid-version.json'), 'utf8'),
   );
   const invalidBefore = errors.length;
-  validateContract(invalid, 'invalid fixture', false);
+  validateContract(invalid, 'invalid fixture', schemas.invocation);
   const invalidErrors = errors.splice(invalidBefore);
   if (invalidErrors.length === 0) fail('malformed fixture must fail closed');
+  for (const name of ['invalid-nested-fields.json', 'invalid-resource-identity.json']) {
+    const malformed = JSON.parse(readFileSync(join(contracts, 'fixtures', name), 'utf8'));
+    const fixtureBefore = errors.length;
+    validateContract(malformed, name, schemas.invocation);
+    validateIdentity(malformed, name);
+    const fixtureErrors = errors.splice(fixtureBefore);
+    if (fixtureErrors.length === 0) fail(`${name} must fail closed`);
+  }
   const legalTransitions = new Set([
     'unowned->claimed',
     'claimed->active',
@@ -138,24 +137,61 @@ function validateFixtures() {
     'expired->takeover',
   ]);
   const terminalRanks = { pending: 0, approved: 1, rejected: 1, terminal: 2 };
+  const validStates = new Set(['unowned', 'claimed', 'active', 'released', 'expired', 'takeover']);
   for (const test of invariantFixture.cases ?? []) {
-    let valid = true;
-    if (test.state === 'active' && new Set(test.owners ?? []).size > 1) valid = false;
-    if (test.idempotencyKeys && test.idempotencyKeys.length !== new Set(test.idempotencyKeys).size)
-      valid = false;
-    if (test.currentFencingToken !== undefined && test.fencingToken !== test.currentFencingToken)
-      valid = false;
-    if (test.from && test.to && !legalTransitions.has(`${test.from}->${test.to}`)) valid = false;
-    if (
-      test.fromDecision &&
-      test.toDecision &&
-      terminalRanks[test.toDecision] < terminalRanks[test.fromDecision]
-    )
-      valid = false;
-    if (test.issue && (!test.issue.open || !test.issue.approved || test.issue.assigned))
-      valid = false;
+    let valid = typeof test.name === 'string' && typeof test.valid === 'boolean';
+    if ('owners' in test) {
+      valid =
+        valid &&
+        Array.isArray(test.owners) &&
+        test.owners.every((owner) => typeof owner === 'string') &&
+        (test.state !== 'active' || test.owners.length === 1);
+    }
+    if ('state' in test)
+      valid = valid && typeof test.state === 'string' && validStates.has(test.state);
+    if ('idempotencyKeys' in test) {
+      valid =
+        valid &&
+        Array.isArray(test.idempotencyKeys) &&
+        test.idempotencyKeys.every((key) => typeof key === 'string') &&
+        test.idempotencyKeys.length === new Set(test.idempotencyKeys).size;
+    }
+    if ('fencingToken' in test || 'currentFencingToken' in test) {
+      valid =
+        valid &&
+        Number.isInteger(test.fencingToken) &&
+        test.fencingToken >= 1 &&
+        Number.isInteger(test.currentFencingToken) &&
+        test.currentFencingToken >= 1 &&
+        test.fencingToken === test.currentFencingToken;
+    }
+    if ('from' in test || 'to' in test)
+      valid =
+        valid &&
+        typeof test.from === 'string' &&
+        typeof test.to === 'string' &&
+        legalTransitions.has(`${test.from}->${test.to}`);
+    if ('fromDecision' in test || 'toDecision' in test)
+      valid =
+        valid &&
+        Object.hasOwn(terminalRanks, test.fromDecision) &&
+        Object.hasOwn(terminalRanks, test.toDecision) &&
+        terminalRanks[test.toDecision] >= terminalRanks[test.fromDecision];
+    if ('issue' in test) {
+      valid =
+        valid &&
+        test.issue &&
+        typeof test.issue.open === 'boolean' &&
+        typeof test.issue.approved === 'boolean' &&
+        typeof test.issue.assigned === 'boolean' &&
+        test.issue.open &&
+        test.issue.approved &&
+        !test.issue.assigned;
+    }
     if (valid !== test.valid)
-      fail(`invariant fixture ${test.name} produced ${valid ? 'valid' : 'invalid'} unexpectedly`);
+      fail(
+        `invariant fixture ${test.name ?? '<unnamed>'} produced ${valid ? 'valid' : 'invalid'} unexpectedly`,
+      );
   }
 }
 
@@ -182,6 +218,23 @@ function validateInventory() {
   if (JSON.stringify(inventory.lockModel).match(/\b(date|time|now)\b/i))
     fail('lock model must not use wall-clock values');
   if (inventory.workflows?.length !== 6) fail('exactly six required workflows must be inventoried');
+  for (const implementation of inventory.implementationPaths ?? []) {
+    const file = join(root, implementation.file);
+    let source;
+    try {
+      source = readFileSync(file, 'utf8');
+    } catch {
+      fail(`${implementation.file} implementation is missing`);
+      continue;
+    }
+    if (!implementation.owner || !['invocation', 'decision'].includes(implementation.contract))
+      fail(`${implementation.file} implementation has incomplete ownership`);
+    const lines = source.split(/\r?\n/);
+    for (const lineNumber of implementation.mutationLines ?? []) {
+      if (!lines[lineNumber - 1]?.match(/request|removeLabel|dispatchWorkflow|gh |github\.rest\./))
+        fail(`${implementation.file}:${lineNumber} is not a documented mutation call site`);
+    }
+  }
   for (const entry of inventory.workflows ?? []) {
     const file = join(root, entry.file);
     let source;

@@ -2,7 +2,7 @@
   "contractVersion": "v1",
   "resource": {
     "kind": "issue",
-    "repository": "nalfeo/crawler",
+    "repository": "nalfeo/Crawler",
     "id": "issue-3840",
     "key": "crawler:v1:issue:nalfeo/crawler:issue-3840"
   },
@@ -10,9 +10,8 @@
   "actor": { "kind": "goobers", "id": "crawler-feature-pr" },
   "sourceEvent": { "name": "issues_labeled", "id": "event-200" },
   "expected": { "headSha": null, "baseRef": "refs/heads/main", "generation": 0 },
-  "idempotencyKey": "v1:crawler:v1:issue:nalfeo/crawler:issue-3840:claim:0:1",
+  "idempotencyKey": "v1:crawler:v1:issue:nalfeo/Crawler:issue-3840:claim:0:1",
   "lease": { "owner": "crawler-feature-pr", "fencingToken": 1, "state": "claimed" },
   "outcome": "success",
-  "error": null,
-  "decision": { "status": "approved", "generation": 1 }
+  "error": null
 }
