@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "forced-ability-runner",
+  "task_title": "Add forced ability runner controls",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted: forced spells unlock the spell feature; passives synchronize and stats recompute before frame 0; weapon prerequisites validate against the selected loadout; activation counts derive from the authoritative run-event collector rather than the capped cosmetic queue; forced active ordering is deduplicated CLI order plus remaining existing slots after prevalidation; tests use maxFrames:0 state inspection plus a deterministic activation seam. No different architecture warranted."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

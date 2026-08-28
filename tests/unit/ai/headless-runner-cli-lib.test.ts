@@ -62,6 +62,30 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
   });
 
+  it('parses repeatable forced abilities in first-seen order and deduplicates IDs', () => {
+    expect(
+      cli(
+        '--force-ability',
+        'fireball',
+        '--force-ability',
+        'veteran-instinct',
+        '--force-ability',
+        'fireball',
+      ).forceAbilityIds,
+    ).toEqual(['fireball', 'veteran-instinct']);
+    expect(helpText()).toContain('--force-ability <id>');
+  });
+
+  it('rejects missing and blank forced ability values', () => {
+    expect(() => cli('--force-ability')).toThrow(/--force-ability requires a non-blank ability id/);
+    expect(() => cli('--force-ability', '   ')).toThrow(
+      /--force-ability requires a non-blank ability id/,
+    );
+    expect(() => cli('--force-ability', '--seed', '42')).toThrow(
+      /--force-ability requires a non-blank ability id/,
+    );
+  });
+
   it('defaults weapon personas on and supports an explicit legacy control', () => {
     expect(cli().weaponPersonas).toBe(true);
     expect(cli('--weapon-personas').weaponPersonas).toBe(true);
