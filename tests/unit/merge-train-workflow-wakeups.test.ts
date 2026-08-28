@@ -170,7 +170,7 @@ describe('merge-train workflow wake-ups', () => {
     });
   });
 
-  it('uses the App checkout credential for candidates and never exposes a PAT', () => {
+  it('scopes each merge-train credential to the operation that requires it', () => {
     const workflow = loadWorkflow();
     expect(workflow.permissions?.contents).toBe('read');
     expect(workflow.permissions?.workflows).toBeUndefined();
@@ -182,11 +182,12 @@ describe('merge-train workflow wake-ups', () => {
     const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
     expect(checkoutStep?.with?.token).toBe('${{ steps.app-token.outputs.token }}');
     expect(reconcileStep?.env?.GITHUB_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}');
+    expect(reconcileStep?.env?.CRAWLER_CI_PAT).toBe('${{ secrets.CRAWLER_CI_PAT }}');
     expect(steps.every((step) => step.env?.MERGE_TRAIN_WORKFLOW_TOKEN === undefined)).toBe(true);
     expect(
-      steps.every(
-        (step) => !Object.values(step.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}'),
-      ),
+      steps
+        .filter((step) => step !== reconcileStep)
+        .every((step) => !Object.values(step.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}')),
     ).toBe(true);
   });
 

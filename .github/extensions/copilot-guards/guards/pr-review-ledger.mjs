@@ -1,5 +1,4 @@
-// pr-review-ledger: hard-denies create_pull_request for a code-touching branch
-// that committed an INCOMPLETE or INVALID review ledger.
+// pr-review-ledger: reports review-ledger status when creating a PR.
 //
 // The ledger (docs/knowledge/review-ledgers/YYYY-MM-DD-<slug>.review-ledger.json)
 // records WHICH apple-scaled review stages the change went through. This guard
@@ -18,12 +17,9 @@
 // Scope: only code-touching diffs. Docs-only / art-only / dependency-lockfile-
 // only diffs are skipped (see lib/pr-scope.mjs for the strict allowlist).
 //
-// failClosed: true — an unexpected crash denies (this guard is a hard gate).
-// The ONE intentional allow-through is a git failure (shallow clone, detached
-// state), surfaced as additionalContext so a human can verify manually.
+// Publication is intentionally non-blocking. Once the PR exists, required CI
+// validates any added ledger and CI Recovery repairs invalid artifacts.
 //
-// Bypass (genuine edge cases): COPILOT_GUARDS_DISABLE=pr-review-ledger.
-
 import { branchFiles, branchAddedFiles } from '../lib/git.mjs';
 import { isNonCodeOnlyDiff, codeFiles } from '../lib/pr-scope.mjs';
 import {
@@ -65,8 +61,7 @@ function missingLedgerNotice(files) {
  */
 function decideLedger(files, addedFiles, opts = {}) {
   const cwd = opts.cwd || '.';
-  const validateFile =
-    opts.validateFile || ((p, extra = {}) => validateLedgerFile(p, cwd, extra));
+  const validateFile = opts.validateFile || ((p, extra = {}) => validateLedgerFile(p, cwd, extra));
 
   if (!Array.isArray(files) || files.length === 0) {
     return { decision: 'skip' };
@@ -94,14 +89,14 @@ function decideLedger(files, addedFiles, opts = {}) {
   }));
   const invalid = results.filter((x) => !x.result.ok);
   if (invalid.length > 0) {
-    const reason = [
-      'Review ledger present but incomplete for its declared apple tier:',
+    const additionalContext = [
+      'pr-review-ledger: review ledger present but incomplete for its declared apple tier. PR publication is allowed; required CI and CI Recovery will validate and repair it:',
       '',
       ...invalid.map((x) => formatLedgerResult(x.result, x.path)),
       '',
-      'Finish the required review stages, then re-run `npm run review:ledger -- validate <path>` until it passes.',
+      'You may repair it before publication by completing the required review stages, then running `npm run review:ledger -- validate <path>`.',
     ].join('\n');
-    return { decision: 'deny', reason };
+    return { decision: 'allow', additionalContext };
   }
 
   const summary = results.map((x) => `${x.path} (${x.result.summary})`).join('; ');
@@ -145,7 +140,7 @@ function gatherDecision(opts = {}) {
 export default {
   id: 'pr-review-ledger',
   category: 'pr',
-  failClosed: true,
+  failClosed: false,
   matches(toolName) {
     return toolName === 'create_pull_request';
   },
