@@ -1,0 +1,15 @@
+{
+  "contractVersion": "v1",
+  "kind": "state",
+  "runId": "run-4000",
+  "repository": "nalfeo/Crawler",
+  "resource": { "repository": "nalfeo/Crawler", "prNumber": 4000 },
+  "headSha": "0123456789abcdef0123456789abcdef01234567",
+  "lifecyclePhase": "held",
+  "status": "succeeded",
+  "disposition": "no-op",
+  "action": "released",
+  "outputs": {},
+  "error": null,
+  "timestamps": { "observedAt": "2026-08-28T21:20:00Z" }
+}

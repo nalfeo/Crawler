@@ -1,0 +1,208 @@
+{
+  "contractVersion": "v1",
+  "workflows": [
+    {
+      "path": ".github/workflows/ci-recovery-router.yml",
+      "owner": "CI Recovery Router",
+      "guard": "same-repository pull-request ingress and unconditional serialized router queue",
+      "sites": [
+        {
+          "line": 3,
+          "class": "dispatch",
+          "operation": "workflow triggers",
+          "target": "pull_request_target, issue_comment, review, workflow_run, dispatch"
+        },
+        {
+          "line": 17,
+          "class": "credential",
+          "operation": "workflow permissions",
+          "target": "actions write / contents read / pull-requests read"
+        },
+        {
+          "line": 97,
+          "class": "dispatch",
+          "operation": "node .github/scripts/ci-recovery/router.mjs",
+          "target": "CI Recovery workflow_dispatch per PR"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/ci-recovery.yml",
+      "owner": "CI Recovery",
+      "guard": "trusted default-branch checkout, expected head/base fence, per-PR queue",
+      "sites": [
+        {
+          "line": 4,
+          "class": "dispatch",
+          "operation": "workflow_dispatch inputs",
+          "target": "reconcile and lease operations"
+        },
+        {
+          "line": 25,
+          "class": "credential",
+          "operation": "workflow permissions and tokens",
+          "target": "actions write / contents read"
+        },
+        {
+          "line": 28,
+          "class": "state",
+          "operation": "per-PR serialized concurrency",
+          "target": "crawler-ci-pr-N"
+        },
+        {
+          "line": 99,
+          "class": "dispatch",
+          "operation": "node .github/scripts/ci-recovery/reconcile.mjs",
+          "target": "labels, comments, dispatches, checks"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/merge-train.yml",
+      "owner": "Merge Train",
+      "guard": "same-repository queue label, default-branch workflow-run filter, serialized reconcile",
+      "sites": [
+        {
+          "line": 3,
+          "class": "dispatch",
+          "operation": "push, PR, workflow_run, schedule, dispatch triggers",
+          "target": "merge-train wakeups"
+        },
+        {
+          "line": 16,
+          "class": "credential",
+          "operation": "workflow permissions and App token",
+          "target": "actions/checks/contents/issues/pull-requests"
+        },
+        {
+          "line": 30,
+          "class": "state",
+          "operation": "job condition and serialized concurrency",
+          "target": "queue membership and crawler-merge-train"
+        },
+        {
+          "line": 109,
+          "class": "dispatch",
+          "operation": "node .github/scripts/merge-train/reconcile.mjs",
+          "target": "train labels, refs, checks"
+        },
+        {
+          "line": 118,
+          "class": "branch-ref",
+          "operation": "node .github/scripts/merge-train/quarantine-repair.mjs",
+          "target": "restricted branch repair"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/merge-train-validate.yml",
+      "owner": "Merge Train Validation",
+      "guard": "immutable candidate ref and attestation inputs are required",
+      "sites": [
+        {
+          "line": 3,
+          "class": "dispatch",
+          "operation": "workflow_dispatch candidate inputs",
+          "target": "candidate validation"
+        },
+        {
+          "line": 18,
+          "class": "credential",
+          "operation": "read-only contents permission",
+          "target": "candidate materialization"
+        },
+        {
+          "line": 37,
+          "class": "branch-ref",
+          "operation": "materialize-candidate.sh",
+          "target": "immutable candidate ref"
+        },
+        {
+          "line": 560,
+          "class": "check",
+          "operation": "publish candidate result",
+          "target": "attestation check runs"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/goobers-run.yml",
+      "owner": "Goobers Run",
+      "guard": "approved open issue, pinned checksum, explicit token and source validation",
+      "sites": [
+        {
+          "line": 16,
+          "class": "dispatch",
+          "operation": "issue label, schedule, manual triggers",
+          "target": "Goobers run"
+        },
+        {
+          "line": 31,
+          "class": "credential",
+          "operation": "workflow permissions and credentials",
+          "target": "checks/issues/pull-requests write"
+        },
+        {
+          "line": 105,
+          "class": "branch-ref",
+          "operation": "gh pr close and git ref delete",
+          "target": "explicit abandon only"
+        },
+        {
+          "line": 356,
+          "class": "artifact",
+          "operation": "actions/upload-artifact",
+          "target": "Goobers run journal"
+        },
+        {
+          "line": 431,
+          "class": "comment",
+          "operation": "gh issue comment",
+          "target": "run diagnostics"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/goobers-validate.yml",
+      "owner": "Goobers Validate",
+      "guard": "manual-only workflow, pinned checksum, read-only permissions",
+      "sites": [
+        {
+          "line": 9,
+          "class": "dispatch",
+          "operation": "workflow_dispatch",
+          "target": "manual validation"
+        },
+        {
+          "line": 18,
+          "class": "credential",
+          "operation": "read-only contents permission",
+          "target": "source validation"
+        },
+        {
+          "line": 85,
+          "class": "state",
+          "operation": "goobers validate --source-tree .goobers",
+          "target": "validation result"
+        }
+      ]
+    }
+  ],
+  "delegatedPaths": [
+    {
+      "path": ".github/scripts/ci-recovery/",
+      "owner": "CI Recovery",
+      "guard": "trusted default branch and expected metadata fence"
+    },
+    {
+      "path": ".github/scripts/merge-train/",
+      "owner": "Merge Train",
+      "guard": "serialized train ownership and default branch"
+    },
+    {
+      "path": ".goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml",
+      "owner": "Goobers Run",
+      "guard": "Goobers source validation and one active run"
+    }
+  ]
+}

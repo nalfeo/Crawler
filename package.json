@@ -108,6 +108,7 @@
     "scope": "bash scripts/agent/ci/local-scope.sh",
     "verify": "bash scripts/agent/verify.sh",
     "verify:pr-prereqs": "node scripts/agent/review/pr-prereq-check.mjs",
+    "validate:ci-contract": "node scripts/agent/ci-contract-validation.mjs",
     "check:wired-systems": "tsx scripts/agent/health/orphaned-systems.ts",
     "check:test-only-exports": "tsx scripts/agent/health/test-only-exports.ts",
     "check:knip-suppressions": "tsx scripts/agent/health/check-knip-suppressions.ts",

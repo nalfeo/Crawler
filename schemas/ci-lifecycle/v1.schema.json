@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nalfeo/Crawler/schemas/ci-lifecycle/v1.schema.json",
+  "title": "Crawler lifecycle contract v1",
+  "oneOf": [{ "$ref": "#/$defs/invocation" }, { "$ref": "#/$defs/state" }],
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "resource": {
+      "type": "object",
+      "required": ["repository", "prNumber"],
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "$ref": "#/$defs/repository" },
+        "issueNumber": { "type": "integer", "minimum": 1 },
+        "prNumber": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "lease": {
+      "type": "object",
+      "required": ["idempotencyKey", "ownerRunId", "leaseId"],
+      "additionalProperties": false,
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "pattern": "^crawler\\.lifecycle\\.v1/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/[0-9a-f]{40}/[a-z][a-z0-9-]{0,63}$"
+        },
+        "ownerRunId": { "$ref": "#/$defs/identifier" },
+        "leaseId": { "$ref": "#/$defs/identifier" },
+        "incarnation": { "type": "integer", "minimum": 1 },
+        "acquiredAt": { "$ref": "#/$defs/timestamp" },
+        "renewedAt": { "$ref": "#/$defs/timestamp" },
+        "expiresAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "kind",
+        "repository",
+        "resource",
+        "workflow",
+        "trigger",
+        "expectedHeadSha",
+        "expectedBaseRef",
+        "operation",
+        "lease"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contractVersion": { "const": "v1" },
+        "kind": { "const": "invocation" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "resource": { "$ref": "#/$defs/resource" },
+        "workflow": { "$ref": "#/$defs/identifier" },
+        "trigger": {
+          "type": "string",
+          "enum": ["issue-label", "pull-request", "review", "workflow-run", "schedule", "manual"]
+        },
+        "expectedHeadSha": { "$ref": "#/$defs/sha" },
+        "expectedBaseRef": { "type": "string", "pattern": "^[A-Za-z0-9._/-]{1,255}$" },
+        "operation": {
+          "type": "string",
+          "enum": ["reconcile", "lease-acquire", "lease-heartbeat", "lease-release"]
+        },
+        "trustedRef": { "type": "string", "pattern": "^[A-Za-z0-9._/-]{1,255}$" },
+        "lease": { "$ref": "#/$defs/lease" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "kind",
+        "runId",
+        "repository",
+        "resource",
+        "headSha",
+        "lifecyclePhase",
+        "status",
+        "disposition",
+        "action",
+        "outputs",
+        "error",
+        "timestamps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contractVersion": { "const": "v1" },
+        "kind": { "const": "state" },
+        "runId": { "$ref": "#/$defs/identifier" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "resource": { "$ref": "#/$defs/resource" },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "lifecyclePhase": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "acquiring",
+            "held",
+            "renewed",
+            "releasing",
+            "released",
+            "expired",
+            "takeover"
+          ]
+        },
+        "status": { "type": "string", "enum": ["succeeded", "failed", "skipped"] },
+        "disposition": { "type": "string", "enum": ["acted", "no-op", "blocked", "error"] },
+        "action": {
+          "type": "string",
+          "enum": ["acquired", "renewed", "released", "takeover", "reconciled", "none", "rejected"]
+        },
+        "outputs": { "type": "object" },
+        "error": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "code": { "$ref": "#/$defs/identifier" },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        },
+        "timestamps": {
+          "type": "object",
+          "required": ["observedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "observedAt": { "$ref": "#/$defs/timestamp" },
+            "startedAt": { "$ref": "#/$defs/timestamp" },
+            "completedAt": { "$ref": "#/$defs/timestamp" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "contractVersion": "v1",
+  "kind": "state",
+  "runId": "run-stale",
+  "repository": "nalfeo/Crawler",
+  "resource": { "repository": "nalfeo/Crawler", "prNumber": 4000 },
+  "headSha": "0123456789abcdef0123456789abcdef01234567",
+  "lifecyclePhase": "releasing",
+  "status": "succeeded",
+  "disposition": "acted",
+  "action": "overwrite",
+  "outputs": { "ownerRunId": "new-owner", "attemptedOwnerRunId": "stale-owner" },
+  "error": null,
+  "timestamps": { "observedAt": "2026-08-28T21:20:00Z" }
+}

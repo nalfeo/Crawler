@@ -29,6 +29,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  ci-contract:
+    name: CI lifecycle contract validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate lifecycle schema, inventory, fixtures, and lease invariants
+        run: npm run validate:ci-contract
+
   # Job 0: Detect the change scope.
   # art_only=true         → heavy gameplay gates skipped; typecheck/lint/format/unit run.
   # docs_only=true        → ALL heavy gates skipped; only commit-lint / lightweight

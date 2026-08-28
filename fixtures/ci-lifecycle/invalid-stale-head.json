@@ -1,0 +1,16 @@
+{
+  "contractVersion": "v1",
+  "kind": "invocation",
+  "repository": "nalfeo/Crawler",
+  "resource": { "repository": "nalfeo/Crawler", "prNumber": 4000 },
+  "workflow": "ci-recovery",
+  "trigger": "workflow-run",
+  "expectedHeadSha": "not-current-head",
+  "expectedBaseRef": "main",
+  "operation": "reconcile",
+  "lease": {
+    "idempotencyKey": "crawler.lifecycle.v1/nalfeo/Crawler/4000/not-current-head/reconcile",
+    "ownerRunId": "run-4000",
+    "leaseId": "lease-1"
+  }
+}
