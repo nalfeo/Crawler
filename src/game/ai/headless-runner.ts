@@ -624,10 +624,7 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-  if (
-    config.settlementReturnRouting === undefined &&
-    (mergedConfig.floorId === 'floor1' || mergedConfig.floorId === 'floor2')
-  ) {
+  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
     mergedConfig.settlementReturnRouting = true;
   }
   aiProvider.configurePlanningDeadlineMs?.(

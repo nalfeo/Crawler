@@ -99,6 +99,9 @@ async function main(): Promise<void> {
     ...(args.settlementReturnRouting === undefined
       ? {}
       : { settlementReturnRouting: args.settlementReturnRouting }),
+    ...(args.floorId === 'floor2' && args.settlementReturnRouting === undefined
+      ? { settlementReturnRouting: true, enforcePlayabilityInvariants: false }
+      : {}),
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

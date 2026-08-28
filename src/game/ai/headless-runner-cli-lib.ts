@@ -262,7 +262,8 @@ Options:
                            Enable optional latched AI settlement-return route goal
                            (deterministic expected-gain-vs-travel/risk/opportunity
                            utility; periodically returns to settlement to run the
-                           maintenance planner — equip/shop/claim/abilities)
+                           maintenance planner — equip/shop/claim/abilities;
+                           enabled by default for --floor floor2)
   --pathing-mode <mode>   AI pathing A/B axis: ${PATHING_MODE_VALUES.join(', ')} (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: ${DECISION_MODE_VALUES.join(', ')} (default: ${AIDecisionMode.LEGACY})
   --persona <name>         Evaluator persona (default: experienced_player)

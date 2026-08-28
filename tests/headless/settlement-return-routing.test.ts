@@ -280,23 +280,20 @@ describe('settlement return routing (headless integration)', () => {
     expect(stats.outcome).not.toBe('error');
   }, 30_000);
 
-  it('enables Floor 2 settlement-return routing when the option is omitted', async () => {
+  it('emits zero settlement-return telemetry when the feature is left at its default-off configuration', async () => {
     const events: SimEvent[] = [];
     let seeded = false;
-    const enabledStates: boolean[] = [];
 
     await runHeadless(new BehaviorTreeAI({ seed: 92 }), {
       seed: 92,
       floorId: 'floor2',
       maxFrames: 1500,
       questStallFrames: 0,
-      enforcePlayabilityInvariants: false,
-      // settlementReturnRouting intentionally omitted -> defaults to true on Floor 2.
+      // settlementReturnRouting intentionally omitted -> defaults to false.
       recordEvent: (event) => events.push(event),
       simulationOptions: {
         postSystems: [
           (world) => {
-            enabledStates.push(isSettlementReturnRoutingEnabled(world));
             if (!seeded) {
               seeded = true;
               armEligibleOpportunity(world);
@@ -306,9 +303,7 @@ describe('settlement return routing (headless integration)', () => {
       },
     });
 
-    expect(enabledStates).toContain(true);
-    expect(enabledStates).not.toContain(false);
-    expect(settlementReturnTelemetry(events)).not.toHaveLength(0);
+    expect(settlementReturnTelemetry(events)).toHaveLength(0);
   }, 30_000);
 
   it('enables Floor 1 settlement-return routing when the option is omitted', async () => {
