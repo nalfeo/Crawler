@@ -14,8 +14,16 @@
       "notes": "Adopted immutable head content fetch, actor-backed native Copilot provenance, review-request deadlock avoidance, final-head ledger repair ordering, API failure handling, exact guard semantic parity, and CI artifact validation. Kept local prereqs advisory to match the explicit publication requirement."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

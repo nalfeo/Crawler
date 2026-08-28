@@ -3900,7 +3900,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       : []),
     ...(hasReviewLedgerArtifactBlocker
       ? [
-          '**Review-ledger protocol:** Do not duplicate CI results in the ledger; required CI is authoritative. Existing GitHub Copilot PR review counts as `code_review` evidence when recorded with `reviewer_actors`, `review_url`, finding/resolution counts, and final cleanliness. Fix code, CI, and review threads first; repair and validate the ledger only on the final head so its evidence does not immediately go stale.',
+          '**Review-ledger protocol:** Do not duplicate CI results in the ledger; required CI is authoritative. Existing GitHub Copilot PR review counts as `code_review` evidence when recorded with `reviewer_actors`, `review_url`, finding/resolution counts, and final cleanliness. Complete every non-ledger code and review-thread repair first, then repair and validate the ledger on the final head. If ledger validation is the only failing CI step, repairing the ledger is the remaining CI fix.',
           '',
         ]
       : []),

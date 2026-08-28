@@ -12929,7 +12929,8 @@ test('invalid added review ledger becomes a lifecycle recovery blocker', async (
   assert.match(taskCommentCall.body.body, /\*\*review-ledger\*\*/);
   assert.match(taskCommentCall.body.body, /Do not duplicate CI results in the ledger/);
   assert.match(taskCommentCall.body.body, /reviewer_actors/);
-  assert.match(taskCommentCall.body.body, /repair and validate the ledger only on the final head/i);
+  assert.match(taskCommentCall.body.body, /repair and validate the ledger on the final head/i);
+  assert.match(taskCommentCall.body.body, /ledger validation is the only failing CI step/i);
 });
 
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
