@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
-import type { MainSceneState } from '../../src/labs/main-scene-probe-lab/index.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -47,28 +46,6 @@ async function withHeldTouch(
 }
 
 /**
- * Hold `key` until the scene reports `predicate`, then release it.
- *
- * `page.keyboard.press()` can be dropped entirely for keys the scene samples
- * with `Phaser.Input.Keyboard.JustDown` (e.g. Escape/E): `Key.onUp` clears
- * `_justDown`, so a press that lands and lifts inside one frame is never
- * observed by the update loop.
- */
-async function holdKeyUntil(
-  page: Page,
-  key: string,
-  predicate: (state: MainSceneState) => boolean,
-  label: string,
-): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
-  }
-}
-
-/**
  * Poll until the bottom-center interaction hint ("Talk") is visible again and
  * return its current screen-space bounds.
  */
@@ -94,6 +71,20 @@ function overlaps(
     Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
     Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
   );
+}
+
+async function holdKeyUntil(
+  page: Page,
+  key: string,
+  predicate: Parameters<typeof waitForState>[1],
+  label: string,
+): Promise<void> {
+  await page.keyboard.down(key);
+  try {
+    await waitForState(page, predicate, { label });
+  } finally {
+    await page.keyboard.up(key);
+  }
 }
 
 describe('MainGameScene UI exclusivity', () => {
@@ -389,12 +380,17 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
-
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'NPC dialogue closed before Talk click',
+    );
     // The hint is hidden for the duration of a conversation and only restored on
-    // the next update; clicking before that lands on empty canvas and queues
-    // nothing, so wait for the button to come back before tapping it.
+    // the next scene update; reading its bounds in the same tick can still come
+    // back null, so poll until the button is back before tapping it.
     const restoredTalkBounds = await waitForInteractionHintBounds(page);
+
     await clickDesignPoint({
       x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
       y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
@@ -402,8 +398,12 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await holdKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'Talk dialogue closed');
-
+    await holdKeyUntil(
+      page,
+      'Escape',
+      (state) => !state.conversationOpen,
+      'Talk dialogue closed before E interaction',
+    );
     await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
   });
 

@@ -93,3 +93,8 @@ rehearsal**:
 - `npm run format -- --write <files>` still ran the repo's broad format globs before the
   explicit file list. It happened to touch only intended files this time, but use
   `npx prettier --write <files>` for surgical formatting.
+
+### Opportunities for Future Improvement
+
+- Keep the Floor 4 arena timeline assertions in the shared headless regression suite as later
+  slices add authored waves and transition behavior.
