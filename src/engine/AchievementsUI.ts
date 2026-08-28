@@ -47,13 +47,17 @@ const ACHIEVEMENT_ICON_GAP = 10;
 const CHEST_SIZE = 58;
 /** Height of the filter chip row, including its bottom margin. */
 const FILTER_ROW_H = 30;
+/** Width reserved on the right edge for the scrollbar track, whether or not it
+ * is currently visible, so rows never resize when scroll state toggles and
+ * the reward column can never overlap the thumb. */
+const SCROLLBAR_GUTTER = 16;
 
 /** Flavor text longer than this (chars) gets a collapse/expand toggle. */
 const FLAVOR_EXPAND_THRESHOLD = 120;
 /** Approx line height for flavor text (12 px font + spacing). */
 const FLAVOR_LINE_H = 18;
 /** Number of lines to show in collapsed state. */
-const FLAVOR_COLLAPSED_LINES = 2;
+const FLAVOR_COLLAPSED_LINES = 4;
 /** Height of the expand/collapse button row. */
 const EXPANDER_BTN_H = 18;
 
@@ -100,8 +104,8 @@ function rewardLabel(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
       return reward.lootTable === 'floor2-generated-equipment'
-        ? `${reward.tier} loot box`
-        : `${reward.tier} box`;
+        ? `${reward.tier} loot`
+        : reward.tier;
     case 'item':
       return reward.itemId;
     case 'directorMessage':
@@ -114,7 +118,7 @@ function rewardLabel(reward: AchievementReward): string {
 function rewardReveal(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
-      return `Opened: ${reward.tier} loot box`;
+      return `Opened: ${reward.tier} loot`;
     case 'item':
       return `Opened: ${reward.itemId}`;
     case 'directorMessage':
@@ -616,7 +620,9 @@ export function createAchievementsUI(
       rowObjects.push(bottomBevel);
 
       const face = scene.add.rectangle(colCx, btnCy, btnW, btnH, COLORS.btnBg, 1);
-      face.setStrokeStyle(1, accent, 0.9);
+      // Neutral border: rarity color already reads via the chest + tier label,
+      // so the CTA itself stays a consistent shape regardless of reward tier.
+      face.setStrokeStyle(1, COLORS.btnTopBevel, 0.6);
       container.add(face);
       rowObjects.push(face);
 
@@ -727,7 +733,7 @@ export function createAchievementsUI(
     if (!lastWorld) return;
     const defs = unlockedDefs(lastWorld);
     const x = panelX + PANEL_PADDING;
-    const w = panelWidth - PANEL_PADDING * 2;
+    const w = panelWidth - PANEL_PADDING * 2 - SCROLLBAR_GUTTER;
 
     renderFilters(lastWorld, x, w);
 
@@ -802,12 +808,15 @@ export function createAchievementsUI(
     // Show scrollbar if there are items off-screen
     const needsScrollbar = scrollIndex > 0 || scrollIndex + visibleCount < defs.length;
     if (needsScrollbar) {
-      const scrollbarX = panelX + panelWidth - PANEL_PADDING - 8;
+      const rowRight = x + w;
+      // Center the bar in the reserved gutter so it can never collide with a
+      // row's right edge, no matter how the reward column is sized.
+      const scrollbarX = rowRight + SCROLLBAR_GUTTER / 2;
       const scrollbarY = listTop();
       // Track the FITTED frame, not the full-height one, or the bar overhangs
       // the bottom edge of a collapsed panel.
       const scrollbarH = panelY + fittedHeight - PANEL_PADDING - scrollbarY;
-      const trackW = 6;
+      const trackW = 8;
 
       if (!scrollbarTrack) {
         scrollbarTrack = scene.add.rectangle(
@@ -815,9 +824,10 @@ export function createAchievementsUI(
           scrollbarY + scrollbarH / 2,
           trackW,
           scrollbarH,
-          COLORS.rowBorder,
-          0.5,
+          COLORS.rowBg,
+          0.6,
         );
+        scrollbarTrack.setStrokeStyle(1, COLORS.rowBorder, 0.8);
         container.add(scrollbarTrack);
       } else {
         scrollbarTrack.setPosition(scrollbarX, scrollbarY + scrollbarH / 2);
@@ -825,20 +835,16 @@ export function createAchievementsUI(
         scrollbarTrack.setVisible(true);
       }
 
-      const thumbH = Math.max(20, (visibleCount / defs.length) * scrollbarH);
+      const thumbH = Math.max(24, (visibleCount / defs.length) * scrollbarH);
       const thumbRange = scrollbarH - thumbH;
       const scrollProgress = defs.length > 1 ? scrollIndex / (defs.length - 1) : 0;
       const thumbY = scrollbarY + scrollProgress * thumbRange + thumbH / 2;
 
       if (!scrollbarThumb) {
-        scrollbarThumb = scene.add.rectangle(
-          scrollbarX,
-          thumbY,
-          trackW,
-          thumbH,
-          COLORS.textSecondary,
-          0.8,
-        );
+        // A beveled thumb with a lit accent stroke matches the button
+        // language instead of reading as a flat gray bar.
+        scrollbarThumb = scene.add.rectangle(scrollbarX, thumbY, trackW, thumbH, COLORS.btnBg, 1);
+        scrollbarThumb.setStrokeStyle(1, COLORS.btnTopBevel, 0.9);
         container.add(scrollbarThumb);
       } else {
         scrollbarThumb.setPosition(scrollbarX, thumbY);

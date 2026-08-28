@@ -77,7 +77,7 @@ describe('achievement loot boxes opened back to back', () => {
     rewardOpeningUI.skip();
     expect(rewardOpeningUI.getPhase()).toBe('summary');
     // The second box is offered by label, so the player can see what's next.
-    expect(rewardOpeningUI.getNextRewardLabel()).toBe('rare box');
+    expect(rewardOpeningUI.getNextRewardLabel()).toBe('rare');
 
     const goldAfterFirst = world.playerGold;
     rewardOpeningUI.openNext();
