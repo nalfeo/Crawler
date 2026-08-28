@@ -1,5 +1,39 @@
 [
   {
+    "commit": "7054a37e4b4ad2f852cd353c925b637ee3c4ca08",
+    "commitDate": "2026-08-28T00:30:57Z",
+    "commitSubject": "fix(merge-train): repair restricted branches by quarantine evidence (#3752)",
+    "capturedAt": "2026-08-28T01:54:58.318Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33131856070",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/7054a37e4b4ad2f852cd353c925b637ee3c4ca08.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.46,
+      "gatePass": false,
+      "path": "by-sha/7054a37e4b4ad2f852cd353c925b637ee3c4ca08.fun-report.json"
+    }
+  },
+  {
     "commit": "78f168399099db4ed635fa4fe2f3e7def47e3614",
     "commitDate": "2026-08-27T20:17:31Z",
     "commitSubject": "Clarify and activate Spellcraft Bolt passive (#3672)",
