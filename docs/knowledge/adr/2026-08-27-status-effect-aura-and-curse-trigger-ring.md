@@ -12,7 +12,8 @@ Accepted
 
 🍎 x 3 — a data-only ability retune plus one new render-side subsystem
 (resolver + single-Graphics renderer) wired into the shipped `PhaserBridge`;
-no simulation behavior change, no new lab.
+a data-driven simulation behavior change with no new simulation system and no
+new lab.
 
 ## Context
 
@@ -36,9 +37,9 @@ as "the range is too low".
 
 **Nothing marked an afflicted enemy.** The only cue was a subtle multiply tint
 (`0xaadfff`) applied by `PhaserBridge`, and only for `stat === 'speed'` effects.
-Every other status — `attackSpeed`, `damage`, `hpRegen`, `defense` — rendered
-with no cue whatsoever. There was no shared answer to "what does an afflicted
-entity look like", so each future effect would have invented its own.
+The other live status channels — `attackSpeed` and `hpRegen` — rendered with no
+cue whatsoever. There was no shared answer to "what does an afflicted entity
+look like", so each future effect would have invented its own.
 
 ## Decision
 
