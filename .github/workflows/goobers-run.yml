@@ -332,6 +332,9 @@ jobs:
             envPassthrough:
               - GOOBERS_RECOVERY_ISSUE
               - GOOBERS_RESUME_BRANCH
+              - GH_TOKEN
+              - GITHUB_TOKEN
+              - GITHUB_REPOSITORY
           runConditions:
             maxParallelRuns: 1
           EOF
