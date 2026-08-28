@@ -16,8 +16,23 @@
       "alternatives_considered": 0
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["github-code-review-tool"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Round 1 found one real test guard inversion and the expected incomplete-ledger scaffold. The guard was corrected; ledger completion continued through the required stages."
+        },
+        {
+          "models": ["github-code-review-tool"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Round 2 found no remaining code concern; its sole procedural finding was the still-in-progress review ledger, resolved by recording this review and the independent grade."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

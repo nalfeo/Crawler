@@ -186,7 +186,7 @@ describe('weapon-skill ability definitions', () => {
         if (!abilityId) continue;
         const def = getAbilityDefinition(abilityId);
         expect(def?.kind).toBe('active');
-        if (def?.kind !== 'passive') {
+        if (def?.kind === 'active') {
           expect(def?.weaponPrerequisite).toBe(typeSkillId);
         }
       }
