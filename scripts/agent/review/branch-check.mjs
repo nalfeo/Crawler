@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console */
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
