@@ -1603,6 +1603,91 @@ test('stale-automation-exhausted in dry-run logs would-file message without crea
   );
 });
 
+test('a still-running agent session defers the stale-automation-exhausted ceiling', async (t) => {
+  // Regression for PR #3778 / incident #3796: the reconciler filed a loop
+  // incident and released ownership four minutes before the dispatched agent
+  // session pushed its repair commit. Review-thread churn is excluded from the
+  // blocker fingerprint by design, so a live session looked identical to a dead
+  // one. While GitHub reports the `copilot` session check as in-flight (bounded
+  // by AGENT_SESSION_MAX_MINUTES) the ceiling must be deferred, not fired.
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const runningSessionCheck = {
+    id: 2,
+    name: 'copilot',
+    status: 'in_progress',
+    conclusion: null,
+    started_at: new Date(Date.now() - 33 * 60 * 1000).toISOString(),
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/2`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 887,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 2,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck, runningSessionCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /agent-session-running pr=#42/);
+  assert.match(stdout, /skip pr=#42 reason=duplicate-fingerprint/);
+  assert.doesNotMatch(stdout, /released stale automation pr=#42/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+    ).length,
+    0,
+    'no loop incident may be filed while the dispatched session is still running',
+  );
+
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'automation', 'ownership must be retained for the live session');
+  assert.equal(finalState.status, 'dispatched');
+});
+
 test('stale-automation-exhausted releases ownership even when incident filing fails', async (t) => {
   const failedCheck = {
     id: 1,
