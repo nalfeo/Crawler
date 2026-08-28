@@ -356,12 +356,78 @@ jobs:
             fi
           done
 
-  release-report-sweep:
-    name: Release report leg (${{ matrix.leg }} shard ${{ matrix.shard }})
+  # Runner-capacity gate for the release sweep (nalfeo/Crawler#3774). The sweep
+  # below holds ~16 runners for up to an hour on every main push; when CI and
+  # development are already saturating the account runner pool, that starves the
+  # work people are waiting on. Skip it while the pool is constrained UNLESS the
+  # last published baseline is older than 24h, so the baseline series can never
+  # stall out. Every probe failure fails open (sweeps), and a manual
+  # workflow_dispatch always sweeps because an operator asked for it explicitly.
+  sweep-capacity-gate:
+    name: Release sweep capacity gate
     runs-on: ubuntu-latest
     needs: [release-gate, deploy]
     if: >
       needs.release-gate.outputs.should_run == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    permissions:
+      # `actions: read` is what the admission script's run/job probes need; a
+      # job-level block replaces the workflow default entirely, so omitting it
+      # would 403 every demand probe and silently pin the gate to fail-open.
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    # Fail open at the job level too: an infrastructure failure in this gate
+    # (checkout, node setup) must never be able to stop baselining. The fallback
+    # step below still publishes `should_sweep=true` in that case, and
+    # continue-on-error keeps the failure from reddening the release workflow.
+    continue-on-error: true
+    outputs:
+      # The trailing 'true' closes the last fail-open hole: if the runner is
+      # never provisioned, neither step runs, both outputs are empty, and the
+      # sweep would otherwise be skipped by an infrastructure failure.
+      should_sweep: ${{ steps.admission.outputs.should_sweep || steps.fallback.outputs.should_sweep || 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Decide release sweep admission
+        id: admission
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SWEEP_MIN_INTERVAL_HOURS: ${{ vars.RELEASE_SWEEP_MIN_INTERVAL_HOURS }}
+          RELEASE_SWEEP_MAX_COMPETING_DEMAND: ${{ vars.RELEASE_SWEEP_MAX_COMPETING_DEMAND }}
+          RELEASE_SWEEP_MAX_QUEUED_JOBS: ${{ vars.RELEASE_SWEEP_MAX_QUEUED_JOBS }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_sweep=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch: capacity gate bypassed."
+            exit 0
+          fi
+          node .github/scripts/release-sweep-admission.mjs
+
+      - name: Fail open when admission produced no verdict
+        id: fallback
+        if: always() && steps.admission.outputs.should_sweep == ''
+        run: |
+          echo "::warning::Release sweep capacity gate produced no verdict; sweeping."
+          echo "should_sweep=true" >> "$GITHUB_OUTPUT"
+
+  release-report-sweep:
+    name: Release report leg (${{ matrix.leg }} shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    needs: [release-gate, deploy, sweep-capacity-gate]
+    if: >
+      needs.release-gate.outputs.should_run == 'true' &&
+      needs.sweep-capacity-gate.outputs.should_sweep == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push'))
@@ -448,7 +514,7 @@ jobs:
   baseline-sweep:
     name: Baseline multi-floor sweep (600 runs)
     runs-on: ubuntu-latest
-    needs: [release-gate, deploy, release-report-sweep]
+    needs: [release-gate, deploy, sweep-capacity-gate, release-report-sweep]
     concurrency:
       group: baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}
       cancel-in-progress: false
@@ -464,8 +530,12 @@ jobs:
     # even though nothing was deployed. Require the exact same push-only gate
     # as `deploy` so both jobs are skipped identically on non-push
     # invocations.
+    # The sweep-capacity-gate condition mirrors release-report-sweep: when the
+    # runner pool is constrained and a fresh baseline already exists, both sweep
+    # jobs skip together so no partial baseline is ever published.
     if: >
       needs.release-gate.outputs.should_run == 'true' &&
+      needs.sweep-capacity-gate.outputs.should_sweep == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push'))
