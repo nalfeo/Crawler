@@ -29,7 +29,9 @@
  * variants, which all route through the projectile spawner). BEAM (e.g. laser) and
  * TRAP (e.g. landmine) weapons are NOT yet attributed: their casts still increment
  * `swings` via `dispatchAttack`, but their damage entities are untagged, so a run
- * dominated by beam/trap weapons under-reports `connectingSwings`/accuracy. The
+ * dominated by beam/trap weapons under-reports `connectingSwings`/accuracy. Those
+ * casts are therefore ALSO counted into `unattributedSwings`, so a player-facing
+ * consumer can suppress the accuracy number instead of showing a false 0%. The
  * Floor-1 weapon sweep — the primary consumer — uses only melee/ranged starting
  * weapons, so this boundary does not affect it. Extending tagging to beam/trap is a
  * follow-up (mirrors the attackerWeaponSkills limitation noted in weaponSystem.ts).
@@ -49,6 +51,7 @@ export function createWeaponTelemetry(): WeaponTelemetry {
   return {
     swings: 0,
     accuracyMisses: 0,
+    unattributedSwings: 0,
     nextActivationId: 0,
     currentActivationId: undefined,
     entityActivation: new Map(),
@@ -59,11 +62,19 @@ export function createWeaponTelemetry(): WeaponTelemetry {
 /**
  * Begin a weapon activation: count the swing and open a fresh activation id that
  * subsequently-spawned attack entities will be tagged with. No-op when disabled.
+ *
+ * `attributed` is false for weapon types whose damage entities never reach a
+ * tagging choke point (BEAM/TRAP — see the scope note above). Those activations
+ * still count as swings, but they are also tallied separately so a consumer can
+ * tell "0% accuracy" apart from "accuracy is not measurable here".
  */
-export function beginWeaponActivation(world: GameWorld): void {
+export function beginWeaponActivation(world: GameWorld, attributed = true): void {
   const wt = world.weaponTelemetry;
   if (!wt) return;
   wt.swings += 1;
+  if (!attributed) {
+    wt.unattributedSwings += 1;
+  }
   wt.currentActivationId = wt.nextActivationId;
   wt.nextActivationId += 1;
 }
@@ -179,6 +190,7 @@ export function summarizeWeaponTelemetry(wt: WeaponTelemetry): WeaponTelemetrySu
   return {
     swings: wt.swings,
     accuracyMisses: wt.accuracyMisses,
+    unattributedSwings: wt.unattributedSwings,
     connectingSwings,
     multiHitSwings,
     totalEnemyHits,

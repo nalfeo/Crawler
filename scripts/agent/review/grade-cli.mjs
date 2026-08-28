@@ -3,7 +3,7 @@
 // CLI for the independent grader (>=3🍎 `independent_grade` ledger stage).
 //
 //   # 1. Emit the grading packet (real diff + rubric) for an independent model.
-//   npm run review:grade -- prompt <ledgerPath> [--base main] [--out files/grade-prompt.md]
+//   npm run review:grade -- prompt <ledgerPath> [--base main] [--paths p1,p2] [--out files/grade-prompt.md]
 //
 //   # 2. Dispatch it yourself with the `task` tool, using a model that appears
 //   #    in NEITHER the plan review nor the code review (the packet prints the
@@ -68,7 +68,9 @@ function git(args) {
 function cmdPrompt(positional, flags) {
   const path = positional[0];
   if (!path) {
-    console.error('prompt: usage: prompt <ledgerPath> [--base <ref>] [--out <file>]');
+    console.error(
+      'prompt: usage: prompt <ledgerPath> [--base <ref>] [--paths <p1,p2,...>] [--out <file>]',
+    );
     return 1;
   }
   let ledger;
@@ -78,9 +80,16 @@ function cmdPrompt(positional, flags) {
     console.error(`prompt: cannot read ledger ${path}: ${err.message}`);
     return 1;
   }
+  const paths =
+    typeof flags.paths === 'string'
+      ? flags.paths
+          .split(',')
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
   let diff;
   try {
-    diff = collectDiff({ baseRef: typeof flags.base === 'string' ? flags.base : 'main' });
+    diff = collectDiff({ baseRef: typeof flags.base === 'string' ? flags.base : 'main', paths });
   } catch (err) {
     console.error(`prompt: cannot collect the diff: ${err.message}`);
     return 1;
