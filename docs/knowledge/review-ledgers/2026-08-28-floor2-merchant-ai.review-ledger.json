@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "floor2-merchant-ai",
+  "task_title": "Fix Floor 2 merchant AI visits and purchases",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "major_fork",
+      "notes": "The separate plan review correctly identified Floor 2 default-off routing as the blocker. Direct code trace confirmed its proposed shop-preview changes already exist: buildEquipmentCandidates filters to purchasable offers and evaluateEquipmentLoadoutCandidates selects only positive DPS/survivability utility; bestSwapInstanceId is already part of the fingerprint. Resolution: extend Floor 1 auto-enable policy to Floor 2 and replace the former Floor 2 default-off test with a real-pipeline default-on assertion. No new dependencies or modules."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
