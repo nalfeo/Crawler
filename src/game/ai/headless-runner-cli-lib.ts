@@ -224,6 +224,15 @@ export function parseArgs(
   return args;
 }
 
+/** Resolve CLI-only Floor 2 routing without changing other runner defaults. */
+export function resolveHeadlessRunnerOptions(
+  args: Pick<CLIArgs, 'floorId' | 'settlementReturnRouting'>,
+): { settlementReturnRouting?: boolean } {
+  const settlementReturnRouting =
+    args.settlementReturnRouting ?? (args.floorId === 'floor2' ? true : undefined);
+  return settlementReturnRouting === undefined ? {} : { settlementReturnRouting };
+}
+
 export function helpText(): string {
   const defaultPathingMode = DEFAULT_CONFIG.pathingMode;
   return `
