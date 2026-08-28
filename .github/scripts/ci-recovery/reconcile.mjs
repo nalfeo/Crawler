@@ -3195,10 +3195,10 @@ if (scopeMismatchBlocker) {
   const quarantineBody = makeQuarantineComment(prNumber, {
     reason,
     explanation:
-      'This PR has been quarantined because a trusted review finding says the PR title/body or closing reference promises work that is not supported by the changed files. CI Recovery cannot deterministically choose between changing PR metadata and implementing the linked feature.',
+      'This PR has been quarantined because a trusted review finding says the PR metadata and the changed files are materially inconsistent — either the PR title/body or closing reference promises work that is not supported by the changed files, or the diff carries substantial work the PR never declared. CI Recovery cannot deterministically choose between changing PR metadata, splitting the branch, and implementing the linked feature.',
     nextActions: [
       'Abandon/close this PR and restart the linked issue by posting the exact standalone owner comment `ABANDON`.',
-      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself.',
+      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself (amend the PR title/description first if the diff is broader than it claims).',
     ],
     keepOutcome:
       'resume this PR: it re-enters the lifecycle as `repairing` and automated repair resumes (no implementation plan is checked)',
