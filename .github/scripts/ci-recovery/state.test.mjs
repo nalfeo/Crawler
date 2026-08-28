@@ -1861,6 +1861,58 @@ test('isScopeMismatchReviewBlocker matches active-voice "does not implement" fin
   }
 });
 
+test('isScopeMismatchReviewBlocker matches undeclared-scope (scope-creep) findings', () => {
+  // Verbatim finding from PR #3735 (loop incident #3807), truncated the same way
+  // reconcile.mjs truncates a root review comment into a blocker summary.
+  const prCreepFinding =
+    'copilot-pull-request-reviewer: This introduces a release-wide capture/server/Azure subsystem ' +
+    'that is not described in the ten-slot equipment PR and conflicts with the stated ' +
+    'presentation-only scope. The same branch also adds gallery and art-direction infrastructure, ' +
+    'making the review and rollback surface substantially broader than the title and verification ' +
+    'imply. Split this tooling into dedicated PRs, or explicitly expand the PR description and ' +
+    'verification to cover these operational changes.';
+  assert.equal(
+    isScopeMismatchReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary: prCreepFinding,
+    }),
+    true,
+  );
+  // Untrusted authors must never quarantine a PR, in either direction.
+  assert.equal(
+    isScopeMismatchReviewBlocker({ kind: 'review-thread', summary: prCreepFinding }),
+    false,
+  );
+  for (const summary of [
+    'reviewer: these migrations are beyond the declared scope of the PR description; split them into separate PRs.',
+    'reviewer: the PR body does not mention this workflow rewrite — please expand the PR description to cover it.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      true,
+      summary,
+    );
+  }
+});
+
+test('isScopeMismatchReviewBlocker ignores creep observations with no maintainer-only remedy', () => {
+  for (const summary of [
+    // Undeclared-scope language but the remedy is an ordinary inline repair.
+    'reviewer: this helper is not described in the PR description; please delete the unused export.',
+    // A maintainer-only remedy alone (no undeclared-scope finding) is not a scope mismatch.
+    'reviewer: please expand the PR description with a verification section before merging.',
+    // Neither signal: a plain review finding must still dispatch inline repair.
+    'reviewer: this loop can divide by zero when the entity list is empty.',
+  ]) {
+    assert.equal(
+      isScopeMismatchReviewBlocker({ kind: 'review-thread', scopeMismatchTrusted: true, summary }),
+      false,
+      summary,
+    );
+  }
+});
+
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
   assert.equal(
     requiresAdminIntervention({

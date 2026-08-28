@@ -876,14 +876,31 @@ const scopeMismatchClosingReferencePattern =
 const scopeMismatchUnsupportedPattern =
   /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
-  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+  /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|stated\s+scope|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+
+// The inverse direction of the same finding: the diff carries substantial work
+// the PR never declared (scope creep) rather than promising work the diff lacks.
+// Both remediations a reviewer can ask for here — splitting the branch into
+// separate PRs, or amending the PR title/description — are maintainer product
+// decisions that no inline repair can perform, so they must reach the same
+// quarantine path.  Without this direction the finding fell through to ordinary
+// inline-repair dispatch and the recovery agent could only decline it forever
+// (PR #3735 / loop incident #3807).
+const scopeCreepUndeclaredPattern =
+  /\b(?:not\s+(?:describe|mention|cover|document)(?:s|d)?|undeclared|unrelated\s+to\s+the\s+(?:stated|declared)\s+scope|(?:beyond|outside)\s+(?:the\s+)?(?:stated|declared)\s+scope|conflicts?\s+with\s+the\s+(?:stated|declared)\s+[\w-]*\s*scope|broader\s+than\s+the\s+(?:title|description|stated\s+scope))\b/i;
+// A maintainer-only remedy must be named explicitly, so a reviewer merely
+// observing extra files never quarantines a PR that inline repair could fix.
+const scopeCreepRemedyPattern =
+  /(?:\bsplit\b[^.!?\n]{0,80}?\binto\s+(?:dedicated|separate|its\s+own|different|individual)\s+prs?\b|\b(?:expand|amend|update|broaden|revise)\s+the\s+pr\s+(?:title|body|description)\b)/i;
 
 /**
- * Detect a trusted-review finding that says the PR's declared scope (closing
- * keyword, title, or body promise) is unsupported by the diff. This is an
- * ambiguous product decision, not an inline repair task: recovery must
- * quarantine and ask the maintainer whether to abandon/restart or keep with an
- * explicit implementation plan.
+ * Detect a trusted-review finding that says the PR's declared scope and its
+ * changed files are materially inconsistent — either the PR's closing keyword,
+ * title, or body promises work the diff does not support, or the diff carries
+ * substantial work the PR never declared. This is an ambiguous product
+ * decision, not an inline repair task: recovery must quarantine and ask the
+ * maintainer whether to abandon/restart or keep with an explicit scope
+ * statement.
  */
 export function isScopeMismatchReviewBlocker(blocker) {
   if (blocker?.kind !== 'review-thread') return false;
@@ -892,7 +909,14 @@ export function isScopeMismatchReviewBlocker(blocker) {
   if (!text) return false;
   const namesClosingReference = scopeMismatchClosingReferencePattern.test(text);
   const namesScopePromise = scopeMismatchPromisePattern.test(text);
-  return scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise);
+  if (scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise)) {
+    return true;
+  }
+  return (
+    scopeCreepUndeclaredPattern.test(text) &&
+    scopeCreepRemedyPattern.test(text) &&
+    namesScopePromise
+  );
 }
 
 /**
