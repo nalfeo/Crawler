@@ -13,20 +13,26 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { hasComponent, query, removeEntity } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeMapWithSafeRoom, makePathMap } from '../helpers/map-fixtures.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { attackWaveSystem } from '../../src/game/attack-wave-system.js';
-import { AttackWaveRat, Damage, Enemy } from '../../src/core/components.js';
+import { AttackWaveRat, Damage, DeathTimer, Enemy } from '../../src/core/components.js';
 import { RoomRole, TilePresets, BiomeType, type MapConfig } from '../../src/shared/map-types.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
+import {
+  attachBarriersToFloorMap,
+  createRingBarrier,
+  dropBarrier,
+} from '../../src/core/barriers/index.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { spawnerArenaSystem, spawnerSystem } from '../../src/game/index.js';
 import { enemyAISystem } from '../../src/game/enemyAISystem.js';
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
+import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { GAME } from '../../src/shared/constants.js';
 import { pxToFt } from '../../src/shared/units.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
@@ -318,11 +324,12 @@ describe('attackWaveSystem', () => {
       }
     });
 
-    it('reuses the cached field and invalidates it for map and cleared-room ownership changes', () => {
+    it('reuses the cached field and invalidates it for map, cleared-room ownership, and barrier changes', () => {
       const world = createTestWorld();
       world.floorId = 'floor1';
       const firstMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
       world.floorMap = firstMap;
+      attachBarriersToFloorMap(world);
       spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;
       world.elapsedMs = TUNING.attackWaves.intervalMs;
@@ -347,6 +354,18 @@ describe('attackWaveSystem', () => {
       world.elapsedMs += TUNING.attackWaves.intervalMs;
       attackWaveSystem(world);
       expect(world.attackWaveState?.safeRoomDistanceField).not.toBe(secondField);
+
+      const barrier = createRingBarrier(world, 400, 400, 8, 'fence');
+      world.elapsedMs += TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      const withBarrierField = world.attackWaveState?.safeRoomDistanceField;
+      expect(withBarrierField).toBeDefined();
+      expect(withBarrierField).not.toBe(secondField);
+
+      dropBarrier(world, barrier);
+      world.elapsedMs += TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      expect(world.attackWaveState?.safeRoomDistanceField).not.toBe(withBarrierField);
     });
   });
 
@@ -405,7 +424,7 @@ describe('attackWaveSystem', () => {
   });
 
   describe('maxAliveFromWaves cap', () => {
-    it('never exceeds the cap, and recount allows new spawns once rats die', () => {
+    it('never exceeds the cap, and recount ignores dead lingering corpses so new rats can spawn', () => {
       const world = createTestWorld();
       world.floorId = 'floor1';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 200, heightTiles: 200, tileSizeFt: 4 });
@@ -427,16 +446,18 @@ describe('attackWaveSystem', () => {
         attackWaveSystem(world);
         expect(enemyCount(world)).toBe(5);
 
-        // Kill all tracked wave rats; the next wave should be able to spawn again.
-        const rats = query(world.ecs, [Enemy]);
+        // Kill all tracked wave rats through the runtime death-linger path.
+        const rats = query(world.ecs, [Enemy, AttackWaveRat]);
         for (const eid of rats) {
-          removeEntity(world.ecs, eid);
+          world.stores.health.current[eid] = 0;
         }
-        expect(enemyCount(world)).toBe(0);
+        dropSystem(world, { spawnLoot: false });
+        expect(query(world.ecs, [DeathTimer]).length).toBe(5);
+        expect(enemyCount(world)).toBe(5);
 
         world.elapsedMs += TUNING.attackWaves.intervalMs;
         attackWaveSystem(world);
-        expect(enemyCount(world)).toBe(5);
+        expect(enemyCount(world)).toBe(10);
       } finally {
         TUNING.attackWaves.maxAliveFromWaves = originalMaxAlive;
         TUNING.attackWaves.packSize = originalPackSize;

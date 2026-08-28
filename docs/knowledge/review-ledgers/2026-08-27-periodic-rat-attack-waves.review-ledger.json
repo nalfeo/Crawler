@@ -30,7 +30,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-terra",
-      "head_sha": "b5f5782d6514850bb78c25b9c7fc9a321b9de7ea",
+      "head_sha": "f4319f77af673b647e4014810dbe266e1bb9d692",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -41,7 +41,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "Suppression now follows runtime-reachable door-aware topology, wave rat damage matches canonical templates, and required process artifacts (ADR, lab, ledger) are present and coherent."
+      "notes": "The change perfectly implements the periodic rat attack waves with feature flags and door-aware safe-room suppression. Correctness is assured via multi-source flow fields and robust cache invalidation that handles door state transitions. The scope is strictly disciplined to the requirements. It demonstrates exemplary policy compliance by remaining deterministic (no Math.random/Date.now), wiring cleanly into the sim-side pipeline, respecting import layers, and adding the required ADR, ledger, and lab. Test coverage is exceptional, covering complex pathable-vs-Euclidean suppression boundaries, determinism, and spawn radius guarantees. Maintainability is high due to clear logic, granular cache checks, and explicit documentation."
     }
   }
 }
