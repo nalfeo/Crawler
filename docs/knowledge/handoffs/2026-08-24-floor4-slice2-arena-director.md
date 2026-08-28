@@ -96,5 +96,11 @@ rehearsal**:
 
 ### Opportunities for Future Improvement
 
+- Give `runHeadless` a shared assertion helper for "scenario reached its terminal outcome
+  AND populated its per-floor RunStats block". The crash-vs-success stats divergence found
+  here is a class of bug, not a one-off, and every future floor will re-add both objects.
+- Make surgical formatting the documented default: `npm run format` runs the repo-wide
+  globs before any explicit file list, so the handoff guidance should point at
+  `npx prettier --write <files>` for single-file fixes.
 - Keep the Floor 4 arena timeline assertions in the shared headless regression suite as later
   slices add authored waves and transition behavior.
