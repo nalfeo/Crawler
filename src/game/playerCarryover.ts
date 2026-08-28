@@ -398,6 +398,8 @@ function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAb
 
     state.grantOwnership.passiveSourcesByAbilityId.delete(retiredId);
     const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
+    // The retired ability was exclusively its milestone's passive grant; recreate
+    // that canonical source because legacy:passive sources cannot own an active.
     activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
     state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
     state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);

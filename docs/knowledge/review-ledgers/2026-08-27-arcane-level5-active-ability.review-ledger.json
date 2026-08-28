@@ -43,9 +43,9 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "grok-4.5",
+      "grader_model": "gemini-3.6-flash",
       "implementer_model": "github-copilot-coding-agent",
-      "head_sha": "6daf3c8a06d106f494a401fea9047567f5474559",
+      "head_sha": "af996a0ab1eaef4ae999edc025b24a366771af0f",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -56,7 +56,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The diff fixes the real root cause: applyMilestone no longer hard-codes passive grants/revokes, so Arcane L5/L15 can grant weapon-gated actives (arcane-nova / arcane-nova-evolved) without kind-flip carryover hazards. Fire-gating in activateAbility (before cooldown stamp), deliberate forceActivateAbility bypass, kind:'active' (not spell) for pre-boss reachability, shared presentation weaponPrerequisite for HUD without layer violations, fill-open-slots slot-cap behavior, skillAbilityUnlocked announcements, AI evaluator zeroing, and skill-lab owned-active display are all coherent and covered. Integration coverage exercises the shipped Floor-1 pipeline (equip + fire before spells unlock, non-arcane refusal, L15 replace, full-bar ownership); unit/evaluator/registry tests pin the supporting surfaces. Scope matches a declared 4🍎 cross-layer contract change with required ADR/handoff/ledger, no drive-by refactors, and no policy breaches (determinism, imports, lab update, observe-before-done)."
+      "notes": "The diff cleanly fulfills issue #3676 by converting Arcane level-5 and level-15 milestone rewards to weapon-gated active abilities ('arcane-nova' and 'arcane-nova-evolved') without introducing layer violations or carryover regression risks. System milestone grants now dynamically derive grant and revoke kinds from the catalog, fire-gating in activateAbility prevents execution without a matching weapon while preserving cooldown state, and HudAbilityBar unhides for non-spell equipped actives while dimming slots with unmet weapon prerequisites. All edge cases including bar slot caps, L15 slot replacement, player carryover migration, and AI loadout evaluation are thoroughly addressed and covered by comprehensive unit, integration, and UI tests."
     }
   }
 }
