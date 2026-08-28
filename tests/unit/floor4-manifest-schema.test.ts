@@ -46,3 +46,86 @@ describe('floor4 manifest schema cross-field geometry rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('floor4 manifest schema wave rules', () => {
+  it('rejects a wave pack that is not registered', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves.enemyPackId = 'not-a-real-pack';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a budget curve that does not cover every act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves.budget.actMultipliers = bad.floor4.waves.budget.actMultipliers.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a cadence whose last wave releases after the wave window closes', () => {
+    const bad = cloneFloor4Manifest();
+    // Eight waves 20s apart need 140s of window; the authored window is shorter,
+    // so the final waves could never release before the cut.
+    bad.floor4.waves.cadence.intervalMs = 20_000;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a live cap above what the wave pack allows on screen', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves.concurrency.liveCap = 500;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a roster that skips an act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves.rosters = bad.floor4.waves.rosters.filter((roster) => roster.act !== 3);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a roster archetype that is not in the wave pack', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.waves.rosters[0]!.entries[0]!.archetypeId = 'goblin-that-never-was';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('floor4 manifest schema Headliner rules', () => {
+  it('accepts the authored Headliner pool and overtime ramp', () => {
+    const manifest = cloneFloor4Manifest();
+    const headliners = manifest.floor4.headliners;
+
+    expect(headliners.pool).toHaveLength(9);
+    expect(headliners.slots.map((slot) => slot.act)).toEqual([1, 2, 3, 4, 5]);
+    expect(manifest.floor4.overtime.capMs).toBe(manifest.floor4.phase.overtimeCapMs);
+    expect(floorManifestDefSchema.safeParse(manifest).success).toBe(true);
+  });
+
+  it('rejects a Headliner pool archetype that is not in the arena pack', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.pool[0]!.archetypeId = 'floor4-unbooked-act';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a finale slot whose fixed Headliner is not eligible', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[4]!.eligibleGrades = ['warmup'];
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a random slot exhausted by a reserved fixed Headliner', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[0]!.eligibleGrades = ['finale'];
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a fixed Headliner booked for multiple acts', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.headliners.slots[3]!.fixedArchetypeId =
+      bad.floor4.headliners.slots[4]!.fixedArchetypeId;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects overtime ramps that outlive the overtime cap', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.overtime.rampSteps[0]!.atMs = bad.floor4.overtime.capMs;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});

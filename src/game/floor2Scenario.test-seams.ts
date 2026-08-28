@@ -12,6 +12,7 @@ import {
   getQuadrantForPosition,
   getQuadrantSpawnWeights,
   initializeFloor2Bosses,
+  isProtectedFloor2AmbientSpawn,
   isDenUnlocked,
   isFamilySpawnGated,
   markDenUnlocked,
@@ -43,6 +44,7 @@ const floor2ScenarioTestSeams = {
   getQuadrantSpawnWeights,
   resolveFloor2TrashSpawnWeights,
   resolveAmbientFamilyIndex,
+  isProtectedFloor2AmbientSpawn,
   floor2EnemyDirectorSystem,
 };
 

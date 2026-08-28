@@ -31,16 +31,16 @@ npm run lab   # then open ?lab=ui-probe-lab
 Use the **UI Surfaces** folder in the lil-gui panel to open each surface and
 equip the charm by hand. Programmatically, everything is on `window.__uiProbe`:
 
-| Method                                                                                                 | Purpose                              |
-| ------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| `ready()` / `getGameSize()`                                                                            | readiness + scene coordinate space   |
-| `openInventory()` / `isInventoryOpen()`                                                                | open the bag grid                    |
-| `getInventoryCellBounds(i)`                                                                            | world-space rect of the i-th cell    |
-| `isTooltipVisible()` / `isTooltipPinned()`                                                             | hover vs click-pin tooltip state     |
-| `openEquipment()` / `isEquipmentOpen()`                                                                | open the Gear paper-doll             |
-| `getCharisma()` / `equipCharm()`                                                                       | effective Charisma + equip the charm |
-| `openMinimapOverlay()` / `isMinimapOverlayOpen()` / `getMinimapCloseBounds()`                          | fullscreen minimap + close button    |
-| `openLevelUp(points)` / `getStatControlBounds()` / `getDraftAllocation(stat)` / `getRemainingPoints()` | level-up −/+ controls                |
+| Method                                                                                                 | Purpose                                                            |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `ready()` / `getGameSize()`                                                                            | readiness + scene coordinate space                                 |
+| `openInventory()` / `isInventoryOpen()`                                                                | open the bag grid                                                  |
+| `getInventoryCellBounds(i)`                                                                            | world-space rect for filtered-entry index `i` (null if off-screen) |
+| `isTooltipVisible()` / `isTooltipPinned()`                                                             | hover vs click-pin tooltip state                                   |
+| `openEquipment()` / `isEquipmentOpen()`                                                                | open the Gear paper-doll                                           |
+| `getCharisma()` / `equipCharm()`                                                                       | effective Charisma + equip the charm                               |
+| `openMinimapOverlay()` / `isMinimapOverlayOpen()` / `getMinimapCloseBounds()`                          | fullscreen minimap + close button                                  |
+| `openLevelUp(points)` / `getStatControlBounds()` / `getDraftAllocation(stat)` / `getRemainingPoints()` | level-up −/+ controls                                              |
 
 ## Determinism
 

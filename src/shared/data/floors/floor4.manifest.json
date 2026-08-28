@@ -41,6 +41,7 @@
   },
   "behavior": {
     "spawnRoomIsSafe": false,
+    "safeRoomPausesFloorTimer": false,
     "safeRoomWeaponImmunity": true,
     "safeRoomDoorsAutoClose": true,
     "lineOfSightAggro": true,
@@ -74,6 +75,165 @@
       "headlineWindowMs": 30000,
       "intermissionMs": 1000,
       "overtimeCapMs": 60000
+    },
+    "waves": {
+      "enemyPackId": "floor4-arena",
+      "cadence": {
+        "wavesPerAct": 8,
+        "intervalMs": 12000
+      },
+      "budget": {
+        "base": 6.0,
+        "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
+        "intraActRamp": 0.09,
+        "openingWaveMultiplier": 0.34,
+        "maxEntriesPerWave": 16
+      },
+      "concurrency": {
+        "liveCap": 24,
+        "debtCap": 18
+      },
+      "gates": {
+        "telegraphLeadMs": 1000
+      },
+      "rosters": [
+        {
+          "act": 1,
+          "entries": [{ "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 1.0 }]
+        },
+        {
+          "act": 2,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.6 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.4 }
+          ]
+        },
+        {
+          "act": 3,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.4 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.35 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.25 }
+          ]
+        },
+        {
+          "act": 4,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.3 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.25 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.25 },
+            { "archetypeId": "floor4-stunt-double", "threatCost": 4.0, "weight": 0.12 },
+            { "archetypeId": "floor4-ring-enforcer", "threatCost": 6.0, "weight": 0.08 }
+          ]
+        },
+        {
+          "act": 5,
+          "entries": [
+            { "archetypeId": "floor4-extra", "threatCost": 2.0, "weight": 0.22 },
+            { "archetypeId": "floor4-usher", "threatCost": 1.0, "weight": 0.22 },
+            { "archetypeId": "floor4-pyro-tech", "threatCost": 3.0, "weight": 0.22 },
+            { "archetypeId": "floor4-stunt-double", "threatCost": 4.0, "weight": 0.17 },
+            { "archetypeId": "floor4-ring-enforcer", "threatCost": 6.0, "weight": 0.17 }
+          ]
+        }
+      ]
+    },
+    "headliners": {
+      "enemyPackId": "floor4-arena",
+      "pool": [
+        {
+          "archetypeId": "floor4-bellhop-brawler",
+          "grade": "warmup",
+          "displayName": "Bellhop Brawler",
+          "entranceAnnouncement": "BELLHOP BRAWLER — tipping is mandatory in this venue!"
+        },
+        {
+          "archetypeId": "floor4-mascot-mauler",
+          "grade": "warmup",
+          "displayName": "Mascot Mauler",
+          "entranceAnnouncement": "MASCOT MAULER — the suit is smiling because it has teeth!"
+        },
+        {
+          "archetypeId": "floor4-pyro-principal",
+          "grade": "midcard",
+          "displayName": "Pyro Principal",
+          "entranceAnnouncement": "PYRO PRINCIPAL — please admire the waiver before the flames!"
+        },
+        {
+          "archetypeId": "floor4-stunt-captain",
+          "grade": "midcard",
+          "displayName": "Stunt Captain",
+          "entranceAnnouncement": "STUNT CAPTAIN — every landing is someone else's problem!"
+        },
+        {
+          "archetypeId": "floor4-ringmaster-proxy",
+          "grade": "midcard",
+          "displayName": "Ringmaster Proxy",
+          "entranceAnnouncement": "RINGMASTER PROXY — management has entered by delegation!"
+        },
+        {
+          "archetypeId": "floor4-camera-kraken",
+          "grade": "main-event",
+          "displayName": "Camera Kraken",
+          "entranceAnnouncement": "CAMERA KRAKEN — all angles are bad angles!"
+        },
+        {
+          "archetypeId": "floor4-sponsor-sentinel",
+          "grade": "main-event",
+          "displayName": "Sponsor Sentinel",
+          "entranceAnnouncement": "SPONSOR SENTINEL — this beating is brought to you by synergy!"
+        },
+        {
+          "archetypeId": "floor4-contract-collector",
+          "grade": "main-event",
+          "displayName": "Contract Collector",
+          "entranceAnnouncement": "CONTRACT COLLECTOR — your likeness rights are overdue!"
+        },
+        {
+          "archetypeId": "floor4-showrunner",
+          "grade": "finale",
+          "displayName": "The Showrunner",
+          "entranceAnnouncement": "THE SHOWRUNNER — final notes, final cut, final warning!"
+        }
+      ],
+      "slots": [
+        {
+          "act": 1,
+          "eligibleGrades": ["warmup"],
+          "appearanceFeeGold": 18
+        },
+        {
+          "act": 2,
+          "eligibleGrades": ["warmup", "midcard"],
+          "appearanceFeeGold": 28
+        },
+        {
+          "act": 3,
+          "eligibleGrades": ["midcard"],
+          "appearanceFeeGold": 40
+        },
+        {
+          "act": 4,
+          "eligibleGrades": ["main-event"],
+          "appearanceFeeGold": 55
+        },
+        {
+          "act": 5,
+          "eligibleGrades": ["finale"],
+          "fixedArchetypeId": "floor4-showrunner",
+          "appearanceFeeGold": 75
+        }
+      ]
+    },
+    "overtime": {
+      "capMs": 60000,
+      "warningAnnouncement": "OVERTIME — the network bought one more minute!",
+      "finisherAnnouncement": "FINAL CUT — the broadcast ends now!",
+      "rampSteps": [
+        { "atMs": 0, "speedMultiplier": 1.1, "damageMultiplier": 1.15 },
+        { "atMs": 20000, "speedMultiplier": 1.25, "damageMultiplier": 1.35 },
+        { "atMs": 40000, "speedMultiplier": 1.45, "damageMultiplier": 1.65 }
+      ]
     }
   }
 }

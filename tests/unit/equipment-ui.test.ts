@@ -55,6 +55,20 @@ describe('EquipmentUI bag-scroll architectural guard', () => {
     expect(source.match(/resolveEquipmentInstance\(lastWorld, state, instId\)/g)).toHaveLength(3);
     expect(source).toContain('itemDef ?? instance.def');
     expect(source).toContain('showGeneratedEquipmentTooltip(instance.def)');
-    expect(source).toContain('getItemById(swapped.id)?.name ?? swapped.name');
+  });
+
+  it('keeps comparison deltas in the candidate tooltip instead of the stats pane', () => {
+    // `renderTooltipPair` was renamed `renderComparisonTooltips` (single vs.
+    // multi-item replacement), and the old inline "Current totals" compare
+    // bar was replaced entirely by per-candidate tooltip cards. The stats
+    // pane's own renderStats() must never grow an inline `value + delta`
+    // projection — candidate deltas belong exclusively in the tooltip cards,
+    // which legitimately use the `(${delta > 0 ? ...` template elsewhere.
+    expect(source).toContain('renderComparisonTooltips');
+    const statsPaneMatch = source.match(/ {2}function renderStats\(\): void \{[\s\S]*?\n {2}\}\n/);
+    expect(statsPaneMatch).not.toBeNull();
+    const statsPaneSource = statsPaneMatch![0];
+    expect(statsPaneSource).not.toContain('value + delta');
+    expect(statsPaneSource).not.toContain('(${delta > 0 ?');
   });
 });

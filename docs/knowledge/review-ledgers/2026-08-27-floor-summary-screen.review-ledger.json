@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "floor-summary-screen",
+  "task_title": "After-floor stats/summary screen between floors",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted: authoritative per-step player-attributed kill count instead of SessionRecorder totalKills (count-delta inference); robust one-shot acknowledgement incl. touch pointers with an arm delay so the stair-confirm Enter cannot instantly dismiss; scope the summary to transition_to_next_floor only (terminal victory opens the run survey); world.elapsedMs for floor time; goldLedger for gold earned this floor (playerGold carries over); current/max HP for health; explicit undefined-vs-zero handling; update the two existing floor-transition e2e tests to acknowledge the summary."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Medium finding: the auto-driven timed advance was covered only by a source-string guard. Fixed by adding a probe seam (setAutoDrivenForProbe) and a deterministic e2e case that completes Floor 1 with isAutoDriven() true and asserts the scene reaches Floor 2 with no acknowledgement."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Re-review of the auto-driven coverage fix: no remaining concerns across correctness, determinism, layering, security, performance, and regression coverage."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "3b091e72275ab44f291361aadcd245bebdfb62cc",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The PR correctly implements the between-floor summary screen, properly handling both human and AI-driven runs without breaking the loop or hanging. It correctly tracks floor kills per simulation step to avoid double-counting, provides complete deterministic test coverage including e2e timeout and acknowledge testing, and respects the required determinism and layer boundary policies."
+    }
+  }
+}

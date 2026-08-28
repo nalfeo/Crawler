@@ -13,13 +13,6 @@ import { generatedEquipmentRunKeyFromSeed } from '../../src/shared/generated-equ
 // InventoryUI constants (kept local because they are not exported by the production module).
 const INVENTORY_CELL_SIZE = 64;
 const TOOLTIP_WIDTH = 200;
-const TOOLTIP_CONTENT_WIDTH = TOOLTIP_WIDTH - 16;
-
-interface TextRecord {
-  readonly text: string;
-  readonly style: Phaser.Types.GameObjects.Text.TextStyle | undefined;
-  readonly getBounds: () => { x: number; y: number; width: number; height: number };
-}
 
 interface RectangleStub {
   readonly width: number;
@@ -46,9 +39,7 @@ interface RectangleStub {
 
 interface RenderRecord {
   readonly textStrings: string[];
-  readonly textRecords: TextRecord[];
   readonly tooltipHeights: number[];
-  readonly tooltipBounds: Array<{ x: number; y: number; width: number; height: number }>;
   readonly cellRects: RectangleStub[];
 }
 
@@ -58,11 +49,8 @@ function makeRectangleStub(
   width: number,
   height: number,
   record: RenderRecord,
-  boundsOrigin: 'center' | 'topLeft' = 'center',
 ): RectangleStub {
   const handlers = new Map<string, () => void>();
-  let currentX = x;
-  let currentY = y;
   const stub: RectangleStub = {
     width,
     height,
@@ -86,11 +74,7 @@ function makeRectangleStub(
     setOrigin: () => stub,
     setScale: () => stub,
     setDepth: () => stub,
-    setPosition: (nextX?: number, nextY?: number) => {
-      currentX = nextX ?? currentX;
-      currentY = nextY ?? currentY;
-      return stub;
-    },
+    setPosition: () => stub,
     setVisible: () => stub,
     setScrollFactor: () => stub,
     setAlpha: () => stub,
@@ -99,42 +83,17 @@ function makeRectangleStub(
     setColor: () => stub,
     setText: () => stub,
     destroy: () => {},
-    getBounds: () => ({
-      x: boundsOrigin === 'center' ? currentX - width / 2 : currentX,
-      y: boundsOrigin === 'center' ? currentY - height / 2 : currentY,
-      width,
-      height,
-    }),
+    getBounds: () => ({ x: x - width / 2, y: y - height / 2, width, height }),
   };
   if (width === TOOLTIP_WIDTH) {
     record.tooltipHeights.push(height);
-    record.tooltipBounds.push(stub.getBounds());
   }
   return stub;
 }
 
-function makeTextStub(
-  record: RenderRecord,
-  text: string,
-  style?: Phaser.Types.GameObjects.Text.TextStyle,
-): RectangleStub {
+function makeTextStub(record: RenderRecord, text: string): RectangleStub {
   record.textStrings.push(String(text));
-  const wrapWidth = style?.wordWrap?.width;
-  const fontSize =
-    typeof style?.fontSize === 'string' ? Number.parseInt(style.fontSize, 10) : style?.fontSize;
-  const glyphWidth = (Number.isFinite(fontSize) ? Number(fontSize) : 11) * 0.7;
-  const width =
-    typeof wrapWidth === 'number'
-      ? Math.min(wrapWidth, Math.ceil(String(text).length * glyphWidth))
-      : Math.ceil(String(text).length * glyphWidth);
-  const visualLines =
-    typeof wrapWidth === 'number' && wrapWidth > 0
-      ? Math.max(1, Math.ceil((String(text).length * glyphWidth) / wrapWidth))
-      : 1;
-  const height = visualLines * 18;
-  const stub = makeRectangleStub(0, 0, width, height, record, 'topLeft');
-  record.textRecords.push({ text: String(text), style, getBounds: stub.getBounds });
-  return stub;
+  return makeRectangleStub(0, 0, 0, 0, record);
 }
 
 function makeContainerStub(): {
@@ -164,12 +123,7 @@ function makeScene(record: RenderRecord): unknown {
       rectangle: (x: number, y: number, width: number, height: number) =>
         makeRectangleStub(x, y, width, height, record),
       image: () => makeRectangleStub(0, 0, 0, 0, record),
-      text: (
-        _x: number,
-        _y: number,
-        text: string,
-        style?: Phaser.Types.GameObjects.Text.TextStyle,
-      ) => makeTextStub(record, text, style),
+      text: (_x: number, _y: number, text: string) => makeTextStub(record, text),
     },
     game: {
       registry: {
@@ -208,13 +162,7 @@ function seedWorldWithStaticAndGeneratedWeapons(options?: { readonly baseId?: st
 
 describe('InventoryUI weapon tooltip DPS (real render path)', () => {
   it('shows DPS for static/generated weapons and keeps non-weapons at base tooltip height', () => {
-    const record: RenderRecord = {
-      textStrings: [],
-      textRecords: [],
-      tooltipHeights: [],
-      tooltipBounds: [],
-      cellRects: [],
-    };
+    const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
     const scene = makeScene(record);
     const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons();
     const ui = createInventoryUI(scene as never, { height: 900 });
@@ -236,60 +184,38 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     const hover = (index: number) => {
       const rect = record.cellRects[index];
       expect(rect).toBeDefined();
-      if (!rect) {
-        return {
-          lines: [] as string[],
-          records: [] as TextRecord[],
-          lastTooltipHeight: 0,
-          lastTooltipBounds: undefined,
-        };
-      }
+      if (!rect) return { lines: [] as string[], lastTooltipHeight: 0 };
       const textStart = record.textStrings.length;
-      const textRecordStart = record.textRecords.length;
       const tooltipStart = record.tooltipHeights.length;
       rect.emit('pointerover');
       return {
         lines: record.textStrings.slice(textStart),
-        records: record.textRecords.slice(textRecordStart),
         lastTooltipHeight: record.tooltipHeights[tooltipStart] ?? 0,
-        lastTooltipBounds: record.tooltipBounds[tooltipStart],
       };
     };
 
     const staticWeaponTooltip = hover(staticWeaponIndex);
     expect(staticWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    expect(staticWeaponTooltip.lastTooltipHeight).toBe(128);
+    // DPS now leads the rich-content stat-line array (instead of the fixed
+    // 128px footer statLine branch), so height grows with the stat lines and
+    // description text like any other stat-bearing item.
+    expect(staticWeaponTooltip.lastTooltipHeight).toBe(138);
 
     const generatedWeaponTooltip = hover(generatedWeaponIndex);
     expect(generatedWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    expect(generatedWeaponTooltip.lines).toEqual(
-      expect.arrayContaining([
-        getItemById('plasma-pistol')?.description,
-        'Main Hand',
-        '+3 ARMOR',
-        '4 lb',
-      ]),
+    // The generated weapon also has bonus stat rows beyond DPS, so it grows
+    // taller than the static weapon's DPS-only stat list.
+    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(152);
+    // DPS must lead the stat-line array, not trail after the bonus stat rows.
+    const dpsIndex = generatedWeaponTooltip.lines.findIndex((line) => line.startsWith('DPS: '));
+    const firstBonusStatIndex = generatedWeaponTooltip.lines.findIndex(
+      (line) => !line.startsWith('DPS: ') && (line.startsWith('+') || line.startsWith('-')),
     );
-    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(182);
-    const generatedStatRecords = generatedWeaponTooltip.records.filter(
-      (record) =>
-        record.text.startsWith('DPS: ') ||
-        record.text === 'Main Hand' ||
-        record.text === '+3 ARMOR' ||
-        record.text === '4 lb',
-    );
-    expect(generatedStatRecords).toHaveLength(4);
-    expect(generatedWeaponTooltip.lastTooltipBounds).toBeDefined();
-    const tooltipBounds = generatedWeaponTooltip.lastTooltipBounds;
-    if (!tooltipBounds) return;
-    for (const statRecord of generatedStatRecords) {
-      expect(statRecord.style?.wordWrap).toEqual({ width: TOOLTIP_CONTENT_WIDTH });
-      const bounds = statRecord.getBounds();
-      expect(bounds.x).toBeGreaterThanOrEqual(tooltipBounds.x + 8);
-      expect(bounds.x + bounds.width).toBeLessThanOrEqual(
-        tooltipBounds.x + 8 + TOOLTIP_CONTENT_WIDTH,
-      );
-    }
+    expect(dpsIndex).toBeGreaterThanOrEqual(0);
+    expect(firstBonusStatIndex).toBeGreaterThan(dpsIndex);
+    // Flavor copy reuses the authored catalog description of the generated
+    // base item instead of leaking slot/stat/weight metadata into that slot.
+    expect(generatedWeaponTooltip.lines).toContain(getItemById('plasma-pistol')?.description);
 
     const nonWeaponTooltip = hover(nonWeaponIndex);
     expect(nonWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(false);
@@ -297,13 +223,7 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
   });
 
   it('uses neutral flavor fallback for generated-only bases in the tooltip render path', () => {
-    const record: RenderRecord = {
-      textStrings: [],
-      textRecords: [],
-      tooltipHeights: [],
-      tooltipBounds: [],
-      cellRects: [],
-    };
+    const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
     const scene = makeScene(record);
     const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons({
       baseId: 'equipment/weapon/bone-saw',

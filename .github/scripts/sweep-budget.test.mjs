@@ -223,6 +223,9 @@ test('runner inspection excludes all broad sweeps and counts queued non-sweep ru
     requestFn,
   });
   assert.equal(result.nonSweepJobs, 3);
+  // Run 2 contributes one queued job; run 3 is a queued run with no job rows
+  // yet, so it counts as one queued claim on the pool.
+  assert.equal(result.queuedJobs, 2);
   assert.deepEqual(result.activeSweepRunIds, [1]);
 });
 
