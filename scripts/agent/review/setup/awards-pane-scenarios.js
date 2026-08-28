@@ -20,41 +20,18 @@
   }
   if (!probe.getState().achievementsOpen) throw new Error('Awards pane did not open');
 
-  const canvas = document.querySelector('canvas');
-  if (!(canvas instanceof HTMLCanvasElement)) throw new Error('no canvas');
-  const clickDesign = (x, y) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = rect.width / canvas.width;
-    const scaleY = rect.height / canvas.height;
-    const dpr = window.devicePixelRatio || 1;
-    const clientX = rect.left + x * dpr * scaleX;
-    const clientY = rect.top + y * dpr * scaleY;
-    const event = { clientX, clientY, bubbles: true, pointerId: 1, pointerType: 'mouse' };
-    canvas.dispatchEvent(new PointerEvent('pointerdown', event));
-    canvas.dispatchEvent(new PointerEvent('pointerup', event));
-  };
-
-  // Chip positions are derived from the fixed All chip width and spacing in
-  // AchievementsUI, then anchored to the live panel region.
-  const panelBefore = probe
-    .getAchievementsLayoutRegions()
-    .find((region) => region.id === 'awards-panel');
-  if (!panelBefore) throw new Error('awards-panel region missing');
   if (scenario === 'empty-filter' || scenario === 'filter-working') {
     // Empty results selects Global (the fixture has only floor-scoped rows).
     // The working-filter fixture selects Floor 1 from the same live chip row.
-    const chipOffset = scenario === 'empty-filter' ? 96 : 177;
-    clickDesign(panelBefore.box.x + chipOffset, panelBefore.box.y + 93);
+    probe.setAchievementsFilter(scenario === 'empty-filter' ? 'global' : 'floor:1');
     await new Promise((resolve) => setTimeout(resolve, 150));
   } else if (scenario === 'long-flavor') {
-    const row = probe
-      .getAchievementsLayoutRegions()
-      .find((region) => region.id === 'row:ratings-climbing');
-    if (!row) throw new Error('long-flavor row missing');
-    clickDesign(row.box.x + 60, row.box.y + 125);
+    probe.setAchievementExpanded('ratings-climbing', true);
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
 
+  const canvas = document.querySelector('canvas');
+  if (!(canvas instanceof HTMLCanvasElement)) throw new Error('no canvas');
   const designRegions = probe.getAchievementsLayoutRegions();
   if (!designRegions.length) throw new Error('Awards pane published no layout regions');
   const rect = canvas.getBoundingClientRect();

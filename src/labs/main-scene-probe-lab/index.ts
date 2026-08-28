@@ -234,6 +234,8 @@ interface MainSceneInternals {
     toggle(world: GameWorld): void;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    setFilterForProbe(filter: 'all' | 'global' | `floor:${number}`): void;
+    setExpandedForProbe(achievementId: string, expanded: boolean): void;
     getLayoutRegions(): {
       id: string;
       box: { x: number; y: number; width: number; height: number };
@@ -814,6 +816,10 @@ export interface MainSceneProbeApi {
     kind: string;
     parentId?: string;
   }[];
+  /** Select an Awards scope filter through the scene-owned UI. */
+  setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
+  /** Expand or collapse an achievement through the scene-owned UI. */
+  setAchievementExpanded(achievementId: string, expanded: boolean): void;
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -2460,6 +2466,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     getAchievementsLayoutRegions: () => getScene()?.achievementsUI?.getLayoutRegions() ?? [],
+
+    setAchievementsFilter: (filter: 'all' | 'global' | `floor:${number}`) => {
+      getScene()?.achievementsUI?.setFilterForProbe(filter);
+    },
+
+    setAchievementExpanded: (achievementId: string, expanded: boolean) => {
+      getScene()?.achievementsUI?.setExpandedForProbe(achievementId, expanded);
+    },
 
     claimAchievementReward: (achievementId: string) => {
       const scene = getScene();

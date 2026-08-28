@@ -58,6 +58,8 @@ const FLAVOR_EXPAND_THRESHOLD = 120;
 const FLAVOR_LINE_H = 18;
 /** Number of lines to show in collapsed state. */
 const FLAVOR_COLLAPSED_LINES = 4;
+/** Maximum lines shown when a long flavor text is expanded. */
+const FLAVOR_EXPANDED_LINES = 8;
 /** Height of the expand/collapse button row. */
 const EXPANDER_BTN_H = 18;
 
@@ -163,6 +165,8 @@ export function createAchievementsUI(
    * without synthesizing a pointer event on an internal, non-exported button.
    */
   claimReward(achievementId: string): void;
+  setFilterForProbe(filter: AwardsFilter): void;
+  setExpandedForProbe(achievementId: string, expanded: boolean): void;
   isOpen(): boolean;
   getScrollIndex(): number;
   /**
@@ -427,7 +431,8 @@ export function createAchievementsUI(
     }
 
     const collapsedFlavorH = FLAVOR_COLLAPSED_LINES * FLAVOR_LINE_H;
-    const flavorH = isLong && !isExpanded ? collapsedFlavorH : fullFlavorH;
+    const expandedFlavorH = FLAVOR_EXPANDED_LINES * FLAVOR_LINE_H;
+    const flavorH = isLong ? (isExpanded ? expandedFlavorH : collapsedFlavorH) : fullFlavorH;
     const expanderH = isLong ? EXPANDER_BTN_H : 0;
     // The reward column (chest + tier label + button) is often taller than the
     // text column; the row must reserve whichever is larger or the chest leaks.
@@ -516,7 +521,7 @@ export function createAchievementsUI(
 
     const flavor = crispText(textLeft, y + 50, def.directorFlavor, {
       ...flavorStyle,
-      maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
+      maxLines: isLong ? (isExpanded ? FLAVOR_EXPANDED_LINES : FLAVOR_COLLAPSED_LINES) : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
@@ -743,11 +748,12 @@ export function createAchievementsUI(
         listTop(),
         activeFilter === FILTER_ALL
           ? 'No achievements unlocked yet — go earn some on Floor 1.'
-          : 'No achievements unlocked in this category yet.',
+          : 'No awards in this filter yet.',
         {
           fontFamily: FONT_FAMILY,
-          fontSize: '14px',
-          color: hex(COLORS.textSecondary),
+          fontSize: '16px',
+          fontStyle: 'bold',
+          color: hex(COLORS.textPrimary),
         },
       );
       container.add(empty);
@@ -755,6 +761,11 @@ export function createAchievementsUI(
       summary.setText('0 unlocked  ·  0 rewards ready');
       if (scrollbarTrack) scrollbarTrack.setVisible(false);
       if (scrollbarThumb) scrollbarThumb.setVisible(false);
+      layoutRegions.unshift({
+        id: 'awards-panel',
+        box: { x: panelX, y: panelY, width: panelWidth, height: panelHeight },
+        kind: 'panel',
+      });
       return;
     }
 
@@ -955,6 +966,18 @@ export function createAchievementsUI(
     refresh,
     resumePendingPresentation,
     claimReward: open,
+    setFilterForProbe(filter: AwardsFilter) {
+      activeFilter = filter;
+      scrollIndex = 0;
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
+    setExpandedForProbe(achievementId: string, expanded: boolean) {
+      if (expanded) expandedIds.add(achievementId);
+      else expandedIds.delete(achievementId);
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
     isOpen: () => visible,
     getScrollIndex: () => scrollIndex,
     getLayoutRegions: () => layoutRegions.map((region) => ({ ...region, box: { ...region.box } })),
