@@ -83,6 +83,8 @@ const DEFAULT_INTERVAL_MS = 5000;
 /** Two snapshots this far apart give `--once` a real CPU rate, not a null. */
 const ONCE_SAMPLE_WINDOW_MS = 300;
 const MIN_INTERVAL_MS = 200;
+/** How often the stop file is polled, independent of the sampling interval. */
+const STOP_POLL_MS = 500;
 
 /** Parse argv (everything after the script name). Throws on invalid input. */
 export function parseArgs(argv: readonly string[]): CliOptions {
@@ -348,6 +350,13 @@ function delay(ms: number): Promise<void> {
 /**
  * Sample on an interval until the duration elapses, the stop file appears, or
  * a stop signal arrives.
+ *
+ * The stop file is polled far more often than the sampling interval: a job that
+ * ends just after a tick would otherwise keep the CI report step waiting a full
+ * interval, and a job shorter than one interval would never record a sample at
+ * all. The final tick still honors the minimum-interval guard, so a stop that
+ * lands immediately after a sample simply ends the run instead of appending a
+ * noisy sub-interval rate.
  */
 function sampleUntilDone(tick: () => void, options: CliOptions): Promise<void> {
   return new Promise((resolve) => {
@@ -358,6 +367,7 @@ function sampleUntilDone(tick: () => void, options: CliOptions): Promise<void> {
       if (settled) return;
       settled = true;
       clearInterval(timer);
+      clearInterval(stopWatcher);
       clearTimeout(durationTimer);
       process.off('SIGINT', stop);
       process.off('SIGTERM', stop);
@@ -369,6 +379,17 @@ function sampleUntilDone(tick: () => void, options: CliOptions): Promise<void> {
       tick();
       if (options.stopFile !== null && existsSync(options.stopFile)) stop();
     }, options.intervalMs);
+
+    const stopFile = options.stopFile;
+    const stopWatcher =
+      stopFile === null
+        ? undefined
+        : setInterval(
+            () => {
+              if (existsSync(stopFile)) stop();
+            },
+            Math.min(STOP_POLL_MS, options.intervalMs),
+          );
 
     if (options.durationSec !== null && options.durationSec > 0) {
       durationTimer = setTimeout(stop, options.durationSec * 1000);

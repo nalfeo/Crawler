@@ -53,7 +53,13 @@ runs:
         HOST_PROFILE_INTERVAL: ${{ inputs.interval }}
       run: |
         touch files/host-profile.stop || true
-        sleep 2
+        # The sampler only notices the stop file on its next tick, so wait for
+        # its own final write (removed at `start`) before rebuilding. Without
+        # this the last interval — the whole profile, for a short job — is lost.
+        deadline=$(( $(date +%s) + (HOST_PROFILE_INTERVAL / 1000) + 5 ))
+        while [ ! -f files/host-resources.json ] && [ "$(date +%s)" -lt "$deadline" ]; do
+          sleep 1
+        done
         npm run --silent host:profile -- \
           --from-jsonl \
           --label "$HOST_PROFILE_LABEL" \
