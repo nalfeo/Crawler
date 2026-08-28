@@ -29,6 +29,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-recovery/dispatch-table.mjs',
   '.github/scripts/ci-recovery/decision-log.mjs',
   '.github/scripts/ci-recovery/pr-lifecycle.mjs',
+  '.github/scripts/ci-recovery/review-ledger-lifecycle.mjs',
   '.github/scripts/ci-recovery/review-request.mjs',
   '.github/scripts/ci-recovery/loop-incident-lib.mjs',
   '.github/scripts/ci-recovery/markers.mjs',
@@ -40,6 +41,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-conflict-coordinator/state.mjs',
   '.github/scripts/merge-train/state.mjs',
   '.github/scripts/merge-train/human-approval.mjs',
+  'scripts/agent/review/ledger.mjs',
 ]);
 
 function normalize(value) {

@@ -190,6 +190,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'STALLED_QUEUE_PASS_THRESHOLD', // consecutive non-empty-queue-zero-admitted passes before raising a stall incident
   'UNADVANCEABLE_STRIKE_THRESHOLD', // consecutive same-SHA strikes before quarantining an un-advanceable PR
   'UNADVANCEABLE_ATTEMPT_CEILING', // cumulative attempt ceiling that quarantines regardless of SHA churn
+  'UNADVANCEABLE_STATUS_WRITE_ATTEMPTS', // bounded retry budget for strike persistence confirmation writes
   // merge-train/reconcile.mjs — structural lookback window
   'MAIN_HEALTH_PUSH_RUN_LOOKBACK',
   // merge-train/state.mjs

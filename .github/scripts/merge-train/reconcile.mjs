@@ -44,6 +44,8 @@ import {
   evaluateUnadvanceableStrike,
   parseStalledQueuePasses,
   parseUnadvanceableStrike,
+  reconcileUnadvanceableStrike,
+  unadvanceableStrikePersisted,
   renderStalledQueuePasses,
   STALLED_QUEUE_PASS_THRESHOLD,
   renderUnadvanceableStrike,
@@ -300,6 +302,9 @@ function readUnadvanceableStrike(body) {
   };
 }
 
+// Bounded retry budget for confirming the strike record actually persisted.
+const UNADVANCEABLE_STATUS_WRITE_ATTEMPTS = 3;
+
 const STALLED_TRAIN_INCIDENT_TITLE =
   'CI incident: Merge train queue is non-empty but admitting nothing';
 
@@ -425,6 +430,44 @@ async function updateStatus(prNumber, status) {
       body: { body: status },
     });
   }
+}
+
+// Writes the unadvanceable-strike record with read-after-write confirmation.
+//
+// `updateStatus` is a blind PATCH: a stale read (overlapping/cancelled merge-train
+// runs share one status comment) silently rewrites the persisted counter back to
+// its previous value, so the 3-strike quarantine could never fire and a restricted
+// `copilot/*` head starved the whole FIFO queue. Re-read before writing, take the
+// max of same-SHA counters so the record only ever moves forward, then re-read to
+// confirm it landed.
+//
+// Never throws: this runs inside the queued-PR 403 handler, and an escaping error
+// there would abandon every remaining queued PR. A non-persisting record only costs
+// an extra pass before quarantine.
+async function updateUnadvanceableStatus(prNumber, statusFactory, strike) {
+  let nextStrike = strike;
+  for (let attempt = 0; attempt < UNADVANCEABLE_STATUS_WRITE_ATTEMPTS; attempt += 1) {
+    try {
+      const persisted = readUnadvanceableStrike(await statusCommentBody(prNumber));
+      nextStrike = reconcileUnadvanceableStrike(nextStrike, persisted);
+      await updateStatus(
+        prNumber,
+        `${statusFactory(nextStrike)}\n${renderUnadvanceableStrike(nextStrike)}`,
+      );
+      const confirmed = readUnadvanceableStrike(await statusCommentBody(prNumber));
+      if (unadvanceableStrikePersisted(nextStrike, confirmed)) {
+        return nextStrike;
+      }
+    } catch (error) {
+      process.stderr.write(
+        `merge-train strike persist attempt failed pr=#${prNumber} attempt=${attempt + 1}/${UNADVANCEABLE_STATUS_WRITE_ATTEMPTS} status=${error?.status ?? 'unknown'} message=${String(error?.message || error)}\n`,
+      );
+    }
+  }
+  process.stdout.write(
+    `merge-train strike record did not persist pr=#${prNumber} sha=${nextStrike.headSha} strikes=${nextStrike.strikes}\n`,
+  );
+  return nextStrike;
 }
 
 async function eligible(pr) {
@@ -1036,14 +1079,16 @@ for (const pr of queued) {
             );
             await setLabel(pr.number, BLOCKED_LABEL);
             await removeLabel(pr.number, QUEUE_LABEL);
-            await updateStatus(
+            await updateUnadvanceableStatus(
               pr.number,
-              `${renderStatus({
-                position: 0,
-                candidateSha: '',
-                state: 'blocked',
-                detail: `Ejected from the merge train after ${strike.strikes} consecutive update-branch 403s on head \`${strike.headSha}\` (${strike.attempts} cumulative attempts). The train cannot push to this branch, so it was quarantined to stop it starving the queue. Rebase the branch onto \`main\` out-of-band, then remove the \`${BLOCKED_LABEL}\` label to re-queue.`,
-              })}\n${renderUnadvanceableStrike(strike)}`,
+              (currentStrike) =>
+                renderStatus({
+                  position: 0,
+                  candidateSha: '',
+                  state: 'blocked',
+                  detail: `Ejected from the merge train after ${currentStrike.strikes} consecutive update-branch 403s on head \`${currentStrike.headSha}\` (${currentStrike.attempts} cumulative attempts). The train cannot push to this branch, so it was quarantined to stop it starving the queue. Rebase the branch onto \`main\` out-of-band, then remove the \`${BLOCKED_LABEL}\` label to re-queue.`,
+                }),
+              strike,
             );
           } else {
             // Only dispatch recovery while the PR is still queued. Dispatching
@@ -1052,14 +1097,16 @@ for (const pr of queued) {
             // same 403 loop (router.mjs exclusion only blocks NEW dispatch
             // selection; it cannot cancel an in-flight one).
             await dispatchRecoveryGated(pr.number, 'merge-train-restricted-branch-update');
-            await updateStatus(
+            await updateUnadvanceableStatus(
               pr.number,
-              `${renderStatus({
-                position: queued.indexOf(pr) + 1,
-                candidateSha: '',
-                state: 'waiting',
-                detail: `update-branch blocked (403) on head \`${strike.headSha}\`; strike ${strike.strikes}/${UNADVANCEABLE_STRIKE_THRESHOLD} before quarantine.`,
-              })}\n${renderUnadvanceableStrike(strike)}`,
+              (currentStrike) =>
+                renderStatus({
+                  position: queued.indexOf(pr) + 1,
+                  candidateSha: '',
+                  state: 'waiting',
+                  detail: `update-branch blocked (403) on head \`${currentStrike.headSha}\`; strike ${currentStrike.strikes}/${UNADVANCEABLE_STRIKE_THRESHOLD} before quarantine.`,
+                }),
+              strike,
             );
           }
         } else if (err.status === 422) {

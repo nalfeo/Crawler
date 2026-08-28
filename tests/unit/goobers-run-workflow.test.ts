@@ -143,7 +143,6 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
-    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -199,18 +198,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    // The pre-review `checkpoint-branch` stage was removed; `implement` now
+    // hands straight to the review gate and no checkpoint task remains.
+    expect(implement?.next).toBe('review');
+    expect(tasks.get('checkpoint-branch')).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -302,6 +299,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
     expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(materialize?.run).toContain('GH_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_REPOSITORY');
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
