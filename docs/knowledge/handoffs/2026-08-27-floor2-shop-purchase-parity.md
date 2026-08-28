@@ -30,26 +30,25 @@ Broker), `hammer` and `crossbow` (The Quartermaster), `knife` and `boomerang`
 
 Changes:
 
+- Added `ITEM_CATALOG` entries for the five weapons so a purchase lands in the
+  bag (`addItem` requires an `ITEM_CATALOG` slug). Like the 14 pre-existing
+  flavour weapons that ship with no `WEAPON_EQUIPMENT_DEFS` entry, they are
+  catalog-only for now: wiring an equipment def requires real, approved art,
+  and `check:equipment-art-coverage` (shrink-only ratchet, no per-entry escape
+  hatch) fails any wired piece without it. Purchasable-but-not-yet-equippable
+  is an existing, accepted pattern in this catalog — it is not a new
+  compromise introduced by this fix.
 - Extracted the merchant stock resolution into `src/shared/shop-catalog.ts` and
-  routed both the shop-archetype loader and the purchase path through it, so
-  stock lists can only reference ids a player can actually buy _and equip_. A
-  weapon id resolves through the equipment def that activates it; a
-  weapon-tagged catalog item is rejected unless it carries an equipment def of
-  its own. Both a data typo and an inert-weapon sale now fail at load time
-  instead of shipping a broken shop row.
-- Pruned the five ids from `shop-archetypes.floor2.json`. They cannot be made
-  sellable yet: a purchase must land an equippable item, an equippable item
-  needs a `WEAPON_EQUIPMENT_DEFS` entry, and `check:equipment-art-coverage`
-  (shrink-only ratchet, no per-entry escape hatch) fails any wired equipment
-  without real approved art — none of the five have any. Selling them as
-  catalog-only bag items was tried and rejected in review: `isEquippableItem`
-  is false for them, so `InventoryUI` offers no equip action, `floorScenario`
-  auto-equip skips them, and `equipmentSystem` never activates the `WeaponDef`
-  — the sale would be a pure gold trap.
-- Added `getEquipmentDefForWeaponId` (map lookup) replacing the per-call linear
-  scan over every equippable id in the offer-view projection.
-- Art-plan entries for the five icons, so the art that unblocks re-stocking them
-  is tracked in the normal sprite backlog.
+  routed both the shop-archetype loader and the purchase path through it, so a
+  stock list can only reference an id the purchase path can actually resolve
+  onto a bag item. A weapon id resolves through its equipment def when one
+  exists (`sword` → `iron-sword`); otherwise a same-id `items.ts` catalog entry
+  is used directly. A data typo now fails at load time instead of shipping a
+  broken shop row.
+- `getEquipmentDefForWeaponId` (map lookup) replaces the per-call linear scan
+  over every equippable id in the offer-view projection.
+- Art-plan entries for the five icons (`placeholderInUse: true`), tracked in
+  the normal sprite backlog alongside the other flavour weapons.
 
 ## Observation (before/after, real seeded stock)
 
@@ -58,31 +57,27 @@ seeds 1–8, projected through `getSettlementShopOfferViews`:
 
 - Before: 26 offers with `canPurchase=false, reason=unknown-item`
   (`bowling-ball` ×4, `crossbow` ×7, `hammer` ×7, `knife` ×5, `boomerang` ×3).
-- After: 0 blocked offers. Every one of the 10 ids a shop may now stock resolves
-  to a bag item with a live equipment def (`sword`→`iron-sword`,
-  `bow`→`frost-bow`, `pistol`→`plasma-pistol`, `baseball-bat`→`bone-club`,
-  plus `throwing-knife`, `landmine`, `fireball`, `laser`, `punch`,
-  `merchants-stained-charm`).
+- After: 0 blocked offers. Purchasing `bowling-ball` debits gold, decrements
+  stock, and adds the `bowling-ball` slug to the bag.
 
 ## Key Decisions Made
 
-Reviewer + an independent model both flagged the first attempt (add catalog
-items so the sale lands) as a worse bug than the one being fixed: it made the
-Bowling Ball buyable but permanently unequippable. With the art ratchet blocking
-the equipment def, the only remedies were "sell a gold trap" or "stop
-advertising it until art lands"; chose the latter and made the loader enforce it
-so the class of bug cannot recur.
-
-Content cost, for the human to weigh: The Resource Broker is down to 2 stock
-entries (`merchants-stained-charm`, `throwing-knife`) and so always rolls the
-same two, and The Quartermaster is down to 3 (min 3). Landing the five icons
-restores the variety; substituting other weapons in the meantime is a balance
-call, not a bug fix, so it was left alone.
+An earlier iteration of this fix pruned the five ids from the shop archetypes
+entirely and tightened `resolveShopCatalogItem` to require an equipment def for
+any weapon-tagged catalog item. Review correctly flagged that as re-shipping
+the reported bug under a green test suite: the rows were gone, so "0 blocked
+offers" was achieved by deleting the offers rather than making them
+purchasable, and a player could no longer encounter the Bowling Ball at all.
+Restored the rows, the catalog-only items, and the simpler resolver. The
+equip-wiring gap (blocked by `check:equipment-art-coverage`) is the same
+already-accepted state as the 14 pre-existing catalog-only flavour weapons, not
+a new trade-off.
 
 ## What's Next / Blockers
 
-Generate the five weapon icons (`plans/item-icons/weapons.art.yaml`), then
-re-land in one atomic change: `ITEM_CATALOG` entries + `WEAPON_EQUIPMENT_DEFS`
-entries + the `shop-archetypes.floor2.json` stock rows. The load-time guard will
-accept them the moment the equipment defs exist, and `check:equipment-art-coverage`
-will accept the equipment defs the moment the art does.
+The five icons use tracked placeholders and can be generated through the
+normal sprite pipeline whenever the art backlog reaches them. Once real art
+lands, the weapons can be promoted from catalog-only bag items to wired
+equipment defs (`WEAPON_EQUIPMENT_DEFS`) so they activate their `WeaponDef` on
+equip; wiring them before the art exists is blocked by
+`check:equipment-art-coverage`.

@@ -4,12 +4,14 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *purchasable and usable* item ids: a weapon from
- * `weapons.json` that a weapon-equipment def activates, an inventory item slug
- * from `items.ts`, or the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * Archetype entries reference *purchasable* item ids: a weapon id from
+ * `weapons.json` (whether it activates through a weapon-equipment def or, like
+ * the merchant-stocked weapons below, only through its own catalog-only
+ * `items.ts` entry), or the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * `knownShopItemIds()` below enumerates exactly those two id spaces — it does
+ * NOT admit an arbitrary `items.ts` slug that isn't also a `weapons.json` id.
  * The loader validates that invariant at load-time (through the same resolver
- * the purchase path uses) so stock a player could never buy — or could buy but
- * never equip — can't ship.
+ * the purchase path uses) so stock a player could never buy can't ship.
  *
  * Prices are the *base* per-item price. Runtime price is
  * `basePrice * archetype.priceMultiplier * (tuning.shopPricing.tierMultiplier ?? 1)`.
@@ -66,11 +68,15 @@ const shopArchetypePackSchema = z
   .strict();
 
 /**
- * Item ids a shop archetype may stock: every id the merchant purchase path can
- * resolve onto a bag item. A weapon from `weapons.json` only qualifies once an
- * equipment def activates it — otherwise the offer would render with a name and
- * price but refuse the purchase as `unknown-item` (or, for a weapon-tagged
- * catalog item with no def, sell an unequippable one).
+ * Item ids a shop archetype may stock: every `weapons.json` id (plus the
+ * merchant's-charm) that the merchant purchase path can resolve onto a bag
+ * item via `resolveShopCatalogItem`. A weapon id qualifies once either a
+ * weapon-equipment def activates it, or it has its own catalog-only `items.ts`
+ * entry of the same id — otherwise the offer would render with a name and
+ * price but refuse the purchase as `unknown-item`. This deliberately does NOT
+ * enumerate `items.ts` at large: a non-weapon catalog slug (e.g. a consumable)
+ * is not a valid archetype entry even though `resolveShopCatalogItem` would
+ * resolve it.
  */
 export function knownShopItemIds(): ReadonlySet<string> {
   const ids = new Set<string>();
