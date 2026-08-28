@@ -1934,6 +1934,17 @@ test('the restricted-branch 403 handler persists strikes through the confirming 
     'the writer runs inside the queued-PR loop; an escaping throw would abandon every remaining ' +
       'queued PR, which is a worse failure than one extra pass before quarantine',
   );
+  assert.match(
+    body,
+    /for\s*\([^)]*UNADVANCEABLE_STATUS_WRITE_ATTEMPTS[^)]*\)\s*\{\s*try\s*\{/,
+    'every persistence attempt must be wrapped in a local try/catch so API failures cannot escape ' +
+      'the queued-PR loop',
+  );
+  assert.match(
+    body,
+    /catch \(error\) \{\s*process\.stderr\.write\(\s*`merge-train strike persist attempt failed/,
+    'attempt-local failures must be logged and retried instead of aborting reconcile',
+  );
 });
 
 test('STALLED_TRAIN_TRACKING_LABEL is provisioned by the startup ensureLabel sequence', () => {

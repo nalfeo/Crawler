@@ -447,15 +447,21 @@ async function updateStatus(prNumber, status) {
 async function updateUnadvanceableStatus(prNumber, statusFactory, strike) {
   let nextStrike = strike;
   for (let attempt = 0; attempt < UNADVANCEABLE_STATUS_WRITE_ATTEMPTS; attempt += 1) {
-    const persisted = readUnadvanceableStrike(await statusCommentBody(prNumber));
-    nextStrike = reconcileUnadvanceableStrike(nextStrike, persisted);
-    await updateStatus(
-      prNumber,
-      `${statusFactory(nextStrike)}\n${renderUnadvanceableStrike(nextStrike)}`,
-    );
-    const confirmed = readUnadvanceableStrike(await statusCommentBody(prNumber));
-    if (unadvanceableStrikePersisted(nextStrike, confirmed)) {
-      return nextStrike;
+    try {
+      const persisted = readUnadvanceableStrike(await statusCommentBody(prNumber));
+      nextStrike = reconcileUnadvanceableStrike(nextStrike, persisted);
+      await updateStatus(
+        prNumber,
+        `${statusFactory(nextStrike)}\n${renderUnadvanceableStrike(nextStrike)}`,
+      );
+      const confirmed = readUnadvanceableStrike(await statusCommentBody(prNumber));
+      if (unadvanceableStrikePersisted(nextStrike, confirmed)) {
+        return nextStrike;
+      }
+    } catch (error) {
+      process.stderr.write(
+        `merge-train strike persist attempt failed pr=#${prNumber} attempt=${attempt + 1}/${UNADVANCEABLE_STATUS_WRITE_ATTEMPTS} status=${error?.status ?? 'unknown'} message=${String(error?.message || error)}\n`,
+      );
     }
   }
   process.stdout.write(
