@@ -76,7 +76,9 @@ async function main(): Promise<void> {
       while ((m = re.exec(line)) !== null) {
         const raw = m[1];
         if (!raw) continue;
-        const candidate = raw.replace(/[.,;)\]]+$/, '');
+        // `path.ts::symbol` is a common ADR convention for pointing at an export
+        // inside a file; the `::symbol` suffix is not part of the path on disk.
+        const candidate = raw.replace(/[.,;)\]]+$/, '').replace(/::.*$/, '');
         if (!looksLikePath(candidate)) continue;
         if (ALLOWLIST.has(candidate)) continue;
         const ok =
