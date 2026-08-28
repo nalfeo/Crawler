@@ -348,7 +348,6 @@ jobs:
           # "Install Copilot CLI" step comment above).
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
           GOOBERS_RESUME_BRANCH: ${{ env.GOOBERS_RESUME_BRANCH }}
