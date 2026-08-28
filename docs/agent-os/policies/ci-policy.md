@@ -333,8 +333,8 @@ reconciliation. Humans may always add or remove it directly.
    boolean signal — the scanner reads labels and timestamps only.
 
 **Implementation**: `classifyStaleBase()` in
-`.github/scripts/ci-recovery/router.mjs`; constants `STACKED_PR_LABEL` and
-`STACKED_PR_GRACE_MS` are the single source of truth. If GitHub's native stack
+`.github/scripts/ci-recovery/router.mjs`; `STACKED_PR_LABEL` and the structural
+five-minute grace constant are the single source of truth. If GitHub's native stack
 association blocks a base change, CI Recovery uses the stacks API to unstack
 the open PRs, verifies that the target PR was actually removed, and retries the
 retarget. Existing base refs are preserved during unstacking, so explicitly

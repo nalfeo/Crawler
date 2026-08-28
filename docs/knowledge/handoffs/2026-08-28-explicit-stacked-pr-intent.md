@@ -28,7 +28,7 @@ Four interlocking changes:
    Label may only be added by Copilot when a human explicitly requests it.
 
 2. **5-minute grace window** — unlabeled PRs targeting a non-main branch
-   get a 5-minute grace period (`STACKED_PR_GRACE_MS`) from `created_at`
+   get a 5-minute grace period from `created_at`
    before the scanner retargets them. Prevents automation from immediately
    retargeting a PR the moment it is opened.
 
@@ -55,7 +55,7 @@ Estimated 3🍎, actual 3🍎 — tooling-only, well-bounded.
 ## Changes
 
 - `.github/scripts/ci-recovery/router.mjs`:
-  - Added `STACKED_PR_LABEL = 'stacked-pr'` and `STACKED_PR_GRACE_MS = 5*60*1000` exports.
+  - Added the exported `STACKED_PR_LABEL = 'stacked-pr'` and a structural five-minute grace constant.
   - Modified `classifyStaleBase` signature to accept `nowMs` (injectable clock for tests).
   - Replaced single `base-pr-open` skip with label-aware / grace-period logic (3 new outcomes:
     `labeled-stacked-pr-open`, `unlabeled-grace-period`, `unlabeled-stacked-pr-expired`).

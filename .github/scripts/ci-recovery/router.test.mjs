@@ -53,7 +53,6 @@ import {
   classifyStaleBase,
   isStackedRetargetRefusal,
   retargetStaleBasePulls,
-  STACKED_PR_GRACE_MS,
   STACKED_PR_LABEL,
   unstackPullRequest,
   waitForDispatchedRunsVisible,

@@ -63,7 +63,7 @@ export const STACKED_PR_LABEL = 'stacked-pr';
  * so an author has a chance to add the `stacked-pr` label or retarget
  * manually before automation intervenes.
  */
-export const STACKED_PR_GRACE_MS = 5 * 60 * 1_000; // 5 minutes
+const STACKED_PR_GRACE_MS = 5 * 60 * 1_000; // 5 minutes
 // Reserved runner slots for Merge Train Validation when the queue is non-empty.
 // Keeps validation throughput protected from CI Recovery bursts.
 export const VALIDATION_RESERVED_TRAIN_BUSY = 9;
