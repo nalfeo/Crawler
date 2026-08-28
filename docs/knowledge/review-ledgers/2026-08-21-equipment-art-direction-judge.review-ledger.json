@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "3b909d47639c7e326e9238f543c1572f8e5f84ac",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly adds an advisory equipment art-direction review runner, a small reusable normalization/discovery library, targeted tests for prompt construction, response validation, unsupported-claim rejection, summary aggregation, and capture discovery, plus appropriate handoff/review-ledger artifacts. The implementation is scoped to agent review tooling and keeps the live visual-review gate separate. Coverage is good for the pure validation logic, though provider retry behavior is only covered structurally rather than with an injected provider test. No blocker-severity correctness, policy, or maintainability issues were found."
     }
   }
 }
