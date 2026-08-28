@@ -1,0 +1,52 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "safe-room-floor-timer-credit",
+  "task_title": "Boss-arena safe rooms stop no timer; entrance rooms after Floor 1 do",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review before any code. Blocking: (1) Floor 4 must keep its RAW stall backstop and opt out of credit; (2) RunStats.safeRoomMs must key on the new time-stopping flag or active-time win budgets gain unearned credit. Non-blocking: align Floor 2 AI hunt-urgency window to the credited deadline, use credit for human collectHumanRunStats, confirm per-floor credit reset, leave raw-time systems (door locks, cooldowns) untouched. All six adopted; reviewer endorsed the per-manifest opt-in flag (alternative 3) over the chosen implicit-role approach, which is the minor divergence."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "5a679723e73750a7daf14ca3357ddad2506ead54",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/ai/headless-runner.ts",
+          "detail": "The block manually re-evaluates playerInTimeStoppingSafeRoom by calling isPointInTimeStoppingSafeSpace(world, playerX, playerY) despite the comment directly above stating 'so world.playerInTimeStoppingSafeRoom reflects THIS frame's deadline pause'. Remedy: Replace the manual coordinate read and recalculation with 'if (world.playerInTimeStoppingSafeRoom || floor4CountdownSafeFrame) { ... }'."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "The implementation correctly and safely introduces the timer pause mechanic exclusively for authored safe rooms, appropriately treating cleared boss arenas as non-time-stopping. It effectively unifies the deadline logic across the game loop, AI logic, HUD countdown, and stats collector. The test coverage comprehensively proves the correctness of the safe room distinction and handles existing run-states cleanly. A minor maintainability finding is noted for a redundant state recalculation in the headless runner."
+    }
+  }
+}

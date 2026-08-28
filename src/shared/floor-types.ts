@@ -368,6 +368,102 @@ export interface Floor3StudiosState {
 
 export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;
 
+/**
+ * One precomputed spawn instruction inside a wave manifest (spec FR3.2/FR3.4).
+ * Immutable: the entry is rolled when the act arms and is never re-rolled, so a
+ * cap-deferred (debted) entry releases with exactly the identity it was born
+ * with.
+ */
+export interface Floor4WaveSpawnEntry {
+  /** Archetype id, resolved against the Floor 4 arena enemy pack. */
+  readonly archetypeId: string;
+  /** Fixed feed-gate index this entry enters from (`FloorMap.feedGates`). */
+  readonly gateIndex: number;
+  /** Authored threat cost this entry consumed out of the wave budget. */
+  readonly threatCost: number;
+}
+
+/** One act-relative wave: an immutable, ordered spawn manifest (spec FR3.2). */
+export interface Floor4WaveManifest {
+  readonly act: Floor4ActIndex;
+  /** 0-based index within the act. */
+  readonly waveIndex: number;
+  /** Act-relative release mark in ms (`waveIndex * cadence.intervalMs`). */
+  readonly releaseAtActMs: number;
+  /** Threat budget this wave was composed against (FR3.3). */
+  readonly budget: number;
+  /** Spawn order. Also the FIFO order spawn debt is released in (FR3.5). */
+  readonly entries: readonly Floor4WaveSpawnEntry[];
+}
+
+/** A manifest entry awaiting capacity — spawn debt (spec FR3.5). */
+export interface Floor4PendingWaveSpawn {
+  readonly waveIndex: number;
+  /** The entry's index inside its wave manifest — drives deterministic gate stagger. */
+  readonly slot: number;
+  readonly entry: Floor4WaveSpawnEntry;
+}
+
+/** An armed gate telegraph: a gate lit ahead of a wave release (design §4). */
+export interface Floor4GateTelegraph {
+  readonly gateIndex: number;
+  readonly waveIndex: number;
+  /** Arena-clock ms at which the telegraphed wave releases. */
+  readonly firesAtArenaMs: number;
+}
+
+/**
+ * The live wave window for one act: immutable manifest content plus the mutable
+ * release state that plays it back.
+ *
+ * The split is deliberate — `manifests` is frozen content derived purely from
+ * the seed (FR3.2/FR7.4), while the cursor, debt and ownership below are the
+ * only things cap pressure and player performance may perturb.
+ */
+export interface Floor4WaveWindowState {
+  readonly act: Floor4ActIndex;
+  /** Immutable per-act wave manifests, in wave order. */
+  readonly manifests: readonly Floor4WaveManifest[];
+  /** Next wave index to release; monotonic within the act. */
+  releaseCursor: number;
+  /** FIFO spawn debt in manifest order, bounded by `waves.concurrency.debtCap`. */
+  debt: Floor4PendingWaveSpawn[];
+  /** Gates currently lit for an imminent wave. */
+  armedTelegraphs: Floor4GateTelegraph[];
+  /** Live wave-owned enemies: entity id → owning wave index. */
+  ownedEnemies: Map<number, number>;
+}
+
+/**
+ * Pre-armed opening telegraph for an act whose wave window has not opened yet.
+ *
+ * Built during the final `gates.telegraphLeadMs` of the preceding phase and
+ * handed to the window when it arms, so wave 0 gets the same authored warning
+ * every later wave gets without its manifests being rebuilt or re-rolled.
+ */
+export interface Floor4PendingWaveWindow {
+  readonly act: Floor4ActIndex;
+  readonly manifests: readonly Floor4WaveManifest[];
+  armedTelegraphs: Floor4GateTelegraph[];
+}
+
+/** Cumulative wave telemetry for a Floor 4 run (spec FR10.3). */
+export interface Floor4WaveTelemetry {
+  /** Waves whose manifest was released into the arena. */
+  wavesReleased: number;
+  /** Wave enemies actually spawned. */
+  enemiesSpawned: number;
+  /** Enemies removed by the cut at a wave-window boundary (FR3.6). */
+  enemiesCut: number;
+  /**
+   * Released entries that never reached the arena: overflow beyond the debt cap
+   * (FR3.5), plus banked debt still unspawned when the wave cut ends the window.
+   */
+  debtDiscarded: number;
+  /** Gate telegraphs armed. */
+  gateTelegraphsArmed: number;
+}
+
 export type Floor4ArenaPhase =
   | { readonly kind: 'COUNTDOWN' }
   | { readonly kind: 'WAVES'; readonly act: Floor4ActIndex }
@@ -391,17 +487,35 @@ export interface Floor4ArenaState {
   phaseElapsedMs: number;
   lastWorldElapsedMs: number;
   timeline: Floor4ArenaPhaseTimelineEntry[];
+  /**
+   * Wave window for the act currently in `WAVES`. Undefined in every other
+   * phase: the window is armed on entry to `WAVES(act)` and torn down at the
+   * wave-window boundary, so no consumer can read stale release state.
+   */
+  waves?: Floor4WaveWindowState;
+  /**
+   * Gate telegraphs lit for the *next* act's opening wave, armed during the
+   * final `gates.telegraphLeadMs` of COUNTDOWN/INTERMISSION.
+   *
+   * Wave 0 releases at `releaseAtActMs = 0`, so it can only get its authored
+   * pre-spawn warning before its act's wave window exists. The manifests are
+   * carried with it so the window arms on exactly the content it telegraphed.
+   * Discarded at every phase boundary it is not consumed by (FR3.5).
+   */
+  pendingWaves?: Floor4PendingWaveWindow;
+  /** Cumulative wave counters, retained across acts for RunStats. */
+  waveTelemetry: Floor4WaveTelemetry;
 }
 
 export interface Floor4ArenaRunStats {
   readonly arenaElapsedMs: number;
   readonly phase: Floor4ArenaPhase;
   readonly timeline: readonly Floor4ArenaPhaseTimelineEntry[];
+  readonly waveTelemetry: Floor4WaveTelemetry;
 }
 
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
-export type Floor1BossEncounterState = FloorBossEncounterState;
 export type Floor1ObjectiveState = FloorObjectiveState;
 export type Floor1RunSummary = FloorRunSummary;
 export type Floor1ScenarioState = FloorScenarioState;
