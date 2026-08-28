@@ -4,9 +4,14 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *existing* item ids: the weapons in
- * `weapons.json` and the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * Archetype entries reference *existing* weapon item ids from `weapons.json`.
  * The loader validates that invariant at load-time so a data typo can't ship.
+ *
+ * The merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`) is a *unique* item —
+ * sold only by the Floor 1 merchant after his fetch-quest completes — and is
+ * deliberately excluded from `knownShopItemIds()` so it can never be
+ * referenced by a generic shop-archetype entry (other merchants must never
+ * sell it).
  *
  * Prices are the *base* per-item price. Runtime price is
  * `basePrice * archetype.priceMultiplier * (tuning.shopPricing.tierMultiplier ?? 1)`.
@@ -14,7 +19,6 @@
 import { z } from 'zod';
 import archetypesJson from './shop-archetypes.floor2.json';
 import weaponsJson from './weapons.json';
-import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../quest-types.js';
 
 export const FLOOR2_QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
 
@@ -61,13 +65,17 @@ const shopArchetypePackSchema = z
   })
   .strict();
 
-/** Known item ids referenceable by shop archetypes. */
+/**
+ * Known item ids referenceable by shop archetypes. Deliberately excludes
+ * `SHOPKEEPER_EQUIPMENT_ITEM_ID` (the merchant's-charm) — that item is
+ * unique to the Floor 1 merchant's fetch-quest and must never be sellable
+ * by any other merchant's random shop roll.
+ */
 export function knownShopItemIds(): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const weapon of weaponsJson as Array<{ id: string }>) {
     ids.add(weapon.id);
   }
-  ids.add(SHOPKEEPER_EQUIPMENT_ITEM_ID);
   return ids;
 }
 

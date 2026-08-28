@@ -368,6 +368,41 @@ export interface Floor3StudiosState {
 
 export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;
 
+export type Floor4HeadlinerGrade = 'warmup' | 'midcard' | 'main-event' | 'finale';
+
+/** One append-only candidate in the Floor 4 Headliner pool (spec FR4.1–FR4.3). */
+export interface Floor4HeadlinerPoolEntry {
+  readonly archetypeId: string;
+  readonly grade: Floor4HeadlinerGrade;
+  readonly displayName: string;
+  readonly entranceAnnouncement: string;
+}
+
+/** One act slot in the run's seeded Headliner card (spec FR4.4). */
+export interface Floor4HeadlinerCardEntry {
+  readonly act: Floor4ActIndex;
+  readonly slotId: string;
+  readonly archetypeId: string;
+  readonly grade: Floor4HeadlinerGrade;
+  readonly displayName: string;
+  readonly entranceAnnouncement: string;
+  readonly appearanceFeeGold: number;
+  readonly fixedFinale: boolean;
+}
+
+/** Runtime state for the active act-slot Headliner encounter. */
+export interface Floor4HeadlinerEncounterState extends Floor4HeadlinerCardEntry {
+  bossEid: number | null;
+  defeated: boolean;
+  feeGranted: boolean;
+  chestSpawned: boolean;
+  chestForceResolved: boolean;
+  baseSpeed: number;
+  baseDamage: number;
+  appliedOvertimeSteps: number;
+  lastKnownPos?: { x: number; y: number };
+}
+
 /**
  * One precomputed spawn instruction inside a wave manifest (spec FR3.2/FR3.4).
  * Immutable: the entry is rolled when the act arms and is never re-rolled, so a
@@ -464,6 +499,24 @@ export interface Floor4WaveTelemetry {
   gateTelegraphsArmed: number;
 }
 
+/** Cumulative Headliner telemetry for a Floor 4 run (spec FR10.3). */
+export interface Floor4HeadlinerTelemetry {
+  /** Headliners physically spawned into the arena. */
+  spawned: number;
+  /** Headliners defeated by the player. */
+  defeated: number;
+  /** Total guaranteed appearance-fee gold granted. */
+  appearanceFeeGoldGranted: number;
+  /** Boss chests created for act-slot encounters. */
+  chestsSpawned: number;
+  /** Unopened boss chests force-opened at intermission entry. */
+  chestsForceResolved: number;
+  /** Number of acts that reached overtime. */
+  overtimeStarted: number;
+  /** Deterministic overtime ramp steps applied. */
+  overtimeStepsApplied: number;
+}
+
 export type Floor4ArenaPhase =
   | { readonly kind: 'COUNTDOWN' }
   | { readonly kind: 'WAVES'; readonly act: Floor4ActIndex }
@@ -485,6 +538,7 @@ export interface Floor4ArenaState {
   phase: Floor4ArenaPhase;
   arenaElapsedMs: number;
   phaseElapsedMs: number;
+  overtimeFinisherAnnounced: boolean;
   lastWorldElapsedMs: number;
   timeline: Floor4ArenaPhaseTimelineEntry[];
   /**
@@ -503,8 +557,14 @@ export interface Floor4ArenaState {
    * Discarded at every phase boundary it is not consumed by (FR3.5).
    */
   pendingWaves?: Floor4PendingWaveWindow;
+  /** Seeded, without-replacement Headliner card, built once at initialization. */
+  readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
+  /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
+  activeHeadliner?: Floor4HeadlinerEncounterState;
   /** Cumulative wave counters, retained across acts for RunStats. */
   waveTelemetry: Floor4WaveTelemetry;
+  /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */
+  headlinerTelemetry: Floor4HeadlinerTelemetry;
 }
 
 export interface Floor4ArenaRunStats {
@@ -512,6 +572,8 @@ export interface Floor4ArenaRunStats {
   readonly phase: Floor4ArenaPhase;
   readonly timeline: readonly Floor4ArenaPhaseTimelineEntry[];
   readonly waveTelemetry: Floor4WaveTelemetry;
+  readonly headlinerTelemetry: Floor4HeadlinerTelemetry;
+  readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
 }
 
 // Backward compatibility exports

@@ -30,10 +30,13 @@ import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-
 import {
   equip,
   equipFromBag,
+  addGeneratedEquipmentToBag,
   getEffectiveStats,
   getEquipmentState,
   initializeBaseStats,
+  unequip,
 } from '../../core/systems/equipmentSystem.js';
+import { createGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import type {
@@ -58,9 +61,14 @@ import {
   createInventoryBag,
   type GeneratedEquipmentInventoryEntry,
 } from '../../shared/inventory.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  type GeneratedEquipmentInstanceKey,
+} from '../../shared/generated-equipment-types.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../../shared/equipment-slots.js';
+import type { EquipmentItemDef } from '../../shared/equipment-types.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -141,11 +149,13 @@ export interface UiProbeApi {
   isEquipmentOpen(): boolean;
   getEquipmentPanelBounds(): ScreenBounds;
   getEquipmentHeaderBounds(): ScreenBounds | null;
+  getEquipmentHeaderFrameBounds(): ScreenBounds | null;
   getEquipmentDollBounds(): ScreenBounds | null;
   getEquipmentSlotBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentSlotIconBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   getEquipmentEmptySlotCue(slotId: EquipmentSlotId): EmptySlotCue | null;
   getEquipmentTooltipBounds(): ScreenBounds | null;
+  getEquipmentTooltipCardBounds(): readonly ScreenBounds[];
   isEquipmentTooltipVisible(): boolean;
   isEquipmentTooltipTopmost(): boolean;
   /** Render the same inspector content as hovering a paper-doll slot. */
@@ -158,6 +168,8 @@ export interface UiProbeApi {
   getEquipmentBagItemIds(): string[];
   /** Screen bounds of the bag cell at `index` (aligned to getEquipmentBagItemIds). */
   getEquipmentBagCellBounds(index: number): ScreenBounds | null;
+  /** Screen bounds of one generated-equipment bag cell. */
+  getGeneratedEquipmentBagCellBounds(instanceKey: string): ScreenBounds | null;
   /** Screen bounds of the whole integrated bag column (for wheel targeting). */
   getEquipmentBagColumnBounds(): ScreenBounds | null;
   /** Scroll the integrated bag column by whole rows (programmatic seam for wheel). */
@@ -170,6 +182,16 @@ export interface UiProbeApi {
   seedOverflowBag(count: number): void;
   /** Deterministically show/clear the equip-delta preview for a bag item. */
   previewEquipmentBagItem(itemId: string | null): void;
+  /** Show the comparison preview for a generated bag item. */
+  previewGeneratedEquipmentBagItem(instanceKey: GeneratedEquipmentInstanceKey | null): void;
+  /** Add a deterministic, stronger chest candidate for comparison captures. */
+  addGeneratedChestReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Add a deterministic chest candidate with both positive and negative direct deltas. */
+  addGeneratedMixedDeltaChestReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Add a deterministic dual-ring candidate while both visible ring slots are occupied. */
+  addGeneratedRingReplacement(): GeneratedEquipmentInstanceKey | null;
+  /** Seed a Sword and Shield, then add a two-handed Bag replacement. */
+  seedMultiHandReplacement(): boolean;
   /** Equip a bag item straight from the integrated bag column. */
   equipFromEquipmentBag(itemId: string): boolean;
   /** Unequip whatever is in `slotId`, returning it to the bag. */
@@ -389,7 +411,10 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, buildProbeSpriteRegistry());
 
       // Synthetic safe-room world: equipment changes require a safe context.
-      this.world = createGameWorld({ seed: LAB_SEED });
+      this.world = createGameWorld({
+        seed: LAB_SEED,
+        generatedEquipmentRunKey: 'ui-probe-lab-visual-review',
+      });
       this.world.floor = 1;
       this.world.state = 'safe_room';
       this.world.floorMap = buildProbeFloorMap();
@@ -497,6 +522,109 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.inventoryUI?.refresh(this.world);
     }
 
+    private addGeneratedChestReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'armor.ui-probe-chain-hauberk',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Runed Chain Hauberk',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['chest'],
+          tags: ['armor'],
+          weightLb: 14,
+          statBonuses: { armor: 6, constitution: 2 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
+    }
+
+    private addGeneratedMixedDeltaChestReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'armor.ui-probe-tempered-hauberk',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Tempered Chain Hauberk',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['chest'],
+          tags: ['armor'],
+          weightLb: 14,
+          statBonuses: { armor: 6, constitution: 0 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
+    }
+
+    private addGeneratedRingReplacement(): GeneratedEquipmentInstanceKey | null {
+      const instance = createGeneratedEquipmentInstance(this.world, {
+        baseId: 'accessory.ui-probe-lucky-band',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: 'Polished Fortune Band',
+          artKey: 'equipment/ui-probe-chain-hauberk',
+          slots: ['ring1', 'ring2'],
+          tags: ['accessory'],
+          weightLb: 0.25,
+          statBonuses: { luck: 2 },
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: null,
+        },
+      });
+      if (!addGeneratedEquipmentToBag(this.world, this.playerEid, instance.instanceId).ok)
+        return null;
+      this.equipmentUI?.refresh(this.world);
+      return instance.instanceId;
+    }
+
+    private seedMultiHandReplacement(): boolean {
+      const bag = this.world.inventories.get(this.playerEid);
+      if (!bag) return false;
+      addItem(bag, 'bone-club', 1);
+      const sword = getEquipmentDefForItem('iron-sword');
+      const shield: EquipmentItemDef = {
+        id: 'ui-probe-shield',
+        name: 'Shield',
+        slots: ['offHand'],
+        statBonuses: { armor: 3 },
+        rarity: 'common',
+        weightLb: 6,
+      };
+      if (!sword) return false;
+      // The probe scene can inherit a starter weapon. Clear it so this scenario
+      // always exposes the requested distinct Sword + Shield replacement state.
+      unequip(this.world, this.playerEid, 'mainHand', { force: true });
+      unequip(this.world, this.playerEid, 'offHand', { force: true });
+      const equipped =
+        equip(this.world, this.playerEid, sword, { force: true }).ok &&
+        equip(this.world, this.playerEid, shield, { force: true }).ok;
+      this.equipmentUI?.refresh(this.world);
+      return equipped;
+    }
+
     /**
      * Replace the bag contents with exactly `count` equippable slots so the
      * integrated bag column overflows its visible rows. Each pushed slot is a
@@ -597,6 +725,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentPanelBounds: () =>
           this.equipmentUI?.getPanelScreenBounds() ?? { x: 0, y: 0, width: 0, height: 0 },
         getEquipmentHeaderBounds: () => this.equipmentUI?.getHeaderScreenBounds() ?? null,
+        getEquipmentHeaderFrameBounds: () => this.equipmentUI?.getHeaderFrameScreenBounds() ?? null,
         getEquipmentDollBounds: () => this.equipmentUI?.getDollScreenBounds() ?? null,
         getEquipmentSlotBounds: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getSlotScreenBounds(slotId) ?? null,
@@ -605,6 +734,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentEmptySlotCue: (slotId: EquipmentSlotId) =>
           this.equipmentUI?.getEmptySlotCue(slotId) ?? null,
         getEquipmentTooltipBounds: () => this.equipmentUI?.getTooltipScreenBounds() ?? null,
+        getEquipmentTooltipCardBounds: () => this.equipmentUI?.getTooltipCardScreenBounds() ?? [],
         isEquipmentTooltipVisible: () => this.equipmentUI?.isTooltipVisible() ?? false,
         isEquipmentTooltipTopmost: () => this.equipmentUI?.isTooltipTopmost() ?? false,
         previewEquipmentSlot: (slotId: EquipmentSlotId) => {
@@ -627,6 +757,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getEquipmentBagItemIds: () => this.equipmentUI?.getBagItemIds() ?? [],
         getEquipmentBagCellBounds: (index: number) =>
           this.equipmentUI?.getBagCellScreenBounds(index) ?? null,
+        getGeneratedEquipmentBagCellBounds: (instanceKey: string) =>
+          this.equipmentUI?.getGeneratedBagCellScreenBounds(instanceKey) ?? null,
         getEquipmentBagColumnBounds: () => this.equipmentUI?.getBagColumnScreenBounds() ?? null,
         scrollEquipmentBag: (rows: number) => {
           this.equipmentUI?.scrollBag(rows);
@@ -636,6 +768,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         seedOverflowBag: (count: number) => this.seedOverflowBag(count),
         previewEquipmentBagItem: (itemId: string | null) =>
           this.equipmentUI?.previewBagItem(itemId),
+        previewGeneratedEquipmentBagItem: (instanceKey: GeneratedEquipmentInstanceKey | null) =>
+          this.equipmentUI?.previewGeneratedBagItem(instanceKey),
         equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,
         unequipEquipmentSlot: (slotId: EquipmentSlotId) => {
           this.equipmentUI?.unequipSlot(slotId);
@@ -657,6 +791,10 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         },
         equipInventoryItem: (itemId: string) => this.equipInventoryItem(itemId),
         seedAllGear: () => this.seedAllGear(),
+        addGeneratedChestReplacement: () => this.addGeneratedChestReplacement(),
+        addGeneratedMixedDeltaChestReplacement: () => this.addGeneratedMixedDeltaChestReplacement(),
+        addGeneratedRingReplacement: () => this.addGeneratedRingReplacement(),
+        seedMultiHandReplacement: () => this.seedMultiHandReplacement(),
         getEquippedSlotIds: () => {
           const state = getEquipmentState(this.world, this.playerEid);
           if (!state) return [];
