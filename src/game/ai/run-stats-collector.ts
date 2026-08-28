@@ -15,6 +15,21 @@ import { generatedEquipmentCatalogKey } from './headless-run-data.js';
 
 const GENERATED_EQUIPMENT_INSTANCE_SOURCE_PREFIX = 'generated-equipment-instance:';
 
+function floor4CountdownSafeMs(world: GameWorld): number {
+  const floor4 = getFloor4ArenaRunStats(world);
+  if (!floor4) return 0;
+  const countdownIndex = floor4.timeline.findIndex((entry) => entry.phase.kind === 'COUNTDOWN');
+  if (countdownIndex < 0) return 0;
+  const countdownStart = floor4.timeline[countdownIndex]?.worldElapsedMs ?? 0;
+  for (let index = countdownIndex + 1; index < floor4.timeline.length; index += 1) {
+    const entry = floor4.timeline[index];
+    if (entry && entry.phase.kind !== 'COUNTDOWN') {
+      return Math.max(0, entry.worldElapsedMs - countdownStart);
+    }
+  }
+  return floor4.phase.kind === 'COUNTDOWN' ? Math.max(0, world.elapsedMs - countdownStart) : 0;
+}
+
 interface MutableHumanItemInteraction {
   readonly catalogKey: string;
   readonly kind: ItemInteractionKind;
@@ -133,7 +148,9 @@ export function collectHumanRunStats(
     totalFrames: world.frameCount,
     wallTimeMs: 0,
     gameTimeMs: world.elapsedMs,
-    safeRoomMs: 0,
+    // Time excluded from active-time budget calculations for this run:
+    // authored time-stopping safe rooms + Floor 4's COUNTDOWN exception.
+    safeRoomMs: world.safeRoomElapsedMs + floor4CountdownSafeMs(world),
     finalFloor: world.floor,
     finalScore: world.stores.broadcastScore?.current[playerEid] ?? 0,
     outcome,

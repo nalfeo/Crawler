@@ -44,6 +44,8 @@ import {
 } from '../../src/core/systems/questSystem.js';
 import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
+import { GAME } from '../../src/shared/constants.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { TileFlags, RoomRole, TerrainType, TilePresets } from '../../src/shared/map-types.js';
 import {
@@ -748,6 +750,49 @@ describe('floor1Scenario', () => {
     expect(world.state).toBe('game_over');
     expect(world.floorScenario?.failReason).toBe('stair_timeout');
     expect(world.floorScenario?.runSummary?.outcome).toBe('failed_timeout');
+  });
+
+  it('pauses the collapse deadline in an authored safe room but not in a cleared boss arena', () => {
+    // Issue #3674: a boss arena that turned safe when its boss died is a
+    // breather (customization, no spawns) — it must NOT stop the floor timer.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const map = world.floorMap!;
+    const objective = world.floorScenario!.objective;
+    const bossRoom = map.bossStairRoom!;
+    const safeRoom = map.safeRoom!;
+
+    const standIn = (room: { bounds: { x: number; y: number; width: number; height: number } }) => {
+      const center = map.tileToWorld(
+        room.bounds.x + Math.floor(room.bounds.width / 2),
+        room.bounds.y + Math.floor(room.bounds.height / 2),
+      );
+      world.stores.position.x[player] = center.x;
+      world.stores.position.y[player] = center.y;
+      safeRoomSystem(world);
+    };
+
+    // Cleared boss arena: safe, but the countdown keeps running.
+    world.clearedSafeRoomIds.add(bossRoom.id);
+    world.clearedSafeRoomMap = map;
+    standIn(bossRoom);
+    expect(world.playerInSafeRoom).toBe(true);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(false);
+    const deadlineInBossRoom = objective.deadlineMs;
+    floorObjectiveSystem(world);
+    expect(objective.deadlineMs).toBe(deadlineInBossRoom);
+    expect(world.safeRoomTimerCreditMs).toBe(0);
+
+    // Authored safe room: the countdown stops.
+    standIn(safeRoom);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    const deadlineInSafeRoom = objective.deadlineMs;
+    floorObjectiveSystem(world);
+    expect(objective.deadlineMs).toBe(deadlineInSafeRoom + GAME.DELTA_MS);
+    expect(world.safeRoomTimerCreditMs).toBe(GAME.DELTA_MS);
   });
 
   it('spawns deterministic rat/slime encounters from the floor director', () => {

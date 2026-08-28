@@ -218,12 +218,73 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     expect(createdContexts[0]!.resume).toHaveBeenCalled();
   });
 
-  it('play() drops the cue (no scheduling) when the context is closed', () => {
+  it('unlocks the context from a user gesture before a later cue is played', async () => {
+    const listeners = new Map<string, { listener: EventListener; capture: boolean }>();
+    (globalThis as { window?: unknown }).window = {
+      AudioContext: class SuspendedAudioContext extends FakeAudioContext {
+        state: 'running' | 'suspended' | 'closed' = 'suspended';
+      },
+      addEventListener: (type: string, listener: EventListener, capture: boolean) =>
+        listeners.set(type, { listener, capture }),
+      removeEventListener: (type: string, listener: EventListener, capture: boolean) => {
+        const registered = listeners.get(type);
+        if (registered?.listener === listener && registered.capture === capture)
+          listeners.delete(type);
+      },
+    };
+    const engine = createAudioCueEngine();
+
+    listeners.get('keydown')!.listener(new Event('keydown'));
+    expect(createdContexts[0]!.resume).toHaveBeenCalled();
+    await Promise.resolve();
+    expect(listeners.size).toBe(0);
+
+    engine.play(CUE);
+    expect(createdOscillators).toHaveLength(1);
+  });
+
+  it('keeps activation listeners when resume does not start the context', async () => {
+    const listeners = new Map<string, { listener: EventListener; capture: boolean }>();
+    (globalThis as { window?: unknown }).window = {
+      AudioContext: class StillSuspendedAudioContext extends FakeAudioContext {
+        state: 'running' | 'suspended' | 'closed' = 'suspended';
+        resume = vi.fn(async () => {});
+      },
+      addEventListener: (type: string, listener: EventListener, capture: boolean) =>
+        listeners.set(type, { listener, capture }),
+      removeEventListener: (type: string, listener: EventListener, capture: boolean) => {
+        const registered = listeners.get(type);
+        if (registered?.listener === listener && registered.capture === capture)
+          listeners.delete(type);
+      },
+    };
+    createAudioCueEngine();
+
+    listeners.get('keydown')!.listener(new Event('keydown'));
+    await Promise.resolve();
+
+    expect(listeners.size).toBe(3);
+  });
+
+  it('drops cues and removes activation listeners when the context is closed', () => {
     class ClosedAudioContext extends FakeAudioContext {
       state: 'running' | 'suspended' | 'closed' = 'closed';
     }
-    (globalThis as { window?: unknown }).window = { AudioContext: ClosedAudioContext };
+    const listeners = new Map<string, { listener: EventListener; capture: boolean }>();
+    (globalThis as { window?: unknown }).window = {
+      AudioContext: ClosedAudioContext,
+      addEventListener: (type: string, listener: EventListener, capture: boolean) =>
+        listeners.set(type, { listener, capture }),
+      removeEventListener: (type: string, listener: EventListener, capture: boolean) => {
+        const registered = listeners.get(type);
+        if (registered?.listener === listener && registered.capture === capture)
+          listeners.delete(type);
+      },
+    };
     const engine = createAudioCueEngine();
+    listeners.get('pointerdown')!.listener(new Event('pointerdown'));
+    expect(listeners.size).toBe(0);
+
     engine.play(CUE);
     expect(createdOscillators).toHaveLength(0);
     expect(createdGains).toHaveLength(0);

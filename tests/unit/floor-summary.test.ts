@@ -7,7 +7,6 @@ import type { CombatEvent } from '../../src/shared/combat-events.js';
 import {
   buildFloorSummaryRows,
   countPlayerAttributedKills,
-  formatFloorClock,
   formatFloorSummaryText,
 } from '../../src/shared/floor-summary.js';
 
@@ -41,16 +40,20 @@ function deathEvent(overrides: Partial<CombatEvent> = {}): CombatEvent {
   };
 }
 
-describe('formatFloorClock', () => {
+describe('floor clock formatting', () => {
   it('renders m:ss with a zero-padded seconds field', () => {
-    expect(formatFloorClock(0)).toBe('0:00');
-    expect(formatFloorClock(9_000)).toBe('0:09');
-    expect(formatFloorClock(65_500)).toBe('1:05');
-    expect(formatFloorClock(3_725_000)).toBe('62:05');
+    const clock = (elapsedMs: number): string =>
+      rowValue(buildFloorSummaryRows({ ...BASE_INPUT, elapsedMs }), 'Time on floor');
+    expect(clock(0)).toBe('0:00');
+    expect(clock(9_000)).toBe('0:09');
+    expect(clock(65_500)).toBe('1:05');
+    expect(clock(3_725_000)).toBe('62:05');
   });
 
   it('never renders negative time', () => {
-    expect(formatFloorClock(-5_000)).toBe('0:00');
+    expect(
+      rowValue(buildFloorSummaryRows({ ...BASE_INPUT, elapsedMs: -5_000 }), 'Time on floor'),
+    ).toBe('0:00');
   });
 });
 

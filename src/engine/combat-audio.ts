@@ -21,9 +21,8 @@
  *   spell-cast/ability-flash VFX kinds, which also fire for passive
  *   re-activation and carry no semantic contract.
  * - `world.vfxEvents` (`pickupSparkle` only) → loot pickup. No authoritative
- *   pickup-type queue exists, so this is the one place this module still
- *   reads a cosmetic queue — deliberately reduced to a single generic cue
- *   (never inferring pickup TYPE from tint; see `combat-audio-cues.ts`).
+ *   pickup-type queue exists, so this module reads explicit semantic metadata
+ *   from this cosmetic event without inferring pickup type from its tint.
  *
  * Ownership/read model — mirrors `EffectsVfx.ts` exactly, NOT
  * `reward-opening-audio.ts`'s hook-driven model, because this module's input
@@ -142,6 +141,7 @@ export interface CombatAudioController {
  */
 export function createCombatAudio(engine: AudioCueEngine): CombatAudioController {
   const lastPlayedMs = new Map<CombatAudioCueKind, number>();
+  let lastTypedPickupMs = -Infinity;
 
   return {
     update(world: GameWorld, renderElapsedMs: number): void {
@@ -174,8 +174,20 @@ export function createCombatAudio(engine: AudioCueEngine): CombatAudioController
       const eligibleByKind = new Map<CombatAudioCueKind, CombatAudioCue>();
       for (const cue of candidates) {
         const existing = eligibleByKind.get(cue.kind);
-        if (existing && existing.intensity >= cue.intensity) continue;
-        const last = lastPlayedMs.get(cue.kind) ?? -Infinity;
+        if (existing) {
+          const typedPickupOutranksGeneric =
+            cue.kind === 'pickup' &&
+            cue.pickupAudioKind !== undefined &&
+            existing.pickupAudioKind === undefined;
+          if (!typedPickupOutranksGeneric && existing.intensity >= cue.intensity) continue;
+        }
+        const lastForKind = lastPlayedMs.get(cue.kind) ?? -Infinity;
+        const last =
+          cue.kind !== 'pickup'
+            ? lastForKind
+            : cue.pickupAudioKind !== undefined
+              ? lastTypedPickupMs
+              : Math.max(lastForKind, lastTypedPickupMs);
         if (renderElapsedMs - last < MIN_GAP_MS_BY_KIND[cue.kind]) continue;
         eligibleByKind.set(cue.kind, cue);
       }
@@ -188,7 +200,11 @@ export function createCombatAudio(engine: AudioCueEngine): CombatAudioController
       const toPlay = eligible.slice(0, MAX_CUES_PER_FRAME);
 
       for (const cue of toPlay) {
-        lastPlayedMs.set(cue.kind, renderElapsedMs);
+        if (cue.kind === 'pickup' && cue.pickupAudioKind !== undefined) {
+          lastTypedPickupMs = renderElapsedMs;
+        } else {
+          lastPlayedMs.set(cue.kind, renderElapsedMs);
+        }
         engine.play(combatSynthSpecForCue(cue));
       }
     },
