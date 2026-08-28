@@ -84,14 +84,14 @@ jobs:
       - name: Resolve Goobers recovery target
         id: recovery
         env:
-          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
-          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
+          GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           ISSUE_NUMBER: ${{ inputs.issue_number || github.event.issue.number }}
           ABANDON_EXISTING: ${{ inputs.abandon_existing || 'false' }}
         run: |
           set -euo pipefail
-          if [ -z "${GOOBERS_GITHUB_TOKEN_SET}" ]; then
-            echo "::error::GOOBERS_GITHUB_TOKEN secret is required before recovery lookup; see README.md#goobers." >&2
+          if [ -z "${GOOBERS_AUTH_TOKEN_SET}" ]; then
+            echo "::error::Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required before recovery lookup; see README.md#goobers." >&2
             exit 1
           fi
           if [ "${ABANDON_EXISTING}" = "true" ] && [ -z "${ISSUE_NUMBER}" ]; then
@@ -179,7 +179,7 @@ jobs:
           } >> "${GITHUB_ENV}"
           echo "Resuming open Goobers PR #${pr_number} on branch '${branch}'."
 
-      - name: Require GOOBERS_GITHUB_TOKEN
+      - name: Require Goobers auth token
         # crawler-feature-pr's implement/push-branch stages declare
         # repo:push; the built-in github.token only has contents: read on
         # this job (see permissions:, above), so it can neither push a
@@ -188,12 +188,12 @@ jobs:
         # message instead of letting goobers run fail deep into the run.
         run: |
           set -euo pipefail
-          if [ -z "${GOOBERS_GITHUB_TOKEN_SET:-}" ]; then
-            echo "::error::GOOBERS_GITHUB_TOKEN secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
+          if [ -z "${GOOBERS_AUTH_TOKEN_SET:-}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
             exit 1
           fi
         env:
-          GOOBERS_GITHUB_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
 
       - name: Resolve pinned archive checksum
         # Independent pin: this digest is reviewed and committed here, not
@@ -344,8 +344,9 @@ jobs:
           # CopilotAdapter preflight probe on a clean runner (see the
           # "Install Copilot CLI" step comment above).
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN }}
+          GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
           GOOBERS_RESUME_BRANCH: ${{ env.GOOBERS_RESUME_BRANCH }}
           GOOBERS_RECOVERY_ISSUE: ${{ env.GOOBERS_RECOVERY_ISSUE }}
