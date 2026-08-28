@@ -210,17 +210,6 @@ function invocationFixtures() {
       },
     },
     {
-      name: 'goobers-run workflow payload',
-      shouldPass: true,
-      payload: {
-        contractVersion: 'v1',
-        workflowName: 'goobers-run',
-        operation: 'run-feature-pr',
-        issue_number: '3840',
-        trigger: 'workflow_dispatch',
-      },
-    },
-    {
       // Real trigger strings minted by ci-recovery/router.mjs's
       // recoveryTriggerForPr() and merge-train/reconcile.mjs's
       // dispatchRecoveryGated() calls (e.g. 'merge-train-noop',
@@ -273,8 +262,13 @@ function invocationFixtures() {
       shouldPass: false,
       payload: {
         contractVersion: 'v1',
-        workflowName: 'goobers-run',
-        operation: 'run-feature-pr',
+        workflowName: 'merge-train-validate',
+        operation: 'validate-candidate',
+        candidate_sha: 'a'.repeat(40),
+        candidate_ref: 'refs/merge-train-candidates/candidate-1',
+        attestation_sha: 'b'.repeat(40),
+        fingerprint: 'gen-5',
+        pr_numbers: '42,43',
         pr_number: '42',
       },
     },

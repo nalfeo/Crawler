@@ -105,13 +105,13 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Orchestrates Goobers feature-PR workflow (LLM agent planning + implementation + review).
 
-| Mutation Edge       | File                                | Lines             | Action                                | State Target                         | Payload Schema                                 |
-| ------------------- | ----------------------------------- | ----------------- | ------------------------------------- | ------------------------------------ | ---------------------------------------------- |
-| Preserve source     | `.github/workflows/goobers-run.yml` | 81–84             | `cp -R .goobers`                      | Runner temp                          | Filesystem copy (trusted source)               |
-| Recovery resolution | `.github/workflows/goobers-run.yml` | 86–137            | `node` recovery script (inline shell) | Environment variable                 | `GOOBERS_RECOVERY_ISSUE` (GitHub issue number) |
-| Run Goobers         | `.github/workflows/goobers-run.yml` | 358               | `goobers run`                         | Goobers instance, PR creation/update | See goobers invocation schema below            |
-| Issue mutation      | Goobers workflow output             | (via goobers SDK) | Add labels, post comments             | Issue state                          | `{ labels, status, pr_number }`                |
-| PR creation/update  | Goobers workflow output             | (via goobers SDK) | `gh pr create` or update              | Feature PR                           | Standard GH PR payload                         |
+| Mutation Edge       | File                                | Lines             | Action                                | State Target                         | Payload Schema                                                                                                                                                        |
+| ------------------- | ----------------------------------- | ----------------- | ------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preserve source     | `.github/workflows/goobers-run.yml` | 81–84             | `cp -R .goobers`                      | Runner temp                          | Filesystem copy (trusted source)                                                                                                                                      |
+| Recovery resolution | `.github/workflows/goobers-run.yml` | 86–137            | `node` recovery script (inline shell) | Environment variable                 | `GOOBERS_RECOVERY_ISSUE` (GitHub issue number)                                                                                                                        |
+| Run Goobers         | `.github/workflows/goobers-run.yml` | 358               | `goobers run`                         | Goobers instance, PR creation/update | CLI args (`--github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"`), not a `crawler.goobers.invocation/v1` envelope — see note under the Invocation Contract below |
+| Issue mutation      | Goobers workflow output             | (via goobers SDK) | Add labels, post comments             | Issue state                          | `{ labels, status, pr_number }`                                                                                                                                       |
+| PR creation/update  | Goobers workflow output             | (via goobers SDK) | `gh pr create` or update              | Feature PR                           | Standard GH PR payload                                                                                                                                                |
 
 **Invariants**:
 
@@ -146,13 +146,22 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Schema**: `crawler.goobers.invocation/v1`
 
-Payload structure for workflow inputs dispatched to Goobers from GitHub Actions (CI Recovery, Merge Train, Goobers Run):
+Payload structure for the internal dispatch envelope CI Recovery Router and
+Merge Train use when they trigger CI Recovery / Merge Train Validate via
+`workflow_dispatch`. **This does not cover Goobers Run**
+(`.github/workflows/goobers-run.yml`): that workflow's own `workflow_dispatch`
+inputs (`goobers_version`, `workflow`, `issue_number`, `abandon_existing`) are
+never packaged into a `crawler.goobers.invocation/v1` envelope anywhere in the
+codebase — `goobers run` is invoked as a CLI entry point, not a JSON-envelope
+dispatch. Those inputs are validated directly against the workflow YAML via
+`REQUIRED_DISPATCH_INPUTS['goobers-run.yml']` in
+`validate-goobers-contracts.mjs` instead, as a separate, simpler contract.
 
 ```json
 {
   "contractVersion": "v1",
   "workflowName": "string (required)",
-  "operation": "string (required: 'reconcile', 'lease-acquire', 'lease-heartbeat', 'lease-release', 'validate-candidate', 'run-feature-pr')",
+  "operation": "string (required: 'reconcile', 'lease-acquire', 'lease-heartbeat', 'lease-release', 'validate-candidate')",
   "pr_number": "string, numeric (e.g. '42') — GitHub Actions workflow_dispatch inputs are always strings, never number/null; required for PR-scoped operations, forbidden for batch operations",
   "expected_head_sha": "string | empty",
   "expected_base_ref": "string | empty",

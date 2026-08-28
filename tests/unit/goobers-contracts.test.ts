@@ -179,8 +179,13 @@ describe('crawler.goobers.invocation/v1 schema', () => {
     expect(
       isInvocationValid({
         contractVersion: 'v1',
-        workflowName: 'goobers-run',
-        operation: 'run-feature-pr',
+        workflowName: 'merge-train-validate',
+        operation: 'validate-candidate',
+        candidate_sha: 'a'.repeat(40),
+        candidate_ref: 'refs/merge-train-candidates/candidate-1',
+        attestation_sha: 'b'.repeat(40),
+        fingerprint: 'gen-5',
+        pr_numbers: '42,43',
         pr_number: '42',
       }),
     ).toBe(false);

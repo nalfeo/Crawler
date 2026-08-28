@@ -22,7 +22,7 @@ export const invocationV1 = {
     },
     workflowName: {
       type: 'string',
-      description: 'Target workflow name (ci-recovery, merge-train, goobers-run, etc.)',
+      description: 'Target workflow name (ci-recovery, merge-train, merge-train-validate)',
       minLength: 1,
     },
     operation: {
@@ -33,8 +33,15 @@ export const invocationV1 = {
         'lease-heartbeat',
         'lease-release',
         'validate-candidate',
-        'run-feature-pr',
       ],
+      // 'run-feature-pr' is intentionally NOT a value here: no real producer
+      // (router.mjs, reconcile.mjs) ever mints an invocationV1 envelope with
+      // it. Goobers Run (.github/workflows/goobers-run.yml) is dispatched
+      // with its own distinct workflow_dispatch inputs (goobers_version,
+      // workflow, issue_number, abandon_existing) that are never packaged
+      // into a crawler.goobers.invocation/v1 envelope; those inputs are
+      // validated directly against the workflow YAML via
+      // REQUIRED_DISPATCH_INPUTS in validate-goobers-contracts.mjs instead.
       description: 'Operation type',
     },
     pr_number: {
