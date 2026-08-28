@@ -43,6 +43,7 @@ import {
 } from './types.js';
 import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import { createRunEventCollector } from '../../core/run-events.js';
+import { isPointInTimeStoppingSafeSpace } from '../../core/safe-space.js';
 import {
   captureHeadlessRunDataFrame,
   createHeadlessRunData,
@@ -729,11 +730,13 @@ export async function runHeadless(
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
   let frameCount = 0;
-  // Frames spent in a safe room, where the floor-collapse deadline is paused
-  // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
-  // `world.playerInSafeRoom` is true). Counting under the exact same condition,
-  // read after the sim step that runs safeRoomSystem + floorObjectiveSystem,
-  // makes `safeRoomMs` match the game's deadline pause frame-for-frame.
+  // Frames spent in a time-stopping safe room, where the floor-collapse deadline
+  // is paused (Floor 1 extends `objective.deadlineMs`, manifest-timer floors bank
+  // `world.safeRoomTimerCreditMs`, both each frame
+  // `world.playerInTimeStoppingSafeRoom` is true). Counting under the exact same
+  // condition, read after the sim step that runs safeRoomSystem +
+  // floorObjectiveSystem, makes `safeRoomMs` match the game's deadline pause
+  // frame-for-frame.
   let safeRoomFrames = 0;
   const currentActiveTimeMs = (): number =>
     Math.max(0, world.elapsedMs - safeRoomFrames * GAME.DELTA_MS);
@@ -1102,6 +1105,17 @@ export async function runHeadless(
         world.state = 'playing';
       }
 
+      // Mirror MainGameScene.update()'s loadout modal: a scenario can re-enter
+      // `'loadout'` mid-run (Floor 3 pauses on every Trainer-poach pick, spec
+      // §6.2). The visual game reopens the picker; the headless runner has no
+      // UI, so it resolves each pending choice deterministically with option 0
+      // — exactly like the floor-start starter pick above. Without this the
+      // floor objective tick, which only runs while `'playing'`, would stall
+      // for the rest of the run.
+      if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
+        scenario.selectLoadoutOption(world, 0);
+      }
+
       // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
       // the player physically spawns on stage, so sample the phase BEFORE the
       // step and account for it at the same post-step point as safeRoomSystem.
@@ -1122,12 +1136,20 @@ export async function runHeadless(
       });
       // Commit this frame's counters the moment runSimulationStep returns: at that
       // point world.elapsedMs has advanced and safeRoomSystem/floorObjectiveSystem
-      // have already run inside the step, so world.playerInSafeRoom reflects THIS
-      // frame's deadline pause. Incrementing here (rather than after the auto*
-      // helpers below) keeps frameCount/safeRoomFrames consistent with
-      // world.elapsedMs even if a later helper throws and we emit crash stats.
+      // have already run inside the step, so world.playerInTimeStoppingSafeRoom
+      // reflects THIS frame's deadline pause. Incrementing here (rather than
+      // after the auto* helpers below) keeps frameCount/safeRoomFrames consistent
+      // with world.elapsedMs even if a later helper throws and we emit crash
+      // stats. A cleared boss arena no longer pauses the deadline, so it no
+      // longer discounts active time either.
       frameCount++;
-      if (world.playerInSafeRoom === true || floor4CountdownSafeFrame) {
+      const playerX = world.stores.position.x[playerEid];
+      const playerY = world.stores.position.y[playerEid];
+      const playerInTimeStoppingSafeRoom =
+        playerX !== undefined &&
+        playerY !== undefined &&
+        isPointInTimeStoppingSafeSpace(world, playerX, playerY);
+      if (playerInTimeStoppingSafeRoom || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
       // Latch Floor 1 boss lifecycle transitions before any early exit (death

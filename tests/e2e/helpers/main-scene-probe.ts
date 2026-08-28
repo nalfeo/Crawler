@@ -18,7 +18,9 @@ import type {
   HarvestableRenderSummary,
   PropRenderSize,
   FamilyHudProbeState,
+  Floor3PartyHudProbeState,
   FloatingTextProbe,
+  FloorSummaryProbeState,
   ItemIconRenderInfo,
   MainSceneProbeApi,
   MainSceneState,
@@ -30,7 +32,9 @@ import type {
   TerrainRenderSummary,
   DoorRenderSummary,
   StaircaseMarkerRenderInfo,
+  VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
+import type { _CornerButtonProbe as CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
@@ -95,6 +99,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
   getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
+  getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
   startStaircaseBossBattle: (page: Page): Promise<number> =>
@@ -109,6 +115,8 @@ export const mainSceneProbe = {
     page.evaluate((lines) => window.__mainSceneProbe!.scrollBossIntro(lines), delta),
   dismissBossIntro: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.dismissBossIntro()),
+  getFloorSummaryState: (page: Page): Promise<FloorSummaryProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloorSummaryState()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   getModalPickerContent: (page: Page) =>
@@ -180,6 +188,16 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   getIssueButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getIssueButtonBounds()),
+  getCornerButtonLayout: (page: Page): Promise<readonly CornerButtonProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getCornerButtonLayout()),
+  getVitalsStackBounds: (page: Page): Promise<VitalsStackProbe> =>
+    page.evaluate(() => window.__mainSceneProbe!.getVitalsStackBounds()),
+  unlockExperienceBar: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.unlockExperienceBar()),
+  getAchievementsButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getAchievementsButtonBounds()),
+  getInteractionHintBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getInteractionHintBounds()),
   requestInventoryToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
   requestEquipToggle: (page: Page): Promise<void> =>
@@ -225,12 +243,18 @@ export const mainSceneProbe = {
     ),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
+  tapFloor3RosterButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3RosterButton()),
+  tapFloor3CommandButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapFloor3CommandButton()),
   tapQuartermasterButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapQuartermasterButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
   queueInteraction: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueInteraction()),
+  getPrimedNpcScreenPoint: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPrimedNpcScreenPoint()),
   getCameraCenter: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getCameraCenter()),
   getMapSizeFeet: (page: Page): Promise<ProbePoint | null> =>
@@ -303,6 +327,11 @@ export const mainSceneProbe = {
     ),
   isRewardOpeningAutoDrivenForProbe: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.isRewardOpeningAutoDrivenForProbe()),
+
+  setAutoDrivenForProbe: (page: Page, enabled: boolean): Promise<void> =>
+    page.evaluate((value) => {
+      window.__mainSceneProbe!.setAutoDrivenForProbe(value);
+    }, enabled),
   tickRewardOpening: (page: Page, deltaMs: number): Promise<void> =>
     page.evaluate((ms) => window.__mainSceneProbe!.tickRewardOpening(ms), deltaMs),
   skipRewardOpening: (page: Page): Promise<void> =>
@@ -404,6 +433,51 @@ export const mainSceneProbe = {
 };
 
 /**
+ * Taps `key` repeatedly until `settled()` reports the scene consumed it.
+ *
+ * Two independent ways a discrete keypress gets dropped, both of which this
+ * retry loop covers:
+ *
+ * 1. `page.keyboard.press()` sends keydown and keyup back-to-back, and Phaser's
+ *    `Key.onUp` clears `_justDown`
+ *    (node_modules/phaser/src/input/keyboard/keys/Key.js), so the press can be
+ *    erased before the next `update()` ever samples it. Each tap therefore
+ *    holds the key for a full poll interval before releasing.
+ * 2. The scene itself drains pending presses: `clearPendingInteractionInput()`
+ *    calls `JustDown()` on `keyEsc`/`keyE`/etc. purely to discard them, and it
+ *    runs from ~14 sites (opening a conversation, floor transitions, modals).
+ *
+ * (2) is why this taps instead of simply holding. `JustDown` only re-arms on a
+ * *fresh* keydown, so once a drain has eaten the press, a held key produces no
+ * further edge no matter how long it is held — the wait is then unrecoverable
+ * rather than merely slow. Re-pressing re-arms it.
+ */
+export async function tapKeyUntil(
+  page: Page,
+  key: string,
+  settled: () => Promise<boolean>,
+  options: { timeoutMs?: number; pollMs?: number; label?: string } = {},
+): Promise<void> {
+  const { timeoutMs = 10_000, pollMs = 100, label = `${key} to be consumed` } = options;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await page.keyboard.down(key);
+    try {
+      await page.waitForTimeout(pollMs);
+    } finally {
+      await page.keyboard.up(key);
+    }
+    if (await settled()) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out tapping ${key} waiting for ${label}`);
+    }
+    await page.waitForTimeout(pollMs);
+  }
+}
+
+/**
  * Poll the probe until `predicate(state)` holds (or throw on timeout). Used to
  * wait out the few frames Phaser needs to populate the display list / settle
  * the camera after a teleport, without any wall-clock coupling in assertions.
@@ -478,4 +552,39 @@ export async function waitForCameraCenter(
     }
     await page.waitForTimeout(pollMs);
   }
+}
+
+/**
+ * Drives the between-floor summary screen the way a human does: wait for it to
+ * appear, let its acknowledgement arm, then press SPACE to descend. Returns the
+ * summary state that was on screen, so a spec can assert what the player read.
+ */
+export async function acknowledgeFloorSummary(
+  page: Page,
+  options: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<FloorSummaryProbeState> {
+  const { timeoutMs = 15_000, pollMs = 100 } = options;
+  const deadline = Date.now() + timeoutMs;
+  let state = await mainSceneProbe.getFloorSummaryState(page);
+  while (!state.awaitingAcknowledgement) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Timed out waiting for the floor summary screen; last: ${JSON.stringify(state)}`,
+      );
+    }
+    await page.waitForTimeout(pollMs);
+    state = await mainSceneProbe.getFloorSummaryState(page);
+  }
+  // Past the acknowledgement arm delay (the stair-confirm keypress must not
+  // double as the acknowledgement).
+  await page.waitForTimeout(700);
+  // Tapped rather than held: the scene samples SPACE with `JustDown`, which a
+  // back-to-back keydown/keyup can erase before `update()` ever reads it.
+  await tapKeyUntil(
+    page,
+    'Space',
+    async () => !(await mainSceneProbe.getFloorSummaryState(page)).awaitingAcknowledgement,
+    { label: 'the floor summary acknowledgement' },
+  );
+  return state;
 }

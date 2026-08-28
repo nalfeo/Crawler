@@ -281,6 +281,41 @@ export interface Floor3EncounterState {
    * which has its own `finalFourPendingSpawns` field.
    */
   pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /**
+   * The Companions this encounter's Trainers field, retained past spawning so
+   * the poach picker (spec §6.2, UX surface #3) can still offer the full
+   * roster after the encounter is defeated and despawned. Unused by the Final
+   * Four, which is never poachable (it ends the floor).
+   */
+  readonly poachRoster: readonly Floor3PoachCandidate[];
+  /**
+   * Latched true once this encounter's defeat has produced a poach offer (or
+   * was skipped because the party had already locked), so a defeated Studio
+   * can never re-offer its roster on a later tick.
+   */
+  poachOffered: boolean;
+}
+
+/** One poachable Companion on a defeated Trainer's roster (spec §6.2). */
+export interface Floor3PoachCandidate {
+  readonly speciesId: string;
+  readonly level: number;
+}
+
+/**
+ * A pending Trainer-poach pick (spec §6.2, UX surface #3): written by
+ * `floor3ObjectiveTick` when a Studio is defeated while the player's party
+ * still has a recruit slot, and consumed by the Floor 3 loadout dispatcher.
+ */
+export interface Floor3PoachOffer {
+  /** Id of the defeated encounter the offer came from (dedupe key). */
+  readonly encounterId: string;
+  /** Display name of the defeated Studio, for the picker subtitle. */
+  readonly encounterName: string;
+  /** The defeated roster in seeded offer order. */
+  readonly candidates: readonly Floor3PoachCandidate[];
+  /** Recruit slots left before the party locks, this pick included. */
+  readonly slotsRemaining: number;
 }
 
 /** A single Companion an encounter gate spawns once it unlocks (deferred, spec R6 soft-gate). */
@@ -321,9 +356,166 @@ export interface Floor3StudiosState {
   staircaseUnlocked?: boolean;
   /** True once the player confirms descent — terminal run state. */
   staircaseDiscovered?: boolean;
+  /**
+   * ECS entity id of the single party Companion the player will keep
+   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
+   * first party slot the moment victory latches, then overridable by
+   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
+   * floor-transition carryover is captured. `undefined` before victory.
+   */
+  keptCompanionEid?: number;
 }
 
 export type Floor4ActIndex = 1 | 2 | 3 | 4 | 5;
+
+export type Floor4HeadlinerGrade = 'warmup' | 'midcard' | 'main-event' | 'finale';
+
+/** One append-only candidate in the Floor 4 Headliner pool (spec FR4.1–FR4.3). */
+export interface Floor4HeadlinerPoolEntry {
+  readonly archetypeId: string;
+  readonly grade: Floor4HeadlinerGrade;
+  readonly displayName: string;
+  readonly entranceAnnouncement: string;
+}
+
+/** One act slot in the run's seeded Headliner card (spec FR4.4). */
+export interface Floor4HeadlinerCardEntry {
+  readonly act: Floor4ActIndex;
+  readonly slotId: string;
+  readonly archetypeId: string;
+  readonly grade: Floor4HeadlinerGrade;
+  readonly displayName: string;
+  readonly entranceAnnouncement: string;
+  readonly appearanceFeeGold: number;
+  readonly fixedFinale: boolean;
+}
+
+/** Runtime state for the active act-slot Headliner encounter. */
+export interface Floor4HeadlinerEncounterState extends Floor4HeadlinerCardEntry {
+  bossEid: number | null;
+  defeated: boolean;
+  feeGranted: boolean;
+  chestSpawned: boolean;
+  chestForceResolved: boolean;
+  baseSpeed: number;
+  baseDamage: number;
+  appliedOvertimeSteps: number;
+  lastKnownPos?: { x: number; y: number };
+}
+
+/**
+ * One precomputed spawn instruction inside a wave manifest (spec FR3.2/FR3.4).
+ * Immutable: the entry is rolled when the act arms and is never re-rolled, so a
+ * cap-deferred (debted) entry releases with exactly the identity it was born
+ * with.
+ */
+export interface Floor4WaveSpawnEntry {
+  /** Archetype id, resolved against the Floor 4 arena enemy pack. */
+  readonly archetypeId: string;
+  /** Fixed feed-gate index this entry enters from (`FloorMap.feedGates`). */
+  readonly gateIndex: number;
+  /** Authored threat cost this entry consumed out of the wave budget. */
+  readonly threatCost: number;
+}
+
+/** One act-relative wave: an immutable, ordered spawn manifest (spec FR3.2). */
+export interface Floor4WaveManifest {
+  readonly act: Floor4ActIndex;
+  /** 0-based index within the act. */
+  readonly waveIndex: number;
+  /** Act-relative release mark in ms (`waveIndex * cadence.intervalMs`). */
+  readonly releaseAtActMs: number;
+  /** Threat budget this wave was composed against (FR3.3). */
+  readonly budget: number;
+  /** Spawn order. Also the FIFO order spawn debt is released in (FR3.5). */
+  readonly entries: readonly Floor4WaveSpawnEntry[];
+}
+
+/** A manifest entry awaiting capacity — spawn debt (spec FR3.5). */
+export interface Floor4PendingWaveSpawn {
+  readonly waveIndex: number;
+  /** The entry's index inside its wave manifest — drives deterministic gate stagger. */
+  readonly slot: number;
+  readonly entry: Floor4WaveSpawnEntry;
+}
+
+/** An armed gate telegraph: a gate lit ahead of a wave release (design §4). */
+export interface Floor4GateTelegraph {
+  readonly gateIndex: number;
+  readonly waveIndex: number;
+  /** Arena-clock ms at which the telegraphed wave releases. */
+  readonly firesAtArenaMs: number;
+}
+
+/**
+ * The live wave window for one act: immutable manifest content plus the mutable
+ * release state that plays it back.
+ *
+ * The split is deliberate — `manifests` is frozen content derived purely from
+ * the seed (FR3.2/FR7.4), while the cursor, debt and ownership below are the
+ * only things cap pressure and player performance may perturb.
+ */
+export interface Floor4WaveWindowState {
+  readonly act: Floor4ActIndex;
+  /** Immutable per-act wave manifests, in wave order. */
+  readonly manifests: readonly Floor4WaveManifest[];
+  /** Next wave index to release; monotonic within the act. */
+  releaseCursor: number;
+  /** FIFO spawn debt in manifest order, bounded by `waves.concurrency.debtCap`. */
+  debt: Floor4PendingWaveSpawn[];
+  /** Gates currently lit for an imminent wave. */
+  armedTelegraphs: Floor4GateTelegraph[];
+  /** Live wave-owned enemies: entity id → owning wave index. */
+  ownedEnemies: Map<number, number>;
+}
+
+/**
+ * Pre-armed opening telegraph for an act whose wave window has not opened yet.
+ *
+ * Built during the final `gates.telegraphLeadMs` of the preceding phase and
+ * handed to the window when it arms, so wave 0 gets the same authored warning
+ * every later wave gets without its manifests being rebuilt or re-rolled.
+ */
+export interface Floor4PendingWaveWindow {
+  readonly act: Floor4ActIndex;
+  readonly manifests: readonly Floor4WaveManifest[];
+  armedTelegraphs: Floor4GateTelegraph[];
+}
+
+/** Cumulative wave telemetry for a Floor 4 run (spec FR10.3). */
+export interface Floor4WaveTelemetry {
+  /** Waves whose manifest was released into the arena. */
+  wavesReleased: number;
+  /** Wave enemies actually spawned. */
+  enemiesSpawned: number;
+  /** Enemies removed by the cut at a wave-window boundary (FR3.6). */
+  enemiesCut: number;
+  /**
+   * Released entries that never reached the arena: overflow beyond the debt cap
+   * (FR3.5), plus banked debt still unspawned when the wave cut ends the window.
+   */
+  debtDiscarded: number;
+  /** Gate telegraphs armed. */
+  gateTelegraphsArmed: number;
+}
+
+/** Cumulative Headliner telemetry for a Floor 4 run (spec FR10.3). */
+export interface Floor4HeadlinerTelemetry {
+  /** Headliners physically spawned into the arena. */
+  spawned: number;
+  /** Headliners defeated by the player. */
+  defeated: number;
+  /** Total guaranteed appearance-fee gold granted. */
+  appearanceFeeGoldGranted: number;
+  /** Boss chests created for act-slot encounters. */
+  chestsSpawned: number;
+  /** Unopened boss chests force-opened at intermission entry. */
+  chestsForceResolved: number;
+  /** Number of acts that reached overtime. */
+  overtimeStarted: number;
+  /** Deterministic overtime ramp steps applied. */
+  overtimeStepsApplied: number;
+}
 
 export type Floor4ArenaPhase =
   | { readonly kind: 'COUNTDOWN' }
@@ -346,19 +538,46 @@ export interface Floor4ArenaState {
   phase: Floor4ArenaPhase;
   arenaElapsedMs: number;
   phaseElapsedMs: number;
+  overtimeFinisherAnnounced: boolean;
   lastWorldElapsedMs: number;
   timeline: Floor4ArenaPhaseTimelineEntry[];
+  /**
+   * Wave window for the act currently in `WAVES`. Undefined in every other
+   * phase: the window is armed on entry to `WAVES(act)` and torn down at the
+   * wave-window boundary, so no consumer can read stale release state.
+   */
+  waves?: Floor4WaveWindowState;
+  /**
+   * Gate telegraphs lit for the *next* act's opening wave, armed during the
+   * final `gates.telegraphLeadMs` of COUNTDOWN/INTERMISSION.
+   *
+   * Wave 0 releases at `releaseAtActMs = 0`, so it can only get its authored
+   * pre-spawn warning before its act's wave window exists. The manifests are
+   * carried with it so the window arms on exactly the content it telegraphed.
+   * Discarded at every phase boundary it is not consumed by (FR3.5).
+   */
+  pendingWaves?: Floor4PendingWaveWindow;
+  /** Seeded, without-replacement Headliner card, built once at initialization. */
+  readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
+  /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
+  activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** Cumulative wave counters, retained across acts for RunStats. */
+  waveTelemetry: Floor4WaveTelemetry;
+  /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */
+  headlinerTelemetry: Floor4HeadlinerTelemetry;
 }
 
 export interface Floor4ArenaRunStats {
   readonly arenaElapsedMs: number;
   readonly phase: Floor4ArenaPhase;
   readonly timeline: readonly Floor4ArenaPhaseTimelineEntry[];
+  readonly waveTelemetry: Floor4WaveTelemetry;
+  readonly headlinerTelemetry: Floor4HeadlinerTelemetry;
+  readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
 }
 
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
-export type Floor1BossEncounterState = FloorBossEncounterState;
 export type Floor1ObjectiveState = FloorObjectiveState;
 export type Floor1RunSummary = FloorRunSummary;
 export type Floor1ScenarioState = FloorScenarioState;

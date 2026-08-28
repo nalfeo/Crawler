@@ -63,7 +63,7 @@ import {
   type WeaponTypeValue,
 } from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
-import { getFloorManifest } from '../../shared/floor-registry.js';
+import { resolveFloorTimerDeadlineMs } from '../../core/floor-timer.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
@@ -75,6 +75,7 @@ import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
+  AIDecisionMode,
   AIPathingMode,
   AIDecisionDebugState,
   AINpcInteractionAction,
@@ -346,7 +347,11 @@ import {
   type ScenarioAiOperation,
 } from './scenario-ai-tasks.js';
 import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
-import { planObjectiveRoute } from './objective-route-planner.js';
+import {
+  planObjectiveRoute,
+  type ObjectivePortfolioEntry,
+  type ObjectiveUtilityWeights,
+} from './objective-route-planner.js';
 import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
@@ -1050,6 +1055,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     navEpoch: number;
     stateKey: string;
     goalId: string | null;
+    portfolio: readonly ObjectivePortfolioEntry[];
   } | null = null;
   /** Cached result of {@link planFloor1ObjectiveRoute}, keyed on quest-state + budget bucket + speed.
    * Exact timing and segment travel are recomputed per frame from the live snapshot. Cleared on {@link reset}. */
@@ -4972,9 +4978,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {
+    const portfolioWeights = this.strategicUtilityWeights();
     return {
       ...RUN_PLANNER_PARAMS,
       moveSpeedFtPerMs: playerSpeedFtPerFrame / GAME.DELTA_MS,
+      ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
     };
   }
 
@@ -6485,11 +6493,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private isFloor2HuntRecoveryWindow(world: GameWorld): boolean {
-    const durationMs = getFloorManifest('floor2')?.timer?.durationMs;
+    // Same credited deadline the floor collapses on, so the urgency window does
+    // not fire early while a safe room has the countdown stopped.
+    const deadlineMs = resolveFloorTimerDeadlineMs(world, 'floor2');
     if (
       world.floorId === 'floor2' &&
-      durationMs !== undefined &&
-      durationMs - world.elapsedMs <= FLOOR2_HUNT_URGENCY_REMAINING_MS
+      deadlineMs !== null &&
+      deadlineMs - world.elapsedMs <= FLOOR2_HUNT_URGENCY_REMAINING_MS
     ) {
       return false;
     }
@@ -7314,7 +7324,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       nextGoalId = cache.goalId;
     } else {
       const rawGraph = buildFloor1GoalGraph(snapshot);
-      if (rawGraph.goals.length === 0) return null;
+      if (rawGraph.goals.length === 0) {
+        this.floor1MiddleChainCache = {
+          navEpoch: this.navEpoch,
+          stateKey,
+          goalId: null,
+          portfolio: [],
+        };
+        return null;
+      }
 
       const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
       const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
@@ -7328,18 +7346,21 @@ export class BehaviorTreeAI implements AIInputProvider {
         },
       });
 
+      const portfolioWeights = this.strategicUtilityWeights();
       const route = planObjectiveRoute({
         goals: graph.goals,
         startLocation: PLAYER_START_LOCATION,
         initialSatisfiedEffects: graph.initialSatisfiedEffects,
         budgetMs: Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs),
+        ...(portfolioWeights ? { utilityWeights: portfolioWeights } : {}),
         travelOracle: oracle,
       });
-      nextGoalId = route.nextActionableGoalId;
+      nextGoalId = route.activeObjectiveId;
       this.floor1MiddleChainCache = {
         navEpoch: this.navEpoch,
         stateKey,
         goalId: nextGoalId,
+        portfolio: route.portfolio,
       };
     }
     if (!nextGoalId) return null;
@@ -9689,6 +9710,28 @@ export class BehaviorTreeAI implements AIInputProvider {
   /** A/B axis 2: the decision mode this AI was constructed with. */
   getDecisionMode(): AIDecisionModeValue {
     return this.config.decisionMode;
+  }
+
+  /**
+   * Single gate for the `objectivePortfolio` A/B arm: the personality utility
+   * weights in flagged mode, `undefined` in LEGACY.
+   *
+   * EVERY Floor 1 planner entry point must go through this. The behavior tree's
+   * middle-chain route and {@link planFloor1ObjectiveRoute} (whose
+   * `includedOptionalBundleIds` drive merchant/Spell-Broker purchase-intent
+   * admission) build the same goal graph; if only one is weighted they can
+   * select different optional bundles under a contended budget and the agent
+   * farms gold for a purchase its own committed route already dropped.
+   */
+  private strategicUtilityWeights(): ObjectiveUtilityWeights | undefined {
+    return this.config.decisionMode === AIDecisionMode.OBJECTIVE_PORTFOLIO
+      ? this.config.strategicUtilityWeights
+      : undefined;
+  }
+
+  /** Current flagged Floor 1 agenda, including optional objectives not selected. */
+  getObjectivePortfolio(): readonly ObjectivePortfolioEntry[] {
+    return this.floor1MiddleChainCache?.portfolio ?? [];
   }
 
   getNavigationDebug(): AINavigationDebug {

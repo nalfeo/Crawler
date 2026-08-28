@@ -60,7 +60,8 @@ ready-for-review PR). The versioned desired-state source lives in [`.goobers/`](
 To set up a local Goobers instance:
 
 1. Copy `.goobers/instance.yaml.example` to your external instance root (e.g. `C:\goobers\crawler\instance.yaml`)
-   and set a `GOOBERS_GITHUB_TOKEN` env var with a token for the target repo.
+   and set `GOOBERS_GITHUB_TOKEN` (a dedicated target-repo token) and
+   `COPILOT_GITHUB_TOKEN` (the Copilot model token) before starting the daemon.
 2. Validate the versioned source before materializing it:
    ```powershell
    Q:\src\Goobers\bin\goobers.exe validate --source-tree .goobers
@@ -73,23 +74,27 @@ See [`.goobers/README.md`](.goobers/README.md) for the full runtime-boundary and
 
 ### Running Goobers in GitHub Actions
 
-Two manual (`workflow_dispatch`-only) workflows run Goobers on a GitHub-hosted runner
-without a Go build step — they download a pinned, checksum-verified release binary instead:
+Two workflows run Goobers on a GitHub-hosted runner without a Go build step — they
+download a pinned, checksum-verified release binary instead:
 
 - [`.github/workflows/goobers-validate.yml`](.github/workflows/goobers-validate.yml) — validates `.goobers/` only.
-- [`.github/workflows/goobers-run.yml`](.github/workflows/goobers-run.yml) — actually triggers `crawler-feature-pr` end to end.
+- [`.github/workflows/goobers-run.yml`](.github/workflows/goobers-run.yml) — runs
+  `crawler-feature-pr` when an open issue receives `goobers:approved`, hourly at
+  minute 37 to recover missed events or failed eligible work, or by manual
+  dispatch. Goobers bounds plan/implementation/review retries to two attempts
+  and bounds gate repasses to two.
 
 `goobers-run.yml` needs two repository secrets configured (**Settings → Secrets and
 variables → Actions**) before it can succeed:
 
-| Secret                 | Required?    | What it's for                                                                                                                                                                                                                                                                                                                                                                     | Where to get it                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `COPILOT_GITHUB_TOKEN` | **Required** | Authenticates the GitHub Copilot CLI's model backend for every agentic stage (producer, implementer, reviewer). This is a _separate_ concern from repo access — Copilot's model auth is account-level, not repo-level.                                                                                                                                                            | Create a **personal** fine-grained PAT (github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens) with **Account permissions → Copilot Requests: Read-only** and **no repository access at all**. If the token's owning account is outside `nalfeo`'s org, an org owner must approve it first (org Settings → Third-party access). |
-| `GOOBERS_GITHUB_TOKEN` | **Required** | Repo credential Goobers uses for issue/PR/branch operations (claiming issues, pushing branches, opening PRs). `crawler-feature-pr` declares `repo:push`, which the built-in `GITHUB_TOKEN` cannot satisfy (it's read-only in this workflow, and a `GITHUB_TOKEN`-authored push wouldn't trigger the normal CI workflow anyway) — the workflow fails fast if this secret is unset. | A fine-grained PAT (or GitHub App installation token) with **Contents, Issues, and Pull requests: Read and write** on this repo.                                                                                                                                                                                                                                    |
+| Secret                 | Required?    | What it's for                                                                                                                                                                                                                                                                                                     | Where to get it                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COPILOT_GITHUB_TOKEN` | **Required** | Authenticates the GitHub Copilot CLI's model backend for every agentic stage (producer, implementer, reviewer). This is a _separate_ concern from repo access — Copilot's model auth is account-level, not repo-level.                                                                                            | Create a **personal** fine-grained PAT (github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens) with **Account permissions → Copilot Requests: Read-only** and **no repository access at all**. If the token's owning account is outside `nalfeo`'s org, an org owner must approve it first (org Settings → Third-party access). |
+| `GOOBERS_GITHUB_TOKEN` | **Required** | Dedicated repository credential Goobers uses for issue/PR/branch operations (claiming issues, pushing branches, opening PRs). `crawler-feature-pr` declares `repo:push`, which the built-in `GITHUB_TOKEN` cannot safely satisfy because a `GITHUB_TOKEN`-authored push would not trigger the normal CI workflow. | Create a dedicated fine-grained PAT or GitHub App installation token with **Contents, Issues, and Pull requests: Read and write** on this repo only. Do not reuse `CRAWLER_CI_PAT`, which is reserved for CI recovery automation.                                                                                                                                   |
 
 The two tokens are deliberately different credentials with different scopes — never
 reuse one PAT for both. See the Goobers repo's
-[`docs/guides/github-token-scopes.md`](https://github.com/Agent-Clubhouse/Goobers/blob/main/docs/guides/github-token-scopes.md)
+[GitHub token-scope guide](https://github.com/Agent-Clubhouse/Goobers/blob/main/docs/guides/github-token-scopes.md)
 for the full capability-to-token mapping and the cross-org rationale for keeping
 `agent:model` on its own personal token.
 

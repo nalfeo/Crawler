@@ -10,13 +10,43 @@ spec:
     - type: manual
   readiness:
     maxConcurrentRuns: 1
+  runControls:
+    maxRepasses: 6
   start: query-backlog
   tasks:
     - name: query-backlog
       type: deterministic
       goal: Claim one maintainer-approved Crawler feature issue.
       run:
-        command: ['goobers', 'backlog-query', '--claim']
+        script: |
+          set -eu
+          if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+            issue="${GOOBERS_RECOVERY_ISSUE}"
+            case "${issue}" in
+              (*[!0-9]*|'')
+                echo "GOOBERS_RECOVERY_ISSUE must be a numeric issue number; refusing recovery claim." >&2
+                exit 1
+                ;;
+            esac
+            issue_json="$(gh issue view "${issue}" --repo "${GITHUB_REPOSITORY}" --json state,title,body,url,labels,assignees)"
+            state="$(jq -r '.state' <<<"${issue_json}")"
+            approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"${issue_json}")"
+            assigned="$(jq -r '[.assignees[]] | length > 0' <<<"${issue_json}")"
+            if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ] || [ "${assigned}" != "false" ]; then
+              echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
+              exit 1
+            fi
+            gh issue edit "${issue}" --repo "${GITHUB_REPOSITORY}" --add-label 'goobers/status:in-review'
+            jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
+              id: (.number // '"${issue}"'),
+              title,
+              body,
+              url,
+              workspaceBranch: $workspaceBranch
+            }' <<<"${issue_json}" > claimed-item.json
+          else
+            goobers backlog-query --claim
+          fi
       inputs:
         trustLabel: 'goobers:approved'
         requireUnassigned: 'true'
@@ -28,24 +58,144 @@ spec:
       policyActions:
         - claim-backlog-items
       expectedOutputs:
-        - claimed-item
+        - id
+        - title
+        - body
+        - url
+        # Goobers' well-known branch-rebinding contract: a recovered PR head
+        # is emitted here so every later stage uses that existing branch.
+        - workspaceBranch
+      next: hydrate-requirements
+    - name: hydrate-requirements
+      type: deterministic
+      inputsFrom:
+        issueNumber: query-backlog.id
+        issueTitle: query-backlog.title
+        issueBody: query-backlog.body
+        issueUrl: query-backlog.url
+      goal: Fetch the full claimed issue body into deterministic requirements context.
+      run:
+        script: |
+          set -eu
+          repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          issue="${GOOBERS_INPUT_ISSUENUMBER:-}"
+          title="${GOOBERS_INPUT_ISSUETITLE:-}"
+          url="${GOOBERS_INPUT_ISSUEURL:-}"
+          body="${GOOBERS_INPUT_ISSUEBODY:-}"
+          if [ -z "$issue" ]; then
+            echo "query-backlog did not emit an issue id" >&2
+            exit 1
+          fi
+
+          {
+            echo "# Claimed issue requirements"
+            echo
+            echo "- Repository: ${repo}"
+            echo "- Issue: #${issue} ${title}"
+            echo "- URL: ${url}"
+            echo
+            echo "## Body"
+            echo
+            printf '%s\n' "${body:-"(empty)"}"
+          } > requirements.md
+
+          jq -n \
+            --arg issueNumber "$issue" \
+            --arg issueTitle "$title" \
+            --arg issueUrl "$url" \
+            --rawfile requirements requirements.md \
+            '{
+              schema: "crawler.goobers.requirements/v1",
+              issueNumber: $issueNumber,
+              issueTitle: $issueTitle,
+              issueUrl: $issueUrl,
+              requirementsFile: "requirements.md",
+              requirements: $requirements
+            }' > requirements-result.json
+
+          cat requirements.md
+      inputs:
+        resultFile: 'requirements-result.json'
+      expectedOutputs:
+        - issueNumber
+        - issueTitle
+        - issueUrl
+        - requirementsFile
       next: plan
     - name: plan
       type: agentic
       goober: producer
+      contextFrom:
+        - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
       capabilities:
         - repo:read
         - agent:model
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
       expectedOutputs:
-        - implementation-plan
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
+      next: materialize-plan
+    - name: materialize-plan
+      type: deterministic
+      inputsFrom:
+        implementationPlan: plan.implementationPlan
+        hardGate: plan.hardGate
+        verdict: plan.verdict
+        appleEstimate: plan.appleEstimate
+      goal: Materialize the producer scalar outputs into durable implementation context.
+      run:
+        script: |
+          set -eu
+          {
+            echo "# Producer implementation plan"
+            echo
+            echo "- Verdict: ${GOOBERS_INPUT_VERDICT:-}"
+            echo "- Apple estimate: ${GOOBERS_INPUT_APPLEESTIMATE:-}"
+            echo "- Hard gate: ${GOOBERS_INPUT_HARDGATE:-}"
+            echo
+            echo "## Plan"
+            echo
+            printf '%s\n' "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}"
+          } > implementation-plan.md
+
+          jq -n \
+            --arg planFile "implementation-plan.md" \
+            --arg implementationPlan "${GOOBERS_INPUT_IMPLEMENTATIONPLAN:-}" \
+            --arg hardGate "${GOOBERS_INPUT_HARDGATE:-}" \
+            --arg verdict "${GOOBERS_INPUT_VERDICT:-}" \
+            --arg appleEstimate "${GOOBERS_INPUT_APPLEESTIMATE:-}" \
+            --rawfile materializedPlan implementation-plan.md \
+            '{
+              schema: "crawler.goobers.implementation-plan/v1",
+              planFile: $planFile,
+              implementationPlan: $implementationPlan,
+              hardGate: $hardGate,
+              verdict: $verdict,
+              appleEstimate: $appleEstimate,
+              materializedPlan: $materializedPlan
+            }' > implementation-plan-result.json
+
+          cat implementation-plan.md
+      inputs:
+        resultFile: 'implementation-plan-result.json'
+      expectedOutputs:
+        - planFile
+        - implementationPlan
+        - hardGate
+        - verdict
+        - appleEstimate
       next: implement
     - name: implement
       type: agentic
       goober: coder
       contextFrom:
-        - query-backlog
-        - plan
+        - hydrate-requirements
+        - materialize-plan
         - implement
         - review
         - local-ci
@@ -58,17 +208,43 @@ spec:
         - agent:model
       policyActions:
         - modify-repository
-      next: review
+      retry:
+        maxAttempts: 2
+        backoffSeconds: 30
+      next: checkpoint-branch
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
       run:
-        command: ['goobers', 'push-branch']
+        script: |
+          set -eu
+          # Recovery branches are agent-authored; skip lifecycle scripts while
+          # installing the dependencies needed by the pre-push verification.
+          npm ci --ignore-scripts
+          goobers push-branch
       capabilities:
         - repo:push
       policyActions:
         - push-repository-branch
       next: local-ci
+    - name: checkpoint-branch
+      type: deterministic
+      goal: Persist implementation commits and open the recovery PR immediately before review.
+      run:
+        script: |
+          set -eu
+          # The checkpoint runs before review, so dependency installation must
+          # not execute lifecycle scripts from the unreviewed branch.
+          npm ci --ignore-scripts
+          goobers push-branch
+          goobers open-pr
+      capabilities:
+        - repo:push
+        - provider:pr:write
+      policyActions:
+        - push-repository-branch
+        - open-or-update-pr
+      next: review
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
@@ -135,6 +311,10 @@ spec:
       evaluator: agentic
       agentic:
         goober: reviewer
+        retry:
+          maxAttempts: 2
+          backoffSeconds: 30
+      maxRepasses: 6
       branches:
         pass: push-branch
         needs-changes: implement
@@ -153,9 +333,9 @@ spec:
       evaluator: automated
       automated:
         check: output-equals
-        output: opened
-        equals: 'true'
+        params:
+          key: opened
+          equals: 'true'
       branches:
         pass: close-out
-        fail: '@abort'
-        infra: needs-remediation
+        fail: close-out

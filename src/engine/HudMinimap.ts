@@ -25,6 +25,10 @@ import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 import { NAV_RADAR_DIAMETER, resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
+import {
+  shouldDrawTerritoryOverlayBands,
+  shouldUseFamilyRoomTint,
+} from './minimap-territory-guards.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -648,8 +652,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
    * (SAFE/SPAWN/BOSS_STAIR) use the fixed accent palette.
    */
   function roleDotColor(room: RoomData, world: GameWorld): number | null {
-    const familyTint = familyTintForRoom(world, familyDefs, room);
-    if (familyTint !== null) return familyTint;
+    if (shouldUseFamilyRoomTint(room, world)) {
+      const familyTint = familyTintForRoom(world, familyDefs, room);
+      if (familyTint !== null) return familyTint;
+    }
     switch (room.role) {
       case RoomRole.SAFE:
         return DOT_SAFE_ROOM;
@@ -942,25 +948,27 @@ export function createHudMinimap(scene: Phaser.Scene): {
         const right = left + scale;
         const bottom = top + scale;
         fillClippedRect(color, 1, left, top, right, bottom);
-        const territoryTints = territoryTintsForTile(
-          world,
-          familyDefs,
-          floorMap.territoryZones,
-          tx,
-          ty,
-        ).slice(0, TERRITORY_TEXTURE_PX_PER_TILE);
-        for (let band = 0; band < territoryTints.length; band += 1) {
-          const bandLeft = left + Math.floor((band * scale) / territoryTints.length);
-          const bandRight = left + Math.floor(((band + 1) * scale) / territoryTints.length);
-          if (bandRight > bandLeft) {
-            fillClippedRect(
-              territoryTints[band]!,
-              TERRITORY_OVERLAY_ALPHA,
-              bandLeft,
-              top,
-              bandRight,
-              bottom,
-            );
+        if (shouldDrawTerritoryOverlayBands(floorMap)) {
+          const territoryTints = territoryTintsForTile(
+            world,
+            familyDefs,
+            floorMap.territoryZones,
+            tx,
+            ty,
+          ).slice(0, TERRITORY_TEXTURE_PX_PER_TILE);
+          for (let band = 0; band < territoryTints.length; band += 1) {
+            const bandLeft = left + Math.floor((band * scale) / territoryTints.length);
+            const bandRight = left + Math.floor(((band + 1) * scale) / territoryTints.length);
+            if (bandRight > bandLeft) {
+              fillClippedRect(
+                territoryTints[band]!,
+                TERRITORY_OVERLAY_ALPHA,
+                bandLeft,
+                top,
+                bandRight,
+                bottom,
+              );
+            }
           }
         }
       }

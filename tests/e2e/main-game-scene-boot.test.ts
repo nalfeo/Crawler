@@ -31,6 +31,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ftToPx } from '../../src/shared/units.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import {
+  acknowledgeFloorSummary,
   loadMainSceneProbeLab,
   mainSceneProbe,
   waitForCameraCenter,
@@ -171,6 +172,9 @@ describe('MainGameScene characterization guards', () => {
         label: 'descend confirmation modal',
       });
       await page.keyboard.press('Enter');
+      // The floor summary now sits between the two floors and waits for the
+      // player before descending.
+      await acknowledgeFloorSummary(page);
 
       const floor2State = await waitForState(
         page,
@@ -211,6 +215,7 @@ describe('MainGameScene characterization guards', () => {
         label: 'Floor 2 exit confirmation modal',
       });
       await page.keyboard.press('Enter');
+      await acknowledgeFloorSummary(page);
 
       const floor3State = await waitForState(
         page,
@@ -227,10 +232,21 @@ describe('MainGameScene characterization guards', () => {
       expect(new URL(page.url()).searchParams.get('floor')).toBe('floor3');
       expect(floor3State.floorId).toBe('floor3');
       expect(floor3LoadoutState.worldState).toBe('loadout');
-      expect(floor3LoadoutContent?.title).toBe('Choose your starter Companion');
-      expect(floor3LoadoutContent?.options).toHaveLength(4);
+      expect(floor3LoadoutContent?.title).toBe('Welcome to the Companion League');
+      expect(floor3LoadoutContent?.options).toHaveLength(1);
+
+      await page.keyboard.press('Enter');
+      await waitForState(
+        page,
+        (s) => s.floorId === 'floor3' && s.worldState === 'loadout' && s.modalOpen,
+        { timeoutMs: 10_000, label: 'Floor 3 starter-companion modal after intro' },
+      );
+      const floor3StarterContent = await mainSceneProbe.getModalPickerContent(page);
+
+      expect(floor3StarterContent?.title).toBe('Choose your starter Companion');
+      expect(floor3StarterContent?.options).toHaveLength(4);
       expect(
-        floor3LoadoutContent?.options.every(
+        floor3StarterContent?.options.every(
           (option) =>
             option.label.trim().length > 0 &&
             (option.description ?? '').trim().length > 0 &&

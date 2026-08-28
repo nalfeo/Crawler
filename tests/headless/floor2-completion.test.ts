@@ -13,6 +13,7 @@ import {
 import type { GameWorld } from '../../src/core/world.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import { setGoalFlag } from '../../src/core/door-lock.js';
+import { RoomRole } from '../../src/shared/map-types.js';
 import {
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
   FLOOR2_VICTORY_GOAL_ID,
@@ -106,6 +107,50 @@ function formatEquipFailureReason(reason: { readonly type: string }): string {
 }
 
 describe('Floor 2 headless completion', () => {
+  it('does not create tracked ambient enemies in the entrance room', async () => {
+    const seenAmbient = new Set<number>();
+    const protectedAmbientSpawns: Array<{ eid: number; role: RoomRole; x: number; y: number }> = [];
+    let observedAmbientSpawns = 0;
+
+    const captureNewAmbientSpawns = (world: GameWorld): void => {
+      const floorMap = world.floorMap;
+      const ambient = world.floorExtendedState?.ambientEnemyArchetypes;
+      if (!floorMap || !ambient) {
+        return;
+      }
+
+      for (const eid of ambient.keys()) {
+        if (seenAmbient.has(eid)) {
+          continue;
+        }
+        seenAmbient.add(eid);
+        observedAmbientSpawns += 1;
+
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const tile = floorMap.worldToTile(x, y);
+        const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+        const role = roomId < 0 ? undefined : floorMap.roomGraph.get(roomId)?.role;
+        if (role === RoomRole.SPAWN || role === RoomRole.BOSS_DEN) {
+          protectedAmbientSpawns.push({ eid, role, x, y });
+        }
+      }
+    };
+
+    await runHeadless(new BehaviorTreeAI({ seed: 91 }), {
+      seed: 91,
+      floorId: 'floor2',
+      maxFrames: 1_200,
+      simulationOptions: {
+        postSystems: [captureNewAmbientSpawns],
+      },
+      stopWhen: () => observedAmbientSpawns >= 8,
+    });
+
+    expect(observedAmbientSpawns).toBeGreaterThan(0);
+    expect(protectedAmbientSpawns).toEqual([]);
+  });
+
   it('starts direct Floor 2 headless runs at level 5 with the charm equipped', async () => {
     let observedLevel = -1;
     let observedUnspent = -1;

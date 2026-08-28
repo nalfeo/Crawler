@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "explicit-npc-dialogue",
+  "task_title": "Require explicit NPC dialogue activation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted: pointer hit-testing converts Phaser world pixels to feet and uses actual NPC Size half-extents, separately requiring nearbyPlayer; closest qualifying NPC is selected with eid tie-break; real-input E2E will expose precise NPC and Awards screen-space points. Rejected sprite-interactive rearchitecture because it is invasive and unnecessary."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Review round 1: ledger stage incompleteness remains expected until finalization; resolved the valid probe concern by binding its projected screen point to the NPC primed for interaction. Re-review found no implementation concerns."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "3dc8662a407119e29721bc27ba00ea2cb51b6e7a",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change limits dialogue initiation to an explicit click on a nearby NPC footprint while preserving Talk, E, and active-dialogue advancement. It uses correct unit conversion and deterministic tie resolution, with unit and real-scene E2E coverage."
+    }
+  }
+}

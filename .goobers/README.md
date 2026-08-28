@@ -1,7 +1,8 @@
 # Crawler Goobers Configuration
 
 This directory is Crawler's versioned Goobers desired-state source. It defines
-the manual-only `crawler-feature-pr` workflow:
+the `crawler-feature-pr` workflow, dispatched automatically by GitHub Actions
+when `goobers:approved` is applied and rediscovered by an hourly recovery sweep:
 
 ```text
 goobers:approved issue
@@ -14,6 +15,16 @@ goobers:approved issue
 
 The workflow never merges a PR. The trusted Issue Copilot Intake workflow
 intentionally does not assign Cloud Copilot to `goobers:approved` issues.
+Plan, implementation, and review each allow at most two attempts, and the run
+allows at most two gate repasses. After implementation commits, the workflow
+checkpoints the branch before review so partial progress survives a failed run.
+When an issue is linked to an open PR, the hosted wrapper passes its validated
+head branch to Goobers. The workflow's claim stage emits Goobers'
+`workspaceBranch` output, rebinding every subsequent managed worktree to that
+branch instead of creating a duplicate. Manual dispatches can set
+`issue_number` to select the issue, or `abandon_existing` to close the attached
+open PR and intentionally start over. Runtime journals remain outside this
+source tree; only retries within one Actions job share its throwaway instance.
 
 ## Runtime boundary
 

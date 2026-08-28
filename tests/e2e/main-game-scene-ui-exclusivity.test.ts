@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  tapKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -43,6 +48,16 @@ async function withHeldTouch(
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await session.detach();
   }
+}
+
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) &&
+    Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y)
+  );
 }
 
 describe('MainGameScene UI exclusivity', () => {
@@ -150,6 +165,27 @@ describe('MainGameScene UI exclusivity', () => {
       restored.issueButtonVisible,
       'Issue button should return after cancelling a report',
     ).toBe(true);
+  });
+
+  it('keeps the Issue button clear of the skill HUD on small screens', async () => {
+    const smallContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+    const smallPage = await smallContext.newPage();
+    try {
+      await bootPlayingSafeScene(smallPage);
+      const issueBounds = await mainSceneProbe.getIssueButtonBounds(smallPage);
+      const skillBounds = (await mainSceneProbe.getSafeAreaLayout(smallPage)).surfaces.find(
+        ({ name }) => name === 'skillPanel',
+      )?.bounds;
+
+      expect(issueBounds, 'Issue button should remain visible on small screens').not.toBeNull();
+      expect(skillBounds, 'skill HUD bounds should be available').toBeDefined();
+      if (!issueBounds || !skillBounds) return;
+      expect(overlaps(issueBounds, skillBounds), 'Issue button must not cover the skill HUD').toBe(
+        false,
+      );
+    } finally {
+      await closeQuietly(smallContext);
+    }
   });
 
   it('gives the issue picker exclusive keyboard ownership over loadout and Skills UX', async () => {
@@ -269,6 +305,87 @@ describe('MainGameScene UI exclusivity', () => {
       'queued interaction must not start NPC dialogue while a character panel is open',
     ).toBe(false);
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
+  });
+
+  it('requires an explicit NPC interaction before dialogue opens', async () => {
+    await bootPlayingSafeScene();
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+    expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+    await page.waitForFunction(
+      () => window.__mainSceneProbe?.getInteractionHintBounds() !== null,
+      undefined,
+      { timeout: 5_000 },
+    );
+    const awardsBounds = await mainSceneProbe.getAchievementsButtonBounds(page);
+    const talkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    const canvas = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(awardsBounds, 'Awards button should expose screen-space bounds').not.toBeNull();
+    expect(talkBounds, 'Talk button should expose screen-space bounds').not.toBeNull();
+    expect(canvas, 'main-scene probe canvas should exist').not.toBeNull();
+    if (!awardsBounds || !talkBounds || !canvas) return;
+
+    const toCanvas = ({ x, y }: { x: number; y: number }) => ({
+      x: canvas.x + x * (canvas.width / 1280),
+      y: canvas.y + y * (canvas.height / 720),
+    });
+    const clickDesignPoint = async (point: { x: number; y: number }): Promise<void> => {
+      const target = toCanvas(point);
+      await page.mouse.click(target.x, target.y);
+    };
+    await clickDesignPoint({ x: 800, y: 450 });
+    await page.waitForTimeout(100);
+    expect((await mainSceneProbe.getState(page)).conversationOpen).toBe(false);
+
+    await clickDesignPoint({
+      x: awardsBounds.x + awardsBounds.width / 2,
+      y: awardsBounds.y + awardsBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.achievementsOpen && !state.conversationOpen, {
+      label: 'Awards opened without NPC dialogue',
+    });
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await waitForState(page, (state) => !state.achievementsOpen, { label: 'Awards closed' });
+
+    const npcScreenPoint = await mainSceneProbe.getPrimedNpcScreenPoint(page);
+    expect(npcScreenPoint, 'NPC should expose a screen-space hit point').not.toBeNull();
+    if (!npcScreenPoint) return;
+    await clickDesignPoint(npcScreenPoint);
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'NPC click opened dialogue',
+    });
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
+    );
+    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
+
+    await clickDesignPoint({
+      x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
+      y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'Talk button opened dialogue',
+    });
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
+    );
+    await tapKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {

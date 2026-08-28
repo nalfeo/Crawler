@@ -8,7 +8,7 @@ import {
   _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
-  selectFloor3StarterCompanion,
+  selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
 import { getFloorEnemyPack } from '../../src/shared/enemy-packs.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
@@ -21,6 +21,8 @@ import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
 import { _STARTER_OFFER_SIZE } from '../../src/game/floor3Recruiting.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
+import { GAME } from '../../src/shared/constants.js';
 
 function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
@@ -29,7 +31,7 @@ function createFloor3World(seed: number) {
   // Confirm the starter-Companion pick (spec R5 §6.1) so the world lands in
   // 'playing' the way a real run does — `initializeFloor3Scenario` now pauses
   // on 'loadout' until a pick is made, mirroring Floor 1's weapon loadout.
-  selectFloor3StarterCompanion(world, 0);
+  selectFloor3LoadoutOption(world, 0);
   return { world, playerEid };
 }
 
@@ -170,6 +172,41 @@ describe('Floor 3 overworld + wild spawns', () => {
     expect(world.state).toBe('game_over');
   });
 
+  it('stops the countdown while the player stands in the Floor 3 entrance safe room', () => {
+    // Issue #3674: after Floor 1 the entrance room is a time-stopping safe room,
+    // so its credit must push the manifest deadline out by the time spent there.
+    const { world, playerEid } = createFloor3World(558);
+    const durationMs = getFloorManifest('floor3')?.timer.durationMs ?? 0;
+    const spawnRoom = world.floorMap?.spawnRoom;
+    expect(spawnRoom).toBeTruthy();
+
+    const center = world.floorMap!.tileToWorld(
+      spawnRoom!.bounds.x + Math.floor(spawnRoom!.bounds.width / 2),
+      spawnRoom!.bounds.y + Math.floor(spawnRoom!.bounds.height / 2),
+    );
+    world.stores.position.x[playerEid] = center.x;
+    world.stores.position.y[playerEid] = center.y;
+
+    const creditedFrames = 10;
+    for (let i = 0; i < creditedFrames; i += 1) {
+      safeRoomSystem(world);
+    }
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    expect(world.safeRoomTimerCreditMs).toBeCloseTo(creditedFrames * GAME.DELTA_MS, 6);
+
+    // The raw manifest wall alone no longer ends the floor...
+    world.elapsedMs = durationMs + 1;
+    world.floorObjectiveTick?.(world);
+    expect(world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID)).not.toBe(true);
+    expect(world.state).toBe('playing');
+
+    // ...but the credited deadline still does.
+    world.elapsedMs = durationMs + world.safeRoomTimerCreditMs + 1;
+    world.floorObjectiveTick?.(world);
+    expect(world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID)).toBe(true);
+    expect(world.state).toBe('game_over');
+  });
+
   it('still spawns ambient wilds when the player stands on an unlabeled overworld tile', () => {
     const { world, playerEid } = createFloor3World(1203);
     const unlabeled = findReachableUnlabeledTile(world);
@@ -228,7 +265,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const offer = world.floorExtendedState?.floor3StarterOffer ?? [];
     expect(offer.length).toBeGreaterThan(0);
 
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     expect(world.state).toBe('playing');
     expect(world.floorExtendedState?.floor3StarterOffer ?? []).toEqual([]);
@@ -262,7 +299,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
 
-    selectFloor3StarterCompanion(world, 999);
+    selectFloor3LoadoutOption(world, 999);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);
@@ -275,7 +312,7 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     world.floorExtendedState = { ...world.floorExtendedState, floor3StarterOffer: [] };
     world.state = 'loadout';
 
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
@@ -285,10 +322,10 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const world = createTestWorld({ seed: 1304, floor: 3 });
     const playerEid = spawnPlayer(world, 0, 0);
     initializeFloor3Scenario(world, playerEid);
-    selectFloor3StarterCompanion(world, 0);
+    selectFloor3LoadoutOption(world, 0);
     expect(world.state).toBe('playing');
 
-    selectFloor3StarterCompanion(world, 1);
+    selectFloor3LoadoutOption(world, 1);
 
     expect(world.state).toBe('playing');
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(1);

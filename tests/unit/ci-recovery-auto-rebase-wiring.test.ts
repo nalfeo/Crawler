@@ -91,4 +91,28 @@ describe('CI recovery auto-rebase callback fencing', () => {
     // D2: non-422 failures must be counted as hard failures, not silently skipped
     expect(raw).toContain('failed=$((failed + 1))');
   });
+
+  it('honors merge-automation opt-out labels before any branch mutation', () => {
+    const raw = readFileSync(WORKFLOW_PATH, 'utf8');
+    // Mirrors the exclusion labels enforced by .github/scripts/ci-recovery/router.mjs.
+    expect(raw).toContain('. == "ci-recovery-opt-out" or . == "human-approval-required"');
+    expect(raw).toContain('opt_out_label=$(');
+    expect(raw).toContain('if [ -n "$opt_out_label" ]; then');
+    expect(raw).toContain('label opts out of merge automation');
+
+    // The guard must precede every mutating action, otherwise an opted-out PR is
+    // still rebased, force-pushed, or given an empty retrigger commit.
+    const guardIdx = raw.indexOf('opt_out_label=$(');
+    expect(guardIdx).toBeGreaterThan(-1);
+    for (const mutation of [
+      '-X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch"',
+      'if git rebase origin/main; then',
+      'git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"',
+      'git push --force-with-lease=',
+    ]) {
+      const mutationIdx = raw.indexOf(mutation);
+      expect(mutationIdx, `missing mutation anchor: ${mutation}`).toBeGreaterThan(-1);
+      expect(guardIdx, `opt-out guard must precede: ${mutation}`).toBeLessThan(mutationIdx);
+    }
+  });
 });

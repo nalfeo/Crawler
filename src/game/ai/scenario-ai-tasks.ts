@@ -21,7 +21,12 @@
  * byte-identical graph.
  */
 
-import { type GoalId, type GoalNode, type LocationId } from './objective-route-planner.js';
+import {
+  type GoalId,
+  type GoalNode,
+  type LocationId,
+  type ObjectiveUtility,
+} from './objective-route-planner.js';
 import type { RunPlannerPoint, RunPlanSegment, RunPlanSegmentPhase } from './run-planner.js';
 
 // -----------------------------------------------------------------------------
@@ -127,6 +132,8 @@ export interface ScenarioAiTask<S, P> {
   readonly required: boolean;
   /** Groups optional tasks into an all-or-nothing bundle. Ignored when required. */
   readonly optionalBundleId?: string;
+  /** Strategic value advertised by an optional task to the portfolio planner. */
+  readonly utility?: ObjectiveUtility;
   /** Door/feature unlock effect tags (may be negative `!tag`) this task grants. */
   readonly unlockEffects?: readonly string[];
   /** Presentation label/kind/phase. */
@@ -586,6 +593,7 @@ export function buildScenarioGoalGraph<S, P>(
       prerequisiteIds,
       required: task.required,
       ...(task.optionalBundleId !== undefined ? { optionalBundleId: task.optionalBundleId } : {}),
+      ...(task.utility !== undefined ? { utility: task.utility } : {}),
       ...(task.unlockEffects !== undefined && task.unlockEffects.length > 0
         ? { unlockEffects: task.unlockEffects }
         : {}),

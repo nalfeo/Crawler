@@ -25,6 +25,11 @@ import {
   WORLD_VFX_DEPTH,
 } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
+import {
+  buildFloorSummaryRows,
+  countPlayerAttributedKills,
+  formatFloorSummaryText,
+} from '../../shared/floor-summary.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
@@ -68,6 +73,7 @@ import {
   areLightingRectsEqual,
   canFileLiveIssue,
   extrapolateRenderPosition,
+  findClickedNearbyNpc,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getLightingViewRect,
@@ -79,7 +85,11 @@ import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
+import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
+import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
+import { shouldShowFloor3Party } from '../floor3-party-state.js';
+import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
@@ -142,7 +152,12 @@ import {
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import { formForLevel, getPetSpecies } from '../../shared/data/floor3/species.js';
+import {
+  buildFloor3IntroModel,
+  buildFloor3PoachPickerModel,
+  buildFloor3StarterPickerModel,
+} from '../../shared/floor3-ux.js';
+import type { ModalPickerConfig } from '../../shared/modal-picker.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
@@ -225,6 +240,60 @@ const FLOOR_TRANS_BAR_W = 400;
 const FLOOR_TRANS_BAR_H = 14;
 const FLOOR_TRANS_BAR_INNER_W = FLOOR_TRANS_BAR_W - 2;
 const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
+
+/**
+ * Grace period before the between-floor summary accepts its acknowledgement
+ * input. The stair-descend confirmation is itself an Enter press / tap, so
+ * without this the same physical input that confirmed the descent could be
+ * read again as "continue" and the summary would flash past unread.
+ */
+const FLOOR_SUMMARY_ACK_ARM_MS = 450;
+
+/**
+ * Acknowledgement prompt on the between-floor summary. The screen blocks the
+ * descent, and it accepts touch (the summary owns its own pointer latch), so
+ * the copy must name the tap affordance too — otherwise a touch-only player is
+ * stranded on a screen with no discoverable way to continue.
+ */
+const FLOOR_SUMMARY_ACK_PROMPT = 'Press SPACE or ENTER — or tap — to descend';
+
+/** Panel height used by the taller between-floor summary layout. */
+const FLOOR_SUMMARY_PANEL_H = 400;
+
+/** Screen-space bounds of a visible game object, or null when hidden/absent. */
+function toScreenBounds(
+  object?: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text,
+): ScreenBounds | null {
+  if (!object || !object.visible) {
+    return null;
+  }
+  const bounds = object.getBounds();
+  return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+}
+
+/** Union of the screen bounds of every visible object, or null when none are. */
+function unionScreenBounds(
+  objects: readonly (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text | undefined)[],
+): ScreenBounds | null {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const object of objects) {
+    const bounds = toScreenBounds(object);
+    if (!bounds) {
+      continue;
+    }
+    left = Math.min(left, bounds.x);
+    top = Math.min(top, bounds.y);
+    right = Math.max(right, bounds.x + bounds.width);
+    bottom = Math.max(bottom, bounds.y + bounds.height);
+  }
+  if (!Number.isFinite(left)) {
+    return null;
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
 
 const logger = createLogger('engine:main-game-scene');
 
@@ -438,6 +507,18 @@ export interface RewardAudioCueLogEntry {
   readonly gain: number;
 }
 
+/**
+ * One on-screen corner button's live label, visibility and rendered bounds.
+ * Underscore-prefixed: test/automation scaffolding consumed by the probe lab
+ * and e2e helpers, with no production caller outside this file.
+ */
+export interface _CornerButtonProbe {
+  readonly id: string;
+  readonly label: string;
+  readonly visible: boolean;
+  readonly bounds: ScreenBounds;
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -541,6 +622,8 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+  /** True once the Floor 3 rules briefing (UX surface #1) has been acknowledged this floor. */
+  private floor3IntroAcknowledged = false;
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
@@ -732,12 +815,17 @@ export class MainGameScene extends Phaser.Scene {
   private keyAbilities?: Phaser.Input.Keyboard.Key;
 
   private keyAchievements?: Phaser.Input.Keyboard.Key;
+  private keyRoster?: Phaser.Input.Keyboard.Key;
+  private keyCommand?: Phaser.Input.Keyboard.Key;
+  private queuedRosterToggle = false;
+  private queuedCompanionCommand = false;
 
   private keyQuartermaster?: Phaser.Input.Keyboard.Key;
 
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
+  private floor3RosterUI?: ReturnType<typeof createFloor3RosterUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private shopPanelUI?: ReturnType<typeof createShopPanelUI>;
@@ -823,11 +911,39 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
+  /** Panel behind the completion copy; grown when the summary is shown. */
+  private floorCompletionPanel?: Phaser.GameObjects.Rectangle;
+
   private floorCompletionTitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
+  /** Between-floor stats block ("Time on floor", "Enemies slain", …). */
+  private floorSummaryText?: Phaser.GameObjects.Text;
+
+  /** "Press SPACE …" prompt shown while the summary waits for a human. */
+  private floorSummaryPromptText?: Phaser.GameObjects.Text;
+
+  private keyFloorSummaryAdvanceSpace?: Phaser.Input.Keyboard.Key;
+
+  private keyFloorSummaryAdvanceEnter?: Phaser.Input.Keyboard.Key;
+
+  /**
+   * Descent deferred until the player acknowledges the floor summary. Set only
+   * for human-driven runs; AI-driven runs keep the timed progress bar.
+   */
+  private pendingFloorTransition?: () => void;
+
+  /** Scene time (ms) from which the summary acknowledgement is accepted. */
+  private floorSummaryAckArmedAtMs = 0;
+
+  /** Latched pointer/touch acknowledgement, consumed by the update loop. */
+  private floorSummaryAckRequested = false;
+
+  /** Player-attributed enemy kills counted on this floor. */
+  private floorKills = 0;
 
   /** Progress bar shown during floor-to-floor transitions (hidden otherwise). */
   private floorTransitionProgressTrack?: Phaser.GameObjects.Rectangle;
@@ -858,8 +974,10 @@ export class MainGameScene extends Phaser.Scene {
   /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
   private activeConversationLines: readonly string[] | null = null;
 
-  /** One-frame latch set by pointer tap/click to advance or start dialogue. */
+  /** One-frame latch set by a pointer tap on an NPC or during active dialogue. */
   private tappedInteraction = false;
+  /** NPC selected by this frame's pointer tap, when dialogue is not yet open. */
+  private tappedNpcEid: number | null = null;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -878,6 +996,10 @@ export class MainGameScene extends Phaser.Scene {
   private equipButton?: Phaser.GameObjects.Text;
 
   private achievementsButton?: Phaser.GameObjects.Text;
+
+  private floor3RosterButton?: Phaser.GameObjects.Text;
+
+  private floor3CommandButton?: Phaser.GameObjects.Text;
 
   /** Touch button for the abilities config modal. */
   private abilitiesButton?: Phaser.GameObjects.Text;
@@ -1010,6 +1132,10 @@ export class MainGameScene extends Phaser.Scene {
     this.warnedMissingDependencies = false;
     this.floorCompletionMessageShown = false;
     this.floorCompletionMessagePending = false;
+    this.pendingFloorTransition = undefined;
+    this.floorSummaryAckArmedAtMs = 0;
+    this.floorSummaryAckRequested = false;
+    this.floorKills = 0;
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
@@ -1051,6 +1177,14 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.keyRoster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.keyFloorSummaryAdvanceSpace = this.input.keyboard?.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+    );
+    this.keyFloorSummaryAdvanceEnter = this.input.keyboard?.addKey(
+      Phaser.Input.Keyboard.KeyCodes.ENTER,
+    );
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1110,6 +1244,7 @@ export class MainGameScene extends Phaser.Scene {
       },
     });
     this.bossIntroUI = createBossIntroUI(this);
+    this.floor3RosterUI = createFloor3RosterUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onVisibilityChange: () => {
         this.clearPendingInteractionInput();
@@ -1326,6 +1461,8 @@ export class MainGameScene extends Phaser.Scene {
       this.equipmentUI = undefined;
       this.achievementsUI?.destroy();
       this.achievementsUI = undefined;
+      this.floor3RosterUI?.destroy();
+      this.floor3RosterUI = undefined;
       this.rewardOpeningUI?.destroy();
       this.rewardOpeningUI = undefined;
       this.shopPanelUI?.destroy();
@@ -1334,6 +1471,10 @@ export class MainGameScene extends Phaser.Scene {
       this.rewardAudioEngine = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
+      this.floor3RosterButton?.destroy();
+      this.floor3RosterButton = undefined;
+      this.floor3CommandButton?.destroy();
+      this.floor3CommandButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
       this.issueButton?.destroy();
@@ -1369,6 +1510,12 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
+      this.floorSummaryText = undefined;
+      this.floorSummaryPromptText = undefined;
+      this.pendingFloorTransition = undefined;
+      this.floorSummaryAckRequested = false;
+      this.keyFloorSummaryAdvanceSpace = undefined;
+      this.keyFloorSummaryAdvanceEnter = undefined;
       this.floorTransitionProgressTrack = undefined;
       this.floorTransitionProgressFill = undefined;
       this.floorTransitionProgressShine = undefined;
@@ -1378,6 +1525,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid = null;
       this.activeConversationLines = null;
       this.tappedInteraction = false;
+      this.tappedNpcEid = null;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1419,11 +1567,89 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  /**
+   * Live read-back of the between-floor summary screen — what a player can
+   * actually read, plus whether the descent is waiting on them. Test/automation
+   * affordance for the deterministic floor-summary e2e.
+   */
+  getFloorSummaryState(): {
+    visible: boolean;
+    lines: string[];
+    prompt: string | null;
+    awaitingAcknowledgement: boolean;
+    panelBounds: ScreenBounds | null;
+    contentBounds: ScreenBounds | null;
+  } {
+    const visible =
+      (this.floorCompletionScreen?.visible ?? false) && (this.floorSummaryText?.visible ?? false);
+    const text = this.floorSummaryText?.text ?? '';
+    return {
+      visible,
+      lines: visible && text.length > 0 ? text.split('\n') : [],
+      prompt:
+        (this.floorSummaryPromptText?.visible ?? false)
+          ? (this.floorSummaryPromptText?.text ?? null)
+          : null,
+      awaitingAcknowledgement: this.pendingFloorTransition !== undefined,
+      panelBounds: toScreenBounds(this.floorCompletionPanel),
+      contentBounds: unionScreenBounds([
+        this.floorCompletionTitleText,
+        this.floorCompletionSubtitleText,
+        this.floorCompletionBodyText,
+        this.floorSummaryText,
+        this.floorSummaryPromptText,
+      ]),
+    };
+  }
+
+  /**
+   * Screen-space bounds + label of every on-screen corner button, in stacking
+   * order. Test/automation affordance so e2e probes can assert the shipped
+   * buttons stay uniformly sized and evenly spaced (the corner buttons are
+   * canvas text, so their real geometry is only observable from a live scene).
+   * Bounds are reported regardless of the per-button visibility gating, which
+   * only depends on unlocks/safe context and never on layout.
+   */
+  getCornerButtonLayout(): readonly _CornerButtonProbe[] {
+    const entries: ReadonlyArray<readonly [string, Phaser.GameObjects.Text | undefined]> = [
+      ['inventory', this.inventoryButton],
+      ['equip', this.equipButton],
+      ['achievements', this.achievementsButton],
+      ['floor3Roster', this.floor3RosterButton],
+      ['floor3Command', this.floor3CommandButton],
+      ['abilities', this.abilitiesButton],
+      ['quartermaster', this.quartermasterButton],
+      ['issue', this.issueButton],
+    ];
+    const layout: _CornerButtonProbe[] = [];
+    for (const [id, button] of entries) {
+      if (!button) {
+        continue;
+      }
+      const bounds = button.getBounds();
+      layout.push({
+        id,
+        label: button.text,
+        visible: button.visible,
+        bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+      });
+    }
+    return layout;
+  }
+
   getIssueButtonBounds(): ScreenBounds | null {
     if (!this.issueButton?.visible) {
       return null;
     }
     const bounds = this.issueButton.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getAchievementsButtonBounds(): ScreenBounds | null {
+    if (!this.achievementsButton?.visible) {
+      return null;
+    }
+    const bounds = this.achievementsButton.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
@@ -1441,6 +1667,13 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.pendingFloorTransition) {
+      // The between-floor summary owns every pointer press while it waits,
+      // touch included — this is the one screen a touch-only player must be
+      // able to dismiss without a keyboard.
+      this.floorSummaryAckRequested = true;
+      return;
+    }
     if (this.abilityLoadoutUI?.isOpen()) {
       return;
     }
@@ -1458,13 +1691,32 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.inventoryButton) ||
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
+      isCornerButtonHit(this.floor3RosterButton) ||
+      isCornerButtonHit(this.floor3CommandButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
       isCornerButtonHit(this.quartermasterButton) ||
       isCornerButtonHit(this.issueButton)
     ) {
       return;
     }
-    this.tappedInteraction = true;
+    if (this.conversationNpcEid !== null) {
+      this.tappedInteraction = true;
+      return;
+    }
+    pointer.updateWorldPoint(this.cameras.main);
+    const npcEid = findClickedNearbyNpc(
+      pxToFt(pointer.worldX),
+      pxToFt(pointer.worldY),
+      this.world.npcs,
+      this.world.stores.position.x,
+      this.world.stores.position.y,
+      this.world.stores.size.halfWidth,
+      this.world.stores.size.halfHeight,
+    );
+    if (npcEid >= 0) {
+      this.tappedNpcEid = npcEid;
+      this.tappedInteraction = true;
+    }
   }
 
   private handleKeyboardE(): void {
@@ -1477,6 +1729,7 @@ export class MainGameScene extends Phaser.Scene {
   private clearPendingInteractionInput(): void {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -1488,6 +1741,8 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAchievements,
       this.keyAbilities,
       this.keyQuartermaster,
+      this.keyRoster,
+      this.keyCommand,
       this.keyEsc,
     ]) {
       if (key) {
@@ -1529,6 +1784,21 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.floor3RosterUI?.isOpen()) {
+      if (event.repeat) return;
+      if (event.code === 'KeyR' || event.code === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.closeFloor3Roster();
+      } else if (event.code === 'KeyW' || event.code === 'ArrowUp') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, -1);
+      } else if (event.code === 'KeyS' || event.code === 'ArrowDown') {
+        event.preventDefault();
+        this.floor3RosterUI.moveCursor(this.world, 1);
+      }
+      return;
+    }
     if (this.isBlockingSurfaceOpen()) {
       return;
     }
@@ -1556,6 +1826,37 @@ export class MainGameScene extends Phaser.Scene {
   public requestAchievementsToggle(): void {
     this.clearPendingInteractionInput();
     this.queuedAchievementsToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 roster overlay ([R]). */
+  public requestFloor3RosterToggle(): void {
+    this.clearPendingInteractionInput();
+    this.queuedRosterToggle = true;
+  }
+
+  /** Touch/e2e entry point for the Floor-3 companion command verb ([C]). */
+  public requestCompanionCommand(): void {
+    this.queuedCompanionCommand = true;
+  }
+
+  /** Read-back of the mounted Floor-3 roster overlay for labs/e2e probes. */
+  public getFloor3RosterState(): Floor3RosterState | null {
+    return this.floor3RosterUI?.getState() ?? null;
+  }
+
+  private closeFloor3Roster(): void {
+    this.floor3RosterUI?.close();
+    this.clearPendingInteractionInput();
+  }
+
+  private issueCompanionCommandFromInput(): void {
+    const result = this.hudUi?.issueFloor3Command(this.world, this.playerEid);
+    if (result === undefined) return;
+    if (result.accepted) {
+      this.flashHint(`${result.row.formName} uses ${result.abilityName}!`);
+      return;
+    }
+    this.flashHint(describeCompanionCommandRejection(result.rejection));
   }
 
   public requestQuartermasterToggle(): void {
@@ -1899,6 +2200,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
+      (this.floor3RosterUI?.isOpen() ?? false) ||
       (this.shopPanelUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
@@ -1930,8 +2232,19 @@ export class MainGameScene extends Phaser.Scene {
     this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
+    this.updateFloorSummaryAcknowledgement();
     this.showDeathScreenIfNeeded();
     this.refreshCameraMasks();
+
+    // The between-floor summary is a blocking screen: freeze the fixed step
+    // while it waits for the player (rendering and camera stay alive, exactly
+    // like the boss-intro/level-up freeze branches below).
+    if (this.pendingFloorTransition) {
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateOverlayText();
+      return;
+    }
 
     this.processOpenAbilitiesModal();
     if (this.issueReportPausedState !== undefined) {
@@ -2003,6 +2316,19 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.floor3RosterUI?.isOpen()) {
+      this.updateDoorOverlay();
+      this.updateLightingOverlay();
+      this.floor3RosterUI.sync(this.world);
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateFeatureUnlocks();
+      return;
+    }
+
     // On level-up, open the stat-allocation screen so the player can spend the
     // points they earned. If there are no points to spend (or no allocation
     // callback is wired), just resume the run.
@@ -2033,6 +2359,13 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      if (this.world.state === 'loadout') {
+        this.openLoadoutModal();
+        if (this.modalPicker?.isOpen()) {
+          this.updateOverlayText();
+          return;
+        }
+      }
       this.updateDoorOverlay();
       this.updateLightingOverlay();
       this.bridge.sync(this.world);
@@ -2145,6 +2478,11 @@ export class MainGameScene extends Phaser.Scene {
       // src/engine module). Call order + arguments are identical to the former
       // inline body; the paused single-step drain stays at its exact original
       // seam (between preSystems and movementSystem) via the `afterInput` hook.
+      // Player-attributed kills for the between-floor summary. Counted here,
+      // per simulation step, because the render layer drains `combatEvents`
+      // once per rendered frame while this loop may run several steps: the
+      // pre-step queue length is the cursor that makes each death count once.
+      const combatEventsBeforeStep = this.world.combatEvents.length;
       runSimulationStep(this.world, this.inputState, {
         preSystems: this.options.preSystems,
         postSystems: this.options.postSystems,
@@ -2166,6 +2504,11 @@ export class MainGameScene extends Phaser.Scene {
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
+      this.floorKills += countPlayerAttributedKills(
+        this.world.combatEvents,
+        this.playerEid,
+        combatEventsBeforeStep,
+      );
 
       // Record telemetry from the human player each sim step when configured.
       if (this.sessionRecorder) {
@@ -2253,6 +2596,8 @@ export class MainGameScene extends Phaser.Scene {
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
     const quartermasterOpen = this.shopPanelUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
+    const rosterOpen = this.floor3RosterUI?.isOpen() ?? false;
+    const floor3PartyAvailable = shouldShowFloor3Party(this.world);
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
     // level-up, map overlay, or a non-abilities modal).
@@ -2271,7 +2616,8 @@ export class MainGameScene extends Phaser.Scene {
       !equipOpen &&
       !achievementsOpen &&
       !quartermasterOpen &&
-      !abilitiesOpen;
+      !abilitiesOpen &&
+      !rosterOpen;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
@@ -2281,6 +2627,10 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton?.setVisible(
       safeCtx && this.world.achievements.unlockedIds.size > 0 && (achievementsOpen || canOpenNew),
     );
+    this.floor3RosterButton
+      ?.setDepth(rosterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(floor3PartyAvailable && (rosterOpen || canOpenNew));
+    this.floor3CommandButton?.setVisible(floor3PartyAvailable && !rosterOpen && canOpenNew);
     this.abilitiesButton
       ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
@@ -2377,6 +2727,33 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         this.achievementsUI.toggle(this.world);
       }
+    }
+
+    const rosterToggleRequested =
+      this.queuedRosterToggle ||
+      Boolean(this.keyRoster && Phaser.Input.Keyboard.JustDown(this.keyRoster));
+    this.queuedRosterToggle = false;
+    if (rosterOpen) {
+      if (rosterToggleRequested) {
+        this.closeFloor3Roster();
+      } else if (floor3PartyAvailable) {
+        this.floor3RosterUI?.sync(this.world);
+      } else {
+        this.closeFloor3Roster();
+      }
+    } else if (rosterToggleRequested && floor3PartyAvailable && !isUiLockOpen()) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels();
+      this.clearPendingInteractionInput();
+      this.floor3RosterUI?.open(this.world);
+    }
+
+    const commandRequested =
+      this.queuedCompanionCommand ||
+      Boolean(this.keyCommand && Phaser.Input.Keyboard.JustDown(this.keyCommand));
+    this.queuedCompanionCommand = false;
+    if (commandRequested && !this.isBlockingSurfaceOpen() && floor3PartyAvailable) {
+      this.issueCompanionCommandFromInput();
     }
 
     // Boss chests now appear as physical in-world entities. Surface a one-time
@@ -2662,19 +3039,25 @@ export class MainGameScene extends Phaser.Scene {
     this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.requestInventoryToggle();
     });
-    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔️ Gear', () => {
       this.requestEquipAction();
     });
     this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.requestAchievementsToggle();
     });
-    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
+    this.floor3RosterButton = makeCornerButton(cornerButtonTop() + 168, '🐾 Roster', () => {
+      this.requestFloor3RosterToggle();
+    });
+    this.floor3CommandButton = makeCornerButton(cornerButtonTop() + 224, '⚡ Command', () => {
+      this.requestCompanionCommand();
+    });
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 280, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
+    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
       this.openIssueReport();
     }).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
@@ -2682,6 +3065,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
+      this.floor3RosterButton?.setScale(buttonScale);
+      this.floor3CommandButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
       this.issueButton?.setScale(buttonScale);
@@ -2692,6 +3077,8 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton,
         this.equipButton,
         this.achievementsButton,
+        this.floor3RosterButton,
+        this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
         this.issueButton,
@@ -2705,11 +3092,30 @@ export class MainGameScene extends Phaser.Scene {
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
       this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
+      this.floor3RosterButton?.setY(top + bagH + gearH + awardsH);
+      const rosterH = (this.floor3RosterButton?.height ?? 44) * buttonScale + 8;
+      this.floor3CommandButton?.setY(top + bagH + gearH + awardsH + rosterH);
+      const commandH = (this.floor3CommandButton?.height ?? 44) * buttonScale + 8;
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
       const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      this.issueButton?.setY(top + bagH + gearH + awardsH + skillsH + shopH);
+      if (buttonScale > 1) {
+        const firstColumnWidth = Math.max(
+          ...[
+            this.inventoryButton,
+            this.equipButton,
+            this.achievementsButton,
+            this.floor3RosterButton,
+            this.floor3CommandButton,
+            this.abilitiesButton,
+            this.quartermasterButton,
+          ].map((button) => button?.displayWidth ?? 0),
+        );
+        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
+      } else {
+        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      }
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -2761,9 +3167,10 @@ export class MainGameScene extends Phaser.Scene {
     const completionBackdrop = this.add
       .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
       .setOrigin(0, 0);
-    const completionPanel = this.add
+    this.floorCompletionPanel = this.add
       .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
       .setStrokeStyle(2, 0x334155, 1);
+    const completionPanel = this.floorCompletionPanel;
     this.floorCompletionTitleText = this.add
       .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
         fontFamily: 'Segoe UI, Arial, sans-serif',
@@ -2791,6 +3198,23 @@ export class MainGameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5, 0.5);
+    this.floorSummaryText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2, '', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#e2e8f0',
+        align: 'left',
+      })
+      .setOrigin(0.5, 0.5)
+      .setVisible(false);
+    this.floorSummaryPromptText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#fbbf24',
+      })
+      .setOrigin(0.5, 0.5)
+      .setVisible(false);
 
     // Floor-transition progress bar — hidden by default, shown only when the
     // scene is about to restart into the next floor.
@@ -2832,6 +3256,8 @@ export class MainGameScene extends Phaser.Scene {
         this.floorCompletionTitleText,
         this.floorCompletionSubtitleText,
         this.floorCompletionBodyText,
+        this.floorSummaryText,
+        this.floorSummaryPromptText,
         this.floorTransitionProgressTrack,
         this.floorTransitionProgressFill,
         this.floorTransitionProgressShine,
@@ -3361,7 +3787,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.world.floorId === 'floor3') {
-      this.openFloor3StarterModal();
+      this.openFloor3LoadoutSurface();
       return;
     }
 
@@ -3406,53 +3832,69 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
-   * Floor 3's starter-Companion pick (spec R5 §6.1) — the species-based
-   * counterpart to Floor 1's weapon loadout modal above. Sourced from
-   * `floorExtendedState.floor3StarterOffer` since Floor 3 intentionally
+   * Floor 3's `'loadout'` surfaces (spec slice 12, UX surfaces #1–#3). One
+   * resolver picks exactly one surface by priority so the rules briefing can
+   * never be skipped and a poach can never be masked by the starter offer:
+   *
+   * 1. the welcome + rules briefing, once per floor entry (non-cancellable);
+   * 2. the Trainer-poach picker, whenever a poach offer is pending;
+   * 3. the starter-Companion picker.
+   *
+   * Offers are sourced from `floorExtendedState` since Floor 3 intentionally
    * never populates `world.floorScenario` (see `initializeFloor3Scenario`).
    */
-  private openFloor3StarterModal(): void {
+  private openFloor3LoadoutSurface(): void {
     if (!this.modalPicker) return;
-    const offer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
-    if (offer.length === 0) return;
 
-    const options = offer.map((speciesId, index) => {
-      const species = getPetSpecies(speciesId);
-      if (!species) {
-        return { id: speciesId, label: `Option ${index + 1}`, description: speciesId };
-      }
-      const babyForm = formForLevel(species, 1);
-      const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
-      return {
-        id: speciesId,
-        label: babyForm.name,
-        description: `${capitalize(species.affinity)} · ${capitalize(species.fightingStyle)} · ${species.innateAbilityName}`,
-      };
+    if (!this.floor3IntroAcknowledged) {
+      this.modalPicker.open(buildFloor3IntroModel(), {
+        onConfirm: () => {
+          this.floor3IntroAcknowledged = true;
+          this.updateOverlayText();
+        },
+      });
+      return;
+    }
+
+    const poachOffer = this.world.floorExtendedState?.floor3PoachOffer;
+    if (poachOffer !== undefined) {
+      this.openFloor3PickerModal(
+        buildFloor3PoachPickerModel({
+          candidates: poachOffer.candidates,
+          slotsRemaining: poachOffer.slotsRemaining,
+          trainerName: poachOffer.encounterName,
+        }),
+        poachOffer.candidates.map((candidate) => candidate.speciesId),
+      );
+      return;
+    }
+
+    const starterOffer = this.world.floorExtendedState?.floor3StarterOffer ?? [];
+    if (starterOffer.length === 0) return;
+    this.openFloor3PickerModal(buildFloor3StarterPickerModel(starterOffer), starterOffer);
+  }
+
+  /** Opens a Floor 3 species picker and routes the pick back through `selectLoadoutOption`. */
+  private openFloor3PickerModal(
+    config: ModalPickerConfig,
+    offerSpeciesIds: readonly string[],
+  ): void {
+    this.modalPicker?.open(config, {
+      onConfirm: ({ option }) => {
+        // An unmatched option id must still dispatch: `selectLoadoutOption`
+        // is the only thing that leaves `'loadout'`, so skipping it would
+        // strand the floor paused with no picker on screen. Index 0 is the
+        // same never-strand fallback the cancel path and the headless runner
+        // use.
+        const choiceIndex = offerSpeciesIds.indexOf(option.id);
+        this.options.selectLoadoutOption?.(this.world, Math.max(0, choiceIndex));
+        this.updateOverlayText();
+      },
+      onCancel: () => {
+        this.options.selectLoadoutOption?.(this.world, 0);
+        this.updateOverlayText();
+      },
     });
-
-    this.modalPicker.open(
-      {
-        title: 'Choose your starter Companion',
-        subtitle: 'Floor 3 is paused until you confirm a starter.',
-        body: 'Pick the Companion you want to begin the Companion League with.',
-        options,
-        allowCancel: true,
-        initialSelectedId: offer[0],
-      },
-      {
-        onConfirm: ({ option }) => {
-          const choiceIndex = offer.indexOf(option.id);
-          if (choiceIndex >= 0) {
-            this.options.selectLoadoutOption?.(this.world, choiceIndex);
-          }
-          this.updateOverlayText();
-        },
-        onCancel: () => {
-          this.options.selectLoadoutOption?.(this.world, 0);
-          this.updateOverlayText();
-        },
-      },
-    );
   }
 
   private openSpellSelectionModal(): void {
@@ -4170,6 +4612,12 @@ export class MainGameScene extends Phaser.Scene {
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     const issueOpen = this.issueReportPausedState !== undefined;
+    // Quest-arrow toggle clicks are captured HUD-side (input only); apply
+    // them to the sim here, in the scene's own input pipeline, before the
+    // HUD re-renders from the updated quest log.
+    for (const questId of this.hudUi?.consumeQuestArrowToggleRequests() ?? []) {
+      toggleQuestArrow(this.world, questId);
+    }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
@@ -4290,15 +4738,28 @@ export class MainGameScene extends Phaser.Scene {
     if (completionVariant === 'transition_to_next_floor') {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
+      this.showFloorSummary();
       this.floorCompletionScreen?.setVisible(true);
-      this.startFloorTransitionProgress(() => {
+      const advance = (): void => {
         const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
         if (nextOptions) {
           const composedNextOptions =
             this.options.recomposeFloorTransitionOptions?.(nextOptions) ?? nextOptions;
           this.scene.restart({ mainGameSceneOptions: composedNextOptions });
         }
-      });
+      };
+      // An AI-driven run has nobody to press a key, so it keeps the timed
+      // progress bar (long enough for a viewer/recording to read the summary).
+      // A human reads the summary and descends when they are ready.
+      if (this.isRunAutoDriven()) {
+        this.floorSummaryPromptText?.setVisible(false);
+        this.startFloorTransitionProgress(advance);
+        return;
+      }
+      this.pendingFloorTransition = advance;
+      this.floorSummaryAckRequested = false;
+      this.floorSummaryAckArmedAtMs = this.time.now + FLOOR_SUMMARY_ACK_ARM_MS;
+      this.floorSummaryPromptText?.setText(FLOOR_SUMMARY_ACK_PROMPT).setVisible(true);
       return;
     }
 
@@ -4312,6 +4773,113 @@ export class MainGameScene extends Phaser.Scene {
 
   private shouldShowFloorCompletionMessage(): boolean {
     return this.hasReachedScenarioRunOutcome() && !this.floorCompletionMessageShown;
+  }
+
+  /**
+   * True when an AI — not a human — is driving this run. Same signal every
+   * other auto-advance surface uses (see {@link driveAutoBossIntro}).
+   */
+  private isRunAutoDriven(): boolean {
+    return this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+  }
+
+  /**
+   * Fills in and lays out the between-floor stats block. Every value comes
+   * from durable per-floor state (the scene's own kill tally, the world clock,
+   * the per-floor gold ledger, the player's level/health) so it reads the same
+   * whether the floor was cleared in 40 seconds or 10 minutes.
+   */
+  private showFloorSummary(): void {
+    const summaryText = this.floorSummaryText;
+    if (!summaryText) {
+      return;
+    }
+    // Accuracy is only a truthful player-facing number when the floor actually
+    // measured something: `accuracy` is 0 both for "missed every swing" and for
+    // "no swings at all", and BEAM/TRAP casts count as swings while their
+    // damage stays untagged. Omit the row rather than show a false 0%.
+    const weaponTelemetry = this.sessionRecorder?.getStats().weaponTelemetry;
+    const accuracy =
+      weaponTelemetry && weaponTelemetry.swings > 0 && weaponTelemetry.unattributedSwings === 0
+        ? weaponTelemetry.accuracy
+        : undefined;
+    const goldLedger = this.world.goldLedger;
+    const rows = buildFloorSummaryRows({
+      elapsedMs: this.world.elapsedMs,
+      kills: this.floorKills,
+      level: this.world.playerLevel?.level ?? 0,
+      xpGained: (this.world.playerLevel?.xp ?? 0) - this.runStartXp,
+      goldEarned: goldLedger.earnedFromDrops + goldLedger.earnedFromLootBoxes,
+      goldHeld: this.world.playerGold,
+      currentHealth: this.world.stores.health.current[this.playerEid] ?? 0,
+      maxHealth: this.world.stores.health.max[this.playerEid] ?? 0,
+      ...(accuracy === undefined ? {} : { accuracy }),
+    });
+    summaryText.setText(formatFloorSummaryText(rows)).setVisible(true);
+    this.layoutFloorCompletionScreenWithSummary();
+  }
+
+  /**
+   * Re-lays out the completion screen for the taller summary variant. The
+   * terminal (no-summary) variants keep the original compact geometry, so this
+   * only runs on the between-floor path.
+   */
+  private layoutFloorCompletionScreenWithSummary(): void {
+    const centerX = GAME.WIDTH / 2;
+    const centerY = GAME.HEIGHT / 2;
+    this.floorCompletionPanel?.setSize(620, FLOOR_SUMMARY_PANEL_H);
+    this.floorCompletionTitleText?.setPosition(centerX, centerY - 150);
+    this.floorCompletionSubtitleText?.setPosition(centerX, centerY - 108);
+    this.floorCompletionBodyText?.setPosition(centerX, centerY - 68);
+    this.floorSummaryText?.setPosition(centerX, centerY + 15);
+    this.floorSummaryPromptText?.setPosition(centerX, centerY + 110);
+    const barX = centerX - FLOOR_TRANS_BAR_W / 2;
+    const barY = centerY + 130;
+    this.floorTransitionProgressTrack?.setPosition(barX, barY);
+    this.floorTransitionProgressFill?.setPosition(barX + 1, barY + 1);
+    this.floorTransitionProgressShine?.setPosition(barX + 1, barY + 1);
+    this.floorTransitionProgressLabel?.setPosition(centerX, barY + 22);
+  }
+
+  /**
+   * Runs the between-floor summary's acknowledgement input. Accepts keyboard
+   * (SPACE/ENTER) and any pointer press including touch — the scene's normal
+   * pointer handler deliberately ignores touch, so the summary owns its own
+   * latch ({@link floorSummaryAckRequested}) to stay reachable on mobile.
+   *
+   * The arm delay means the very press that confirmed the stair descent can
+   * never double as the acknowledgement.
+   */
+  private updateFloorSummaryAcknowledgement(): void {
+    const advance = this.pendingFloorTransition;
+    if (!advance) {
+      return;
+    }
+    if (this.time.now < this.floorSummaryAckArmedAtMs) {
+      // Swallow input that was already down when the summary appeared.
+      this.floorSummaryAckRequested = false;
+      this.consumeFloorSummaryAdvanceKeys();
+      return;
+    }
+    const acknowledged = this.floorSummaryAckRequested || this.consumeFloorSummaryAdvanceKeys();
+    if (!acknowledged) {
+      return;
+    }
+    this.floorSummaryAckRequested = false;
+    this.pendingFloorTransition = undefined;
+    this.floorSummaryPromptText?.setVisible(false);
+    this.startFloorTransitionProgress(advance);
+  }
+
+  /** JustDown-reads both advance keys, returning whether either fired. */
+  private consumeFloorSummaryAdvanceKeys(): boolean {
+    const space =
+      this.keyFloorSummaryAdvanceSpace !== undefined &&
+      Phaser.Input.Keyboard.JustDown(this.keyFloorSummaryAdvanceSpace);
+    const enter =
+      this.keyFloorSummaryAdvanceEnter !== undefined &&
+      Phaser.Input.Keyboard.JustDown(this.keyFloorSummaryAdvanceEnter);
+    return space || enter;
   }
 
   /**
@@ -4863,7 +5431,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction || this.queuedInteraction;
+    const tappedNpcEid = this.tappedNpcEid;
+    // A pointer tap latches onto the exact NPC whose footprint was clicked, but
+    // the simulation step runs before this code and can move that NPC out of
+    // interaction range. Cancel such a tap instead of letting it retarget a
+    // different nearby NPC.
+    const tappedNpcInvalidated =
+      tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;
+    const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;
     const interactionInputRequested =
       tapped || Boolean(this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE));
     const interactionRequested =
@@ -4872,6 +5447,7 @@ export class MainGameScene extends Phaser.Scene {
         : interactionInputRequested && !this.isBlockingSurfaceOpen();
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
+    this.tappedNpcEid = null;
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
@@ -4972,15 +5548,17 @@ export class MainGameScene extends Phaser.Scene {
       Math.hypot(playerX - stairMarker.positionFt.x, playerY - stairMarker.positionFt.y) <=
         stairMarker.radiusFt;
 
-    if (nearNpcEid >= 0) {
+    const selectedNpcEid =
+      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+    if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
-        if (this.tryQueueSettlementShopOpenFromNpc(nearNpcEid)) {
+        if (this.tryQueueSettlementShopOpenFromNpc(selectedNpcEid)) {
           return;
         }
-        const instance = this.world.npcs.get(nearNpcEid);
+        const instance = this.world.npcs.get(selectedNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
           // Shopkeeper errand: advance the merchant's multistep flow on talk.
@@ -5004,10 +5582,10 @@ export class MainGameScene extends Phaser.Scene {
               spellQuestGiver: this.options.spellQuestGiver,
               shopkeeperJustReturned: this.shopkeeperJustReturned,
             },
-            nearNpcEid,
+            selectedNpcEid,
           );
           if (def && activeDialogue.length > 0) {
-            this.conversationNpcEid = nearNpcEid;
+            this.conversationNpcEid = selectedNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
               this.options.tutorialGoon.meet(this.world);
             }

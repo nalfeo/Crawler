@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "quest-tracker-controls",
+  "task_title": "Place quest log below minimap and toggle quest arrows",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Resolved reviewer concerns: retain tracked as the single expanded quest and add separate showArrow state; ensure every arrow-producing quest is within the existing MAX_ACTIVE_QUESTS surfaced tracker subset; label the per-row action as navigation arrow ON/OFF and limit it to waypoint output; use existing family avoidance by passing the live quest bounds and sync tracker before family so the family panel relocates when needed; verify actual row hitboxes through the MainGameScene probe."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "63db004448dc0bc3d8cd6810515e55a20aae2c2e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff correctly separates quest arrow visibility from tracked focus, routes HUD clicks through the scene input pipeline, docks the tracker below the minimap, and keeps family-panel avoidance wired to live tracker bounds. The HudQuestTracker sync() stale-toggle fix is correct: truncated quest ids are hidden and excluded from the final visibility re-show loop, so truncated toggles do not remain visible or interactive. Coverage exercises core toggling, waypoint filtering, real-scene click behavior, minimap/main arrows, and layout; it is strong, though the truncation-specific stale-toggle regression is not directly covered."
+    }
+  }
+}

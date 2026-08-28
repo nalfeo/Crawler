@@ -28,6 +28,7 @@ import {
   mobAbilitySystem,
   type GameWorld,
 } from '../core/index.js';
+import { createRunEventCollector } from '../core/run-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
@@ -80,8 +81,10 @@ export function createFloorMainSceneOptions(
       createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
     runStatsFactory: collectHumanRunStats,
     onRunBundle: onRunBundle ?? defaultRunBundleSink,
-    configureWorld: (world: GameWorld, playerEid: number) =>
-      scenario.configureWorld(world, playerEid, initializationOptions),
+    configureWorld: (world: GameWorld, playerEid: number) => {
+      world.runEvents ??= createRunEventCollector();
+      scenario.configureWorld(world, playerEid, initializationOptions);
+    },
     selectLoadoutOption: scenario.selectLoadoutOption,
     onStairDescend: scenario.onStairDescend,
     // Normalized presentation contract for this scenario (terminal outcome,

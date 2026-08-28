@@ -1221,7 +1221,21 @@ export function previewEquipDelta(
 ): EquipDeltaPreview | null {
   const def = getEquipmentDefForItem(itemId);
   if (def === undefined) return null;
+  return previewEquipDeltaForDef(world, entity, def);
+}
 
+/**
+ * Compute a read-only equip preview for a concrete equipment definition.
+ *
+ * Generated instances carry frozen definitions rather than a catalog item id,
+ * so rendering their candidate delta must use the same swap calculation as a
+ * static bag item without pretending they are catalog entries.
+ */
+export function previewEquipDeltaForDef(
+  world: GameWorld,
+  entity: number,
+  def: EquipmentItemDef,
+): EquipDeltaPreview {
   const state = getEquipmentState(world, entity);
 
   // Base + core points are constant across the swap; read them once.

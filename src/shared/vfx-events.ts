@@ -54,6 +54,8 @@ export interface VfxEvent {
   y: number;
   /** Optional tint hint (0xRRGGBB). Renderer falls back to a per-kind default. */
   color?: number;
+  /** Optional semantic pickup category for non-visual feedback. */
+  pickupAudioKind?: PickupAudioKind;
   /** Optional intensity multiplier (scales particle count / size). Default 1. */
   intensity?: number;
   /**
@@ -68,6 +70,9 @@ export interface VfxEvent {
 
 /** Pickup categories that emit a collect sparkle. */
 export type PickupKind = 'gem' | 'gold' | 'item';
+
+/** Pickup categories with distinct audio feedback. */
+export type PickupAudioKind = 'xp' | 'gold' | 'material';
 
 /** Default sparkle tint per pickup kind. */
 export const PICKUP_SPARKLE_COLORS: Record<PickupKind, number> = {

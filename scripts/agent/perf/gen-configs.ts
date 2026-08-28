@@ -57,7 +57,10 @@ export const LEGACY_COMBO_ID = 'riskRewardFused+legacy';
  */
 export function enumerateCombos(): Combo[] {
   const pathings: AIPathingModeValue[] = [AIPathingMode.RISK_REWARD_FUSED];
-  const decisions: AIDecisionModeValue[] = [AIDecisionMode.LEGACY];
+  const decisions: AIDecisionModeValue[] = [
+    AIDecisionMode.LEGACY,
+    AIDecisionMode.OBJECTIVE_PORTFOLIO,
+  ];
   const combos: Combo[] = [];
   for (const pathing of pathings) {
     for (const decision of decisions) {

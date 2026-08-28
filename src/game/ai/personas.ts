@@ -37,6 +37,13 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     farmPullWeight: 0.05,
     // A new player does not think in terms of spare budget, so no calm boost.
     calmFarmPullBoost: 1,
+    strategicUtilityWeights: {
+      completion: 2,
+      optimization: 1,
+      safety: 3,
+      exploration: 1,
+      costPerSecond: 2,
+    },
   },
   experienced_player: PRODUCTION_TUNING_DEFAULTS,
   min_max_cheeser: {
@@ -51,6 +58,13 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     farmPullWeight: 0.45,
     // The cheeser deliberately skips loot that isn't on the optimal line.
     calmFarmPullBoost: 1,
+    strategicUtilityWeights: {
+      completion: 1,
+      optimization: 4,
+      safety: 1,
+      exploration: 0,
+      costPerSecond: 2,
+    },
   },
   explorer: {
     aggression: 0.8,
@@ -64,6 +78,13 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     farmPullWeight: 0.2,
     // The explorer sweeps hardest while the clock is quiet.
     calmFarmPullBoost: 1.5,
+    strategicUtilityWeights: {
+      completion: 2,
+      optimization: 1,
+      safety: 1,
+      exploration: 4,
+      costPerSecond: 0,
+    },
   },
 };
 
