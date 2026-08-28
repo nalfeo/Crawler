@@ -14,7 +14,7 @@ import { spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { getRatTemplate } from './spawners/template-accessor.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
-import { AttackWaveRat, Damage, Enemy, Player, Size, Sprite } from '../core/components.js';
+import { AttackWaveRat, Damage, Enemy, Health, Player, Size, Sprite } from '../core/components.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { addComponent, query, setComponent } from 'bitecs';
@@ -90,12 +90,14 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
     aliveWaveRatCount: 0,
   });
   const navSnapshot = doorNavigationSnapshot(world);
+  const barrierVersion = world.barriers.version;
 
   // Invalidate flow field cache if map changed or safe rooms cleared
   if (
     state.safeRoomDistanceFieldMap !== floorMap ||
     state.safeRoomDistanceFieldClearedMap !== world.clearedSafeRoomMap ||
     state.safeRoomDoorSnapshot !== navSnapshot ||
+    state.safeRoomBarrierVersion !== barrierVersion ||
     (state.clearedSafeRoomIdsSnapshot !== undefined &&
       state.clearedSafeRoomIdsSnapshot !== Array.from(world.clearedSafeRoomIds).join(','))
   ) {
@@ -104,6 +106,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
     state.safeRoomDistanceFieldClearedMap = null;
     state.clearedSafeRoomIdsSnapshot = undefined;
     state.safeRoomDoorSnapshot = undefined;
+    state.safeRoomBarrierVersion = undefined;
   }
 
   // Recompute field if not cached
@@ -150,11 +153,21 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
       state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
       state.clearedSafeRoomIdsSnapshot = '';
       state.safeRoomDoorSnapshot = navSnapshot;
+      state.safeRoomBarrierVersion = barrierVersion;
       return false;
     }
 
+    const tileSizeFt = floorMap.config.tileSizeFt;
+    const isTilePassable = buildDoorAwarePassable(world);
     const field = computeMultiSourceFlowField(floorMap, safeRoomTiles, {
-      isTilePassable: buildDoorAwarePassable(world),
+      isTilePassable: (x, y) => {
+        if (!isTilePassable(x, y) || floorMap.hasBarrierAtTile(x, y)) {
+          return false;
+        }
+        const centerX = (x + 0.5) * tileSizeFt;
+        const centerY = (y + 0.5) * tileSizeFt;
+        return !floorMap.hasBarrierAtPoint(centerX, centerY);
+      },
     });
 
     state.safeRoomDistanceField = field.distance;
@@ -162,6 +175,7 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
     state.safeRoomDistanceFieldClearedMap = world.clearedSafeRoomMap;
     state.clearedSafeRoomIdsSnapshot = Array.from(world.clearedSafeRoomIds).join(',');
     state.safeRoomDoorSnapshot = navSnapshot;
+    state.safeRoomBarrierVersion = barrierVersion;
   }
 
   // Read distance at player tile
@@ -227,7 +241,7 @@ function resolveWaveSpawnPoint(
       tx < floorMap.tileMap.width &&
       ty >= 0 &&
       ty < floorMap.tileMap.height &&
-      floorMap.tileMap.isPassable(tx, ty)
+      floorMap.isPassableAt(spawnX, spawnY)
     ) {
       return { x: spawnX, y: spawnY };
     }
@@ -235,11 +249,11 @@ function resolveWaveSpawnPoint(
 
   for (let ty = 0; ty < floorMap.tileMap.height; ty += 1) {
     for (let tx = 0; tx < floorMap.tileMap.width; tx += 1) {
-      if (!floorMap.tileMap.isPassable(tx, ty)) {
-        continue;
-      }
       const spawnX = (tx + 0.5) * tileSizeFt;
       const spawnY = (ty + 0.5) * tileSizeFt;
+      if (!floorMap.isPassableAt(spawnX, spawnY)) {
+        continue;
+      }
       if (Math.hypot(spawnX - playerX, spawnY - playerY) >= spawnRingRadiusFt) {
         return { x: spawnX, y: spawnY };
       }
@@ -256,7 +270,14 @@ function resolveWaveSpawnPoint(
  * this keeps the cap check honest against entities that are still alive.
  */
 function countLiveWaveRats(world: GameWorld): number {
-  return query(world.ecs, [Enemy, AttackWaveRat]).length;
+  const rats = query(world.ecs, [Enemy, AttackWaveRat, Health]);
+  let alive = 0;
+  for (const eid of rats) {
+    if ((world.stores.health.current[eid] ?? 0) > 0) {
+      alive += 1;
+    }
+  }
+  return alive;
 }
 
 /** Spawn a pack of rats for the attack wave. */

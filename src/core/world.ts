@@ -969,6 +969,8 @@ export interface GameWorld {
     clearedSafeRoomIdsSnapshot?: string;
     /** Snapshot of door-navigation blocker state for cache invalidation */
     safeRoomDoorSnapshot?: string;
+    /** Barrier registry version used to build safe-room distance cache */
+    safeRoomBarrierVersion?: number;
   };
 }
 
