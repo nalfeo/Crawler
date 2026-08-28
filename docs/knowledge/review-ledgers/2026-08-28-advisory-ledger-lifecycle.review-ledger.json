@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "advisory-ledger-lifecycle",
+  "task_title": "Make ledger publication advisory and repair during PR lifecycle",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted immutable head content fetch, actor-backed native Copilot provenance, review-request deadlock avoidance, final-head ledger repair ordering, API failure handling, exact guard semantic parity, and CI artifact validation. Kept local prereqs advisory to match the explicit publication requirement."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

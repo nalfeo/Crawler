@@ -690,6 +690,32 @@ test('code_review last round needs >=1 model', () => {
   assert.equal(validateLedger(led).ok, false);
 });
 
+test('code_review accepts native Copilot PR-review actor provenance without a model id', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: 'https://github.com/nalfeo/Crawler/pull/123#pullrequestreview-456',
+    }),
+  ];
+  assert.equal(validateLedger(led).ok, true);
+});
+
+test('native PR-review actor provenance requires a review URL', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: undefined,
+    }),
+  ];
+  const result = validateLedger(led);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /reviewer_actors plus review_url/);
+});
+
 test('multi_model_review last round needs >=2 distinct models', () => {
   const led = tier4();
   led.stages.multi_model_review.rounds = [mmRound({ models: ['only'] })];

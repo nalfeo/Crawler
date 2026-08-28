@@ -94,6 +94,7 @@ import {
   buildTerminalDecisionRecord,
   formatDecisionLog,
 } from './decision-log.mjs';
+import { reviewLedgerBlockers } from './review-ledger-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -205,6 +206,10 @@ const BLOCKER_PHASES = [
     // in-thread resolution, so the final phase is present only when threads exist.
     label: 'thread resolution',
     matches: (blocker) => blocker.kind === 'review-thread',
+  },
+  {
+    label: 'review-ledger repair',
+    matches: (blocker) => blocker.kind === 'review-ledger',
   },
 ];
 function isAdvisoryCheck(checkName) {
@@ -2960,10 +2965,8 @@ for (const run of runs) {
 const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
-const needsChangedFiles =
-  retriggerableRuns.length > 0 || String(pr.head?.ref || '').trim() === 'assets/promote';
 let changedFiles = [];
-if (needsChangedFiles) {
+if (Number(pr.changed_files || 0) > 0) {
   try {
     changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
   } catch (error) {
@@ -3060,6 +3063,27 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     scopeMismatchTrusted: isTrustedComment(root),
     url: root?.url,
   });
+}
+
+if (changedFiles.length > 0) {
+  const ledgerLifecycle = await reviewLedgerBlockers(changedFiles, async (path) => {
+    const encodedPath = path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const response = await request(
+      readToken,
+      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(pr.head.sha)}`,
+    );
+    if (response.data?.encoding !== 'base64' || typeof response.data?.content !== 'string') {
+      throw new Error('GitHub contents response did not contain base64 file content');
+    }
+    return Buffer.from(response.data.content.replace(/\s+/g, ''), 'base64').toString('utf8');
+  });
+  blockers.push(...ledgerLifecycle.blockers);
+  for (const warning of ledgerLifecycle.warnings) {
+    process.stdout.write(`warn ${warning}\n`);
+  }
 }
 
 const normalized = normalizeBlockers(blockers);
@@ -3827,6 +3851,9 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         String(blocker.path ?? ''),
       ),
   );
+  const hasReviewLedgerArtifactBlocker = commentBlockers.some(
+    (blocker) => blocker.kind === 'review-ledger',
+  );
   const hasCiOnlyBlockers =
     commentBlockers.length > 0 &&
     commentBlockers.every(
@@ -3868,6 +3895,12 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     ...(hasSessionContinuationBlocker
       ? [
           '**Session-continuation protocol:** Read the PR description and current branch before changing anything, then continue the unfinished work in this PR. Keep the explicit `Status: INCOMPLETE - session ran out of time` line in the PR description while any work remains unfinished. Only after the work is complete and the PR is ready for normal review, update the PR description to remove or replace that incomplete status, then push consolidated changes and run required verification.',
+          '',
+        ]
+      : []),
+    ...(hasReviewLedgerArtifactBlocker
+      ? [
+          '**Review-ledger protocol:** Do not duplicate CI results in the ledger; required CI is authoritative. Existing GitHub Copilot PR review counts as `code_review` evidence when recorded with `reviewer_actors`, `review_url`, finding/resolution counts, and final cleanliness. Fix code, CI, and review threads first; repair and validate the ledger only on the final head so its evidence does not immediately go stale.',
           '',
         ]
       : []),

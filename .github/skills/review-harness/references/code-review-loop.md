@@ -28,6 +28,11 @@ Native GitHub Copilot pull-request review uses GitHub's selected model and does 
 a repository-controlled model selector, so repository instructions influence its persona
 and method, not its underlying model.
 
+After publication, a native Copilot PR review may satisfy a `code_review` round
+without inventing a model id. Record `reviewer_actors` with the GitHub actor
+login and `review_url` with the immutable review URL, plus the normal
+finding/resolution counts and `clean` state.
+
 Use this prompt for each general reviewer:
 
 ```

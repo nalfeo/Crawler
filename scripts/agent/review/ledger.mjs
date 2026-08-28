@@ -315,19 +315,36 @@ function validateLastRoundCommon(stage, errors, tag) {
  * @param {number} idx
  * @param {{minModels:number, requireDistinct:boolean, countKeys:string[]}} opts
  */
-function validateRoundShape(round, errors, tag, idx, { minModels, requireDistinct, countKeys }) {
+function validateRoundShape(
+  round,
+  errors,
+  tag,
+  idx,
+  { minModels, requireDistinct, countKeys, allowReviewerActors = false },
+) {
   const where = `${tag}: round[${idx}]`;
   if (!isPlainObject(round)) {
     errors.push(`${where} must be an object`);
     return;
   }
-  if (
-    !Array.isArray(round.models) ||
-    round.models.length < minModels ||
-    !round.models.every(isNonEmptyString)
-  ) {
+  const hasModels =
+    Array.isArray(round.models) &&
+    round.models.length >= minModels &&
+    round.models.every(isNonEmptyString);
+  const hasReviewerActors =
+    allowReviewerActors &&
+    Array.isArray(round.reviewer_actors) &&
+    round.reviewer_actors.length >= 1 &&
+    round.reviewer_actors.every(isNonEmptyString) &&
+    isNonEmptyString(round.review_url);
+  if (!hasModels && !hasReviewerActors) {
     errors.push(`${where}.models must list >= ${minModels} non-empty model id(s)`);
-  } else if (requireDistinct && !hasDistinct(round.models)) {
+    if (allowReviewerActors) {
+      errors.push(
+        `${where}: native PR review evidence may instead provide reviewer_actors plus review_url`,
+      );
+    }
+  } else if (hasModels && requireDistinct && !hasDistinct(round.models)) {
     errors.push(`${where}.models must be DISTINCT models`);
   }
   for (const k of countKeys) {
@@ -432,6 +449,7 @@ function validateCodeReview(stage, errors) {
           minModels: 1,
           requireDistinct: false,
           countKeys: ['concerns_count', 'resolved_count'],
+          allowReviewerActors: true,
         }),
       );
     }
@@ -452,13 +470,12 @@ function validateCodeReview(stage, errors) {
   if (stage.clean !== true) errors.push(`${tag}.clean must be true`);
   const last = validateLastRoundCommon(stage, errors, tag);
   if (!last) return;
-  if (
-    !Array.isArray(last.models) ||
-    last.models.length < 1 ||
-    !last.models.every(isNonEmptyString)
-  ) {
-    errors.push(`${tag}: last round.models must list >= 1 non-empty model id`);
-  }
+  validateRoundShape(last, errors, tag, stage.rounds.length - 1, {
+    minModels: 1,
+    requireDistinct: false,
+    countKeys: [],
+    allowReviewerActors: true,
+  });
   if (!isNonNegInt(last.concerns_count))
     errors.push(`${tag}: last round.concerns_count must be an integer >= 0`);
   if (!isNonNegInt(last.resolved_count))

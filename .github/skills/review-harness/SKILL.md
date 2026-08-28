@@ -1,8 +1,8 @@
 ---
 name: review-harness
 description: >-
-  Run the apple-scaled plan-review + multi-model code-review process before
-  opening a PR in the Crawler repo, and record it in an auditable review ledger.
+  Run the apple-scaled plan-review + multi-model code-review process during the
+  PR lifecycle in the Crawler repo, and record it in an auditable review ledger.
   Use when asked to "run the review harness", do a "plan review", "multi-model
   review", "review loop", "review ledger", or whenever a change is ">1 apple" /
   ">3 apples" and needs pre-PR review. Covers: deciding required stages from the
@@ -11,17 +11,17 @@ description: >-
   code-review agents until no concerns or a 2-round cap then human escalation
   (≥3🍎), an independent grade of the actual diff by an uninvolved model (≥3🍎),
   multi-model code-review with adjudication (>3🍎), and writing/validating the
-  review ledger that the `pr-review-ledger` guard enforces before
-  `create_pull_request`. A 1–2🍎 change needs NO ledger at all.
+  review ledger that required CI enforces before merge. A 1–2🍎 change needs NO
+  ledger at all, and ledger state never blocks PR publication.
 ---
 
 # Review Harness
 
 Scale the amount of review a change gets to its **apple complexity**, then prove
 it happened with a committed **review ledger**. A **1–2🍎 change needs no ledger
-at all** (those tiers require no review stages). At **≥3🍎** you must commit one,
-and the `pr-review-ledger` guard hard-denies `create_pull_request` for any ledger
-that is present but incomplete for its declared tier.
+at all** (those tiers require no review stages). At **≥3🍎** you must commit one.
+Ledger state never blocks PR creation or draft publication; required CI and CI
+Recovery validate and repair present ledgers before merge.
 
 > Stage-by-stage recipes with concrete `task`-tool calls and CLI commands live in
 > [`references/plan-review.md`](references/plan-review.md),
@@ -79,7 +79,7 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
   `npm run review:grade -- prompt <path>`, dispatch the printed packet to an
   uninvolved model, then `npm run review:grade -- record <path> --model <m>
 --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>`.
- The validator rejects a grader that appears in any other stage,
+  The validator rejects a grader that appears in any other stage,
   and `record` recomputes the verdict — a criterion below 3 or a blocker finding
   cannot be recorded as a pass.
 
@@ -137,12 +137,15 @@ stage). Never re-score down just to dodge a stage (rule #11).
    A `fail` verdict is not a dead end, but it is not a quiet pass either: fix the
    findings and re-grade, or record the `escalated_to_human` reason `record`
    writes for you and tell the human.
-8. **Validate the ledger** and make sure it is committed on your branch:
+8. **Validate the ledger** and make sure it is committed on your branch. After
+   publication, native Copilot PR review may supply `code_review` provenance via
+   `reviewer_actors` plus `review_url`; CI results remain authoritative and are
+   not duplicated in the ledger:
    ```
    npm run review:ledger -- validate <path>
    ```
-   Exit 0 = the guard will allow your PR. Exit 1 = it prints exactly which stage
-   is incomplete.
+   Exit 0 = required CI will accept the ledger. Exit 1 = it prints exactly which
+   stage is incomplete; publication remains allowed so CI Recovery can repair it.
 9. Run the focused PR-prerequisite check:
    ```
    npm run verify:pr-prereqs
@@ -151,7 +154,7 @@ stage). Never re-score down just to dodge a stage (rule #11).
    owns the full suite unless a human explicitly requests a local run or targeted
    diagnosis requires it.
 10. Write the dated handoff (pr-preflight still requires it), then
-    `create_pull_request`.
+    `create_pull_request`. Ledger feedback at that boundary is advisory.
 
 ## Recording stages
 
@@ -163,10 +166,11 @@ is shallow-merged into that stage. Concrete per-stage JSON is in
 npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds":[{"round":1,"models":["claude-sonnet-4.6"],"concerns_count":3,"resolved_count":3,"clean":true}]}'
 ```
 
-## What the guard checks (and what it can't)
+## What validation checks (and what it can't)
 
-- It validates **completeness for the declared tier** — required stages present,
-  `completed`/`clean` true, models named, `resolved_count >= concerns_count`,
+- The CLI, advisory guard, required CI, and CI Recovery validate **completeness
+  for the declared tier** — required stages present, `completed`/`clean` true,
+  model or native-review actor provenance, `resolved_count >= concerns_count`,
   last review round clean (**or** a valid `escalated_to_human` terminal state after
   ≥2 rounds), downward-only `apples_rescored_from`, etc. The exact rules live in
   `scripts/agent/review/ledger.mjs` (the single source of truth).
@@ -186,10 +190,3 @@ npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds"
   convenient.
 - Use **distinct** models where the tier demands it — two calls to the same model
   is not a multi-model review (the validator rejects duplicates).
-
-## Bypass
-
-Genuine edge cases only (e.g. a revert, an emergency infra fix). The guard
-honors the standard mechanism:
-`COPILOT_GUARDS_DISABLE=pr-review-ledger`. Document why in the PR. See
-`.github/extensions/copilot-guards/README.md`.

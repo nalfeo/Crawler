@@ -1,9 +1,9 @@
-# Review Harness Policy — Apple-Scaled Review Before PR
+# Review Harness Policy — Apple-Scaled Review During PR Lifecycle
 
 ## Purpose
 
 Scale the amount of **review** a change receives to its **apple complexity**, and
-make that review _provable_ before a PR is opened. The harness encodes a simple
+make that review auditable before merge. The harness encodes a simple
 rule: bigger changes get more eyes — a separate-model plan review (an
 **adversarial** red-team at the top tier) and multi-model code review with
 adjudication — and every required stage is recorded in an auditable **review
@@ -13,7 +13,9 @@ This is the canonical definition. `AGENTS.md` and
 `.github/copilot-instructions.md` restate it; the
 [`review-harness` skill](../../../.github/skills/review-harness/SKILL.md) is the
 operator playbook; `scripts/agent/review/ledger.mjs` is the single source of
-truth for validation.
+truth for validation. Ledger state never blocks PR creation or draft
+publication: publishing creates the CI and Copilot-review surfaces needed to
+finish the evidence.
 
 ## Scope
 
@@ -62,7 +64,7 @@ The required stages scale with the apple estimate you declare per
   on 2026-07-07** to match the code-review floor, which already moved to 3🍎 on
   **2026-07-02** (ADR 0036 / handoff
   `docs/knowledge/handoffs/archive/2026-07-02-streamline-verify-ci-gates.md`). A 2🍎 change
-  now records its tier in a ledger but requires **no** review stages.
+  requires neither review stages nor a ledger.
 - **adversarial plan review** (4–5🍎) — at the top tier the plan review must
   **red-team** the design: the reviewer enumerates **≥2 alternative approaches** and
   argues _against_ the chosen design, then records `adversarial: true` and
@@ -162,23 +164,34 @@ human escalation, as long as the PR diff and review context provide enough
 evidence to fill the required stages accurately.
 
 GitHub Copilot PR reviews count as code-review evidence when the ledger records
-the reviewer/model or actor, the findings, how they were resolved or classified,
-and the final thread state. Do not duplicate a completed Copilot review solely to
-make the ledger look self-authored; preserve the actual review provenance.
+the selected model, or `reviewer_actors` plus `review_url` when GitHub does not
+expose the model, along with finding/resolution counts and final cleanliness. Do
+not duplicate a completed Copilot review solely to make the ledger look
+self-authored; preserve the actual review provenance.
+
+CI results are authoritative in the PR and are not duplicated into the ledger.
+Recovery fixes code, CI, and review threads first, then repairs and validates the
+ledger on the final head.
 
 ## Enforcement
 
 The `pr-review-ledger` guard (`.github/extensions/copilot-guards/guards/pr-review-ledger.mjs`)
-runs on `create_pull_request`, and local `npm run verify` now runs
-`npm run verify:pr-prereqs` to surface the same ledger/preflight blockers earlier
-in the execution-complete loop:
+runs on `create_pull_request`, and local `npm run verify` runs
+`npm run verify:pr-prereqs` to surface ledger feedback earlier:
 
 1. Computes the branch diff. A docs/art/deps-only diff is **skipped**.
 2. For a code-touching diff, it looks for a review ledger **added on this branch**
    (an old ledger on `main` does not count).
 3. **No ledger → allow, with a reminder.** A 1–2🍎 change legitimately has none.
 4. **Any added ledger is validated** for completeness against its declared apple
-   tier. Incomplete or invalid → **hard deny** with the exact failing rule.
+   tier. Incomplete or invalid → allow publication with the exact failing rule
+   as advisory context.
+5. Required PR CI runs `npm run review:ledger:branch`; an invalid added ledger
+   fails CI and cannot merge.
+6. CI Recovery validates added ledgers at the immutable PR head, creates a
+   `review-ledger` lifecycle blocker, and assigns Copilot to repair it. Transient
+   GitHub API read failures do not invent blockers; required CI remains the
+   fail-closed authority.
 
 ### The trade-off this makes explicit
 
@@ -186,14 +199,14 @@ The apple tier is only knowable **from** the ledger. So the moment 1–2🍎 cha
 stop committing one, a _missing_ ledger can no longer be a hard gate — an agent
 that skips the ledger on a 4🍎 change looks identical to a legitimate 1🍎 change.
 The ≥3🍎 ledger is therefore an **artifact-trust** gate (the same model as the
-handoff requirement), not a hard one. What remains hard:
+handoff requirement), not a hard one. What remains merge-blocking:
 
-- a ledger that IS present must be complete and internally consistent for its tier;
+- a ledger that IS present must pass required CI before merge;
 - the ≥3🍎 `independent_grade` stage is the **compensating control** — it is the
   one stage graded from the diff by a model with no stake in the change.
 
-The same validator backs the CLI and the guard, so `validate` exiting 0 locally
-means the guard will allow the PR.
+The same validator backs the CLI, guard advisory, required CI, and recovery
+classification.
 
 The guard tests (and the rest of the copilot-guards suite) run in CI via
 `npm run test:guards`, wired into the `check-format-and-labs` job and
