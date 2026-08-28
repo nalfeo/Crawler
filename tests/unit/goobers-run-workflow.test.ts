@@ -73,6 +73,7 @@ interface GoobersDefinition {
 interface GoobersInstance {
   repos: Array<{ token?: { env?: string } }>;
   credentials?: Array<{ capability?: string; token?: { env?: string } }>;
+  runner?: { envPassthrough?: string[] };
 }
 
 function loadYaml<T>(...segments: string[]): T {
@@ -152,9 +153,18 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(definition.spec.runControls?.maxRepasses).toBe(6);
     expect(hydrate).toBeDefined();
-    expect(tasks.get('query-backlog')?.expectedOutputs).toEqual(['id', 'title', 'body', 'url']);
+    expect(tasks.get('query-backlog')?.expectedOutputs).toEqual([
+      'id',
+      'title',
+      'body',
+      'url',
+      'workspaceBranch',
+    ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
     expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
+    expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
+    expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RESUME_BRANCH');
+    expect(tasks.get('query-backlog')?.expectedOutputs).toContain('workspaceBranch');
     expect(hydrate?.inputsFrom).toEqual({
       issueNumber: 'query-backlog.id',
       issueTitle: 'query-backlog.title',
@@ -267,6 +277,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
+
     expect(run?.run).toContain(
       'goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"',
     );
@@ -276,6 +287,25 @@ describe('Goobers automatic dispatch and recovery', () => {
       'if-no-files-found': 'warn',
       'retention-days': 30,
     });
+  });
+
+  it('rebinds recovered runs inside Goobers-managed worktrees', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const recoveryCheckout = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Checkout recovered Goobers branch',
+    );
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into the instance',
+    );
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+
+    expect(recoveryCheckout).toBeUndefined();
+    expect(materialize?.run).toContain('envPassthrough:');
+    expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(instance.runner?.envPassthrough).toEqual([
+      'GOOBERS_RECOVERY_ISSUE',
+      'GOOBERS_RESUME_BRANCH',
+    ]);
   });
 
   it('keeps Goobers repository and model credentials separate', () => {
@@ -321,9 +351,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recovery?.run).toContain('headRepository');
     expect(recovery?.run).toContain('abandon_existing=true requires an explicit issue_number');
     expect(
-      workflow.jobs.run?.steps?.find((step) => step.name === 'Checkout recovered Goobers branch')
-        ?.run,
-    ).toContain('gh pr checkout "${GOOBERS_RESUME_PR}"');
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Checkout recovered Goobers branch'),
+    ).toBeUndefined();
     const definition = loadYaml<GoobersDefinition>(
       '.goobers',
       'gaggles',
