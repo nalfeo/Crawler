@@ -18,6 +18,42 @@
     "description": "Awards pane opened in a safe room with a mix of locked, unlocked-unclaimed, and claimed achievements, after the unlock toast has drained."
   },
   {
+    "id": "awards-pane-open",
+    "label": "Awards Pane (Box Open)",
+    "viewport": { "width": 1280, "height": 720 },
+    "captureSource": "main-scene-probe-lab",
+    "setupFile": "scripts/agent/review/setup/awards-pane-open.js",
+    "enabled": true,
+    "description": "Awards pane immediately after opening a reward box, showing the reveal/opened state and granted rewards."
+  },
+  {
+    "id": "awards-empty-filter",
+    "label": "Awards Pane (Empty Filter Results)",
+    "viewport": { "width": 1280, "height": 720 },
+    "captureSource": "main-scene-probe-lab",
+    "setupFile": "scripts/agent/review/setup/awards-pane-scenarios.js",
+    "enabled": true,
+    "description": "Awards pane with a filter applied that matches zero achievements, verifying the empty-state message is legible and the panel region stays valid."
+  },
+  {
+    "id": "awards-long-flavor",
+    "label": "Awards Pane (Long Flavor Expanded)",
+    "viewport": { "width": 1280, "height": 720 },
+    "captureSource": "main-scene-probe-lab",
+    "setupFile": "scripts/agent/review/setup/awards-pane-scenarios.js",
+    "enabled": true,
+    "description": "Awards pane with a long-flavor-text achievement row expanded, verifying the capped expansion never overflows the row or panel."
+  },
+  {
+    "id": "awards-filter-working",
+    "label": "Awards Pane (Filter Working)",
+    "viewport": { "width": 1280, "height": 720 },
+    "captureSource": "main-scene-probe-lab",
+    "setupFile": "scripts/agent/review/setup/awards-pane-scenarios.js",
+    "enabled": true,
+    "description": "Awards pane with a global/floor filter applied to a mixed unlocked list, verifying the filtered result set renders correctly."
+  },
+  {
     "id": "equipment-hover-equipped",
     "label": "Equipment Hover (Equiped)",
     "viewport": { "width": 1280, "height": 800 },
