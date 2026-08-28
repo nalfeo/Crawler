@@ -45,9 +45,9 @@ const GENDER_OPTIONS: ReadonlyArray<{ id: PlayerGender; label: string }> = [
 
 /** Director introduction text shown at the top of the screen. */
 const DIRECTOR_WELCOME =
-  'Welcome, Contestant. The dungeon cameras are hot and\n' +
-  'the audience is watching. Before you descend, tell us\n' +
-  'who you are.';
+  'Welcome, Contestant. The dungeon cameras are hot and the\n' +
+  'audience is watching. Before you descend, tell us who you\n' +
+  'are, and how you want the show to address you.';
 
 /** Returns true when the current page is a lab (skip intro). */
 function isLabContext(): boolean {
@@ -124,6 +124,7 @@ export class IntroScene extends Phaser.Scene {
     const renderScale = getRenderScale(this);
     this.cameras.main.setOrigin(0, 0);
     this.cameras.main.setZoom(renderScale);
+    this.cameras.main.roundPixels = true;
     this.buildUI();
     this.installDebugProbe();
   }
@@ -150,19 +151,6 @@ export class IntroScene extends Phaser.Scene {
 
     let y = PANEL_Y + 22;
 
-    // Small show-brand marker and title establish the screen's purpose first.
-    this.add
-      .text(PANEL_X + 26, y, 'THE DIRECTOR PRESENTS', {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        fontStyle: 'bold',
-        color: SLATE_DIM,
-      })
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 2);
-
-    y += 18;
-
     this.add
       .text(cx, y, 'Character Select', {
         fontFamily: 'monospace',
@@ -173,14 +161,14 @@ export class IntroScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(DEPTH + 2);
 
-    y += 40;
+    y += 38;
 
     this.add
       .rectangle(PANEL_X + 26, y, PANEL_W - 52, 2, PIXEL_UI.gold, 0.8)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
 
-    y += 14;
+    y += 16;
 
     // Director commentary box.
     const boxX = PANEL_X + 24;
@@ -202,12 +190,12 @@ export class IntroScene extends Phaser.Scene {
       .setDepth(DEPTH + 2);
 
     this.add
-      .text(boxX + 10, y + 24, DIRECTOR_WELCOME, {
+      .text(boxX + 12, y + 28, DIRECTOR_WELCOME, {
         fontFamily: 'monospace',
-        fontSize: '14px',
+        fontSize: '16px',
         color: SLATE_LIGHT,
-        wordWrap: { width: boxW - 20 },
-        lineSpacing: 7,
+        wordWrap: { width: boxW - 24 },
+        lineSpacing: 8,
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
@@ -224,12 +212,12 @@ export class IntroScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
 
-    y += 27;
+    y += 31;
 
     // Name input — native HTML <input> positioned over the canvas.
     this.createNameInput(boxX, y, boxW);
 
-    y += 62;
+    y += 66;
 
     // Gender label.
     this.add
@@ -241,12 +229,12 @@ export class IntroScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
 
-    y += 22;
+    y += 25;
 
     // Gender selection radios.
     this.createGenderControls(boxX, y, boxW);
 
-    y += 50;
+    y += 40;
 
     // Confirm button.
     this.createConfirmButton(cx, y);
@@ -433,16 +421,26 @@ export class IntroScene extends Phaser.Scene {
     const btnW = 280;
     const btnH = 46;
     const bx = cx - btnW / 2;
+    const buttonY = y + 20;
+
+    this.add
+      .text(cx, y, 'Press Enter to continue', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: SLATE_DIM,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(DEPTH + 2);
 
     const bg = this.add
-      .rectangle(bx, y, btnW, btnH, CONFIRM_COLOR, 1)
+      .rectangle(bx, buttonY, btnW, btnH, CONFIRM_COLOR, 1)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setStrokeStyle(1, 0x276129, 1)
       .setInteractive({ useHandCursor: true });
 
     this.add
-      .text(cx, y + btnH / 2, 'Begin the descent', {
+      .text(cx, buttonY + btnH / 2, 'Begin the descent', {
         fontFamily: 'monospace',
         fontSize: '15px',
         fontStyle: 'bold',
@@ -454,16 +452,6 @@ export class IntroScene extends Phaser.Scene {
     bg.on('pointerover', () => bg.setFillStyle(CONFIRM_HOVER_COLOR, 1));
     bg.on('pointerout', () => bg.setFillStyle(CONFIRM_COLOR, 1));
     bg.on('pointerdown', () => this.handleConfirm());
-
-    // Dim hint text.
-    this.add
-      .text(cx, y + btnH - 1, 'Press Enter to continue', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: SLATE_DIM,
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(DEPTH + 2);
   }
 
   // ---------------------------------------------------------------------------

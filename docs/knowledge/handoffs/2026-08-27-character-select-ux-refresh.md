@@ -65,3 +65,15 @@ problem. `npm run review:visual` also reproduced the shared 5299 lab instability
 the inventory suite had navigation timeouts and the existing
 `getInventoryMaxScrollRow` probe mismatch on clean main. These failures are
 safe to track separately from this Character Select change.
+
+## Follow-up visual correction
+
+Applied focused feedback from the Character Select review: removed the
+unexplained "The Director Presents" eyebrow, enabled pixel-rounded camera
+rendering for crisper text, increased and expanded the Director copy, added
+label-to-input clearance, and moved the Enter hint above the CTA with a
+dedicated gap. A fresh real-game capture is stored at
+`files/visual-review/after/v1.0.5/character-select.png`.
+
+Targeted validation after this correction: typecheck passed and all 18
+Character Select wiring tests passed.

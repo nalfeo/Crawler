@@ -30,7 +30,7 @@
       { id: 'character-panel', box: { x: 290, y: 132, width: 700, height: 456 }, kind: 'panel' },
       {
         id: 'director-commentary',
-        box: { x: 314, y: 226, width: 652, height: 96 },
+        box: { x: 314, y: 210, width: 652, height: 96 },
         kind: 'content',
       },
       { id: 'contestant-name', box: toDesignBox(input.getBoundingClientRect()), kind: 'control' },
@@ -39,7 +39,7 @@
         box: toDesignBox(fieldset.getBoundingClientRect()),
         kind: 'control',
       },
-      { id: 'primary-action', box: { x: 500, y: 505, width: 280, height: 46 }, kind: 'action' },
+      { id: 'primary-action', box: { x: 500, y: 510, width: 280, height: 46 }, kind: 'action' },
     ],
     expect: {},
   };
