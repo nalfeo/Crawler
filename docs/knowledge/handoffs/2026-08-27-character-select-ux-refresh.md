@@ -189,6 +189,39 @@ by re-running the scenario (`--lineage-state v1.1.0`): 7 regions harvested, 0
 deterministic blockers — confirms both the fix and the new sensor wiring are
 correct.
 
+## Round 3: "Press Enter" blur + still-tight label gaps
+
+Third feedback round: "Press Enter to continue" hint reads blurry, and the
+gap between "Contestant name"/its input and "Pronouns"/its She-Him-They row
+is still too tight.
+
+- **Blurry hint root cause**: `applyCrispText(this, texts)` was called with no
+  `minimumResolution` floor, so the glyph resolution could sit at 1 depending
+  on the live `onScreenScale`/`uiScale` product — every other HUD surface in
+  the engine (`HudBossBar`, `HudQuestTracker`, `EquipmentUI`,
+  `Floor3RosterUI`, etc.) passes `MIN_TEXT_RESOLUTION` (or
+  `MIN_TEXT_RESOLUTION + 2`) from `ui-theme.ts` as a floor. `IntroScene` was
+  the one surface that didn't. Fixed by passing `MIN_TEXT_RESOLUTION` through
+  for all of Character Select's texts, matching the established HUD
+  convention.
+- **Gaps still tight**: 30px (round 2's fix) still read crowded per this
+  round's feedback. Widened both the name-label→input and
+  pronoun-label→controls gaps to 34px, and grew `PANEL_H` 468→476 to absorb
+  the extra 8px without crowding the confirm button below.
+- Updated `character-select.js` sensor regions (`nameLabelBox`/
+  `pronounLabelBox` offset 30→34, panel/director/button boxes shifted to match
+  the new `PANEL_H`).
+
+Re-verified: `npx tsc --noEmit` clean, `eslint` clean, 18/18
+`intro-scene-wiring.test.ts` unit tests pass. `visual-review-agent.ts` at
+`--lineage-state v1.2.0`: **PASS, 80.0/100 anchored score, 0 evidence-backed
+blockers**, 1 advisory (decorative-flourish suggestion, non-blocking). Visual
+inspection of the v1.2.0 capture confirms: "Press Enter to continue" renders
+crisp, both label/control gaps read as clear breathing room, no overlap.
+
+Commit: `9935da446` "fix: crisp Press Enter hint and widen label gaps in
+Character Select".
+
 ## Final status
 
 - Branch: `nalfeo-character-select-refresh-1c8` (3 new commits this round:
