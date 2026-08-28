@@ -41,6 +41,7 @@
   },
   "behavior": {
     "spawnRoomIsSafe": false,
+    "safeRoomPausesFloorTimer": false,
     "safeRoomWeaponImmunity": true,
     "safeRoomDoorsAutoClose": true,
     "lineOfSightAggro": true,

@@ -5,9 +5,9 @@
  * Floor 1 carries its collapse deadline on `world.floorScenario.objective`
  * (`deadlineMs`, which `floorObjectiveSystem` advances while the player sits in
  * a safe room). Floor 2 sets `world.floorScenario = null` and instead collapses
- * from `floor2ObjectiveTick`, which ends the run the moment
- * `world.elapsedMs >= manifest.timer.durationMs` — a fixed wall the AI used to
- * be completely blind to.
+ * from `floor2ObjectiveTick`, which ends the run once the safe-room-credited
+ * manifest deadline passes ({@link resolveFloorTimerDeadlineMs}) — a wall the AI
+ * used to be completely blind to.
  *
  * That blindness was a real progression bug, not a cosmetic gap: the AI's
  * collapse-panic profile fell back to the "no deadline" profile on Floor 2, so
@@ -19,7 +19,7 @@
  * Pure and deterministic: reads world state and the static floor manifest only.
  */
 import type { GameWorld } from '../../core/world.js';
-import { getFloorManifest } from '../../shared/floor-registry.js';
+import { resolveFloorTimerDeadlineMs } from '../../core/floor-timer.js';
 
 /**
  * The collapse-relevant slice of a manifest-timer floor: when the floor ends,
@@ -28,10 +28,10 @@ import { getFloorManifest } from '../../shared/floor-registry.js';
 export interface ManifestFloorCollapseState {
   /**
    * Absolute elapsed-time threshold (ms) at which the floor collapses, in the
-   * same time base as `world.elapsedMs`. Unlike Floor 1's mutable
-   * `objective.deadlineMs`, this floor grants no safe-room credit — the runtime
-   * compares raw elapsed time against the manifest duration, so this deadline
-   * is the literal wall the run dies at.
+   * same time base as `world.elapsedMs`. Resolved through
+   * {@link resolveFloorTimerDeadlineMs}, so it carries the same safe-room credit
+   * the scenario collapses on: the deadline moves out while the player stands in
+   * a time-stopping safe room and is otherwise the manifest duration.
    */
   readonly deadlineMs: number;
   /**
@@ -67,13 +67,13 @@ export function resolveManifestFloorCollapseState(
   if (!familyState) {
     return null;
   }
-  const durationMs = getFloorManifest(world.floorId)?.timer?.durationMs;
-  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
+  const deadlineMs = resolveFloorTimerDeadlineMs(world, world.floorId);
+  if (deadlineMs === null) {
     return null;
   }
   const staircasePos = familyState.staircasePos ?? null;
   return {
-    deadlineMs: durationMs,
+    deadlineMs,
     staircaseUnlocked:
       familyState.staircaseUnlocked === true &&
       familyState.staircaseSpawned === true &&
