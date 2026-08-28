@@ -1,0 +1,101 @@
+[
+  {
+    "id": "equipment",
+    "label": "Equipment",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment.js",
+    "enabled": true,
+    "description": "Equipment panel immediately after opening: no forced hover, tooltip, candidate preview, or slot filter."
+  },
+  {
+    "id": "equipment-hover-equipped",
+    "label": "Equipment Hover (Equipped)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an equipped item to verify the equipped-only tooltip presentation."
+  },
+  {
+    "id": "equipment-hover-duplicate",
+    "label": "Equipment Hover (Duplicate)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an iron-helm bag item while an identical iron helm is equipped in Head. The paired tooltip must report no stat delta."
+  },
+  {
+    "id": "equipment-hover-empty-slot",
+    "label": "Equipment Hover (Empty Slot)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover leather boots in the bag while Feet is empty. The candidate tooltip must show the empty-slot comparison and stat delta."
+  },
+  {
+    "id": "equipment-hover-mixed-delta",
+    "label": "Equipment Hover (Stats delta)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a non-duplicate candidate for an already occupied visible slot. The paired current/candidate tooltips must show a non-zero stat delta."
+  },
+  {
+    "id": "equipment-hover-ring-replacement",
+    "label": "Equipment Hover (Ring Replacement)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a third ring while Ring 1 and Ring 2 are occupied. The comparison must make the replacement target clear without covering either ring slot."
+  },
+  {
+    "id": "equipment-hover-ring-ambiguity",
+    "label": "Equipment Hover (Ring Ambiguity)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a Bag ring compatible with Ring 1 and Ring 2. Both targets remain visible and the comparison is unambiguous."
+  },
+  {
+    "id": "equipment-hover-mixed-direct-deltas",
+    "label": "Equipment Hover (Mixed Direct Deltas)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover an occupied-slot candidate with positive and negative direct stat deltas. Only bold parenthesized deltas carry green/red color."
+  },
+  {
+    "id": "equipment-hover-bag-boundary",
+    "label": "Equipment Hover (Bag Boundary)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a bottom visible item in a scrolled Bag and keep the comparison contained, clear of the target, and on its safe side."
+  },
+  {
+    "id": "equipment-hover-scrolled-bag-target",
+    "label": "Equipment Hover (Scrolled Bag Target)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a compatible item after scrolling several Bag rows. The comparison remains anchored to the visible cell rather than stale pre-scroll geometry."
+  },
+  {
+    "id": "equipment-hover-multi-hand-replacement",
+    "label": "Equipment Hover (Multi-Hand Replacement)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
+    "enabled": true,
+    "description": "Hover a two-hand Bag weapon while Main Hand and Off Hand are occupied. The paired comparison must preserve both targets and avoid misleading duplicate deltas."
+  }
+]
