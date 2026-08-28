@@ -31,11 +31,13 @@ import {
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../../src/game/index.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
+import { grantAbilitySources } from '../../src/game/systems/abilitySystem.js';
 import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { learnedAbilityGrantSourceId } from '../../src/shared/abilities.js';
 import type { SkillState } from '../../src/game/skills/types.js';
 
 /** Usage large enough to cross every arcane class threshold up to level 5. */
@@ -165,16 +167,51 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
       holderEid: playerEid,
       skillId: 'arcane',
       metric: 'weapon_fired',
-      amount: 20_000,
+      amount: 5_000,
     });
     skillSystem(world);
 
     const state = world.abilityStatesByEntity.get(playerEid);
-    expect(world.playerSkills.get('arcane')!.level).toBeGreaterThanOrEqual(15);
+    expect(world.playerSkills.get('arcane')!.level).toBe(15);
     expect(state!.equippedActiveAbilityIds).toContain('arcane-nova-evolved');
     // The L5 grant is revoked as an ACTIVE (a passive-kind revoke would be
     // rejected by the grant-ownership validator and leak the old ability).
     expect(state!.equippedActiveAbilityIds).not.toContain('arcane-nova');
     expect(state!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
+  });
+
+  it('keeps the arcane active owned but unequipped when the active bar is full', () => {
+    const { world, playerEid } = createPlayingFloor1World(21);
+    const fullBar = [
+      'fireball',
+      'heal',
+      'pulse-shield',
+      'magic-missile',
+      'frost-nova',
+      'bless',
+      'stoneskin',
+      'curse',
+      'vampiric-touch',
+      'haste',
+    ];
+    grantAbilitySources(
+      world,
+      playerEid,
+      fullBar.map((abilityId) => ({
+        kind: 'active',
+        abilityId,
+        sourceId: learnedAbilityGrantSourceId(abilityId),
+      })),
+      { configureActives: 'fill-open-slots' },
+    );
+
+    levelArcaneToFive(world, playerEid);
+
+    const state = world.abilityStatesByEntity.get(playerEid);
+    expect(state!.equippedActiveAbilityIds).toEqual(fullBar);
+    expect(state!.ownedActiveAbilityIds).toContain('arcane-nova');
+    expect(state!.grantOwnership!.activeSourcesByAbilityId.get('arcane-nova')).toEqual(
+      new Set(['skill:arcane:5']),
+    );
   });
 });
