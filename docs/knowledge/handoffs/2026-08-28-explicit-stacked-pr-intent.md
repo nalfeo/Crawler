@@ -70,6 +70,10 @@ Estimated 3🍎, actual 3🍎 — tooling-only, well-bounded.
   - Added "Stacked-PR Label Policy" section documenting label semantics, who
     may apply the label, behavior table, and implementation pointer.
 
+- `tests/unit/goobers-run-workflow.test.ts`:
+  - Refreshed stale assertions discovered by `verify:fast` after main added the
+    `CRAWLER_CI_PAT` fallback and renamed its auth-token environment variable.
+
 ## Verification
 
 - `node --test .github/scripts/ci-recovery/router.test.mjs` — all stale-base tests pass.
