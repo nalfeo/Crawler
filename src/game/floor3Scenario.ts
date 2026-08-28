@@ -34,6 +34,7 @@ import {
   type EnemyPackDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
+import { hasFloorTimerExpired } from '../core/floor-timer.js';
 import {
   AFFINITY_RING,
   affinityMultiplier,
@@ -963,12 +964,11 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   // player must still walk to and confirm the exit stairs). A timer expiry in
   // that window must not overwrite the latched win with `'game_over'`, which
   // would permanently block `confirmFloor3StairDescend` (it requires
-  // `world.state === 'playing'`).
-  const manifest = getFloorManifest('floor3');
+  // `world.state === 'playing'`). The deadline is safe-room-credited, so the
+  // Green Room entrance stops the countdown while the player is inside it.
   if (
     world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true &&
-    manifest?.timer &&
-    world.elapsedMs >= manifest.timer.durationMs
+    hasFloorTimerExpired(world, 'floor3')
   ) {
     world.goalFlags.set(FLOOR3_TIMEOUT_GOAL_ID, true);
     world.state = 'game_over';
