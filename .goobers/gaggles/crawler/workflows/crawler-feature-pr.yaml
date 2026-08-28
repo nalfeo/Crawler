@@ -20,6 +20,8 @@ spec:
       run:
         script: |
           set -eu
+          repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
+          export GH_TOKEN="${GOOBERS_CRED_GITHUB_ISSUES_WRITE:-${GH_TOKEN:-}}"
           if [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
             issue="${GOOBERS_RECOVERY_ISSUE}"
             case "${issue}" in
@@ -28,22 +30,22 @@ spec:
                 exit 1
                 ;;
             esac
-            issue_json="$(gh issue view "${issue}" --repo "${GITHUB_REPOSITORY}" --json state,title,body,url,labels,assignees)"
-            state="$(jq -r '.state' <<<"${issue_json}")"
-            approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"${issue_json}")"
-            assigned="$(jq -r '[.assignees[]] | length > 0' <<<"${issue_json}")"
+            issue_json="$(gh issue view "${issue}" --repo "${repo}" --json state,title,body,url,labels,assignees)"
+            state="$(printf '%s' "${issue_json}" | jq -r '.state')"
+            approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
+            assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
             if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ] || [ "${assigned}" != "false" ]; then
               echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
               exit 1
             fi
-            gh issue edit "${issue}" --repo "${GITHUB_REPOSITORY}" --add-label 'goobers/status:in-review'
-            jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
-              id: (.number // '"${issue}"'),
+            gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'
+            printf '%s' "${issue_json}" | jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
+              id: ((.number // '"${issue}"') | tostring),
               title,
               body,
               url,
               workspaceBranch: $workspaceBranch
-            }' <<<"${issue_json}" > claimed-item.json
+            }' > claimed-item.json
           else
             goobers backlog-query --claim
           fi
@@ -211,7 +213,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: checkpoint-branch
+      next: review
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -227,24 +229,6 @@ spec:
       policyActions:
         - push-repository-branch
       next: local-ci
-    - name: checkpoint-branch
-      type: deterministic
-      goal: Persist implementation commits and open the recovery PR immediately before review.
-      run:
-        script: |
-          set -eu
-          # The checkpoint runs before review, so dependency installation must
-          # not execute lifecycle scripts from the unreviewed branch.
-          npm ci --ignore-scripts
-          goobers push-branch
-          goobers open-pr
-      capabilities:
-        - repo:push
-        - provider:pr:write
-      policyActions:
-        - push-repository-branch
-        - open-or-update-pr
-      next: review
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.

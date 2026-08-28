@@ -88,14 +88,6 @@ function extractPinnedSha(script: string | null | undefined): string | null {
   return match?.[1] ?? null;
 }
 
-function expectTokenExpr(
-  actual: string | undefined,
-  allowed: readonly [string, string] | readonly [string],
-): void {
-  expect(actual, 'expected auth token expression to be present').toBeTruthy();
-  expect(allowed.includes(actual as string)).toBe(true);
-}
-
 describe('Goobers automatic dispatch and recovery', () => {
   it('runs for the exact approval label and performs an hourly recovery sweep', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
@@ -151,7 +143,6 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
-    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -207,18 +198,13 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    expect(implement?.next).toBe('review');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -227,15 +213,11 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(tasks.get(name)?.retry).toBeUndefined();
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
-    expect(runStep?.env?.COPILOT_GITHUB_TOKEN).toBe('${{ secrets.COPILOT_GITHUB_TOKEN }}');
-    expectTokenExpr(runStep?.env?.GH_TOKEN, [
-      '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-    ]);
-    expectTokenExpr(runStep?.env?.GOOBERS_GITHUB_TOKEN, [
-      '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-    ]);
+    expect(runStep?.env).toMatchObject({
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
   });
 
@@ -284,15 +266,11 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.if).toContain("env.GOOBERS_VERSION != 'goobers-dev-6d33b160'");
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
-    expect(run?.env?.COPILOT_GITHUB_TOKEN).toBe('${{ secrets.COPILOT_GITHUB_TOKEN }}');
-    expectTokenExpr(run?.env?.GH_TOKEN, [
-      '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-    ]);
-    expectTokenExpr(run?.env?.GOOBERS_GITHUB_TOKEN, [
-      '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-    ]);
+    expect(run?.env).toMatchObject({
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
+    });
 
     expect(run?.run).toContain(
       'goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"',
@@ -318,6 +296,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
     expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(materialize?.run).toContain('GH_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_TOKEN');
+    expect(materialize?.run).toContain('GITHUB_REPOSITORY');
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
@@ -327,21 +308,17 @@ describe('Goobers automatic dispatch and recovery', () => {
   it('keeps Goobers repository and model credentials separate', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
-    const requireToken =
-      workflow.jobs.run?.steps?.find((step) => step.name === 'Require GOOBERS_GITHUB_TOKEN') ??
-      workflow.jobs.run?.steps?.find((step) => step.name === 'Require Goobers auth token');
+    const requireToken = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Require Goobers auth token',
+    );
 
     expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
     expect(instance.credentials).toContainEqual({
       capability: 'agent:model',
       token: { env: 'COPILOT_GITHUB_TOKEN' },
     });
-    expectTokenExpr(
-      requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET ?? requireToken?.env?.GOOBERS_AUTH_TOKEN_SET,
-      [
-        '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-        '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-      ],
+    expect(requireToken?.env?.GOOBERS_AUTH_TOKEN_SET).toBe(
+      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
     );
   });
 
@@ -355,20 +332,15 @@ describe('Goobers automatic dispatch and recovery', () => {
       issue_number: { default: '' },
       abandon_existing: { default: false },
     });
-    const authTokenSet =
-      recovery?.env?.GOOBERS_GITHUB_TOKEN_SET ?? recovery?.env?.GOOBERS_AUTH_TOKEN_SET;
-    expectTokenExpr(authTokenSet, [
-      '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
-    ]);
-    expect(recovery?.env?.ISSUE_NUMBER).toBe(
-      '${{ inputs.issue_number || github.event.issue.number }}',
-    );
-    expect(recovery?.env?.ABANDON_EXISTING).toBe("${{ inputs.abandon_existing || 'false' }}");
+    expect(recovery?.env).toMatchObject({
+      GOOBERS_AUTH_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      ISSUE_NUMBER: '${{ inputs.issue_number || github.event.issue.number }}',
+      ABANDON_EXISTING: "${{ inputs.abandon_existing || 'false' }}",
+    });
     expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
     expect(recovery?.run).toContain('cross-referenced');
-    expect(recovery?.run).toMatch(
-      /(GOOBERS_GITHUB_TOKEN secret is required|Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required)/,
+    expect(recovery?.run).toContain(
+      'Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required',
     );
     expect(recovery?.run).toContain('goobers/status:in-review');
     expect(recovery?.run).toContain('Scheduled recovery selected issue');
