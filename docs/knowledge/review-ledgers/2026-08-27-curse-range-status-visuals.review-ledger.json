@@ -29,20 +29,20 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "claude-sonnet-4.6",
+      "grader_model": "gemini-3.6-flash",
       "implementer_model": "copilot-coding-agent",
-      "head_sha": "735f65e405dd2f6702040e654da1ff369517e743",
+      "head_sha": "f97cb87b86a55be612a2566a28eaa10ddd7b4d10",
       "findings": [],
       "criteria": {
         "correctness": 5,
-        "scope_discipline": 4,
+        "scope_discipline": 5,
         "test_coverage": 5,
         "policy_compliance": 5,
         "maintainability": 5
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "All three task pieces — the Curse trigger/cooldown retune, the status-visual resolver, and the aura renderer — are correctly implemented. The resolver's `!(effect.remainingMs > 0)` guard correctly handles both expired (0) and persistent (Infinity) effects. The `hpRegen` multiply guard is logically sound given the additive-then-multiply composition documented in status-effects.ts. The single shared Graphics object with per-frame clear/redraw is the right trade-off for EID-recycling safety, and the aura is correctly gated on the same living/visible checks the sprite uses, preventing fog-reveal. The ability retune is consistent: trigger ring matches burst radius (16 ft), minEnemies drops from 4 to 2, and cooldown steps up from 840 to 960 frames with the rationale documented. The scope_discipline score is 4 rather than 5 only because the `advanceSimulationFrames` wrapper in the e2e helper gained two extra `requestAnimationFrame` ticks as a side-effect of this change; it is a real improvement that serves these tests, but it silently touches behaviour for all existing callers of that helper. No finding rises to blocker or major severity."
+      "notes": "The changes accurately retune Curse's trigger ring (16 ft) to match its spell burst radius (4 tiles = 16 ft) and update its cooldown (16 s), while introducing a clean, deterministic status-effect visual subsystem. The status-visual resolver maps active status effects to visual treatments using exact stat/op/value polarity and priority ordering, avoiding false positives on no-op or expired effects. Drawing ground auras into a single shared Graphics object cleared per frame avoids EID recycling hazards and stays flat on display-list cost. PhaserBridge integration correctly preserves FOV visibility and corpse gating, ensuring hidden entities do not leak aura visuals. The diff is tightly focused on the task, includes thorough unit, bridge, integration, and E2E test coverage, and complies fully with repository architectural policies."
     }
   }
 }
