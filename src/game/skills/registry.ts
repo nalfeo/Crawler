@@ -506,8 +506,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Blade Familiarity',
-        description: '+0.1 accuracy with swords',
-        abilityId: 'sword-strike-base',
+        description: 'Unlocks an active sword strike',
+        abilityId: 'sword-strike-active',
       },
       {
         level: 10,
@@ -518,8 +518,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'True Cut',
-        description: 'Evolved Blade Familiarity ability',
-        abilityId: 'sword-strike-evolved',
+        description: 'Evolved Sword Strike ability',
+        abilityId: 'sword-strike-active-evolved',
       },
       {
         level: 20,
@@ -546,7 +546,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 5,
         name: 'Close Quarters',
         description: 'Rapid strike technique — quick follow-up attack with daggers',
-        abilityId: 'dagger-rapid-strike-base',
+        abilityId: 'dagger-rapid-strike-active',
       },
       {
         level: 10,
@@ -558,7 +558,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 15,
         name: 'Vital Points',
         description: 'Evolved Close Quarters ability',
-        abilityId: 'dagger-rapid-strike-evolved',
+        abilityId: 'dagger-rapid-strike-active-evolved',
       },
       {
         level: 20,
@@ -584,8 +584,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Hammer Time',
-        description: '+0.1 accuracy with hammers',
-        abilityId: 'hammer-crush-base',
+        description: 'Unlocks an active crushing hammer blow',
+        abilityId: 'hammer-crush-active',
       },
       {
         level: 10,
@@ -596,8 +596,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Precision Blow',
-        description: 'Evolved Hammer Time ability',
-        abilityId: 'hammer-crush-evolved',
+        description: 'Evolved Hammer Crush ability',
+        abilityId: 'hammer-crush-active-evolved',
       },
       {
         level: 20,
@@ -623,8 +623,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Steady Aim',
-        description: '+0.1 accuracy with bows',
-        abilityId: 'bow-shot-base',
+        description: 'Unlocks an active long-range bow shot',
+        abilityId: 'bow-shot-active',
       },
       {
         level: 10,
@@ -635,8 +635,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Perfect Draw',
-        description: 'Evolved Steady Aim ability',
-        abilityId: 'bow-shot-evolved',
+        description: 'Evolved Bow Shot ability',
+        abilityId: 'bow-shot-active-evolved',
       },
       {
         level: 20,
@@ -662,8 +662,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Mechanical Precision',
-        description: '+0.1 accuracy with crossbows',
-        abilityId: 'crossbow-bolt-base',
+        description: 'Unlocks an active crossbow bolt',
+        abilityId: 'crossbow-bolt-active',
       },
       {
         level: 10,
@@ -674,8 +674,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Perfect Tension',
-        description: 'Evolved Mechanical Precision ability',
-        abilityId: 'crossbow-bolt-evolved',
+        description: 'Evolved Crossbow Bolt ability',
+        abilityId: 'crossbow-bolt-active-evolved',
       },
       {
         level: 20,
@@ -701,8 +701,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Quick Draw',
-        description: '+0.1 accuracy with pistols',
-        abilityId: 'pistol-shot-base',
+        description: 'Unlocks an active pistol shot',
+        abilityId: 'pistol-shot-active',
       },
       {
         level: 10,
@@ -713,8 +713,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Deadshot',
-        description: 'Evolved Quick Draw ability',
-        abilityId: 'pistol-shot-evolved',
+        description: 'Evolved Pistol Shot ability',
+        abilityId: 'pistol-shot-active-evolved',
       },
       {
         level: 20,
@@ -740,8 +740,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Sure Throw',
-        description: '+0.1 accuracy with throwing weapons',
-        abilityId: 'throwing-toss-base',
+        description: 'Unlocks an active multi-target throw',
+        abilityId: 'throwing-toss-active',
       },
       {
         level: 10,
@@ -752,8 +752,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'True Aim',
-        description: 'Evolved Sure Throw ability',
-        abilityId: 'throwing-toss-evolved',
+        description: 'Evolved Throwing Toss ability',
+        abilityId: 'throwing-toss-active-evolved',
       },
       {
         level: 20,
@@ -779,8 +779,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Perfect Stance',
-        description: '+0.1 accuracy with unarmed',
-        abilityId: 'unarmed-punch-base',
+        description: 'Unlocks an active bare-knuckle strike',
+        abilityId: 'unarmed-punch-active',
       },
       {
         level: 10,
@@ -791,8 +791,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Dance of Combat',
-        description: 'Evolved Perfect Stance ability',
-        abilityId: 'unarmed-punch-evolved',
+        description: 'Evolved Unarmed Punch ability',
+        abilityId: 'unarmed-punch-active-evolved',
       },
       {
         level: 20,
@@ -818,8 +818,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Spell Infusion',
-        description: '+0.1 accuracy with spellcraft',
-        abilityId: 'spellcraft-bolt-base',
+        description: 'Unlocks an active spellcraft bolt',
+        abilityId: 'spellcraft-bolt-active',
       },
       {
         level: 10,
@@ -830,8 +830,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Spellsinger',
-        description: 'Evolved Spell Infusion ability',
-        abilityId: 'spellcraft-bolt-evolved',
+        description: 'Evolved Spellcraft Bolt ability',
+        abilityId: 'spellcraft-bolt-active-evolved',
       },
       {
         level: 20,
@@ -857,8 +857,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Game Face',
-        description: '+0.1 accuracy with sports equipment',
-        abilityId: 'sports-swing-base',
+        description: 'Unlocks an active sports-equipment swing',
+        abilityId: 'sports-swing-active',
       },
       {
         level: 10,
@@ -869,8 +869,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'All-Star',
-        description: 'Evolved Game Face ability',
-        abilityId: 'sports-swing-evolved',
+        description: 'Evolved Sports Swing ability',
+        abilityId: 'sports-swing-active-evolved',
       },
       {
         level: 20,

@@ -8,7 +8,12 @@ import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
   FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
 } from '../../src/shared/abilities.js';
-import { ABILITY_PRESENTATION_BY_ID } from '../../src/shared/ability-presentation.js';
+import {
+  ABILITY_PRESENTATION_BY_ID,
+  getAbilityPresentation,
+} from '../../src/shared/ability-presentation.js';
+import { WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
+import { getSkillDefinition } from '../../src/game/skills/registry.js';
 
 describe('ability registry', () => {
   it('returns undefined for unknown ability id', () => {
@@ -60,6 +65,26 @@ describe('ability registry', () => {
       expect(ability?.category).toBe(presentation.category);
       expect(ability?.kind).toBe(presentation.kind);
       expect(ability?.iconBriefId).toBe(presentation.iconBriefId);
+    }
+  });
+
+  it('keeps weapon-type L5/L15 active definitions aligned with their presentation', () => {
+    for (const skillId of WEAPON_TYPE_SKILL_IDS) {
+      const skill = getSkillDefinition(skillId)!;
+      for (const level of [5, 15] as const) {
+        const abilityId = skill.milestones.find(
+          (milestone) => milestone.level === level,
+        )?.abilityId;
+        expect(abilityId, `${skillId} L${level} should grant an ability`).toBeDefined();
+        const ability = getAbilityDefinition(abilityId!);
+        const presentation = getAbilityPresentation(abilityId!);
+        expect(ability, `missing runtime definition for ${abilityId}`).toBeDefined();
+        expect(presentation, `missing presentation for ${abilityId}`).toBeDefined();
+        expect(ability?.kind).toBe('active');
+        expect(presentation?.kind).toBe(ability?.kind);
+        expect(presentation?.weaponPrerequisite).toBe(skillId);
+        expect(ability?.weaponPrerequisite).toBe(skillId);
+      }
     }
   });
 

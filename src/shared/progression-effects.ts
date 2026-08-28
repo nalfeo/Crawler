@@ -18,6 +18,14 @@ export type CatalogEffect =
   | { type: 'stat_multiply'; stat: StatKey; value: number }
   | { type: 'extra_projectile'; count: number }
   | { type: 'aura'; radius: number; dpsPercentOfDamage: number }
+  | {
+      type: 'active_damage';
+      damage: number;
+      rangeFeet: number;
+      maxTargets: number;
+      affinity: 'physical' | 'magic';
+      delivery: 'contact' | 'projectile';
+    }
   | { type: 'spell_fireball'; damage: ScalableOutput; radiusTiles: ScalableOutput }
   | { type: 'spell_heal'; heal: ScalableOutput }
   | { type: 'spell_pulse_shield'; knockbackForce: ScalableOutput; radiusTiles: ScalableOutput }

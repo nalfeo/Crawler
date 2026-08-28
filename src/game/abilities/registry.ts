@@ -1,5 +1,41 @@
 import { abilityCatalogSchema, type AbilityDefinition } from './types.js';
-import { ABILITY_PRESENTATION_BY_ID } from '../../shared/ability-presentation.js';
+import {
+  ABILITY_PRESENTATION_BY_ID,
+  type AbilityPresentation,
+} from '../../shared/ability-presentation.js';
+
+type ActiveAbilityDefinition = Extract<AbilityDefinition, { kind: 'active' | 'spell' }>;
+
+function weaponMilestoneActive(
+  id: keyof typeof ABILITY_PRESENTATION_BY_ID,
+  damage: number,
+  rangeFeet: number,
+  maxTargets: number,
+  affinity: 'physical' | 'magic',
+  delivery: 'contact' | 'projectile',
+): ActiveAbilityDefinition {
+  const presentation = ABILITY_PRESENTATION_BY_ID[id] as AbilityPresentation;
+  if (
+    presentation.kind !== 'active' ||
+    presentation.cooldownFrames === undefined ||
+    presentation.weaponPrerequisite === undefined
+  ) {
+    throw new Error(`Weapon milestone active "${id}" has incomplete presentation metadata`);
+  }
+
+  return {
+    ...presentation,
+    kind: 'active',
+    cooldownFrames: presentation.cooldownFrames,
+    weaponPrerequisite: presentation.weaponPrerequisite,
+    trigger: {
+      kind: 'enemy_cluster',
+      minEnemies: maxTargets > 1 ? 2 : 1,
+      withinFeet: rangeFeet,
+    },
+    effects: [{ type: 'active_damage', damage, rangeFeet, maxTargets, affinity, delivery }],
+  };
+}
 
 const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
@@ -963,6 +999,30 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     kind: 'passive',
     effects: [{ type: 'extra_projectile', count: 2 }],
   },
+
+  // Weapon-type skill actives — L5 unlocks and L15 replacements.
+  // New IDs preserve carried passive grants from older runs instead of changing
+  // an existing catalog ID's persisted kind in place.
+  weaponMilestoneActive('sword-strike-active', 12, 6, 2, 'physical', 'contact'),
+  weaponMilestoneActive('sword-strike-active-evolved', 20, 7, 4, 'physical', 'contact'),
+  weaponMilestoneActive('dagger-rapid-strike-active', 8, 4, 1, 'physical', 'contact'),
+  weaponMilestoneActive('dagger-rapid-strike-active-evolved', 14, 5, 1, 'physical', 'contact'),
+  weaponMilestoneActive('hammer-crush-active', 18, 7, 2, 'physical', 'contact'),
+  weaponMilestoneActive('hammer-crush-active-evolved', 28, 9, 4, 'physical', 'contact'),
+  weaponMilestoneActive('bow-shot-active', 14, 36, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('bow-shot-active-evolved', 22, 40, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('crossbow-bolt-active', 16, 42, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('crossbow-bolt-active-evolved', 25, 48, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('pistol-shot-active', 10, 36, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('pistol-shot-active-evolved', 16, 40, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('throwing-toss-active', 12, 24, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('throwing-toss-active-evolved', 20, 28, 1, 'physical', 'projectile'),
+  weaponMilestoneActive('unarmed-punch-active', 9, 5, 2, 'physical', 'contact'),
+  weaponMilestoneActive('unarmed-punch-active-evolved', 15, 6, 4, 'physical', 'contact'),
+  weaponMilestoneActive('spellcraft-bolt-active', 12, 32, 1, 'magic', 'projectile'),
+  weaponMilestoneActive('spellcraft-bolt-active-evolved', 20, 36, 1, 'magic', 'projectile'),
+  weaponMilestoneActive('sports-swing-active', 16, 10, 2, 'physical', 'contact'),
+  weaponMilestoneActive('sports-swing-active-evolved', 26, 14, 4, 'physical', 'contact'),
 
   // ─── Missing evolved / L10 abilities for weapon class skills ────────────────
 

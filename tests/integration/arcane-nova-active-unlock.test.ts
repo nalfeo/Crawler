@@ -22,12 +22,14 @@ import {
   Health,
   Position,
   SkillHolder,
+  Size,
   Velocity,
   Weight,
   createGameWorld,
   spawnPlayer,
   type GameWorld,
 } from '../../src/core/index.js';
+import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../../src/game/index.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
@@ -84,6 +86,11 @@ function spawnStationaryEnemyNearPlayer(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 5000, max: 5000 }));
   addComponent(world.ecs, eid, set(Weight, { value: 120 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: 1.5, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
   addComponent(world.ecs, eid, Enemy);
   return eid;
 }
