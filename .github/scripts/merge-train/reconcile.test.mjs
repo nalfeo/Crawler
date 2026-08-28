@@ -1986,3 +1986,59 @@ test('the stalled-train record always carries the tracking label', () => {
   );
   assert.match(upsert, /\[STALLED_TRAIN_TRACKING_LABEL\]/);
 });
+
+test('candidate validation dispatch payload always carries the fingerprint idempotency key', async () => {
+  const calls = [];
+  const request = async (token, endpoint, options) => {
+    calls.push({ token, endpoint, options });
+    return { data: {} };
+  };
+
+  await dispatchValidationWorkflow({
+    request,
+    token: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    sha: candidateSha,
+    refName: 'refs/merge-train-candidates/candidate-7',
+    attestationSha: baseSha,
+    fingerprint: 'gen-7',
+    entries: [makePr({ number: 42 }), makePr({ number: 43 })],
+  });
+
+  assert.equal(
+    calls.length,
+    1,
+    'dispatchValidationWorkflow should issue exactly one dispatch request',
+  );
+  assert.equal(calls[0].options.method, 'POST');
+  assert.deepEqual(calls[0].options.body.inputs, {
+    candidate_sha: candidateSha,
+    candidate_ref: 'refs/merge-train-candidates/candidate-7',
+    attestation_sha: baseSha,
+    fingerprint: 'gen-7',
+    pr_numbers: '42,43',
+  });
+});
+
+test('clean-behind update-branch recovery keeps FIFO and only yields when rebinding cannot advance', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf("if (livePr.mergeable_state === 'behind')"),
+    RECONCILE_SOURCE.indexOf('if (!yieldFifoLine) break;') + 'if (!yieldFifoLine) break;'.length,
+  );
+  assert.match(
+    region,
+    /`\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pr\.number\}\/update-branch`/,
+    'behind PRs must attempt atomic update-branch rebinding before admission',
+  );
+  assert.match(
+    region,
+    /if \(!yieldFifoLine\) break;/,
+    'FIFO should hold only while rebinding is making progress',
+  );
+  assert.match(
+    region,
+    /yieldFifoLine = true/,
+    'non-advancing update-branch outcomes must yield the FIFO line to avoid queue starvation',
+  );
+});

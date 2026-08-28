@@ -12,13 +12,14 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Read-only event router that gates CI Recovery dispatch based on capacity budget.
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Dispatch workflow_dispatch | `.github/workflows/ci-recovery-router.yml` | 81 | `node .github/scripts/ci-recovery/router.mjs` | Dispatches `ci-recovery.yml` | GHA inputs to workflow_dispatch |
-| Write check-run | `.github/scripts/ci-recovery/router.mjs` | (line TBD on review) | `createCheckRun()` | Check on PR head SHA | `{ status: 'completed', conclusion, output }` |
-| GitHub API dispatch | `.github/scripts/ci-recovery/router.mjs` | (line TBD on review) | `gh workflow run` or REST API | CI Recovery job queue | `{ owner, repo, ref: 'main', inputs: {...} }` |
+| Mutation Edge              | File                                       | Lines     | Action                                              | State Target                   | Payload Schema                                                                                                    |
+| -------------------------- | ------------------------------------------ | --------- | --------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Dispatch workflow_dispatch | `.github/workflows/ci-recovery-router.yml` | 97        | `node .github/scripts/ci-recovery/router.mjs`       | Dispatches `ci-recovery.yml`   | GHA inputs to workflow_dispatch                                                                                   |
+| Lease-reaper dispatch      | `.github/scripts/ci-recovery/router.mjs`   | 1718–1727 | POST `actions/workflows/ci-recovery.yml/dispatches` | CI Recovery lease-reaper queue | `{ operation: 'reconcile', pr_number, trigger: 'lease-reaper' \| 'liveness-sweep:closed-owner-fence', lease_id }` |
+| Normal dispatch loop       | `.github/scripts/ci-recovery/router.mjs`   | 1847–1862 | POST `actions/workflows/ci-recovery.yml/dispatches` | CI Recovery PR recovery queue  | `{ operation: 'reconcile', pr_number, trigger, expected_head_sha?, expected_base_ref?, lease_id }`                |
 
 **Invariants**:
+
 - Single unconditional concurrency group (`crawler-ci-recovery-router`) ensures no two router runs execute simultaneously
 - Dispatch budget is applied uniformly across all event types
 - Router invocation is idempotent: re-running with same input produces same output
@@ -30,16 +31,17 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Per-PR mutation orchestrator. Reconciles CI failures, updates PR state, manages shepherd leases.
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Fetch token | `.github/workflows/ci-recovery.yml` | 54–67 | GitHub App token | Read-only bucket | `{ token: string }` |
-| Run reconciliation | `.github/workflows/ci-recovery.yml` | 76–91 | `node .github/scripts/ci-recovery/reconcile.mjs` | PR labels, comments, workflow dispatches | See reconcile.mjs contract |
-| Thread resolution | `.github/scripts/ci-recovery/reconcile.mjs` | (line TBD) | `PUT /repos/.../pulls/.../comments/.../replies` | Review thread state | `{ body: string }` (with `✅ Addressed` markers) |
-| PR comment (state)  | `.github/scripts/ci-recovery/reconcile.mjs` | (line TBD) | `POST /repos/.../issues/.../comments` | Authoritative state comment | See state-comment schema below |
-| Label add/remove | `.github/scripts/ci-recovery/reconcile.mjs` | (line TBD) | `POST/DELETE /repos/.../issues/.../labels` | PR labels | `{ labels: string[] }` |
-| Workflow dispatch | `.github/scripts/ci-recovery/reconcile.mjs` | (line TBD) | CI Recovery `workflow_dispatch` (recursive) | Lease heartbeat/release | `{ operation, pr_number, lease_id, ... }` |
+| Mutation Edge      | File                                        | Lines                                 | Action                                             | State Target                             | Payload Schema                                                                        |
+| ------------------ | ------------------------------------------- | ------------------------------------- | -------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| Fetch token        | `.github/workflows/ci-recovery.yml`         | 54–67                                 | GitHub App token                                   | Read-only bucket                         | `{ token: string }`                                                                   |
+| Run reconciliation | `.github/workflows/ci-recovery.yml`         | 76–91                                 | `node .github/scripts/ci-recovery/reconcile.mjs`   | PR labels, comments, workflow dispatches | See reconcile.mjs contract                                                            |
+| Thread resolution  | `.github/scripts/ci-recovery/reconcile.mjs` | 1837, 2286, 2432                      | `PUT /repos/.../pulls/.../comments/.../replies`    | Review thread state                      | `{ body: string }` (with `✅ Addressed` markers)                                      |
+| PR comment (state) | `.github/scripts/ci-recovery/reconcile.mjs` | 678–684                               | `PATCH/POST /repos/.../issues/.../comments`        | Authoritative state comment              | See state-comment schema below                                                        |
+| Label add/remove   | `.github/scripts/ci-recovery/reconcile.mjs` | 718–720, 755, 782–784                 | `POST/DELETE /repos/.../issues/.../labels`         | PR labels                                | `{ labels: string[] }`                                                                |
+| Workflow dispatch  | `.github/scripts/ci-recovery/reconcile.mjs` | 1150, 2098–2104, 2840–2846, 3678–3684 | CI Recovery/auto-rebase/router `workflow_dispatch` | Lease and recovery follow-ups            | `{ operation, pr_number, trigger, lease_id, expected_head_sha?, expected_base_ref? }` |
 
 **Invariants**:
+
 - Single owner per PR (`lease_id` field) prevents concurrent mutation of the same PR
 - Lease operations (`acquire`, `heartbeat`, `release`) are sequentially idempotent
 - Fail-closed on `expected_head_sha`/`expected_base_ref` mismatch: skips all mutations if live PR no longer matches the invoker's snapshot
@@ -52,19 +54,20 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Manages PR queue, candidacy validation, and promotion to main.
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Train gate action | `.github/actions/train-gate` | (file TBD) | Check MERGE_TRAIN_ENABLED | Job gating | `{ enabled: 'true' \| 'false' }` |
-| Generate app token | `.github/workflows/merge-train.yml` | 63–70 | GitHub App token | Write-scoped bucket | `{ token: string }` |
-| Run reconcile | `.github/workflows/merge-train.yml` | 82–99 | `node .github/scripts/merge-train/reconcile.mjs` | PR labels, queue state, PR/candidate commits | See reconcile.mjs contract |
-| Quarantine repair | `.github/workflows/merge-train.yml` | 101–107 | `node .github/scripts/merge-train/quarantine-repair.mjs` | PR labels (quarantine repair only) | `{ labels: string[] }` |
-| Label mutations | `.github/scripts/merge-train/reconcile.mjs` | (line TBD) | `POST/DELETE /repos/.../issues/.../labels` | `merge-train`, `merge-train-landed`, etc. | `{ labels: string[] }` |
-| Check-run creation | `.github/scripts/merge-train/reconcile.mjs` | (line TBD) | `POST /repos/.../commits/.../check-runs` | Validation gate on main | `{ name, head_sha, status, conclusion, output }` |
-| Workflow dispatch | `.github/scripts/merge-train/reconcile.mjs` | (line TBD) | Candidate validation | Merge Train Validation job queue | See candidate schema below |
-| PR update (merge) | `.github/scripts/merge-train/reconcile.mjs` | (line TBD) | `PUT /repos/.../pulls/.../merge` | Promote to main | `{ merge_method: 'squash', commit_title, commit_message }` |
-| Branch update | `.github/scripts/merge-train/reconcile.mjs` | (line TBD) | `POST /repos/.../git/refs/heads/...` (or delete) | Candidate ref management | Git ref blob/delete |
+| Mutation Edge      | File                                                                                         | Lines            | Action                                                                 | State Target                                 | Payload Schema                                             |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| Train gate action  | `.github/actions/train-gate/action.yml`                                                      | 27–43            | Check MERGE_TRAIN_ENABLED                                              | Job gating                                   | `{ enabled: 'true' \| 'false' }`                           |
+| Generate app token | `.github/workflows/merge-train.yml`                                                          | 63–70            | GitHub App token                                                       | Write-scoped bucket                          | `{ token: string }`                                        |
+| Run reconcile      | `.github/workflows/merge-train.yml`                                                          | 82–99            | `node .github/scripts/merge-train/reconcile.mjs`                       | PR labels, queue state, PR/candidate commits | See reconcile.mjs contract                                 |
+| Quarantine repair  | `.github/workflows/merge-train.yml`                                                          | 101–107          | `node .github/scripts/merge-train/quarantine-repair.mjs`               | PR labels (quarantine repair only)           | `{ labels: string[] }`                                     |
+| Label mutations    | `.github/scripts/merge-train/reconcile.mjs`                                                  | 194–196, 204     | `POST/DELETE /repos/.../issues/.../labels`                             | `merge-train`, `merge-train-landed`, etc.    | `{ labels: string[] }`                                     |
+| Check-run creation | `.github/scripts/merge-train/reconcile.mjs`                                                  | 535–546          | `POST /repos/.../check-runs`                                           | Validation gate on main                      | `{ name, head_sha, status, conclusion, output }`           |
+| Workflow dispatch  | `.github/scripts/merge-train/reconcile-lib.mjs`                                              | 459–482          | Candidate validation dispatch                                          | Merge Train Validation job queue             | See candidate schema below                                 |
+| PR update (merge)  | `.github/scripts/merge-train/reconcile-lib.mjs`                                              | 1447–1456        | `PUT /repos/.../pulls/.../merge`                                       | Promote to main                              | `{ merge_method: 'squash', commit_title, commit_message }` |
+| Branch update      | `.github/scripts/merge-train/reconcile.mjs`, `.github/scripts/merge-train/reconcile-lib.mjs` | 976–982; 498–529 | `PUT /pulls/.../update-branch` and candidate transport ref push/delete | PR head rebinding + candidate ref lifecycle  | `{ expected_head_sha }`, Git ref/blob transport            |
 
 **Invariants**:
+
 - Single concurrency slot (`queue: single`) ensures one merge-train cycle at a time
 - FIFO ordering: admitted PRs advance in label-receipt order; `merge-train` label is the queue membership token
 - Candidate validation is dispatched with immutable `candidate_sha` + `candidate_ref` + `fingerprint` (generation token)
@@ -78,13 +81,14 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Immutable, trusted validation of a candidate commit before promotion.
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Materialize candidate | `.github/scripts/merge-train/materialize-candidate.sh` | (lines TBD) | Checkout `candidate_ref` | Local candidate tree | Git blob materialization |
-| Check-run creation | `.github/workflows/merge-train-validate.yml` | (line TBD in job step) | `POST /repos/.../commits/.../check-runs` | Validation gate on `attestation_sha` | `{ name, head_sha: attestation_sha, status, conclusion }` |
-| Report timing | `.github/workflows/merge-train-validate.yml` | 71–76, 119–124, etc. | `echo "### ..." >> $GITHUB_STEP_SUMMARY` | Job summary | Markdown (informational only) |
+| Mutation Edge         | File                                                   | Lines                | Action                                         | State Target                         | Payload Schema                                            |
+| --------------------- | ------------------------------------------------------ | -------------------- | ---------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| Materialize candidate | `.github/scripts/merge-train/materialize-candidate.sh` | 18, 39–47            | Fetch + checkout immutable candidate           | Local candidate tree                 | Git blob materialization                                  |
+| Check-run creation    | `.github/workflows/merge-train-validate.yml`           | 269–309, 523–560     | `POST/PATCH /repos/.../commits/.../check-runs` | Validation gate on `attestation_sha` | `{ name, head_sha: attestation_sha, status, conclusion }` |
+| Report timing         | `.github/workflows/merge-train-validate.yml`           | 71–76, 119–124, etc. | `echo "### ..." >> $GITHUB_STEP_SUMMARY`       | Job summary                          | Markdown (informational only)                             |
 
 **Invariants**:
+
 - Candidate ref is opaque and immutable for the lifetime of the validation run
 - Validation gates (`typecheck:src`, `lint`, unit tests, sprite tests, headless) all run against the same immutable candidate
 - Check-runs report to `attestation_sha` (main), not `candidate_sha`, so validation gates remain on main's timeline
@@ -97,15 +101,16 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Orchestrates Goobers feature-PR workflow (LLM agent planning + implementation + review).
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Preserve source | `.github/workflows/goobers-run.yml` | 81–84 | `cp -R .goobers` | Runner temp | Filesystem copy (trusted source) |
-| Recovery resolution | `.github/workflows/goobers-run.yml` | 86–137 | `node` recovery script (inline shell) | Environment variable | `GOOBERS_RECOVERY_ISSUE` (GitHub issue number) |
-| Run Goobers | `.github/workflows/goobers-run.yml` | (line TBD post-step) | `goobers run` | Goobers instance, PR creation/update | See goobers invocation schema below |
-| Issue mutation | Goobers workflow output | (via goobers SDK) | Add labels, post comments | Issue state | `{ labels, status, pr_number }` |
-| PR creation/update | Goobers workflow output | (via goobers SDK) | `gh pr create` or update | Feature PR | Standard GH PR payload |
+| Mutation Edge       | File                                | Lines             | Action                                | State Target                         | Payload Schema                                 |
+| ------------------- | ----------------------------------- | ----------------- | ------------------------------------- | ------------------------------------ | ---------------------------------------------- |
+| Preserve source     | `.github/workflows/goobers-run.yml` | 81–84             | `cp -R .goobers`                      | Runner temp                          | Filesystem copy (trusted source)               |
+| Recovery resolution | `.github/workflows/goobers-run.yml` | 86–137            | `node` recovery script (inline shell) | Environment variable                 | `GOOBERS_RECOVERY_ISSUE` (GitHub issue number) |
+| Run Goobers         | `.github/workflows/goobers-run.yml` | 358               | `goobers run`                         | Goobers instance, PR creation/update | See goobers invocation schema below            |
+| Issue mutation      | Goobers workflow output             | (via goobers SDK) | Add labels, post comments             | Issue state                          | `{ labels, status, pr_number }`                |
+| PR creation/update  | Goobers workflow output             | (via goobers SDK) | `gh pr create` or update              | Feature PR                           | Standard GH PR payload                         |
 
 **Invariants**:
+
 - `.goobers/` source is copied to temp before any invocation to ensure trusted configuration
 - Recovery resolution is idempotent: repeated calls with same issue/PR state produce same GOOBERS_RECOVERY_ISSUE value
 - Goobers runs serially (`concurrency: { cancel-in-progress: false }`) to avoid concurrent feature-PR creation
@@ -118,12 +123,13 @@ Complete mapping of every state-mutating edge in CI/Goobers orchestration, with 
 
 **Purpose**: Offline validation of `.goobers/` workflow sources against Goobers binary.
 
-| Mutation Edge | File | Lines | Action | State Target | Payload Schema |
-|---|---|---|---|---|---|
-| Resolve checksum | `.github/workflows/goobers-validate.yml` | 25–40 | `case ${GOOBERS_VERSION}` | Environment variable | `GOOBERS_SHA256` (hex digest) |
-| Validate workflows | `.github/workflows/goobers-validate.yml` | (line TBD in step) | `goobers validate --source-tree .goobers` | Validation exit code | `{ status: 0 \| non-zero }` |
+| Mutation Edge      | File                                     | Lines | Action                                    | State Target         | Payload Schema                |
+| ------------------ | ---------------------------------------- | ----- | ----------------------------------------- | -------------------- | ----------------------------- |
+| Resolve checksum   | `.github/workflows/goobers-validate.yml` | 25–40 | `case ${GOOBERS_VERSION}`                 | Environment variable | `GOOBERS_SHA256` (hex digest) |
+| Validate workflows | `.github/workflows/goobers-validate.yml` | 85    | `goobers validate --source-tree .goobers` | Validation exit code | `{ status: 0 \| non-zero }`   |
 
 **Invariants**:
+
 - No state mutations: validation only checks schema/lint and exits with code
 - Checksum is hard-coded per version; version upgrade requires diff review of new digest
 - Validation fails closed (non-zero exit) on unknown version or schema violation
@@ -158,11 +164,12 @@ Payload structure for workflow inputs dispatched to Goobers from GitHub Actions 
 ```
 
 **Validation Rules**:
+
 - `contractVersion` must be `"v1"`; unknown versions → fail closed
 - `operation` must be one of the allowed enum values; unknown operations → error
 - When `operation` contains "candidate": `candidate_sha`, `candidate_ref`, `attestation_sha`, `fingerprint` all required
 - When `expected_head_sha` is set: `expected_base_ref` is required
-- `pr_number` required for all PR-scoped operations (reconcile, lease-*); forbidden for others
+- `pr_number` required for all PR-scoped operations (reconcile, lease-\*); forbidden for others
 - Field names and types must match exactly (no extra fields ignored, no missing required fields)
 
 ---
@@ -192,6 +199,7 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 ```
 
 **Validation Rules**:
+
 - `contractVersion` must be `"v1"`; unknown versions → fail closed
 - `status` must be one of the allowed enum values
 - When `status` is `'failure'` or `'blocked'`: `error` object is required and both `code` and `message` must be non-empty
@@ -213,16 +221,17 @@ Authoritative PR state tracked in a pinned comment (created/updated by CI Recove
 
 ```markdown
 <!-- crawler-pr-state-v1 -->
+
 ## CI Recovery State
 
-| Field | Value |
-|---|---|
-| **Disposition** | `admitted` \| `queued` \| `blocked` \| `landed` \| `stalled` |
-| **Lock Holder** | `<shepherd-id>` \| `unowned` |
-| **Lease Expires** | ISO 8601 timestamp \| `N/A` |
-| **Next Action** | Free-text action description |
-| **Last Updated** | ISO 8601 timestamp |
-| **CI Results** | Link to latest check-run or disposition verdict |
+| Field             | Value                                                        |
+| ----------------- | ------------------------------------------------------------ |
+| **Disposition**   | `admitted` \| `queued` \| `blocked` \| `landed` \| `stalled` |
+| **Lock Holder**   | `<shepherd-id>` \| `unowned`                                 |
+| **Lease Expires** | ISO 8601 timestamp \| `N/A`                                  |
+| **Next Action**   | Free-text action description                                 |
+| **Last Updated**  | ISO 8601 timestamp                                           |
+| **CI Results**    | Link to latest check-run or disposition verdict              |
 
 ## Addressed Findings
 
@@ -230,6 +239,7 @@ Authoritative PR state tracked in a pinned comment (created/updated by CI Recove
 ```
 
 **Invariants**:
+
 - Single comment per PR; created once and updated in place (never deleted)
 - HTML anchor `<!-- crawler-pr-state-v1 -->` enables deterministic lookup
 - All fields are machine-readable (Markdown table rows, no prose)
@@ -243,36 +253,42 @@ Authoritative PR state tracked in a pinned comment (created/updated by CI Recove
 Executable checks enforced by existing test suites (no new test files; integrate into existing harnesses):
 
 ### 1. Single-Owner Fence Coherence
+
 **Location**: `tests/unit/goobers-run-workflow.test.ts` (or integration test)
 **Check**: For each PR in flight, there is at most one holder of the `lease_id` field in the state comment
 **Fail Condition**: Multiple leases on same PR, or lease mismatch between comment and CI Recovery input
 **Recovery**: CI Recovery fails closed and escalates to human review
 
 ### 2. Single Authoritative State Comment
+
 **Location**: `.github/scripts/ci-recovery/reconcile.test.mjs` (Node test)
 **Check**: For each PR, there is exactly one comment matching `<!-- crawler-pr-state-v1 -->`
 **Fail Condition**: Zero or >1 matching comments found
 **Recovery**: Reconciliation repairs by deleting duplicates and recreating the authoritative copy
 
 ### 3. Expected Head/Base Fail-Closed Mutation Fencing
+
 **Location**: `.github/scripts/ci-recovery/reconcile.test.mjs`
 **Check**: When `expected_head_sha` + `expected_base_ref` are set, reconciliation skips all mutations if live PR state differs
 **Fail Condition**: Mutations occur despite head/base mismatch
 **Recovery**: Guard in reconcile.mjs prevents mutation; test fixture proves the guard works
 
 ### 4. No In-Process Retry of Non-Idempotent Operations
+
 **Location**: `.github/scripts/ci-recovery/router.test.mjs`
 **Check**: Router does not retry `workflow_dispatch` on transient failure; each dispatch is independent
 **Fail Condition**: Multiple identical dispatches issued from single router run
 **Recovery**: Router exits on dispatch failure; human re-triggers via manual dispatch
 
 ### 5. Retry-Safe Candidate Publication Semantics
+
 **Location**: `.github/scripts/merge-train/reconcile.test.mjs`
 **Check**: Candidate validation dispatch includes idempotency key (fingerprint); re-dispatch with same key is no-op
 **Fail Condition**: Two validation runs created for same fingerprint
 **Recovery**: Merge Train Validation completes first, reconciliation observes result and skips promotion if stale
 
 ### 6. Workspacebranch Recovery Rebinding
+
 **Location**: `.github/scripts/merge-train/reconcile.test.mjs`
 **Check**: PR branch update is only applied when `behind` state is detected and rebind succeeds atomically
 **Fail Condition**: PR branch update succeeds but reconciliation re-derives queue state before seeing result
@@ -323,35 +339,35 @@ Executable checks enforced by existing test suites (no new test files; integrate
 <actor-domain>:<workflow-run-id>:<pr-number>:<head-sha>:<fingerprint>:<sequence>
 ```
 
-| Component | Source | Purpose | Example |
-|---|---|---|---|
-| `actor-domain` | Caller identity (GHA action name or `manual`) | Actor segregation | `ci-recovery-router` |
-| `workflow-run-id` | `github.run_id` of caller | Workflow run uniqueness | `9876543210` |
-| `pr-number` | PR number | PR segregation | `1234` |
-| `head-sha` | PR head SHA at invocation time | Commit coherence | `abc123def456` |
-| `fingerprint` | Generation token (from merge-train candidate fingerprint, or timestamp hash) | Cycle isolation | `gen-5` or `1693468800` |
-| `sequence` | Call order within cycle (0-indexed) | Retry ordering | `0`, `1`, `2`, etc. |
+| Component         | Source                                                                       | Purpose                 | Example                 |
+| ----------------- | ---------------------------------------------------------------------------- | ----------------------- | ----------------------- |
+| `actor-domain`    | Caller identity (GHA action name or `manual`)                                | Actor segregation       | `ci-recovery-router`    |
+| `workflow-run-id` | `github.run_id` of caller                                                    | Workflow run uniqueness | `9876543210`            |
+| `pr-number`       | PR number                                                                    | PR segregation          | `1234`                  |
+| `head-sha`        | PR head SHA at invocation time                                               | Commit coherence        | `abc123def456`          |
+| `fingerprint`     | Generation token (from merge-train candidate fingerprint, or timestamp hash) | Cycle isolation         | `gen-5` or `1693468800` |
+| `sequence`        | Call order within cycle (0-indexed)                                          | Retry ordering          | `0`, `1`, `2`, etc.     |
 
 **Example**: `ci-recovery-router:9876543210:1234:abc123def456:gen-5:0`
 
 ### Ownership Transitions
 
-| Transition | Triggered By | Action | TTL | Next Owner |
-|---|---|---|---|---|
-| **Acquire** | CI Recovery `operation: reconcile` | Write lease_id to state comment | 5 min | (current owner) |
-| **Heartbeat** | CI Recovery completes successfully | Renew expiry timestamp | +5 min from now | (current owner) |
-| **Takeover** | Lease expiry + 5 min grace | New CI Recovery dispatch can acquire | TTL + 5 min grace | (new caller) |
-| **Release** | PR lands or is closed | Delete lease_id from state comment | — | (none) |
-| **Escalate** | Lease conflict detected | Stop all mutations, post escalation comment | — | (human) |
+| Transition    | Triggered By                       | Action                                      | TTL               | Next Owner      |
+| ------------- | ---------------------------------- | ------------------------------------------- | ----------------- | --------------- |
+| **Acquire**   | CI Recovery `operation: reconcile` | Write lease_id to state comment             | 5 min             | (current owner) |
+| **Heartbeat** | CI Recovery completes successfully | Renew expiry timestamp                      | +5 min from now   | (current owner) |
+| **Takeover**  | Lease expiry + 5 min grace         | New CI Recovery dispatch can acquire        | TTL + 5 min grace | (new caller)    |
+| **Release**   | PR lands or is closed              | Delete lease_id from state comment          | —                 | (none)          |
+| **Escalate**  | Lease conflict detected            | Stop all mutations, post escalation comment | —                 | (human)         |
 
 ### Failure Modes & Recovery
 
-| Failure | Detection | Recovery |
-|---|---|---|
+| Failure            | Detection                                                              | Recovery                                                                    |
+| ------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | **Lease Conflict** | New caller finds active lease_id not matching caller's idempotency key | Fail closed: skip mutations, post conflict comment, wait for expiry + grace |
-| **Expired Lease** | New caller checks expiry timestamp | Acquire new lease (old owner is presumed dead) |
-| **Lost Lease** | State comment not found or lease_id cleared externally | Log warning, re-acquire on next cycle |
-| **Dangling Lease** | PR is closed but lease_id not released | Scheduled maintenance job cleans up stale leases (separate 1-hour sweep) |
+| **Expired Lease**  | New caller checks expiry timestamp                                     | Acquire new lease (old owner is presumed dead)                              |
+| **Lost Lease**     | State comment not found or lease_id cleared externally                 | Log warning, re-acquire on next cycle                                       |
+| **Dangling Lease** | PR is closed but lease_id not released                                 | Scheduled maintenance job cleans up stale leases (separate 1-hour sweep)    |
 
 ---
 
@@ -364,6 +380,7 @@ Executable checks enforced by existing test suites (no new test files; integrate
 **Timeout**: 5 minutes
 
 **Steps**:
+
 1. Checkout `.github/workflows/ci-recovery*.yml`, `.github/workflows/merge-train*.yml`, `.github/workflows/goobers-*.yml`
 2. Checkout `.github/scripts/ci-recovery/`, `.github/scripts/merge-train/`, `.goobers/workflows/`
 3. Run Node.js script: `node .github/scripts/validate-goobers-contracts.mjs`
@@ -391,6 +408,7 @@ Executable checks enforced by existing test suites (no new test files; integrate
 ## Exit Gate to Phase 1
 
 ✅ **Phase 0 is complete when**:
+
 - [ ] 100% mutation paths inventoried in this document with file+line links
 - [ ] Contract schema files committed and enforced by CI job
 - [ ] Deterministic invariant checks all pass

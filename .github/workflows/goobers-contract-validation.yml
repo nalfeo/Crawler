@@ -40,12 +40,7 @@ jobs:
       - name: Validate workflow inputs against invocation schema
         run: |
           set -euo pipefail
-          if [ -f ".github/scripts/validate-goobers-contracts.mjs" ]; then
-            node .github/scripts/validate-goobers-contracts.mjs
-          else
-            echo "ℹ️  Contract validation script not yet implemented (Phase 0 in progress)"
-            exit 0
-          fi
+          node .github/scripts/validate-goobers-contracts.mjs
 
       - name: Run contract unit tests
         run: npx vitest run tests/unit/goobers-contracts.test.ts --reporter=verbose

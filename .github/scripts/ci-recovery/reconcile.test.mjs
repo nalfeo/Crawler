@@ -16196,3 +16196,39 @@ test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path
   assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
   assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
 });
+
+test('single authoritative state comment invariant fails closed on duplicate authoritative comments', async (t) => {
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [shepherdStateComment(10), shepherdStateComment(11)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  assert.notEqual(code, 0, 'reconcile must fail when multiple authoritative state comments exist');
+  assert.match(stderr, /has 2 CI recovery state comments/);
+});
+
+test('expected head/base mutation fencing is wired as a fail-closed pre-mutation guard', () => {
+  const source = readFileSync(SCRIPT, 'utf8');
+  assert.match(
+    source,
+    /if \(!expectedBaseRef\) \{\s*return \{ reason: 'missing-expected-base-ref'/,
+    'expected_head_sha guards must require expected_base_ref before any mutation',
+  );
+  assert.match(
+    source,
+    /if \(expectedHeadSha\) \{\s*const rejection = expectedMetadataRejection\(pr\);\s*if \(rejection\) await skipForExpectedMetadata\(rejection\);/s,
+    'startup must fail closed when expected metadata no longer matches',
+  );
+});

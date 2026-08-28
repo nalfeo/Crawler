@@ -76,6 +76,19 @@ interface GoobersInstance {
   runner?: { envPassthrough?: string[] };
 }
 
+interface CiRecoveryWorkflow {
+  on?: {
+    workflow_dispatch?: {
+      inputs?: Record<string, { options?: string[] }>;
+    };
+  };
+  jobs?: {
+    reconcile?: {
+      steps?: Array<{ name?: string; env?: Record<string, string> }>;
+    };
+  };
+}
+
 function loadYaml<T>(...segments: string[]): T {
   return parse(readFileSync(path.join(REPO_ROOT, ...segments), 'utf8')) as T;
 }
@@ -143,7 +156,6 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
-    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -199,18 +211,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    expect(implement?.next).toBe('review');
+    expect(tasks.get('push-branch')?.next).toBe('local-ci');
+    expect(tasks.get('local-ci')?.next).toBe('local-gate');
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
+      'local-ci',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -386,5 +396,25 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Validate .goobers source tree')?.run,
     ).toContain('"$GOOBERS_SOURCE"');
+  });
+
+  it('preserves single-writer lease fields in ci-recovery dispatch wiring', () => {
+    const workflow = loadYaml<CiRecoveryWorkflow>('.github', 'workflows', 'ci-recovery.yml');
+    const inputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+    const reconcileStep = workflow.jobs?.reconcile?.steps?.find(
+      (step) => step.name === 'Reconcile PR or update shepherd lease',
+    );
+
+    expect(inputs.lease_id).toBeDefined();
+    expect(inputs.expected_head_sha).toBeDefined();
+    expect(inputs.expected_base_ref).toBeDefined();
+    expect(inputs.operation?.options).toEqual(
+      expect.arrayContaining(['reconcile', 'lease-acquire', 'lease-heartbeat', 'lease-release']),
+    );
+    expect(reconcileStep?.env).toMatchObject({
+      LEASE_ID: '${{ inputs.lease_id }}',
+      EXPECTED_HEAD_SHA: '${{ inputs.expected_head_sha }}',
+      EXPECTED_BASE_REF: '${{ inputs.expected_base_ref }}',
+    });
   });
 });
