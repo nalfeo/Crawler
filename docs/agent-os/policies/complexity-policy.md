@@ -66,9 +66,9 @@ For **≥3🍎 sessions**, also run `npm run apples:record` at handoff (see belo
 
 The apple estimate you declare also selects how much **pre-PR review** the change
 must receive. For 1–2🍎 changes, no ledger is required. For ≥3🍎 changes, commit
-and validate a **review ledger** for the tier; a present-but-invalid ledger is a
-hard blocker, while a missing ledger is treated as an artifact gap that the
-authoring or recovery agent must fix rather than escalate by default.
+and validate a **review ledger** for the tier. Ledger state never blocks PR
+creation or draft publication; required CI and CI Recovery validate and repair a
+present ledger before merge.
 
 | Apples | Required review stages (recorded in the ledger)                                                                                   |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------- |

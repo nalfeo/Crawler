@@ -234,9 +234,10 @@ produces workflows that "run green" but do nothing.
   or inconsistent state fails closed.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
-- Recovery treats missing policy artifacts as ordinary fix work. If a review
-  thread or guard output says a PR is missing an ADR, review ledger, apple record,
-  handoff, or ledger evidence, the assigned agent should create or repair that
+- Recovery treats missing policy artifacts as ordinary fix work. Invalid added
+  review ledgers are native `review-ledger` lifecycle blockers; review threads
+  and guard output may also identify a missing ADR, apple record, handoff, or
+  ledger evidence. The assigned agent should create or repair that
   artifact from PR/review context and validate it. It should escalate to a human
   only when the artifact requires a decision that is not inferable from the PR.
 - Shepherd leases are acquired, heartbeated, and released through the same
