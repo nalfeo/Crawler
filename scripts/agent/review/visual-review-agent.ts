@@ -913,10 +913,12 @@ async function captureScreenshot(
       const globalWithProbe = window as unknown as {
         __uiProbe?: { ready?: () => boolean };
         __mainSceneProbe?: { ready?: () => boolean };
+        __hudProbe?: { ready?: () => boolean };
       };
       return (
         globalWithProbe.__uiProbe?.ready?.() === true ||
-        globalWithProbe.__mainSceneProbe?.ready?.() === true
+        globalWithProbe.__mainSceneProbe?.ready?.() === true ||
+        globalWithProbe.__hudProbe?.ready?.() === true
       );
     },
     opts.skipProbeWait,

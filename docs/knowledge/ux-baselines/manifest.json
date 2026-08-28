@@ -90,6 +90,26 @@
     "description": "Hover a compatible item after scrolling several Bag rows. The comparison remains anchored to the visible cell rather than stale pre-scroll geometry."
   },
   {
+    "id": "hud-safe-room",
+    "label": "HUD (Safe Room, All Systems Unlocked)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-lab",
+    "setupFile": "scripts/agent/review/setup/hud-scenarios.js",
+    "enabled": true,
+    "description": "Full HUD in the safe room with vitals, minimap, loot counter, skill tracker, and announcement banner all unlocked and visible."
+  },
+  {
+    "id": "hud-dungeon",
+    "label": "HUD (Dungeon)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-lab",
+    "setupFile": "scripts/agent/review/setup/hud-scenarios-dungeon.js",
+    "enabled": true,
+    "description": "Full HUD during an active dungeon encounter, including boss bar and direction arrows."
+  },
+  {
     "id": "equipment-hover-multi-hand-replacement",
     "label": "Equipment Hover (Multi-Hand Replacement)",
     "viewport": { "width": 1280, "height": 800 },
