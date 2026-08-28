@@ -1258,10 +1258,11 @@ function fireEnemyProjectileFrom(
     return;
   }
 
-  const projectileDamage = hasComponent(world.ecs, eid, Damage)
+  const casterDamage = hasComponent(world.ecs, eid, Damage)
     ? (world.stores.damage.amount[eid] ?? 0)
-    : (FIREBALL_DEF?.baseDamage ?? ENEMY_PROJECTILE.DAMAGE);
+    : undefined;
   if (FIREBALL_DEF) {
+    const projectileDamage = casterDamage ?? FIREBALL_DEF.baseDamage;
     const projectile = spawnAoeProjectile(
       world,
       originX,
@@ -1285,6 +1286,7 @@ function fireEnemyProjectileFrom(
       canCrit: false,
     });
   } else {
+    const projectileDamage = casterDamage ?? ENEMY_PROJECTILE.DAMAGE;
     spawnEnemyProjectile(
       world,
       originX,
