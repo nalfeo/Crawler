@@ -162,7 +162,7 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
   it('upgrades the active in place at level 15 without stranding the level-5 grant', () => {
     const { world, playerEid } = createPlayingFloor1World(21);
     levelArcaneToFive(world, playerEid);
-    const stateBeforeUpgrade = world.abilityStatesByEntity.get(playerEid)!;
+    const state = world.abilityStatesByEntity.get(playerEid)!;
     grantAbilitySources(
       world,
       playerEid,
@@ -172,7 +172,7 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
       ],
       { configureActives: 'fill-open-slots' },
     );
-    const replacedSlotIndex = stateBeforeUpgrade.equippedActiveAbilityIds.indexOf('arcane-nova');
+    const replacedSlotIndex = state.equippedActiveAbilityIds.indexOf('arcane-nova');
 
     world.skillUsageEvents.push({
       holderEid: playerEid,
@@ -182,14 +182,16 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
     });
     skillSystem(world);
 
-    const state = world.abilityStatesByEntity.get(playerEid);
+    const upgradedState = world.abilityStatesByEntity.get(playerEid);
     expect(world.playerSkills.get('arcane')!.level).toBe(15);
-    expect(state!.equippedActiveAbilityIds).toContain('arcane-nova-evolved');
+    expect(upgradedState!.equippedActiveAbilityIds).toContain('arcane-nova-evolved');
     // The L5 grant is revoked as an ACTIVE (a passive-kind revoke would be
     // rejected by the grant-ownership validator and leak the old ability).
-    expect(state!.equippedActiveAbilityIds).not.toContain('arcane-nova');
-    expect(state!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
-    expect(state!.equippedActiveAbilityIds.indexOf('arcane-nova-evolved')).toBe(replacedSlotIndex);
+    expect(upgradedState!.equippedActiveAbilityIds).not.toContain('arcane-nova');
+    expect(upgradedState!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
+    expect(upgradedState!.equippedActiveAbilityIds.indexOf('arcane-nova-evolved')).toBe(
+      replacedSlotIndex,
+    );
   });
 
   it('keeps the arcane active owned but unequipped when the active bar is full', () => {
