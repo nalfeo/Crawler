@@ -1,0 +1,54 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "advisory-ledger-lifecycle",
+  "task_title": "Make ledger publication advisory and repair during PR lifecycle",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted immutable head content fetch, actor-backed native Copilot provenance, review-request deadlock avoidance, final-head ledger repair ordering, API failure handling, exact guard semantic parity, and CI artifact validation. Kept local prereqs advisory to match the explicit publication requirement."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "reviewer_actors": ["copilot-pull-request-reviewer[bot]"],
+          "review_url": "https://github.com/nalfeo/Crawler/pull/3855#pullrequestreview-5054783430",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "fb8d9449f7b333a521819f275b42c4a8205c0e48",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff shifts ledger enforcement from pre-publication to required CI and CI Recovery, with focused tests and aligned documentation."
+    }
+  }
+}

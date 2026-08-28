@@ -2,9 +2,9 @@ import type { GameWorld } from './world.js';
 import { addItem, cloneInventoryBag, type InventoryBag } from '../shared/inventory.js';
 import type { Floor2ShopInstance, Floor2ShopInventoryItem } from '../shared/floor-types.js';
 import { getItemById } from '../shared/items.js';
-import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { getEquipmentDefForItem, getEquippableItemIds } from '../shared/equipmentDefs.js';
+import { getEquipmentDefForWeaponId } from '../shared/equipmentDefs.js';
+import { resolveShopCatalogItem } from '../shared/shop-catalog.js';
 
 export type SettlementShopPurchaseFailureCode =
   | 'insufficient-funds'
@@ -66,32 +66,10 @@ function resolveShop(world: GameWorld, shopNpcEid: number): Floor2ShopInstance |
   return world.floorExtendedState?.settlement?.shops.find((shop) => shop.npcEid === shopNpcEid);
 }
 
-function resolveEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
-  for (const itemId of getEquippableItemIds()) {
-    const def = getEquipmentDefForItem(itemId);
-    if (def?.weaponId === weaponId) {
-      return def;
-    }
-  }
-  return undefined;
-}
-
-function resolveCatalogItem(itemId: string): { itemId: string; displayName: string } | null {
-  const catalogItem = getItemById(itemId);
-  if (catalogItem) {
-    return { itemId: catalogItem.id, displayName: catalogItem.name };
-  }
-  const equipmentDef = resolveEquipmentDefForWeaponId(itemId);
-  if (equipmentDef) {
-    return { itemId: equipmentDef.id, displayName: equipmentDef.name };
-  }
-  return null;
-}
-
 function resolveDisplayName(itemId: string): string | null {
   return (
     getItemById(itemId)?.name ??
-    resolveEquipmentDefForWeaponId(itemId)?.name ??
+    getEquipmentDefForWeaponId(itemId)?.name ??
     getWeaponDef(itemId)?.name ??
     null
   );
@@ -125,7 +103,7 @@ function preparePurchase(
   if (!bag) {
     return failure('missing-inventory', 'Purchasing entity has no inventory bag');
   }
-  const catalogItem = resolveCatalogItem(lineItem.itemId);
+  const catalogItem = resolveShopCatalogItem(lineItem.itemId);
   if (!catalogItem) {
     return failure('unknown-item', 'Settlement shop item is not in the shared catalog');
   }

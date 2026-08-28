@@ -377,6 +377,28 @@ export function getEquippableItemIds(): string[] {
   return [...EQUIPMENT_BY_ITEM_ID.keys()];
 }
 
+/**
+ * Weapon id (`weaponDefs.ts`) → the equipment def that activates it. First
+ * registration wins, matching the registration order of
+ * {@link getEquippableItemIds}. Used by merchant flows that stock raw weapon
+ * ids (Floor 2 shop archetypes) and must map them onto a real bag item.
+ */
+const EQUIPMENT_BY_WEAPON_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
+  const map = new Map<string, EquipmentItemDef>();
+  for (const def of EQUIPMENT_BY_ITEM_ID.values()) {
+    const weaponId = (def as Partial<WeaponEquipmentDef>).weaponId;
+    if (weaponId !== undefined && !map.has(weaponId)) {
+      map.set(weaponId, def);
+    }
+  }
+  return map;
+})();
+
+/** Equipment definition that activates the given weapon id, if any. */
+export function getEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
+  return EQUIPMENT_BY_WEAPON_ID.get(weaponId);
+}
+
 /** Equipment IDs that can be inserted through the static inventory item catalog. */
 export function getCatalogEquippableItemIds(): string[] {
   return getEquippableItemIds().filter((itemId) => getItemById(itemId) !== undefined);

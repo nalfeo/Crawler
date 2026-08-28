@@ -45,6 +45,41 @@ on every guard decision and appends the same payload to
 - `reason` — why (for deny/ask/crash)
 - `bypass_used` / `bypass_reason` — if disabled via env or config
 
+### Host Resource Telemetry (active emission, on demand)
+
+`npm run host:profile` (`scripts/agent/perf/host-resources.ts`) samples the
+machine a cloud session or hosted runner is executing on, so "am I using the host
+I was given?" stops being a guess (issue #3800). It reports two independent views
+and never conflates them, because inside a container `os.cpus()` / `os.totalmem()`
+describe the **physical host**, not the slice this process may use:
+
+- **host** — the kernel's /proc/meminfo (`MemTotal`/`MemAvailable`, with an `os.*` fallback
+  off Linux), aggregate `os.cpus()` deltas, load average, PSI pressure stalls
+  (PSI, from /proc/pressure), and workspace disk usage.
+- **cgroup** — the tightest `memory.max` / `cpu.max` / `cpuset` limit found
+  walking from this process's leaf cgroup to the root (v2, with a v1 fallback),
+  plus `cpu.stat` usage and **throttling** counters, which are the only direct
+  evidence that the quota — not the workload — is the ceiling.
+
+Each report carries a `headroom` block (peak/mean CPU, peak memory vs. the limit,
+whether CPU was throttled) plus narrative notes such as "peak memory only 7% of
+the limit".
+
+Collection points:
+
+| Where          | How                                                                                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud session  | `bash scripts/agent/preflight.sh` prints a one-line snapshot at session start; run `npm run host:profile -- --once --headline` any time, or sample a long task with `--duration`/`--stop-file` |
+| GitHub Actions | the `.github/actions/host-profile` composite action brackets a job (`mode: start` / `mode: report`) and publishes a table to the job summary plus a JSON artifact                              |
+
+Reports are per-run artifacts (`files/` is gitignored) and are **never a gate**:
+the sampler exits 0 regardless of utilization and CI wiring degrades to a warning.
+Samples are appended to a JSONL sidecar as they are taken, so a job killed by
+timeout or cancellation still yields a partial profile (`--from-jsonl`).
+
+Nothing host-identifying is collected: no hostname, no runner name, no process
+command lines — only hardware shape, limits, and utilization.
+
 ### Memory Access (passive, from committed docs)
 
 - Which `docs/knowledge/**` files are referenced by newer handoffs/ADRs
