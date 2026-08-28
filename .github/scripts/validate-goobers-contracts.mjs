@@ -366,6 +366,54 @@ async function realProducerInvocations() {
     },
   });
 
+  // CI Recovery Router (ci-recovery-router.yml) does not go through
+  // reconcile-lib.mjs at all -- it builds its own workflow_dispatch bodies.
+  // Import its own pure body-builder helpers (the same functions the real
+  // reaper/normal dispatch loops call) so this validates the genuine
+  // router-produced payload shape too, not just the merge-train/CI-Recovery
+  // helpers above.
+  const routerPath = path.join(repoRoot, '.github/scripts/ci-recovery/router.mjs');
+  const { buildReaperDispatchBody, buildRouterDispatchBody } = await import(
+    pathToFileURL(routerPath).href
+  );
+  const fakePayload = { repository: { default_branch: 'main' } };
+
+  const reaperBody = buildReaperDispatchBody(42, 'lease-reaper', fakePayload);
+  results.push({
+    name: 'real CI Recovery Router buildReaperDispatchBody() invocation envelope',
+    payload: {
+      contractVersion: 'v1',
+      workflowName: 'ci-recovery',
+      operation: reaperBody.inputs.operation,
+      pr_number: reaperBody.inputs.pr_number,
+      trigger: reaperBody.inputs.trigger,
+      lease_id: reaperBody.inputs.lease_id,
+    },
+  });
+
+  const routerBody = buildRouterDispatchBody(
+    43,
+    'merge-train-cumulative-conflict:41',
+    fakePayload,
+    {
+      expectedHeadSha: 'c'.repeat(40),
+      expectedBaseRef: 'main',
+    },
+  );
+  results.push({
+    name: 'real CI Recovery Router buildRouterDispatchBody() invocation envelope',
+    payload: {
+      contractVersion: 'v1',
+      workflowName: 'ci-recovery',
+      operation: routerBody.inputs.operation,
+      pr_number: routerBody.inputs.pr_number,
+      trigger: routerBody.inputs.trigger,
+      expected_head_sha: routerBody.inputs.expected_head_sha,
+      expected_base_ref: routerBody.inputs.expected_base_ref,
+      lease_id: routerBody.inputs.lease_id,
+    },
+  });
+
   return results.map((entry) => ({ ...entry, shouldPass: true }));
 }
 

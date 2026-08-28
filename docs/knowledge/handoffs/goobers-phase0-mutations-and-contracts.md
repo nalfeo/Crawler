@@ -152,8 +152,8 @@ Payload structure for workflow inputs dispatched to Goobers from GitHub Actions 
 {
   "contractVersion": "v1",
   "workflowName": "string (required)",
-  "operation": "string (required: 'reconcile', 'validate-candidate', 'run-feature-pr', 'lease-*')",
-  "pr_number": "number (for PR-scoped operations) | null",
+  "operation": "string (required: 'reconcile', 'lease-acquire', 'lease-heartbeat', 'lease-release', 'validate-candidate', 'run-feature-pr')",
+  "pr_number": "string, numeric (e.g. '42') — GitHub Actions workflow_dispatch inputs are always strings, never number/null; required for PR-scoped operations, forbidden for batch operations",
   "expected_head_sha": "string | empty",
   "expected_base_ref": "string | empty",
   "fingerprint": "string (for candidate validation) | empty",
@@ -162,8 +162,8 @@ Payload structure for workflow inputs dispatched to Goobers from GitHub Actions 
   "attestation_sha": "string (for candidate validation) | empty",
   "pr_numbers": "string (comma-separated for batch operations) | empty",
   "lease_id": "string (non-secret shepherd id) | empty",
-  "trigger": "string (enum: 'workflow_dispatch', 'schedule', 'pull_request_target', 'push', 'workflow_run', 'issue_comment') | empty",
-  "issue_number": "number (for Goobers issue tracking) | null"
+  "trigger": "string, free-form business-reason (e.g. 'merge-train-noop', 'merge-train-cumulative-conflict:41', '${eventName}:sweep'); NOT a closed GitHub-event enum — real dispatch call sites in reconcile.mjs/router.mjs mint dynamic reason strings that a fixed enum would reject",
+  "issue_number": "string, numeric (e.g. '3840') — same string-only constraint as pr_number"
 }
 ```
 
@@ -174,6 +174,7 @@ Payload structure for workflow inputs dispatched to Goobers from GitHub Actions 
 - When `operation` contains "candidate": `candidate_sha`, `candidate_ref`, `attestation_sha`, `fingerprint` all required
 - When `expected_head_sha` is set: `expected_base_ref` is required
 - `pr_number` required for all PR-scoped operations (reconcile, lease-\*); forbidden for others
+- `pr_number`/`issue_number` must match `^[0-9]+$` when present (fail closed on non-numeric-string values, e.g. a raw JSON number)
 - Field names and types must match exactly (no extra fields ignored, no missing required fields)
 
 ---
@@ -187,11 +188,12 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 ```json
 {
   "contractVersion": "v1",
+  "task": "string, required (enum: 'query-backlog', 'hydrate-requirements', 'plan', 'materialize-plan', 'implement', 'push-branch', 'local-ci', 'open-pr', 'close-out', 'park-needs-human', 'needs-remediation', 'review', 'local-gate', 'pr-opened-gate' — see .goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml)",
   "status": "string (enum: 'success', 'failure', 'no-work', 'blocked')",
   "outputs": {
-    "verdict": "string | null (enum: 'recommended', 'risky', 'not-recommended')",
-    "appleEstimate": "number | null (1–5)",
-    "hardGate": "string | null (gate criteria)",
+    "verdict": "string | null (enum: 'recommended', 'risky', 'not-recommended'); only non-null when task='plan'",
+    "appleEstimate": "number | null (1–5); only non-null when task='plan'",
+    "hardGate": "string | null (gate criteria); only non-null when task is one of 'plan', 'local-gate', 'pr-opened-gate', 'review'",
     "blockedBy": "string | null (comma-separated issue numbers)"
   },
   "summary": "string (one-line summary for human)",
@@ -205,15 +207,16 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 **Validation Rules**:
 
 - `contractVersion` must be `"v1"`; unknown versions → fail closed
+- `task` is a required discriminator; it names the producing Goobers task/gate and gates which `outputs` fields are applicable
 - `status` must be one of the allowed enum values
 - When `status` is `'failure'` or `'blocked'`: `error` object is required and both `code` and `message` must be non-empty
 - When `status` is `'success'` or `'no-work'`: `error` must be omitted or null
 - `outputs` is always present as an object; scalar fields may be null but key must exist
-- `outputs.verdict` only present/non-null for planning/review operations; forbidden for others
-- `outputs.appleEstimate` only present/non-null for planning operations; value must be 1–5
-- `outputs.hardGate` only present/non-null when operation has explicit gate requirements
+- `outputs.verdict` only present/non-null when `task='plan'`; forbidden for every other task
+- `outputs.appleEstimate` only present/non-null when `task='plan'`; value must be 1–5
+- `outputs.hardGate` only present/non-null when `task` is one of `'plan'`, `'local-gate'`, `'pr-opened-gate'`, `'review'`; forbidden for every other task
 - `summary` must be non-empty string for all states
-- Deterministic gates fail on schema violation (unknown status, missing required error, invalid enum value)
+- Deterministic gates fail on schema violation (unknown status, missing required error, invalid enum value, task-gated field misuse)
 
 ---
 
@@ -221,34 +224,41 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 
 **Schema**: `crawler.pr-state/v1`
 
-Authoritative PR state tracked in a pinned comment (created/updated by CI Recovery):
+Authoritative PR state tracked in a pinned comment (created/updated by CI Recovery). The
+canonical format is defined by `.github/scripts/ci-recovery/markers.mjs`
+(`STATE_MARKER`, `STATE_DATA_PREFIX`) and rendered by `renderStateComment()` /
+parsed by `parseStateComment()` in `.github/scripts/ci-recovery/state.mjs` — it is a
+marker line, a base64url-encoded JSON data line, and Markdown bullet fields, **not**
+a Markdown table:
 
 ```markdown
-<!-- crawler-pr-state-v1 -->
+<!-- crawler-ci-state:v1 -->
+<!-- crawler-ci-state-data:<base64url-encoded JSON state> -->
 
-## CI Recovery State
+## Crawler CI recovery state
 
-| Field             | Value                                                        |
-| ----------------- | ------------------------------------------------------------ |
-| **Disposition**   | `admitted` \| `queued` \| `blocked` \| `landed` \| `stalled` |
-| **Lock Holder**   | `<shepherd-id>` \| `unowned`                                 |
-| **Lease Expires** | ISO 8601 timestamp \| `N/A`                                  |
-| **Next Action**   | Free-text action description                                 |
-| **Last Updated**  | ISO 8601 timestamp                                           |
-| **CI Results**    | Link to latest check-run or disposition verdict              |
+- Owner: `<shepherd-id | none>`
+- Status: `<waiting | recovering | blocked | landed | ...>`
+- Head: `<head-sha>`
+- Fingerprint: `<candidate/blocker fingerprint>`
+- Blockers: none | `<kind>:<id>, <kind>:<id>, ...`
+- Automation attempt: <n> (only present when `progressAt` is set)
+- Progress observed: <ISO 8601 timestamp> (only present when `progressAt` is set)
+- Recovery disposition: `stale-automation-exhausted` (only present for that trigger)
+- Retry count: <n> (only present for that trigger)
+- Next action: <free text> (only present for that trigger)
+- Updated: <ISO 8601 timestamp>
 
-## Addressed Findings
-
-- Line-numbered list of `✅ Addressed in <sha>: <reason>` markers
+_This comment is managed by the trusted CI recovery workflow._
 ```
 
 **Invariants**:
 
 - Single comment per PR; created once and updated in place (never deleted)
-- HTML anchor `<!-- crawler-pr-state-v1 -->` enables deterministic lookup
-- All fields are machine-readable (Markdown table rows, no prose)
-- Lease expiry is authoritative for shepherd takeover decisions
-- "Addressed Findings" section is append-only within a cycle; resolved threads are marked with SHA + reason
+- `STATE_MARKER` (`<!-- crawler-ci-state:v1 -->`) enables deterministic lookup; the base64url data line is the machine-readable source of truth, the bullets are a human-readable projection of the same state
+- The data line round-trips exactly through `renderStateComment()`/`parseStateComment()`; `validateState()` enforces the required fields before encoding
+- Lease/attempt/progress bullets are conditionally rendered based on `state.progressAt` and `state.trigger`, not always present
+- Thread resolution (`✅ Addressed`/`✅ Not applicable` markers) is a separate mechanism (PR review-comment replies), not part of this state comment
 
 ---
 
@@ -266,7 +276,7 @@ Executable checks enforced by existing test suites (no new test files; integrate
 ### 2. Single Authoritative State Comment
 
 **Location**: `.github/scripts/ci-recovery/reconcile.test.mjs` (Node test)
-**Check**: For each PR, there is exactly one comment matching `<!-- crawler-pr-state-v1 -->`
+**Check**: For each PR, there is exactly one comment matching `STATE_MARKER` (`<!-- crawler-ci-state:v1 -->`)
 **Fail Condition**: Zero or >1 matching comments found
 **Recovery**: Reconciliation repairs by deleting duplicates and recreating the authoritative copy
 
