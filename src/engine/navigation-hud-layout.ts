@@ -12,12 +12,6 @@ const NAV_QUEST_MAX_SCALE = 1.45;
 const RADAR_LABEL_HEIGHT = 22;
 const PANEL_GAP = 14;
 const HUD_MAX_SCALE = 1.6;
-const FAMILY_PANEL_WIDTH = 244;
-const FAMILY_PANEL_HEIGHT = 216;
-const FAMILY_PANEL_MARGIN_RIGHT = 12;
-const FAMILY_PANEL_MARGIN_BOTTOM = 160;
-const FAMILY_PANEL_RIGHT_OFFSET = FAMILY_PANEL_WIDTH + FAMILY_PANEL_MARGIN_RIGHT;
-const FAMILY_PANEL_BOTTOM_OFFSET = FAMILY_PANEL_HEIGHT + FAMILY_PANEL_MARGIN_BOTTOM;
 
 export interface NavigationHudLayout {
   readonly radarScale: number;
@@ -48,17 +42,7 @@ function reserveScaledTopCenterRegion(uiScale: number): ScreenBounds {
   };
 }
 
-function reserveScaledBottomRightRegion(uiScale: number): ScreenBounds {
-  const scale = Math.min(Math.max(1, uiScale), HUD_MAX_SCALE);
-  return {
-    x: GAME.WIDTH - FAMILY_PANEL_RIGHT_OFFSET * scale,
-    y: GAME.HEIGHT - FAMILY_PANEL_BOTTOM_OFFSET * scale,
-    width: FAMILY_PANEL_RIGHT_OFFSET * (scale - 1) + FAMILY_PANEL_WIDTH,
-    height: FAMILY_PANEL_BOTTOM_OFFSET * (scale - 1) + FAMILY_PANEL_HEIGHT,
-  };
-}
-
-export function resolveNavigationHudLayout(uiScale: number, floor: number): NavigationHudLayout {
+export function resolveNavigationHudLayout(uiScale: number, _floor: number): NavigationHudLayout {
   const radarScale = Math.min(Math.max(1, uiScale), NAV_RADAR_MAX_SCALE);
   const radarDiameter = NAV_RADAR_DIAMETER * radarScale;
   const radarBounds: ScreenBounds = {
@@ -77,21 +61,11 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
     height: 122,
   };
   const questScaleBase = Math.min(Math.max(1, uiScale), NAV_QUEST_MAX_SCALE);
-  const floorTwo = floor >= 2;
-  const floorTwoQuestY = Math.ceil(topCenterReservation.height + PANEL_GAP);
-  const floorTwoQuestMaxScale = Math.max(
-    1,
-    (bottomLeftReservation.y - floorTwoQuestY) / NAV_QUEST_MAX_HEIGHT,
-  );
-  const questScale = floorTwo ? Math.min(questScaleBase, floorTwoQuestMaxScale) : questScaleBase;
-  const questPosition = floorTwo
-    ? { x: 16, y: floorTwoQuestY }
-    : {
-        x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
-        y: radarBounds.y + radarBounds.height + PANEL_GAP,
-      };
-  const floorTwoFamilyRegion: ScreenBounds[] =
-    floor >= 2 ? [reserveScaledBottomRightRegion(uiScale)] : [];
+  const questScale = questScaleBase;
+  const questPosition = {
+    x: GAME.WIDTH - 16 - NAV_QUEST_WIDTH * questScale,
+    y: radarBounds.y + radarBounds.height + PANEL_GAP,
+  };
 
   return {
     radarScale,
@@ -99,11 +73,6 @@ export function resolveNavigationHudLayout(uiScale: number, floor: number): Navi
     questScale,
     questPosition,
     questMaxHeight: NAV_QUEST_MAX_HEIGHT,
-    criticalHudRegions: [
-      topCenterReservation,
-      bottomLeftReservation,
-      bottomCenterReservation,
-      ...floorTwoFamilyRegion,
-    ],
+    criticalHudRegions: [topCenterReservation, bottomLeftReservation, bottomCenterReservation],
   };
 }
