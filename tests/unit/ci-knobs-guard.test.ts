@@ -64,6 +64,7 @@ const NUMERIC_KNOBS: Record<string, string[]> = {
     'DEFAULT_LEASE_TTL_MINUTES',
     'DEFAULT_LEASE_GRACE_MINUTES',
     'AUTOMATION_STALE_MINUTES',
+    'AGENT_SESSION_MAX_MINUTES',
   ],
   '.github/scripts/merge-train/state.mjs': ['MAX_TRAIN_SIZE', 'CANDIDATE_VALIDATION_STALE_MS'],
   '.github/scripts/ci-conflict-coordinator/state.mjs': [
@@ -209,6 +210,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'DEFAULT_LEASE_TTL_MINUTES', // automation lease time-to-live
   'DEFAULT_LEASE_GRACE_MINUTES', // grace period after lease expiry
   'AUTOMATION_STALE_MINUTES', // age after which an automation comment is stale
+  'AGENT_SESSION_MAX_MINUTES', // hard cap on how long a live agent session may defer the stale ceiling
   // ci-recovery/harvest-liveness.mjs
   'DEFAULT_HARVEST_THRESHOLD_MINUTES', // default stale-session harvest liveness alarm threshold
   'DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS', // default decision-log lookback window for dispatch-liveness sweep
