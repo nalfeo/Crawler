@@ -159,6 +159,9 @@ function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.Refi
 
   const knownArchetypes = new Set(pack.archetypes.map((archetype) => archetype.id));
   const poolIds = new Set<string>();
+  const fixedArchetypeIds = new Set(
+    headliners.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
+  );
   for (const [index, entry] of headliners.pool.entries()) {
     if (poolIds.has(entry.archetypeId)) {
       ctx.addIssue({
@@ -218,11 +221,11 @@ function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.Refi
       }
       continue;
     }
-    if (eligiblePool.length === 0) {
+    if (eligiblePool.filter((entry) => !fixedArchetypeIds.has(entry.archetypeId)).length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['headliners', 'slots', slotIndex, 'eligibleGrades'],
-        message: `act ${slot.act} has no eligible Headliners`,
+        message: `act ${slot.act} has no eligible non-fixed Headliners`,
       });
     }
   }

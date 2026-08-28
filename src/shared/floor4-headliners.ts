@@ -64,13 +64,20 @@ export function buildFloor4HeadlinerCard(
 ): readonly Floor4HeadlinerCardEntry[] {
   const rng = new SeededRandom(hashStringToSeed(floor4HeadlineStreamKey(seed)));
   const used = new Set<string>();
+  const reserved = new Set(
+    config.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
+  );
   const card: Floor4HeadlinerCardEntry[] = [];
 
   for (const slot of config.slots) {
     const eligible = config.pool.filter((entry) => slot.eligibleGrades.includes(entry.grade));
-    const candidates = eligible.filter((entry) => !used.has(entry.archetypeId));
+    const candidates = eligible.filter(
+      (entry) => !used.has(entry.archetypeId) && !reserved.has(entry.archetypeId),
+    );
     const picked = slot.fixedArchetypeId
-      ? eligible.find((entry) => entry.archetypeId === slot.fixedArchetypeId)
+      ? eligible.find(
+          (entry) => entry.archetypeId === slot.fixedArchetypeId && !used.has(entry.archetypeId),
+        )
       : candidates.length > 0
         ? rng.pick(candidates)
         : undefined;
