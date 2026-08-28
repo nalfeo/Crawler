@@ -13,7 +13,7 @@ export interface Floor4HeadlinerSlotConfig {
   readonly appearanceFeeGold: number;
 }
 
-export interface Floor4HeadlinerConfig {
+interface Floor4HeadlinerConfig {
   readonly pool: readonly Floor4HeadlinerPoolEntry[];
   readonly slots: readonly Floor4HeadlinerSlotConfig[];
 }

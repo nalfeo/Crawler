@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildFloor4HeadlinerCard,
-  type Floor4HeadlinerConfig,
-} from '../../src/shared/floor4-headliners.js';
+import { buildFloor4HeadlinerCard } from '../../src/shared/floor4-headliners.js';
 
-const config: Floor4HeadlinerConfig = {
+const config = {
   pool: [
     {
       archetypeId: 'finale-alternate',
@@ -28,7 +25,7 @@ const config: Floor4HeadlinerConfig = {
       appearanceFeeGold: 1,
     },
   ],
-};
+} satisfies Parameters<typeof buildFloor4HeadlinerCard>[0];
 
 describe('buildFloor4HeadlinerCard', () => {
   it('reserves fixed Headliners from earlier random slots', () => {
