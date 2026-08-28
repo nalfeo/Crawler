@@ -18,6 +18,7 @@ import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   ACTIVE_ABILITY_SLOT_LIMIT,
   equipmentAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
   type AbilityGrantSource,
   type AbilityGrantSourceId,
   type AbilityStateLike,
@@ -387,17 +388,17 @@ function restoreAbilityState(
  */
 function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
   const replacements = [
-    ['arcane-mastery-base', 'arcane-nova'],
-    ['arcane-mastery-evolved', 'arcane-nova-evolved'],
+    ['arcane-mastery-base', 'arcane-nova', 5],
+    ['arcane-mastery-evolved', 'arcane-nova-evolved', 15],
   ] as const;
 
-  for (const [retiredId, activeId] of replacements) {
+  for (const [retiredId, activeId, milestoneLevel] of replacements) {
     const sources = state.grantOwnership.passiveSourcesByAbilityId.get(retiredId);
     if (sources === undefined) continue;
 
     state.grantOwnership.passiveSourcesByAbilityId.delete(retiredId);
     const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
-    for (const sourceId of sources) activeSources.add(sourceId);
+    activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
     state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
     state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);
     if (

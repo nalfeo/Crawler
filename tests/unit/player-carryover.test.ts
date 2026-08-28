@@ -124,6 +124,29 @@ describe('player floor carryover', () => {
         .get(destinationPlayer)
         ?.equippedActiveAbilityIds.includes('arcane-nova-evolved'),
     ).toBe(true);
+
+    const { grantOwnership: _grantOwnership, ...withoutGrantOwnership } =
+      legacySnapshot.abilityState;
+    const legacyNoOwnershipSnapshot = {
+      ...legacySnapshot,
+      abilityState: withoutGrantOwnership,
+    };
+    const legacyDestination = createTestWorld({ seed: 42 });
+    const legacyDestinationPlayer = spawnPlayer(legacyDestination, 0, 0);
+    restorePlayerCarryover(legacyDestination, legacyDestinationPlayer, legacyNoOwnershipSnapshot);
+    expect(
+      legacyDestination.abilityStatesByEntity
+        .get(legacyDestinationPlayer)
+        ?.grantOwnership?.activeSourcesByAbilityId.get('arcane-nova'),
+    ).toEqual(new Set([skillAbilityGrantSourceId('arcane', 5)]));
+
+    legacyDestination.skillUsageEvents.push({
+      holderEid: legacyDestinationPlayer,
+      skillId: 'arcane',
+      metric: 'weapon_fired',
+      amount: 5_000,
+    });
+    expect(() => skillSystem(legacyDestination)).not.toThrow();
   });
 
   it('retires static and generated equipment that used removed slots during restore', () => {
