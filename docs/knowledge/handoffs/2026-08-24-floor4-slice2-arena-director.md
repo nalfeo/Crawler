@@ -102,3 +102,5 @@ rehearsal**:
 - Make surgical formatting the documented default: `npm run format` runs the repo-wide
   globs before any explicit file list, so the handoff guidance should point at
   `npx prettier --write <files>` for single-file fixes.
+- Keep the Floor 4 arena timeline assertions in the shared headless regression suite as later
+  slices add authored waves and transition behavior.
