@@ -287,7 +287,7 @@ describe('arenaDirectorSystem', () => {
     expect(state.headlinerTelemetry.chestsForceResolved).toBe(1);
   });
 
-  it('enters overtime at the act mark, applies ramp steps, and caps at defeat', () => {
+  it('telegraphs the overtime finisher before applying its lethal resolution', () => {
     const world = setupFloor4(404);
     const phase = getFloorManifest('floor4')!.floor4!.phase;
 
@@ -309,9 +309,21 @@ describe('arenaDirectorSystem', () => {
     expect(world.stores.damage.amount[bossEid]).toBeGreaterThan(baseDamage);
     expect(state.headlinerTelemetry.overtimeStepsApplied).toBe(1);
 
-    advance(world, phase.overtimeCapMs);
+    advance(world, phase.overtimeCapMs - 3_000);
+    state = world.floorExtendedState!.floor4Arena!;
+    expect(state.phase).toEqual({ kind: 'OVERTIME', act: 1 });
+    expect(world.state).toBe('playing');
+    expect(world.announcements.at(-1)).toMatchObject({
+      eventId: 'floor4-overtime-cap-act-1',
+      durationMs: 3000,
+    });
+
+    const playerEid = query(world.ecs, [Player])[0]!;
+    expect(world.stores.health.current[playerEid]).toBeGreaterThan(0);
+    advance(world, 3_000);
     state = world.floorExtendedState!.floor4Arena!;
     expect(state.phase).toEqual({ kind: 'DEFEAT' });
+    expect(world.stores.health.current[playerEid]).toBe(0);
     expect(world.state).toBe('game_over');
   });
 });

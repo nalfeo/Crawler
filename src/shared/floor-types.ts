@@ -538,6 +538,7 @@ export interface Floor4ArenaState {
   phase: Floor4ArenaPhase;
   arenaElapsedMs: number;
   phaseElapsedMs: number;
+  overtimeFinisherAnnounced: boolean;
   lastWorldElapsedMs: number;
   timeline: Floor4ArenaPhaseTimelineEntry[];
   /**

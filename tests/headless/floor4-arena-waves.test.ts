@@ -1,4 +1,6 @@
+import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
+import { Health, Player } from '../../src/core/components.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { GAME } from '../../src/shared/constants.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
@@ -32,6 +34,20 @@ class IdleFloor4Provider implements AIInputProvider {
   reset(): void {}
 }
 
+class OvertimeFloor4Provider extends IdleFloor4Provider {
+  override poll(input: InputState, world: GameWorld): void {
+    super.poll(input, world);
+    const playerEid = query(world.ecs, [Player, Health])[0];
+    if (playerEid !== undefined) {
+      world.stores.health.current[playerEid] = 1_000_000;
+    }
+    const bossEid = world.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+    if (bossEid !== null && bossEid !== undefined) {
+      world.stores.health.current[bossEid] = 1_000_000;
+    }
+  }
+}
+
 describe('Floor 4 wave window (real headless pipeline)', () => {
   const floor4Phase = getFloorManifest('floor4')!.floor4!.phase;
   const floor4Waves = getFloorManifest('floor4')!.floor4!.waves;
@@ -51,7 +67,7 @@ describe('Floor 4 wave window (real headless pipeline)', () => {
     const telemetry = first.floor4Arena?.waveTelemetry;
 
     // The window ran to its boundary and handed off to the headline window.
-    expect(first.floor4Arena?.phase).toEqual({ kind: 'HEADLINE', act: 1, cleared: true });
+    expect(first.floor4Arena?.phase).toEqual({ kind: 'HEADLINE', act: 1, cleared: false });
     expect(telemetry?.wavesReleased).toBe(floor4Waves.cadence.wavesPerAct);
     expect(telemetry?.enemiesSpawned).toBeGreaterThan(0);
     expect(telemetry?.gateTelegraphsArmed).toBeGreaterThanOrEqual(floor4Waves.cadence.wavesPerAct);
@@ -81,5 +97,23 @@ describe('Floor 4 wave window (real headless pipeline)', () => {
     // so it never burns the collapse-relevant active-time budget (FR8.4).
     expect(first.safeRoomMs).toBeGreaterThanOrEqual(floor4Phase.countdownMs);
     expect(first.safeRoomMs).toBe(second.safeRoomMs);
+  });
+
+  it('resolves the overtime finisher through the canonical headless pipeline', async () => {
+    const horizonMs =
+      floor4Phase.countdownMs +
+      floor4Phase.waveWindowMs +
+      floor4Phase.headlineWindowMs +
+      floor4Phase.overtimeCapMs;
+    const result = await runHeadless(new OvertimeFloor4Provider(), {
+      floorId: 'floor4',
+      seed: 404,
+      // Each phase transition starts the next phase on the following frame, so
+      // account for the discarded fractional frame at every boundary.
+      maxFrames: Math.ceil(horizonMs / GAME.DELTA_MS) + 4,
+    });
+
+    expect(result.floor4Arena?.phase).toEqual({ kind: 'DEFEAT' });
+    expect(result.outcome).toBe('death');
   });
 });

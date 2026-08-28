@@ -47,7 +47,7 @@ import {
   Sprite,
   type GameWorld,
 } from '../core/index.js';
-import { clearEntityStores } from '../core/helpers.js';
+import { applyDamage, clearEntityStores } from '../core/helpers.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
@@ -220,6 +220,7 @@ function recordFloor4PhaseTransition(
 
   state.phase = cloneFloor4Phase(phase);
   state.phaseElapsedMs = 0;
+  state.overtimeFinisherAnnounced = false;
   state.timeline.push({
     frame: world.frameCount,
     worldElapsedMs: world.elapsedMs,
@@ -241,6 +242,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     phase: { kind: 'COUNTDOWN' },
     arenaElapsedMs: 0,
     phaseElapsedMs: 0,
+    overtimeFinisherAnnounced: false,
     lastWorldElapsedMs: world.elapsedMs,
     timeline: [],
     headlinerCard: buildFloor4HeadlinerCard(config.headliners, world.seed),
@@ -964,6 +966,21 @@ function applyFloor4OvertimeRamp(world: GameWorld, state: Floor4ArenaState): voi
   }
 }
 
+function resolveFloor4OvertimeFinisher(world: GameWorld): void {
+  const playerEid = playerEidForFloor4Rewards(world);
+  if (playerEid !== undefined) {
+    applyDamage(
+      world,
+      playerEid,
+      world.stores.health.current[playerEid] ?? 0,
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+      { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
+    );
+  }
+  world.state = 'game_over';
+}
+
 export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | undefined {
   const state = floor4ArenaState(world);
   if (!state) {
@@ -1085,7 +1102,7 @@ export function arenaDirectorSystem(world: GameWorld): void {
       }
       break;
     }
-    case 'OVERTIME':
+    case 'OVERTIME': {
       applyFloor4OvertimeRamp(world, state);
       resolveFloor4HeadlinerDefeat(world, state);
       if (state.activeHeadliner?.defeated) {
@@ -1099,19 +1116,32 @@ export function arenaDirectorSystem(world: GameWorld): void {
         }
         break;
       }
-      if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {
+      const finisherLeadMs = 3000;
+      if (
+        !state.overtimeFinisherAnnounced &&
+        state.phaseElapsedMs >= phaseConfig.overtimeCapMs - finisherLeadMs
+      ) {
         pushAnnouncement(world.announcements, {
           kind: 'bossAbilityCast',
           archetypeIndex: -1,
           text: getFloor4Config().overtime.finisherAnnouncement,
           eventId: `floor4-overtime-cap-act-${state.phase.act}`,
-          durationMs: 3000,
+          durationMs: finisherLeadMs,
           elapsedMs: world.elapsedMs,
         });
+        state.overtimeFinisherAnnounced = true;
+        state.phaseElapsedMs = Math.min(
+          state.phaseElapsedMs,
+          phaseConfig.overtimeCapMs - finisherLeadMs,
+        );
+        break;
+      }
+      if (state.phaseElapsedMs >= phaseConfig.overtimeCapMs) {
         recordFloor4PhaseTransition(world, state, { kind: 'DEFEAT' }, 'overtime-cap');
-        world.state = 'game_over';
+        resolveFloor4OvertimeFinisher(world);
       }
       break;
+    }
   }
 }
 
