@@ -1,11 +1,12 @@
 import type GUI from 'lil-gui';
-import { query } from 'bitecs';
-import { Enemy } from '../../core/components.js';
+import { query, removeEntity } from 'bitecs';
+import { AttackWaveRat, Enemy } from '../../core/components.js';
+import { clearEntityStores } from '../../core/helpers.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { spawnPlayer } from '../../core/spawners/combatants.js';
-import { createGameWorld } from '../../core/world.js';
+import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { attackWaveSystem } from '../../game/attack-wave-system.js';
 import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../shared/map-types.js';
 import tuning from '../../shared/data/tuning.json';
@@ -37,6 +38,22 @@ function makeLabMap(): FloorMap {
     x: 20,
     y: 20,
   });
+}
+
+/**
+ * Despawn every wave-spawned rat, including its side-car store state.
+ *
+ * Exported so the reset path is coverable without a DOM: clearing only the
+ * scheduler leaves the wave population pinned at `maxAliveFromWaves`, after
+ * which `spawnWavePack` returns early forever and the lab looks broken.
+ */
+export function despawnWaveRats(world: GameWorld): number {
+  const waveRats = Array.from(query(world.ecs, [Enemy, AttackWaveRat]));
+  for (const eid of waveRats) {
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+  }
+  return waveRats.length;
 }
 
 function createAttackWaveLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -93,10 +110,17 @@ function createAttackWaveLab(canvasHost: HTMLElement, controls: HTMLElement): ()
       update('Wave attempted while playerInSafeRoom=true (should suppress).');
     },
     reset: () => {
+      // Clearing only the scheduler leaves every previously spawned wave rat
+      // alive in the ECS, so once the lab hits `maxAliveFromWaves` a reset
+      // still sits at the cap and the next Spawn action silently produces
+      // nothing.
+      const despawned = despawnWaveRats(world);
       world.attackWaveState = undefined;
       world.playerInSafeRoom = false;
+      world.stores.position.x[player] = 20 * 4 + 2;
+      world.stores.position.y[player] = 20 * 4 + 2;
       world.elapsedMs = TUNING.attackWaves.intervalMs;
-      update('Reset world state.');
+      update(`Reset world state (despawned ${despawned} wave rats).`);
     },
   };
 

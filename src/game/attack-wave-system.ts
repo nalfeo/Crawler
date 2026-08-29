@@ -24,6 +24,7 @@ import { GAME } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { floor1Config } from '../shared/floor-config.js';
 import { buildDoorAwarePassable, getDoorNavInfos } from '../core/door-navigation.js';
+import { isBarrierBlockingArea } from '../core/barriers/index.js';
 
 // Type assertion for tuning (schema loaded at build time)
 type TuningSchema = typeof tuning & {
@@ -164,9 +165,21 @@ function isPlayerInSafeRoomSuppression(world: GameWorld): boolean {
         if (!isTilePassable(x, y) || floorMap.hasBarrierAtTile(x, y)) {
           return false;
         }
-        const centerX = (x + 0.5) * tileSizeFt;
-        const centerY = (y + 0.5) * tileSizeFt;
-        return !floorMap.hasBarrierAtPoint(centerX, centerY);
+        // Analytic ring walls own no tiles and can be thinner than one, so a
+        // centre-only sample lets a sealed cage read as walkable: the band can
+        // cross the edge between two adjacent centres with neither centre in
+        // it. Test the whole tile square instead, otherwise the BFS reports a
+        // path out of a physically sealed spawner arena and wrongly suppresses
+        // a due wave. Blocking is the safe direction here — over-blocking only
+        // makes the safe room unreachable, which lets the wave fire.
+        const minX = x * tileSizeFt;
+        const minY = y * tileSizeFt;
+        if (isBarrierBlockingArea(world, minX, minY, minX + tileSizeFt, minY + tileSizeFt)) {
+          return false;
+        }
+        // Retain the centre check for any non-registry analytic lookup that a
+        // lab or test installs directly on the floor map.
+        return !floorMap.hasBarrierAtPoint(minX + tileSizeFt / 2, minY + tileSizeFt / 2);
       },
     });
 
@@ -382,6 +395,13 @@ export function attackWaveSystem(world: GameWorld): void {
     return;
   }
   if (world.floorId !== 'floor1') {
+    return;
+  }
+  // This is a post-system, so an earlier post-system in the same frame can have
+  // already ended the run (e.g. `floorObjectiveSystem` setting `game_over` on
+  // timeout). Without this gate a due wave would still draw RNG and spawn rats
+  // after the run finished, mutating post-run state and desyncing replay.
+  if (world.state !== 'playing') {
     return;
   }
 

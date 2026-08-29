@@ -26,6 +26,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import {
   attachBarriersToFloorMap,
   createRingBarrier,
+  createRingWallBarrier,
   dropBarrier,
 } from '../../src/core/barriers/index.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
@@ -366,6 +367,134 @@ describe('attackWaveSystem', () => {
       world.elapsedMs += TUNING.attackWaves.intervalMs;
       attackWaveSystem(world);
       expect(world.attackWaveState?.safeRoomDistanceField).not.toBe(withBarrierField);
+    });
+
+    /**
+     * Production `createRingWallBarrier` seal coverage.
+     *
+     * `createRingWallBarrier` stores an ANALYTIC ring shape that owns no tiles
+     * and can be thinner than one tile. Sampling only tile centres therefore
+     * misses a wall that crosses the edge between two adjacent centres, and the
+     * BFS happily reports a path out of a physically sealed arena — suppressing
+     * a wave that is actually due. Wall band below is 9..10 ft from the player,
+     * while the surrounding tile centres sit at 8 ft and 12 ft, so every centre
+     * sample says "no wall".
+     */
+    describe('analytic ring wall (createRingWallBarrier)', () => {
+      const PLAYER_TILE = 30;
+      const PLAYER_FT = PLAYER_TILE * 4 + 2; // 122 ft, exactly a tile centre
+
+      function makeSealMap(): FloorMap {
+        const w = 60;
+        const h = 60;
+        const config: MapConfig = {
+          widthTiles: w,
+          heightTiles: h,
+          tileSizeFt: 4,
+          biome: BiomeType.DUNGEON,
+          seed: 7,
+          roomWidthRange: [4, 8],
+          roomHeightRange: [4, 8],
+          maxRooms: 2,
+          floorDensity: 1,
+        };
+        const tileMap = new TileMap(w, h);
+        tileMap.fill(TilePresets.FLOOR);
+        const graph = new RoomGraph();
+        graph.add({ x: 1, y: 1, width: 3, height: 3 }, [], [], RoomRole.SAFE);
+        return new FloorMap(config, tileMap, graph, new Uint8Array(w * h), {
+          x: PLAYER_TILE,
+          y: PLAYER_TILE,
+        });
+      }
+
+      function makeSealWorld(): ReturnType<typeof createTestWorld> {
+        const world = createTestWorld();
+        world.floorId = 'floor1';
+        world.floorMap = makeSealMap();
+        attachBarriersToFloorMap(world);
+        spawnPlayer(world, PLAYER_FT, PLAYER_FT);
+        world.attackWaveFlags.attackWaves = true;
+        world.elapsedMs = TUNING.attackWaves.intervalMs;
+        return world;
+      }
+
+      it('control: with no wall the safe room is reachable, so the wave is suppressed', () => {
+        const original = TUNING.attackWaves.safeRoomSuppressionTiles;
+        TUNING.attackWaves.safeRoomSuppressionTiles = 500;
+        try {
+          const world = makeSealWorld();
+          attackWaveSystem(world);
+          expect(enemyCount(world)).toBe(0);
+        } finally {
+          TUNING.attackWaves.safeRoomSuppressionTiles = original;
+        }
+      });
+
+      it('a sub-tile ring wall seals the arena, so the safe room is unreachable and the wave fires', () => {
+        const original = TUNING.attackWaves.safeRoomSuppressionTiles;
+        TUNING.attackWaves.safeRoomSuppressionTiles = 500;
+        try {
+          const world = makeSealWorld();
+          // 1 ft-thick band at radius 9..10 ft — no tile centre lands inside it.
+          createRingWallBarrier(world, PLAYER_FT, PLAYER_FT, 10, 1, 'fence');
+          for (let d = -3; d <= 3; d += 1) {
+            const centre = (PLAYER_TILE + d) * 4 + 2;
+            expect(world.floorMap!.hasBarrierAtPoint(centre, PLAYER_FT)).toBe(false);
+          }
+
+          attackWaveSystem(world);
+
+          expect(world.attackWaveState?.safeRoomDistanceField).toBeDefined();
+          expect(enemyCount(world)).toBe(TUNING.attackWaves.packSize);
+        } finally {
+          TUNING.attackWaves.safeRoomSuppressionTiles = original;
+        }
+      });
+    });
+  });
+
+  describe('run-state gating', () => {
+    it.each(['game_over', 'level_up', 'paused', 'loadout'] as const)(
+      'is inert (no spawns, no RNG draws) while world.state is %s',
+      (state) => {
+        const world = createTestWorld();
+        world.floorId = 'floor1';
+        world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+        spawnPlayer(world, 400, 400);
+        world.attackWaveFlags.attackWaves = true;
+        world.state = state;
+
+        const rngSpy = vi.spyOn(world.rng, 'next');
+        const nextIntSpy = vi.spyOn(world.rng, 'nextInt');
+
+        for (let i = 0; i < 5; i += 1) {
+          world.elapsedMs += TUNING.attackWaves.intervalMs;
+          attackWaveSystem(world);
+        }
+
+        expect(rngSpy).not.toHaveBeenCalled();
+        expect(nextIntSpy).not.toHaveBeenCalled();
+        expect(enemyCount(world)).toBe(0);
+        expect(world.attackWaveState).toBeUndefined();
+      },
+    );
+
+    it('resumes spawning once the run returns to playing', () => {
+      const world = createTestWorld();
+      world.floorId = 'floor1';
+      world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+      spawnPlayer(world, 400, 400);
+      world.attackWaveFlags.attackWaves = true;
+
+      world.state = 'game_over';
+      world.elapsedMs = TUNING.attackWaves.intervalMs;
+      attackWaveSystem(world);
+      expect(enemyCount(world)).toBe(0);
+
+      world.state = 'playing';
+      attackWaveSystem(world);
+      expect(enemyCount(world)).toBe(TUNING.attackWaves.packSize);
     });
   });
 
