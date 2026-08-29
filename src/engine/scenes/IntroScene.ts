@@ -301,6 +301,11 @@ export class IntroScene extends Phaser.Scene {
       outline: 'none',
       boxSizing: 'border-box',
       zIndex: '10000',
+      // Reset native input chrome: without this, some Chromium builds paint a
+      // default white "auto" appearance strip over part of the custom
+      // background, visible as a stray white bar inside the box.
+      appearance: 'none',
+      WebkitAppearance: 'none',
     });
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
