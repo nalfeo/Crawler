@@ -61,6 +61,11 @@ function formatClock(ms: number): string {
 function phaseAct(state: Floor4ArenaState): Floor4ActIndex {
   const phase = state.phase;
   if ('act' in phase) return phase.act;
+  // COUNTDOWN has no act yet (defaults to 1) and VICTORY is always act 5.
+  // DEFEAT also carries no act (the phase type never recorded one), but that
+  // is harmless: phaseTitle() special-cases DEFEAT to 'BROADCAST ENDED' and
+  // buildSummary() is never invoked for DEFEAT, so this fallback only affects
+  // the (already clamped-to-zero) clock/subline countdown text.
   return phase.kind === 'VICTORY' ? 5 : 1;
 }
 
