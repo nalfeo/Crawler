@@ -250,10 +250,22 @@ function recordFloor4PhaseTransition(
   });
 
   if (phase.kind === 'WAVES') {
+    // Snapshot the counters this act starts from so the break-summary HUD can
+    // project THIS act's delta at the next intermission instead of re-reporting
+    // the run-cumulative totals (spec slice 6 / FR6).
+    state.actBaseline = {
+      playerGold: world.playerGold,
+      enemiesSpawned: state.waveTelemetry.enemiesSpawned,
+      enemiesCut: state.waveTelemetry.enemiesCut,
+    };
     state.waves = armFloor4ActWaves(world, phase.act, pending);
   } else if (phase.kind === 'HEADLINE') {
     spawnFloor4Headliner(world, state, phase.act);
   } else if (phase.kind === 'INTERMISSION') {
+    // Lock the gold figure the instant the break starts: buildSummary()
+    // must not diff against the live, still-mutating balance or "Gold
+    // earned" would shrink in real time as the player shops at sponsors.
+    state.breakGoldSnapshot = world.playerGold;
     const opened = openFloor4GreenRoomVisit(world, phase.act - 1);
     if (!opened.ok) {
       throw new Error(opened.message);
@@ -274,6 +286,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     keptCompanionCoStarActive: false,
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
+    actBaseline: { playerGold: world.playerGold, enemiesSpawned: 0, enemiesCut: 0 },
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;
