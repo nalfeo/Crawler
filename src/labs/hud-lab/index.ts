@@ -341,6 +341,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           lastWorldElapsedMs: 0,
           timeline: [],
           headlinerCard: [activeHeadliner],
+          keptCompanionCoStarActive: false,
           waveTelemetry: {
             wavesReleased: 10,
             enemiesSpawned: 30,

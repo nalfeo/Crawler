@@ -46,6 +46,7 @@ function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
     lastWorldElapsedMs: 0,
     timeline: [],
     headlinerCard: [],
+    keptCompanionCoStarActive: false,
     waveTelemetry: {
       wavesReleased: 10,
       enemiesSpawned: 30,
