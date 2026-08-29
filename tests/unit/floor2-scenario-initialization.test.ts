@@ -249,6 +249,28 @@ describe('initializeFloor2Scenario manifest validation', () => {
     },
   );
 
+  it('rejects out-of-bounds positions that alias onto a settlement hallway tile', () => {
+    const { world, playerEid } = createScenarioWorld();
+    initializeFloor2Scenario(world, playerEid);
+
+    const floorMap = world.floorMap!;
+    const hallwayIdx = [...floorMap.settlementHallwayTileIndices][0]!;
+    const hallwayTile = {
+      x: hallwayIdx % floorMap.width,
+      y: Math.floor(hallwayIdx / floorMap.width),
+    };
+    // `(y - 1) * width + (x + width)` flattens to the same index as the hallway
+    // tile, so an unguarded lookup would report this off-map tile as safe.
+    const aliasTile = { x: hallwayTile.x + floorMap.width, y: hallwayTile.y - 1 };
+    expect(aliasTile.y * floorMap.width + aliasTile.x).toBe(hallwayIdx);
+
+    const point = floorMap.tileToWorld(aliasTile.x, aliasTile.y);
+    world.stores.position.x[playerEid] = point.x;
+    world.stores.position.y[playerEid] = point.y;
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(false);
+  });
+
   it('starts a direct Floor 2 run at level 5 with spent stats and the charm equipped', () => {
     const { world, playerEid } = createScenarioWorld();
 
