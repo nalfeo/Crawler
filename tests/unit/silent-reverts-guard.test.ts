@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ACK_FOR_TRAILER,
   ACK_TRAILER,
   type FileTriple,
   dedupeByPath,
@@ -13,6 +14,7 @@ import {
   findUnusedAcks,
   generatedEntryRenamePreservesContent,
   isDiscarded,
+  parseAckForTrailers,
   parseAckTrailers,
   parseDiffLineChanges,
   sideAdditionsSubsumedByOther,
@@ -315,6 +317,42 @@ describe('parseAckTrailers', () => {
     // lines match the trailer regex, the whole paragraph is body text.
     const msg = ['feat: subject', '', 'Some body prose.', `${ACK_TRAILER}: a.json`].join('\n');
     expect(parseAckTrailers(msg).size).toBe(0);
+  });
+
+  it('does not mistake a Merge-Discard-Ack-For trailer for a path ack', () => {
+    // The two tokens share a prefix; only the colon separates them.
+    expect(parseAckTrailers(`x\n\n${ACK_FOR_TRAILER}: abc1234`).size).toBe(0);
+  });
+});
+
+describe('parseAckForTrailers', () => {
+  it('parses the merge revs an ack applies to', () => {
+    const msg = [
+      'chore: acknowledge superseded discards',
+      '',
+      `${ACK_FOR_TRAILER}: abc1234 -- shared merge, cannot amend`,
+      `${ACK_TRAILER}: a/b.json -- superseded by the rewrite`,
+    ].join('\n');
+    expect([...parseAckForTrailers(msg)]).toEqual(['abc1234']);
+    expect([...parseAckTrailers(msg)]).toEqual(['a/b.json']);
+  });
+
+  it('ignores a body mention outside the trailer block', () => {
+    const msg = [
+      'docs: describe the ack',
+      '',
+      `Use ${ACK_FOR_TRAILER}: <sha> on a follow-up commit.`,
+      '',
+      'Co-authored-by: x',
+    ].join('\n');
+    expect(parseAckForTrailers(msg).size).toBe(0);
+  });
+
+  it('rejects movable revisions, which could retarget as the branch advances', () => {
+    for (const rev of ['HEAD', 'HEAD~2', 'main', 'v1.2.3', 'abc123', 'origin/main', 'HEAD^']) {
+      expect(parseAckForTrailers(`x\n\n${ACK_FOR_TRAILER}: ${rev}`).size).toBe(0);
+    }
+    expect(parseAckForTrailers(`x\n\n${ACK_FOR_TRAILER}: abc1234`).size).toBe(1);
   });
 });
 
@@ -736,6 +774,147 @@ describe('silent-reverts CLI (real git)', () => {
       const { status, output } = runGuard(dir, 'mainline');
       expect(output).toContain('no surviving silent reverts');
       expect(status).toBe(0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('accepts a follow-up commit that acknowledges the discard for a shared merge', () => {
+    // #3853: the merge is already pushed and shared by sibling branches, so
+    // amending it to carry the ack would rewrite their history. A later commit
+    // naming the merge is the non-destructive equivalent.
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: acknowledge superseded discard',
+          '',
+          `${ACK_FOR_TRAILER}: ${mergeSha.slice(0, 9)}`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      // The merge itself is untouched: the ack lives only on the descendant.
+      expect(git('rev-parse', 'HEAD~1')).toBe(mergeSha);
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no surviving silent reverts');
+      expect(status).toBe(0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('ignores a follow-up ack that names a different merge', () => {
+    // The ack is merge-scoped: pointing it at some other commit must not
+    // suppress this merge's finding, or the trailer would become a global mute.
+    const { dir, git } = buildOursScenario();
+    try {
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: mis-targeted ack',
+          '',
+          `${ACK_FOR_TRAILER}: ${git('rev-parse', 'mainline')}`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('ignores a follow-up ack that names a movable revision', () => {
+    // `HEAD~1` resolves to the merge only because of where the branch happens
+    // to be now; a commit written before the merge existed could carry it and
+    // silently pre-acknowledge whatever lands later. Only immutable shas count.
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: movable-rev ack',
+          '',
+          `${ACK_FOR_TRAILER}: HEAD~1`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      // Precondition: the movable rev really does point at the merge right now.
+      expect(git('rev-parse', 'HEAD~1')).toBe(mergeSha);
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('ignores a follow-up ack from a commit that does not descend from the merge', () => {
+    // An ack must be a LATER review of the merge. A commit on a side branch
+    // that merely ends up in `base..head` never saw the merge, so honoring it
+    // would let an ack be written (or cherry-picked) ahead of its target.
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git('checkout', '-q', '-b', 'side', `${mergeSha}^`);
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: ack written off the merge line',
+          '',
+          `${ACK_FOR_TRAILER}: ${mergeSha}`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      git('checkout', '-q', 'pr');
+      git('merge', '--no-edit', '-q', 'side');
+      // Precondition: the ack commit genuinely does not descend from the merge.
+      expect(git('rev-list', 'side').split('\n')).not.toContain(mergeSha);
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('fails on a stale follow-up ack that matches no discard', () => {
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: acknowledge superseded discard',
+          '',
+          `${ACK_FOR_TRAILER}: ${mergeSha}`,
+          `${ACK_TRAILER}: ledger.json, ghost.json`,
+        ].join('\n'),
+      );
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('ghost.json');
+      expect(status).toBe(1);
     } finally {
       cleanup(dir);
     }

@@ -329,11 +329,15 @@ jobs:
               token:
                 env: COPILOT_GITHUB_TOKEN
           runner:
+            # GITHUB_TOKEN is deliberately absent: it is the job-scoped
+            # checks/issues/PR-write token used only by the top-level
+            # `goobers run --github-progress` process. Passing it through would
+            # hand it to every deterministic and agentic stage regardless of the
+            # capabilities that stage declared.
             envPassthrough:
               - GOOBERS_RECOVERY_ISSUE
               - GOOBERS_RESUME_BRANCH
               - GH_TOKEN
-              - GITHUB_TOKEN
               - GITHUB_REPOSITORY
           runConditions:
             maxParallelRuns: 1
@@ -346,6 +350,7 @@ jobs:
           # Ambient env, not runner.envPassthrough — required for the
           # CopilotAdapter preflight probe on a clean runner (see the
           # "Install Copilot CLI" step comment above).
+          GITHUB_TOKEN: ${{ github.token }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
