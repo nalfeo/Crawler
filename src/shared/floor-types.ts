@@ -561,6 +561,8 @@ export interface Floor4ArenaState {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
   /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
   activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** True when Floor 4 successfully re-hosted an optional kept-companion co-star. */
+  keptCompanionCoStarActive: boolean;
   /** Cumulative wave counters, retained across acts for RunStats. */
   waveTelemetry: Floor4WaveTelemetry;
   /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */

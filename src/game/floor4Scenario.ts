@@ -40,7 +40,6 @@ import {
   DeathTimer,
   Enemy,
   EnemyBehavior,
-  Companion,
   Health,
   Player,
   Position,
@@ -272,6 +271,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     lastWorldElapsedMs: world.elapsedMs,
     timeline: [],
     headlinerCard: buildFloor4HeadlinerCard(config.headliners, world.seed),
+    keptCompanionCoStarActive: false,
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
   };
@@ -472,14 +472,11 @@ function resolveFloor4GateSpawnPosition(
   return floorMap.isPassableAt(candidate.x, candidate.y) ? candidate : center;
 }
 
-function hasFloor4KeptCompanionCoStar(world: GameWorld): boolean {
-  return query(world.ecs, [Enemy, Companion, Team]).some(
-    (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
-  );
-}
-
 function markFloor4HostileForCoStarIfNeeded(world: GameWorld, eid: number): void {
-  if (hasFloor4KeptCompanionCoStar(world) && !hasComponent(world.ecs, eid, Team)) {
+  if (
+    floor4ArenaState(world)?.keptCompanionCoStarActive === true &&
+    !hasComponent(world.ecs, eid, Team)
+  ) {
     addComponent(world.ecs, eid, set(Team, { id: TeamId.ENEMY }));
   }
 }
@@ -515,22 +512,22 @@ function spawnFloor4KeptCompanionCoStar(
   world: GameWorld,
   playerEid: number,
   playerCarryover: PlayerCarryoverSnapshot,
-): void {
+): boolean {
   const contract = playerCarryover.keptCompanion;
-  if (!contract || hasFloor4KeptCompanionCoStar(world)) {
-    return;
+  if (!contract || floor4ArenaState(world)?.keptCompanionCoStarActive === true) {
+    return false;
   }
   const species = getPetSpecies(contract.speciesId);
   if (!species) {
-    return;
+    return false;
   }
   const pack = getFloor3WildPack();
   if (!pack) {
-    return;
+    return false;
   }
   const archetype = findFloor3ArchetypeForKeptCompanion(pack, species);
   if (!archetype) {
-    return;
+    return false;
   }
 
   const spawn = resolveFloor4CoStarSpawnPosition(world, playerEid);
@@ -566,6 +563,7 @@ function spawnFloor4KeptCompanionCoStar(
     shape: SHAPE_CIRCLE,
   });
   setEnemyAppearanceKey(world, eid, archetype.id);
+  return true;
 }
 
 /**
@@ -1369,7 +1367,10 @@ export function initializeFloor4Scenario(
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
     initializePlayerWeaponSkills(world, playerEid);
-    spawnFloor4KeptCompanionCoStar(world, playerEid, options.playerCarryover);
+    const state = floor4ArenaState(world);
+    if (state && spawnFloor4KeptCompanionCoStar(world, playerEid, options.playerCarryover)) {
+      state.keptCompanionCoStarActive = true;
+    }
   } else {
     equipFloor4StarterWeapon(world, playerEid, manifest.starterWeapons);
   }
