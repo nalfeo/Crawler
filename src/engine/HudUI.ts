@@ -236,6 +236,7 @@ export function createHudUI(scene: Phaser.Scene): {
     for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
       group.setVisible(visible);
     }
+    floor4Arena.setVisible(visible);
     questTracker.setVisible(visible);
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
@@ -371,6 +372,9 @@ export function createHudUI(scene: Phaser.Scene): {
     getFloor3PartyState: floor3Party.getState,
     getFloor4ArenaState: () => {
       const state = floor4Arena.getState();
+      if (hidden) {
+        return { ...state, visible: false, bounds: null };
+      }
       if (!state.bounds) {
         return state;
       }

@@ -67,13 +67,11 @@ function phaseAct(state: Floor4ArenaState): Floor4ActIndex {
 function releasedPipCount(state: Floor4ArenaState, config: Floor4HudPhaseConfig): number {
   const phase = state.phase;
   if (phase.kind === 'WAVES') return state.waves?.releaseCursor ?? 0;
-  if (
-    phase.kind === 'HEADLINE' ||
-    phase.kind === 'OVERTIME' ||
-    phase.kind === 'INTERMISSION' ||
-    phase.kind === 'VICTORY'
-  ) {
+  if (phase.kind === 'HEADLINE' || phase.kind === 'OVERTIME' || phase.kind === 'VICTORY') {
     return Math.max(0, state.waves?.manifests.length ?? config.wavesPerAct);
+  }
+  if (phase.kind === 'INTERMISSION') {
+    return phase.act >= config.actCount ? config.wavesPerAct : 0;
   }
   return 0;
 }

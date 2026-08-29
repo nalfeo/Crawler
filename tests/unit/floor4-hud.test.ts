@@ -177,4 +177,42 @@ describe('buildFloor4HudState', () => {
       'Take the stairs to claim the belt',
     ]);
   });
+
+  it('shows the next act opening-wave telegraph during non-terminal intermission', () => {
+    const hud = buildFloor4HudState({
+      arena: arena({
+        phase: { kind: 'INTERMISSION', act: 2 },
+        phaseElapsedMs: 900,
+        arenaElapsedMs: 240_000,
+        waves: undefined,
+        pendingWaves: {
+          act: 3,
+          manifests: arena().waves!.manifests.map((manifest) => ({ ...manifest, act: 3 })),
+          armedTelegraphs: [{ gateIndex: 0, waveIndex: 0, firesAtArenaMs: 240_000 }],
+        },
+      }),
+      greenRoom: {
+        retiredVisitCount: 1,
+        lastOpenedVisitIndex: 1,
+        currentVisit: {
+          visitIndex: 1,
+          tables: [{ tableId: 'arsenal', archetypeId: 'the-fence', streamKey: 's', offers: [] }],
+        },
+      },
+      phaseConfig,
+      playerGold: 50,
+    });
+
+    expect(hud.title).toBe('GREEN ROOM · ACT 2 BREAK');
+    expect(hud.pips.map((pip) => pip.state)).toEqual([
+      'armed',
+      'pending',
+      'pending',
+      'pending',
+      'pending',
+      'pending',
+      'pending',
+      'pending',
+    ]);
+  });
 });

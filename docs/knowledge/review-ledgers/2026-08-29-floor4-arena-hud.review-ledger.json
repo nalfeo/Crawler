@@ -6,14 +6,14 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review considered: Alt A reuse existing encounter widgets; rejected because Floor 4 needs a combined act clock/wave pip/break-summary/Winner Circle panel and existing widgets do not expose that state. Alt B make the projection sim-owned; rejected for this slice because a pure shared read-only model gives deterministic reuse without expanding gameplay state. Alt C fold Floor 4 into the encounter layout resolver; deferred because the measured HudUI offset keeps this surgical and tests cover bounds. Resolved blockers by rendering all six summary lines and making probes assert renderedSummary parity; resolved data-authority concern by deriving wavesPerAct from the manifest; accepted current real-scene boot plus HUD-lab forced-state split as sufficient deterministic coverage for this slice."
     },
     "code_review": {
       "clean": false,
