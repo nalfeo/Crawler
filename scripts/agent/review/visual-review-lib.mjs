@@ -22,6 +22,15 @@
  * @typedef {{ id: string, box: VisualReviewBox, kind?: VisualReviewRegionKind, parentId?: string }} VisualReviewRegion
  * @typedef {{ score: number, raw: unknown, normalized: boolean }} NormalizedScore
  * @typedef {{ new: string[], recurring: string[] }} FindingDiff
+ * @typedef {{
+ *   evidenceBackedBlockers: string[],
+ *   advisoryTasteNotes: string[]
+ * }} ClassifiedFindings
+ * @typedef {{
+ *   axisWeights?: Record<string, number>,
+ *   cleanScoreFloor?: number,
+ *   deterministicContractScoped?: boolean
+ * }} AnchoredScoreOptions
  */
 
 /** Kinds that are containers/overlays and must NOT participate in sibling overlap/touch. */
@@ -69,11 +78,15 @@ function overlapNoun(a, b) {
  *   and overlay kinds (`panel`, `tooltip`, `icon`) are excluded from this pass.
  * - Touch = zero overlap but gap <= 1px along one axis while sharing >= 8px of
  *   extent on the other (matches the legacy equipment thresholds).
- * - Icon escape = a `kind:'icon'` region whose box leaves its declared parent
- *   region's box by more than 1px on any edge.
+ * - Container overrun = ANY region whose box leaves its declared parent region's
+ *   box by more than 1px on any edge. An `icon` reports as the legacy
+ *   "Icon escapes its box"; everything else reports the overrun edges + pixels.
+ * - Paired-slot alignment = a slot that sits nearly-but-not-exactly on the row or
+ *   column shared by its neighbours. See `computeAlignmentBlockers`.
  *
  * Output order is deterministic: overlap/touch pairs in region declaration order
- * (grouped by parent, i<j), then icon escapes in declaration order.
+ * (grouped by parent, i<j), then containment in declaration order, then
+ * alignment in first-seen pair order.
  *
  * @param {readonly VisualReviewRegion[]} regions
  * @returns {string[]}
@@ -133,24 +146,149 @@ export function computeGeometryBlockers(regions) {
     }
   }
 
-  // 2. Icon regions escaping their declared parent box by more than 1px.
+  // Focused hover contracts deliberately pair an overlay tooltip with its
+  // target under one synthetic parent. Tooltips are excluded from generic
+  // sibling checks, but this named interaction must hard-fail occlusion.
+  const tooltips = valid.filter((r) => r.kind === 'tooltip');
+  const hoverTargets = valid.filter((r) => /^hover-target:/.test(r.id));
+  for (const target of hoverTargets) {
+    for (const tooltip of tooltips) {
+      if ((target.parentId ?? '__root__') !== (tooltip.parentId ?? '__root__')) continue;
+      const overlapW = Math.max(
+        0,
+        Math.min(target.box.x + target.box.width, tooltip.box.x + tooltip.box.width) -
+          Math.max(target.box.x, tooltip.box.x),
+      );
+      const overlapH = Math.max(
+        0,
+        Math.min(target.box.y + target.box.height, tooltip.box.y + tooltip.box.height) -
+          Math.max(target.box.y, tooltip.box.y),
+      );
+      if (overlapW * overlapH > 0) {
+        blockers.push(`Hover tooltip occludes its target: ${tooltip.id} intersects ${target.id}.`);
+      }
+    }
+  }
+
+  // 2. Any child region escaping its declared parent box by more than 1px.
   /** @type {Map<string, VisualReviewRegion>} */
   const byId = new Map();
   for (const r of valid) if (!byId.has(r.id)) byId.set(r.id, r);
   for (const r of valid) {
-    if (r.kind !== 'icon' || r.parentId === undefined) continue;
+    if (r.parentId === undefined) continue;
     const parent = byId.get(r.parentId);
-    if (!parent) continue;
+    if (!parent || parent.id === r.id) continue;
     const t = 1;
-    const inside =
-      r.box.x >= parent.box.x - t &&
-      r.box.y >= parent.box.y - t &&
-      r.box.x + r.box.width <= parent.box.x + parent.box.width + t &&
-      r.box.y + r.box.height <= parent.box.y + parent.box.height + t;
-    if (!inside) blockers.push(`Icon escapes its box: ${r.id} (outside ${parent.id}).`);
+    const overflowLeft = parent.box.x - t - r.box.x;
+    const overflowTop = parent.box.y - t - r.box.y;
+    const overflowRight = r.box.x + r.box.width - (parent.box.x + parent.box.width + t);
+    const overflowBottom = r.box.y + r.box.height - (parent.box.y + parent.box.height + t);
+    const worst = Math.max(overflowLeft, overflowTop, overflowRight, overflowBottom);
+    if (worst <= 0) continue;
+    if (r.kind === 'icon') {
+      blockers.push(`Icon escapes its box: ${r.id} (outside ${parent.id}).`);
+      continue;
+    }
+    /** @type {string[]} */
+    const edges = [];
+    if (overflowLeft > 0) edges.push(`left by ${round1(overflowLeft)}px`);
+    if (overflowTop > 0) edges.push(`top by ${round1(overflowTop)}px`);
+    if (overflowRight > 0) edges.push(`right by ${round1(overflowRight)}px`);
+    if (overflowBottom > 0) edges.push(`bottom by ${round1(overflowBottom)}px`);
+    blockers.push(
+      `Region overruns its container: ${r.id} crosses ${parent.id} ${edges.join(', ')}.`,
+    );
   }
 
+  // 3. Slots that sit off their row/column grid.
+  blockers.push(...computeAlignmentBlockers(valid));
+
   return blockers;
+}
+
+/**
+ * Slots laid out on a grid must line up on that grid: every slot sharing a row
+ * must share a top edge, and every slot sharing a column must share a left edge.
+ *
+ * This replaces an earlier name-based pairing heuristic (`ring1`/`ring2`), which
+ * produced a false positive on Crawler's paper doll: Ring 1 sits in the top row
+ * and Ring 2 two rows below, so they are legitimately ~200px apart in y. What the
+ * eye actually reads as "not aligned" is a slot that is nearly-but-not-exactly on
+ * its neighbours' row or column, which is what this measures.
+ *
+ * Clustering is tolerant (half the median slot extent) but the assertion is
+ * strict (<= 1px), so a deliberate row/column is detected and then held to a
+ * pixel-accurate edge. A cluster of one never reports.
+ *
+ * @param {readonly VisualReviewRegion[]} regions
+ * @returns {string[]}
+ */
+export function computeAlignmentBlockers(regions) {
+  const slots = (Array.isArray(regions) ? regions : []).filter(
+    (r) => r && r.kind === 'slot' && typeof r.id === 'string' && isValidBox(r.box),
+  );
+  if (slots.length < 2) return [];
+
+  /**
+   * @param {'row' | 'column'} axis
+   * @returns {string[]}
+   */
+  const check = (axis) => {
+    const isRow = axis === 'row';
+    const pos = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.y : s.box.x);
+    const extent = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.height : s.box.width);
+    const extents = slots.map(extent).sort((a, b) => a - b);
+    const median = extents[Math.floor(extents.length / 2)];
+    const tolerance = median / 2;
+
+    const sorted = slots.slice().sort((a, b) => pos(a) - pos(b) || a.id.localeCompare(b.id));
+    /** @type {VisualReviewRegion[][]} */
+    const clusters = [];
+    for (const slot of sorted) {
+      const last = clusters[clusters.length - 1];
+      if (last && Math.abs(pos(slot) - pos(last[0])) <= tolerance) last.push(slot);
+      else clusters.push([slot]);
+    }
+
+    /** @type {string[]} */
+    const found = [];
+    for (const cluster of clusters) {
+      if (cluster.length < 2) continue;
+      // Members of a row must be distinct along x (and of a column, along y).
+      // Two slots sitting side by side in the same row are not a column, so
+      // requiring perpendicular separation stops a wide row from being read as
+      // a mis-aligned column (and vice versa).
+      const perp = (/** @type {VisualReviewRegion} */ s) => (isRow ? s.box.x : s.box.y);
+      const perpExtent = (/** @type {VisualReviewRegion} */ s) =>
+        isRow ? s.box.width : s.box.height;
+      const perpValues = cluster.map(perp).sort((a, b) => a - b);
+      const minPerpGap = Math.min(
+        ...perpValues.slice(1).map((v, i) => v - perpValues[i]),
+        Number.POSITIVE_INFINITY,
+      );
+      const perpMedian = cluster.map(perpExtent).sort((a, b) => a - b)[
+        Math.floor(cluster.length / 2)
+      ];
+      if (minPerpGap <= perpMedian / 2) continue;
+
+      const base = pos(cluster[0]);
+      const strays = cluster.filter((s) => Math.abs(pos(s) - base) > 1);
+      if (strays.length === 0) continue;
+      const edge = isRow ? 'top' : 'left';
+      const peers = cluster
+        .filter((s) => !strays.includes(s))
+        .map((s) => s.id)
+        .join(', ');
+      for (const stray of strays) {
+        found.push(
+          `Slot is off its ${axis}: ${stray.id} ${edge} edge is ${round1(Math.abs(pos(stray) - base))}px off the ${axis} shared by ${peers}.`,
+        );
+      }
+    }
+    return found;
+  };
+
+  return [...check('row'), ...check('column')];
 }
 
 /**
@@ -162,12 +300,96 @@ function round1(n) {
 }
 
 /**
- * Repair `overall.score` when the model returns something outside the 1-5 scale
- * (a recurring bug: it sometimes returns the SUM of the 7 axis scores, e.g. 22).
- * Returns the score to use plus the raw value for provenance. Only synthesizes a
- * replacement (clamped mean of the axis scores, 1 dp) when EVERY axis score is
- * finite; otherwise it leaves the (clamped) raw value alone. Callers must still
- * gate on blockers independently of the score.
+ * Drop LLM claims that slots are mis-aligned when the deterministic grid-alignment
+ * check found no such defect. Mirrors the text-raster fuzziness suppressor: the
+ * measured geometry is authoritative, so an unsupported "these two slots are off by
+ * 2px" claim must not cost the surface points run after run. Only free-text findings
+ * are removed; axis prose is left alone.
+ *
+ * @param {Record<string, unknown>} result
+ * @param {string[]} deterministicBlockers
+ * @param {readonly VisualReviewRegion[]} [regions]
+ * @returns {number} how many findings were suppressed
+ */
+export function suppressUnsupportedAlignment(result, deterministicBlockers, regions = []) {
+  const hasRealAlignmentDefect = deterministicBlockers.some((b) => /off its (row|column)/i.test(b));
+  if (hasRealAlignmentDefect) return 0;
+  const hasRealTouchDefect = deterministicBlockers.some((b) =>
+    /overlap|occlud|no breathing room|touch/i.test(b),
+  );
+  const hasRealContainmentDefect = deterministicBlockers.some((b) =>
+    /escapes|outside|crosses|overflow/i.test(b),
+  );
+  const headerRegions = (Array.isArray(regions) ? regions : []).filter(
+    (region) =>
+      region &&
+      typeof region.id === 'string' &&
+      /^header:(equipment|stats|bag)$/.test(region.id) &&
+      isValidBox(region.box),
+  );
+  const headerCenters = headerRegions.map((region) => region.box.y + region.box.height / 2);
+  const headersShareBaseline =
+    headerCenters.length === 3 && Math.max(...headerCenters) - Math.min(...headerCenters) <= 1;
+  const hasBagIconGeometry = (Array.isArray(regions) ? regions : []).some(
+    (region) =>
+      region &&
+      region.kind === 'icon' &&
+      typeof region.id === 'string' &&
+      /^bag(?:[-:.]|$)/i.test(region.id),
+  );
+  const claimsMisalignment = (/** @type {string} */ text) =>
+    /\b(mis-?aligned?|not aligned|out of alignment|same (vertical )?baseline)/i.test(text) ||
+    (!hasRealTouchDefect &&
+      /\b(touch(es|ing)?|no breathing room|overlap(s|ping)?)\b/i.test(text) &&
+      !/tooltip text|label/i.test(text)) ||
+    (!hasRealContainmentDefect &&
+      /\b(overflow|escapes|extends? (past|beyond|outside))\b/i.test(text));
+  const claimsHeaderMisalignment = (/** @type {string} */ text) =>
+    headersShareBaseline &&
+    /\b(headers?|headings?).*\b(mis-?aligned?|not (?:vertically )?aligned|inconsistent(?:ly)?|above|below|baseline|padding|close to (?:the )?(?:top |panel )?edge)\b/i.test(
+      text,
+    );
+  const claimsUnsupportedBagIconCentering = (/** @type {string} */ text) =>
+    !hasBagIconGeometry &&
+    /(?:\bbag\b.*\bicons?\b|\bicons?\b.*\bbag\b).*\b(off[- ]?center|not centered|mis-?aligned?)/i.test(
+      text,
+    );
+  const shouldSuppress = (/** @type {string} */ text) =>
+    claimsMisalignment(text) ||
+    claimsHeaderMisalignment(text) ||
+    claimsUnsupportedBagIconCentering(text);
+  let removed = 0;
+  for (const key of ['blocking_findings', 'recommended_fixes']) {
+    const list = /** @type {unknown} */ (result[key]);
+    if (!Array.isArray(list)) continue;
+    result[key] = list.filter((entry) => {
+      if (typeof entry !== 'string' || !shouldSuppress(entry)) return true;
+      removed += 1;
+      return false;
+    });
+  }
+  const fixes = /** @type {unknown} */ (result.precise_fixes);
+  if (Array.isArray(fixes)) {
+    result.precise_fixes = fixes.filter((fix) => {
+      const reason =
+        fix && typeof fix === 'object' ? /** @type {Record<string, unknown>} */ (fix).reason : null;
+      if (typeof reason !== 'string' || !shouldSuppress(reason)) return true;
+      removed += 1;
+      return false;
+    });
+  }
+  return removed;
+}
+
+/**
+ * Repair `overall.score` when the model returns something outside the 0-100 scale
+ * (a recurring bug: it sometimes returns the SUM of the 7 axis scores). Returns the
+ * score to use plus the raw value for provenance. Only synthesizes a replacement
+ * (clamped mean of the axis scores, 1 dp) when EVERY axis score is finite;
+ * otherwise it leaves the (clamped) raw value alone. A model that ignores the
+ * scale instruction and answers on the legacy 1-5 scale (raw <= 5 AND every axis
+ * <= 5) is rescaled by 20 rather than reported as a near-zero score. Callers must
+ * still gate on blockers independently of the score.
  *
  * @param {unknown} result
  * @returns {NormalizedScore}
@@ -194,18 +416,227 @@ export function normalizeOverallScore(result) {
   const allAxesFinite = axisScores.length > 0 && axisScores.every((s) => Number.isFinite(s));
 
   const rawNum = Number(rawOriginal);
-  const rawInRange = Number.isFinite(rawNum) && rawNum >= 1 && rawNum <= 5;
+
+  // Legacy 1-5 answer from a model that ignored the 0-100 instruction.
+  if (
+    Number.isFinite(rawNum) &&
+    rawNum > 0 &&
+    rawNum <= 5 &&
+    allAxesFinite &&
+    axisScores.every((s) => s > 0 && s <= 5)
+  ) {
+    return { score: round1(rawNum * 20), raw: rawOriginal, normalized: true };
+  }
+
+  const rawInRange = Number.isFinite(rawNum) && rawNum >= 0 && rawNum <= 100;
 
   if (rawInRange) {
     return { score: round1(rawNum), raw: rawOriginal, normalized: false };
   }
   if (allAxesFinite) {
     const mean = axisScores.reduce((sum, s) => sum + s, 0) / axisScores.length;
-    const clamped = Math.min(5, Math.max(1, mean));
+    const clamped = Math.min(100, Math.max(0, mean));
     return { score: round1(clamped), raw: rawOriginal, normalized: true };
   }
-  const fallback = Number.isFinite(rawNum) ? Math.min(5, Math.max(1, rawNum)) : 0;
+  const fallback = Number.isFinite(rawNum) ? Math.min(100, Math.max(0, rawNum)) : 0;
   return { score: round1(fallback), raw: rawOriginal, normalized: false };
+}
+
+/**
+ * Penalty applied per blocking finding when deriving the anchored score.
+ * Deterministic (geometry/raster) blockers are objective defects and cost more
+ * than an LLM-only claim, which is one noisy sample of a subjective opinion.
+ */
+export const DETERMINISTIC_BLOCKER_PENALTY = 8;
+export const LLM_BLOCKER_PENALTY = 3;
+
+/**
+ * Focused hover captures exist to answer whether the interaction is ready to
+ * use, not whether unrelated panel chrome is beautiful. These weights keep the
+ * five interaction contracts dominant while retaining small contributions from
+ * the legacy visual axes for compatibility with older model responses.
+ */
+export const FOCUSED_HOVER_AXIS_WEIGHTS = Object.freeze({
+  task_readiness: 8,
+  target_identity: 8,
+  target_visibility: 8,
+  non_occlusion: 9,
+  readable_text: 8,
+  readability: 6,
+  typography_clarity: 3,
+  layout_consistency: 2,
+  visual_hierarchy: 2,
+  spacing_balance: 1,
+  icon_usage: 0.5,
+  thematic_fidelity: 0.25,
+});
+
+/**
+ * Derive a reproducible `overall` score instead of trusting the number the model
+ * invents.
+ *
+ * Why this exists: three judge runs over BYTE-IDENTICAL captures of the same
+ * surface returned `overall.score` 72 / 72 / 72 while their blocking-finding
+ * counts were 2 / 0 / 3. The model anchors the headline number and barely moves
+ * it, so it reported no difference between a clean surface and one it had just
+ * claimed three defects in. Meanwhile the axis scores repeated near-verbatim
+ * across a dozen runs regardless of findings. The headline number therefore
+ * measured nothing, and small deltas in it were being read as progress.
+ *
+ * The anchored score keeps the model's per-axis judgement (which is what a
+ * vision model is actually being asked for) but makes the composite a pure
+ * function of it plus the findings, so an unchanged surface cannot drift and a
+ * surface that gains or loses defects MUST move.
+ *
+ * @param {unknown} result
+ * @param {AnchoredScoreOptions} [options]
+ * @returns {AnchoredScore}
+ */
+export function deriveAnchoredScore(result, options = {}) {
+  const obj =
+    result && typeof result === 'object' ? /** @type {Record<string, unknown>} */ (result) : {};
+  const axesObj = obj.axes && typeof obj.axes === 'object' ? obj.axes : {};
+  const weightedAxes = Object.entries(axesObj)
+    .map(([name, a]) => {
+      const score =
+        a && typeof a === 'object'
+          ? Number(/** @type {Record<string, unknown>} */ (a).score)
+          : Number.NaN;
+      const configuredWeight = options.axisWeights?.[name];
+      const weight =
+        configuredWeight === undefined
+          ? 1
+          : Number.isFinite(configuredWeight) && configuredWeight >= 0
+            ? configuredWeight
+            : 0;
+      return { score, weight };
+    })
+    .filter(
+      ({ score, weight }) => Number.isFinite(score) && score >= 0 && score <= 100 && weight > 0,
+    );
+
+  const modelScore = normalizeOverallScore(result);
+  if (weightedAxes.length === 0) {
+    return {
+      score: modelScore.score,
+      axisMean: null,
+      penalty: 0,
+      deterministicBlockers: 0,
+      llmBlockers: 0,
+      modelScore: modelScore.score,
+      anchored: false,
+    };
+  }
+
+  const totalWeight = weightedAxes.reduce((sum, axis) => sum + axis.weight, 0);
+  const axisMean =
+    weightedAxes.reduce((sum, axis) => sum + axis.score * axis.weight, 0) / totalWeight;
+  const all = Array.isArray(obj.blocking_findings) ? obj.blocking_findings : [];
+  const deterministicList = Array.isArray(obj.deterministic_blocking_findings)
+    ? obj.deterministic_blocking_findings
+    : [];
+  const deterministicKeys = new Set(findingKeys(deterministicList));
+  let deterministicBlockers = 0;
+  let llmBlockers = 0;
+  for (const finding of all) {
+    if (typeof finding !== 'string') continue;
+    if (deterministicKeys.has(findingKey(finding))) deterministicBlockers += 1;
+    else llmBlockers += 1;
+  }
+
+  const penalty =
+    deterministicBlockers * DETERMINISTIC_BLOCKER_PENALTY + llmBlockers * LLM_BLOCKER_PENALTY;
+  const unboundedScore = Math.min(100, Math.max(0, axisMean - penalty));
+  const cleanFloor =
+    options.deterministicContractScoped === true &&
+    deterministicBlockers === 0 &&
+    llmBlockers === 0 &&
+    Number.isFinite(options.cleanScoreFloor)
+      ? Math.min(100, Math.max(0, Number(options.cleanScoreFloor)))
+      : 0;
+  const score = round1(Math.max(cleanFloor, unboundedScore));
+  return {
+    score,
+    axisMean: round1(axisMean),
+    penalty,
+    deterministicBlockers,
+    llmBlockers,
+    modelScore: modelScore.score,
+    anchored: true,
+  };
+}
+
+const GEOMETRY_CLAIM =
+  /\b(overlap|occlud|cover(?:s|ed|ing)?|behind|layer(?:s|ed|ing)?|clip(?:s|ped|ping)?|overflow|outside|escape|cross(?:es|ed|ing)?|mis-?align(?:ment)?|alignment|not aligned|off[- ]?center|touch(?:es|ed|ing)?|no breathing room|gap|padding|cramped|crowded|tight spacing|too far|far from|eye travel|proximity|visual imbalance)\b/i;
+const TEXT_SUBJECT = /\b(text|title|label|caption|glyph|word|value|stat|description)\b/i;
+const READABILITY_DEFECT =
+  /\b(clip(?:s|ped|ping)?|overflow|cut off|truncat|unreadable|illegible|obscur|cover|occlud|low contrast|cannot read|hard to read|blurry|fuzzy|soft)\b/i;
+const FOCUS_INTERACTION_EVIDENCE =
+  /\b(hover target|target|tooltip|item name|item identity|candidate|equipped)\b.*\b(missing|wrong|empty|invisible|not visible|unreadable|illegible|obscur|cover|overlap|occlud|behind|clip|no tooltip|lacks? (?:visible )?(?:emphasis|outline|highlight)|cannot (?:identify|read|see))\b/i;
+const GENERIC_TASTE =
+  /\b(cramped|crowded|needs? (?:more )?padding|add (?:more )?padding|insufficient padding|tight spacing|more breathing room|generic|sterile|thematic|theme|chrome|decorative|ornament|polish|dungeon mood|palette|material|delight)\b/i;
+
+/**
+ * Split model findings into concrete blockers and advisory taste notes.
+ *
+ * Measured scenario contracts are authoritative: geometry claims are never
+ * accepted as independent LLM blockers because the deterministic contract
+ * already reports the corresponding failure (or disproves it by staying clean).
+ * Generic density/padding language is advisory unless it names readable-text
+ * evidence. In a focused hover frame, only task/target/tooltip evidence remains
+ * blocking; unrelated panel chrome and theme critique is advisory.
+ *
+ * @param {{
+ *   llmFindings?: readonly unknown[],
+ *   llmAdvisories?: readonly unknown[],
+ *   deterministicBlockers?: readonly string[],
+ *   focusedHover?: boolean
+ * }} input
+ * @returns {ClassifiedFindings}
+ */
+export function classifyVisualFindings(input) {
+  const deterministicBlockers = dedupeFindings(
+    (input.deterministicBlockers ?? []).filter((finding) => typeof finding === 'string'),
+  );
+  const deterministicKeys = new Set(findingKeys(deterministicBlockers));
+  /** @type {string[]} */
+  const evidenceBackedBlockers = [];
+  /** @type {string[]} */
+  const advisoryTasteNotes = [];
+
+  for (const finding of dedupeFindings(
+    (input.llmFindings ?? []).filter((entry) => typeof entry === 'string'),
+  )) {
+    if (deterministicKeys.has(findingKey(finding))) continue;
+    const hasReadableTextEvidence = TEXT_SUBJECT.test(finding) && READABILITY_DEFECT.test(finding);
+    const hasFocusEvidence = FOCUS_INTERACTION_EVIDENCE.test(finding);
+
+    if (GEOMETRY_CLAIM.test(finding) && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    if (GENERIC_TASTE.test(finding) && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    if (input.focusedHover === true && !hasFocusEvidence && !hasReadableTextEvidence) {
+      advisoryTasteNotes.push(finding);
+      continue;
+    }
+    evidenceBackedBlockers.push(finding);
+  }
+  for (const note of dedupeFindings(
+    (input.llmAdvisories ?? []).filter((entry) => typeof entry === 'string'),
+  )) {
+    if (GENERIC_TASTE.test(note) || GEOMETRY_CLAIM.test(note)) {
+      advisoryTasteNotes.push(note);
+    }
+  }
+
+  return {
+    evidenceBackedBlockers: dedupeFindings(evidenceBackedBlockers),
+    advisoryTasteNotes: dedupeFindings(advisoryTasteNotes),
+  };
 }
 
 /**

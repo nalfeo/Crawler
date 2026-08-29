@@ -2,7 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeGeometryBlockers,
+  computeAlignmentBlockers,
+  suppressUnsupportedAlignment,
   normalizeOverallScore,
+  deriveAnchoredScore,
+  classifyVisualFindings,
+  FOCUSED_HOVER_AXIS_WEIGHTS,
   findingKey,
   findingKeys,
   dedupeFindings,
@@ -84,6 +89,36 @@ test('computeGeometryBlockers: panel/tooltip container kinds are excluded from o
   assert.deepEqual(out, []);
 });
 
+test('computeGeometryBlockers: focused hover tooltip occlusion is a measured failure', () => {
+  const out = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(150, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
+  ]);
+  assert.deepEqual(out, [
+    'Hover tooltip occludes its target: tooltip intersects hover-target:bag:leather-boots.',
+  ]);
+});
+
+test('computeGeometryBlockers: focused hover tooltip with a declared gap stays clean', () => {
+  const out = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(178, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
+  ]);
+  assert.deepEqual(out, []);
+});
+
 test('computeGeometryBlockers: icon escaping its parent box is flagged; contained icon is not', () => {
   const escaping = computeGeometryBlockers([
     region('slot:head', box(100, 100, 64, 64), { kind: 'slot' }),
@@ -111,41 +146,192 @@ test('computeGeometryBlockers: overlap pairs come before icon escapes (stable or
 });
 
 // ---------------------------------------------------------------------------
+// containment (container overrun)
+// ---------------------------------------------------------------------------
+
+test('containment: a slot crossing its panel top edge is reported with pixels', () => {
+  const blockers = computeGeometryBlockers([
+    region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+    region('slot:head', box(20, 90, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(
+    blockers[0],
+    /^Region overruns its container: slot:head crosses panel top by 9px\.$/,
+  );
+});
+
+test('containment: a fully-inside child is not reported', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([
+      region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+      region('slot:head', box(20, 120, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('containment: 1px is tolerated (matches the icon-escape threshold)', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([
+      region('panel', box(0, 100, 400, 300), { kind: 'panel' }),
+      region('slot:head', box(20, 99, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('containment: multiple crossed edges are listed together', () => {
+  const blockers = computeGeometryBlockers([
+    region('panel', box(100, 100, 200, 200), { kind: 'panel' }),
+    region('text:title', box(90, 90, 300, 300), { kind: 'text', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(blockers[0], /left by 9px, top by 9px, right by 89px, bottom by 89px/);
+});
+
+test('containment: an icon still reports with the legacy wording', () => {
+  const blockers = computeGeometryBlockers([
+    region('slot:head', box(20, 120, 40, 40), { kind: 'slot' }),
+    region('slot:head.icon', box(10, 120, 40, 40), { kind: 'icon', parentId: 'slot:head' }),
+  ]);
+  assert.deepEqual(blockers, ['Icon escapes its box: slot:head.icon (outside slot:head).']);
+});
+
+test('containment: a region with no declared parent is never reported', () => {
+  assert.deepEqual(
+    computeGeometryBlockers([region('slot:head', box(-50, -50, 40, 40), { kind: 'slot' })]),
+    [],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// grid alignment
+// ---------------------------------------------------------------------------
+
+test('alignment: a slot 2px off its row is reported', () => {
+  const blockers = computeAlignmentBlockers([
+    region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:legs', box(120, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(220, 202, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(
+    blockers[0],
+    /^Slot is off its row: slot:ring2 top edge is 2px off the row shared by slot:gloves, slot:legs\.$/,
+  );
+});
+
+test('alignment: deliberate separate rows are NOT reported (the ring1/ring2 false positive)', () => {
+  // Crawler's paper doll puts Ring 1 in the top row and Ring 2 two rows below.
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:neck', box(20, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:head', box(120, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:ring1', box(220, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:gloves', box(20, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:legs', box(120, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:ring2', box(220, 198, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: a slot off its column is reported', () => {
+  const blockers = computeAlignmentBlockers([
+    region('slot:head', box(120, 0, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:chest', box(120, 100, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:feet', box(123, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.equal(blockers.length, 1);
+  assert.match(blockers[0], /off its column: slot:feet left edge is 3px/);
+});
+
+test('alignment: a 1px difference is tolerated', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+      region('slot:legs', box(120, 201, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: a lone slot never fires', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('slot:ring1', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment: non-slot kinds do not participate', () => {
+  assert.deepEqual(
+    computeAlignmentBlockers([
+      region('text:a', box(20, 200, 40, 40), { kind: 'text', parentId: 'panel' }),
+      region('text:b', box(120, 206, 40, 40), { kind: 'text', parentId: 'panel' }),
+    ]),
+    [],
+  );
+});
+
+test('alignment blockers surface through computeGeometryBlockers', () => {
+  const blockers = computeGeometryBlockers([
+    region('slot:gloves', box(20, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:legs', box(120, 200, 40, 40), { kind: 'slot', parentId: 'panel' }),
+    region('slot:ring2', box(220, 206, 40, 40), { kind: 'slot', parentId: 'panel' }),
+  ]);
+  assert.ok(blockers.some((b) => /off its row/.test(b)));
+});
+
+// ---------------------------------------------------------------------------
 // normalizeOverallScore
 // ---------------------------------------------------------------------------
 
-test('normalizeOverallScore: in-range score is kept (not normalized)', () => {
-  const r = normalizeOverallScore({ overall: { score: 4 }, axes: { a: { score: 4 } } });
-  assert.deepEqual(r, { score: 4, raw: 4, normalized: false });
+test('normalizeOverallScore: in-range 0-100 score is kept (not normalized)', () => {
+  const r = normalizeOverallScore({ overall: { score: 72 }, axes: { a: { score: 70 } } });
+  assert.deepEqual(r, { score: 72, raw: 72, normalized: false });
 });
 
 test('normalizeOverallScore: in-range decimal is preserved to 1 dp', () => {
-  const r = normalizeOverallScore({ overall: { score: 3.5 }, axes: { a: { score: 3 } } });
-  assert.equal(r.score, 3.5);
+  const r = normalizeOverallScore({ overall: { score: 63.5 }, axes: { a: { score: 60 } } });
+  assert.equal(r.score, 63.5);
   assert.equal(r.normalized, false);
 });
 
-test('normalizeOverallScore: SUM-of-axes bug (22) is repaired to the clamped mean', () => {
+test('normalizeOverallScore: legacy 1-5 answer is rescaled to 0-100', () => {
   const axes = {
     layout_consistency: { score: 3 },
-    spacing_balance: { score: 3 },
-    visual_hierarchy: { score: 3 },
-    readability: { score: 3 },
-    icon_usage: { score: 3 },
-    typography_clarity: { score: 3 },
-    thematic_fidelity: { score: 4 },
+    spacing_balance: { score: 4 },
   };
-  const r = normalizeOverallScore({ overall: { score: 22 }, axes });
-  // mean = 22/7 = 3.142857... -> 3.1
-  assert.equal(r.score, 3.1);
-  assert.equal(r.raw, 22);
+  const r = normalizeOverallScore({ overall: { score: 3.5 }, axes });
+  assert.equal(r.score, 70);
+  assert.equal(r.raw, 3.5);
+  assert.equal(r.normalized, true);
+});
+
+test('normalizeOverallScore: SUM-of-axes bug is repaired to the clamped mean', () => {
+  const axes = {
+    layout_consistency: { score: 60 },
+    spacing_balance: { score: 60 },
+    visual_hierarchy: { score: 60 },
+    readability: { score: 60 },
+    icon_usage: { score: 60 },
+    typography_clarity: { score: 60 },
+    thematic_fidelity: { score: 80 },
+  };
+  const r = normalizeOverallScore({ overall: { score: 440 }, axes });
+  // mean = 440/7 = 62.857... -> 62.9
+  assert.equal(r.score, 62.9);
+  assert.equal(r.raw, 440);
   assert.equal(r.normalized, true);
 });
 
 test('normalizeOverallScore: out-of-range with non-finite axes falls back to clamped raw', () => {
-  const r = normalizeOverallScore({ overall: { score: 22 }, axes: { a: { score: 'nope' } } });
-  assert.equal(r.score, 5); // clamp(22) -> 5
-  assert.equal(r.raw, 22);
+  const r = normalizeOverallScore({ overall: { score: 440 }, axes: { a: { score: 'nope' } } });
+  assert.equal(r.score, 100); // clamp(440) -> 100
+  assert.equal(r.raw, 440);
   assert.equal(r.normalized, false);
 });
 
@@ -153,6 +339,199 @@ test('normalizeOverallScore: missing score with no usable axes yields 0', () => 
   const r = normalizeOverallScore({ overall: {}, axes: {} });
   assert.equal(r.score, 0);
   assert.equal(r.normalized, false);
+});
+
+// ---------------------------------------------------------------------------
+// deriveAnchoredScore
+// ---------------------------------------------------------------------------
+
+/** Three judge runs over BYTE-IDENTICAL captures actually returned this. */
+const NOISE_AXES = {
+  layout_consistency: { score: 78 },
+  spacing_balance: { score: 68 },
+  visual_hierarchy: { score: 75 },
+  readability: { score: 65 },
+  icon_usage: { score: 60 },
+  typography_clarity: { score: 80 },
+  thematic_fidelity: { score: 70 },
+};
+
+test('deriveAnchoredScore: clean surface scores the axis mean with no penalty', () => {
+  const r = deriveAnchoredScore({
+    overall: { score: 72 },
+    axes: NOISE_AXES,
+    blocking_findings: [],
+    deterministic_blocking_findings: [],
+  });
+  assert.equal(r.penalty, 0);
+  assert.equal(r.score, r.axisMean);
+  assert.equal(r.anchored, true);
+  assert.equal(r.modelScore, 72);
+});
+
+test('deriveAnchoredScore: the real 2/0/3-blocker noise triplet now separates', () => {
+  const base = { overall: { score: 72 }, axes: NOISE_AXES, deterministic_blocking_findings: [] };
+  const a = deriveAnchoredScore({ ...base, blocking_findings: ['x', 'y'] });
+  const b = deriveAnchoredScore({ ...base, blocking_findings: [] });
+  const c = deriveAnchoredScore({ ...base, blocking_findings: ['x', 'y', 'z'] });
+  // The model gave all three the same 72; the anchored score must not.
+  assert.ok(b.score > a.score, 'zero blockers must beat two');
+  assert.ok(a.score > c.score, 'two blockers must beat three');
+});
+
+test('deriveAnchoredScore: a deterministic blocker costs more than an llm claim', () => {
+  const det = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['Slot boxes overlap: a intersects b.'],
+    deterministic_blocking_findings: ['Slot boxes overlap: a intersects b.'],
+  });
+  const llm = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['the header feels cramped'],
+    deterministic_blocking_findings: [],
+  });
+  assert.equal(det.deterministicBlockers, 1);
+  assert.equal(det.llmBlockers, 0);
+  assert.equal(llm.llmBlockers, 1);
+  assert.ok(det.score < llm.score);
+});
+
+test('deriveAnchoredScore: deterministic classification survives rewording (findingKey)', () => {
+  const r = deriveAnchoredScore({
+    axes: NOISE_AXES,
+    blocking_findings: ['Shift tooltip left ~18px to sit flush beside it'],
+    deterministic_blocking_findings: ['Shift tooltip left ~24px to sit flush beside it'],
+  });
+  assert.equal(r.deterministicBlockers, 1);
+  assert.equal(r.llmBlockers, 0);
+});
+
+test('deriveAnchoredScore: score is clamped at 0 when penalties exceed the mean', () => {
+  const r = deriveAnchoredScore({
+    axes: { a: { score: 10 } },
+    blocking_findings: Array.from({ length: 20 }, (_, i) => `d${i}`),
+    deterministic_blocking_findings: Array.from({ length: 20 }, (_, i) => `d${i}`),
+  });
+  assert.equal(r.score, 0);
+});
+
+test('deriveAnchoredScore: falls back to the model score when no usable axes exist', () => {
+  const r = deriveAnchoredScore({ overall: { score: 72 }, axes: {}, blocking_findings: ['x'] });
+  assert.equal(r.anchored, false);
+  assert.equal(r.score, 72);
+  assert.equal(r.axisMean, null);
+});
+
+test('deriveAnchoredScore: identical input is deterministic across calls', () => {
+  const input = {
+    overall: { score: 72 },
+    axes: NOISE_AXES,
+    blocking_findings: ['x', 'y'],
+    deterministic_blocking_findings: ['x'],
+  };
+  assert.deepEqual(deriveAnchoredScore(input), deriveAnchoredScore(input));
+});
+
+test('calibration: clean focused tooltip contract is an >=80 positive anchor', () => {
+  const classified = classifyVisualFindings({
+    llmFindings: [
+      'The tooltip feels cramped and needs more padding.',
+      'The surrounding panel chrome lacks thematic dungeon detail.',
+    ],
+    deterministicBlockers: [],
+    focusedHover: true,
+  });
+  assert.deepEqual(classified.evidenceBackedBlockers, []);
+  assert.equal(classified.advisoryTasteNotes.length, 2);
+
+  const score = deriveAnchoredScore(
+    {
+      overall: { score: 64 },
+      axes: {
+        task_readiness: { score: 91 },
+        target_identity: { score: 92 },
+        target_visibility: { score: 94 },
+        non_occlusion: { score: 95 },
+        readable_text: { score: 90 },
+        readability: { score: 88 },
+        thematic_fidelity: { score: 42 },
+      },
+      blocking_findings: classified.evidenceBackedBlockers,
+      deterministic_blocking_findings: [],
+    },
+    {
+      axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS,
+      cleanScoreFloor: 80,
+      deterministicContractScoped: true,
+    },
+  );
+  assert.ok(score.score >= 80);
+  assert.equal(score.llmBlockers, 0);
+});
+
+test('calibration: old geometry failure remains deterministically failing', () => {
+  const [geometryFailure] = computeGeometryBlockers([
+    region('hover-target:bag:leather-boots', box(100, 100, 64, 64), {
+      kind: 'slot',
+      parentId: 'hover-context',
+    }),
+    region('tooltip', box(150, 100, 160, 120), {
+      kind: 'tooltip',
+      parentId: 'hover-context',
+    }),
+  ]);
+  const classified = classifyVisualFindings({
+    llmFindings: ['The tooltip looks cramped.'],
+    deterministicBlockers: [geometryFailure],
+    focusedHover: true,
+  });
+  const score = deriveAnchoredScore(
+    {
+      axes: {
+        task_readiness: { score: 84 },
+        target_identity: { score: 88 },
+        target_visibility: { score: 88 },
+        non_occlusion: { score: 20 },
+        readable_text: { score: 82 },
+      },
+      blocking_findings: [geometryFailure, ...classified.evidenceBackedBlockers],
+      deterministic_blocking_findings: [geometryFailure],
+    },
+    {
+      axisWeights: FOCUSED_HOVER_AXIS_WEIGHTS,
+      cleanScoreFloor: 80,
+      deterministicContractScoped: true,
+    },
+  );
+  assert.equal(score.deterministicBlockers, 1);
+  assert.ok(score.score < 80);
+});
+
+test('classifyVisualFindings: readable text evidence remains blocking while taste is advisory', () => {
+  const classified = classifyVisualFindings({
+    llmFindings: [
+      'The tooltip needs padding and feels cramped.',
+      'Tooltip title text is clipped and cannot be read.',
+      'The gold border feels generic.',
+      'Tooltip placement is too far from the relevant slot, requiring unnecessary eye travel.',
+      'Tooltip alignment is not centered relative to the paper doll or bag panel.',
+      "The tooltip's proximity to the bottom of the equipment panel creates a visual imbalance.",
+    ],
+    llmAdvisories: ['Add more padding around the tooltip title.'],
+    deterministicBlockers: [],
+    focusedHover: true,
+  });
+  assert.deepEqual(classified.evidenceBackedBlockers, [
+    'Tooltip title text is clipped and cannot be read.',
+  ]);
+  assert.deepEqual(classified.advisoryTasteNotes, [
+    'The tooltip needs padding and feels cramped.',
+    'The gold border feels generic.',
+    'Tooltip placement is too far from the relevant slot, requiring unnecessary eye travel.',
+    'Tooltip alignment is not centered relative to the paper doll or bag panel.',
+    "The tooltip's proximity to the bottom of the equipment panel creates a visual imbalance.",
+    'Add more padding around the tooltip title.',
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -251,4 +630,73 @@ test('lacksPixelGroundedGeometry: equipment-legacy never warns (geometry comes f
 test('lacksPixelGroundedGeometry: non-positive / non-finite region counts count as empty for declared', () => {
   assert.equal(lacksPixelGroundedGeometry('declared', -1), true);
   assert.equal(lacksPixelGroundedGeometry('declared', Number.NaN), true);
+});
+
+test('suppressUnsupportedAlignment: drops misalignment claims the grid check disproves', () => {
+  const result = {
+    blocking_findings: [
+      'Paired slots Ring 1 and Ring 2 are misaligned vertically by 2px.',
+      'Tooltip text is cramped.',
+    ],
+    recommended_fixes: ['Align Ring 1 and Ring 2 to the same vertical baseline.'],
+    precise_fixes: [
+      { kind: 'move', id: 'slot:ring1', reason: 'Ring 1 is misaligned with Ring 2.' },
+      { kind: 'pad', id: 'tooltip', reason: 'Tooltip text is cramped.' },
+    ],
+  };
+  const removed = suppressUnsupportedAlignment(result, []);
+  assert.equal(removed, 3);
+  assert.deepEqual(result.blocking_findings, ['Tooltip text is cramped.']);
+  assert.deepEqual(result.recommended_fixes, []);
+  assert.equal(result.precise_fixes.length, 1);
+  assert.equal(result.precise_fixes[0].id, 'tooltip');
+});
+
+test('suppressUnsupportedAlignment: keeps claims when the grid check found a real defect', () => {
+  const result = {
+    blocking_findings: ['Head and Neck are misaligned.'],
+  };
+  const removed = suppressUnsupportedAlignment(result, [
+    'Slot is off its row: neck top edge is 4px off the row shared by head.',
+  ]);
+  assert.equal(removed, 0);
+  assert.equal(result.blocking_findings.length, 1);
+});
+
+test('suppressUnsupportedAlignment: drops overlap/touch claims the geometry disproves', () => {
+  const result = {
+    blocking_findings: [
+      'Slot boxes touch each other horizontally with no breathing room.',
+      'Tooltip overlaps the bottom edge of the panel by 40px.',
+      'Empty-slot icons lack thematic depth.',
+    ],
+  };
+  const removed = suppressUnsupportedAlignment(result, []);
+  assert.equal(removed, 2);
+  assert.deepEqual(result.blocking_findings, ['Empty-slot icons lack thematic depth.']);
+});
+
+test('suppressUnsupportedAlignment: keeps overlap claims when geometry found a real overlap', () => {
+  const result = { blocking_findings: ['Slot boxes touch each other horizontally.'] };
+  const removed = suppressUnsupportedAlignment(result, ['Slot boxes overlap: a intersects b.']);
+  assert.equal(removed, 0);
+});
+
+test('suppressUnsupportedAlignment: drops header and bag-icon claims disproved by declared evidence', () => {
+  const result = {
+    blocking_findings: [
+      'Headers are inconsistently aligned within their panels.',
+      'Headers (Equipment, Stats, Bag) are not vertically aligned.',
+      'Headers lack sufficient top padding, appearing too close to their panel edges.',
+      'Some icons in the Bag section appear slightly off-center within their slots.',
+    ],
+  };
+  const headers = [
+    region('header:equipment', box(10, 10, 80, 20), { kind: 'header' }),
+    region('header:stats', box(110, 10, 40, 20), { kind: 'header' }),
+    region('header:bag', box(210, 10, 30, 20), { kind: 'header' }),
+  ];
+  const removed = suppressUnsupportedAlignment(result, [], headers);
+  assert.equal(removed, 4);
+  assert.deepEqual(result.blocking_findings, []);
 });

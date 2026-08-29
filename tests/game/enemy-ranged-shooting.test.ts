@@ -1,4 +1,4 @@
-import { hasComponent, query } from 'bitecs';
+import { addComponent, hasComponent, query, set } from 'bitecs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Damage, EnemyProjectile, Owner, Position, Projectile } from '../../src/core/components.js';
 import {
@@ -34,6 +34,23 @@ describe('enemy ranged shooting', () => {
     const proj = projectiles[0] as number;
     // Projectile should be aimed toward the player (negative x direction)
     expect(world.stores.velocity.x[proj]).toBeLessThan(0);
+  });
+
+  it('uses the firing enemy damage for its projectile', () => {
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
+
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150, {
+      telegraphMs: 0,
+    });
+    addComponent(world.ecs, enemy, set(Damage, { amount: 42, cooldownMs: 0, lastFireMs: 0 }));
+
+    enemyAISystem(world);
+
+    const projectile = query(world.ecs, [EnemyProjectile, Projectile])[0]!;
+    expect(world.stores.damage.amount[projectile]).toBe(42);
   });
 
   it('ranged enemy respects fire cooldown', () => {

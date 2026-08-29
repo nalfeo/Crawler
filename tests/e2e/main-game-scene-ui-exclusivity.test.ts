@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
-import type { MainSceneState } from '../../src/labs/main-scene-probe-lab/index.js';
+import {
+  loadMainSceneProbeLab,
+  tapKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -43,28 +47,6 @@ async function withHeldTouch(
   } finally {
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await session.detach();
-  }
-}
-
-/**
- * Hold `key` until the scene reports `predicate`, then release it.
- *
- * `page.keyboard.press()` can be dropped entirely for keys the scene samples
- * with `Phaser.Input.Keyboard.JustDown` (e.g. Escape/E): `Key.onUp` clears
- * `_justDown`, so a press that lands and lifts inside one frame is never
- * observed by the update loop.
- */
-async function holdKeyUntil(
-  page: Page,
-  key: string,
-  predicate: (state: MainSceneState) => boolean,
-  label: string,
-): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
   }
 }
 
@@ -389,12 +371,17 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'NPC click opened dialogue',
     });
-    await holdKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'NPC dialogue closed');
-
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
+    );
     // The hint is hidden for the duration of a conversation and only restored on
-    // the next update; clicking before that lands on empty canvas and queues
-    // nothing, so wait for the button to come back before tapping it.
+    // the next scene update; reading its bounds in the same tick can still come
+    // back null, so poll until the button is back before tapping it.
     const restoredTalkBounds = await waitForInteractionHintBounds(page);
+
     await clickDesignPoint({
       x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
       y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
@@ -402,9 +389,21 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (state) => state.conversationOpen, {
       label: 'Talk button opened dialogue',
     });
-    await holdKeyUntil(page, 'Escape', (state) => !state.conversationOpen, 'Talk dialogue closed');
-
-    await holdKeyUntil(page, 'e', (state) => state.conversationOpen, 'E opened dialogue');
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
+    );
+    await tapKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
   });
 
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {

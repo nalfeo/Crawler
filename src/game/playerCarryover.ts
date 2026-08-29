@@ -16,7 +16,9 @@ import { getEquipmentDefForItem, RETIRED_EQUIPMENT_ITEM_IDS } from '../shared/eq
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+  ACTIVE_ABILITY_SLOT_LIMIT,
   equipmentAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
   type AbilityGrantSource,
   type AbilityGrantSourceId,
   type AbilityStateLike,
@@ -376,7 +378,45 @@ function restoreAbilityState(
   normalized.equippedActiveAbilityIds = [...snapshot.equippedActiveAbilityIds];
   normalized.activeAbilityGrantSources = legacyState.activeAbilityGrantSources;
   normalized.passiveAbilityGrantSources = legacyState.passiveAbilityGrantSources;
+  migrateRetiredArcaneSkillAbilities(normalized);
   return normalized;
+}
+
+/**
+ * Converts Arcane's former L5/L15 passive milestones into their active
+ * successors while retaining the milestone's ownership source for upgrades.
+ */
+function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
+  const replacements = [
+    ['arcane-mastery-base', 'arcane-nova', 5],
+    ['arcane-mastery-evolved', 'arcane-nova-evolved', 15],
+  ] as const;
+
+  for (const [retiredId, activeId, milestoneLevel] of replacements) {
+    const sources = state.grantOwnership.passiveSourcesByAbilityId.get(retiredId);
+    if (sources === undefined) continue;
+
+    state.grantOwnership.passiveSourcesByAbilityId.delete(retiredId);
+    const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
+    // The retired ability was exclusively its milestone's passive grant; recreate
+    // that canonical source because legacy:passive sources cannot own an active.
+    activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
+    state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
+    state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);
+    if (
+      !state.equippedActiveAbilityIds.includes(activeId) &&
+      state.equippedActiveAbilityIds.length < ACTIVE_ABILITY_SLOT_LIMIT
+    ) {
+      state.equippedActiveAbilityIds.push(activeId);
+    }
+  }
+  const ownedActiveAbilityIds = state.ownedActiveAbilityIds ?? [];
+  state.ownedActiveAbilityIds = [
+    ...ownedActiveAbilityIds.filter((id) => state.grantOwnership.activeSourcesByAbilityId.has(id)),
+    ...[...state.grantOwnership.activeSourcesByAbilityId.keys()].filter(
+      (id) => !ownedActiveAbilityIds.includes(id),
+    ),
+  ];
 }
 
 function assertArray(value: unknown, path: string): asserts value is readonly unknown[] {
