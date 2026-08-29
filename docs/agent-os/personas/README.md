@@ -52,8 +52,8 @@ link back to this section instead of restating it.
   alternatives and argue against the chosen design, recording `plan_divergence`),
   a **code-review loop** until no concerns _or_ a 2-round cap then human
   escalation at ≥3🍎, and **multi-model review + adjudication** at >3🍎. The
-  `pr-review-ledger` guard hard-denies `create_pull_request` without a valid
-  ledger for a code-touching change. See the
+  PR publication is never blocked by ledger state; required CI and CI Recovery
+  validate and repair present ledgers before merge. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
   [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is

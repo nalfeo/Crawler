@@ -44,6 +44,7 @@ import {
   type AbilityDefinition,
 } from '../../game/index.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import { getAbilityEffectSummary } from '../../game/abilities/effect-summary.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
@@ -286,6 +287,12 @@ interface AbilityLoadoutProbe {
   getPanelScreenBounds(): ScreenBounds;
   getListViewportScreenBounds(): ScreenBounds;
   getVisibleRowScreenBounds(): ScreenBounds[];
+  getVisibleRowLayouts(): {
+    readonly id: string;
+    readonly row: ScreenBounds;
+    readonly details: ScreenBounds;
+    readonly description: ScreenBounds;
+  }[];
   getVisibleAbilityIds(): string[];
   getFooterScreenBounds(): ScreenBounds;
   getSelectedAbilityId(): string | null;
@@ -309,6 +316,12 @@ export interface AbilitiesProbeSnapshot {
   readonly panel: ScreenBounds | null;
   readonly listViewport: ScreenBounds | null;
   readonly visibleRows: readonly ScreenBounds[];
+  readonly visibleRowLayouts: readonly {
+    readonly id: string;
+    readonly row: ScreenBounds;
+    readonly details: ScreenBounds;
+    readonly description: ScreenBounds;
+  }[];
   readonly visibleAbilityIds: readonly string[];
   readonly footer: ScreenBounds | null;
   readonly hotbar: ScreenBounds | null;
@@ -446,7 +459,8 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = def.name;
-      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown).`;
+      const stats = getAbilityEffectSummary(def.id);
+      btn.title = `${def.description}${stats === undefined ? '' : `\n${stats}`}\n\nClick to force-fire (bypasses cooldown).`;
       btn.style.padding = '10px 12px';
       btn.style.minWidth = '80px';
       btn.style.background = def.kind === 'spell' ? '#1e3a8a' : '#166534';
@@ -721,6 +735,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         panel: open ? (loadout?.getPanelScreenBounds() ?? null) : null,
         listViewport: open ? (loadout?.getListViewportScreenBounds() ?? null) : null,
         visibleRows: open ? (loadout?.getVisibleRowScreenBounds() ?? []) : [],
+        visibleRowLayouts: open ? (loadout?.getVisibleRowLayouts() ?? []) : [],
         visibleAbilityIds: open ? (loadout?.getVisibleAbilityIds() ?? []) : [],
         footer: open ? (loadout?.getFooterScreenBounds() ?? null) : null,
         hotbar: scene?.hudUi?.getAbilityBarBounds() ?? null,
