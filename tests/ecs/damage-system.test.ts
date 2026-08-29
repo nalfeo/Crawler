@@ -154,6 +154,19 @@ describe('damageSystem', () => {
     expect(world.combatEvents).toHaveLength(0);
   });
 
+  it('damages hostile enemies with player-team enemy projectiles', () => {
+    const world = createTestWorld();
+    const ally = spawnEnemy(world, 0, 0, 25);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const hostile = spawnEnemy(world, 0, 0, 25);
+    const projectile = spawnEnemyProjectile(world, 0, 0, 0, 0, 10, ally);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[hostile]).toBe(15);
+    expect(entityExists(world.ecs, projectile)).toBe(false);
+  });
+
   it('emits a blocked combat event when player is invincible', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);

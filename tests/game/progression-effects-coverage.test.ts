@@ -11,9 +11,12 @@
  *  4. All 8 spell cases without `holderEid` → safely no-op (no error, no modifiers, no VFX).
  */
 import { describe, it, expect } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { addComponent, set } from 'bitecs';
+import { Team } from '../../src/core/components.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
 import type { CatalogEffect } from '../../src/shared/progression-effects.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('applyCatalogEffect — stat_multiply', () => {
@@ -186,4 +189,79 @@ describe('applyCatalogEffect — spell cases with no holderEid are safe no-ops',
       expect(world.vfxEvents.length).toBe(beforeVfx);
     });
   }
+});
+
+describe('applyCatalogEffect — spell targeting ignores player-team Enemy allies', () => {
+  it('life drain skips a nearer player-team Enemy and drains a hostile target', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const ally = spawnEnemy(world, 1, 0, 30);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const hostile = spawnEnemy(world, 4, 0, 30);
+
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: 'life-drain:active:test',
+      holderEid: player,
+      effect: {
+        type: 'spell_life_drain',
+        damage: { base: 10, scalesWithIntelligence: false },
+        rangeTiles: { base: 8, scalesWithIntelligence: false },
+        heal: { base: 1, scalesWithIntelligence: false },
+      },
+    });
+
+    expect(world.stores.health.current[ally]).toBe(30);
+    expect(world.stores.health.current[hostile]).toBe(20);
+  });
+
+  it('frost nova damages hostiles but not player-team Enemy allies in range', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const ally = spawnEnemy(world, 1, 0, 30);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const hostile = spawnEnemy(world, 1, 1, 30);
+
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: 'frost-nova:active:test',
+      holderEid: player,
+      effect: {
+        type: 'spell_frost_nova',
+        damage: { base: 8, scalesWithIntelligence: false },
+        radiusTiles: { base: 4, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.7, scalesWithIntelligence: false },
+        slowDurationMs: { base: 1000, scalesWithIntelligence: false },
+      },
+    });
+
+    expect(world.stores.health.current[ally]).toBe(30);
+    expect(world.stores.health.current[hostile]).toBe(22);
+  });
+
+  it('enemy slow burst applies slow to hostiles but not player-team Enemy allies', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const ally = spawnEnemy(world, 1, 0, 30);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const hostile = spawnEnemy(world, 1, 1, 30);
+    const sourceId = 'enemy-slow-burst:active:test';
+
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId,
+      holderEid: player,
+      effect: {
+        type: 'spell_enemy_slow_burst',
+        radiusTiles: { base: 4, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.7, scalesWithIntelligence: false },
+        slowDurationMs: { base: 1000, scalesWithIntelligence: false },
+      },
+    });
+
+    const allyEffects = world.statusEffectsByEntity.get(ally) ?? [];
+    const hostileEffects = world.statusEffectsByEntity.get(hostile) ?? [];
+    expect(allyEffects.some((effect) => effect.sourceId === sourceId)).toBe(false);
+    expect(hostileEffects.some((effect) => effect.sourceId === sourceId)).toBe(true);
+  });
 });

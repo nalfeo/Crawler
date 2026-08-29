@@ -370,6 +370,26 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       continue;
     }
 
+    if (
+      hasComponent(world.ecs, a, EnemyProjectile) &&
+      hasComponent(world.ecs, a, Owner) &&
+      hasComponent(world.ecs, b, Enemy) &&
+      !sameTeam(world, projectileSource(world, a), b)
+    ) {
+      applyProjectileHit(world, a, b);
+      continue;
+    }
+
+    if (
+      hasComponent(world.ecs, b, EnemyProjectile) &&
+      hasComponent(world.ecs, b, Owner) &&
+      hasComponent(world.ecs, a, Enemy) &&
+      !sameTeam(world, projectileSource(world, b), a)
+    ) {
+      applyProjectileHit(world, b, a);
+      continue;
+    }
+
     if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, Enemy)) {
       if (sameTeam(world, a, b)) continue;
       applyPlayerEnemyHit(world, a, b, hitTimestamps);

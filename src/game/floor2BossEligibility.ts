@@ -1,10 +1,10 @@
 import { hasComponent } from 'bitecs';
-import { FamilyMembership, Team } from '../core/components.js';
+import { FamilyMembership } from '../core/components.js';
+import { isEnemyHostileToPlayer } from '../core/enemy-targeting.js';
 import type { GameWorld } from '../core/world.js';
-import { TeamId } from '../shared/constants.js';
 
 export function isEnemyCombatEligible(world: GameWorld, enemyEid: number): boolean {
-  if (hasComponent(world.ecs, enemyEid, Team) && world.stores.team.id[enemyEid] === TeamId.PLAYER) {
+  if (!isEnemyHostileToPlayer(world, enemyEid)) {
     return false;
   }
 
