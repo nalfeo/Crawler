@@ -576,6 +576,70 @@ export interface Floor4ArenaRunStats {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
 }
 
+/**
+ * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
+ *
+ * Mirrors {@link Floor2SettlementShopItem} but is produced by the pure
+ * catalog-based `generateShopInventory`, so it references a purchasable catalog
+ * `itemId` and carries NO generated-equipment registry instance. That is what
+ * makes retirement orphan-free: retiring a visit drops these offers and leaves
+ * `world.generatedEquipmentRegistry` untouched (spec §7.2).
+ */
+export interface Floor4GreenRoomOffer {
+  readonly itemId: string;
+  readonly unitPrice: number;
+  /** Units offered. Slice A always emits 1 (the roller's per-line stock). */
+  readonly stock: number;
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — the immutable rolled stock of one fixed
+ * sponsor-table identity for one visit. `streamKey` records the exact derived
+ * stream (`<seed>:floor4:stock:<visitIndex>:<tableId>`) the offers were rolled
+ * from, so path-independence is auditable.
+ */
+export interface Floor4GreenRoomTableStock {
+  /** Stable table identity (spec §7.2: fixed across the floor). */
+  readonly tableId: string;
+  /** Shop-archetype pool this table drew from. */
+  readonly archetypeId: string;
+  /** The derived stream key the offers were rolled from. */
+  readonly streamKey: string;
+  readonly offers: readonly Floor4GreenRoomOffer[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — one visit's fully rolled, immutable stock
+ * across every sponsor table. Path-independent: visit `visitIndex` for a floor
+ * seed always yields identical stock regardless of how the acts before it went.
+ */
+export interface Floor4GreenRoomVisitStock {
+  /** 0-based visit ordinal — one per Headliner, in `[0, phase.actCount - 1]`. */
+  readonly visitIndex: number;
+  readonly tables: readonly Floor4GreenRoomTableStock[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — floor/run-scoped shop lifecycle state, held
+ * on `world.floorExtendedState.floor4GreenRoom`. Deliberately NOT the Floor-2
+ * settlement/quartermaster state: the Green Room re-rolls every table every
+ * visit and retires unsold stock, which the Floor-2 single-restock model does
+ * not express. Transaction (purchase) and UI are owned by later slices; this
+ * state only holds the current visit's immutable offer and the lifecycle
+ * bookkeeping needed to guard against re-rolls and reopens.
+ */
+export interface Floor4GreenRoomState {
+  /** The open visit's rolled, immutable stock; undefined between visits. */
+  currentVisit?: Floor4GreenRoomVisitStock;
+  /** Count of visits retired so far — monotonic, for lifecycle assertions. */
+  retiredVisitCount: number;
+  /**
+   * Highest visitIndex ever opened, or -1 before the first visit. Guards
+   * against re-rolling an open visit and against reopening a retired one.
+   */
+  lastOpenedVisitIndex: number;
+}
+
 // Backward compatibility exports
 export type Floor1EnemyArchetype = FloorEnemyArchetype;
 export type Floor1ObjectiveState = FloorObjectiveState;

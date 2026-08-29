@@ -517,6 +517,49 @@ export const floorManifestDefSchema = z
           .object({
             widthTiles: z.number().int().min(6),
             heightTiles: z.number().int().min(6),
+            /**
+             * Fixed sponsor-table identities (spec §7.2: "Tables are fixed
+             * identities across the floor"). Two-to-three tables; the same set
+             * exists at every break, only branding and stock change. `id` is the
+             * stable identity used in the per-visit stock stream key
+             * (`<seed>:floor4:stock:<visitIndex>:<tableId>`) and `archetypeId`
+             * names the shop-archetype pool the table draws from. Pool→archetype
+             * resolution is validated at stock-roll time in the game layer, not
+             * here, to keep this schema pure structural data.
+             */
+            tables: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    archetypeId: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .min(2)
+              .max(3),
+            /**
+             * Per-visit price-tier multiplier applied on top of each archetype's
+             * own `priceMultiplier` (fed to `generateShopInventory` as
+             * `tierMultiplier`). Indexed by 0-based visit (one per Headliner);
+             * length must equal `phase.actCount`. Later breaks carry higher
+             * prices so the gold curve stays coupled to the threat curve
+             * (spec §7.1). Slice A authors a single curve shared by all tables;
+             * per-table pricing is a later seam.
+             */
+            priceTierByVisit: z.array(z.number().positive()),
+            /**
+             * Per-visit worst-case gold-on-hand from guaranteed appearance fees
+             * alone (spec §8: "every Green Room must be able to buy something
+             * meaningful"). Every visit's rolled stock must contain at least one
+             * offer priced at or below this budget. Indexed by 0-based visit;
+             * length must equal `phase.actCount`. PROVISIONAL in Slice A — the
+             * real appearance-fee economy is owned by a later slice; these
+             * numbers are the affordability seam and are sized above the
+             * analytic worst-case cheapest-offer so the invariant holds for
+             * every seed.
+             */
+            affordabilityBudgetByVisit: z.array(z.number().positive()),
           })
           .strict(),
         tunnel: z
@@ -700,6 +743,34 @@ export const floorManifestDefSchema = z
             code: z.ZodIssueCode.custom,
             path: ['greenRoom', 'heightTiles'],
             message: 'Green Room is taller than the arena, so it would overflow the venue border',
+          });
+        }
+        // Green Room shop lifecycle (spec §7.1–§7.2): fixed table identities must
+        // be unique, and both per-visit arrays must cover exactly one entry per
+        // act so every break has authorized pricing and an affordability budget.
+        const tableIds = new Set<string>();
+        for (const table of greenRoom.tables) {
+          if (tableIds.has(table.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['greenRoom', 'tables'],
+              message: `duplicate Green Room table id "${table.id}"`,
+            });
+          }
+          tableIds.add(table.id);
+        }
+        if (greenRoom.priceTierByVisit.length !== floor4.phase.actCount) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['greenRoom', 'priceTierByVisit'],
+            message: `expected one price tier per act (${floor4.phase.actCount}), got ${greenRoom.priceTierByVisit.length}`,
+          });
+        }
+        if (greenRoom.affordabilityBudgetByVisit.length !== floor4.phase.actCount) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['greenRoom', 'affordabilityBudgetByVisit'],
+            message: `expected one affordability budget per act (${floor4.phase.actCount}), got ${greenRoom.affordabilityBudgetByVisit.length}`,
           });
         }
         const border = arena.borderThicknessTiles;

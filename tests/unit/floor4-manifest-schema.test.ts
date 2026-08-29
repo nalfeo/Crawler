@@ -47,6 +47,45 @@ describe('floor4 manifest schema cross-field geometry rules', () => {
   });
 });
 
+describe('floor4 manifest schema Green Room shop rules', () => {
+  it('accepts the authored Green Room shop config', () => {
+    expect(floorManifestDefSchema.safeParse(cloneFloor4Manifest()).success).toBe(true);
+  });
+
+  it('rejects duplicate sponsor-table identities', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.tables[1]!.id = bad.floor4.greenRoom.tables[0]!.id;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects fewer than two or more than three tables', () => {
+    const tooFew = cloneFloor4Manifest();
+    tooFew.floor4.greenRoom.tables = tooFew.floor4.greenRoom.tables.slice(0, 1);
+    expect(floorManifestDefSchema.safeParse(tooFew).success).toBe(false);
+
+    const tooMany = cloneFloor4Manifest();
+    const tables = tooMany.floor4.greenRoom.tables;
+    tooMany.floor4.greenRoom.tables = [
+      ...tables,
+      { id: 'extra-a', archetypeId: tables[0]!.archetypeId },
+    ];
+    expect(floorManifestDefSchema.safeParse(tooMany).success).toBe(false);
+  });
+
+  it('rejects a price tier curve that does not cover every act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.priceTierByVisit = bad.floor4.greenRoom.priceTierByVisit.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an affordability budget curve that does not cover every act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.affordabilityBudgetByVisit =
+      bad.floor4.greenRoom.affordabilityBudgetByVisit.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
 describe('floor4 manifest schema wave rules', () => {
   it('rejects a wave pack that is not registered', () => {
     const bad = cloneFloor4Manifest();
