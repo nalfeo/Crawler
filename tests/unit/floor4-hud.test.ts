@@ -24,6 +24,7 @@ function headliner(
     displayName: 'Camera Kraken',
     entranceAnnouncement: 'CAMERA KRAKEN — all angles are bad angles!',
     appearanceFeeGold: 28,
+    contactDamage: 10,
     fixedFinale: false,
     bossEid: 123,
     defeated: false,

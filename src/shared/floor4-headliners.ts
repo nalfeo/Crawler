@@ -11,6 +11,7 @@ export interface Floor4HeadlinerSlotConfig {
   readonly eligibleGrades: readonly Floor4HeadlinerGrade[];
   readonly fixedArchetypeId?: string;
   readonly appearanceFeeGold: number;
+  readonly contactDamage: number;
 }
 
 interface Floor4HeadlinerConfig {
@@ -47,6 +48,7 @@ function toCardEntry(
     displayName: picked.displayName,
     entranceAnnouncement: picked.entranceAnnouncement,
     appearanceFeeGold: slot.appearanceFeeGold,
+    contactDamage: slot.contactDamage,
     fixedFinale,
   });
 }

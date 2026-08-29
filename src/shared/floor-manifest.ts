@@ -53,6 +53,7 @@ interface Floor4WaveValidationInput {
       readonly eligibleGrades: readonly string[];
       readonly fixedArchetypeId?: string;
       readonly appearanceFeeGold: number;
+      readonly contactDamage: number;
     }[];
   };
   readonly overtime?: {
@@ -687,6 +688,7 @@ export const floorManifestDefSchema = z
                       .min(1),
                     fixedArchetypeId: z.string().min(1).optional(),
                     appearanceFeeGold: z.number().int().nonnegative(),
+                    contactDamage: z.number().int().positive(),
                   })
                   .strict(),
               )

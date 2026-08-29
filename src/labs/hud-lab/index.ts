@@ -124,6 +124,7 @@ function createFloor4Headliner(
     displayName: act === 5 ? 'The Ratings Reaper' : 'Camera Kraken',
     entranceAnnouncement: 'The Headliner enters the arena!',
     appearanceFeeGold: 28,
+    contactDamage: 10,
     fixedFinale: act === 5,
     bossEid,
     defeated: false,

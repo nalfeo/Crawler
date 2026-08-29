@@ -387,6 +387,8 @@ export interface Floor4HeadlinerCardEntry {
   readonly displayName: string;
   readonly entranceAnnouncement: string;
   readonly appearanceFeeGold: number;
+  /** Authored per-act contact damage for this act's Headliner (spec FR8.2). */
+  readonly contactDamage: number;
   readonly fixedFinale: boolean;
 }
 

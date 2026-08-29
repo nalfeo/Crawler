@@ -962,7 +962,10 @@ function spawnFloor4Headliner(
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
   });
-  const baseDamage = 12 + act * 3;
+  // Authored, not derived (FR8.2): the per-act contact damage curve is a
+  // balance knob owned by the manifest, so the slice-7 tuning pass can move it
+  // without editing the director.
+  const baseDamage = card.contactDamage;
   addComponent(world.ecs, eid, set(Damage, { amount: baseDamage, cooldownMs: 0, lastFireMs: 0 }));
   setEnemyAppearanceKey(world, eid, archetype.id);
   state.activeHeadliner = {

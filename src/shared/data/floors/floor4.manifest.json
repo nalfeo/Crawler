@@ -90,14 +90,14 @@
         "intervalMs": 12000
       },
       "budget": {
-        "base": 6.0,
-        "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
+        "base": 4.5,
+        "actMultipliers": [0.5, 0.85, 1.3, 1.9, 2.6],
         "intraActRamp": 0.09,
         "openingWaveMultiplier": 0.34,
         "maxEntriesPerWave": 16
       },
       "concurrency": {
-        "liveCap": 24,
+        "liveCap": 16,
         "debtCap": 18
       },
       "gates": {
@@ -207,28 +207,33 @@
         {
           "act": 1,
           "eligibleGrades": ["warmup"],
-          "appearanceFeeGold": 18
+          "appearanceFeeGold": 18,
+          "contactDamage": 8
         },
         {
           "act": 2,
           "eligibleGrades": ["warmup", "midcard"],
-          "appearanceFeeGold": 28
+          "appearanceFeeGold": 28,
+          "contactDamage": 10
         },
         {
           "act": 3,
           "eligibleGrades": ["midcard"],
-          "appearanceFeeGold": 40
+          "appearanceFeeGold": 40,
+          "contactDamage": 12
         },
         {
           "act": 4,
           "eligibleGrades": ["main-event"],
-          "appearanceFeeGold": 55
+          "appearanceFeeGold": 55,
+          "contactDamage": 14
         },
         {
           "act": 5,
           "eligibleGrades": ["finale"],
           "fixedArchetypeId": "floor4-showrunner",
-          "appearanceFeeGold": 75
+          "appearanceFeeGold": 75,
+          "contactDamage": 16
         }
       ]
     },
