@@ -30,7 +30,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "claude-opus-4.6",
-      "head_sha": "86a6aeb5be60ffa633b2a8fdaa4ddc529fabb8ee",
+      "head_sha": "8481229481fab5d65ef4d19f632a2deb92dccb78",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -41,7 +41,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The change correctly derives spell statistics from the ability registry without duplicating data. The logic to handle dynamic modal heights is well-implemented with a solid two-pass approach that cleanly shifts contents. Layer boundaries are perfectly respected via the scene options callback, and both unit and E2E coverage provide strong confidence."
+      "notes": "The change fulfils the task by deriving spell statistics directly from the ability registry, avoiding error-prone duplication. The UI modifications to dynamically grow row and panel heights are correctly implemented using a two-pass layout approach that accurately handles text wrapping and resolution scaling. Architectural boundaries are respected by injecting the formatter through scene options, and tests guarantee correctness and prevent future regressions."
     }
   }
 }
