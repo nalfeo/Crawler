@@ -803,7 +803,11 @@ export interface GameWorld {
   questEvents: QuestEvent[];
   /** Progressively-unlocked UI features. Latched true; never reset to false mid-run. */
   featureUnlocks: {
-    /** Inventory panel becomes usable once unlocked (Floor 1: on key-item pickup). */
+    /**
+     * Inventory panel becomes usable once unlocked. Ungated floors unlock on
+     * key-item pickup; floors with `merchantQuestGatesInventory` unlock on the
+     * configured quest completion.
+     */
     inventory: boolean;
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
