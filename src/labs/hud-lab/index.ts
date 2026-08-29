@@ -14,12 +14,13 @@ import {
   createEmptyAbilityState,
   type AbilityState,
 } from '../../shared/abilities.js';
-import { createHudUI } from '../../engine/HudUI.js';
+import { createHudUI, type HudEncounterProbeBounds } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';
 import { setActiveWeaponDef } from '../../core/active-weapon.js';
 import { pxToFt } from '../../shared/units.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
+import { pushAnnouncement } from '../../shared/announcement-events.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import type {
   Floor4ActIndex,
@@ -47,6 +48,13 @@ export interface HudProbeApi {
   setBossFightActive(active: boolean): void;
   setFloor4Surface(surface: 'waves' | 'headline' | 'overtime' | 'break' | 'winner'): void;
   getFloor4HudState(): HudFloor4ArenaProbeState;
+  /**
+   * Pushes a real `world.announcements` entry and re-syncs the HUD so
+   * `HudAnnouncementBanner` renders it — used to make the encounter stack
+   * (boss bar / announcement banner) visible for layout probes.
+   */
+  pushTestAnnouncement(text: string): void;
+  getEncounterProbeBounds(): HudEncounterProbeBounds;
   setLootSkillStressState(): void;
   getLootSkillLayout(): HudLootSkillLayout;
   getGameSize(): { width: number; height: number };
@@ -349,6 +357,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
             overtimeStarted: surface === 'overtime' ? 1 : 0,
             overtimeStepsApplied: surface === 'overtime' ? 2 : 0,
           },
+          actBaseline: { playerGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
           waves: {
             act,
             manifests,
@@ -467,6 +476,27 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           const state = hudUi?.getFloor4ArenaState();
           if (!state) throw new Error('Floor 4 HUD probe not ready');
           return state;
+        },
+        pushTestAnnouncement: (text: string) => {
+          if (!world || !hudUi) throw new Error('HUD lab world not ready');
+          // +1: the running lab already drains world.announcements every
+          // frame, so an event stamped with the CURRENT elapsedMs can already
+          // equal `lastDrainedElapsedMs` and be silently skipped (drain uses
+          // a strict `>` check). Stamping one tick ahead guarantees this
+          // probe-pushed event is always picked up on the very next sync().
+          pushAnnouncement(world.announcements, {
+            kind: 'bossAbilityCast',
+            archetypeIndex: -1,
+            text,
+            eventId: `hud-lab-probe-${world.announcements.length}`,
+            durationMs: 10_000,
+            elapsedMs: world.elapsedMs + 1,
+          });
+          hudUi.sync(world, playerEid);
+        },
+        getEncounterProbeBounds: () => {
+          if (!hudUi) throw new Error('HUD lab world not ready');
+          return hudUi.getEncounterProbeBounds();
         },
         setLootSkillStressState: () => {
           if (!world?.floorScenario) throw new Error('HUD lab world not ready');

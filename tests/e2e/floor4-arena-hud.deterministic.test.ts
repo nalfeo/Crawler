@@ -208,6 +208,31 @@ describe('Floor 4 arena HUD deterministic surfaces', () => {
         expect(winner.summary).toContain('Take the stairs to claim the belt');
         assertLayout(rect, winner);
 
+        // Encounter-stack regression guard: with the arena panel visible, an
+        // announcement banner must be pushed BELOW the panel (HudUI.ts
+        // floor4Offset), never overlapping it.
+        const beforeAnnouncement = await page.evaluate(() => {
+          const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
+          if (!probe) throw new Error('__hudProbe not available');
+          return probe.getEncounterProbeBounds();
+        });
+        expect(beforeAnnouncement.announcementPanel).toBeNull();
+
+        const encounter = await page.evaluate(() => {
+          const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
+          if (!probe) throw new Error('__hudProbe not available');
+          probe.pushTestAnnouncement('CAMERA KRAKEN — all angles are bad angles!');
+          return probe.getEncounterProbeBounds();
+        });
+        expect(encounter.announcementPanel).not.toBeNull();
+        const panelScreen = boundsToScreen(rect, winner.bounds!.panel);
+        const announcementScreen = boundsToScreen(rect, encounter.announcementPanel!);
+        expect(
+          announcementScreen.y,
+          'announcement banner must start below the Floor 4 arena panel',
+        ).toBeGreaterThanOrEqual(panelScreen.y + panelScreen.height - 0.5);
+        expect(overlaps(panelScreen, announcementScreen)).toBe(false);
+
         const png = parsePng(await page.screenshot());
         const panel = boundsToScreen(rect, winner.bounds!.panel);
         expect(

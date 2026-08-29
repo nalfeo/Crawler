@@ -567,6 +567,21 @@ export interface Floor4ArenaState {
   waveTelemetry: Floor4WaveTelemetry;
   /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */
   headlinerTelemetry: Floor4HeadlinerTelemetry;
+  /**
+   * Snapshot of the cumulative counters above, taken the instant the CURRENT
+   * act's `WAVES` phase was armed. The break-summary HUD (FR6/slice 6) reads
+   * this to project THIS act's gold-earned/enemies-engaged delta instead of
+   * the run-cumulative totals, which would otherwise re-report every prior
+   * act's numbers at every later break.
+   */
+  actBaseline: Floor4ActBreakBaseline;
+}
+
+/** See {@link Floor4ArenaState.actBaseline}. */
+export interface Floor4ActBreakBaseline {
+  readonly playerGold: number;
+  readonly enemiesSpawned: number;
+  readonly enemiesCut: number;
 }
 
 export interface Floor4ArenaRunStats {

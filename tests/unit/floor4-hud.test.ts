@@ -62,6 +62,7 @@ function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
       overtimeStarted: 0,
       overtimeStepsApplied: 0,
     },
+    actBaseline: { playerGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
     waves: {
       act: 2,
       manifests: Array.from({ length: 8 }, (_, waveIndex) => ({
@@ -213,6 +214,41 @@ describe('buildFloor4HudState', () => {
       'pending',
       'pending',
       'pending',
+    ]);
+  });
+
+  it('projects THIS act delta, not the run-cumulative total, for a non-final break', () => {
+    // Fixture cumulative totals: waveTelemetry.enemiesSpawned=30, enemiesCut=3.
+    // actBaseline (captured when Act 2 started): enemiesSpawned=12, enemiesCut=1,
+    // playerGold=20. A prior-act gold carryover/purchase makes the CURRENT
+    // playerGold (65) larger than the naive act-earnings would suggest, so this
+    // also proves the summary is not simply echoing the live balance.
+    const hud = buildFloor4HudState({
+      arena: arena({
+        phase: { kind: 'INTERMISSION', act: 2 },
+        phaseElapsedMs: 900,
+        arenaElapsedMs: 240_000,
+        waves: undefined,
+      }),
+      greenRoom: {
+        retiredVisitCount: 1,
+        lastOpenedVisitIndex: 1,
+        currentVisit: {
+          visitIndex: 1,
+          tables: [{ tableId: 'arsenal', archetypeId: 'the-fence', streamKey: 's', offers: [] }],
+        },
+      },
+      phaseConfig,
+      playerGold: 65,
+    });
+
+    expect(hud.summary).toEqual([
+      'Act 2 survived',
+      'Gold earned: 45',
+      'Enemies booked: 18',
+      'Cuts: 2',
+      'Sponsors open: 1',
+      'Shop, equip, then back to one',
     ]);
   });
 });

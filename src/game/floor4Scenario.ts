@@ -250,6 +250,14 @@ function recordFloor4PhaseTransition(
   });
 
   if (phase.kind === 'WAVES') {
+    // Snapshot the counters this act starts from so the break-summary HUD can
+    // project THIS act's delta at the next intermission instead of re-reporting
+    // the run-cumulative totals (spec slice 6 / FR6).
+    state.actBaseline = {
+      playerGold: world.playerGold,
+      enemiesSpawned: state.waveTelemetry.enemiesSpawned,
+      enemiesCut: state.waveTelemetry.enemiesCut,
+    };
     state.waves = armFloor4ActWaves(world, phase.act, pending);
   } else if (phase.kind === 'HEADLINE') {
     spawnFloor4Headliner(world, state, phase.act);
@@ -274,6 +282,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     keptCompanionCoStarActive: false,
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
+    actBaseline: { playerGold: world.playerGold, enemiesSpawned: 0, enemiesCut: 0 },
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;

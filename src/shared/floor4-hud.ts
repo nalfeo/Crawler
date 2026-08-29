@@ -139,17 +139,34 @@ function phaseTitle(state: Floor4ArenaState, act: Floor4ActIndex): string {
 
 function buildSummary(input: Floor4HudInput, act: Floor4ActIndex): readonly string[] {
   const visit = input.greenRoom?.currentVisit;
-  const prefix = act === input.phaseConfig.actCount ? 'Final tally' : `Act ${act} survived`;
+  const isFinal = act === input.phaseConfig.actCount;
+  const prefix = isFinal ? 'Final tally' : `Act ${act} survived`;
   const tableCount = visit?.tables.length ?? 0;
+  const waveTelemetry = input.arena?.waveTelemetry;
+  // Non-final breaks report THIS act's delta off the act-start baseline
+  // (spec slice 6 / FR6): `playerGold` and the wave counters are otherwise
+  // run-cumulative and would re-report every prior act's numbers at every
+  // later break. The final tally intentionally keeps the cumulative totals.
+  const baseline = input.arena?.actBaseline;
+  const goldValue =
+    isFinal || !baseline
+      ? Math.max(0, Math.trunc(input.playerGold))
+      : Math.max(0, Math.trunc(input.playerGold - baseline.playerGold));
+  const spawnedValue =
+    isFinal || !baseline
+      ? Math.max(0, Math.trunc(waveTelemetry?.enemiesSpawned ?? 0))
+      : Math.max(0, Math.trunc((waveTelemetry?.enemiesSpawned ?? 0) - baseline.enemiesSpawned));
+  const cutValue =
+    isFinal || !baseline
+      ? Math.max(0, Math.trunc(waveTelemetry?.enemiesCut ?? 0))
+      : Math.max(0, Math.trunc((waveTelemetry?.enemiesCut ?? 0) - baseline.enemiesCut));
   return [
     prefix,
-    `Gold held: ${Math.max(0, Math.trunc(input.playerGold))}`,
-    `Enemies booked: ${Math.max(0, Math.trunc(input.arena?.waveTelemetry.enemiesSpawned ?? 0))}`,
-    `Cuts: ${Math.max(0, Math.trunc(input.arena?.waveTelemetry.enemiesCut ?? 0))}`,
+    isFinal ? `Gold held: ${goldValue}` : `Gold earned: ${goldValue}`,
+    `Enemies booked: ${spawnedValue}`,
+    `Cuts: ${cutValue}`,
     tableCount > 0 ? `Sponsors open: ${tableCount}` : 'Sponsors clearing the room',
-    act === input.phaseConfig.actCount
-      ? 'Take the stairs to claim the belt'
-      : 'Shop, equip, then back to one',
+    isFinal ? 'Take the stairs to claim the belt' : 'Shop, equip, then back to one',
   ];
 }
 
