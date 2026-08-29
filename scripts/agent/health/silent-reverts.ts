@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import { Report, repoRoot } from '../shared/report.js';
 import {
+  ACK_FOR_TRAILER,
   ACK_TRAILER,
   type FileTriple,
   type MergeInput,
@@ -27,6 +28,7 @@ import {
   findSilentReverts,
   findUnusedAcks,
   generatedEntryRenamePreservesContent,
+  parseAckForTrailers,
   parseAckTrailers,
   parseDiffLineChanges,
   sideAdditionsSubsumedByOther,
@@ -200,10 +202,59 @@ export interface CollectResult {
   readonly unsupported: Array<{ sha: string; reason: string }>;
 }
 
+/**
+ * `merge sha -> paths acknowledged by a LATER commit`, from
+ * `Merge-Discard-Ack-For:` trailers anywhere in `base..head`.
+ *
+ * A merge that is already pushed and shared by sibling branches cannot be
+ * amended without rewriting their history, so the on-the-merge ack is
+ * unavailable to every branch that inherits it (#3853). A follow-up commit is
+ * the non-destructive equivalent.
+ *
+ * A referenced rev that does not resolve to one of `mergeShas` is IGNORED
+ * rather than reported: once the merge lands on main it leaves `base..head`
+ * while a cherry-picked ack commit may not, and an ack for a merge the guard
+ * is not inspecting cannot hide anything.
+ */
+function collectFollowUpAcks(
+  cwd: string,
+  baseRef: string,
+  headRef: string,
+  mergeShas: ReadonlySet<string>,
+): Map<string, Set<string>> {
+  const byMerge = new Map<string, Set<string>>();
+  if (mergeShas.size === 0) return byMerge;
+
+  // One `git log` for the whole range rather than one per commit: a long-lived
+  // branch can carry hundreds of commits and this guard already runs in
+  // verify:fast. \x01 separates records, \x00 separates sha from body — neither
+  // can occur in a commit message.
+  const log = git(['log', '--format=%x01%H%x00%B', `${baseRef}..${headRef}`], cwd);
+  for (const record of log.split('\u0001')) {
+    const sep = record.indexOf('\u0000');
+    if (sep < 0) continue;
+    const message = record.slice(sep + 1).trim();
+    const targets = parseAckForTrailers(message);
+    if (targets.size === 0) continue;
+    const paths = parseAckTrailers(message);
+    if (paths.size === 0) continue;
+
+    for (const target of targets) {
+      const resolved = gitOrNull(['rev-parse', '--verify', '--quiet', `${target}^{commit}`], cwd);
+      if (resolved === null || !mergeShas.has(resolved)) continue;
+      const acked = byMerge.get(resolved) ?? new Set<string>();
+      for (const p of paths) acked.add(p);
+      byMerge.set(resolved, acked);
+    }
+  }
+  return byMerge;
+}
+
 export function collectMergeInputs(cwd: string, baseRef: string, headRef: string): CollectResult {
   const mergeShas = git(['rev-list', '--merges', `${baseRef}..${headRef}`], cwd)
     .split('\n')
     .filter(Boolean);
+  const followUpAcks = collectFollowUpAcks(cwd, baseRef, headRef, new Set(mergeShas));
 
   const merges: MergeInput[] = [];
   const unsupported: Array<{ sha: string; reason: string }> = [];
@@ -240,7 +291,10 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
     }
 
     const subject = git(['log', '-1', '--format=%s', sha], cwd);
-    const ackedPaths = parseAckTrailers(git(['log', '-1', '--format=%B', sha], cwd));
+    const ackedPaths = new Set<string>([
+      ...parseAckTrailers(git(['log', '-1', '--format=%B', sha], cwd)),
+      ...(followUpAcks.get(sha) ?? []),
+    ]);
 
     // Evaluate BOTH parents: a merge can drop either side's work. Mainline
     // losses are graded harder because they affect everyone.
@@ -412,8 +466,9 @@ function main(): void {
   for (const u of unusedAcks) {
     report.error(`Merge ${u.mergeSha.slice(0, 9)} acks "${u.path}" but discarded no such file.`, {
       remediation:
-        `Remove the stale \`${ACK_TRAILER}: ${u.path}\` trailer. A stale ack looks ` +
-        `like coverage while leaving the path unguarded.`,
+        `Remove the stale \`${ACK_TRAILER}: ${u.path}\` trailer (from the merge message, ` +
+        `or from the \`${ACK_FOR_TRAILER}\` follow-up commit that targets it). A stale ack ` +
+        `looks like coverage while leaving the path unguarded.`,
     });
   }
 
@@ -432,7 +487,10 @@ function main(): void {
       `Re-apply that side's version of ${f.path} on top of your work, then verify ` +
       `\`git diff ${BASE_REF} -- ${f.path}\` shows only your intended change. ` +
       `If the discard IS intentional, add a \`${ACK_TRAILER}: ${f.path}\` trailer to ` +
-      `the ${mergeTargets} explaining why.`;
+      `the ${mergeTargets} explaining why. When that merge is already pushed and ` +
+      `shared (amending it would rewrite others' history), put the same trailer on a ` +
+      `NEW commit alongside \`${ACK_FOR_TRAILER}: <merge sha>\` instead — ` +
+      `e.g. \`git commit --allow-empty\` with both trailers in the message.`;
     if (f.severity === 'error') report.error(message, { file: f.path, remediation });
     else report.warn(`${message} (branch-local work, not mainline)`, { file: f.path, remediation });
   }

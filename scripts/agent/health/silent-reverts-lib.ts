@@ -195,8 +195,8 @@ export const ACK_TRAILER = 'Merge-Discard-Ack';
  *  letters/digits/hyphens, then a colon. No spaces in the token. */
 const GIT_TRAILER_TOKEN_RE = /^[A-Za-z][A-Za-z0-9-]*:/;
 
-export function parseAckTrailers(commitMessage: string): Set<string> {
-  const acked = new Set<string>();
+/** The commit message's Git trailer block, or `[]` when it has none. */
+function trailerBlockLines(commitMessage: string): string[] {
   const lines = commitMessage.split(/\r?\n/);
 
   // Find the last blank line to identify the potential trailer block.
@@ -215,22 +215,61 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  if (candidateLines.length === 0) return acked;
+  if (candidateLines.length === 0) return [];
 
   // Every line in the final paragraph must look like a trailer (Token: value).
   // If any line is prose, this is a body paragraph, not a trailer block.
-  if (!candidateLines.every((l) => GIT_TRAILER_TOKEN_RE.test(l))) return acked;
+  if (!candidateLines.every((l) => GIT_TRAILER_TOKEN_RE.test(l))) return [];
 
-  const prefix = `${ACK_TRAILER}:`;
-  for (const line of candidateLines) {
-    if (!line.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+  return candidateLines;
+}
+
+/**
+ * Values of every `<token>:` trailer in the block, split on commas, with any
+ * ` -- ` / ` — ` reason suffix stripped.
+ */
+function parseTrailerValues(commitMessage: string, token: string): Set<string> {
+  const values = new Set<string>();
+  const prefix = `${token}:`.toLowerCase();
+  for (const line of trailerBlockLines(commitMessage)) {
+    // The colon in the prefix keeps `Merge-Discard-Ack-For:` from matching
+    // `Merge-Discard-Ack:` — the two tokens share a prefix but not a colon.
+    if (!line.toLowerCase().startsWith(prefix)) continue;
     const payload = line.slice(prefix.length).split(/\s+--\s+|\s+—\s+/)[0] ?? '';
     for (const part of payload.split(',')) {
       const p = part.trim();
-      if (p) acked.add(p);
+      if (p) values.add(p);
     }
   }
-  return acked;
+  return values;
+}
+
+export function parseAckTrailers(commitMessage: string): Set<string> {
+  return parseTrailerValues(commitMessage, ACK_TRAILER);
+}
+
+/**
+ * Trailer that moves an acknowledgement OFF the merge commit: any commit in
+ * `base..head` carrying `Merge-Discard-Ack-For: <merge-ish>` applies its
+ * `Merge-Discard-Ack:` paths to that merge instead of to itself.
+ *
+ * This exists because the merge-scoped ack is otherwise only settable by
+ * AMENDING the merge, which is impossible once that merge is pushed and shared
+ * by sibling branches (#3853): every descendant branch inherits a permanently
+ * unackable finding. A follow-up ack (usually an empty commit) is the
+ * non-destructive equivalent — and it weakens nothing, because it still names
+ * one specific merge and one specific path, and a path that merge did not
+ * actually discard is still reported as a stale ack by `findUnusedAcks`.
+ */
+export const ACK_FOR_TRAILER = 'Merge-Discard-Ack-For';
+
+/**
+ * Parse `Merge-Discard-Ack-For: <merge-ish>` trailers. Values are left as
+ * written (abbreviated sha, full sha, or any rev) — the caller resolves them
+ * with `git rev-parse`, so Git owns abbreviation and ambiguity handling.
+ */
+export function parseAckForTrailers(commitMessage: string): Set<string> {
+  return parseTrailerValues(commitMessage, ACK_FOR_TRAILER);
 }
 
 /**
