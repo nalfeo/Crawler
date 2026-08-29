@@ -409,12 +409,8 @@ function floor3CompanionArchetypeAiType(archetype: EnemyArchetypeDef): number {
   }
 }
 
-function getFloor3WildPack(): EnemyPackDef {
-  const pack = getFloorEnemyPack('floor3-wild');
-  if (!pack) {
-    throw new Error('Missing floor3-wild enemy pack');
-  }
-  return pack;
+function getFloor3WildPack(): EnemyPackDef | undefined {
+  return getFloorEnemyPack('floor3-wild');
 }
 
 function findFloor3ArchetypeForKeptCompanion(
@@ -526,11 +522,15 @@ function spawnFloor4KeptCompanionCoStar(
   }
   const species = getPetSpecies(contract.speciesId);
   if (!species) {
-    throw new Error(`Unknown Floor 3 kept companion species: ${contract.speciesId}`);
+    return;
   }
-  const archetype = findFloor3ArchetypeForKeptCompanion(getFloor3WildPack(), species);
+  const pack = getFloor3WildPack();
+  if (!pack) {
+    return;
+  }
+  const archetype = findFloor3ArchetypeForKeptCompanion(pack, species);
   if (!archetype) {
-    throw new Error(`No Floor 3 archetype found for kept companion: ${contract.speciesId}`);
+    return;
   }
 
   const spawn = resolveFloor4CoStarSpawnPosition(world, playerEid);
