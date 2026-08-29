@@ -50,6 +50,24 @@ async function withHeldTouch(
   }
 }
 
+/**
+ * Poll until the bottom-center interaction hint ("Talk") is visible again and
+ * return its current screen-space bounds.
+ */
+async function waitForInteractionHintBounds(
+  page: Page,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const deadline = Date.now() + 8_000;
+  for (;;) {
+    const bounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (bounds) return bounds;
+    if (Date.now() > deadline) {
+      throw new Error('Timed out waiting for the interaction hint to become visible');
+    }
+    await page.waitForTimeout(100);
+  }
+}
+
 function overlaps(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
@@ -359,10 +377,10 @@ describe('MainGameScene UI exclusivity', () => {
       async () => !(await mainSceneProbe.getState(page)).conversationOpen,
       { label: 'NPC dialogue to close before Talk click' },
     );
-    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
-    if (!restoredTalkBounds) {
-      throw new Error('Talk button should be visible after dialogue closes');
-    }
+    // The hint is hidden for the duration of a conversation and only restored on
+    // the next scene update; reading its bounds in the same tick can still come
+    // back null, so poll until the button is back before tapping it.
+    const restoredTalkBounds = await waitForInteractionHintBounds(page);
 
     await clickDesignPoint({
       x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
