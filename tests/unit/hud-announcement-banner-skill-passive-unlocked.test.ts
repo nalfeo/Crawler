@@ -100,6 +100,30 @@ function createSceneStub() {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('HudAnnouncementBanner — skillPassiveUnlocked', () => {
+  it('renders the skillAbilityUnlocked event via getCurrentAnnouncement()', async () => {
+    const { createHudAnnouncementBanner } =
+      await import('../../src/engine/HudAnnouncementBanner.js');
+    const { scene } = createSceneStub();
+    const banner = createHudAnnouncementBanner(scene);
+
+    const world = createTestWorld();
+    world.elapsedMs = GAME.DELTA_MS;
+    world.announcements.push({
+      kind: 'skillAbilityUnlocked',
+      archetypeIndex: -1,
+      text: 'Ability Unlocked: Arcane Nova',
+      durationMs: 2600,
+      elapsedMs: world.elapsedMs,
+    });
+
+    banner.sync(world);
+
+    const current = banner.getCurrentAnnouncement();
+    expect(current).not.toBeNull();
+    expect(current?.kind).toBe('skillAbilityUnlocked');
+    expect(current?.text).toBe('Ability Unlocked: Arcane Nova');
+  });
+
   it('renders the skillPassiveUnlocked event via getCurrentAnnouncement()', async () => {
     const { createHudAnnouncementBanner } =
       await import('../../src/engine/HudAnnouncementBanner.js');

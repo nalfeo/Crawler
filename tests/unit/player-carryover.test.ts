@@ -13,6 +13,7 @@ import {
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import {
@@ -71,6 +72,81 @@ describe('player floor carryover', () => {
     expect(getEquipmentState(destination, destinationPlayer)?.disabledSlots).toEqual(
       new Set(['ring1']),
     );
+  });
+
+  it('migrates a pre-change Arcane L5 grant before its L15 upgrade', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    source.playerSkills.set('arcane', {
+      level: 5,
+      usage: 600,
+      itemBonus: 0,
+      triggeredMilestones: new Set([5]),
+    });
+    source.skillStatesByEntity.set(sourcePlayer, new Map(source.playerSkills));
+    grantPassiveAbility(source, sourcePlayer, 'veteran-instinct');
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...snapshot,
+      abilityState: {
+        ...snapshot.abilityState!,
+        passiveAbilityIds: ['arcane-mastery-base'],
+        grantOwnership: {
+          ...snapshot.abilityState!.grantOwnership!,
+          activeSourcesByAbilityId: [],
+          passiveSourcesByAbilityId: [
+            ['arcane-mastery-base', [skillAbilityGrantSourceId('arcane', 5)]],
+          ],
+        },
+      },
+    };
+    const destination = createTestWorld({ seed: 42 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    const restored = destination.abilityStatesByEntity.get(destinationPlayer)!;
+    expect(restored.grantOwnership!.activeSourcesByAbilityId.get('arcane-nova')).toEqual(
+      new Set([skillAbilityGrantSourceId('arcane', 5)]),
+    );
+    expect(restored.passiveAbilityIds).not.toContain('arcane-mastery-base');
+    expect(restored.equippedActiveAbilityIds).toContain('arcane-nova');
+
+    destination.skillUsageEvents.push({
+      holderEid: destinationPlayer,
+      skillId: 'arcane',
+      metric: 'weapon_fired',
+      amount: 5_000,
+    });
+    expect(() => skillSystem(destination)).not.toThrow();
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.equippedActiveAbilityIds.includes('arcane-nova-evolved'),
+    ).toBe(true);
+
+    const { grantOwnership: _grantOwnership, ...withoutGrantOwnership } =
+      legacySnapshot.abilityState;
+    const legacyNoOwnershipSnapshot = {
+      ...legacySnapshot,
+      abilityState: withoutGrantOwnership,
+    };
+    const legacyDestination = createTestWorld({ seed: 42 });
+    const legacyDestinationPlayer = spawnPlayer(legacyDestination, 0, 0);
+    restorePlayerCarryover(legacyDestination, legacyDestinationPlayer, legacyNoOwnershipSnapshot);
+    expect(
+      legacyDestination.abilityStatesByEntity
+        .get(legacyDestinationPlayer)
+        ?.grantOwnership?.activeSourcesByAbilityId.get('arcane-nova'),
+    ).toEqual(new Set([skillAbilityGrantSourceId('arcane', 5)]));
+
+    legacyDestination.skillUsageEvents.push({
+      holderEid: legacyDestinationPlayer,
+      skillId: 'arcane',
+      metric: 'weapon_fired',
+      amount: 5_000,
+    });
+    expect(() => skillSystem(legacyDestination)).not.toThrow();
   });
 
   it('retires static and generated equipment that used removed slots during restore', () => {

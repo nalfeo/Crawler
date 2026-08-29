@@ -462,9 +462,9 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
     milestones: [
       {
         level: 5,
-        name: 'Spell Focus',
-        description: '+10% damage with arcane weapons',
-        abilityId: 'arcane-mastery-base',
+        name: 'Arcane Nova',
+        description: 'Unlocks an active arcane detonation (arcane weapon required)',
+        abilityId: 'arcane-nova',
       },
       {
         level: 10,
@@ -475,8 +475,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 15,
         name: 'Spellweaver',
-        description: 'Evolved Spell Focus ability',
-        abilityId: 'arcane-mastery-evolved',
+        description: 'Evolved Arcane Nova ability',
+        abilityId: 'arcane-nova-evolved',
       },
       {
         level: 20,
