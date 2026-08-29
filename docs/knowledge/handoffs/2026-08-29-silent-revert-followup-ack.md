@@ -9,13 +9,17 @@ ci-policy
 
 ## What changed
 
-- Added a `Merge-Discard-Ack-For: <merge-ish>` trailer so an intentional-discard
+- Added a `Merge-Discard-Ack-For: <merge-sha>` trailer so an intentional-discard
   acknowledgement can live on a **later** commit instead of on the merge commit
   itself. The paths still come from ordinary `Merge-Discard-Ack:` trailers in the
   same trailer block.
 - `collectMergeInputs` now scans every commit in `base..head` (one batched
   `git log`) for such follow-up acks, resolves the referenced rev with
   `git rev-parse`, and unions the paths into that merge's `ackedPaths`.
+- The target must be an **immutable sha** (7+ hex chars; `HEAD`, `HEAD~2`, tags
+  and branch names are rejected) **and a strict ancestor of the acknowledging
+  commit**, so an ack is always a genuinely later review of a merge that already
+  existed — it can never pre-acknowledge a merge created afterwards.
 - Extended the guard's remediation text to point at the non-destructive path.
 
 ## Why
@@ -34,6 +38,8 @@ produced empty PRs because the literal remedy is not executable from a
 - The ack is still **merge-scoped and path-scoped** — no global path allowlist
   (which the guard's own design notes forbid) and no age-based tolerance.
 - A follow-up ack naming a merge outside `base..head` is ignored, not honoured.
+- A follow-up ack naming a movable rev, or written on a commit that does not
+  descend from the merge, is ignored.
 - A follow-up ack listing a path the merge did not discard still trips the
   existing stale-ack error, so a bogus ack cannot look like coverage.
 
@@ -52,8 +58,8 @@ Merge-Discard-Ack: .github/extensions/screenshot-viewer/renderer.mjs -- supersed
 
 ## Verification
 
-- `npx vitest run tests/unit/silent-reverts-guard.test.ts` — 66 passed
-  (3 new real-git CLI cases + 3 new parser cases).
+- `npx vitest run tests/unit/silent-reverts-guard.test.ts` — 69 passed
+  (5 new real-git CLI cases + 4 new parser cases).
 - Mutation check: deleting the follow-up-ack union from `collectMergeInputs`
   fails 2 of the new tests, so they are not tautological.
 - `npm run typecheck`, `npx eslint`, `npx prettier --check` on the touched files

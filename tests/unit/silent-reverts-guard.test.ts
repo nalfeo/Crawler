@@ -347,6 +347,13 @@ describe('parseAckForTrailers', () => {
     ].join('\n');
     expect(parseAckForTrailers(msg).size).toBe(0);
   });
+
+  it('rejects movable revisions, which could retarget as the branch advances', () => {
+    for (const rev of ['HEAD', 'HEAD~2', 'main', 'v1.2.3', 'abc123', 'origin/main', 'HEAD^']) {
+      expect(parseAckForTrailers(`x\n\n${ACK_FOR_TRAILER}: ${rev}`).size).toBe(0);
+    }
+    expect(parseAckForTrailers(`x\n\n${ACK_FOR_TRAILER}: abc1234`).size).toBe(1);
+  });
 });
 
 describe('findSilentReverts', () => {
@@ -819,6 +826,68 @@ describe('silent-reverts CLI (real git)', () => {
           `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
         ].join('\n'),
       );
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('ignores a follow-up ack that names a movable revision', () => {
+    // `HEAD~1` resolves to the merge only because of where the branch happens
+    // to be now; a commit written before the merge existed could carry it and
+    // silently pre-acknowledge whatever lands later. Only immutable shas count.
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: movable-rev ack',
+          '',
+          `${ACK_FOR_TRAILER}: HEAD~1`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      // Precondition: the movable rev really does point at the merge right now.
+      expect(git('rev-parse', 'HEAD~1')).toBe(mergeSha);
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('ignores a follow-up ack from a commit that does not descend from the merge', () => {
+    // An ack must be a LATER review of the merge. A commit on a side branch
+    // that merely ends up in `base..head` never saw the merge, so honoring it
+    // would let an ack be written (or cherry-picked) ahead of its target.
+    const { dir, git } = buildOursScenario();
+    try {
+      const mergeSha = git('rev-parse', 'HEAD');
+      git('checkout', '-q', '-b', 'side', `${mergeSha}^`);
+      git(
+        'commit',
+        '--allow-empty',
+        '-q',
+        '-m',
+        [
+          'chore: ack written off the merge line',
+          '',
+          `${ACK_FOR_TRAILER}: ${mergeSha}`,
+          `${ACK_TRAILER}: ledger.json -- superseded by the rewrite`,
+        ].join('\n'),
+      );
+      git('checkout', '-q', 'pr');
+      git('merge', '--no-edit', '-q', 'side');
+      // Precondition: the ack commit genuinely does not descend from the merge.
+      expect(git('rev-list', 'side').split('\n')).not.toContain(mergeSha);
+
       const { status, output } = runGuard(dir, 'mainline');
       expect(output).toMatch(/\[ERROR][^\n]*ledger\.json/);
       expect(status).toBe(1);

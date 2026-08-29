@@ -250,8 +250,10 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 
 /**
  * Trailer that moves an acknowledgement OFF the merge commit: any commit in
- * `base..head` carrying `Merge-Discard-Ack-For: <merge-ish>` applies its
- * `Merge-Discard-Ack:` paths to that merge instead of to itself.
+ * `base..head` carrying `Merge-Discard-Ack-For: <merge-sha>` applies its
+ * `Merge-Discard-Ack:` paths to that merge instead of to itself. The target
+ * must be an immutable sha AND an ancestor of the acknowledging commit, so the
+ * ack is always a genuinely later review of one already-existing merge.
  *
  * This exists because the merge-scoped ack is otherwise only settable by
  * AMENDING the merge, which is impossible once that merge is pushed and shared
@@ -264,12 +266,29 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 export const ACK_FOR_TRAILER = 'Merge-Discard-Ack-For';
 
 /**
- * Parse `Merge-Discard-Ack-For: <merge-ish>` trailers. Values are left as
- * written (abbreviated sha, full sha, or any rev) — the caller resolves them
- * with `git rev-parse`, so Git owns abbreviation and ambiguity handling.
+ * An acknowledgement target must be an IMMUTABLE object name: a full sha or an
+ * abbreviation of at least 7 hex characters. Movable revs (`HEAD`, `HEAD~2`, a
+ * branch name, a tag) are rejected because what they point at changes as the
+ * branch advances, so a commit written today could acknowledge a merge created
+ * tomorrow — the ack would no longer be a review of one specific merge.
+ */
+const IMMUTABLE_REV_RE = /^[0-9a-f]{7,40}$/i;
+
+export function isImmutableRevision(value: string): boolean {
+  return IMMUTABLE_REV_RE.test(value);
+}
+
+/**
+ * Parse `Merge-Discard-Ack-For: <merge-sha>` trailers, keeping only immutable
+ * object names (see `isImmutableRevision`). Abbreviations are left as written —
+ * the caller resolves them with `git rev-parse`, so Git owns abbreviation and
+ * ambiguity handling — and the caller additionally requires the resolved merge
+ * to be a strict ancestor of the commit carrying the trailer.
  */
 export function parseAckForTrailers(commitMessage: string): Set<string> {
-  return parseTrailerValues(commitMessage, ACK_FOR_TRAILER);
+  return new Set(
+    [...parseTrailerValues(commitMessage, ACK_FOR_TRAILER)].filter(isImmutableRevision),
+  );
 }
 
 /**

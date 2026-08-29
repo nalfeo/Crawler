@@ -215,6 +215,11 @@ export interface CollectResult {
  * rather than reported: once the merge lands on main it leaves `base..head`
  * while a cherry-picked ack commit may not, and an ack for a merge the guard
  * is not inspecting cannot hide anything.
+ *
+ * The target must be an immutable sha (movable revs like `HEAD` or a branch
+ * name are rejected by `parseAckForTrailers`) and a STRICT ANCESTOR of the
+ * commit carrying the trailer, so an ack can only ever be a later review of a
+ * merge that already existed when it was written.
  */
 function collectFollowUpAcks(
   cwd: string,
@@ -233,6 +238,7 @@ function collectFollowUpAcks(
   for (const record of log.split('\u0001')) {
     const sep = record.indexOf('\u0000');
     if (sep < 0) continue;
+    const ackSha = record.slice(0, sep).trim();
     const message = record.slice(sep + 1).trim();
     const targets = parseAckForTrailers(message);
     if (targets.size === 0) continue;
@@ -242,6 +248,11 @@ function collectFollowUpAcks(
     for (const target of targets) {
       const resolved = gitOrNull(['rev-parse', '--verify', '--quiet', `${target}^{commit}`], cwd);
       if (resolved === null || !mergeShas.has(resolved)) continue;
+      // Strict ancestry: the merge must already have existed when the ack was
+      // written. Without this, a commit could be cherry-picked ahead of (or
+      // written before) the merge it claims to have reviewed.
+      if (resolved === ackSha) continue;
+      if (gitOrNull(['merge-base', '--is-ancestor', resolved, ackSha], cwd) === null) continue;
       const acked = byMerge.get(resolved) ?? new Set<string>();
       for (const p of paths) acked.add(p);
       byMerge.set(resolved, acked);
@@ -489,8 +500,10 @@ function main(): void {
       `If the discard IS intentional, add a \`${ACK_TRAILER}: ${f.path}\` trailer to ` +
       `the ${mergeTargets} explaining why. When that merge is already pushed and ` +
       `shared (amending it would rewrite others' history), put the same trailer on a ` +
-      `NEW commit alongside \`${ACK_FOR_TRAILER}: <merge sha>\` instead — ` +
-      `e.g. \`git commit --allow-empty\` with both trailers in the message.`;
+      `NEW commit descending from that merge, alongside ` +
+      `\`${ACK_FOR_TRAILER}: <merge sha>\` instead — e.g. \`git commit --allow-empty\` ` +
+      `with both trailers in the message. The target must be a sha (7+ hex chars), ` +
+      `not \`HEAD\` or a branch name.`;
     if (f.severity === 'error') report.error(message, { file: f.path, remediation });
     else report.warn(`${message} (branch-local work, not mainline)`, { file: f.path, remediation });
   }
