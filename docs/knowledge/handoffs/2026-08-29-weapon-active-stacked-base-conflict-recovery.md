@@ -14,8 +14,9 @@ weapons, hud-ux, ci-policy
 
 ## Apples
 
-Estimated 1🍎, actual 2🍎. The merge itself was small, but the updated base exposed
-two typecheck errors and one stale E2E expectation that required targeted repair.
+Estimated 1🍎, actual 3🍎. The merge itself was small, but the updated base exposed
+two typecheck errors, one stale E2E expectation, and an incomplete carryover
+migration found by the required independent grade.
 
 ## Summary
 
@@ -27,11 +28,13 @@ two typecheck errors and one stale E2E expectation that required targeted repair
   by combining independently landed fixes.
 - Updated the newly inherited loadout E2E expectation from the legacy dagger
   passive to `dagger-rapid-strike-active`.
+- Expanded saved-state migration from Arcane-only handling to every renamed
+  level-5/15 weapon milestone while preserving canonical skill grant ownership.
 
 ## Validation
 
 - `npm run typecheck`
-- 47 targeted weapon, Arcane, release-capacity, and shipped-pipeline tests
+- 106 targeted carryover, weapon, and shipped-pipeline tests
 - Targeted milestone loadout E2E test
 - Full `main-game-scene-ui-exclusivity.test.ts`: 20 passed; its one stale passive
   expectation failed before the integration update and passed when rerun directly

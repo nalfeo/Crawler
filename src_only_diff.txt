@@ -1,0 +1,1624 @@
+diff --git a/src/engine/HudAbilityBar.ts b/src/engine/HudAbilityBar.ts
+index e939be726..d857d3aac 100644
+--- a/src/engine/HudAbilityBar.ts
++++ b/src/engine/HudAbilityBar.ts
+@@ -3,6 +3,8 @@ import type { GameWorld } from '../core/world.js';
+ import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
+ import { getAbilityPresentation } from '../shared/ability-presentation.js';
+ import { GAME } from '../shared/constants.js';
++import { weaponSkillPrerequisiteMatches } from '../shared/weapon-skills.js';
++import { getActiveWeaponDef } from '../core/active-weapon.js';
+ import { isAbilitySlotCastFlashing } from './ability-bar-flash-state.js';
+ import { getAbilityIconEntry } from './ability-icon.js';
+ import { createBeveledPanel } from './pixel-ui.js';
+@@ -33,8 +35,28 @@ const COLORS = {
+   slotCastFlash: 0xf0f9ff,
+   slotCastFlashBorder: 0x22d3ee,
+   cooldownRing: 0xfbbf24,
++  slotLocked: 0x1b2136,
++  slotLockedBorder: 0x5c4a2a,
+ } as const;
+ 
++/**
++ * Whether an equipped ability's weapon prerequisite is currently satisfied.
++ * Mirrors `weaponPrerequisiteMet` in `src/game/systems/abilitySystem.ts`; the
++ * engine layer must not import `src/game`, so the prerequisite is read from the
++ * shared presentation table (the single source of truth both layers spread).
++ */
++function abilityPrerequisiteMet(world: GameWorld, abilityId: string): boolean {
++  const prereq = getAbilityPresentation(abilityId)?.weaponPrerequisite;
++  if (prereq === undefined) return true;
++  const weapon = getActiveWeaponDef(world);
++  if (weapon === undefined) return false;
++  return weaponSkillPrerequisiteMatches(
++    prereq,
++    weapon.weaponClassSkillId,
++    weapon.weaponTypeSkillId,
++  );
++}
++
+ function abilityAccent(id: string): number {
+   const category = getAbilityPresentation(id)?.category;
+   if (category === 'combat') return COLORS.combat;
+@@ -194,12 +216,15 @@ export function createHudAbilityBar(
+   setVisible(false);
+ 
+   function sync(world: GameWorld, playerEid: number): void {
+-    const visible = world.featureUnlocks.spells === true;
++    const state = world.abilityStatesByEntity.get(playerEid);
++    const equipped = state?.equippedActiveAbilityIds ?? [];
++    // The bar unlocks with the spellbook, but non-spell actives (e.g. the
++    // Arcane level-5 milestone unlock) can be equipped before that — the bar
++    // must be visible for those too or the ability is invisible to the player.
++    const visible = world.featureUnlocks.spells === true || equipped.length > 0;
+     setVisible(visible);
+     if (!visible) return;
+ 
+-    const state = world.abilityStatesByEntity.get(playerEid);
+-    const equipped = state?.equippedActiveAbilityIds ?? [];
+     const cooldowns = state?.cooldownByAbilityId ?? new Map();
+     const cooldownFrames = state?.cooldownFramesByAbilityId ?? new Map();
+ 
+@@ -230,7 +255,15 @@ export function createHudAbilityBar(
+       const lastTriggerFrame = cooldowns.get(id);
+       const cooldownDuration = cooldownFrames.get(id) ?? 0;
+       const flashing = isAbilitySlotCastFlashing(world.frameCount, lastTriggerFrame);
+-      if (flashing) {
++      const prereqMet = abilityPrerequisiteMet(world, id);
++      if (!prereqMet) {
++        // Owned but unusable right now: the ability keeps its slot and stays
++        // readable, dimmed with a warning border until the required weapon is
++        // equipped again.
++        slot.setFillStyle(COLORS.slotLocked, 0.92).setStrokeStyle(2, COLORS.slotLockedBorder);
++        abilityLabel.setColor('#8a7a54');
++        keyLabel.setColor('#6d6146');
++      } else if (flashing) {
+         slot.setFillStyle(COLORS.slotCastFlash, 0.98).setStrokeStyle(3, COLORS.slotCastFlashBorder);
+         abilityLabel.setColor('#0c4a6e');
+         keyLabel.setColor('#0c4a6e');
+@@ -239,7 +272,7 @@ export function createHudAbilityBar(
+         abilityLabel.setColor('#f4f7fb');
+         keyLabel.setColor('#b8c7dc');
+       }
+-      accentBar.setFillStyle(abilityAccent(id), 1);
++      accentBar.setFillStyle(abilityAccent(id), prereqMet ? 1 : 0.35);
+       abilityLabel.setText(presentation?.shortLabel ?? id.slice(0, 5).toUpperCase());
+       abilityLabel.setFontSize(11);
+       abilityLabel.setVisible(iconEntry === null);
+@@ -247,6 +280,7 @@ export function createHudAbilityBar(
+         abilityIcon.setTexture(iconEntry.textureKey);
+         abilityIcon
+           .setScale(fitScaleForBox(abilityIcon.width, abilityIcon.height, 30))
++          .setAlpha(prereqMet ? 1 : 0.45)
+           .setVisible(true);
+       } else {
+         abilityIcon.setVisible(false);
+diff --git a/src/engine/HudAnnouncementBanner.ts b/src/engine/HudAnnouncementBanner.ts
+index 5f1f88648..42eceae23 100644
+--- a/src/engine/HudAnnouncementBanner.ts
++++ b/src/engine/HudAnnouncementBanner.ts
+@@ -59,6 +59,7 @@ function verbForKind(kind: AnnouncementKind): string {
+       // The full authored announcement is the label; no subtitle verb.
+       return '';
+     case 'skillPassiveUnlocked':
++    case 'skillAbilityUnlocked':
+       // The full authored announcement is the label; no subtitle verb.
+       return '';
+     default: {
+@@ -77,6 +78,7 @@ function colorForKind(kind: AnnouncementKind): string {
+     case 'bossAbilityCast':
+       return COLORS.boss;
+     case 'skillPassiveUnlocked':
++    case 'skillAbilityUnlocked':
+       return COLORS.unlock;
+     default:
+       return COLORS.fallback;
+@@ -204,13 +206,17 @@ export function createHudAnnouncementBanner(
+   }
+ 
+   function show(event: AnnouncementEvent, nowMs: number): void {
+-    // Boss-ability casts and skill-passive-unlock milestones both carry a full
+-    // authored string that must render exactly (never ellipsized or rebuilt
++    // Boss-ability casts and skill milestone unlocks (passive or active) all
++    // carry a full authored string that must render exactly (never ellipsized or rebuilt
+     // from an archetype index). The panel is 420px wide; authored strings can
+     // exceed the 44-char single-line budget, so we enable word wrap and
+     // vertically re-center the label in the full panel.
+     const FULL_TEXT_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
+-    if (event.kind === 'bossAbilityCast' || event.kind === 'skillPassiveUnlocked') {
++    if (
++      event.kind === 'bossAbilityCast' ||
++      event.kind === 'skillPassiveUnlocked' ||
++      event.kind === 'skillAbilityUnlocked'
++    ) {
+       labelText
+         .setWordWrapWidth(FULL_TEXT_WRAP_WIDTH, true)
+         .setText(event.text)
+diff --git a/src/game/abilities/registry.ts b/src/game/abilities/registry.ts
+index ac16774b7..81d2c1b49 100644
+--- a/src/game/abilities/registry.ts
++++ b/src/game/abilities/registry.ts
+@@ -1,5 +1,41 @@
+ import { abilityCatalogSchema, type AbilityDefinition } from './types.js';
+-import { ABILITY_PRESENTATION_BY_ID } from '../../shared/ability-presentation.js';
++import {
++  ABILITY_PRESENTATION_BY_ID,
++  type AbilityPresentation,
++} from '../../shared/ability-presentation.js';
++
++type ActiveAbilityDefinition = Extract<AbilityDefinition, { kind: 'active' | 'spell' }>;
++
++function weaponMilestoneActive(
++  id: keyof typeof ABILITY_PRESENTATION_BY_ID,
++  damage: number,
++  rangeFeet: number,
++  maxTargets: number,
++  affinity: 'physical' | 'magic',
++  delivery: 'contact' | 'projectile',
++): ActiveAbilityDefinition {
++  const presentation = ABILITY_PRESENTATION_BY_ID[id] as AbilityPresentation;
++  if (
++    presentation.kind !== 'active' ||
++    presentation.cooldownFrames === undefined ||
++    presentation.weaponPrerequisite === undefined
++  ) {
++    throw new Error(`Weapon milestone active "${id}" has incomplete presentation metadata`);
++  }
++
++  return {
++    ...presentation,
++    kind: 'active',
++    cooldownFrames: presentation.cooldownFrames,
++    weaponPrerequisite: presentation.weaponPrerequisite,
++    trigger: {
++      kind: 'enemy_cluster',
++      minEnemies: 1,
++      withinFeet: rangeFeet,
++    },
++    effects: [{ type: 'active_damage', damage, rangeFeet, maxTargets, affinity, delivery }],
++  };
++}
+ 
+ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
+   {
+@@ -964,6 +1000,30 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
+     effects: [{ type: 'extra_projectile', count: 2 }],
+   },
+ 
++  // Weapon-type skill actives — L5 unlocks and L15 replacements.
++  // New IDs preserve carried passive grants from older runs instead of changing
++  // an existing catalog ID's persisted kind in place.
++  weaponMilestoneActive('sword-strike-active', 12, 6, 2, 'physical', 'contact'),
++  weaponMilestoneActive('sword-strike-active-evolved', 20, 7, 4, 'physical', 'contact'),
++  weaponMilestoneActive('dagger-rapid-strike-active', 8, 4, 1, 'physical', 'contact'),
++  weaponMilestoneActive('dagger-rapid-strike-active-evolved', 14, 5, 1, 'physical', 'contact'),
++  weaponMilestoneActive('hammer-crush-active', 18, 7, 2, 'physical', 'contact'),
++  weaponMilestoneActive('hammer-crush-active-evolved', 28, 9, 4, 'physical', 'contact'),
++  weaponMilestoneActive('bow-shot-active', 14, 36, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('bow-shot-active-evolved', 22, 40, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('crossbow-bolt-active', 16, 42, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('crossbow-bolt-active-evolved', 25, 48, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('pistol-shot-active', 10, 36, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('pistol-shot-active-evolved', 16, 40, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('throwing-toss-active', 12, 24, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('throwing-toss-active-evolved', 20, 28, 1, 'physical', 'projectile'),
++  weaponMilestoneActive('unarmed-punch-active', 9, 5, 2, 'physical', 'contact'),
++  weaponMilestoneActive('unarmed-punch-active-evolved', 15, 6, 4, 'physical', 'contact'),
++  weaponMilestoneActive('spellcraft-bolt-active', 12, 32, 1, 'magic', 'projectile'),
++  weaponMilestoneActive('spellcraft-bolt-active-evolved', 20, 36, 1, 'magic', 'projectile'),
++  weaponMilestoneActive('sports-swing-active', 16, 10, 2, 'physical', 'contact'),
++  weaponMilestoneActive('sports-swing-active-evolved', 26, 14, 4, 'physical', 'contact'),
++
+   // ─── Missing evolved / L10 abilities for weapon class skills ────────────────
+ 
+   // Slashing
+@@ -1079,25 +1139,35 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
+   },
+ 
+   // Arcane class
+-  {
+-    id: 'arcane-mastery-base',
+-    name: 'Arcane Mastery',
+-    shortLabel: 'ARCANE',
+-    description: '+10% damage with arcane weapons',
+-    category: 'combat',
+-    kind: 'passive',
+-    weaponPrerequisite: 'arcane',
+-    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
++  // Level 5 / 15 reward an ACTIVE ability (issue #3676): the arcane class is the
++  // one weapon class whose fantasy is casting, so its milestone unlock is a real
++  // castable rather than another flat damage passive. `kind: 'active'` (not
++  // 'spell') keeps it out of the spellbook feature gate and the spell-mastery
++  // skills, while `weaponPrerequisite` preserves the weapon-class contract: the
++  // nova only fires while an arcane weapon is equipped.
++  {
++    ...ABILITY_PRESENTATION_BY_ID['arcane-nova'],
++    trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 8 },
++    flavorText: '"Point it at the crowd. That is the whole technique." — The Director',
++    effects: [
++      {
++        type: 'spell_fireball',
++        damage: { base: 14, scalesWithIntelligence: true },
++        radiusTiles: { base: 3, scalesWithIntelligence: false },
++      },
++    ],
+   },
+   {
+-    id: 'arcane-mastery-evolved',
+-    name: 'Arcane Mastery (Evolved)',
+-    shortLabel: 'ARCANE+',
+-    description: '+15% damage with arcane weapons',
+-    category: 'combat',
+-    kind: 'passive',
+-    weaponPrerequisite: 'arcane',
+-    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
++    ...ABILITY_PRESENTATION_BY_ID['arcane-nova-evolved'],
++    trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 8 },
++    flavorText: '"Bigger blast, shorter wait. The audience calls that growth." — The Director',
++    effects: [
++      {
++        type: 'spell_fireball',
++        damage: { base: 22, scalesWithIntelligence: true },
++        radiusTiles: { base: 4, scalesWithIntelligence: false },
++      },
++    ],
+   },
+   {
+     id: 'arcane-efficiency-evolved',
+diff --git a/src/game/abilities/types.ts b/src/game/abilities/types.ts
+index 1c1677bcc..51b42fc43 100644
+--- a/src/game/abilities/types.ts
++++ b/src/game/abilities/types.ts
+@@ -32,6 +32,14 @@ export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
+   cooldownFrames: number;
+   trigger: SharedAbilityTriggerCondition;
+   effects: CatalogEffect[];
++  /**
++   * Optional weapon skill prerequisite, with the same class/type matching rules
++   * as {@link PassiveAbilityDefinition.weaponPrerequisite}. When set, the
++   * ability stays equipped on the bar but refuses to fire unless a qualifying
++   * weapon is equipped — this is how a weapon-class skill can reward an active
++   * without letting it leak onto unrelated builds after a weapon swap.
++   */
++  weaponPrerequisite?: WeaponSkillId;
+ }
+ 
+ export interface PassiveAbilityDefinition extends AbilityDefinitionBase {
+@@ -181,6 +189,16 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
+       dpsPercentOfDamage: z.number().positive(),
+     })
+     .strict(),
++  z
++    .object({
++      type: z.literal('active_damage'),
++      damage: z.number().positive(),
++      rangeFeet: z.number().positive(),
++      maxTargets: z.number().int().positive(),
++      affinity: z.enum(['physical', 'magic']),
++      delivery: z.enum(['contact', 'projectile']),
++    })
++    .strict(),
+   z
+     .object({
+       type: z.literal('spell_fireball'),
+@@ -259,18 +277,19 @@ const baseAbilitySchema = z
+   })
+   .strict();
+ 
++// All valid weapon skill prerequisite IDs — class skills union type skills.
++const WEAPON_PREREQ_IDS = [...WEAPON_CLASS_SKILL_IDS, ...WEAPON_TYPE_SKILL_IDS] as const;
++
+ const activeAbilitySchema = baseAbilitySchema
+   .extend({
+     kind: z.enum(['active', 'spell']),
+     cooldownFrames: z.number().int().positive(),
+     trigger: triggerConditionSchema,
+     effects: z.array(effectSchema).min(1),
++    weaponPrerequisite: z.enum(WEAPON_PREREQ_IDS).optional(),
+   })
+   .strict();
+ 
+-// All valid weapon skill prerequisite IDs — class skills union type skills.
+-const WEAPON_PREREQ_IDS = [...WEAPON_CLASS_SKILL_IDS, ...WEAPON_TYPE_SKILL_IDS] as const;
+-
+ const passiveAbilitySchema = baseAbilitySchema
+   .extend({
+     kind: z.literal('passive'),
+diff --git a/src/game/ai/equipment-loadout-evaluator.ts b/src/game/ai/equipment-loadout-evaluator.ts
+index bd3a06f0b..63f288219 100644
+--- a/src/game/ai/equipment-loadout-evaluator.ts
++++ b/src/game/ai/equipment-loadout-evaluator.ts
+@@ -547,8 +547,13 @@ function activeWeaponItem(equipped: readonly LoadoutItem[]): LoadoutItem | null
+   return equipped.find((item) => item.weapon !== null) ?? null;
+ }
+ 
+-function passivePrerequisiteMet(ability: AbilityDefinition, weapon: WeaponDef | null): boolean {
+-  if (ability.kind !== 'passive') return false;
++/**
++ * Whether an ability's weapon prerequisite is satisfied by the candidate
++ * loadout's weapon. Applies to passives (whose stat effects are inert while
++ * unmet) and to weapon-gated ACTIVES (which refuse to fire while unmet), so a
++ * weapon-gated active scores zero on a loadout that cannot fire it.
++ */
++function abilityPrerequisiteMet(ability: AbilityDefinition, weapon: WeaponDef | null): boolean {
+   if (ability.weaponPrerequisite === undefined) return true;
+   return (
+     weapon !== null &&
+@@ -567,7 +572,7 @@ function passiveModifiers(
+   const modifiers: LegacyStatModifierLike[] = [];
+   for (const abilityId of [...ownership.passive.keys()].sort()) {
+     const ability = getAbilityDefinition(abilityId);
+-    if (ability === undefined || !passivePrerequisiteMet(ability, weapon)) continue;
++    if (ability === undefined || !abilityPrerequisiteMet(ability, weapon)) continue;
+     for (const effect of ability.effects) {
+       if (effect.type === 'stat_add' || effect.type === 'stat_multiply') {
+         modifiers.push({
+@@ -711,6 +716,17 @@ function activeEffectValue(
+ ): number {
+   const areaTargets = Math.max(1, fixture.clusteredEnemyCount);
+   switch (effect.type) {
++    case 'active_damage':
++      return (
++        computeExpectedCritDamage(
++          computePlayerScaledDamage(effect.damage, stats, {
++            affinity: effect.affinity,
++            scaleWithPrimary: true,
++          }),
++          stats.critChance,
++          stats.critMultiplier,
++        ) * Math.min(effect.maxTargets, areaTargets)
++      );
+     case 'spell_fireball':
+     case 'spell_frost_nova':
+       return (
+@@ -767,11 +783,13 @@ function expectedActiveAbilityValue(
+   stats: Readonly<Record<StatId, number>>,
+   fixture: EquipmentEncounterFixture,
+   config: EquipmentErvConfig,
++  weapon: WeaponDef | null,
+ ): number {
+   let value = 0;
+   for (const abilityId of configured) {
+     const ability = getAbilityDefinition(abilityId);
+     if (ability === undefined || ability.kind === 'passive') continue;
++    if (!abilityPrerequisiteMet(ability, weapon)) continue;
+     const uptime = triggerUptime(ability, fixture);
+     if (uptime <= 0) continue;
+     const cooldownFrames = applyCooldownReduction(ability.cooldownFrames, stats.cooldownReduction);
+@@ -846,7 +864,7 @@ function passiveNonStatValue(
+   let value = 0;
+   for (const abilityId of [...ownership.passive.keys()].sort()) {
+     const ability = getAbilityDefinition(abilityId);
+-    if (ability === undefined || !passivePrerequisiteMet(ability, weapon)) continue;
++    if (ability === undefined || !abilityPrerequisiteMet(ability, weapon)) continue;
+     for (const effect of ability.effects) {
+       if (effect.type === 'extra_projectile') {
+         continue;
+@@ -942,7 +960,8 @@ function scoreLoadout(
+     config.weights.passiveAbility;
+   components.activeAbility =
+     fixtures.reduce(
+-      (sum, fixture) => sum + expectedActiveAbilityValue(configured, fullStats, fixture, config),
++      (sum, fixture) =>
++        sum + expectedActiveAbilityValue(configured, fullStats, fixture, config, weapon),
+       0,
+     ) * config.weights.activeAbility;
+   components.affinity =
+diff --git a/src/game/playerCarryover.ts b/src/game/playerCarryover.ts
+index a56169557..b45e4105b 100644
+--- a/src/game/playerCarryover.ts
++++ b/src/game/playerCarryover.ts
+@@ -16,7 +16,9 @@ import { getEquipmentDefForItem, RETIRED_EQUIPMENT_ITEM_IDS } from '../shared/eq
+ import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
+ import {
+   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
++  ACTIVE_ABILITY_SLOT_LIMIT,
+   equipmentAbilityGrantSourceId,
++  skillAbilityGrantSourceId,
+   type AbilityGrantSource,
+   type AbilityGrantSourceId,
+   type AbilityStateLike,
+@@ -376,9 +378,47 @@ function restoreAbilityState(
+   normalized.equippedActiveAbilityIds = [...snapshot.equippedActiveAbilityIds];
+   normalized.activeAbilityGrantSources = legacyState.activeAbilityGrantSources;
+   normalized.passiveAbilityGrantSources = legacyState.passiveAbilityGrantSources;
++  migrateRetiredArcaneSkillAbilities(normalized);
+   return normalized;
+ }
+ 
++/**
++ * Converts Arcane's former L5/L15 passive milestones into their active
++ * successors while retaining the milestone's ownership source for upgrades.
++ */
++function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
++  const replacements = [
++    ['arcane-mastery-base', 'arcane-nova', 5],
++    ['arcane-mastery-evolved', 'arcane-nova-evolved', 15],
++  ] as const;
++
++  for (const [retiredId, activeId, milestoneLevel] of replacements) {
++    const sources = state.grantOwnership.passiveSourcesByAbilityId.get(retiredId);
++    if (sources === undefined) continue;
++
++    state.grantOwnership.passiveSourcesByAbilityId.delete(retiredId);
++    const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
++    // The retired ability was exclusively its milestone's passive grant; recreate
++    // that canonical source because legacy:passive sources cannot own an active.
++    activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
++    state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
++    state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);
++    if (
++      !state.equippedActiveAbilityIds.includes(activeId) &&
++      state.equippedActiveAbilityIds.length < ACTIVE_ABILITY_SLOT_LIMIT
++    ) {
++      state.equippedActiveAbilityIds.push(activeId);
++    }
++  }
++  const ownedActiveAbilityIds = state.ownedActiveAbilityIds ?? [];
++  state.ownedActiveAbilityIds = [
++    ...ownedActiveAbilityIds.filter((id) => state.grantOwnership.activeSourcesByAbilityId.has(id)),
++    ...[...state.grantOwnership.activeSourcesByAbilityId.keys()].filter(
++      (id) => !ownedActiveAbilityIds.includes(id),
++    ),
++  ];
++}
++
+ function assertArray(value: unknown, path: string): asserts value is readonly unknown[] {
+   if (!Array.isArray(value)) {
+     throw new PlayerCarryoverSnapshotError(`Expected array at ${path}`);
+diff --git a/src/game/skills/registry.ts b/src/game/skills/registry.ts
+index 19d08167c..e6f88a8ec 100644
+--- a/src/game/skills/registry.ts
++++ b/src/game/skills/registry.ts
+@@ -462,9 +462,9 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+     milestones: [
+       {
+         level: 5,
+-        name: 'Spell Focus',
+-        description: '+10% damage with arcane weapons',
+-        abilityId: 'arcane-mastery-base',
++        name: 'Arcane Nova',
++        description: 'Unlocks an active arcane detonation (arcane weapon required)',
++        abilityId: 'arcane-nova',
+       },
+       {
+         level: 10,
+@@ -475,8 +475,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Spellweaver',
+-        description: 'Evolved Spell Focus ability',
+-        abilityId: 'arcane-mastery-evolved',
++        description: 'Evolved Arcane Nova ability',
++        abilityId: 'arcane-nova-evolved',
+       },
+       {
+         level: 20,
+@@ -506,8 +506,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Blade Familiarity',
+-        description: '+0.1 accuracy with swords',
+-        abilityId: 'sword-strike-base',
++        description: 'Unlocks an active sword strike',
++        abilityId: 'sword-strike-active',
+       },
+       {
+         level: 10,
+@@ -518,8 +518,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'True Cut',
+-        description: 'Evolved Blade Familiarity ability',
+-        abilityId: 'sword-strike-evolved',
++        description: 'Evolved Sword Strike ability',
++        abilityId: 'sword-strike-active-evolved',
+       },
+       {
+         level: 20,
+@@ -546,7 +546,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+         level: 5,
+         name: 'Close Quarters',
+         description: 'Rapid strike technique — quick follow-up attack with daggers',
+-        abilityId: 'dagger-rapid-strike-base',
++        abilityId: 'dagger-rapid-strike-active',
+       },
+       {
+         level: 10,
+@@ -558,7 +558,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+         level: 15,
+         name: 'Vital Points',
+         description: 'Evolved Close Quarters ability',
+-        abilityId: 'dagger-rapid-strike-evolved',
++        abilityId: 'dagger-rapid-strike-active-evolved',
+       },
+       {
+         level: 20,
+@@ -584,8 +584,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Hammer Time',
+-        description: '+0.1 accuracy with hammers',
+-        abilityId: 'hammer-crush-base',
++        description: 'Unlocks an active crushing hammer blow',
++        abilityId: 'hammer-crush-active',
+       },
+       {
+         level: 10,
+@@ -596,8 +596,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Precision Blow',
+-        description: 'Evolved Hammer Time ability',
+-        abilityId: 'hammer-crush-evolved',
++        description: 'Evolved Hammer Crush ability',
++        abilityId: 'hammer-crush-active-evolved',
+       },
+       {
+         level: 20,
+@@ -623,8 +623,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Steady Aim',
+-        description: '+0.1 accuracy with bows',
+-        abilityId: 'bow-shot-base',
++        description: 'Unlocks an active long-range bow shot',
++        abilityId: 'bow-shot-active',
+       },
+       {
+         level: 10,
+@@ -635,8 +635,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Perfect Draw',
+-        description: 'Evolved Steady Aim ability',
+-        abilityId: 'bow-shot-evolved',
++        description: 'Evolved Bow Shot ability',
++        abilityId: 'bow-shot-active-evolved',
+       },
+       {
+         level: 20,
+@@ -662,8 +662,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Mechanical Precision',
+-        description: '+0.1 accuracy with crossbows',
+-        abilityId: 'crossbow-bolt-base',
++        description: 'Unlocks an active crossbow bolt',
++        abilityId: 'crossbow-bolt-active',
+       },
+       {
+         level: 10,
+@@ -674,8 +674,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Perfect Tension',
+-        description: 'Evolved Mechanical Precision ability',
+-        abilityId: 'crossbow-bolt-evolved',
++        description: 'Evolved Crossbow Bolt ability',
++        abilityId: 'crossbow-bolt-active-evolved',
+       },
+       {
+         level: 20,
+@@ -701,8 +701,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Quick Draw',
+-        description: '+0.1 accuracy with pistols',
+-        abilityId: 'pistol-shot-base',
++        description: 'Unlocks an active pistol shot',
++        abilityId: 'pistol-shot-active',
+       },
+       {
+         level: 10,
+@@ -713,8 +713,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Deadshot',
+-        description: 'Evolved Quick Draw ability',
+-        abilityId: 'pistol-shot-evolved',
++        description: 'Evolved Pistol Shot ability',
++        abilityId: 'pistol-shot-active-evolved',
+       },
+       {
+         level: 20,
+@@ -740,8 +740,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Sure Throw',
+-        description: '+0.1 accuracy with throwing weapons',
+-        abilityId: 'throwing-toss-base',
++        description: 'Unlocks an active multi-target throw',
++        abilityId: 'throwing-toss-active',
+       },
+       {
+         level: 10,
+@@ -752,8 +752,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'True Aim',
+-        description: 'Evolved Sure Throw ability',
+-        abilityId: 'throwing-toss-evolved',
++        description: 'Evolved Throwing Toss ability',
++        abilityId: 'throwing-toss-active-evolved',
+       },
+       {
+         level: 20,
+@@ -779,8 +779,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Perfect Stance',
+-        description: '+0.1 accuracy with unarmed',
+-        abilityId: 'unarmed-punch-base',
++        description: 'Unlocks an active bare-knuckle strike',
++        abilityId: 'unarmed-punch-active',
+       },
+       {
+         level: 10,
+@@ -791,8 +791,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Dance of Combat',
+-        description: 'Evolved Perfect Stance ability',
+-        abilityId: 'unarmed-punch-evolved',
++        description: 'Evolved Unarmed Punch ability',
++        abilityId: 'unarmed-punch-active-evolved',
+       },
+       {
+         level: 20,
+@@ -818,8 +818,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Spell Infusion',
+-        description: '+0.1 accuracy with spellcraft',
+-        abilityId: 'spellcraft-bolt-base',
++        description: 'Unlocks an active spellcraft bolt',
++        abilityId: 'spellcraft-bolt-active',
+       },
+       {
+         level: 10,
+@@ -830,8 +830,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'Spellsinger',
+-        description: 'Evolved Spell Infusion ability',
+-        abilityId: 'spellcraft-bolt-evolved',
++        description: 'Evolved Spellcraft Bolt ability',
++        abilityId: 'spellcraft-bolt-active-evolved',
+       },
+       {
+         level: 20,
+@@ -857,8 +857,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 5,
+         name: 'Game Face',
+-        description: '+0.1 accuracy with sports equipment',
+-        abilityId: 'sports-swing-base',
++        description: 'Unlocks an active sports-equipment swing',
++        abilityId: 'sports-swing-active',
+       },
+       {
+         level: 10,
+@@ -869,8 +869,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+       {
+         level: 15,
+         name: 'All-Star',
+-        description: 'Evolved Game Face ability',
+-        abilityId: 'sports-swing-evolved',
++        description: 'Evolved Sports Swing ability',
++        abilityId: 'sports-swing-active-evolved',
+       },
+       {
+         level: 20,
+diff --git a/src/game/systems/abilitySystem.ts b/src/game/systems/abilitySystem.ts
+index 75112f1e4..2b95ab53e 100644
+--- a/src/game/systems/abilitySystem.ts
++++ b/src/game/systems/abilitySystem.ts
+@@ -726,6 +726,14 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
+     return false;
+   }
+ 
++  // Weapon-gated actives (e.g. the Arcane level-5 unlock) stay equipped on the
++  // bar but refuse to fire while the required weapon class/type is not
++  // equipped. Checked before the cooldown read/stamp below so a suppressed
++  // attempt neither consumes the cooldown nor emits activation feedback.
++  if (!weaponPrerequisiteMet(world, holderEid, abilityId)) {
++    return false;
++  }
++
+   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
+   const cooldownFramesForGate =
+     state.cooldownFramesByAbilityId.get(abilityId) ??
+@@ -824,18 +832,22 @@ function emitAbilityActivationAnnouncement(
+ }
+ 
+ /**
+- * Check whether the currently equipped weapon satisfies a passive ability's
+- * weapon prerequisite. Returns true when:
++ * Check whether the currently equipped weapon satisfies an ability's weapon
++ * prerequisite. Returns true when:
+  * - The ability has no prerequisite (always active), or
+  * - The prerequisite matches the active weapon's class OR type skill id.
++ *
++ * Applies to passives (whose stat effects are applied/revoked on the
++ * transition) and to actives (which stay equipped but refuse to fire while the
++ * prerequisite is unmet).
+  */
+ export function weaponPrerequisiteMet(
+   world: GameWorld,
+   holderEid: number,
+-  passiveId: string,
++  abilityId: string,
+ ): boolean {
+-  const def = getAbilityDefinition(passiveId);
+-  if (def === undefined || def.kind !== 'passive') return false;
++  const def = getAbilityDefinition(abilityId);
++  if (def === undefined) return false;
+   const prereq = def.weaponPrerequisite;
+   if (prereq === undefined) return true;
+ 
+diff --git a/src/game/systems/progressionEffects.ts b/src/game/systems/progressionEffects.ts
+index 38c50788a..f30a8bde5 100644
+--- a/src/game/systems/progressionEffects.ts
++++ b/src/game/systems/progressionEffects.ts
+@@ -203,10 +203,34 @@ function findNearestLivingEnemies(
+     found.push({ eid: enemyEid, x: ex, y: ey, distSq });
+   }
+ 
+-  found.sort((a, b) => a.distSq - b.distSq);
++  found.sort((a, b) => a.distSq - b.distSq || a.eid - b.eid);
+   return found.slice(0, maxCount).map(({ eid, x, y }) => ({ eid, x, y }));
+ }
+ 
++function applyActiveDamage(
++  world: GameWorld,
++  casterEid: number,
++  effect: CatalogEffect & { type: 'active_damage' },
++): void {
++  const casterX = world.stores.position.x[casterEid] ?? 0;
++  const casterY = world.stores.position.y[casterEid] ?? 0;
++  const targets = findNearestLivingEnemies(world, casterEid, effect.rangeFeet, effect.maxTargets);
++
++  for (const target of targets) {
++    applyDamage(world, target.eid, effect.damage, target.x, target.y, {
++      origin: 'player',
++      affinity: effect.affinity,
++      scaleWithPrimary: true,
++      canCrit: true,
++      sourceX: casterX,
++      sourceY: casterY,
++      sourceEid: casterEid,
++      delivery: effect.delivery,
++      fromActiveAbility: true,
++    });
++  }
++}
++
+ function castFireball(
+   world: GameWorld,
+   casterEid: number,
+@@ -790,6 +814,12 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
+       });
+       break;
+ 
++    case 'active_damage':
++      if (holderEid !== undefined) {
++        applyActiveDamage(world, holderEid, effect);
++      }
++      break;
++
+     case 'spell_fireball':
+       if (holderEid !== undefined) {
+         castFireball(world, holderEid, effect, spellId);
+diff --git a/src/game/systems/skillSystem.ts b/src/game/systems/skillSystem.ts
+index 763aba3bf..ce08130d2 100644
+--- a/src/game/systems/skillSystem.ts
++++ b/src/game/systems/skillSystem.ts
+@@ -5,9 +5,14 @@ import type { StatKey } from '../../shared/stats.js';
+ import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillDefinition } from '../skills/types.js';
+ import { getSkillDefinition } from '../skills/registry.js';
+ import { addStatModifier } from './statsSystem.js';
+-import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
++import {
++  grantAbilitySources,
++  queueAbilityTrigger,
++  revokeAbilitySources,
++  type AbilityGrantRequest,
++} from './abilitySystem.js';
+ import { getAbilityDefinition } from '../abilities/registry.js';
+-import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shared/abilities.js';
++import { skillAbilityGrantSourceId, type AbilityGrantKind } from '../../shared/abilities.js';
+ import { pushVfxEvent } from '../../shared/vfx-events.js';
+ import { pushFloaterEvent } from '../../shared/floater-events.js';
+ import { pushAnnouncement } from '../../shared/announcement-events.js';
+@@ -17,8 +22,19 @@ import {
+   weaponSwingVfxKindForPreset,
+ } from '../../shared/weapon-swing-vfx.js';
+ 
+-/** How long the level-5 passive-unlock banner is shown, in milliseconds. */
+-const SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS = 2600;
++/** How long a skill milestone unlock banner (passive or active) is shown, in milliseconds. */
++const SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS = 2600;
++
++/**
++ * Grant kind for a milestone ability, derived from the catalog so an active
++ * milestone reward is granted onto the ability bar instead of the passive list.
++ * Unknown ids fall back to `'passive'`, preserving the pre-existing behaviour
++ * for milestones whose ability is not (yet) registered.
++ */
++function abilityGrantKind(abilityId: string): AbilityGrantKind {
++  const kind = getAbilityDefinition(abilityId)?.kind;
++  return kind === 'active' || kind === 'spell' ? 'active' : 'passive';
++}
+ 
+ /**
+  * Processes skill usage events each frame.
+@@ -134,29 +150,26 @@ function applyMilestone(
+     const targetEid = holderEid ?? query(world.ecs, [Player])[0];
+     if (targetEid !== undefined) {
+       const sourceId = skillAbilityGrantSourceId(skillId, level);
++      const grantedDef = getAbilityDefinition(milestone.abilityId);
++      const grantKind = abilityGrantKind(milestone.abilityId);
+ 
+       // Handle upgrade logic: L15 replaces L5, L20 replaces L10
+-      const revokeRequests: Array<{
+-        kind: 'passive';
+-        abilityId: string;
+-        sourceId: AbilityGrantSourceId;
+-      }> = [];
+-      if (level === 15) {
+-        const oldSourceId = skillAbilityGrantSourceId(skillId, 5);
+-        const oldMilestone = def.milestones.find((m) => m.level === 5);
++      const revokeRequests: AbilityGrantRequest[] = [];
++      const replacedLevel = level === 15 ? 5 : level === 20 ? 10 : undefined;
++      let replacedActiveSlotIndex = -1;
++      if (replacedLevel !== undefined) {
++        const oldSourceId = skillAbilityGrantSourceId(skillId, replacedLevel);
++        const oldMilestone = def.milestones.find((m) => m.level === replacedLevel);
+         if (oldMilestone?.abilityId !== undefined) {
++          replacedActiveSlotIndex =
++            world.abilityStatesByEntity
++              .get(targetEid)
++              ?.equippedActiveAbilityIds.indexOf(oldMilestone.abilityId) ?? -1;
+           revokeRequests.push({
+-            kind: 'passive',
+-            abilityId: oldMilestone.abilityId,
+-            sourceId: oldSourceId,
+-          });
+-        }
+-      } else if (level === 20) {
+-        const oldSourceId = skillAbilityGrantSourceId(skillId, 10);
+-        const oldMilestone = def.milestones.find((m) => m.level === 10);
+-        if (oldMilestone?.abilityId !== undefined) {
+-          revokeRequests.push({
+-            kind: 'passive',
++            // The replaced ability may itself be an active (e.g. the arcane
++            // level-5 unlock), so the revoke kind must match the catalog kind —
++            // a mismatched kind is rejected by the grant-ownership validator.
++            kind: abilityGrantKind(oldMilestone.abilityId),
+             abilityId: oldMilestone.abilityId,
+             sourceId: oldSourceId,
+           });
+@@ -168,14 +181,29 @@ function applyMilestone(
+         revokeAbilitySources(world, targetEid, revokeRequests);
+       }
+ 
+-      // Grant the new ability
+-      grantAbilitySources(world, targetEid, [
+-        {
+-          kind: 'passive',
+-          abilityId: milestone.abilityId,
+-          sourceId,
+-        },
+-      ]);
++      // Grant the new ability. Actives additionally take an open bar slot; when
++      // every slot is full the ability stays owned-but-unequipped rather than
++      // throwing, matching the equipment grant path.
++      grantAbilitySources(
++        world,
++        targetEid,
++        [
++          {
++            kind: grantKind,
++            abilityId: milestone.abilityId,
++            sourceId,
++          },
++        ],
++        grantKind === 'active' ? { configureActives: 'fill-open-slots' } : {},
++      );
++      if (replacedActiveSlotIndex >= 0 && grantKind === 'active') {
++        const activeIds = world.abilityStatesByEntity.get(targetEid)?.equippedActiveAbilityIds;
++        const grantedActiveSlotIndex = activeIds?.indexOf(milestone.abilityId) ?? -1;
++        if (activeIds !== undefined && grantedActiveSlotIndex >= 0) {
++          activeIds.splice(grantedActiveSlotIndex, 1);
++          activeIds.splice(replacedActiveSlotIndex, 0, milestone.abilityId);
++        }
++      }
+ 
+       // Append to the run-level milestone grant log (read by headless runner).
+       world.milestoneGrantLog.push({
+@@ -200,24 +228,38 @@ function applyMilestone(
+           });
+         }
+ 
+-        const abilityDef = getAbilityDefinition(milestone.abilityId);
+         const isGeneralPassive =
+-          abilityDef !== undefined &&
+-          abilityDef.kind === 'passive' &&
+-          abilityDef.weaponPrerequisite === undefined;
++          grantedDef !== undefined &&
++          grantedDef.kind === 'passive' &&
++          grantedDef.weaponPrerequisite === undefined;
+ 
+-        if (isGeneralPassive && swingVfx === undefined) {
++        // Weapon-gated PASSIVES get their flash from `applyPassive` when the
++        // prerequisite is first met, so only general passives and actives need
++        // the one-time unlock flash here.
++        if ((isGeneralPassive || grantKind === 'active') && swingVfx === undefined) {
+           pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
+         }
+ 
+         const presentation = getAbilityPresentation(milestone.abilityId);
+-        pushAnnouncement(world.announcements, {
+-          kind: 'skillPassiveUnlocked',
+-          archetypeIndex: -1,
+-          text: `Passive Unlocked: ${presentation?.name ?? milestone.abilityId}`,
+-          durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
+-          elapsedMs: world.elapsedMs,
+-        });
++        const abilityName = presentation?.name ?? grantedDef?.name ?? milestone.abilityId;
++        pushAnnouncement(
++          world.announcements,
++          grantKind === 'active'
++            ? {
++                kind: 'skillAbilityUnlocked',
++                archetypeIndex: -1,
++                text: `Ability Unlocked: ${abilityName}`,
++                durationMs: SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS,
++                elapsedMs: world.elapsedMs,
++              }
++            : {
++                kind: 'skillPassiveUnlocked',
++                archetypeIndex: -1,
++                text: `Passive Unlocked: ${abilityName}`,
++                durationMs: SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS,
++                elapsedMs: world.elapsedMs,
++              },
++        );
+       }
+     }
+   }
+diff --git a/src/labs/skill-lab/index.ts b/src/labs/skill-lab/index.ts
+index 80048baf7..c0c6933e9 100644
+--- a/src/labs/skill-lab/index.ts
++++ b/src/labs/skill-lab/index.ts
+@@ -72,6 +72,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
+   function render() {
+     const abilityState = world.abilityStatesByEntity.get(player);
+     const activeIds = abilityState?.equippedActiveAbilityIds ?? [];
++    const ownedActiveIds = abilityState?.ownedActiveAbilityIds ?? activeIds;
+     const passiveIds = abilityState?.passiveAbilityIds ?? [];
+ 
+     const skillRows = allSkills
+@@ -93,15 +94,21 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
+         const abilityGrantCell = abilityGrantId
+           ? (() => {
+               const abilityDef = allAbilities.find((a) => a.id === abilityGrantId);
+-              if (!abilityDef || abilityDef.kind !== 'passive') return '—';
+-              const granted = passiveIds.includes(abilityGrantId);
++              if (!abilityDef) return '—';
++              // Milestone rewards may be passives or ACTIVES (e.g. arcane L5),
++              // so ownership is read from the matching grant list.
++              const granted =
++                abilityDef.kind === 'passive'
++                  ? passiveIds.includes(abilityGrantId)
++                  : ownedActiveIds.includes(abilityGrantId);
+               const prereqMet = granted
+                 ? weaponPrerequisiteMet(world, player, abilityGrantId)
+                 : false;
+               const prereq = abilityDef.weaponPrerequisite;
+               const statusColor = !granted ? '#555' : prereqMet ? '#4f8' : '#fa0';
+               const statusText = !granted ? '—' : prereqMet ? '✓ active' : `⚠ needs ${prereq}`;
+-              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} (${statusText})</span>`;
++              const kindTag = abilityDef.kind === 'passive' ? 'passive' : 'ACTIVE';
++              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} [${kindTag}] (${statusText})</span>`;
+             })()
+           : '—';
+ 
+@@ -119,7 +126,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
+ 
+     const abilityRows = allAbilities
+       .map((ability) => {
+-        const isActiveEquipped = activeIds.includes(ability.id);
++        const isActiveOwned = ownedActiveIds.includes(ability.id);
+         const isPassiveGranted = passiveIds.includes(ability.id);
+         const cooldown = abilityState?.cooldownByAbilityId.get(ability.id);
+         const remaining =
+@@ -132,8 +139,8 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
+         <tr>
+           <td style="padding:5px 10px;color:#9ba">${ability.name}</td>
+           <td style="padding:5px 10px;color:#8ab">${ability.kind}</td>
+-          <td style="padding:5px 10px;color:${isActiveEquipped || isPassiveGranted ? '#4f8' : '#666'}">${
+-            isActiveEquipped || isPassiveGranted ? 'yes' : 'no'
++          <td style="padding:5px 10px;color:${isActiveOwned || isPassiveGranted ? '#4f8' : '#666'}">${
++            isActiveOwned || isPassiveGranted ? 'yes' : 'no'
+           }</td>
+           <td style="padding:5px 10px;text-align:right;color:#888">${cooldownText}</td>
+         </tr>`;
+diff --git a/src/shared/ability-presentation.ts b/src/shared/ability-presentation.ts
+index 6b893b572..088a27b08 100644
+--- a/src/shared/ability-presentation.ts
++++ b/src/shared/ability-presentation.ts
+@@ -1,3 +1,5 @@
++import type { WeaponSkillId } from './weapon-skills.js';
++
+ export type AbilityPresentationKind = 'active' | 'passive' | 'spell';
+ export type AbilityPresentationCategory = 'combat' | 'defense' | 'utility';
+ 
+@@ -12,6 +14,14 @@ export interface AbilityPresentation {
+   readonly cooldownFrames?: number;
+   readonly passiveEffectSummary?: string;
+   readonly passiveRequirementSummary?: string;
++  /**
++   * Weapon skill the holder must be wielding for this ability to do anything.
++   * Declared here (rather than only on the game-layer catalog definition) so the
++   * rendering layer — which must not import `src/game/` — can surface an unmet
++   * prerequisite on the ability bar. The game-layer catalog spreads this
++   * presentation entry, so there is a single source of truth for the value.
++   */
++  readonly weaponPrerequisite?: WeaponSkillId;
+ }
+ 
+ export const ABILITY_PRESENTATION_BY_ID = {
+@@ -490,15 +500,37 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     passiveEffectSummary: 'Accuracy +0.15, Arcane Regen +8%',
+     passiveRequirementSummary: 'an arcane weapon',
+   },
++  // Arcane weapon-class actives (level 5 unlock + its level 15 evolution)
++  'arcane-nova': {
++    id: 'arcane-nova',
++    name: 'Arcane Nova',
++    shortLabel: 'NOVA',
++    description: 'Detonate raw arcane power around a nearby enemy.',
++    category: 'combat',
++    kind: 'active',
++    cooldownFrames: 600,
++    weaponPrerequisite: 'arcane',
++  },
++  'arcane-nova-evolved': {
++    id: 'arcane-nova-evolved',
++    name: 'Arcane Nova (Evolved)',
++    shortLabel: 'NOVA+',
++    description: 'A wider, fiercer arcane detonation on a shorter recharge.',
++    category: 'combat',
++    kind: 'active',
++    cooldownFrames: 480,
++    weaponPrerequisite: 'arcane',
++  },
+   // Weapon type actives (20 total)
+-  'sword-strike-base': {
+-    id: 'sword-strike-base',
++  'sword-strike-active': {
++    id: 'sword-strike-active',
+     name: 'Sword Strike',
+     shortLabel: 'STRIKE',
+     description: 'Slash nearby enemies with your sword.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 360,
++    weaponPrerequisite: 'sword',
+   },
+   'sword-riposte': {
+     id: 'sword-riposte',
+@@ -509,14 +541,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 480,
+   },
+-  'sword-strike-evolved': {
+-    id: 'sword-strike-evolved',
++  'sword-strike-active-evolved': {
++    id: 'sword-strike-active-evolved',
+     name: 'Sword Strike (Evolved)',
+     shortLabel: 'STRIKE+',
+     description: 'Devastate nearby enemies with an enhanced slash.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 360,
++    cooldownFrames: 300,
++    weaponPrerequisite: 'sword',
+   },
+   'sword-mortal-strike': {
+     id: 'sword-mortal-strike',
+@@ -527,14 +560,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 600,
+   },
+-  'dagger-rapid-base': {
+-    id: 'dagger-rapid-base',
++  'dagger-rapid-strike-active': {
++    id: 'dagger-rapid-strike-active',
+     name: 'Rapid Strikes',
+     shortLabel: 'RAPID',
+     description: 'Quick succession of dagger thrusts.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 240,
++    weaponPrerequisite: 'dagger',
+   },
+   'dagger-poison': {
+     id: 'dagger-poison',
+@@ -545,14 +579,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 600,
+   },
+-  'dagger-rapid-evolved': {
+-    id: 'dagger-rapid-evolved',
++  'dagger-rapid-strike-active-evolved': {
++    id: 'dagger-rapid-strike-active-evolved',
+     name: 'Rapid Strikes (Evolved)',
+     shortLabel: 'RAPID+',
+     description: 'Blinding flurry of dagger strikes.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 240,
++    cooldownFrames: 180,
++    weaponPrerequisite: 'dagger',
+   },
+   'dagger-deathmark': {
+     id: 'dagger-deathmark',
+@@ -563,14 +598,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 720,
+   },
+-  'hammer-slam-base': {
+-    id: 'hammer-slam-base',
++  'hammer-crush-active': {
++    id: 'hammer-crush-active',
+     name: 'Hammer Slam',
+     shortLabel: 'SLAM',
+     description: 'Crush nearby enemies with your hammer.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 480,
++    weaponPrerequisite: 'hammer',
+   },
+   'hammer-whirlwind': {
+     id: 'hammer-whirlwind',
+@@ -581,14 +617,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 540,
+   },
+-  'hammer-slam-evolved': {
+-    id: 'hammer-slam-evolved',
++  'hammer-crush-active-evolved': {
++    id: 'hammer-crush-active-evolved',
+     name: 'Hammer Slam (Evolved)',
+     shortLabel: 'SLAM+',
+     description: 'Tremendous blow that stuns multiple enemies.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 480,
++    cooldownFrames: 420,
++    weaponPrerequisite: 'hammer',
+   },
+   'hammer-earthquake': {
+     id: 'hammer-earthquake',
+@@ -599,14 +636,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 720,
+   },
+-  'bow-piercing-base': {
+-    id: 'bow-piercing-base',
++  'bow-shot-active': {
++    id: 'bow-shot-active',
+     name: 'Piercing Shot',
+     shortLabel: 'PIERCE',
+     description: 'Fire an arrow that pierces through enemies.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 360,
++    weaponPrerequisite: 'bow',
+   },
+   'bow-multishot': {
+     id: 'bow-multishot',
+@@ -617,14 +655,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 600,
+   },
+-  'bow-piercing-evolved': {
+-    id: 'bow-piercing-evolved',
++  'bow-shot-active-evolved': {
++    id: 'bow-shot-active-evolved',
+     name: 'Piercing Shot (Evolved)',
+     shortLabel: 'PIERCE+',
+     description: 'Powerful arrow that pierces multiple foes.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 360,
++    cooldownFrames: 300,
++    weaponPrerequisite: 'bow',
+   },
+   'bow-rain-of-arrows': {
+     id: 'bow-rain-of-arrows',
+@@ -635,14 +674,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 720,
+   },
+-  'crossbow-bolt-base': {
+-    id: 'crossbow-bolt-base',
++  'crossbow-bolt-active': {
++    id: 'crossbow-bolt-active',
+     name: 'Bolt Shot',
+     shortLabel: 'BOLT',
+     description: 'Fire a crossbow bolt at nearby enemies.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 300,
++    weaponPrerequisite: 'crossbow',
+   },
+   'crossbow-ricochet': {
+     id: 'crossbow-ricochet',
+@@ -653,14 +693,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 480,
+   },
+-  'crossbow-bolt-evolved': {
+-    id: 'crossbow-bolt-evolved',
++  'crossbow-bolt-active-evolved': {
++    id: 'crossbow-bolt-active-evolved',
+     name: 'Bolt Shot (Evolved)',
+     shortLabel: 'BOLT+',
+     description: 'Rapid-fire crossbow bolts hitting multiple targets.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 300,
++    cooldownFrames: 240,
++    weaponPrerequisite: 'crossbow',
+   },
+   'crossbow-piercing-volley': {
+     id: 'crossbow-piercing-volley',
+@@ -671,14 +712,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 660,
+   },
+-  'pistol-shot-base': {
+-    id: 'pistol-shot-base',
++  'pistol-shot-active': {
++    id: 'pistol-shot-active',
+     name: 'Pistol Shot',
+     shortLabel: 'SHOT',
+     description: 'Fire a quick pistol round at nearby enemies.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 240,
++    weaponPrerequisite: 'pistol',
+   },
+   'pistol-rapid-fire': {
+     id: 'pistol-rapid-fire',
+@@ -689,14 +731,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 420,
+   },
+-  'pistol-shot-evolved': {
+-    id: 'pistol-shot-evolved',
++  'pistol-shot-active-evolved': {
++    id: 'pistol-shot-active-evolved',
+     name: 'Pistol Shot (Evolved)',
+     shortLabel: 'SHOT+',
+     description: 'Precise gunfire hitting multiple targets.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 240,
++    cooldownFrames: 180,
++    weaponPrerequisite: 'pistol',
+   },
+   'pistol-barrage': {
+     id: 'pistol-barrage',
+@@ -707,14 +750,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 720,
+   },
+-  'throwing-toss-base': {
+-    id: 'throwing-toss-base',
++  'throwing-toss-active': {
++    id: 'throwing-toss-active',
+     name: 'Throwing Toss',
+     shortLabel: 'TOSS',
+     description: 'Throw weapons at nearby enemies.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 300,
++    weaponPrerequisite: 'throwing-weapons',
+   },
+   'throwing-boomerang': {
+     id: 'throwing-boomerang',
+@@ -725,14 +769,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 480,
+   },
+-  'throwing-toss-evolved': {
+-    id: 'throwing-toss-evolved',
++  'throwing-toss-active-evolved': {
++    id: 'throwing-toss-active-evolved',
+     name: 'Throwing Toss (Evolved)',
+     shortLabel: 'TOSS+',
+     description: 'Rapid throwing strikes at multiple enemies.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 300,
++    cooldownFrames: 240,
++    weaponPrerequisite: 'throwing-weapons',
+   },
+   'throwing-scatter': {
+     id: 'throwing-scatter',
+@@ -743,14 +788,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 600,
+   },
+-  'unarmed-strike-base': {
+-    id: 'unarmed-strike-base',
++  'unarmed-punch-active': {
++    id: 'unarmed-punch-active',
+     name: 'Unarmed Strike',
+     shortLabel: 'PUNCH',
+     description: 'Strike nearby enemies with your fists.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 240,
++    weaponPrerequisite: 'unarmed',
+   },
+   'unarmed-combo': {
+     id: 'unarmed-combo',
+@@ -761,14 +807,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 360,
+   },
+-  'unarmed-strike-evolved': {
+-    id: 'unarmed-strike-evolved',
++  'unarmed-punch-active-evolved': {
++    id: 'unarmed-punch-active-evolved',
+     name: 'Unarmed Strike (Evolved)',
+     shortLabel: 'PUNCH+',
+     description: 'Powerful strikes hitting multiple enemies.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 240,
++    cooldownFrames: 180,
++    weaponPrerequisite: 'unarmed',
+   },
+   'unarmed-whirlwind-kick': {
+     id: 'unarmed-whirlwind-kick',
+@@ -779,14 +826,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 600,
+   },
+-  'spell-bolt-base': {
+-    id: 'spell-bolt-base',
+-    name: 'Spell Bolt',
++  'spellcraft-bolt-active': {
++    id: 'spellcraft-bolt-active',
++    name: 'Spellcraft Bolt',
+     shortLabel: 'BOLT',
+     description: 'Cast a bolt of magical energy.',
+     category: 'utility',
+-    kind: 'spell',
++    kind: 'active',
+     cooldownFrames: 300,
++    weaponPrerequisite: 'spellcraft',
+   },
+   'spell-chain': {
+     id: 'spell-chain',
+@@ -797,14 +845,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'spell',
+     cooldownFrames: 480,
+   },
+-  'spell-bolt-evolved': {
+-    id: 'spell-bolt-evolved',
+-    name: 'Spell Bolt (Evolved)',
++  'spellcraft-bolt-active-evolved': {
++    id: 'spellcraft-bolt-active-evolved',
++    name: 'Spellcraft Bolt (Evolved)',
+     shortLabel: 'BOLT+',
+     description: 'Powerful magical bolts hitting multiple targets.',
+     category: 'utility',
+-    kind: 'spell',
+-    cooldownFrames: 300,
++    kind: 'active',
++    cooldownFrames: 240,
++    weaponPrerequisite: 'spellcraft',
+   },
+   'spell-meteor': {
+     id: 'spell-meteor',
+@@ -815,14 +864,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'spell',
+     cooldownFrames: 720,
+   },
+-  'sports-swing-base': {
+-    id: 'sports-swing-base',
++  'sports-swing-active': {
++    id: 'sports-swing-active',
+     name: 'Sports Swing',
+     shortLabel: 'SWING',
+     description: 'Swing sports equipment at nearby enemies.',
+     category: 'combat',
+     kind: 'active',
+     cooldownFrames: 360,
++    weaponPrerequisite: 'sports-equipment',
+   },
+   'sports-home-run': {
+     id: 'sports-home-run',
+@@ -833,14 +883,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
+     kind: 'active',
+     cooldownFrames: 540,
+   },
+-  'sports-swing-evolved': {
+-    id: 'sports-swing-evolved',
++  'sports-swing-active-evolved': {
++    id: 'sports-swing-active-evolved',
+     name: 'Sports Swing (Evolved)',
+     shortLabel: 'SWING+',
+     description: 'Devastating swing hitting multiple enemies.',
+     category: 'combat',
+     kind: 'active',
+-    cooldownFrames: 360,
++    cooldownFrames: 300,
++    weaponPrerequisite: 'sports-equipment',
+   },
+   'sports-grand-slam': {
+     id: 'sports-grand-slam',
+diff --git a/src/shared/announcement-events.ts b/src/shared/announcement-events.ts
+index dee485316..5921ca212 100644
+--- a/src/shared/announcement-events.ts
++++ b/src/shared/announcement-events.ts
+@@ -22,7 +22,8 @@ export type AnnouncementKind =
+   | 'spawnerArenaStart'
+   | 'spawnerArenaEnd'
+   | 'bossAbilityCast'
+-  | 'skillPassiveUnlocked';
++  | 'skillPassiveUnlocked'
++  | 'skillAbilityUnlocked';
+ 
+ /**
+  * Spawner-arena announcement — signals the start or end of a combat-wave
+@@ -92,6 +93,25 @@ export interface SkillPassiveUnlockedAnnouncementEvent {
+   readonly elapsedMs: number;
+ }
+ 
++/**
++ * Skill-ACTIVE-unlock announcement — fired exactly once, from the skill
++ * milestone grant site (`skillSystem.ts`), when the milestone reward is an
++ * active ability rather than a passive (e.g. the Arcane level-5 unlock). Kept
++ * distinct from {@link SkillPassiveUnlockedAnnouncementEvent} so the passive
++ * contract stays passive-only and the banner can style the two differently.
++ */
++export interface SkillAbilityUnlockedAnnouncementEvent {
++  readonly kind: 'skillAbilityUnlocked';
++  /** `-1` sentinel; skill-ability unlocks have no spawner archetype. */
++  readonly archetypeIndex: number;
++  /** Exact, verbatim banner text, e.g. "Ability Unlocked: Arcane Nova". */
++  readonly text: string;
++  /** How long the banner should be shown, in milliseconds. */
++  readonly durationMs: number;
++  /** Simulation timestamp at which the event was pushed (`world.elapsedMs`). */
++  readonly elapsedMs: number;
++}
++
+ /**
+  * Discriminated union of every announcement variant the banner can render.
+  * Narrow on `kind` to access variant-specific fields.
+@@ -99,7 +119,8 @@ export interface SkillPassiveUnlockedAnnouncementEvent {
+ export type AnnouncementEvent =
+   | SpawnerArenaAnnouncementEvent
+   | BossAbilityCastAnnouncementEvent
+-  | SkillPassiveUnlockedAnnouncementEvent;
++  | SkillPassiveUnlockedAnnouncementEvent
++  | SkillAbilityUnlockedAnnouncementEvent;
+ 
+ /**
+  * Hard cap on `world.announcements` — the HUD drains quickly under normal play
+diff --git a/src/shared/progression-effects.ts b/src/shared/progression-effects.ts
+index 2ec8504b0..9c272b2fa 100644
+--- a/src/shared/progression-effects.ts
++++ b/src/shared/progression-effects.ts
+@@ -18,6 +18,14 @@ export type CatalogEffect =
+   | { type: 'stat_multiply'; stat: StatKey; value: number }
+   | { type: 'extra_projectile'; count: number }
+   | { type: 'aura'; radius: number; dpsPercentOfDamage: number }
++  | {
++      type: 'active_damage';
++      damage: number;
++      rangeFeet: number;
++      maxTargets: number;
++      affinity: 'physical' | 'magic';
++      delivery: 'contact' | 'projectile';
++    }
+   | { type: 'spell_fireball'; damage: ScalableOutput; radiusTiles: ScalableOutput }
+   | { type: 'spell_heal'; heal: ScalableOutput }
+   | { type: 'spell_pulse_shield'; knockbackForce: ScalableOutput; radiusTiles: ScalableOutput }
+diff --git a/src/shared/weapon-swing-vfx.ts b/src/shared/weapon-swing-vfx.ts
+index e8acb8e24..0363663bf 100644
+--- a/src/shared/weapon-swing-vfx.ts
++++ b/src/shared/weapon-swing-vfx.ts
+@@ -12,49 +12,64 @@ export interface WeaponSwingVfxSpec {
+ }
+ 
+ const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
+-  'sword-strike-base': { preset: 'swingArc', color: 0xff6b6b, intensity: 1.0 },
++  'sword-strike-active': { preset: 'swingArc', color: 0xff6b6b, intensity: 1.0 },
+   'sword-cleave': { preset: 'volleyTrail', color: 0xff8787, intensity: 1.1 },
+-  'sword-strike-evolved': { preset: 'impactBurst', color: 0xff4d4d, intensity: 1.2 },
++  'sword-strike-active-evolved': { preset: 'impactBurst', color: 0xff4d4d, intensity: 1.2 },
+   'sword-cleave-evolved': { preset: 'spinRing', color: 0xff3b3b, intensity: 1.25 },
+ 
+-  'dagger-rapid-strike-base': { preset: 'swingArc', color: 0xa78bfa, intensity: 1.0 },
++  'dagger-rapid-strike-active': { preset: 'swingArc', color: 0xa78bfa, intensity: 1.0 },
+   'dagger-flurry': { preset: 'volleyTrail', color: 0xc4b5fd, intensity: 1.1 },
+-  'dagger-rapid-strike-evolved': { preset: 'impactBurst', color: 0x8b5cf6, intensity: 1.2 },
++  'dagger-rapid-strike-active-evolved': {
++    preset: 'impactBurst',
++    color: 0x8b5cf6,
++    intensity: 1.2,
++  },
+   'dagger-flurry-evolved': { preset: 'spinRing', color: 0x7c3aed, intensity: 1.25 },
+ 
+-  'hammer-crush-base': { preset: 'swingArc', color: 0xf59e0b, intensity: 1.0 },
++  'hammer-crush-active': { preset: 'swingArc', color: 0xf59e0b, intensity: 1.0 },
+   'hammer-shatter': { preset: 'impactBurst', color: 0xfbbf24, intensity: 1.15 },
+-  'hammer-crush-evolved': { preset: 'volleyTrail', color: 0xd97706, intensity: 1.2 },
++  'hammer-crush-active-evolved': { preset: 'volleyTrail', color: 0xd97706, intensity: 1.2 },
+   'hammer-shatter-evolved': { preset: 'spinRing', color: 0xb45309, intensity: 1.3 },
+ 
+-  'bow-shot-base': { preset: 'swingArc', color: 0x34d399, intensity: 1.0 },
++  'bow-shot-active': { preset: 'swingArc', color: 0x34d399, intensity: 1.0 },
+   'bow-piercing': { preset: 'volleyTrail', color: 0x6ee7b7, intensity: 1.1 },
+-  'bow-shot-evolved': { preset: 'impactBurst', color: 0x10b981, intensity: 1.2 },
++  'bow-shot-active-evolved': { preset: 'impactBurst', color: 0x10b981, intensity: 1.2 },
+   'bow-piercing-evolved': { preset: 'spinRing', color: 0x059669, intensity: 1.25 },
+ 
+-  'crossbow-bolt-base': { preset: 'swingArc', color: 0x60a5fa, intensity: 1.0 },
++  'crossbow-bolt-active': { preset: 'swingArc', color: 0x60a5fa, intensity: 1.0 },
+   'crossbow-barrage': { preset: 'volleyTrail', color: 0x93c5fd, intensity: 1.1 },
+-  'crossbow-bolt-evolved': { preset: 'impactBurst', color: 0x3b82f6, intensity: 1.2 },
++  'crossbow-bolt-active-evolved': { preset: 'impactBurst', color: 0x3b82f6, intensity: 1.2 },
+   'crossbow-barrage-evolved': { preset: 'spinRing', color: 0x2563eb, intensity: 1.25 },
+ 
+-  'pistol-shot-base': { preset: 'swingArc', color: 0xfacc15, intensity: 1.0 },
++  'pistol-shot-active': { preset: 'swingArc', color: 0xfacc15, intensity: 1.0 },
+   'pistol-volley': { preset: 'volleyTrail', color: 0xfde047, intensity: 1.1 },
+-  'pistol-shot-evolved': { preset: 'impactBurst', color: 0xeab308, intensity: 1.2 },
++  'pistol-shot-active-evolved': { preset: 'impactBurst', color: 0xeab308, intensity: 1.2 },
+   'pistol-volley-evolved': { preset: 'spinRing', color: 0xca8a04, intensity: 1.25 },
+ 
+-  'throwing-toss-base': { preset: 'swingArc', color: 0x22d3ee, intensity: 1.0 },
++  'throwing-toss-active': { preset: 'swingArc', color: 0x22d3ee, intensity: 1.0 },
+   'throwing-boomerang': { preset: 'volleyTrail', color: 0x67e8f9, intensity: 1.1 },
+-  'throwing-toss-evolved': { preset: 'impactBurst', color: 0x06b6d4, intensity: 1.2 },
++  'throwing-toss-active-evolved': {
++    preset: 'impactBurst',
++    color: 0x06b6d4,
++    intensity: 1.2,
++  },
+   'throwing-scatter': { preset: 'spinRing', color: 0x0891b2, intensity: 1.25 },
+ 
+-  'unarmed-punch-base': { preset: 'swingArc', color: 0xe5e7eb, intensity: 1.0 },
++  'unarmed-punch-active': { preset: 'swingArc', color: 0xe5e7eb, intensity: 1.0 },
+   'unarmed-barrage': { preset: 'volleyTrail', color: 0xf3f4f6, intensity: 1.1 },
+-  'unarmed-punch-evolved': { preset: 'impactBurst', color: 0xd1d5db, intensity: 1.2 },
++  'unarmed-punch-active-evolved': { preset: 'impactBurst', color: 0xd1d5db, intensity: 1.2 },
+   'unarmed-barrage-evolved': { preset: 'spinRing', color: 0x9ca3af, intensity: 1.25 },
+ 
+-  'sports-swing-base': { preset: 'swingArc', color: 0x38bdf8, intensity: 1.0 },
++  'spellcraft-bolt-active': { preset: 'volleyTrail', color: 0xc084fc, intensity: 1.0 },
++  'spellcraft-bolt-active-evolved': {
++    preset: 'impactBurst',
++    color: 0xa855f7,
++    intensity: 1.2,
++  },
++
++  'sports-swing-active': { preset: 'swingArc', color: 0x38bdf8, intensity: 1.0 },
+   'sports-home-run': { preset: 'impactBurst', color: 0x7dd3fc, intensity: 1.15 },
+-  'sports-swing-evolved': { preset: 'volleyTrail', color: 0x0ea5e9, intensity: 1.2 },
++  'sports-swing-active-evolved': { preset: 'volleyTrail', color: 0x0ea5e9, intensity: 1.2 },
+   'sports-grand-slam': { preset: 'spinRing', color: 0x0284c7, intensity: 1.3 },
+ };
+ 
