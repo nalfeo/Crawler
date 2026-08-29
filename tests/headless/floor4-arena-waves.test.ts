@@ -1,12 +1,19 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Health, Player } from '../../src/core/components.js';
+import { Companion, Enemy, Health, Player, Team } from '../../src/core/components.js';
 import type { GameWorld } from '../../src/core/world.js';
-import { GAME } from '../../src/shared/constants.js';
+import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import type { InputState } from '../../src/shared/input.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import { spawnPlayer } from '../../src/core/helpers.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { buildKeptCompanionContract } from '../../src/shared/data/floor3/kept-companion-contract.js';
+import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
+import { isEnemyCombatEligible } from '../../src/game/floor2BossEligibility.js';
+import { getCompanionAIDecision } from '../../src/game/systems/companionAISystem.js';
 
 /**
  * A contestant with no plan: it never picks a target or a destination, so the
@@ -58,6 +65,51 @@ class DefeatHeadlinerFloor4Provider extends IdleFloor4Provider {
   }
 }
 
+class ObserveCoStarFloor4Provider extends IdleFloor4Provider {
+  coStarSamples = 0;
+  maxCombatEligibleEnemies = 0;
+  sawCoStarExcludedFromHostiles = false;
+  sawCoStarRivalTarget = false;
+
+  override poll(input: InputState, world: GameWorld): void {
+    super.poll(input, world);
+    const playerEid = query(world.ecs, [Player, Health])[0];
+    if (playerEid !== undefined) {
+      world.stores.health.current[playerEid] = 1_000_000;
+    }
+    const coStars = query(world.ecs, [Enemy, Companion, Team]).filter(
+      (eid) => world.stores.team.id[eid] === TeamId.PLAYER,
+    );
+    this.coStarSamples += coStars.length;
+    this.maxCombatEligibleEnemies = Math.max(
+      this.maxCombatEligibleEnemies,
+      query(world.ecs, [Enemy]).filter((eid) => isEnemyCombatEligible(world, eid)).length,
+    );
+    for (const coStar of coStars) {
+      if (!isEnemyCombatEligible(world, coStar)) {
+        this.sawCoStarExcludedFromHostiles = true;
+      }
+      const decision = getCompanionAIDecision(world, coStar);
+      if (decision?.kind === 'rival-primary' && decision.targetEid !== undefined) {
+        this.sawCoStarRivalTarget = true;
+      }
+    }
+  }
+}
+
+function floor4CarryoverWithKeptCompanion(seed: number) {
+  const source = createTestWorld({ seed });
+  const sourcePlayer = spawnPlayer(source, 0, 0);
+  const species = getPetSpecies('ember-slinger');
+  if (!species) {
+    throw new Error('missing ember-slinger test species');
+  }
+  return {
+    ...capturePlayerCarryover(source, sourcePlayer),
+    keptCompanion: buildKeptCompanionContract(species),
+  };
+}
+
 describe('Floor 4 wave window (real headless pipeline)', () => {
   const floor4Phase = getFloorManifest('floor4')!.floor4!.phase;
   const floor4Waves = getFloorManifest('floor4')!.floor4!.waves;
@@ -107,6 +159,25 @@ describe('Floor 4 wave window (real headless pipeline)', () => {
     // so it never burns the collapse-relevant active-time budget (FR8.4).
     expect(first.safeRoomMs).toBeGreaterThanOrEqual(floor4Phase.countdownMs);
     expect(first.safeRoomMs).toBe(second.safeRoomMs);
+  });
+
+  it('re-hosts a kept companion through the real headless Floor 4 pipeline', async () => {
+    const provider = new ObserveCoStarFloor4Provider();
+    const result = await runHeadless(provider, {
+      floorId: 'floor4',
+      seed: 404,
+      playerCarryover: floor4CarryoverWithKeptCompanion(404),
+      maxFrames: Math.ceil(horizonMs / GAME.DELTA_MS),
+    });
+
+    expect(provider.coStarSamples).toBeGreaterThan(0);
+    expect(provider.maxCombatEligibleEnemies).toBeGreaterThan(0);
+    expect(provider.sawCoStarExcludedFromHostiles).toBe(true);
+    expect(provider.sawCoStarRivalTarget).toBe(true);
+    expect(result.floor4Arena?.waveTelemetry).toMatchObject({
+      wavesReleased: floor4Waves.cadence.wavesPerAct,
+      enemiesSpawned: expect.any(Number),
+    });
   });
 
   it('resolves a defeated Headliner reward through the canonical headless pipeline', async () => {

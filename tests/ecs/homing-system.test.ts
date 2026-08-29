@@ -1,8 +1,9 @@
 import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Glowing, Homing, Position, Velocity } from '../../src/core/components.js';
+import { Glowing, Homing, Position, Team, Velocity } from '../../src/core/components.js';
 import { createEntity, spawnEnemy } from '../../src/core/helpers.js';
 import { homingSystem } from '../../src/core/systems/homingSystem.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function spawnHomingBolt(
@@ -130,6 +131,24 @@ describe('homingSystem', () => {
     homingSystem(world);
 
     expect(world.stores.homing.targetEid[bolt]).toBe(livingTarget);
+  });
+
+  it('ignores player-team Enemy entities when retargeting', () => {
+    const world = createTestWorld();
+    const deadTarget = spawnEnemy(world, 0, 100, 50);
+    world.stores.health.current[deadTarget] = 0;
+    const alliedEnemy = spawnEnemy(world, 10, 0, 50);
+    addComponent(world.ecs, alliedEnemy, set(Team, { id: TeamId.PLAYER }));
+    const hostileTarget = spawnEnemy(world, 50, 0, 50);
+    const bolt = spawnHomingBolt(world, 0, 0, 1, 0, deadTarget, {
+      activateFrame: 0,
+      turnRateRadPerFrame: 0.3,
+    });
+
+    world.frameCount = 0;
+    homingSystem(world);
+
+    expect(world.stores.homing.targetEid[bolt]).toBe(hostileTarget);
   });
 
   it('keeps flying straight when the assigned target dies and no other enemy survives', () => {

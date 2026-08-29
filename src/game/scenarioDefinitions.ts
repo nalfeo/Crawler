@@ -585,6 +585,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
       onStairDescend: confirmFloor4StairDescend,
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
