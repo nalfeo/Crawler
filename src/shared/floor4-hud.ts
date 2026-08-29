@@ -17,7 +17,6 @@ export interface Floor4HudInput {
   readonly greenRoom?: Floor4GreenRoomState;
   readonly phaseConfig: Floor4HudPhaseConfig;
   readonly playerGold: number;
-  readonly playerKills: number;
   readonly headlinerHealth?: {
     readonly current: number;
     readonly max: number;
@@ -50,6 +49,7 @@ export interface Floor4HudState {
 }
 
 const CUT_NOTICE_MS = 3_000;
+const DEFAULT_WAVES_PER_ACT = 8;
 
 function formatClock(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -64,7 +64,7 @@ function phaseAct(state: Floor4ArenaState): Floor4ActIndex {
   return phase.kind === 'VICTORY' ? 5 : 1;
 }
 
-function releasedPipCount(state: Floor4ArenaState, config: Floor4HudPhaseConfig): number {
+function releasedPipCount(state: Floor4ArenaState): number {
   const phase = state.phase;
   if (phase.kind === 'WAVES') return state.waves?.releaseCursor ?? 0;
   if (
@@ -73,7 +73,7 @@ function releasedPipCount(state: Floor4ArenaState, config: Floor4HudPhaseConfig)
     phase.kind === 'INTERMISSION' ||
     phase.kind === 'VICTORY'
   ) {
-    return Math.max(0, state.waves?.manifests.length ?? config.actCount + 3);
+    return Math.max(0, state.waves?.manifests.length ?? DEFAULT_WAVES_PER_ACT);
   }
   return 0;
 }
@@ -86,9 +86,12 @@ function activePipIndexes(state: Floor4ArenaState): Set<number> {
   return new Set(telegraphs.map((telegraph) => telegraph.waveIndex));
 }
 
-function buildPips(state: Floor4ArenaState, config: Floor4HudPhaseConfig): readonly Floor4HudPip[] {
-  const total = state.phase.kind === 'WAVES' ? (state.waves?.manifests.length ?? 8) : 8;
-  const released = releasedPipCount(state, config);
+function buildPips(state: Floor4ArenaState): readonly Floor4HudPip[] {
+  const total =
+    state.phase.kind === 'WAVES'
+      ? (state.waves?.manifests.length ?? DEFAULT_WAVES_PER_ACT)
+      : DEFAULT_WAVES_PER_ACT;
+  const released = releasedPipCount(state);
   const armed = activePipIndexes(state);
   return Array.from({ length: total }, (_, index) => ({
     index,
@@ -143,7 +146,8 @@ function buildSummary(input: Floor4HudInput, act: Floor4ActIndex): readonly stri
   return [
     prefix,
     `Gold held: ${Math.max(0, Math.trunc(input.playerGold))}`,
-    `Kills: ${Math.max(0, Math.trunc(input.playerKills))}`,
+    `Enemies booked: ${Math.max(0, Math.trunc(input.arena?.waveTelemetry.enemiesSpawned ?? 0))}`,
+    `Cuts: ${Math.max(0, Math.trunc(input.arena?.waveTelemetry.enemiesCut ?? 0))}`,
     tableCount > 0 ? `Sponsors open: ${tableCount}` : 'Sponsors clearing the room',
     act === input.phaseConfig.actCount
       ? 'Take the stairs to claim the belt'
@@ -205,7 +209,7 @@ export function buildFloor4HudState(input: Floor4HudInput): Floor4HudState {
         ? `SHOW ${formatClock(totalMs - state.arenaElapsedMs)} · WAVES ${formatClock(waveRemainingMs)}`
         : `SHOW ${formatClock(totalMs - state.arenaElapsedMs)}`,
     overtime: state.phase.kind === 'OVERTIME',
-    pips: buildPips(state, input.phaseConfig),
+    pips: buildPips(state),
     headliner: buildHeadliner(state.activeHeadliner, state.phase.kind, input.headlinerHealth),
     notice: cutNotice,
     summary,

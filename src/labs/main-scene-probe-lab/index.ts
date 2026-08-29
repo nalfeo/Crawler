@@ -63,6 +63,7 @@ import {
 } from '../../shared/blood-surfaces.js';
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
+import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
@@ -138,9 +139,9 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' | 'floor3' {
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' {
   const raw = new URLSearchParams(window.location.search).get('floor');
-  return raw === 'floor2' || raw === 'floor3' ? raw : 'floor1';
+  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' ? raw : 'floor1';
 }
 
 /** The single shared status-aura Graphics layer, if the bridge has created it. */
@@ -221,6 +222,7 @@ interface MainSceneInternals {
       commandCapacity: number;
       commandsInUse: number;
     };
+    getFloor4ArenaState?(): HudFloor4ArenaProbeState;
     /**
      * The currently-rendered announcement banner content (kind + exact
      * text), or `null` when no banner is showing. Real rendered projection,
@@ -571,7 +573,7 @@ export interface MainSceneState {
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
   readonly cameraCenter: ProbePoint | null;
-  /** Live scenario floor id (`'floor1' | 'floor2' | 'floor3'`), or null before boot. */
+  /** Live scenario floor id (`'floor1' | 'floor2' | 'floor3' | 'floor4'`), or null before boot. */
   readonly floorId: string | null;
   /** Floor 2 settlement room count, or zero before/non-Floor-2 initialization. */
   readonly settlementRoomCount: number;
@@ -893,6 +895,8 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
+  /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
+  getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
   /**
@@ -1772,6 +1776,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         rosterDetailLineCount: roster?.detailLines.length ?? 0,
       };
     },
+
+    getFloor4ArenaHudState: (): HudFloor4ArenaProbeState | null =>
+      getScene()?.hudUi?.getFloor4ArenaState?.() ?? null,
 
     getFamilyHudState: (): FamilyHudProbeState => {
       const hud = getScene()?.hudUi;

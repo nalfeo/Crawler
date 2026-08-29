@@ -85,7 +85,6 @@ describe('buildFloor4HudState', () => {
       arena: arena(),
       phaseConfig,
       playerGold: 44,
-      playerKills: 9,
     });
 
     expect(hud.visible).toBe(true);
@@ -115,7 +114,6 @@ describe('buildFloor4HudState', () => {
       }),
       phaseConfig,
       playerGold: 44,
-      playerKills: 9,
       headlinerHealth: { current: 123, max: 200 },
     });
 
@@ -139,7 +137,6 @@ describe('buildFloor4HudState', () => {
       }),
       phaseConfig,
       playerGold: 44,
-      playerKills: 9,
       headlinerHealth: { current: 80, max: 200 },
     });
     expect(overtime.title).toBe('OVERTIME');
@@ -167,14 +164,14 @@ describe('buildFloor4HudState', () => {
       },
       phaseConfig,
       playerGold: 144,
-      playerKills: 39,
     });
     expect(winner.title).toBe("WINNER'S CIRCLE");
     expect(winner.winner).toBe(true);
     expect(winner.summary).toEqual([
       'Final tally',
       'Gold held: 144',
-      'Kills: 39',
+      'Enemies booked: 30',
+      'Cuts: 3',
       'Sponsors open: 2',
       'Take the stairs to claim the belt',
     ]);
