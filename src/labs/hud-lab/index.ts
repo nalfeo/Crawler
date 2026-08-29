@@ -336,6 +336,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         const activeHeadliner = createFloor4Headliner(act, bossEid);
         const base: Floor4ArenaState = {
           phase: { kind: 'WAVES', act },
+          actIncome: [],
           arenaElapsedMs: (act - 1) * 120_000 + 24_000,
           phaseElapsedMs: 24_000,
           overtimeFinisherAnnounced: false,

@@ -41,6 +41,7 @@ function headliner(
 function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
   return {
     phase: { kind: 'WAVES', act: 2 },
+    actIncome: [],
     arenaElapsedMs: 120_000 + 24_000,
     phaseElapsedMs: 24_000,
     overtimeFinisherAnnounced: false,

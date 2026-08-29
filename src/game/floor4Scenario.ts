@@ -215,6 +215,31 @@ function createFloor4HeadlinerTelemetry(): Floor4HeadlinerTelemetry {
   };
 }
 
+/**
+ * Bank the act's realised income at the break (spec FR10.3 / slice 7).
+ *
+ * `waveGold` is the act's gold delta minus the act's authored appearance fee,
+ * so drop income and the guaranteed fee stay separable: the affordability
+ * invariant (FR6.8) is computed from fees alone, and the manifest's authored
+ * per-act income budget is checked against `waveGold`.
+ */
+function recordFloor4ActIncome(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  act: Floor4ActIndex,
+): void {
+  const card = state.headlinerCard.find((entry) => entry.act === act);
+  const appearanceFeeGold = card && state.activeHeadliner?.feeGranted ? card.appearanceFeeGold : 0;
+  const delta = world.playerGold - state.actBaseline.playerGold;
+  const waveGold = Math.max(0, delta - appearanceFeeGold);
+  state.actIncome.push({
+    act,
+    waveGold,
+    appearanceFeeGold,
+    totalGold: waveGold + appearanceFeeGold,
+  });
+}
+
 function recordFloor4PhaseTransition(
   world: GameWorld,
   state: Floor4ArenaState,
@@ -266,6 +291,7 @@ function recordFloor4PhaseTransition(
     // must not diff against the live, still-mutating balance or "Gold
     // earned" would shrink in real time as the player shops at sponsors.
     state.breakGoldSnapshot = world.playerGold;
+    recordFloor4ActIncome(world, state, phase.act);
     const opened = openFloor4GreenRoomVisit(world, phase.act - 1);
     if (!opened.ok) {
       throw new Error(opened.message);
@@ -287,6 +313,7 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
     actBaseline: { playerGold: world.playerGold, enemiesSpawned: 0, enemiesCut: 0 },
+    actIncome: [],
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;
@@ -1163,6 +1190,7 @@ export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | 
     waveTelemetry: { ...state.waveTelemetry },
     headlinerTelemetry: { ...state.headlinerTelemetry },
     headlinerCard: state.headlinerCard.map((entry) => ({ ...entry })),
+    actIncome: state.actIncome.map((entry) => ({ ...entry })),
   };
 }
 

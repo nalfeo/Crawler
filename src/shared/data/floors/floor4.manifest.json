@@ -90,14 +90,14 @@
         "intervalMs": 12000
       },
       "budget": {
-        "base": 4.5,
-        "actMultipliers": [0.5, 0.85, 1.3, 1.9, 2.6],
+        "base": 6.0,
+        "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
         "intraActRamp": 0.09,
         "openingWaveMultiplier": 0.34,
         "maxEntriesPerWave": 16
       },
       "concurrency": {
-        "liveCap": 16,
+        "liveCap": 24,
         "debtCap": 18
       },
       "gates": {
@@ -235,6 +235,22 @@
           "appearanceFeeGold": 75,
           "contactDamage": 16
         }
+      ]
+    },
+    "economy": {
+      "actIncomeBudgetGold": [
+        { "act": 1, "minWaveGold": 0, "maxWaveGold": 24 },
+        { "act": 2, "minWaveGold": 4, "maxWaveGold": 50 },
+        { "act": 3, "minWaveGold": 8, "maxWaveGold": 56 },
+        { "act": 4, "minWaveGold": 8, "maxWaveGold": 64 },
+        { "act": 5, "minWaveGold": 4, "maxWaveGold": 80 }
+      ],
+      "visitPriceBandGold": [
+        { "visitIndex": 0, "minGold": 5, "maxGold": 36 },
+        { "visitIndex": 1, "minGold": 7, "maxGold": 50 },
+        { "visitIndex": 2, "minGold": 11, "maxGold": 79 },
+        { "visitIndex": 3, "minGold": 15, "maxGold": 108 },
+        { "visitIndex": 4, "minGold": 20, "maxGold": 144 }
       ]
     },
     "overtime": {

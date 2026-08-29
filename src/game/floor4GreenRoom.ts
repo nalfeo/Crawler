@@ -57,6 +57,7 @@ interface Floor4GreenRoomConfig {
   readonly tables: readonly { readonly id: string; readonly archetypeId: string }[];
   readonly priceTierByVisit: readonly number[];
   readonly affordabilityBudgetByVisit: readonly number[];
+  readonly priceBandByVisit: readonly { readonly minGold: number; readonly maxGold: number }[];
   readonly actCount: number;
 }
 
@@ -70,6 +71,10 @@ function getFloor4GreenRoomConfig(): Floor4GreenRoomConfig {
     tables: floor4.greenRoom.tables,
     priceTierByVisit: floor4.greenRoom.priceTierByVisit,
     affordabilityBudgetByVisit: floor4.greenRoom.affordabilityBudgetByVisit,
+    priceBandByVisit: floor4.economy.visitPriceBandGold.map((band) => ({
+      minGold: band.minGold,
+      maxGold: band.maxGold,
+    })),
     actCount: floor4.phase.actCount,
   };
 }
@@ -132,6 +137,7 @@ function rollFloor4GreenRoomVisit(world: GameWorld, visitIndex: number): Floor4G
   });
 
   const visit = Object.freeze({ visitIndex, tables: Object.freeze(tables) });
+  assertFloor4VisitPriceBand(config, visit);
   const cheapest = floor4GreenRoomCheapestOfferPrice(visit);
   const budget = floor4GreenRoomAffordabilityBudget(visitIndex);
   if (cheapest > budget) {
@@ -140,6 +146,34 @@ function rollFloor4GreenRoomVisit(world: GameWorld, visitIndex: number): Floor4G
     );
   }
   return visit;
+}
+
+/**
+ * Every rolled offer must land inside the visit's manifest-authored price band
+ * (spec FR6.7). The band is derived from the archetype pools scaled by that
+ * visit's price tier, so a pool edit, an archetype swap, or a tier change that
+ * pushes prices out of the authored window fails at roll time instead of
+ * silently reshaping the Floor 4 gold curve.
+ */
+function assertFloor4VisitPriceBand(
+  config: Floor4GreenRoomConfig,
+  visit: Floor4GreenRoomVisitStock,
+): void {
+  const band = config.priceBandByVisit[visit.visitIndex];
+  if (!band) {
+    throw new Error(`Floor 4 Green Room visit ${visit.visitIndex} has no authored price band`);
+  }
+  for (const table of visit.tables) {
+    for (const offer of table.offers) {
+      if (offer.unitPrice < band.minGold || offer.unitPrice > band.maxGold) {
+        throw new Error(
+          `Floor 4 Green Room visit ${visit.visitIndex} table "${table.tableId}" offer ` +
+            `"${offer.itemId}" priced ${offer.unitPrice} outside authored band ` +
+            `[${band.minGold}, ${band.maxGold}]`,
+        );
+      }
+    }
+  }
 }
 
 /** The lowest offer price across every table of a visit (its "buy floor"). */
