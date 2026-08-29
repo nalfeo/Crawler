@@ -233,6 +233,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     expect(runStep?.env).toMatchObject({
+      GITHUB_TOKEN: '${{ github.token }}',
       GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
@@ -286,6 +287,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
     expect(run?.env).toMatchObject({
+      GITHUB_TOKEN: '${{ github.token }}',
       GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',

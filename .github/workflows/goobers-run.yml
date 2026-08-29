@@ -346,6 +346,7 @@ jobs:
           # Ambient env, not runner.envPassthrough — required for the
           # CopilotAdapter preflight probe on a clean runner (see the
           # "Install Copilot CLI" step comment above).
+          GITHUB_TOKEN: ${{ github.token }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           GOOBERS_GITHUB_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
