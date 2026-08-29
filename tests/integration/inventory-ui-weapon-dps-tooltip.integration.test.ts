@@ -203,9 +203,10 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
 
     const generatedWeaponTooltip = hover(generatedWeaponIndex);
     expect(generatedWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    // The generated weapon also has bonus stat rows beyond DPS, so it grows
-    // taller than the static weapon's DPS-only stat list.
-    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(152);
+    // The generated weapon also carries slot/weight metadata and bonus stat
+    // rows beyond DPS, so it grows taller than the static weapon's DPS-only
+    // stat list.
+    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(166);
     // DPS must lead the stat-line array, not trail after the bonus stat rows.
     const dpsIndex = generatedWeaponTooltip.lines.findIndex((line) => line.startsWith('DPS: '));
     const firstBonusStatIndex = generatedWeaponTooltip.lines.findIndex(
@@ -213,6 +214,14 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     );
     expect(dpsIndex).toBeGreaterThanOrEqual(0);
     expect(firstBonusStatIndex).toBeGreaterThan(dpsIndex);
+    // Slot and carry weight stay visible as stat metadata now that they no
+    // longer squat in the flavor slot, and they sit between DPS and the bonus
+    // rows so the renderer's five-line stat cap can never drop them.
+    const metadataIndex = generatedWeaponTooltip.lines.findIndex((line) =>
+      /^Main Hand · \d+(\.\d+)? lb$/.test(line),
+    );
+    expect(metadataIndex).toBeGreaterThan(dpsIndex);
+    expect(metadataIndex).toBeLessThan(firstBonusStatIndex);
     // Flavor copy reuses the authored catalog description of the generated
     // base item instead of leaking slot/stat/weight metadata into that slot.
     expect(generatedWeaponTooltip.lines).toContain(getItemById('plasma-pistol')?.description);
@@ -246,5 +255,8 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
       'A dungeon-forged reward with terms the producers refuse to print.',
     );
     expect(record.textStrings).not.toContain('equipment/weapon/bone-saw');
+    // The fallback flavor path must still surface slot/weight metadata; the
+    // neutral copy replaces mechanical text, it does not delete it.
+    expect(record.textStrings.some((line) => /^Main Hand · \d+(\.\d+)? lb$/.test(line))).toBe(true);
   });
 });
