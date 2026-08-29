@@ -668,15 +668,16 @@ export class CaveSystemGenerator implements MapGenerator {
       h,
       subSeed,
     );
-    const settlementCluster = this.carveSettlementCluster(
-      tileMap,
-      terrain,
-      settlementRegion,
-      w,
-      h,
-      subSeed,
-      reservedSpecialBounds,
-    );
+    const { rooms: settlementCluster, hallwayTileIndices: settlementHallwayTileIndices } =
+      this.carveSettlementCluster(
+        tileMap,
+        terrain,
+        settlementRegion,
+        w,
+        h,
+        subSeed,
+        reservedSpecialBounds,
+      );
     const settlementBarClusterRoom = settlementCluster.find(
       (room) => room.label === 'settlement_bar',
     );
@@ -879,6 +880,8 @@ export class CaveSystemGenerator implements MapGenerator {
       playerSpawn,
       DEFAULT_FOV_SUB_FACTOR,
       territoryZones,
+      [],
+      settlementHallwayTileIndices,
     );
   }
 
@@ -1601,9 +1604,13 @@ export class CaveSystemGenerator implements MapGenerator {
     h: number,
     seed: number,
     blockedBounds: readonly RoomBounds[] = [],
-  ): SettlementClusterRoom[] {
+  ): {
+    readonly rooms: SettlementClusterRoom[];
+    readonly hallwayTileIndices: ReadonlySet<number>;
+  } {
     const plan = this.planSettlementCluster(settlementRegion, w, h, seed, blockedBounds);
     const rooms: SettlementClusterRoom[] = [];
+    const hallwayTileIndices = new Set<number>();
     const addRoom = (bounds: RoomBounds, label: string): SettlementClusterRoom => {
       this.carveStoneRoom(tileMap, terrain, bounds, w);
       const interiorCells: Array<{ x: number; y: number }> = [];
@@ -1639,6 +1646,7 @@ export class CaveSystemGenerator implements MapGenerator {
       const endX = Math.max(aRight, bLeft);
       for (let x = startX; x <= endX; x++) {
         const idx = y * w + x;
+        hallwayTileIndices.add(idx);
         tileMap.flags[idx] = TilePresets.FLOOR;
         terrain[idx] = TerrainType.STONE_FLOOR;
         for (const sideY of [y - 1, y + 1]) {
@@ -1674,7 +1682,7 @@ export class CaveSystemGenerator implements MapGenerator {
       barRoom.doors.push({ x, y, connectsTo: -1 });
     }
 
-    return rooms;
+    return { rooms, hallwayTileIndices };
   }
 
   private carveStoneRoom(

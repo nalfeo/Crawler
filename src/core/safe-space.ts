@@ -46,6 +46,18 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
   const floorMap = world.floorMap;
   if (!floorMap) return false;
   const tile = floorMap.worldToTile(x, y);
+  // Positions outside the map are never safe. Guarding here also prevents the
+  // flattened hallway index (`ty * width + tx`) from aliasing an out-of-bounds
+  // tile onto a real hallway tile on an adjacent row.
+  if (tile.x < 0 || tile.y < 0 || tile.x >= floorMap.width || tile.y >= floorMap.height) {
+    return false;
+  }
+  // Internal settlement connectors are only safe once the settlement has been
+  // initialized for the run — see `floor2Settlement`.
+  const settlement = world.floorExtendedState?.settlement;
+  if (settlement && floorMap.settlementHallwayTileIndices.has(tile.y * floorMap.width + tile.x)) {
+    return true;
+  }
   // Rooms that became safe during the run (a cleared boss arena) are safe on
   // top of the authored SAFE rooms. Resolved by room id because the cleared
   // room keeps its generated role — see `GameWorld.clearedSafeRoomIds`. Ids are
