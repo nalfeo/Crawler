@@ -39,7 +39,8 @@ export interface CLIArgs {
   decisionMode: AIDecisionModeValue;
   /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default true. */
   optionalPurchases: boolean;
-  settlementReturnRouting: boolean;
+  /** Explicit routing override; omitted inherits the selected floor's default. */
+  settlementReturnRouting: boolean | undefined;
   persona: PlayerPersona;
 }
 
@@ -79,8 +80,10 @@ export function defaultCLIArgs(
       optionalPurchasesEnv === '1' ||
       optionalPurchasesEnv.toLowerCase() === 'true',
     settlementReturnRouting:
-      env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
-      env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
+      env.AI_SETTLEMENT_RETURN_ROUTING === undefined
+        ? undefined
+        : env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
+          env.AI_SETTLEMENT_RETURN_ROUTING.toLowerCase() === 'true',
     persona: 'experienced_player',
   };
 }
@@ -221,6 +224,15 @@ export function parseArgs(
   return args;
 }
 
+/** Resolve CLI-only Floor 2 routing without changing other runner defaults. */
+export function resolveHeadlessRunnerOptions(
+  args: Pick<CLIArgs, 'floorId' | 'settlementReturnRouting'>,
+): { settlementReturnRouting?: boolean } {
+  const settlementReturnRouting =
+    args.settlementReturnRouting ?? (args.floorId === 'floor2' ? true : undefined);
+  return settlementReturnRouting === undefined ? {} : { settlementReturnRouting };
+}
+
 export function helpText(): string {
   const defaultPathingMode = DEFAULT_CONFIG.pathingMode;
   return `
@@ -259,7 +271,8 @@ Options:
                            Enable optional latched AI settlement-return route goal
                            (deterministic expected-gain-vs-travel/risk/opportunity
                            utility; periodically returns to settlement to run the
-                           maintenance planner — equip/shop/claim/abilities)
+                           maintenance planner — equip/shop/claim/abilities;
+                           enabled by default for --floor floor2)
   --pathing-mode <mode>   AI pathing A/B axis: ${PATHING_MODE_VALUES.join(', ')} (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: ${DECISION_MODE_VALUES.join(', ')} (default: ${AIDecisionMode.LEGACY})
   --persona <name>         Evaluator persona (default: experienced_player)
