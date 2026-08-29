@@ -123,6 +123,7 @@ import { generateFloor1SpellBrokerOffers } from '../shared/spell-skills.js';
 import type { Floor1SpellBrokerOffer, FloorBossEncounterState } from '../shared/floor-types.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityDefinition } from './abilities/registry.js';
+import { getAbilityEffectSummary } from './abilities/effect-summary.js';
 import {
   acceptQuest,
   notifyQuestTalk,
@@ -409,10 +410,14 @@ export function getBossRewardSpellOptions(world: GameWorld): Array<{
 }> {
   return [...getOfferedBossRewardSpellIds(world)].map((spellId) => {
     const def = getAbilityDefinition(spellId);
+    const prose = def?.description ?? 'Learn a new spell.';
+    // Prose alone never told the player what a spell actually does to a target,
+    // so the authored damage/range/radius numbers ride along with the pitch.
+    const stats = getAbilityEffectSummary(spellId, world.floorMap?.config.tileSizeFt);
     return {
       id: spellId,
       label: def?.name ?? spellId,
-      description: def?.description ?? 'Learn a new spell.',
+      description: stats === undefined ? prose : `${prose}\n${stats}`,
     };
   });
 }
