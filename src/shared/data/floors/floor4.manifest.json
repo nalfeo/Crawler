@@ -67,8 +67,8 @@
         { "id": "apothecary", "archetypeId": "the-apothecary" },
         { "id": "supply", "archetypeId": "the-resource-broker" }
       ],
-      "priceTierByVisit": [2.5, 3.0, 3.6, 4.3, 5.2],
-      "affordabilityBudgetByVisit": [170, 205, 245, 290, 350]
+      "priceTierByVisit": [0.25, 0.35, 0.55, 0.75, 1.0],
+      "affordabilityBudgetByVisit": [18, 28, 40, 55, 75]
     },
     "tunnel": {
       "lengthTiles": 8,

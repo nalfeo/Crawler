@@ -84,6 +84,13 @@ describe('floor4 manifest schema Green Room shop rules', () => {
       bad.floor4.greenRoom.affordabilityBudgetByVisit.slice(0, -1);
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
+
+  it('rejects an affordability budget that drifts from the Headliner appearance fee', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.affordabilityBudgetByVisit[0] =
+      bad.floor4.headliners.slots[0]!.appearanceFeeGold + 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
 });
 
 describe('floor4 manifest schema wave rules', () => {

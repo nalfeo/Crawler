@@ -2,9 +2,10 @@
  * Floor 4 · Green Room shop stock lifecycle (slice A).
  *
  * Owns the *data and state* of the intermission shops, and nothing else: this
- * module rolls, holds, and retires each visit's immutable stock. Purchase
- * transactions, entity placement, sponsor branding, and any UI are explicitly
- * later slices (spec §7.3 / ADR 0090 D7) and are NOT touched here.
+ * module rolls, holds, and retires each visit's immutable stock when the arena
+ * director enters/exits each intermission. Purchase transactions, entity
+ * placement, sponsor branding, and any UI are explicitly later slices
+ * (spec §7.3 / ADR 0090 D7) and are NOT touched here.
  *
  * Design contract enforced here (spec §7):
  *
@@ -24,8 +25,7 @@
  *   orphan behind — it simply drops the offer data (spec §7.2).
  *
  * Floor/run-scoped: state lives on `world.floorExtendedState.floor4GreenRoom`,
- * created lazily on the first visit so this slice never touches the floor-4
- * initializer or director transition code.
+ * created lazily on the first director-entered intermission.
  *
  * Layer-safe: game → core (`generateShopInventory`) → shared. No engine, no UI,
  * no `Math.random()`.
@@ -43,13 +43,13 @@ import type {
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 
 /** Purpose label for the derived per-visit, per-table stock streams (ADR D5). */
-export const FLOOR4_STOCK_STREAM_LABEL = 'floor4:stock';
+const FLOOR4_STOCK_STREAM_LABEL = 'floor4:stock';
 
 /**
  * Build the exact derived-stream key for one table's stock on one visit.
  * Format is a data contract asserted by tests — do not reshape casually.
  */
-export function floor4StockStreamKey(seed: number, visitIndex: number, tableId: string): string {
+function floor4StockStreamKey(seed: number, visitIndex: number, tableId: string): string {
   return `${seed}:${FLOOR4_STOCK_STREAM_LABEL}:${visitIndex}:${tableId}`;
 }
 
@@ -83,12 +83,12 @@ function assertVisitIndex(visitIndex: number, actCount: number): void {
 }
 
 /**
- * The worst-case gold-on-hand the balance budget guarantees at `visitIndex`,
- * from appearance fees alone. Every visit's rolled stock must contain at least
- * one offer at or below this (spec §8). Provisional in slice A — see the
- * manifest schema doc for the affordability budget.
+ * The worst-case gold-on-hand the balance budget guarantees at `visitIndex`.
+ * Schema validation ties this value to the Headliner appearance fee the runtime
+ * actually grants, so every visit's rolled stock must contain at least one offer
+ * at or below this (spec §8).
  */
-export function floor4GreenRoomAffordabilityBudget(visitIndex: number): number {
+function floor4GreenRoomAffordabilityBudget(visitIndex: number): number {
   const config = getFloor4GreenRoomConfig();
   assertVisitIndex(visitIndex, config.actCount);
   return config.affordabilityBudgetByVisit[visitIndex]!;
@@ -99,10 +99,7 @@ export function floor4GreenRoomAffordabilityBudget(visitIndex: number): number {
  * floor seed; performs NO world mutation. Identical `seed` + `visitIndex`
  * always produce identical stock (deterministic, path-independent).
  */
-export function rollFloor4GreenRoomVisit(
-  world: GameWorld,
-  visitIndex: number,
-): Floor4GreenRoomVisitStock {
+function rollFloor4GreenRoomVisit(world: GameWorld, visitIndex: number): Floor4GreenRoomVisitStock {
   const config = getFloor4GreenRoomConfig();
   assertVisitIndex(visitIndex, config.actCount);
   const tierMultiplier = config.priceTierByVisit[visitIndex]!;
@@ -134,11 +131,19 @@ export function rollFloor4GreenRoomVisit(
     });
   });
 
-  return Object.freeze({ visitIndex, tables: Object.freeze(tables) });
+  const visit = Object.freeze({ visitIndex, tables: Object.freeze(tables) });
+  const cheapest = floor4GreenRoomCheapestOfferPrice(visit);
+  const budget = floor4GreenRoomAffordabilityBudget(visitIndex);
+  if (cheapest > budget) {
+    throw new Error(
+      `Floor 4 Green Room visit ${visitIndex} cheapest offer ${cheapest} exceeds guaranteed appearance-fee budget ${budget}`,
+    );
+  }
+  return visit;
 }
 
 /** The lowest offer price across every table of a visit (its "buy floor"). */
-export function floor4GreenRoomCheapestOfferPrice(visit: Floor4GreenRoomVisitStock): number {
+function floor4GreenRoomCheapestOfferPrice(visit: Floor4GreenRoomVisitStock): number {
   let cheapest = Number.POSITIVE_INFINITY;
   for (const table of visit.tables) {
     for (const offer of table.offers) {
@@ -160,19 +165,7 @@ function ensureFloor4GreenRoomState(world: GameWorld): Floor4GreenRoomState {
   return state;
 }
 
-/** Read the Green Room lifecycle state, if it has been created. */
-export function getFloor4GreenRoomState(world: GameWorld): Floor4GreenRoomState | undefined {
-  return world.floorExtendedState?.floor4GreenRoom;
-}
-
-/** Read the currently open visit's immutable stock, if any. */
-export function getFloor4GreenRoomCurrentVisit(
-  world: GameWorld,
-): Floor4GreenRoomVisitStock | undefined {
-  return world.floorExtendedState?.floor4GreenRoom?.currentVisit;
-}
-
-export type Floor4GreenRoomOpenResult =
+type Floor4GreenRoomOpenResult =
   | { readonly ok: true; readonly changed: boolean; readonly visit: Floor4GreenRoomVisitStock }
   | {
       readonly ok: false;
@@ -224,7 +217,7 @@ export function openFloor4GreenRoomVisit(
   return { ok: true, changed: true, visit };
 }
 
-export interface Floor4GreenRoomRetireResult {
+interface Floor4GreenRoomRetireResult {
   readonly changed: boolean;
   /**
    * Generated-equipment instances eliminated by this retirement. Always 0 in

@@ -553,11 +553,9 @@ export const floorManifestDefSchema = z
              * alone (spec §8: "every Green Room must be able to buy something
              * meaningful"). Every visit's rolled stock must contain at least one
              * offer priced at or below this budget. Indexed by 0-based visit;
-             * length must equal `phase.actCount`. PROVISIONAL in Slice A — the
-             * real appearance-fee economy is owned by a later slice; these
-             * numbers are the affordability seam and are sized above the
-             * analytic worst-case cheapest-offer so the invariant holds for
-             * every seed.
+             * length must equal `phase.actCount`, and every entry must match
+             * that act's authored Headliner `appearanceFeeGold` so the budget
+             * cannot drift away from the gold actually granted at runtime.
              */
             affordabilityBudgetByVisit: z.array(z.number().positive()),
           })
@@ -772,6 +770,17 @@ export const floorManifestDefSchema = z
             path: ['greenRoom', 'affordabilityBudgetByVisit'],
             message: `expected one affordability budget per act (${floor4.phase.actCount}), got ${greenRoom.affordabilityBudgetByVisit.length}`,
           });
+        }
+        for (let index = 0; index < greenRoom.affordabilityBudgetByVisit.length; index += 1) {
+          const act = index + 1;
+          const slot = floor4.headliners.slots.find((entry) => entry.act === act);
+          if (slot && greenRoom.affordabilityBudgetByVisit[index] !== slot.appearanceFeeGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['greenRoom', 'affordabilityBudgetByVisit', index],
+              message: `expected Green Room affordability budget for act ${act} to match appearanceFeeGold ${slot.appearanceFeeGold}`,
+            });
+          }
         }
         const border = arena.borderThicknessTiles;
         const arenaMidY = border + Math.floor(arena.heightTiles / 2);
