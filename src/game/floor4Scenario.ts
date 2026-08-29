@@ -40,14 +40,17 @@ import {
   DeathTimer,
   Enemy,
   EnemyBehavior,
+  Companion,
   Health,
   Player,
   Position,
   Size,
   Sprite,
+  Team,
   type GameWorld,
 } from '../core/index.js';
 import { applyDamage, clearEntityStores } from '../core/helpers.js';
+import { spawnRosterCompanion } from '../core/spawners/companions.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
@@ -56,7 +59,11 @@ import {
   showcaseArenaOptionsFromConfig,
 } from '../core/map/generators/ShowcaseArenaGenerator.js';
 import { getGenerator } from '../core/map/generators/registry.js';
-import { getFloorEnemyPack, type EnemyArchetypeDef } from '../shared/enemy-packs.js';
+import {
+  getFloorEnemyPack,
+  type EnemyArchetypeDef,
+  type EnemyPackDef,
+} from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { buildFloor4HeadlinerCard } from '../shared/floor4-headliners.js';
 import {
@@ -68,6 +75,14 @@ import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/r
 import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import { TeamId } from '../shared/constants.js';
+import {
+  ABILITY_MILESTONE_LEVELS,
+  formForLevel,
+  getPetSpecies,
+  speciesTokenForId,
+  type PetSpeciesDef,
+} from '../shared/data/floor3/species.js';
 import { openFloor4GreenRoomVisit, retireFloor4GreenRoomVisit } from './floor4GreenRoom.js';
 import {
   createBossChestId,
@@ -106,6 +121,8 @@ export const FLOOR4_STALL_BACKSTOP_GOAL_ID = 'floor4-stall-backstop';
 
 const FLOOR4_PLAYER_STAT_SOURCE_ID = 'floor4-manifest-player';
 const FLOOR4_ACTS: readonly Floor4ActIndex[] = [1, 2, 3, 4, 5];
+const FLOOR4_KEPT_COMPANION_LEVEL: number =
+  ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
 
 function getFloor4Manifest() {
   const manifest = getFloorManifest('floor4');
@@ -377,6 +394,39 @@ function floor4ArchetypeAiType(archetype: EnemyArchetypeDef): number {
   }
 }
 
+function floor3CompanionArchetypeAiType(archetype: EnemyArchetypeDef): number {
+  switch (archetype.aiType) {
+    case 'ranged':
+      return AI_TYPE.RANGED;
+    case 'leaper':
+      return AI_TYPE.LEAPER;
+    case 'guardian':
+      return AI_TYPE.GUARDIAN;
+    case 'support':
+      return AI_TYPE.SUPPORT;
+    default:
+      return AI_TYPE.CHASE;
+  }
+}
+
+function getFloor3WildPack(): EnemyPackDef {
+  const pack = getFloorEnemyPack('floor3-wild');
+  if (!pack) {
+    throw new Error('Missing floor3-wild enemy pack');
+  }
+  return pack;
+}
+
+function findFloor3ArchetypeForKeptCompanion(
+  pack: EnemyPackDef,
+  species: PetSpeciesDef,
+): EnemyArchetypeDef | undefined {
+  return (
+    pack.archetypes.find((candidate) => candidate.speciesId === species.speciesId) ??
+    pack.archetypes.find((candidate) => candidate.id.endsWith(`-${species.fightingStyle}`))
+  );
+}
+
 function floor4WaveArchetype(archetypeId: string): EnemyArchetypeDef {
   const packId = getFloor4WaveConfig().enemyPackId;
   const archetype = getFloorEnemyPack(packId)?.archetypes.find(
@@ -426,6 +476,98 @@ function resolveFloor4GateSpawnPosition(
   return floorMap.isPassableAt(candidate.x, candidate.y) ? candidate : center;
 }
 
+function hasFloor4KeptCompanionCoStar(world: GameWorld): boolean {
+  return query(world.ecs, [Enemy, Companion, Team]).some(
+    (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
+  );
+}
+
+function markFloor4HostileForCoStarIfNeeded(world: GameWorld, eid: number): void {
+  if (hasFloor4KeptCompanionCoStar(world) && !hasComponent(world.ecs, eid, Team)) {
+    addComponent(world.ecs, eid, set(Team, { id: TeamId.ENEMY }));
+  }
+}
+
+function resolveFloor4CoStarSpawnPosition(
+  world: GameWorld,
+  playerEid: number,
+): { x: number; y: number } {
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: playerX + 4, y: playerY };
+  }
+
+  const origin = floorMap.worldToTile(playerX, playerY);
+  const maxRadius = Math.max(floorMap.width, floorMap.height);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const tile = { x: origin.x + dx, y: origin.y + dy };
+        if (!floorMap.tileMap.inBounds(tile.x, tile.y)) continue;
+        if (!floorMap.tileMap.isPassable(tile.x, tile.y)) continue;
+        return floorMap.tileToWorld(tile.x, tile.y);
+      }
+    }
+  }
+  return { x: playerX + floorMap.config.tileSizeFt, y: playerY };
+}
+
+function spawnFloor4KeptCompanionCoStar(
+  world: GameWorld,
+  playerEid: number,
+  playerCarryover: PlayerCarryoverSnapshot,
+): void {
+  const contract = playerCarryover.keptCompanion;
+  if (!contract || hasFloor4KeptCompanionCoStar(world)) {
+    return;
+  }
+  const species = getPetSpecies(contract.speciesId);
+  if (!species) {
+    throw new Error(`Unknown Floor 3 kept companion species: ${contract.speciesId}`);
+  }
+  const archetype = findFloor3ArchetypeForKeptCompanion(getFloor3WildPack(), species);
+  if (!archetype) {
+    throw new Error(`No Floor 3 archetype found for kept companion: ${contract.speciesId}`);
+  }
+
+  const spawn = resolveFloor4CoStarSpawnPosition(world, playerEid);
+  const form = formForLevel(species, FLOOR4_KEPT_COMPANION_LEVEL);
+  const hp = Math.max(1, Math.round(archetype.hp * form.statScale));
+  const attackRange =
+    archetype.aiType === 'ranged' || archetype.aiType === 'support'
+      ? archetype.detectRange * 0.65
+      : 0;
+  const eid = spawnRosterCompanion(world, {
+    x: spawn.x,
+    y: spawn.y,
+    hp,
+    aiType: floor3CompanionArchetypeAiType(archetype),
+    speed: archetype.speed,
+    aggroRange: archetype.detectRange,
+    attackRange,
+    speciesToken: speciesTokenForId(contract.speciesId),
+    level: FLOOR4_KEPT_COMPANION_LEVEL,
+    ownerTeam: TeamId.PLAYER,
+    form: contract.form,
+  });
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius:
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, archetype.id);
+}
+
 /**
  * Spawn one manifest entry at its fixed gate. Consumes no RNG stream.
  *
@@ -455,6 +597,7 @@ function spawnFloor4WaveEnemy(world: GameWorld, entry: Floor4WaveSpawnEntry, slo
     archetype.detectRange,
     isRanged ? archetype.detectRange * 0.65 : 0,
   );
+  markFloor4HostileForCoStarIfNeeded(world, eid);
   setComponent(world.ecs, eid, Sprite, {
     textureId: archetype.spriteTexture,
     width: archetype.spriteWidth,
@@ -795,6 +938,7 @@ function spawnFloor4Headliner(
     isRanged ? archetype.detectRange * 0.65 : 0,
     { weight: 240 },
   );
+  markFloor4HostileForCoStarIfNeeded(world, eid);
   setComponent(world.ecs, eid, Sprite, {
     textureId: archetype.spriteTexture,
     width: archetype.spriteWidth,
@@ -1225,6 +1369,7 @@ export function initializeFloor4Scenario(
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
     initializePlayerWeaponSkills(world, playerEid);
+    spawnFloor4KeptCompanionCoStar(world, playerEid, options.playerCarryover);
   } else {
     equipFloor4StarterWeapon(world, playerEid, manifest.starterWeapons);
   }

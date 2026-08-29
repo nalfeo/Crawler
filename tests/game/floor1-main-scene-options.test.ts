@@ -63,7 +63,7 @@ describe('createFloor1MainSceneOptions', () => {
     {
       floorId: 'floor4',
       beforeWeaponSystems: [],
-      beforeEnemyAISystems: [],
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,

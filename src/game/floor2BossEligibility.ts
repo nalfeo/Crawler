@@ -1,8 +1,13 @@
 import { hasComponent } from 'bitecs';
-import { FamilyMembership } from '../core/components.js';
+import { FamilyMembership, Team } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { TeamId } from '../shared/constants.js';
 
 export function isEnemyCombatEligible(world: GameWorld, enemyEid: number): boolean {
+  if (hasComponent(world.ecs, enemyEid, Team) && world.stores.team.id[enemyEid] === TeamId.PLAYER) {
+    return false;
+  }
+
   if (
     world.floor !== 2 ||
     !hasComponent(world.ecs, enemyEid, FamilyMembership) ||

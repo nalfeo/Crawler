@@ -359,11 +359,13 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
 
     // Enemy projectile hits player
     if (hasComponent(world.ecs, a, EnemyProjectile) && hasComponent(world.ecs, b, Player)) {
+      if (sameTeam(world, projectileSource(world, a), b)) continue;
       applyEnemyProjectileHit(world, a, b, hitTimestamps);
       continue;
     }
 
     if (hasComponent(world.ecs, b, EnemyProjectile) && hasComponent(world.ecs, a, Player)) {
+      if (sameTeam(world, projectileSource(world, b), a)) continue;
       applyEnemyProjectileHit(world, b, a, hitTimestamps);
       continue;
     }

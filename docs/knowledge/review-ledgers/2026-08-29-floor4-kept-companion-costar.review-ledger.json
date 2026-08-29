@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-29",
+  "session_slug": "floor4-kept-companion-costar",
+  "task_title": "Floor 4 optional kept-companion co-star",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Initial additive-spawn plan was revised before coding: Floor 4 will wire companionAISystem, mark Floor 4 enemies as TeamId.ENEMY only when a co-star exists, filter TeamId.PLAYER Enemy companions from player/headless hostile targeting/accounting, re-host the kept companion at the final ability milestone level (34) with form 2, test cold/no-kept/kept carryover cases, and use deterministic adjacent-passable co-star placement."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
