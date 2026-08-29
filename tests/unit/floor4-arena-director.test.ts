@@ -411,5 +411,25 @@ describe('arenaDirectorSystem', () => {
     // The run-cumulative totals differ from the act-2-only deltas above,
     // proving the summary is NOT simply echoing the cumulative counters.
     expect(arena.waveTelemetry.enemiesSpawned).not.toBe(expectedSpawnedThisAct);
+
+    // Prove the gold snapshot is genuinely LOCKED against the real sim path
+    // (not just a hand-authored fixture): spend gold mid-break, as a sponsor
+    // purchase would, and confirm the summary still reports the pre-spend
+    // delta instead of re-diffing against the drained live balance.
+    const goldBeforeSpend = world.playerGold;
+    world.playerGold = Math.max(0, world.playerGold - 5);
+    const hudAfterSpend = buildFloor4HudState({
+      arena,
+      phaseConfig: {
+        actCount: phase.actCount,
+        actDurationMs: phase.actDurationMs,
+        waveWindowMs: phase.waveWindowMs,
+        overtimeCapMs: phase.overtimeCapMs,
+        wavesPerAct: waves.cadence.wavesPerAct,
+      },
+      playerGold: world.playerGold,
+    });
+    expect(world.playerGold).toBeLessThan(goldBeforeSpend);
+    expect(hudAfterSpend.summary).toContain(`Gold earned: ${expectedGoldEarned}`);
   });
 });
