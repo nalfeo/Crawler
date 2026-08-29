@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "spell-effect-numbers",
+  "task_title": "Show range/damage numbers for spells that target others",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Blocking: (1) base-only numbers mislead -> every summary now ends with an explicit \"Base — scales with INT & mastery\" suffix; (2) fireball radiusTiles is both reach and blast -> labelled \"Target & blast radius\". Non-blocking, all adopted: abilities-lab tooltip wired too; drift tests assert exact per-spell strings; callback named getAbilityEffectSummary; tileSizeFt passed explicitly from floorMap config; e2e observe-before-done via main-scene-probe on the real modals at 1280x720 and 960x540."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Full-diff review incl. the ModalPickerUI fit-to-content change (hit areas, bevels, backdrop, uiScale, node translation, grow-only reset per rerender), formatter coverage of all 8 CatalogEffect spell variants, percent-vs-flat parity with foldLegacyStatModifier, engine->game layer boundary, and test coverage. No findings."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "8481229481fab5d65ef4d19f632a2deb92dccb78",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change fulfils the task by deriving spell statistics directly from the ability registry, avoiding error-prone duplication. The UI modifications to dynamically grow row and panel heights are correctly implemented using a two-pass layout approach that accurately handles text wrapping and resolution scaling. Architectural boundaries are respected by injecting the formatter through scene options, and tests guarantee correctness and prevent future regressions."
+    }
+  }
+}

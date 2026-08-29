@@ -16,7 +16,7 @@ import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
-import { createHudAbilityBar } from './HudAbilityBar.js';
+import { ABILITY_BAR_LAYOUT, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import {
@@ -67,6 +67,12 @@ export function createHudUI(scene: Phaser.Scene): {
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
   getAbilityBarBounds(): ScreenBounds;
+  /**
+   * Screen-space (design-space) Y of the ability panel's top edge, or `null`
+   * when the bar is not rendered. Bottom-center affordances outside the HUD
+   * groups (the Talk/Descend interaction hint) stack above this line.
+   */
+  getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
@@ -168,6 +174,14 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeftTopEdge = bottomLeftNaturalBounds.top;
   const abilityBarLeftEdge = bottomCenter.getBounds().left;
 
+  // Live scale of the bottom-center group, mirrored out so callers can project
+  // the ability bar's authored design constants into screen space.
+  let bottomCenterScale = 1;
+  // Screen-space Y of the ability panel's top edge, recomputed only when the
+  // ui-scale / safe-area layout changes so per-frame callers never trigger a
+  // synchronous DOM layout or style read.
+  let abilityBarScreenTop = 0;
+
   function applyScale(): void {
     const s = computeVitalsScale({
       desiredScale: getUiScale(scene),
@@ -175,7 +189,7 @@ export function createHudUI(scene: Phaser.Scene): {
       clusterTopEdge: bottomLeftTopEdge,
       neighborLeftEdge: abilityBarLeftEdge,
     });
-    const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
+    bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;
     const cx = w / 2;
@@ -190,6 +204,13 @@ export function createHudUI(scene: Phaser.Scene): {
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale) - safe.bottom);
     topCenter.setScale(s).setPosition(cx * (1 - s), safe.top);
     bottomRight.setScale(s).setPosition(w * (1 - s) - safe.right, h * (1 - s) - safe.bottom);
+
+    // Inverse of the bottomCenter transform above. A child at local y
+    // `ABILITY_BAR_LAYOUT.panelTop` renders at
+    //   bottomCenter.y + bottomCenterScale * panelTop
+    // and bottomCenter.y is `h * (1 - bottomCenterScale) - safe.bottom`, which
+    // simplifies to the expression below.
+    abilityBarScreenTop = h - safe.bottom - bottomCenterScale * (h - ABILITY_BAR_LAYOUT.panelTop);
   }
 
   applyScale();
@@ -325,6 +346,13 @@ export function createHudUI(scene: Phaser.Scene): {
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
+    getAbilityBarScreenTop: () => {
+      if (hidden || !abilityBar.isVisible()) {
+        return null;
+      }
+      // Cached in applyScale(); no DOM reads on this (per-frame) path.
+      return abilityBarScreenTop;
+    },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
