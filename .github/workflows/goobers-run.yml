@@ -329,11 +329,15 @@ jobs:
               token:
                 env: COPILOT_GITHUB_TOKEN
           runner:
+            # GITHUB_TOKEN is deliberately absent: it is the job-scoped
+            # checks/issues/PR-write token used only by the top-level
+            # `goobers run --github-progress` process. Passing it through would
+            # hand it to every deterministic and agentic stage regardless of the
+            # capabilities that stage declared.
             envPassthrough:
               - GOOBERS_RECOVERY_ISSUE
               - GOOBERS_RESUME_BRANCH
               - GH_TOKEN
-              - GITHUB_TOKEN
               - GITHUB_REPOSITORY
           runConditions:
             maxParallelRuns: 1

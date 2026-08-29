@@ -93,6 +93,32 @@ function loadYaml<T>(...segments: string[]): T {
   return parse(readFileSync(path.join(REPO_ROOT, ...segments), 'utf8')) as T;
 }
 
+/**
+ * Reads the `runner.envPassthrough` entries out of the instance manifest that
+ * the "Materialize checked-in source into the instance" step writes with a
+ * heredoc, so contract assertions test the generated list itself rather than
+ * substring matches against the whole script.
+ */
+function readGeneratedEnvPassthrough(script: string | null | undefined): string[] {
+  if (!script) {
+    return [];
+  }
+  const lines = script.split('\n');
+  const start = lines.findIndex((line) => line.trim() === 'envPassthrough:');
+  if (start === -1) {
+    return [];
+  }
+  const entries: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = line.match(/^\s*-\s+(\S+)\s*$/);
+    if (!match?.[1]) {
+      break;
+    }
+    entries.push(match[1]);
+  }
+  return entries;
+}
+
 function extractPinnedSha(script: string | null | undefined): string | null {
   if (!script) {
     return null;
@@ -316,14 +342,32 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
-    expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
-    expect(materialize?.run).toContain('GH_TOKEN');
-    expect(materialize?.run).toContain('GITHUB_TOKEN');
-    expect(materialize?.run).toContain('GITHUB_REPOSITORY');
+    expect(readGeneratedEnvPassthrough(materialize?.run)).toEqual([
+      'GOOBERS_RECOVERY_ISSUE',
+      'GOOBERS_RESUME_BRANCH',
+      'GH_TOKEN',
+      'GITHUB_REPOSITORY',
+    ]);
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
     ]);
+  });
+
+  it('never forwards the hosted-progress GITHUB_TOKEN into runner stages', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into the instance',
+    );
+    const runStep = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+
+    // GITHUB_TOKEN carries checks/issues/PR write scopes for hosted progress on
+    // the top-level `goobers run` process only. Forwarding it through the
+    // runner would hand those scopes to stages that never declared them.
+    expect(runStep?.env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    expect(readGeneratedEnvPassthrough(materialize?.run)).not.toContain('GITHUB_TOKEN');
+    expect(instance.runner?.envPassthrough ?? []).not.toContain('GITHUB_TOKEN');
   });
 
   it('keeps Goobers repository and model credentials separate', () => {

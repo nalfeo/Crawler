@@ -18,6 +18,10 @@ workflow environment binding plus its existing contract test.
   publication.
 - Extended the workflow contract test to prevent either hosted-progress or
   repository credentials from silently disappearing.
+- Removed `GITHUB_TOKEN` from the generated `runner.envPassthrough` list so the
+  hosted-progress token stays on the top-level `goobers run` process instead of
+  being copied into every deterministic and agentic stage. No gaggle stage reads
+  `GITHUB_TOKEN`; repository mutation stages use `GH_TOKEN`.
 
 ## Evidence
 
