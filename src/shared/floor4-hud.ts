@@ -148,10 +148,14 @@ function buildSummary(input: Floor4HudInput, act: Floor4ActIndex): readonly stri
   // run-cumulative and would re-report every prior act's numbers at every
   // later break. The final tally intentionally keeps the cumulative totals.
   const baseline = input.arena?.actBaseline;
+  // The break-summary gold delta must be locked the instant the break opens:
+  // diffing against the live `input.playerGold` would make "Gold earned"
+  // shrink in real time as the player spends at sponsors during the break.
+  const breakGold = input.arena?.breakGoldSnapshot ?? input.playerGold;
   const goldValue =
     isFinal || !baseline
       ? Math.max(0, Math.trunc(input.playerGold))
-      : Math.max(0, Math.trunc(input.playerGold - baseline.playerGold));
+      : Math.max(0, Math.trunc(breakGold - baseline.playerGold));
   const spawnedValue =
     isFinal || !baseline
       ? Math.max(0, Math.trunc(waveTelemetry?.enemiesSpawned ?? 0))
@@ -208,7 +212,7 @@ export function buildFloor4HudState(input: Floor4HudInput): Floor4HudState {
       ? buildSummary(input, act)
       : [];
   const cutNotice =
-    state.phase.kind === 'HEADLINE' && state.phaseElapsedMs <= CUT_NOTICE_MS
+    state.phase.kind === 'HEADLINE' && !state.phase.cleared && state.phaseElapsedMs <= CUT_NOTICE_MS
       ? 'CLEAR THE FLOOR'
       : null;
 

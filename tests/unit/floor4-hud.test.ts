@@ -128,6 +128,24 @@ describe('buildFloor4HudState', () => {
     });
   });
 
+  it('suppresses the cut notice once the Headliner is cleared, even inside the notice window', () => {
+    const hud = buildFloor4HudState({
+      arena: arena({
+        phase: { kind: 'HEADLINE', act: 2, cleared: true },
+        phaseElapsedMs: 1_500,
+        arenaElapsedMs: 210_000,
+        activeHeadliner: headliner(),
+        waves: undefined,
+      }),
+      phaseConfig,
+      playerGold: 44,
+      headlinerHealth: { current: 0, max: 200 },
+    });
+
+    expect(hud.title).toBe('ACT 2 VICTORY LAP');
+    expect(hud.notice).toBeNull();
+  });
+
   it('turns the clock over to overtime and summarizes Winner Circle state', () => {
     const overtime = buildFloor4HudState({
       arena: arena({
@@ -250,5 +268,34 @@ describe('buildFloor4HudState', () => {
       'Sponsors open: 1',
       'Shop, equip, then back to one',
     ]);
+  });
+
+  it('locks the break-summary gold delta to the break-start snapshot, not the live balance', () => {
+    // breakGoldSnapshot=65 is the balance the instant the Act 2 break opened
+    // (actBaseline.playerGold=20 -> a 45 gold "Gold earned"). input.playerGold
+    // is 40 here, simulating the player having already spent 25 gold at a
+    // sponsor mid-break. The summary must still report 45, not re-diff
+    // against the shrinking live balance (40 - 20 = 20).
+    const hud = buildFloor4HudState({
+      arena: arena({
+        phase: { kind: 'INTERMISSION', act: 2 },
+        phaseElapsedMs: 900,
+        arenaElapsedMs: 240_000,
+        waves: undefined,
+        breakGoldSnapshot: 65,
+      }),
+      greenRoom: {
+        retiredVisitCount: 1,
+        lastOpenedVisitIndex: 1,
+        currentVisit: {
+          visitIndex: 1,
+          tables: [{ tableId: 'arsenal', archetypeId: 'the-fence', streamKey: 's', offers: [] }],
+        },
+      },
+      phaseConfig,
+      playerGold: 40,
+    });
+
+    expect(hud.summary).toContain('Gold earned: 45');
   });
 });

@@ -262,6 +262,10 @@ function recordFloor4PhaseTransition(
   } else if (phase.kind === 'HEADLINE') {
     spawnFloor4Headliner(world, state, phase.act);
   } else if (phase.kind === 'INTERMISSION') {
+    // Lock the gold figure the instant the break starts: buildSummary()
+    // must not diff against the live, still-mutating balance or "Gold
+    // earned" would shrink in real time as the player shops at sponsors.
+    state.breakGoldSnapshot = world.playerGold;
     const opened = openFloor4GreenRoomVisit(world, phase.act - 1);
     if (!opened.ok) {
       throw new Error(opened.message);

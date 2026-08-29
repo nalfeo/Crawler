@@ -575,6 +575,14 @@ export interface Floor4ArenaState {
    * act's numbers at every later break.
    */
   actBaseline: Floor4ActBreakBaseline;
+  /**
+   * Player gold at the instant the CURRENT break's `INTERMISSION` phase was
+   * entered. The break-summary HUD (FR6/slice 6) reads this instead of the
+   * live, continuously-mutating gold balance so "Gold earned" reports a
+   * locked, act-end figure rather than shrinking in real time as the player
+   * spends gold at sponsors during the break.
+   */
+  breakGoldSnapshot?: number;
 }
 
 /** See {@link Floor4ArenaState.actBaseline}. */
