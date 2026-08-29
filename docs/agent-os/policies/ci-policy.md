@@ -150,6 +150,22 @@ Agents must fix every test, lint, typecheck, or build failure they encounter —
 - If a failure is genuinely caused by an in-progress external change (e.g. a dependency that hasn't landed yet), pause and flag it to the user; do not silently bypass it.
 - The only acceptable state for a PR to merge is: all CI gates green on real passing code.
 
+### CI recovery investigation order
+
+Before adding a new repair path, quarantine class, retry loop, or exception:
+
+1. Identify the last-known-good behavior and when the failure first appeared.
+2. Diff the workflow, token, permissions, configuration, and relevant code changes
+   across that boundary.
+3. Read the failing job logs and verify the concrete failure mechanism.
+4. Fix the regression or shared systemic cause when one exists.
+5. Add compensating repair machinery only when evidence shows the constraint is
+   inherent and the systemic fix is insufficient.
+
+Do not treat a repeated symptom as proof of a new permanent branch, actor, or
+failure class. Prefer restoring the previously working contract over automating
+around its regression.
+
 ## Incremental Change Discipline
 
 When changing **behavior** in a system covered by the headless gate — AI, combat,
@@ -218,9 +234,10 @@ produces workflows that "run green" but do nothing.
   or inconsistent state fails closed.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
-- Recovery treats missing policy artifacts as ordinary fix work. If a review
-  thread or guard output says a PR is missing an ADR, review ledger, apple record,
-  handoff, or ledger evidence, the assigned agent should create or repair that
+- Recovery treats missing policy artifacts as ordinary fix work. Invalid added
+  review ledgers are native `review-ledger` lifecycle blockers; review threads
+  and guard output may also identify a missing ADR, apple record, handoff, or
+  ledger evidence. The assigned agent should create or repair that
   artifact from PR/review context and validate it. It should escalate to a human
   only when the artifact requires a decision that is not inferable from the PR.
 - Shepherd leases are acquired, heartbeated, and released through the same

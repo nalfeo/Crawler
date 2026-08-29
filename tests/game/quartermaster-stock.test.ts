@@ -246,6 +246,44 @@ describe('Floor 2 Quartermaster generated stock', () => {
     }
   });
 
+  it('never offers a stat-less item for sale, across seeds and restock epochs (issue #3697)', () => {
+    // The Quartermaster prices offers purely from item level and rarity, so a
+    // generated instance with an empty stat map is gold the player can never
+    // get value from. Before ADR 2026-08-27-generated-equipment-inherent-stat-line every zero-armor base (legacy
+    // `leather-gloves`, `feet.merchant-sandals`, the charms) realized exactly
+    // that way at Common.
+    for (let seed = 0; seed < 12; seed += 1) {
+      const world = createTestWorld({ seed, floor: 2 });
+      enableQuartermasterEconomy(world);
+      world.playerLevel.level = 5;
+      const stock = createInitialFloor2QuartermasterStock(world);
+      expect(stock).toBeDefined();
+      if (!stock) return;
+      attachStock(world, stock);
+      const restocked = _restockFloor2Quartermaster(world, stock.restockEpoch + 1);
+      expect(restocked.ok).toBe(true);
+      const instancesById = new Map(
+        listGeneratedEquipmentInstances(world).map((instance) => [instance.instanceId, instance]),
+      );
+      const offers = [...stock.offers, ...(restocked.ok ? restocked.stock.offers : [])];
+      expect(offers.length).toBeGreaterThan(0);
+      for (const offer of offers) {
+        const instance = instancesById.get(offer.instanceId);
+        expect(instance).toBeDefined();
+        if (!instance) continue;
+        const meaningful =
+          instance.frozen.activeWeaponSnapshot !== null ||
+          instance.frozen.abilityGrants.length > 0 ||
+          instance.frozen.passiveGrants.length > 0 ||
+          Object.values(instance.frozen.statBonuses).some((value) => (value ?? 0) !== 0);
+        expect(
+          meaningful,
+          `seed ${seed}: offer ${offer.offerId} (${instance.baseId}) is a dead item`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it('generates different stock when effectivePlayerLevel differs from world.playerLevel', () => {
     const worldAtDefault = createTestWorld({ seed: 42, floor: 2 });
     const worldExplicit = createTestWorld({ seed: 42, floor: 2 });

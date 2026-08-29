@@ -337,7 +337,10 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'utility',
     kind: 'spell',
     iconBriefId: 'ability-icon-curse',
-    cooldownFrames: 840,
+    // 16s. Raised alongside the much wider trigger ring (registry.ts): Curse now
+    // finds a qualifying cluster far more often, so the per-cast cost goes up to
+    // keep the slow a punctuation mark rather than a permanent field debuff.
+    cooldownFrames: 960,
   },
   'vampiric-touch': {
     id: 'vampiric-touch',
