@@ -21,6 +21,8 @@ export const Damage = {};
 export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
+/** Marks an enemy as belonging to the periodic attack-wave population. */
+export const AttackWaveRat = {};
 /**
  * Marks an immobile enemy structure that periodically spawns other mobs.
  * Driven by `spawnerSystem`; configuration lives in the SPAWNER_ARCHETYPES

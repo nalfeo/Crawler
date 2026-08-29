@@ -6,6 +6,7 @@ import {
   questSystem,
   spawnerArenaSystem,
   spawnerSystem,
+  attackWaveSystem,
   weaponSystem,
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
@@ -164,6 +165,11 @@ export function createFloorMainSceneOptions(
       floorObjectiveSystem,
       questSystem,
       achievementSystem,
+      // Default-OFF periodic rat attack waves (Issue #3639). Runs in
+      // postSystems (after this frame's spawns/AI/quests) so it doesn't
+      // disturb the locked spawnerSystem preSystems adjacency contract in
+      // `tests/game/floor1-main-scene-options.test.ts`.
+      attackWaveSystem,
     ],
   };
 }

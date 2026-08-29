@@ -35,6 +35,7 @@ export {
   createRoomBarrier,
   dropBarrier,
   isBarrierAt,
+  isBarrierBlockingArea,
   isBarrierPointBlocked,
   isBarrierTile,
   type BarrierWorld,
@@ -44,5 +45,6 @@ export {
   collectRoomDoorwayTiles,
   collectRoomInteriorTiles,
   pointInRingBand,
+  ringBandIntersectsRect,
 } from './geometry.js';
 export { attachBarriersToFloorMap } from './wiring.js';

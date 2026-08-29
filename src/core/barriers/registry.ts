@@ -17,6 +17,7 @@ import {
   collectRoomDoorwayTiles,
   collectRoomInteriorTiles,
   pointInRingBand,
+  ringBandIntersectsRect,
 } from './geometry.js';
 import type { FloorMap } from '../map/FloorMap.js';
 
@@ -125,6 +126,48 @@ export function isBarrierPointBlocked(world: BarrierWorld, xFt: number, yFt: num
   for (const shape of ringShapes.values()) {
     if (
       pointInRingBand(shape.cxFt, shape.cyFt, shape.innerRadiusFt, shape.outerRadiusFt, xFt, yFt)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True iff ANY live analytic barrier shape intersects the axis-aligned world
+ * rectangle `[minXFt, maxXFt] × [minYFt, maxYFt]` (feet).
+ *
+ * This is the **area** counterpart to {@link isBarrierPointBlocked} and is the
+ * predicate that tile-granular consumers (pathfinding, flow fields, reachability
+ * queries) must use. An analytic ring wall owns no tiles and can be thinner
+ * than one, so a point sample at the tile centre misses a band that crosses the
+ * edge between two adjacent centres — producing a BFS path straight through a
+ * physically sealed cage. Testing the whole tile square closes that gap.
+ *
+ * O(active analytic barriers), which is 0–1 in the common single-arena case,
+ * and short-circuits to `false` when the registry holds no analytic shapes.
+ */
+export function isBarrierBlockingArea(
+  world: BarrierWorld,
+  minXFt: number,
+  minYFt: number,
+  maxXFt: number,
+  maxYFt: number,
+): boolean {
+  const { ringShapes } = world.barriers;
+  if (ringShapes.size === 0) return false;
+  for (const shape of ringShapes.values()) {
+    if (
+      ringBandIntersectsRect(
+        shape.cxFt,
+        shape.cyFt,
+        shape.innerRadiusFt,
+        shape.outerRadiusFt,
+        minXFt,
+        minYFt,
+        maxXFt,
+        maxYFt,
+      )
     ) {
       return true;
     }

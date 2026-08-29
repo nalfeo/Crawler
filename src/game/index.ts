@@ -3,6 +3,7 @@ export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export { spawnerSystem } from './spawners/index.js';
 export { spawnerArenaSystem } from './spawners/index.js';
+export { attackWaveSystem } from './attack-wave-system.js';
 export {
   SPAWNER_ARCHETYPES,
   getSpawnerArchetype,
