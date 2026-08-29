@@ -21,6 +21,7 @@ import {
   Enemy,
   Health,
   Position,
+  Size,
   SkillHolder,
   Size,
   Velocity,
@@ -85,6 +86,11 @@ function spawnStationaryEnemyNearPlayer(
   addComponent(world.ecs, eid, set(Position, { x: px + offsetFt, y: py }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 5000, max: 5000 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: 1, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
   addComponent(world.ecs, eid, set(Weight, { value: 120 }));
   addComponent(
     world.ecs,
@@ -169,6 +175,17 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
   it('upgrades the active in place at level 15 without stranding the level-5 grant', () => {
     const { world, playerEid } = createPlayingFloor1World(21);
     levelArcaneToFive(world, playerEid);
+    const state = world.abilityStatesByEntity.get(playerEid)!;
+    grantAbilitySources(
+      world,
+      playerEid,
+      [
+        { kind: 'active', abilityId: 'heal', sourceId: learnedAbilityGrantSourceId('heal') },
+        { kind: 'active', abilityId: 'haste', sourceId: learnedAbilityGrantSourceId('haste') },
+      ],
+      { configureActives: 'fill-open-slots' },
+    );
+    const replacedSlotIndex = state.equippedActiveAbilityIds.indexOf('arcane-nova');
 
     world.skillUsageEvents.push({
       holderEid: playerEid,
@@ -178,13 +195,16 @@ describe('Arcane level-5 milestone unlocks an ACTIVE ability', () => {
     });
     skillSystem(world);
 
-    const state = world.abilityStatesByEntity.get(playerEid);
+    const upgradedState = world.abilityStatesByEntity.get(playerEid);
     expect(world.playerSkills.get('arcane')!.level).toBe(15);
-    expect(state!.equippedActiveAbilityIds).toContain('arcane-nova-evolved');
+    expect(upgradedState!.equippedActiveAbilityIds).toContain('arcane-nova-evolved');
     // The L5 grant is revoked as an ACTIVE (a passive-kind revoke would be
     // rejected by the grant-ownership validator and leak the old ability).
-    expect(state!.equippedActiveAbilityIds).not.toContain('arcane-nova');
-    expect(state!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
+    expect(upgradedState!.equippedActiveAbilityIds).not.toContain('arcane-nova');
+    expect(upgradedState!.grantOwnership!.activeSourcesByAbilityId.has('arcane-nova')).toBe(false);
+    expect(upgradedState!.equippedActiveAbilityIds.indexOf('arcane-nova-evolved')).toBe(
+      replacedSlotIndex,
+    );
   });
 
   it('keeps the arcane active owned but unequipped when the active bar is full', () => {

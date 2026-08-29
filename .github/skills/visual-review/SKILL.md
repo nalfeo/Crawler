@@ -129,7 +129,7 @@ npm run review:visual:llm -- \
 ### Actionability tips
 
 - **Declare regions** so feedback is pixel-grounded — the tool prints a normalized
-  `X.X/5` score, tags each blocker `[deterministic]` vs `[llm]`, and labels findings
+  `X.X/100` score, tags each blocker `[deterministic]` vs `[llm]`, and labels findings
   `NEW` vs `RECURRING` across runs (by finding identity), so you can track a fix
   across rounds instead of re-reading reworded prose.
 - **Only opt into `expect.*` checks your surface actually has.** Equipment sets all
@@ -189,6 +189,12 @@ should be promoted into a deterministic check in
 consistency.
 
 ## What the screenshot judge penalizes
+
+For equipment, inventory, item-tooltip, loot-triage, and build-inspection
+surfaces, the LLM prompt loads the checked-in RPG inventory UX lookbook rubric from
+`scripts/agent/review/rpg-inventory-ux-lookbook-rubric.json`, which is extracted
+from `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`. The original
+lookbook PDF and third-party screenshots are not required at runtime.
 
 The arbitrary-screenshot evaluator applies deterministic score caps when it
 reports a matching finding, so these are the failure classes worth designing
@@ -260,6 +266,51 @@ revision back to main, shows the state labels, and keeps review feedback
 directly beneath the Before/After pane. Re-score every captured state and
 attach its `.review.json` beside the image. Click either image to zoom it in
 the lightbox.
+
+### Capturing an explicit A|B iteration (use `--lineage-*`, don't hand-copy files)
+
+**Default to `--lineage-*` for any UX review/update task.** Use
+`--lineage-scenario`/`--lineage-state`/`--lineage-side` on
+`review:visual:llm` from the first capture whenever you are reviewing or
+updating a real UX surface — this is the default, not an opt-in for
+multi-round work. Only skip it for a genuinely one-off
+speculative/exploratory screenshot (checking a hunch, an unrelated surface)
+that isn't part of the tracked change. These flags make
+`visual-review-agent.ts` copy the raw timestamped capture + review into the
+exact `<side>/<state>/<scenario>.png` + `.review.json` layout the viewer's
+lineage grouping requires, using ONE stable filename (`scenario`) across every
+state. This is the deterministic fix for two bugs hit in practice: (1) most
+iterations of a 10-round revision loop were never copied into `before/`/`after/`
+at all, so they were invisible in the viewer despite being scored; (2) one
+iteration was captured under a different filename than the rest of the lineage,
+which silently orphaned it into its own ungrouped pair with no evaluator match.
+
+```bash
+# Release/live baseline capture, scenario "equipment", lineage side "before":
+npm run review:visual:llm -- \
+  --url "http://127.0.0.1:4176/lab.html?lab=ui-probe-lab" \
+  --setup-file "scripts/agent/review/setup/ui-probe-equipment.js" \
+  --ux-name "equipment panel" --ux-goal "..." \
+  --screenshot-name equipment-panel \
+  --lineage-scenario equipment --lineage-state live-dev --lineage-side before
+
+# Each subsequent iteration uses semantic versioning; lineage side defaults to "after":
+npm run review:visual:llm -- \
+  --url "..." --setup-file "..." --ux-name "equipment panel" --ux-goal "..." \
+  --screenshot-name equipment-panel \
+  --lineage-scenario equipment --lineage-state v0.1.0
+# ... --lineage-state v0.1.1, v0.2.0, ... for every iteration you want in the A|B history
+```
+
+- Use the SAME registered `--lineage-scenario` value across the whole loop (it becomes the
+  viewer's grouping key) and a NEW semantic `--lineage-state` per iteration
+  (`vMAJOR.MINOR.PATCH`). The release baseline is always `live-dev`.
+- Omit `--lineage-scenario`/`--lineage-state` entirely for a speculative or
+  exploratory capture (checking a hunch, a one-off zoom, an unrelated surface) —
+  those should NOT pollute the tracked A|B history.
+- The raw timestamped capture in `files/visual-review/` is still written as
+  before (unaffected); the lineage copy is additive.
+
 Classify feedback as:
 
 - **This task only** — keep the note attached to the current implementation.
@@ -276,6 +327,41 @@ only by local path. Agents must include the relevant screenshot, review, and
 feedback paths in the handoff.
 The viewer is review evidence, not a CI gate; deterministic geometry and
 behavior checks remain authoritative in CI.
+
+## Judge noise: do not over-read the score
+
+The LLM's own headline number is **not** a measurement. Three judge runs over
+**byte-identical** captures of the same surface returned `overall.score`
+**72 / 72 / 72** while their blocking-finding counts were **2 / 0 / 3**. The model
+anchors that number and barely moves it, so it reported no difference between a
+surface it called clean and one it had just claimed three defects in. Per-axis
+scores repeated near-verbatim across a dozen runs regardless of findings.
+
+Two mitigations are now built into `visual-review-agent`:
+
+1. **The reported score is derived, not quoted.** `overall.score` is
+   `mean(axes) - penalty`, where penalty is `8` per deterministic blocker and `3`
+   per LLM-only blocker. The model's self-reported number is kept only as
+   `overall.raw_score`, and the arithmetic is echoed to stdout and stored in
+   `score_derivation` so any reader can audit it. Identical input now always
+   yields an identical score.
+2. **Unchanged captures are flagged.** Each review records `capture_hash`, and a
+   capture byte-identical to the previous one for that surface sets
+   `capture_unchanged_from_prior` and prints a loud warning. In one real
+   12-round iteration loop, **six** captures were byte-identical to their
+   predecessor, and the resulting score wobble was misread as a
+   regression-then-fix.
+
+**Rules of thumb when reading a review:**
+
+- Treat the axis mean as the stable part and the LLM blocker list as one noisy
+  sample. Observed spread on an unchanged surface was ~0 on the axis mean but
+  0–3 on the LLM blocker count.
+- **Never claim an improvement from a small score delta.** A few points is inside
+  the noise band. Claim an improvement only when the **deterministic** blocker
+  count drops, or when the change is visible in the before/after images.
+- If a run warns that the capture is unchanged, discard the run as evidence — you
+  did not change any pixels.
 
 ## Policy
 
