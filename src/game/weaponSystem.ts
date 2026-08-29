@@ -739,7 +739,12 @@ function dispatchAttack(
   // Count every committed activation as one telemetry "swing" and open an
   // activation id that spawned attack entities tag to. begin/end are no-ops
   // unless `world.weaponTelemetry` is enabled, so the shipping sim is unaffected.
-  beginWeaponActivation(world);
+  // BEAM/TRAP damage entities never reach a tagging choke point, so their casts
+  // are flagged unattributed rather than silently counting as misses.
+  beginWeaponActivation(
+    world,
+    def.weaponType !== WeaponType.BEAM && def.weaponType !== WeaponType.TRAP,
+  );
   try {
     dispatchAttackInner(world, player, def, dir);
   } finally {

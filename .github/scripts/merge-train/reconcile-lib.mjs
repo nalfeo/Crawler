@@ -210,6 +210,42 @@ export function evaluateUnadvanceableStrike({
   };
 }
 
+/**
+ * Merges a freshly evaluated strike with whatever is currently persisted in the
+ * status comment, so the record only ever moves forward for a given head SHA.
+ *
+ * The status comment is the ONLY storage for strike state, and it is written by a
+ * blind PATCH from merge-train runs that overlap (push, pull_request_target,
+ * workflow_run, 5-minute cron, dispatch). A stale read therefore rewrites the counter
+ * back to its previous value, which pins it at 1/3 forever and means the
+ * quarantine that exists to eject an unadvanceable head can never fire.
+ *
+ * Strikes deliberately reset on a NEW head SHA (an out-of-band rebase must not be
+ * penalized), so the max is only taken when the persisted SHA still matches.
+ */
+export function reconcileUnadvanceableStrike(strike, persisted) {
+  if (!persisted || persisted.recordedSha !== strike.headSha) return strike;
+  const recordedStrikes = Number(persisted.recordedStrikes);
+  const recordedAttempts = Number(persisted.recordedAttempts);
+  return {
+    ...strike,
+    strikes: Math.max(strike.strikes, Number.isFinite(recordedStrikes) ? recordedStrikes : 0),
+    attempts: Math.max(strike.attempts, Number.isFinite(recordedAttempts) ? recordedAttempts : 0),
+  };
+}
+
+/**
+ * True when a written strike record read back as at least what we wrote. Anything
+ * less means a racing writer clobbered it and the write must be retried.
+ */
+export function unadvanceableStrikePersisted(strike, confirmed) {
+  if (!confirmed || confirmed.recordedSha !== strike.headSha) return false;
+  return (
+    Number(confirmed.recordedStrikes) >= strike.strikes &&
+    Number(confirmed.recordedAttempts) >= strike.attempts
+  );
+}
+
 function stallAnchorMs(pull) {
   const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
   if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;

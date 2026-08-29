@@ -191,11 +191,23 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
 
     const staticWeaponTooltip = hover(staticWeaponIndex);
     expect(staticWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    expect(staticWeaponTooltip.lastTooltipHeight).toBe(128);
+    // DPS now leads the rich-content stat-line array (instead of the fixed
+    // 128px footer statLine branch), so height grows with the stat lines and
+    // description text like any other stat-bearing item.
+    expect(staticWeaponTooltip.lastTooltipHeight).toBe(138);
 
     const generatedWeaponTooltip = hover(generatedWeaponIndex);
     expect(generatedWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(128);
+    // The generated weapon also has bonus stat rows beyond DPS, so it grows
+    // taller than the static weapon's DPS-only stat list.
+    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(152);
+    // DPS must lead the stat-line array, not trail after the bonus stat rows.
+    const dpsIndex = generatedWeaponTooltip.lines.findIndex((line) => line.startsWith('DPS: '));
+    const firstBonusStatIndex = generatedWeaponTooltip.lines.findIndex(
+      (line) => !line.startsWith('DPS: ') && (line.startsWith('+') || line.startsWith('-')),
+    );
+    expect(dpsIndex).toBeGreaterThanOrEqual(0);
+    expect(firstBonusStatIndex).toBeGreaterThan(dpsIndex);
 
     const nonWeaponTooltip = hover(nonWeaponIndex);
     expect(nonWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(false);

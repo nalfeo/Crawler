@@ -690,6 +690,80 @@ test('code_review last round needs >=1 model', () => {
   assert.equal(validateLedger(led).ok, false);
 });
 
+test('code_review accepts native Copilot PR-review actor provenance without a model id', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: 'https://github.com/nalfeo/Crawler/pull/123#pullrequestreview-456',
+    }),
+  ];
+  assert.equal(validateLedger(led).ok, true);
+});
+
+test('native PR-review actor provenance requires a review URL', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: undefined,
+    }),
+  ];
+  const result = validateLedger(led);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /reviewer_actors .* plus a review_url/);
+});
+
+test('native PR-review actor provenance rejects untrusted reviewer actors', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['author'],
+      review_url: 'https://github.com/nalfeo/Crawler/pull/123#pullrequestreview-456',
+    }),
+  ];
+  const result = validateLedger(led);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /reviewer_actors .* plus a review_url/);
+});
+
+test('native PR-review actor provenance rejects a non-review URL', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: 'x',
+    }),
+  ];
+  assert.equal(validateLedger(led).ok, false);
+
+  const commentUrl = tier4();
+  commentUrl.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer'],
+      review_url: 'https://github.com/nalfeo/Crawler/pull/123#discussion_r456',
+    }),
+  ];
+  assert.equal(validateLedger(commentUrl).ok, false);
+});
+
+test('native PR-review actor provenance accepts the [bot] login suffix', () => {
+  const led = tier4();
+  led.stages.code_review.rounds = [
+    cleanRound({
+      models: undefined,
+      reviewer_actors: ['copilot-pull-request-reviewer[bot]'],
+      review_url: 'https://github.com/nalfeo/Crawler/pull/123#pullrequestreview-456',
+    }),
+  ];
+  assert.equal(validateLedger(led).ok, true);
+});
+
 test('multi_model_review last round needs >=2 distinct models', () => {
   const led = tier4();
   led.stages.multi_model_review.rounds = [mmRound({ models: ['only'] })];

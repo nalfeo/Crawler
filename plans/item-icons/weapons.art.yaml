@@ -208,3 +208,48 @@ assets:
     integration:
       kind: sprite-registry
       id: sponsor-sword
+
+  - id: knife
+    type: weapon
+    label: 'Knife'
+    brief: 'Knife — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Short, quick, and unsentimental about it.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: knife
+
+  - id: hammer
+    type: weapon
+    label: 'Hammer'
+    brief: 'Hammer — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Slow to swing. Very final on arrival.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: hammer
+
+  - id: crossbow
+    type: weapon
+    label: 'Crossbow'
+    brief: 'Crossbow — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Point, crank, regret. In that order.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: crossbow
+
+  - id: boomerang
+    type: weapon
+    label: 'Boomerang'
+    brief: 'Boomerang — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Comes back. Usually to you.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: boomerang
+
+  - id: bowling-ball
+    type: weapon
+    label: 'Bowling Ball'
+    brief: 'Bowling Ball — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Sponsored by the league. Rolls right through a lineup.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bowling-ball

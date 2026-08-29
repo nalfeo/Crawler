@@ -11,6 +11,7 @@ import {
   questSystem,
   setQuestCounter,
   setTrackedQuest,
+  toggleQuestArrow,
   emitQuestEvent,
 } from '../../src/core/systems/questSystem.js';
 import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
@@ -47,6 +48,17 @@ describe('questSystem', () => {
     const second = acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
     expect(first).toBe(second);
     expect(getActiveQuests(world)).toHaveLength(1);
+  });
+
+  it('toggles navigation arrows for one active quest without changing its focus', () => {
+    const world = createTestWorld();
+    const tutorial = acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID)!;
+    const shop = acceptQuest(world, FLOOR1_SHOP_QUEST_ID)!;
+
+    toggleQuestArrow(world, FLOOR1_SHOP_QUEST_ID);
+
+    expect(tutorial).toMatchObject({ tracked: true, showArrow: true });
+    expect(shop).toMatchObject({ tracked: false, showArrow: false });
   });
 
   it('completes the level-2 tutorial quest and sets its goal flag', () => {

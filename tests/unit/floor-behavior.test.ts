@@ -8,6 +8,7 @@ describe('floor behavior config', () => {
   it('ships Floor 1 safe-room and boss-chest semantics in the manifest', () => {
     expect(floor1Manifest.behavior).toEqual({
       spawnRoomIsSafe: false,
+      safeRoomPausesFloorTimer: true,
       safeRoomWeaponImmunity: true,
       safeRoomDoorsAutoClose: true,
       lineOfSightAggro: false,
@@ -23,6 +24,7 @@ describe('floor behavior config', () => {
   it('ships Floor 2 settlement/economy semantics in the manifest', () => {
     expect(floor2Manifest.behavior).toEqual({
       spawnRoomIsSafe: true,
+      safeRoomPausesFloorTimer: true,
       safeRoomWeaponImmunity: false,
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: true,
@@ -38,6 +40,7 @@ describe('floor behavior config', () => {
   it('ships Floor 3 overworld wild-spawn semantics in the manifest', () => {
     expect(floor3Manifest.behavior).toEqual({
       spawnRoomIsSafe: true,
+      safeRoomPausesFloorTimer: true,
       safeRoomWeaponImmunity: false,
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: true,
@@ -53,6 +56,7 @@ describe('floor behavior config', () => {
   it('defaults every flag to off when a manifest omits the block', () => {
     expect(DEFAULT_FLOOR_BEHAVIOR).toEqual({
       spawnRoomIsSafe: false,
+      safeRoomPausesFloorTimer: false,
       safeRoomWeaponImmunity: false,
       safeRoomDoorsAutoClose: false,
       lineOfSightAggro: false,

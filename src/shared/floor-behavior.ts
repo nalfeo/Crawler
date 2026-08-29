@@ -21,6 +21,19 @@ export const floorBehaviorSchema = z
      */
     spawnRoomIsSafe: z.boolean().default(false),
     /**
+     * Pause this floor's collapse timer while the player stands in a
+     * *time-stopping* safe space — an authored `RoomRole.SAFE` room, or the
+     * spawn/entrance room when {@link spawnRoomIsSafe} is set.
+     *
+     * A boss arena that turned safe when its boss died is deliberately **not**
+     * time-stopping: it is a breather for customization and spawn suppression,
+     * not a place to park the countdown (see `GameWorld.clearedSafeRoomIds`).
+     *
+     * Floors whose timer is a raw wall-clock stall backstop (Floor 4) leave this
+     * off so no in-run credit can weaken the backstop.
+     */
+    safeRoomPausesFloorTimer: z.boolean().default(false),
+    /**
      * Suppress player-owned melee/area/beam damage while the player stands in a
      * safe space, so a stray swing inside the safe room cannot hit anything.
      */

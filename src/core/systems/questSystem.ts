@@ -38,7 +38,7 @@ function findPlayer(world: GameWorld): number | undefined {
 }
 
 function createQuestState(questId: string, tracked: boolean): QuestState {
-  return { questId, status: 'active', tracked, progress: {}, done: {} };
+  return { questId, status: 'active', tracked, showArrow: true, progress: {}, done: {} };
 }
 
 function assertNever(value: never): never {
@@ -78,6 +78,14 @@ export function getTrackedQuest(world: GameWorld): QuestState | undefined {
 export function setTrackedQuest(world: GameWorld, questId: string): void {
   for (const quest of world.questLog.values()) {
     quest.tracked = quest.questId === questId && quest.status === 'active';
+  }
+}
+
+/** Toggle navigation arrows and waypoint markers for one active quest. */
+export function toggleQuestArrow(world: GameWorld, questId: string): void {
+  const quest = world.questLog.get(questId);
+  if (quest?.status === 'active') {
+    quest.showArrow = quest.showArrow === false;
   }
 }
 
