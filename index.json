@@ -1,5 +1,39 @@
 [
   {
+    "commit": "093cb981eba9e8a9b14c7ac8c4d26d0c3683a365",
+    "commitDate": "2026-08-29T03:25:32Z",
+    "commitSubject": "feat(game): add periodic rat attack waves (feature-flagged, safe-room suppressed) (#3878)",
+    "capturedAt": "2026-08-29T04:32:11.347Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33232363182",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/093cb981eba9e8a9b14c7ac8c4d26d0c3683a365.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.92,
+        "totalWins": 138,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.22,
+      "gatePass": false,
+      "path": "by-sha/093cb981eba9e8a9b14c7ac8c4d26d0c3683a365.fun-report.json"
+    }
+  },
+  {
     "commit": "e5b9a1994b3346d38fa29be8625009bf8a19d573",
     "commitDate": "2026-08-28T01:35:15Z",
     "commitSubject": "Make Curse trigger reliably in real gameplay crowds (#3682)",
