@@ -22,9 +22,16 @@
           "concerns_count": 5,
           "resolved_count": 5,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
         }
       ],
-      "notes": "Validated all five blocking review threads as actionable and addressed each with surgical fixes plus focused regression coverage."
+      "notes": "Round 1 validated all five blocking review threads as actionable and addressed each with surgical fixes plus focused regression coverage. Round 2 (Copilot PR review on #3878) raised three substantive bugs — centre-only analytic-barrier sampling in the suppression flow field, a lab Reset that left wave rats at the alive cap, and a missing run-state gate on a post-system — each fixed in code with fail-to-pass regression coverage."
     },
     "independent_grade": {
       "completed": true,
