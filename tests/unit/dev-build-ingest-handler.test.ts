@@ -118,6 +118,46 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('keeps explicit bug reports telemetry-only', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/104' }),
+    });
+
+    const result = await handleRuns(
+      makeRequest({
+        ...validRun,
+        meta: { runId: 'goobers-arm-1' },
+        file_issue: true,
+        issue_description: 'The player became stuck.',
+      }),
+      context,
+    );
+
+    expect(result.status).toBe(201);
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+  });
+
+  it('keeps survey feedback telemetry-only', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/103' }),
+    });
+    const result = await handleRuns(
+      makeRequest({
+        ...validRun,
+        meta: { runId: 'survey-label-run' },
+        survey: { enjoyment: 5, immersion: 4, mastery: 3, control: 4, tension: 2 },
+      }),
+      context,
+    );
+
+    expect(result.status).toBe(201);
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+  });
+
   it('appends survey submissions to the existing runId without rewriting the bundle', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
