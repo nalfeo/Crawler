@@ -581,6 +581,24 @@ function readEnvVar(name: string): string {
   return value.trim();
 }
 
+function loadLocalReviewEnv(): void {
+  const envPath = resolve('.env.local');
+  try {
+    const contents = readFileSync(envPath, 'utf8');
+    for (const line of contents.split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!match) continue;
+      const name = match[1];
+      const rawValue = match[2];
+      if (!name || rawValue === undefined) continue;
+      if (process.env[name]) continue;
+      process.env[name] = rawValue.replace(/^(['"])(.*)\1$/, '$2');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
+
 function extractJsonObject(raw: unknown): VisualReviewResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('LLM returned a non-object JSON payload');
@@ -2093,6 +2111,7 @@ function writeEvidenceBundle(args: {
 }
 
 async function main(): Promise<number> {
+  loadLocalReviewEnv();
   if (process.env.CI) {
     console.error('[visual-review-agent] Refusing to run in CI (dev-session tool only).');
     return 2;

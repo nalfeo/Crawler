@@ -12,7 +12,6 @@ import { createHudExperienceBar } from './HudExperienceBar.js';
 import { createHudFloorTimer } from './HudFloorTimer.js';
 import { createHudBossBar } from './HudBossBar.js';
 import { createHudAnnouncementBanner } from './HudAnnouncementBanner.js';
-import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
@@ -104,14 +103,13 @@ export function createHudUI(scene: Phaser.Scene): {
 
   // Corner groups: each is scaled and re-anchored as a unit so its elements
   // keep their relative layout while growing on small screens.
-  const bottomLeft = makeGroup(); // health, xp, loot
+  const bottomLeft = makeGroup(); // health (+ loot), xp, skill tracker
   const bottomCenter = makeGroup(); // ability bar
   const topCenter = makeGroup(); // floor timer + boss bar
   const bottomRight = makeGroup(); // family relationships (Floor 2)
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
   const xpBar = createHudExperienceBar(scene, { parent: bottomLeft });
-  const lootCounter = createHudLootCounter(scene, { parent: bottomLeft });
   const skillTracker = createHudSkillTracker(scene, { parent: bottomLeft });
   const abilityBar = createHudAbilityBar(scene, { parent: bottomCenter });
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
@@ -233,7 +231,6 @@ export function createHudUI(scene: Phaser.Scene): {
     );
     bossBar.setTop(encounterLayout.bossTop ?? ENCOUNTER_FIRST_ROW_Y);
     announcementBanner.setTop(encounterLayout.announcementTop ?? ENCOUNTER_FIRST_ROW_Y);
-    lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
@@ -278,7 +275,6 @@ export function createHudUI(scene: Phaser.Scene): {
     floorTimer.destroy();
     bossBar.destroy();
     announcementBanner.destroy();
-    lootCounter.destroy();
     skillTracker.destroy();
     minimap.destroy();
     questTracker.destroy();

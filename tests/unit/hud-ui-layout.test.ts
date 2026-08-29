@@ -11,8 +11,7 @@ import {
 
 describe('HudUI mobile layout guards', () => {
   it('keeps the authored vitals stack separated and on-canvas', () => {
-    expect(VITALS_PANEL_Y.loot - (VITALS_PANEL_Y.skill + VITALS_ROW_HEIGHTS.skill)).toBe(8);
-    expect(VITALS_PANEL_Y.xp - (VITALS_PANEL_Y.loot + VITALS_ROW_HEIGHTS.loot)).toBe(
+    expect(VITALS_PANEL_Y.xp - (VITALS_PANEL_Y.skill + VITALS_ROW_HEIGHTS.skill)).toBe(
       VITALS_PANEL_GUTTER,
     );
     expect(VITALS_PANEL_Y.health - (VITALS_PANEL_Y.xp + VITALS_ROW_HEIGHTS.xp)).toBe(

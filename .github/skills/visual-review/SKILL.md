@@ -36,6 +36,13 @@ npm run review:visual:llm
 npm run review:visual
 ```
 
+The visual-review runner automatically loads `.env.local` when present, so
+developer captures do not require manually exporting Azure credentials. For a
+registered multi-scenario surface, run every scenario in the same pass and
+continue to the remaining scenarios if one quality threshold fails; a failed
+judge still writes its screenshot and review artifacts. Always refresh the
+Screenshot Viewer after the pass so the newest lineage artifacts are visible.
+
 ## Review any UX surface
 
 Pass URL + setup script + UX context:

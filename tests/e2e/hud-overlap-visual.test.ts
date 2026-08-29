@@ -206,7 +206,7 @@ describe('loot and skill HUD containment', () => {
         }
         expect(region('hud-skill-type-name-text').text).toMatch(/…$/);
 
-        const lootPanel = region('hud-loot-panel-bounds');
+        const lootPanel = region('hud-health-panel-bounds');
         const skillPanel = region('hud-skill-panel-bounds');
         expect(overlaps(lootPanel, skillPanel), 'loot and skill panels must not overlap').toBe(
           false,
@@ -324,9 +324,9 @@ describe('hud visual regression overlap guard', () => {
       };
     };
 
-    const timerBandRatio = nonBackgroundRatio(png, band(28, 48));
-    const gapBandRatio = nonBackgroundRatio(png, band(53, 58));
-    const bossBandRatio = nonBackgroundRatio(png, band(62, 78));
+    const timerBandRatio = nonBackgroundRatio(png, band(36, 56));
+    const gapBandRatio = nonBackgroundRatio(png, band(63, 68));
+    const bossBandRatio = nonBackgroundRatio(png, band(72, 88));
 
     expect(timerBandRatio, 'expected visible floor timer pixels in timer band').toBeGreaterThan(
       0.25,

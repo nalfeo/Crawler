@@ -57,6 +57,10 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 5. **Validate input paths under stress**: controller and keyboard, during combat, and across the pause boundary.
 6. For audio, **validate the cue inside a real gameplay loop**, not in isolation — especially the gem-hoover pickup.
 7. **Verify:** `npm run verify:fast`. Run `npm run scope` first and only run `review:visual` when a UI surface is actually in the change set.
+8. **Finish the visual loop automatically:** run every registered scenario, preserve each
+   screenshot/review even when a judge threshold fails, and refresh the `screenshot-viewer`
+   canvas before reporting results. Do not stop after the first scenario or wait for manual
+   prompting to make the A|B artifacts visible.
 
 ## Screenshot evidence contract
 

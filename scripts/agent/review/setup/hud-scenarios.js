@@ -4,9 +4,11 @@
   const probe = window.__hudProbe;
   if (!probe?.ready?.()) throw new Error('__hudProbe not ready');
   probe.setScenario('safe-room-unlocked');
+  probe.setInfoTextVisible?.(false);
+  const regions = probe.getVisualReviewRegions?.() ?? {};
   window.__visualReview = {
     surface: 'in-game HUD',
-    regions: [],
+    regions: Object.entries(regions).map(([id, box]) => ({ id, box, kind: 'panel' })),
     expect: {},
   };
   window.__visualReviewHoverPoint = null;

@@ -37,7 +37,13 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const SCAN_SUBDIRS = ['files/visual-review', 'files', 'docs/knowledge/ux-baselines/releases'];
 const SCENARIO_MANIFEST = 'docs/knowledge/ux-baselines/manifest.json';
 const LIVE_DEV_VERSION = 'live-dev';
-const SEMVER_VERSION = /^v\d+\.\d+\.\d+$/;
+const PRE_REFRESH_VERSION = 'pre-refresh';
+// Accept full semver ("v1.2.3") and the simpler single-integer iteration form
+// ("v1", "v5") used by ad-hoc lineage captures — both are valid --lineage-state
+// values in practice, and rejecting the short form silently drops captures from
+// every pair (they still get written to disk, but isLineageVersion() filters
+// them out before pairing, so they never show up in the A|B viewer).
+const SEMVER_VERSION = /^v\d+(?:\.\d+\.\d+)?$/;
 const FEEDBACK_DIR = 'files/visual-review/feedback';
 const FEEDBACK_FILE = 'before-after-feedback.jsonl';
 const PROMOTION_DIR = 'docs/knowledge/ux-feedback';
@@ -284,16 +290,27 @@ function scenarioRegistry() {
 }
 
 function isLineageVersion(value) {
-  return value === LIVE_DEV_VERSION || SEMVER_VERSION.test(value);
+  return value === LIVE_DEV_VERSION || value === PRE_REFRESH_VERSION || SEMVER_VERSION.test(value);
 }
 
 function compareLineageVersions(left, right) {
   if (left === LIVE_DEV_VERSION) return right === LIVE_DEV_VERSION ? 0 : -1;
   if (right === LIVE_DEV_VERSION) return 1;
-  const leftParts = left.slice(1).split('.').map(Number);
-  const rightParts = right.slice(1).split('.').map(Number);
+  // Short single-integer states (e.g. "v5") have no minor/patch parts; treat
+  // missing parts as 0 rather than NaN so "v5" and "v5.0.0" compare equal and
+  // "v10" still sorts after "v9".
+  const leftParts = left
+    .slice(1)
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const rightParts = right
+    .slice(1)
+    .split('.')
+    .map((part) => Number(part) || 0);
   return (
-    leftParts[0] - rightParts[0] || leftParts[1] - rightParts[1] || leftParts[2] - rightParts[2]
+    (leftParts[0] ?? 0) - (rightParts[0] ?? 0) ||
+    (leftParts[1] ?? 0) - (rightParts[1] ?? 0) ||
+    (leftParts[2] ?? 0) - (rightParts[2] ?? 0)
   );
 }
 
@@ -326,7 +343,10 @@ function pairs(reviews = reviewResults(), scenarios = scenarioRegistry()) {
       const before =
         index > 0
           ? (group.after.get(afterStates[index - 1]) ?? null)
-          : (group.before.get(state) ?? group.before.get(LIVE_DEV_VERSION) ?? null);
+          : (group.before.get(PRE_REFRESH_VERSION) ??
+            group.before.get(state) ??
+            group.before.get(LIVE_DEV_VERSION) ??
+            null);
       const after = group.after.get(state) ?? null;
       result.push({
         key: `${group.scenario.label} · ${state}`,
