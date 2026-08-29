@@ -12,7 +12,7 @@ import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 import { BLUE_STEEL, MIN_TEXT_RESOLUTION, hex } from './ui-theme.js';
 
 const PANEL_WIDTH = 520;
-const PANEL_HEIGHT = 152;
+const PANEL_HEIGHT = 166;
 const PANEL_X = GAME.WIDTH / 2 - PANEL_WIDTH / 2;
 const PANEL_Y = 8;
 const PIP_SIZE = 12;
@@ -20,8 +20,9 @@ const PIP_GAP = 6;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
 
 function getFloor4PhaseConfig(): Floor4HudPhaseConfig {
-  const config = floor4Manifest.floor4?.phase;
-  if (!config) {
+  const floor4 = floor4Manifest.floor4;
+  const config = floor4?.phase;
+  if (!floor4 || !config) {
     throw new Error('Missing floor4 manifest phase config');
   }
   return {
@@ -29,12 +30,14 @@ function getFloor4PhaseConfig(): Floor4HudPhaseConfig {
     actDurationMs: config.actDurationMs,
     waveWindowMs: config.waveWindowMs,
     overtimeCapMs: config.overtimeCapMs,
+    wavesPerAct: floor4.waves.cadence.wavesPerAct,
   };
 }
 
 const phaseConfig = getFloor4PhaseConfig();
 
 export interface HudFloor4ArenaProbeState extends Floor4HudState {
+  readonly renderedSummary: readonly string[];
   readonly bounds: {
     readonly panel: ScreenBounds;
     readonly clock: ScreenBounds;
@@ -134,7 +137,7 @@ export function createHudFloor4Arena(
 
   const pipStartX = PANEL_X + 14;
   const pipY = 54;
-  const pips = Array.from({ length: 8 }, (_, index) =>
+  const pips = Array.from({ length: phaseConfig.wavesPerAct }, (_, index) =>
     scene.add
       .rectangle(pipStartX + index * (PIP_SIZE + PIP_GAP), pipY, PIP_SIZE, PIP_SIZE, 0x334155)
       .setOrigin(0, 0)
@@ -194,7 +197,7 @@ export function createHudFloor4Arena(
     .setOrigin(0.5, 0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
 
-  const summaryLines = Array.from({ length: 5 }, (_, index) =>
+  const summaryLines = Array.from({ length: 6 }, (_, index) =>
     scene.add
       .text(PANEL_X + 14, 74 + index * 14, '', {
         fontFamily: FONT_FAMILY,
@@ -328,10 +331,12 @@ export function createHudFloor4Arena(
   function getState(): HudFloor4ArenaProbeState {
     const layout = getLayoutBounds();
     if (!layout) {
-      return { ...lastState, bounds: null };
+      return { ...lastState, renderedSummary: [], bounds: null };
     }
+    const renderedSummary = summaryLines.filter((line) => line.visible).map((line) => line.text);
     return {
       ...lastState,
+      renderedSummary,
       bounds: {
         panel: layout.panel,
         clock: textBounds(clock, PANEL_Y),

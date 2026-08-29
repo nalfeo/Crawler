@@ -10,6 +10,7 @@ export interface Floor4HudPhaseConfig {
   readonly actDurationMs: number;
   readonly waveWindowMs: number;
   readonly overtimeCapMs: number;
+  readonly wavesPerAct: number;
 }
 
 export interface Floor4HudInput {
@@ -49,7 +50,6 @@ export interface Floor4HudState {
 }
 
 const CUT_NOTICE_MS = 3_000;
-const DEFAULT_WAVES_PER_ACT = 8;
 
 function formatClock(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -64,7 +64,7 @@ function phaseAct(state: Floor4ArenaState): Floor4ActIndex {
   return phase.kind === 'VICTORY' ? 5 : 1;
 }
 
-function releasedPipCount(state: Floor4ArenaState): number {
+function releasedPipCount(state: Floor4ArenaState, config: Floor4HudPhaseConfig): number {
   const phase = state.phase;
   if (phase.kind === 'WAVES') return state.waves?.releaseCursor ?? 0;
   if (
@@ -73,7 +73,7 @@ function releasedPipCount(state: Floor4ArenaState): number {
     phase.kind === 'INTERMISSION' ||
     phase.kind === 'VICTORY'
   ) {
-    return Math.max(0, state.waves?.manifests.length ?? DEFAULT_WAVES_PER_ACT);
+    return Math.max(0, state.waves?.manifests.length ?? config.wavesPerAct);
   }
   return 0;
 }
@@ -86,12 +86,12 @@ function activePipIndexes(state: Floor4ArenaState): Set<number> {
   return new Set(telegraphs.map((telegraph) => telegraph.waveIndex));
 }
 
-function buildPips(state: Floor4ArenaState): readonly Floor4HudPip[] {
+function buildPips(state: Floor4ArenaState, config: Floor4HudPhaseConfig): readonly Floor4HudPip[] {
   const total =
     state.phase.kind === 'WAVES'
-      ? (state.waves?.manifests.length ?? DEFAULT_WAVES_PER_ACT)
-      : DEFAULT_WAVES_PER_ACT;
-  const released = releasedPipCount(state);
+      ? (state.waves?.manifests.length ?? config.wavesPerAct)
+      : config.wavesPerAct;
+  const released = releasedPipCount(state, config);
   const armed = activePipIndexes(state);
   return Array.from({ length: total }, (_, index) => ({
     index,
@@ -209,7 +209,7 @@ export function buildFloor4HudState(input: Floor4HudInput): Floor4HudState {
         ? `SHOW ${formatClock(totalMs - state.arenaElapsedMs)} · WAVES ${formatClock(waveRemainingMs)}`
         : `SHOW ${formatClock(totalMs - state.arenaElapsedMs)}`,
     overtime: state.phase.kind === 'OVERTIME',
-    pips: buildPips(state),
+    pips: buildPips(state, input.phaseConfig),
     headliner: buildHeadliner(state.activeHeadliner, state.phase.kind, input.headlinerHealth),
     notice: cutNotice,
     summary,

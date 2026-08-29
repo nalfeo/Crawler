@@ -10,6 +10,7 @@ const phaseConfig: Floor4HudPhaseConfig = {
   actDurationMs: 120_000,
   waveWindowMs: 90_000,
   overtimeCapMs: 60_000,
+  wavesPerAct: 8,
 };
 
 function headliner(

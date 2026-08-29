@@ -118,6 +118,7 @@ function assertLayout(rect: CanvasRect, state: HudFloor4ArenaProbeState): void {
   expect(state.visible).toBe(true);
   expect(state.bounds).not.toBeNull();
   const bounds = state.bounds!;
+  expect(state.renderedSummary).toEqual(state.summary);
   const viewport: Bounds = { x: 0, y: 0, width: rect.width, height: rect.height };
   const panel = boundsToScreen(rect, bounds.panel);
   expect(contains(viewport, panel), `${state.title} panel must fit in viewport`).toBe(true);
