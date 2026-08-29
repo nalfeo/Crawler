@@ -16,6 +16,7 @@ import {
   getScenarioPresentationContract,
 } from '../game/scenarioDefinitions.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
+import { getAbilityEffectSummary } from '../game/abilities/effect-summary.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
 import {
@@ -113,6 +114,8 @@ export function createFloorMainSceneOptions(
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
     getSpellRewardOptions: (world: GameWorld) => getBossRewardSpellOptions(world),
+    getAbilityEffectSummary: (world: GameWorld, abilityId: string) =>
+      getAbilityEffectSummary(abilityId, world.floorMap?.config.tileSizeFt),
     allocateStatPoints: (
       world: GameWorld,
       _playerEid: number,
