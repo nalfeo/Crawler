@@ -3,6 +3,8 @@ import type { GameWorld } from '../core/world.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityPresentation } from '../shared/ability-presentation.js';
 import { GAME } from '../shared/constants.js';
+import { weaponSkillPrerequisiteMatches } from '../shared/weapon-skills.js';
+import { getActiveWeaponDef } from '../core/active-weapon.js';
 import { isAbilitySlotCastFlashing } from './ability-bar-flash-state.js';
 import { getAbilityIconEntry } from './ability-icon.js';
 import { createBeveledPanel } from './pixel-ui.js';
@@ -55,7 +57,27 @@ const COLORS = {
   slotCastFlash: 0xf0f9ff,
   slotCastFlashBorder: 0x22d3ee,
   cooldownRing: 0xfbbf24,
+  slotLocked: 0x1b2136,
+  slotLockedBorder: 0x5c4a2a,
 } as const;
+
+/**
+ * Whether an equipped ability's weapon prerequisite is currently satisfied.
+ * Mirrors `weaponPrerequisiteMet` in `src/game/systems/abilitySystem.ts`; the
+ * engine layer must not import `src/game`, so the prerequisite is read from the
+ * shared presentation table (the single source of truth both layers spread).
+ */
+function abilityPrerequisiteMet(world: GameWorld, abilityId: string): boolean {
+  const prereq = getAbilityPresentation(abilityId)?.weaponPrerequisite;
+  if (prereq === undefined) return true;
+  const weapon = getActiveWeaponDef(world);
+  if (weapon === undefined) return false;
+  return weaponSkillPrerequisiteMatches(
+    prereq,
+    weapon.weaponClassSkillId,
+    weapon.weaponTypeSkillId,
+  );
+}
 
 function abilityAccent(id: string): number {
   const category = getAbilityPresentation(id)?.category;
@@ -220,12 +242,15 @@ export function createHudAbilityBar(
   setVisible(false);
 
   function sync(world: GameWorld, playerEid: number): void {
-    const visible = world.featureUnlocks.spells === true;
+    const state = world.abilityStatesByEntity.get(playerEid);
+    const equipped = state?.equippedActiveAbilityIds ?? [];
+    // The bar unlocks with the spellbook, but non-spell actives (e.g. the
+    // Arcane level-5 milestone unlock) can be equipped before that — the bar
+    // must be visible for those too or the ability is invisible to the player.
+    const visible = world.featureUnlocks.spells === true || equipped.length > 0;
     setVisible(visible);
     if (!visible) return;
 
-    const state = world.abilityStatesByEntity.get(playerEid);
-    const equipped = state?.equippedActiveAbilityIds ?? [];
     const cooldowns = state?.cooldownByAbilityId ?? new Map();
     const cooldownFrames = state?.cooldownFramesByAbilityId ?? new Map();
 
@@ -256,7 +281,15 @@ export function createHudAbilityBar(
       const lastTriggerFrame = cooldowns.get(id);
       const cooldownDuration = cooldownFrames.get(id) ?? 0;
       const flashing = isAbilitySlotCastFlashing(world.frameCount, lastTriggerFrame);
-      if (flashing) {
+      const prereqMet = abilityPrerequisiteMet(world, id);
+      if (!prereqMet) {
+        // Owned but unusable right now: the ability keeps its slot and stays
+        // readable, dimmed with a warning border until the required weapon is
+        // equipped again.
+        slot.setFillStyle(COLORS.slotLocked, 0.92).setStrokeStyle(2, COLORS.slotLockedBorder);
+        abilityLabel.setColor('#8a7a54');
+        keyLabel.setColor('#6d6146');
+      } else if (flashing) {
         slot.setFillStyle(COLORS.slotCastFlash, 0.98).setStrokeStyle(3, COLORS.slotCastFlashBorder);
         abilityLabel.setColor('#0c4a6e');
         keyLabel.setColor('#0c4a6e');
@@ -265,7 +298,7 @@ export function createHudAbilityBar(
         abilityLabel.setColor('#f4f7fb');
         keyLabel.setColor('#b8c7dc');
       }
-      accentBar.setFillStyle(abilityAccent(id), 1);
+      accentBar.setFillStyle(abilityAccent(id), prereqMet ? 1 : 0.35);
       abilityLabel.setText(presentation?.shortLabel ?? id.slice(0, 5).toUpperCase());
       abilityLabel.setFontSize(11);
       abilityLabel.setVisible(iconEntry === null);
@@ -273,6 +306,7 @@ export function createHudAbilityBar(
         abilityIcon.setTexture(iconEntry.textureKey);
         abilityIcon
           .setScale(fitScaleForBox(abilityIcon.width, abilityIcon.height, 30))
+          .setAlpha(prereqMet ? 1 : 0.45)
           .setVisible(true);
       } else {
         abilityIcon.setVisible(false);
