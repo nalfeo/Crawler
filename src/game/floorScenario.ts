@@ -30,6 +30,7 @@ import {
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
 import { applySolidProps } from '../core/map/applySolidProps.js';
+import { isFloorTimerPaused } from '../core/floor-timer.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import {
   getSetPieceDef,
@@ -122,6 +123,7 @@ import { generateFloor1SpellBrokerOffers } from '../shared/spell-skills.js';
 import type { Floor1SpellBrokerOffer, FloorBossEncounterState } from '../shared/floor-types.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityDefinition } from './abilities/registry.js';
+import { getAbilityEffectSummary } from './abilities/effect-summary.js';
 import {
   acceptQuest,
   notifyQuestTalk,
@@ -147,6 +149,7 @@ import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
 import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
+import { emitCorpseExplosion } from '../core/apply-damage.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -407,10 +410,14 @@ export function getBossRewardSpellOptions(world: GameWorld): Array<{
 }> {
   return [...getOfferedBossRewardSpellIds(world)].map((spellId) => {
     const def = getAbilityDefinition(spellId);
+    const prose = def?.description ?? 'Learn a new spell.';
+    // Prose alone never told the player what a spell actually does to a target,
+    // so the authored damage/range/radius numbers ride along with the pitch.
+    const stats = getAbilityEffectSummary(spellId, world.floorMap?.config.tileSizeFt);
     return {
       id: spellId,
       label: def?.name ?? spellId,
-      description: def?.description ?? 'Learn a new spell.',
+      description: stats === undefined ? prose : `${prose}\n${stats}`,
     };
   });
 }
@@ -2926,6 +2933,30 @@ function markBossRoomCleared(world: GameWorld, room: RoomData | null): void {
   world.clearedSafeRoomIds.add(room.id);
 }
 
+function explodeEnemiesInClearedBossRoom(world: GameWorld, room: RoomData | null): void {
+  if (!room) {
+    return;
+  }
+
+  for (const eid of query(world.ecs, [Enemy, Position])) {
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    // Preserve a boss's death animation and spawner death handshakes.
+    if (
+      hasComponent(world.ecs, eid, DeathTimer) ||
+      hasComponent(world.ecs, eid, Spawner) ||
+      !isInRoom(world, x, y, room)
+    ) {
+      continue;
+    }
+
+    emitCorpseExplosion(world, eid, x, y, 0);
+    world.floorScenario?.enemyArchetypes.delete(eid);
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+  }
+}
+
 /**
  * Record where a live boss currently stands so its reward chest can drop there.
  *
@@ -3910,6 +3941,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     markBossRoomCleared(world, slimeRatRoom);
+    explodeEnemiesInClearedBossRoom(world, slimeRatRoom);
     setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
     questSystem(world);
   }
@@ -3964,13 +3996,17 @@ function floor1ObjectiveTick(world: GameWorld): void {
       world.stores.doorState.logicalOpen[doorEid] = 1;
     }
     markBossRoomCleared(world, floorMap?.bossStairRoom ?? null);
+    explodeEnemiesInClearedBossRoom(world, floorMap?.bossStairRoom ?? null);
     setGoalFlag(world, 'floor1-defeat-boss', true);
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
-  // Pause the floor-collapse deadline while the player is in a safe room.
-  // Advancing deadlineMs by one tick's worth keeps the remaining time constant.
-  if (world.playerInSafeRoom) {
+  // Pause the floor-collapse deadline while the player is in a *time-stopping*
+  // safe room. Advancing deadlineMs by one tick's worth keeps the remaining time
+  // constant. A boss arena that turned safe when its boss died is deliberately
+  // excluded (see `isPointInTimeStoppingSafeSpace`): it is a breather, not a
+  // place to park the countdown.
+  if (isFloorTimerPaused(world)) {
     objective.deadlineMs += GAME.DELTA_MS;
   }
 

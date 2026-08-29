@@ -42,7 +42,7 @@ test('evaluatePrereqs fails on a missing handoff, but a missing ledger is only a
   assert.match(r.notes.join('\n'), /no review ledger on this code-touching branch/);
 });
 
-test('evaluatePrereqs still fails when an ADDED ledger is invalid for its tier', () => {
+test('evaluatePrereqs reports an invalid ADDED ledger without blocking publication', () => {
   const r = evaluatePrereqs([CODE_FILE, HANDOFF, LEDGER], [HANDOFF, LEDGER], '.', {
     validateFile: () => ({
       ok: false,
@@ -50,8 +50,9 @@ test('evaluatePrereqs still fails when an ADDED ledger is invalid for its tier',
       errors: ['plan_review.completed must be true'],
     }),
   });
-  assert.equal(r.ok, false);
-  assert.match(r.failures.join('\n'), /plan_review\.completed must be true/);
+  assert.equal(r.ok, true);
+  assert.match(r.notes.join('\n'), /plan_review\.completed must be true/);
+  assert.match(r.notes.join('\n'), /publication is allowed/i);
 });
 
 test('evaluatePrereqs passes when handoff + valid 1-apple ledger are added', () => {

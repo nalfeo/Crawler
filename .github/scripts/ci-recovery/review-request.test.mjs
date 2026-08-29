@@ -155,6 +155,16 @@ test('does not request review while another policy is blocking the PR', () => {
   );
 });
 
+test('review-ledger-only blockers do not prevent requesting review evidence', () => {
+  assert.deepEqual(
+    decision({
+      blockers: [{ kind: 'review-ledger' }],
+      comments: [requestComment(HEADS[0], 'ready')],
+    }),
+    { reason: 'synchronize', episode: null, requestReviewer: true },
+  );
+});
+
 test('allows one conflict review outside an exhausted normal budget', () => {
   const conflict = conflictComment(HEADS[2], BASES[0]);
   const episode = conflictEpisodeId({ headSha: HEADS[2], baseSha: BASES[0] });

@@ -34,6 +34,7 @@ import {
   startFloor1BossEncounter,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
+import { getAbilityEffectSummary } from '../../src/game/abilities/effect-summary.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
@@ -44,6 +45,8 @@ import {
 } from '../../src/core/systems/questSystem.js';
 import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
+import { GAME } from '../../src/shared/constants.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { TileFlags, RoomRole, TerrainType, TilePresets } from '../../src/shared/map-types.js';
 import {
@@ -750,6 +753,49 @@ describe('floor1Scenario', () => {
     expect(world.floorScenario?.runSummary?.outcome).toBe('failed_timeout');
   });
 
+  it('pauses the collapse deadline in an authored safe room but not in a cleared boss arena', () => {
+    // Issue #3674: a boss arena that turned safe when its boss died is a
+    // breather (customization, no spawns) — it must NOT stop the floor timer.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const map = world.floorMap!;
+    const objective = world.floorScenario!.objective;
+    const bossRoom = map.bossStairRoom!;
+    const safeRoom = map.safeRoom!;
+
+    const standIn = (room: { bounds: { x: number; y: number; width: number; height: number } }) => {
+      const center = map.tileToWorld(
+        room.bounds.x + Math.floor(room.bounds.width / 2),
+        room.bounds.y + Math.floor(room.bounds.height / 2),
+      );
+      world.stores.position.x[player] = center.x;
+      world.stores.position.y[player] = center.y;
+      safeRoomSystem(world);
+    };
+
+    // Cleared boss arena: safe, but the countdown keeps running.
+    world.clearedSafeRoomIds.add(bossRoom.id);
+    world.clearedSafeRoomMap = map;
+    standIn(bossRoom);
+    expect(world.playerInSafeRoom).toBe(true);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(false);
+    const deadlineInBossRoom = objective.deadlineMs;
+    floorObjectiveSystem(world);
+    expect(objective.deadlineMs).toBe(deadlineInBossRoom);
+    expect(world.safeRoomTimerCreditMs).toBe(0);
+
+    // Authored safe room: the countdown stops.
+    standIn(safeRoom);
+    expect(world.playerInTimeStoppingSafeRoom).toBe(true);
+    const deadlineInSafeRoom = objective.deadlineMs;
+    floorObjectiveSystem(world);
+    expect(objective.deadlineMs).toBe(deadlineInSafeRoom + GAME.DELTA_MS);
+    expect(world.safeRoomTimerCreditMs).toBe(GAME.DELTA_MS);
+  });
+
   it('spawns deterministic rat/slime encounters from the floor director', () => {
     const worldA = createTestWorld({ seed: 99 });
     const worldB = createTestWorld({ seed: 99 });
@@ -1092,7 +1138,18 @@ describe('floor1Scenario', () => {
     for (const spellId of offered) {
       expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toContain(spellId);
     }
-    expect(getBossRewardSpellOptions(seededWorld).map((option) => option.id)).toEqual(offered);
+    const rewardOptions = getBossRewardSpellOptions(seededWorld);
+    expect(rewardOptions.map((option) => option.id)).toEqual(offered);
+    // Every offer must state its real numbers, not just prose: the player picks
+    // one permanent spell here and cannot compare reach/damage otherwise.
+    for (const option of rewardOptions) {
+      const [prose, stats] = option.description.split('\n');
+      expect(prose, `${option.id} lost its prose description`).toBeTruthy();
+      expect(stats, `${option.id} offers no stat line`).toBe(
+        getAbilityEffectSummary(option.id, seededWorld.floorMap?.config.tileSizeFt),
+      );
+      expect(stats).toMatch(/\d/);
+    }
 
     const { world: duplicateSeedWorld } = makeWorld();
     expect(getOfferedBossRewardSpellIds(duplicateSeedWorld)).toEqual(offered);

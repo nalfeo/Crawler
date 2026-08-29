@@ -13,7 +13,9 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain("this.interactionHint.on('pointerdown', () => {");
     expect(source).toContain('this.dialogueBox = createDialogueBox(this, {');
     expect(source).toContain('this.queuedConversationClose = true;');
-    expect(source).toContain('const tapped = this.tappedInteraction || this.queuedInteraction;');
+    expect(source).toContain(
+      'const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;',
+    );
     expect(source).toContain('const closeRequested = this.queuedConversationClose;');
   });
 
@@ -25,15 +27,40 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('const INTERACTION_HINT_BOTTOM_MARGIN = 12;');
     expect(source).toContain('const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);');
     // The hint sits above the bottom safe-area inset, not the raw canvas edge,
-    // so it stays clear of the iOS home indicator in landscape.
+    // so it stays clear of the iOS home indicator in landscape. The baseline is
+    // cached from the safe-area callback so the per-frame restack does no DOM
+    // layout/style reads.
+    expect(source).toMatch(
+      /this\.interactionHintBaselineY =\s*GAME\.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - insets\.bottom;/,
+    );
+    expect(source).toContain('const baseline = this.interactionHintBaselineY;');
+    // The Talk/Descend hint stacks above the bottom-anchored ability bar
+    // whenever that bar is rendered, and falls back to the baseline otherwise.
+    expect(source).toContain('const INTERACTION_HINT_ABILITY_BAR_GAP = 10;');
     expect(source).toContain(
-      'return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;',
+      'return Math.min(baseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP);',
     );
     expect(source).toContain('.setY(this.interactionHintY());');
     expect(source).toContain(
       'const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);',
     );
     expect(source).toContain('(this.inventoryButton?.height ?? 44) * buttonScale + 8');
+  });
+});
+
+describe('MainGameScene NPC tap targeting', () => {
+  const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+  it('cancels a tap whose clicked NPC left range instead of retargeting another NPC', () => {
+    expect(source).toContain(
+      'tappedNpcEid !== null && this.world.npcs.get(tappedNpcEid)?.nearbyPlayer !== true;',
+    );
+    expect(source).toContain(
+      'const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;',
+    );
+    expect(source).toContain(
+      'tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;',
+    );
   });
 });
 

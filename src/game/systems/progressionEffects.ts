@@ -20,6 +20,7 @@ import { spawnProjectile } from '../../core/spawners/projectiles.js';
 import { tagDamageMeta } from '../../core/damage-meta.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { getSpellSkillId } from '../../shared/spell-skills.js';
+import { DEFAULT_TILE_SIZE_FT } from '../../shared/spell-effect-summary.js';
 
 interface ApplyCatalogEffectOptions {
   sourceType: StatModifier['sourceType'];
@@ -28,8 +29,6 @@ interface ApplyCatalogEffectOptions {
   expiresFrame?: number;
   holderEid?: number;
 }
-
-const DEFAULT_TILE_SIZE_FT = 4;
 
 const SPELL_SKILL_PER_LEVEL_BONUS = 0.02;
 const SPELL_SKILL_BREAKPOINT_BONUSES = [

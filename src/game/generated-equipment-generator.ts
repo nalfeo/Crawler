@@ -320,10 +320,10 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
 
 /**
  * Pure predicate: does this stat-bonus map carry any non-zero, non-armor
- * entry? Extracted so both the base-level check
- * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the instance-level
- * check ({@link generatedEquipmentInstanceHasNonArmorStatBonus}) share one
- * definition of "non-armor stat bonus".
+ * entry? Extracted so the base-level check
+ * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the inherent-line
+ * projection ({@link inherentNonArmorStatBonuses}) share one definition of
+ * "non-armor stat bonus".
  */
 function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boolean {
   return Object.entries(statBonuses).some(
@@ -333,13 +333,12 @@ function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boo
 
 /**
  * Whether a base's equipment definition carries any inherent NON-armor stat
- * bonus. Pure and registry-free. Under the decoupled model, generated
- * instances do NOT spread a base's inherent non-armor stats — non-armor power
- * is affix-driven. This predicate inspects the base definition (not the
- * generated output) and remains valid as an authoring utility (e.g.
- * categorizing or auditing base pools). It is NOT used to filter Common
- * candidacy: all bases are eligible for Common since their non-armor base
- * stats are never copied into the generated instance.
+ * bonus. Pure and registry-free. Non-weapon bases spread this inherent line
+ * into their generated instances (see {@link inherentNonArmorStatBonuses}), so
+ * this predicate is an authoring utility (e.g. categorizing or auditing base
+ * pools). It is NOT used to filter Common candidacy: all bases are eligible
+ * for Common because rarity adds affixes on top of the inherent line rather
+ * than unlocking the inherent line itself.
  */
 export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
   const resolved = resolveGeneratedEquipmentBase(baseId);
@@ -347,17 +346,40 @@ export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): bool
 }
 
 /**
- * Whether a *generated instance's* final, frozen stat-bonus map carries any
- * non-armor entry. Under the decoupled model, Common instances will always
- * return false here (no effects → no non-armor stats). For Uncommon/Rare,
- * non-armor stats come only from affix effects. Used as a post-generation
- * tripwire to confirm the contract is satisfied.
+ * The inherent non-armor stat line a resolved base contributes to every
+ * generated instance made from it, at every rarity.
+ *
+ * Inherent power is per target kind: a weapon's is its base damage (carried by
+ * `activeWeaponSnapshot`), an armor piece's is its scaled `armor`, and a
+ * non-weapon's authored non-armor stats are its identity (a glove's grip
+ * speed, a charm's luck). Weapons deliberately contribute nothing here — their
+ * power lives entirely in the weapon snapshot.
  */
-export function generatedEquipmentInstanceHasNonArmorStatBonus(
+function inherentNonArmorStatBonuses(
+  resolved: ResolvedGeneratedEquipmentBase,
+): Partial<Record<StatId, number>> {
+  const inherent: Partial<Record<StatId, number>> = {};
+  if (resolved.weaponDef !== null) return inherent;
+  for (const [stat, value] of Object.entries(resolved.equipmentDef.statBonuses)) {
+    if (stat === 'armor' || typeof value !== 'number' || value === 0) continue;
+    inherent[stat as StatId] = value;
+  }
+  return inherent;
+}
+
+/**
+ * Whether a *generated instance* carries any AFFIX-driven stat bonus, i.e. a
+ * stat that came from a rarity effect rather than from the base's inherent
+ * line. Rarity is affix-driven, so a Common instance (zero effect units) must
+ * always return false here while still carrying its base's inherent stats.
+ * Used as a post-generation tripwire to confirm the contract is satisfied.
+ */
+export function generatedEquipmentInstanceHasAffixDrivenStatBonus(
   instance: GeneratedEquipmentInstanceV1,
 ): boolean {
-  return hasNonArmorStatBonus(instance.frozen.statBonuses);
+  return instance.resolvedEffects.some((effect) => 'kind' in effect && effect.kind === 'stat');
 }
+
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -505,10 +527,15 @@ export function generateEquipmentInstance(
     options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
-  // Under the decoupled model, non-armor power is affix-driven. Base inherent
-  // non-armor stats are NOT spread into generated instances — only armor (for
-  // armor-kind bases) and rarity-effect stats contribute to statBonuses.
-  const statBonuses: Partial<Record<StatId, number>> = {};
+  // Inherent power is per target kind (ADR 2026-08-27-generated-equipment-inherent-stat-line): a weapon's lives in its
+  // active snapshot, an armor piece's is its level/rarity-scaled `armor`, and
+  // every non-weapon base additionally spreads its authored non-armor stat
+  // line — that line IS the item's identity, and dropping it made Common
+  // accessories generate with a literally empty stat map. Rarity affixes stack
+  // on top, so rarity remains affix-driven.
+  const statBonuses: Partial<Record<StatId, number>> = {
+    ...inherentNonArmorStatBonuses(resolvedBase),
+  };
   if (resolvedBase.targetKind === 'armor') {
     statBonuses.armor = resolvedInherent;
   }

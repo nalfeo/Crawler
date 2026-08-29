@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  tapKeyUntil,
+  mainSceneProbe,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -302,6 +307,87 @@ describe('MainGameScene UI exclusivity', () => {
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
   });
 
+  it('requires an explicit NPC interaction before dialogue opens', async () => {
+    await bootPlayingSafeScene();
+    const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+    expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+    await page.waitForFunction(
+      () => window.__mainSceneProbe?.getInteractionHintBounds() !== null,
+      undefined,
+      { timeout: 5_000 },
+    );
+    const awardsBounds = await mainSceneProbe.getAchievementsButtonBounds(page);
+    const talkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    const canvas = await page.locator('#lab-canvas canvas').boundingBox();
+    expect(awardsBounds, 'Awards button should expose screen-space bounds').not.toBeNull();
+    expect(talkBounds, 'Talk button should expose screen-space bounds').not.toBeNull();
+    expect(canvas, 'main-scene probe canvas should exist').not.toBeNull();
+    if (!awardsBounds || !talkBounds || !canvas) return;
+
+    const toCanvas = ({ x, y }: { x: number; y: number }) => ({
+      x: canvas.x + x * (canvas.width / 1280),
+      y: canvas.y + y * (canvas.height / 720),
+    });
+    const clickDesignPoint = async (point: { x: number; y: number }): Promise<void> => {
+      const target = toCanvas(point);
+      await page.mouse.click(target.x, target.y);
+    };
+    await clickDesignPoint({ x: 800, y: 450 });
+    await page.waitForTimeout(100);
+    expect((await mainSceneProbe.getState(page)).conversationOpen).toBe(false);
+
+    await clickDesignPoint({
+      x: awardsBounds.x + awardsBounds.width / 2,
+      y: awardsBounds.y + awardsBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.achievementsOpen && !state.conversationOpen, {
+      label: 'Awards opened without NPC dialogue',
+    });
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await waitForState(page, (state) => !state.achievementsOpen, { label: 'Awards closed' });
+
+    const npcScreenPoint = await mainSceneProbe.getPrimedNpcScreenPoint(page);
+    expect(npcScreenPoint, 'NPC should expose a screen-space hit point').not.toBeNull();
+    if (!npcScreenPoint) return;
+    await clickDesignPoint(npcScreenPoint);
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'NPC click opened dialogue',
+    });
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'NPC dialogue to close before Talk click' },
+    );
+    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (!restoredTalkBounds) {
+      throw new Error('Talk button should be visible after dialogue closes');
+    }
+
+    await clickDesignPoint({
+      x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
+      y: restoredTalkBounds.y + restoredTalkBounds.height / 2,
+    });
+    await waitForState(page, (state) => state.conversationOpen, {
+      label: 'Talk button opened dialogue',
+    });
+    // Tapped until consumed: the scene samples Escape/E with `JustDown`, and it
+    // also drains those keys via `clearPendingInteractionInput()`, so a single
+    // press (held or not) can be swallowed and never re-arm.
+    await tapKeyUntil(
+      page,
+      'Escape',
+      async () => !(await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'Talk dialogue to close before E interaction' },
+    );
+    await tapKeyUntil(
+      page,
+      'e',
+      async () => (await mainSceneProbe.getState(page)).conversationOpen,
+      { label: 'E to open dialogue' },
+    );
+  });
+
   it('does not leak keyboard or pointer interactions through the abilities loadout', async () => {
     for (const interaction of ['keyboard', 'pointer'] as const) {
       await bootPlayingSafeScene();
@@ -498,6 +584,71 @@ describe('MainGameScene UI exclusivity', () => {
       'Skills should open from the post-floor safe_room state even without playerInSafeRoom',
     ).toBe(true);
   });
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 960, height: 540 },
+  ] as const) {
+    it(`keeps spell stats separated from abilities descriptions at ${viewport.width}x${viewport.height}`, async () => {
+      const abilityContext = await browser.newContext({ viewport });
+      const abilityPage = await abilityContext.newPage();
+      try {
+        await bootPlayingSafeScene(abilityPage);
+
+        await mainSceneProbe.queueAbilitiesToggle(abilityPage);
+        const state = await waitForState(
+          abilityPage,
+          (s) =>
+            s.abilityLoadoutOpen &&
+            s.abilityLoadoutVisibleEntries.some((entry) => entry.id === 'fireball') &&
+            s.abilityLoadoutRowLayouts.some((layout) => layout.id === 'fireball'),
+          {
+            label: `abilities loadout opened with fireball at ${viewport.width}x${viewport.height}`,
+          },
+        );
+
+        const fireball = state.abilityLoadoutVisibleEntries.find(
+          (entry) => entry.id === 'fireball',
+        );
+        expect(fireball?.details).not.toContain('Damage 15');
+        expect(fireball?.description).toContain('Damage 15');
+        expect(fireball?.description).toContain('Target & blast radius 12 ft');
+
+        const layout = state.abilityLoadoutRowLayouts.find((layout) => layout.id === 'fireball');
+        expect(layout, 'fireball row layout should be measured').toBeDefined();
+        expect(
+          overlaps(layout!.details, layout!.description),
+          `fireball details must not overlap description at ${viewport.width}x${viewport.height}`,
+        ).toBe(false);
+
+        // The stat line pushes the description down, so a row sized to a fixed
+        // height renders its description past the row edge and over the row
+        // below. Assert containment on every visible row, not just fireball.
+        for (const rowLayout of state.abilityLoadoutRowLayouts) {
+          const rowBottom = rowLayout.row.y + rowLayout.row.height;
+          expect(
+            rowLayout.details.y + rowLayout.details.height,
+            `${rowLayout.id} stat line overflows its row at ${viewport.width}x${viewport.height}`,
+          ).toBeLessThanOrEqual(rowBottom);
+          expect(
+            rowLayout.description.y + rowLayout.description.height,
+            `${rowLayout.id} description overflows its row at ${viewport.width}x${viewport.height}`,
+          ).toBeLessThanOrEqual(rowBottom);
+        }
+
+        // Growing a row must push later rows down rather than draw over them.
+        const rows = state.abilityLoadoutRowLayouts;
+        for (let i = 1; i < rows.length; i += 1) {
+          expect(
+            overlaps(rows[i - 1]!.row, rows[i]!.row),
+            `${rows[i - 1]!.id} and ${rows[i]!.id} rows must not overlap at ${viewport.width}x${viewport.height}`,
+          ).toBe(false);
+        }
+      } finally {
+        await abilityContext.close();
+      }
+    });
+  }
 
   it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
     await bootPlayingSafeScene();

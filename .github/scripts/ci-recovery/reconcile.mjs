@@ -7,6 +7,7 @@ import {
   blockerFingerprint,
   checkRunWorkflowRunId,
   collapseCheckRunsByName,
+  isAgentSessionRunning,
   isDuplicateDispatch,
   isScopeMismatchReviewBlocker,
   isLeaseExpired,
@@ -94,6 +95,7 @@ import {
   buildTerminalDecisionRecord,
   formatDecisionLog,
 } from './decision-log.mjs';
+import { reviewLedgerBlockers } from './review-ledger-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -205,6 +207,10 @@ const BLOCKER_PHASES = [
     // in-thread resolution, so the final phase is present only when threads exist.
     label: 'thread resolution',
     matches: (blocker) => blocker.kind === 'review-thread',
+  },
+  {
+    label: 'review-ledger repair',
+    matches: (blocker) => blocker.kind === 'review-ledger',
   },
 ];
 function isAdvisoryCheck(checkName) {
@@ -2960,10 +2966,8 @@ for (const run of runs) {
 const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
-const needsChangedFiles =
-  retriggerableRuns.length > 0 || String(pr.head?.ref || '').trim() === 'assets/promote';
 let changedFiles = [];
-if (needsChangedFiles) {
+if (Number(pr.changed_files || 0) > 0) {
   try {
     changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
   } catch (error) {
@@ -3060,6 +3064,27 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     scopeMismatchTrusted: isTrustedComment(root),
     url: root?.url,
   });
+}
+
+if (changedFiles.length > 0) {
+  const ledgerLifecycle = await reviewLedgerBlockers(changedFiles, async (path) => {
+    const encodedPath = path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const response = await request(
+      readToken,
+      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(pr.head.sha)}`,
+    );
+    if (response.data?.encoding !== 'base64' || typeof response.data?.content !== 'string') {
+      throw new Error('GitHub contents response did not contain base64 file content');
+    }
+    return Buffer.from(response.data.content.replace(/\s+/g, ''), 'base64').toString('utf8');
+  });
+  blockers.push(...ledgerLifecycle.blockers);
+  for (const warning of ledgerLifecycle.warnings) {
+    process.stdout.write(`warn ${warning}\n`);
+  }
 }
 
 const normalized = normalizeBlockers(blockers);
@@ -3195,10 +3220,10 @@ if (scopeMismatchBlocker) {
   const quarantineBody = makeQuarantineComment(prNumber, {
     reason,
     explanation:
-      'This PR has been quarantined because a trusted review finding says the PR title/body or closing reference promises work that is not supported by the changed files. CI Recovery cannot deterministically choose between changing PR metadata and implementing the linked feature.',
+      'This PR has been quarantined because a trusted review finding says the PR metadata and the changed files are materially inconsistent — either the PR title/body or closing reference promises work that is not supported by the changed files, or the diff carries substantial work the PR never declared. CI Recovery cannot deterministically choose between changing PR metadata, splitting the branch, and implementing the linked feature.',
     nextActions: [
       'Abandon/close this PR and restart the linked issue by posting the exact standalone owner comment `ABANDON`.',
-      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself.',
+      'Keep this PR by posting the exact standalone owner comment `KEEP`: automated repair resumes immediately, and no implementation plan is verified, so state the intended scope yourself (amend the PR title/description first if the diff is broader than it claims).',
     ],
     keepOutcome:
       'resume this PR: it re-enters the lifecycle as `repairing` and automated repair resumes (no implementation plan is checked)',
@@ -3325,6 +3350,12 @@ function getOrDeriveProgressKey(recoveryState) {
 }
 let dispatchAttemptBase = 0;
 let dispatchProgressAt = now.toISOString();
+// Liveness for the currently dispatched agent session, read from the check
+// runs already fetched for this head (no extra API call, no extra permission).
+const agentSessionRunning = isAgentSessionRunning(checkRuns, { now });
+if (agentSessionRunning) {
+  process.stdout.write(`agent-session-running pr=#${prNumber} head=${pr.head.sha}\n`);
+}
 
 // Bounded to 2 passes (plan review, 2026-07-27): pass 1 evaluates the
 // as-loaded state; if R33 (RELEASE_STALE_AUTOMATION_RETRY, non-terminal)
@@ -3377,7 +3408,13 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     stateProgressKey,
     currentProgressKey,
     isDuplicateDispatch: labelExists && isDuplicateDispatch(state, fingerprint),
-    stallAction: automationStallAction({ state, headSha: pr.head.sha, fingerprint, now }),
+    stallAction: automationStallAction({
+      state,
+      headSha: pr.head.sha,
+      fingerprint,
+      now,
+      agentSessionRunning,
+    }),
     automationProgressRecent:
       labelExists &&
       state?.owner === 'automation' &&
@@ -3827,6 +3864,9 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         String(blocker.path ?? ''),
       ),
   );
+  const hasReviewLedgerArtifactBlocker = commentBlockers.some(
+    (blocker) => blocker.kind === 'review-ledger',
+  );
   const hasCiOnlyBlockers =
     commentBlockers.length > 0 &&
     commentBlockers.every(
@@ -3868,6 +3908,12 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     ...(hasSessionContinuationBlocker
       ? [
           '**Session-continuation protocol:** Read the PR description and current branch before changing anything, then continue the unfinished work in this PR. Keep the explicit `Status: INCOMPLETE - session ran out of time` line in the PR description while any work remains unfinished. Only after the work is complete and the PR is ready for normal review, update the PR description to remove or replace that incomplete status, then push consolidated changes and run required verification.',
+          '',
+        ]
+      : []),
+    ...(hasReviewLedgerArtifactBlocker
+      ? [
+          '**Review-ledger protocol:** Do not duplicate CI results in the ledger; required CI is authoritative. Existing GitHub Copilot PR review counts as `code_review` evidence when recorded with `reviewer_actors`, `review_url`, finding/resolution counts, and final cleanliness. Complete every non-ledger code and review-thread repair first, then repair and validate the ledger on the final head. If ledger validation is the only failing CI step, repairing the ledger is the remaining CI fix.',
           '',
         ]
       : []),

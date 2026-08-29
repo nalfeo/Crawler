@@ -88,6 +88,23 @@ test('collectDiff truncates an oversized diff and flags it', () => {
   assert.match(d.diff, /diff truncated/);
 });
 
+test('collectDiff scopes the diff to the given paths, so a ledger nested in a much larger shared branch can still be graded', () => {
+  const seen = [];
+  const runGit = (_cwd, args) => {
+    seen.push(args.join(' '));
+    if (args[0] === 'merge-base') return 'base123\n';
+    if (args[0] === 'rev-parse') return `${HEAD}\n`;
+    if (args[0] === 'diff' && args[1] === '--name-only') return 'src/a.ts\n';
+    if (args[0] === 'diff') return 'diff --git a/src/a.ts b/src/a.ts\n+scoped\n';
+    throw new Error(`unexpected ${args.join(' ')}`);
+  };
+  const d = collectDiff({ runGit, paths: ['src/a.ts', 'src/b.ts'] });
+  assert.deepEqual(d.files, ['src/a.ts']);
+  assert.match(d.diff, /\+scoped/);
+  assert.ok(seen.some((call) => call === 'diff --name-only base123..HEAD -- src/a.ts src/b.ts'));
+  assert.ok(seen.some((call) => call === 'diff base123..HEAD -- src/a.ts src/b.ts'));
+});
+
 // ---------------------------------------------------------------------------
 // buildGradingPacket
 // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
-import { createHudAbilityBar } from './HudAbilityBar.js';
+import { ABILITY_BAR_LAYOUT, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import {
@@ -59,6 +59,7 @@ export interface NavigationHudBounds {
   readonly arrows: readonly ScreenBounds[];
   readonly mapOverlay: ScreenBounds | null;
   readonly mapClose: ScreenBounds | null;
+  readonly questArrowToggles: readonly { questId: string; bounds: ScreenBounds }[];
 }
 
 export function createHudUI(scene: Phaser.Scene): {
@@ -66,6 +67,12 @@ export function createHudUI(scene: Phaser.Scene): {
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
   getAbilityBarBounds(): ScreenBounds;
+  /**
+   * Screen-space (design-space) Y of the ability panel's top edge, or `null`
+   * when the bar is not rendered. Bottom-center affordances outside the HUD
+   * groups (the Talk/Descend interaction hint) stack above this line.
+   */
+  getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
@@ -89,6 +96,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
   getMinimapRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
   getBottomCenterBounds(): ScreenBounds;
+  /**
+   * Drain quest-arrow-toggle click requests captured since the last call.
+   * HUD widgets only capture input — the caller (the scene's input pipeline)
+   * is responsible for applying each request to `GameWorld` simulation-side.
+   */
+  consumeQuestArrowToggleRequests(): string[];
   destroy(): void;
 } {
   const depth = 1000;
@@ -110,7 +123,17 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  const questTracker = createHudQuestTracker(scene);
+  // Quest-arrow toggle clicks are captured here, not applied here: this HUD
+  // facade renders sim state and reads input, but must not mutate `GameWorld`
+  // (see .github/instructions/engine.instructions.md). Requests queue up and
+  // are drained by the scene's input pipeline via
+  // `consumeQuestArrowToggleRequests()`, which applies them to the sim.
+  const pendingQuestArrowToggles: string[] = [];
+  const questTracker = createHudQuestTracker(scene, {
+    onToggleArrow: (questId) => {
+      pendingQuestArrowToggles.push(questId);
+    },
+  });
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
   // rather than being grouped into a corner container here.
@@ -118,7 +141,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const familyRelationships = createHudFamilyRelationships(scene, {
     parent: bottomRight,
     getAvoidBounds: () => {
-      const bounds = [minimap.getDockedBounds()];
+      const bounds = [minimap.getDockedBounds(), questTracker.getBounds()];
       const b = bottomCenter.getBounds();
       bounds.push({ x: b.x, y: b.y, width: b.width, height: b.height });
       return bounds.filter((item): item is ScreenBounds => item !== null);
@@ -151,6 +174,14 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeftTopEdge = bottomLeftNaturalBounds.top;
   const abilityBarLeftEdge = bottomCenter.getBounds().left;
 
+  // Live scale of the bottom-center group, mirrored out so callers can project
+  // the ability bar's authored design constants into screen space.
+  let bottomCenterScale = 1;
+  // Screen-space Y of the ability panel's top edge, recomputed only when the
+  // ui-scale / safe-area layout changes so per-frame callers never trigger a
+  // synchronous DOM layout or style read.
+  let abilityBarScreenTop = 0;
+
   function applyScale(): void {
     const s = computeVitalsScale({
       desiredScale: getUiScale(scene),
@@ -158,7 +189,7 @@ export function createHudUI(scene: Phaser.Scene): {
       clusterTopEdge: bottomLeftTopEdge,
       neighborLeftEdge: abilityBarLeftEdge,
     });
-    const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
+    bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;
     const cx = w / 2;
@@ -173,6 +204,13 @@ export function createHudUI(scene: Phaser.Scene): {
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale) - safe.bottom);
     topCenter.setScale(s).setPosition(cx * (1 - s), safe.top);
     bottomRight.setScale(s).setPosition(w * (1 - s) - safe.right, h * (1 - s) - safe.bottom);
+
+    // Inverse of the bottomCenter transform above. A child at local y
+    // `ABILITY_BAR_LAYOUT.panelTop` renders at
+    //   bottomCenter.y + bottomCenterScale * panelTop
+    // and bottomCenter.y is `h * (1 - bottomCenterScale) - safe.bottom`, which
+    // simplifies to the expression below.
+    abilityBarScreenTop = h - safe.bottom - bottomCenterScale * (h - ABILITY_BAR_LAYOUT.panelTop);
   }
 
   applyScale();
@@ -220,13 +258,15 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
-    familyRelationships.sync(world);
-    floor3Party.sync(world, playerEid);
     const mapOpen = minimap.isOverlayOpen();
     questTracker.setVisible(!mapOpen);
     directionArrows.setVisible(!mapOpen);
     if (!mapOpen) {
       questTracker.sync(world, playerEid);
+    }
+    familyRelationships.sync(world);
+    floor3Party.sync(world, playerEid);
+    if (!mapOpen) {
       const familyLayout = familyRelationships.getLayout();
       const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
       const forbiddenRegions = [
@@ -247,6 +287,7 @@ export function createHudUI(scene: Phaser.Scene): {
       arrows: directionArrows.getBounds(),
       mapOverlay: minimap.getOverlayViewportBounds(),
       mapClose: minimap.getOverlayCloseBounds(),
+      questArrowToggles: questTracker.getArrowToggleBounds(),
     };
   }
 
@@ -305,6 +346,13 @@ export function createHudUI(scene: Phaser.Scene): {
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
+    getAbilityBarScreenTop: () => {
+      if (hidden || !abilityBar.isVisible()) {
+        return null;
+      }
+      // Cached in applyScale(); no DOM reads on this (per-frame) path.
+      return abilityBarScreenTop;
+    },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
@@ -324,6 +372,7 @@ export function createHudUI(scene: Phaser.Scene): {
       const b = bottomCenter.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    consumeQuestArrowToggleRequests: () => pendingQuestArrowToggles.splice(0),
     destroy,
   };
 }

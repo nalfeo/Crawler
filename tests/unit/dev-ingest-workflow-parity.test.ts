@@ -62,6 +62,7 @@ describe('dev-tier build workflows configure the ingest endpoint', () => {
       'utf8',
     );
     expect(source).toMatch(/labels:\s*\['telemetry'\]/);
+    expect(source).not.toMatch(/'goobers:approved'/);
     expect(source).not.toMatch(/labels:\s*\[survey \? 'telemetry' : 'bug'\]/);
   });
 });
