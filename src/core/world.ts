@@ -101,6 +101,7 @@ import type {
   Floor3StudiosState,
   Floor3PoachOffer,
   Floor4ArenaState,
+  Floor4GreenRoomState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -159,6 +160,8 @@ export interface FloorExtendedState {
   floor3PoachOffer?: Floor3PoachOffer;
   /** Floor 4 arena clock + phase-machine state. */
   floor4Arena?: Floor4ArenaState;
+  /** Floor 4 Green Room shop lifecycle (per-visit stock roll + retirement). */
+  floor4GreenRoom?: Floor4GreenRoomState;
 }
 
 /**

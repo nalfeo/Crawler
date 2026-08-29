@@ -108,6 +108,28 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission + 1);
   });
 
+  it('opens Green Room stock on intermission entry and retires it on exit', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit?.visitIndex).toBe(0);
+    const firstVisit = world.floorExtendedState!.floor4GreenRoom!.currentVisit;
+
+    advance(world, phase.intermissionMs);
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
+    expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit).toBeUndefined();
+    expect(world.floorExtendedState!.floor4GreenRoom?.retiredVisitCount).toBe(1);
+    expect(world.floorExtendedState!.floor4GreenRoom?.lastOpenedVisitIndex).toBe(0);
+    expect(firstVisit).toBeDefined();
+  });
+
   it('allows stair descent only during the final intermission window', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;

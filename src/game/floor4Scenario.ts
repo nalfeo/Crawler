@@ -68,6 +68,7 @@ import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/r
 import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import { openFloor4GreenRoomVisit, retireFloor4GreenRoomVisit } from './floor4GreenRoom.js';
 import {
   createBossChestId,
   openBossChest,
@@ -211,6 +212,9 @@ function recordFloor4PhaseTransition(
   if (state.phase.kind === 'WAVES') {
     cutFloor4WaveEnemies(world, state);
   }
+  if (state.phase.kind === 'INTERMISSION' && phase.kind !== 'INTERMISSION') {
+    retireFloor4GreenRoomVisit(world);
+  }
   state.waves = undefined;
   const pending = state.pendingWaves;
   state.pendingWaves = undefined;
@@ -233,6 +237,11 @@ function recordFloor4PhaseTransition(
     state.waves = armFloor4ActWaves(world, phase.act, pending);
   } else if (phase.kind === 'HEADLINE') {
     spawnFloor4Headliner(world, state, phase.act);
+  } else if (phase.kind === 'INTERMISSION') {
+    const opened = openFloor4GreenRoomVisit(world, phase.act - 1);
+    if (!opened.ok) {
+      throw new Error(opened.message);
+    }
   }
 }
 

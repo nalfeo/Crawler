@@ -61,7 +61,14 @@
     },
     "greenRoom": {
       "widthTiles": 20,
-      "heightTiles": 14
+      "heightTiles": 14,
+      "tables": [
+        { "id": "arsenal", "archetypeId": "the-fence" },
+        { "id": "apothecary", "archetypeId": "the-apothecary" },
+        { "id": "supply", "archetypeId": "the-resource-broker" }
+      ],
+      "priceTierByVisit": [0.25, 0.35, 0.55, 0.75, 1.0],
+      "affordabilityBudgetByVisit": [18, 28, 40, 55, 75]
     },
     "tunnel": {
       "lengthTiles": 8,
