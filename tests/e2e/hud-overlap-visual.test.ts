@@ -342,3 +342,92 @@ describe('hud visual regression overlap guard', () => {
     ).toBeLessThan(bossBandRatio * 0.8);
   });
 });
+
+describe('tracked hud A|B scenarios stay non-overlapping (safe-room + dungeon)', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  it.each([
+    { scenario: 'safe-room-unlocked' as const, label: 'hud-safe-room' },
+    { scenario: 'dungeon' as const, label: 'hud-dungeon' },
+  ])(
+    'the $label scenario renders its declared regions inside the viewport with no overlap',
+    async ({ scenario }) => {
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        deviceScaleFactor: 1,
+      });
+      const page = await context.newPage();
+      try {
+        await loadHudLab(page);
+        await hideLabShell(page);
+        const canvas = await getCanvasRect(page);
+        expect(canvas).toEqual({ x: 0, y: 0, width: 1280, height: 720 });
+
+        const regionsRaw = await page.evaluate((scenarioName) => {
+          const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
+          if (!probe) throw new Error('__hudProbe not available');
+          probe.setScenario(scenarioName);
+          return probe.getVisualReviewRegions();
+        }, scenario);
+        await page.waitForTimeout(200);
+
+        const viewport: Bounds = { x: 0, y: 0, width: 1280, height: 720 };
+        const regions = Object.fromEntries(
+          Object.entries(regionsRaw).map(([name, bounds]) => [
+            name,
+            boundsToScreen(canvas, bounds),
+          ]),
+        );
+
+        expect(Object.keys(regions).length, 'scenario must declare HUD regions').toBeGreaterThan(0);
+        for (const [name, bounds] of Object.entries(regions)) {
+          expect(contains(viewport, bounds), `${name} must remain inside the viewport`).toBe(true);
+        }
+
+        // Top-level HUD panels must never overlap each other in either scenario.
+        const panelIds = [
+          'abilitiesPanel',
+          'hud-health-panel-bounds',
+          'hud-skill-panel-bounds',
+          'timerPanel',
+          'bossPanel',
+          'minimap',
+        ].filter((id) => id in regions);
+        for (let i = 0; i < panelIds.length; i += 1) {
+          for (let j = i + 1; j < panelIds.length; j += 1) {
+            const a = regions[panelIds[i]!]!;
+            const b = regions[panelIds[j]!]!;
+            expect(overlaps(a, b), `${panelIds[i]} must not overlap ${panelIds[j]}`).toBe(false);
+          }
+        }
+
+        // Loot value text must remain inside its reserved value column in both
+        // scenarios (regression guard for the vertical-overflow bug fixed in
+        // this session: LOOT_ROW_H was too short for the rendered text height).
+        if (regions['hud-loot-gold-value-bounds'] && regions['hud-loot-gold-text']) {
+          expect(
+            contains(regions['hud-loot-gold-value-bounds'], regions['hud-loot-gold-text']),
+            'gold text must remain inside its reserved value column',
+          ).toBe(true);
+        }
+        if (regions['hud-loot-junk-value-bounds'] && regions['hud-loot-junk-text']) {
+          expect(
+            contains(regions['hud-loot-junk-value-bounds'], regions['hud-loot-junk-text']),
+            'junk text must remain inside its reserved value column',
+          ).toBe(true);
+        }
+      } finally {
+        await closeQuietly(context);
+      }
+    },
+    120_000,
+  );
+});

@@ -57,6 +57,10 @@
       "escalated_to_human": {
         "reason": "criteria below 3: test_coverage",
         "unresolved_findings": 1
+      },
+      "remediation": {
+        "addressed": true,
+        "commit_note": "Added 'tracked hud A|B scenarios stay non-overlapping (safe-room + dungeon)' describe block to tests/e2e/hud-overlap-visual.test.ts: loads both __hudProbe.setScenario('safe-room-unlocked'|'dungeon') states, asserts every declared getVisualReviewRegions() region stays inside the 1280x720 viewport, asserts no pairwise overlap between top-level HUD panels (abilitiesPanel, hud-health-panel-bounds, hud-skill-panel-bounds, timerPanel, bossPanel, minimap), and reasserts the loot gold/junk text-containment regression fixed this session (LOOT_ROW_H vertical overflow). All 6 tests in the file pass (verified via `npx vitest run --project e2e tests/e2e/hud-overlap-visual.test.ts`)."
       }
     }
   }
