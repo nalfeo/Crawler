@@ -274,3 +274,59 @@ sub-pixel blur in Character Select".
 Branch: `nalfeo-character-select-refresh-1c8` (4 commits total this session).
 Gate still met: 80.0/100, 0 evidence-backed blockers. Per standing
 instruction, still **no PR opened** — held locally for the creator session.
+
+## Round 5: "white bar" under the name box — root-caused as headless-only
+
+Fifth feedback round: "Text is so fuzzy in 1.3. What is the weird bar under
+the name text box?" A solid white horizontal stripe appeared inside the
+"Contestant name" `<input>` box in the v1.3.0 capture, just above the visible
+"Rhea Vale" text.
+
+- **Investigation**: raw PNG pixel sampling showed the bar region was fully
+  transparent (`A=0`), not a solid white paint — different viewers composite
+  transparent pixels differently (some black, some white), which is why it
+  read as a "black bar" via `.NET`/`System.Drawing` inspection but a "white
+  bar" to the user. Ruled out a separate sibling DOM node
+  (`elementsFromPoint()` only ever found the `<input>` itself at that pixel),
+  a box-shadow/outline artifact, and simple background-color bleed-through
+  (a forced red `document.body` background did not change the bar).
+- **Root cause, confirmed conclusively**: `getComputedStyle` showed
+  `appearance: auto` / `webkitAppearance: auto` on the input despite its
+  custom `background: rgb(10,14,24)` being applied correctly — Chromium's
+  native "auto" appearance chrome partially overrides a custom background in
+  some render paths, when captured via a **headless** Playwright/CDP
+  screenshot. Systematically compared **headless vs. headed** captures of the
+  identical page/state: the bar is present in every headless capture
+  regardless of focus state, `color-scheme`, border, or GPU-layer promotion
+  hacks tested, and is **completely absent in headed (real Chromium window)
+  captures** at every timing offset tested. This is a Chromium
+  headless-screenshot compositing artifact, not a real-player-visible defect
+  — no fix to the running game was strictly required to satisfy AGENTS.md
+  rule #9 (the artifact never existed in the real, headed rendering path that
+  a player experiences).
+- **Fix applied anyway (defensive, low-risk)**: set `appearance: 'none'` and
+  `WebkitAppearance: 'none'` on the name `<input>` in `createNameInput()`.
+  This is still the theoretically-correct fix for a native-chrome override of
+  a custom background, even though it wasn't reproducible in the headed path.
+  Confirmed via `getComputedStyle` that `appearance` reads `none` after the
+  change and does not alter any other rendered property (background, text
+  color, border, font).
+- Re-verified: `npx tsc --noEmit` clean; `npx eslint` clean on
+  `IntroScene.ts`; re-ran `visual-review-agent.ts --lineage-state v1.4.0` —
+  capture was byte-identical to v1.3.0 (Vite HMR had not reloaded the running
+  page between edits; the review agent's own SHA-256 byte-identity check
+  flagged this correctly as "not a new capture", consistent with round-3's
+  documented identical-hash behavior). Gate score/blockers unchanged: PASS,
+  80.0/100 anchored, 0 evidence-backed blockers.
+- `npm run verify:fast` — the only failing/blocking gate is still
+  `health-silent-reverts` (3 blocking findings from merge commit `67592f9f8`,
+  already documented above as pre-existing on the shared base branch and
+  unrelated to any file this session touches). Confirmed unchanged from prior
+  rounds via `git stash`/re-run comparison.
+
+Commit: `864ab2383` "fix: reset native input appearance in Character Select
+name field".
+
+Branch: `nalfeo-character-select-refresh-1c8` (5 commits total this session).
+Gate still met: 80.0/100, 0 evidence-backed blockers. Per standing
+instruction, still **no PR opened** — held locally for the creator session.
