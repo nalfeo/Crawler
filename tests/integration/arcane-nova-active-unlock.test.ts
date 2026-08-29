@@ -23,7 +23,6 @@ import {
   Position,
   Size,
   SkillHolder,
-  Size,
   Velocity,
   Weight,
   createGameWorld,

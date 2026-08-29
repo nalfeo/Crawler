@@ -78,20 +78,6 @@ function overlaps(
   );
 }
 
-async function holdKeyUntil(
-  page: Page,
-  key: string,
-  predicate: Parameters<typeof waitForState>[1],
-  label: string,
-): Promise<void> {
-  await page.keyboard.down(key);
-  try {
-    await waitForState(page, predicate, { label });
-  } finally {
-    await page.keyboard.up(key);
-  }
-}
-
 describe('MainGameScene UI exclusivity', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -617,7 +603,7 @@ describe('MainGameScene UI exclusivity', () => {
     ).toBe(true);
   });
 
-  it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
+  it('renders milestone actives and passives in the loadout projection', async () => {
     await bootPlayingSafeScene();
     await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 260);
     await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 160);
@@ -656,13 +642,14 @@ describe('MainGameScene UI exclusivity', () => {
     expect(combatFlow?.details).toContain('Damage +5%');
 
     const daggerRapidStrike = state.abilityLoadoutVisibleEntries.find(
-      (entry) => entry.id === 'dagger-rapid-strike-base',
+      (entry) => entry.id === 'dagger-rapid-strike-active',
     );
     expect(
       daggerRapidStrike,
-      'dagger-rapid-strike-base should be visible in the rendered loadout list',
+      'dagger-rapid-strike-active should be visible in the rendered loadout list',
     ).toBeDefined();
-    expect(daggerRapidStrike?.details).toContain('PASSIVE');
+    expect(daggerRapidStrike?.details).toContain('AUTO');
+    expect(state.equippedActiveAbilityIds).toContain('dagger-rapid-strike-active');
 
     const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
       (entry) => entry.id === 'combat-flow',
