@@ -1,0 +1,110 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "goobers-phase0-review-recovery",
+  "task_title": "Phase 0 goobers contract review recovery",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gemini-3.1-pro-preview",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gemini-3.1-pro-preview) of the 9-thread + CI-failure fix plan. Blocking, addressed: (1) idempotency test manually mimicked dispatchValidation's createTrainCheck-before-dispatch ordering instead of proving it against reconcile.mjs -> added a companion source-string assertion test pinning the real function's createTrainCheck-then-baseDispatchValidation ordering, so the modeled test cannot silently drift from production; (2) pr_number/issue_number schema allowed JSON null even though GitHub Actions omits unset workflow_dispatch inputs entirely (never null) -> removed 'null' from both types, kept as plain numeric-string. Non-blocking, considered and rejected with reasoning: (a) tightening the free-form 'trigger' field into a regex pattern -> rejected, the trigger set is large/dynamic across ci-recovery and merge-train (dozens of literals plus templated suffixes like merge-train-cumulative-conflict:${predecessor}) and a pattern would recreate the exact enum-fragility that caused the original bug; (b) importing real reconcile-lib.mjs dispatch functions into the schema test suite called 'backwards coupling' -> kept as-is, this is the literal mandate of the original human review thread #6 (\"validate derived real payloads/artifacts, not only synthetic fixtures\"); (c) requiring verdict/appleEstimate via if/then when task===plan (currently only forbidden when task!=plan) -> deferred as an enhancement outside the scope of the 9 flagged findings. False positive dismissed: reviewer flagged the local composite setup-node action as possibly running before checkout -> verified actions/checkout@v4 already precedes it in both jobs."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 5,
+          "models": ["gpt-5.5"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Independent-grade dry-run pass (gpt-5.5, uninvolved model) surfaced 3 findings before the formal independent_grade stage was recorded, folded into this code-review loop: (1) [addressed] realProducerInvocations() only captured merge-train/reconcile-lib.mjs producers, missing CI Recovery Router's two dispatch call sites which build their own request body inline -> extracted buildReaperDispatchBody()/buildRouterDispatchBody() pure helpers in router.mjs (behavior-identical refactor, both real call sites now call them) and wired both into realProducerInvocations() as two more validated real-payload fixtures (20/20 total); (2) [addressed] the handoff doc's 'Contract Schemas (v1)' section (Invocation/Output/PR-State examples) still showed the ORIGINAL (wrong) contract -- pr_number/issue_number typed as number|null, a closed GH-event trigger enum, and the fictitious <!-- crawler-pr-state-v1 --> Markdown-table format -- even though the schema/runtime were already fixed; rewrote all three example blocks plus the stray marker reference in the Deterministic Invariant Checks section to match the real implemented schema and ci-recovery/markers.mjs+state.mjs format; (3) [assessed, not a real violation] flagged a 4-round code-review loop as exceeding a claimed '2-round cap' -- reviewed scripts/agent/review/ledger.mjs (the single source of truth per the review-harness skill doc) and confirmed it only requires >=2 attempted rounds before an escalated_to_human terminal state is valid; it does not cap the number of rounds when the loop is genuinely converging toward clean without escalating. No change made; the skill's own text says loop until clean OR escalate after 2, not stop at 2."
+        },
+        {
+          "round": 6,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Formal independent-grade pass #1 (gpt-5.5, uninvolved model, graded against commit bd352846) returned verdict=fail with 1 major finding: invocationV1's operation enum included a fictional 'run-feature-pr' value with a synthetic 'goobers-run workflow payload' fixture, and the doc's Invocation Contract prose falsely claimed the schema covers dispatch to Goobers Run -- but goobers-run.yml is never dispatched with a crawler.goobers.invocation/v1 envelope anywhere in the codebase (its own workflow_dispatch inputs are goobers_version/workflow/issue_number/abandon_existing, validated separately via REQUIRED_DISPATCH_INPUTS, and 'goobers run' is a bare CLI invocation, not a JSON dispatch). Verified via grep across .mjs/.js/.ts sources that 'run-feature-pr' had zero real producers. [addressed] Removed the fictional operation value and its synthetic fixture from the schema/validator/test, replaced the 'batch operation forbids pr_number' example with the real validate-candidate operation, corrected the doc's Invocation Contract prose and the Goobers Run mutation-table row to state explicitly that this contract does not apply to Goobers Run. Re-verified: validator 6/6 workflows, 19/19 fixtures (net -1 since the fictional fixture was removed, no real coverage lost); goobers-contracts.test.ts + goobers-run-workflow.test.ts 36/36; lint clean."
+        },
+        {
+          "round": 7,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Formal independent-grade pass #2 (gpt-5.5, graded against commit d82bb04) returned verdict=pass (correctness 4, scope_discipline 4, test_coverage 4, policy_compliance 5, maintainability 4) with one minor finding: the handoff doc's Deterministic Validation Gate section named a stale workflow filename (check-goobers-contracts.yml) instead of the actual added workflow (goobers-contract-validation.yml). [addressed] Corrected the doc reference."
+        },
+        {
+          "round": 8,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Independent-grade pass #3 (gpt-5.4, graded against commit d82bb04) returned verdict=pass (correctness 4, scope_discipline 4, test_coverage 3, policy_compliance 5, maintainability 4) with one minor finding: the goobers-contract-validation.yml workflow's 'Run contract unit tests' step only ran tests/unit/goobers-contracts.test.ts, leaving tests/unit/goobers-run-workflow.test.ts un-executed by the dedicated gate even though its path filters watch that file and this PR relies on it for workflow-dispatch/lease-wiring contract coverage. [addressed] Added the second test file to the same vitest invocation; both suites (36/36) verified passing together."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "a603696da577d59556f4a1f757ae8deca9e1e874",
+      "criteria": {
+        "correctness": 3,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "docs/knowledge/handoffs/goobers-phase0-mutations-and-contracts.md",
+          "detail": "Router.mjs dispatch line refs (1718-1727/1847-1862) were stale after the buildReaperDispatchBody/buildRouterDispatchBody extract shifted the real call sites to 1754-1756/1875-1877; ci-recovery.yml and merge-train.yml token/reconcile/quarantine-repair rows also pointed at the wrong steps."
+        },
+        {
+          "severity": "minor",
+          "file": ".github/workflows/goobers-contract-validation.yml",
+          "detail": "Summary step used if: always(), printing green checkmarks even on a failed job."
+        }
+      ],
+      "findings_count": 2,
+      "notes": "Fourth formal independent-grade pass, graded against commit a603696. Verdict pass (no criterion below 3, no blocker-severity finding); 1 major + 1 minor finding, both fixed immediately after this grade landed (corrected the stale line numbers to the verified real call sites; changed the Summary step to if: success()). Grader (grok-4.5) does not appear in plan_review (gemini-3.1-pro-preview) or any code_review round's model list (claude-sonnet-4.6, gpt-5.5, gpt-5.4), satisfying independence."
+    }
+  }
+}

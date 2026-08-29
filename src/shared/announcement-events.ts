@@ -22,7 +22,8 @@ export type AnnouncementKind =
   | 'spawnerArenaStart'
   | 'spawnerArenaEnd'
   | 'bossAbilityCast'
-  | 'skillPassiveUnlocked';
+  | 'skillPassiveUnlocked'
+  | 'skillAbilityUnlocked';
 
 /**
  * Spawner-arena announcement — signals the start or end of a combat-wave
@@ -93,13 +94,33 @@ export interface SkillPassiveUnlockedAnnouncementEvent {
 }
 
 /**
+ * Skill-ACTIVE-unlock announcement — fired exactly once, from the skill
+ * milestone grant site (`skillSystem.ts`), when the milestone reward is an
+ * active ability rather than a passive (e.g. the Arcane level-5 unlock). Kept
+ * distinct from {@link SkillPassiveUnlockedAnnouncementEvent} so the passive
+ * contract stays passive-only and the banner can style the two differently.
+ */
+export interface SkillAbilityUnlockedAnnouncementEvent {
+  readonly kind: 'skillAbilityUnlocked';
+  /** `-1` sentinel; skill-ability unlocks have no spawner archetype. */
+  readonly archetypeIndex: number;
+  /** Exact, verbatim banner text, e.g. "Ability Unlocked: Arcane Nova". */
+  readonly text: string;
+  /** How long the banner should be shown, in milliseconds. */
+  readonly durationMs: number;
+  /** Simulation timestamp at which the event was pushed (`world.elapsedMs`). */
+  readonly elapsedMs: number;
+}
+
+/**
  * Discriminated union of every announcement variant the banner can render.
  * Narrow on `kind` to access variant-specific fields.
  */
 export type AnnouncementEvent =
   | SpawnerArenaAnnouncementEvent
   | BossAbilityCastAnnouncementEvent
-  | SkillPassiveUnlockedAnnouncementEvent;
+  | SkillPassiveUnlockedAnnouncementEvent
+  | SkillAbilityUnlockedAnnouncementEvent;
 
 /**
  * Hard cap on `world.announcements` — the HUD drains quickly under normal play

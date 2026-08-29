@@ -72,6 +72,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   function render() {
     const abilityState = world.abilityStatesByEntity.get(player);
     const activeIds = abilityState?.equippedActiveAbilityIds ?? [];
+    const ownedActiveIds = abilityState?.ownedActiveAbilityIds ?? activeIds;
     const passiveIds = abilityState?.passiveAbilityIds ?? [];
 
     const skillRows = allSkills
@@ -93,15 +94,21 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         const abilityGrantCell = abilityGrantId
           ? (() => {
               const abilityDef = allAbilities.find((a) => a.id === abilityGrantId);
-              if (!abilityDef || abilityDef.kind !== 'passive') return '—';
-              const granted = passiveIds.includes(abilityGrantId);
+              if (!abilityDef) return '—';
+              // Milestone rewards may be passives or ACTIVES (e.g. arcane L5),
+              // so ownership is read from the matching grant list.
+              const granted =
+                abilityDef.kind === 'passive'
+                  ? passiveIds.includes(abilityGrantId)
+                  : ownedActiveIds.includes(abilityGrantId);
               const prereqMet = granted
                 ? weaponPrerequisiteMet(world, player, abilityGrantId)
                 : false;
               const prereq = abilityDef.weaponPrerequisite;
               const statusColor = !granted ? '#555' : prereqMet ? '#4f8' : '#fa0';
               const statusText = !granted ? '—' : prereqMet ? '✓ active' : `⚠ needs ${prereq}`;
-              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} (${statusText})</span>`;
+              const kindTag = abilityDef.kind === 'passive' ? 'passive' : 'ACTIVE';
+              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} [${kindTag}] (${statusText})</span>`;
             })()
           : '—';
 
@@ -119,7 +126,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
     const abilityRows = allAbilities
       .map((ability) => {
-        const isActiveEquipped = activeIds.includes(ability.id);
+        const isActiveOwned = ownedActiveIds.includes(ability.id);
         const isPassiveGranted = passiveIds.includes(ability.id);
         const cooldown = abilityState?.cooldownByAbilityId.get(ability.id);
         const remaining =
@@ -132,8 +139,8 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         <tr>
           <td style="padding:5px 10px;color:#9ba">${ability.name}</td>
           <td style="padding:5px 10px;color:#8ab">${ability.kind}</td>
-          <td style="padding:5px 10px;color:${isActiveEquipped || isPassiveGranted ? '#4f8' : '#666'}">${
-            isActiveEquipped || isPassiveGranted ? 'yes' : 'no'
+          <td style="padding:5px 10px;color:${isActiveOwned || isPassiveGranted ? '#4f8' : '#666'}">${
+            isActiveOwned || isPassiveGranted ? 'yes' : 'no'
           }</td>
           <td style="padding:5px 10px;text-align:right;color:#888">${cooldownText}</td>
         </tr>`;
