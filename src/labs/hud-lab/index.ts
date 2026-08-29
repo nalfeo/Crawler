@@ -338,10 +338,10 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           arenaElapsedMs: (act - 1) * 120_000 + 24_000,
           phaseElapsedMs: 24_000,
           overtimeFinisherAnnounced: false,
-          keptCompanionCoStarActive: false,
           lastWorldElapsedMs: 0,
           timeline: [],
           headlinerCard: [activeHeadliner],
+          keptCompanionCoStarActive: false,
           waveTelemetry: {
             wavesReleased: 10,
             enemiesSpawned: 30,
