@@ -268,6 +268,17 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('anchor-mace', 'Anchor Mace', 'For when you need to make a point. Slowly.', R),
   wpn('twin-fangs', 'Twin Fangs', 'A pair of daggers that hum in harmony.', E),
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
+  // Merchant-stocked weapons whose `weapons.json` id is also their intended bag
+  // slug, so they need an entry here for the shop purchase to land anywhere.
+  // (Stocked ids that already alias an equipment def — `sword` → `iron-sword`,
+  // `bow` → `frost-bow` — deliberately have no same-id slug; do not add one.)
+  // Like the flavour weapons above they are catalog-only for now: wiring an
+  // equipment def requires real, approved art (check:equipment-art-coverage).
+  wpn('knife', 'Knife', 'Short, quick, and unsentimental about it.', C),
+  wpn('hammer', 'Hammer', 'Slow to swing. Very final on arrival.', C),
+  wpn('crossbow', 'Crossbow', 'Point, crank, regret. In that order.', U),
+  wpn('boomerang', 'Boomerang', 'Comes back. Usually to you.', C),
+  wpn('bowling-ball', 'Bowling Ball', 'Sponsored by the league. Rolls right through a lineup.', U),
 
   // ── Consumables (20) ────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
