@@ -254,7 +254,11 @@ describe('initializeFloor2Scenario manifest validation', () => {
     initializeFloor2Scenario(world, playerEid);
 
     const floorMap = world.floorMap!;
-    const hallwayIdx = [...floorMap.settlementHallwayTileIndices][0]!;
+    // Needs a hallway on row >= 1 so the alias row (`y - 1`) is a real row.
+    const hallwayIdx = [...floorMap.settlementHallwayTileIndices].find(
+      (idx) => Math.floor(idx / floorMap.width) >= 1,
+    )!;
+    expect(hallwayIdx).toBeDefined();
     const hallwayTile = {
       x: hallwayIdx % floorMap.width,
       y: Math.floor(hallwayIdx / floorMap.width),
