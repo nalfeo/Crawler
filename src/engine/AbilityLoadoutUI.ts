@@ -41,9 +41,21 @@ const PANEL_HEIGHT = 544;
 const PANEL_PADDING = 22;
 const HEADER_HEIGHT = 126;
 const FOOTER_HEIGHT = 64;
-const ROW_HEIGHT = 102;
+/**
+ * Authored MINIMUM row height. A row grows past this when its stat line and
+ * description need more vertical space — the numeric summary added above the
+ * description can wrap, which used to push the description past a fixed row
+ * edge and let it collide with the row below. Rows are measured after the text
+ * objects exist and the panel grows to match (see `fitListContent`), so long
+ * copy is never clipped and never overflows.
+ */
+const MIN_ROW_HEIGHT = 102;
+/** Space kept between the last line of row copy and the row's bottom edge. */
+const ROW_CONTENT_PADDING = 11;
 const ROW_GAP = 8;
 const VISIBLE_ROWS = 3;
+/** List height when every visible row renders at {@link MIN_ROW_HEIGHT}. */
+const NOMINAL_LIST_HEIGHT = VISIBLE_ROWS * MIN_ROW_HEIGHT + (VISIBLE_ROWS - 1) * ROW_GAP;
 const DEPTH = 5000;
 const SECTION_HEADER_HEIGHT = 18;
 const SECTION_HEADER_LABEL = 'PASSIVE ABILITIES';
@@ -117,6 +129,14 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   let rowBounds: ScreenBounds[] = [];
   let rowLayouts: AbilityLoadoutRowLayout[] = [];
   let visibleSectionHeaderLabel: string | null = null;
+  /**
+   * Current panel height and list-viewport height. Both start at the authored
+   * sizes each render and grow (never shrink within a render) once the row copy
+   * has been measured, so a taller list stays inside the panel instead of
+   * spilling over the footer.
+   */
+  let panelHeight = PANEL_HEIGHT;
+  let listViewportHeight = NOMINAL_LIST_HEIGHT;
 
   const overlay = scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0).setVisible(false);
   const persistent: Phaser.GameObjects.GameObject[] = [];
@@ -185,12 +205,12 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     x: panelX + PANEL_PADDING,
     y: panelY + HEADER_HEIGHT + 10,
     width: PANEL_WIDTH - PANEL_PADDING * 2,
-    height: VISIBLE_ROWS * ROW_HEIGHT + (VISIBLE_ROWS - 1) * ROW_GAP,
+    height: listViewportHeight,
   });
 
   const footerBounds = (): ScreenBounds => ({
     x: panelX + 2,
-    y: panelY + PANEL_HEIGHT - FOOTER_HEIGHT - 2,
+    y: panelY + panelHeight - FOOTER_HEIGHT - 2,
     width: PANEL_WIDTH - 4,
     height: FOOTER_HEIGHT,
   });
@@ -224,31 +244,81 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     render();
   };
 
-  const render = (): void => {
-    clearDynamic();
-    if (!visible || !config) return;
+  /**
+   * Re-centre the panel chrome for the current {@link panelHeight}. Split out of
+   * `render()` so it can run a second time after the rows have been measured
+   * and the panel has grown to fit them.
+   */
+  const layoutPanel = (): void => {
+    const viewWidth = GAME.WIDTH / uiScale;
+    const viewHeight = GAME.HEIGHT / uiScale;
+    panelX = Math.round((viewWidth - PANEL_WIDTH) / 2);
+    panelY = Math.round((viewHeight - panelHeight) / 2);
 
-    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+    backdrop.setSize(viewWidth, viewHeight);
+    panel.setPosition(panelX, panelY).setSize(PANEL_WIDTH, panelHeight);
+    topBevel.setPosition(panelX, panelY);
+    leftBevel.setPosition(panelX, panelY).setSize(2, panelHeight);
+    bottomBevel.setPosition(panelX, panelY + panelHeight - 2);
+    rightBevel.setPosition(panelX + PANEL_WIDTH - 2, panelY).setSize(2, panelHeight);
+    headerBg.setPosition(panelX + 2, panelY + 2);
+    headerRule.setPosition(panelX + 2, panelY + HEADER_HEIGHT);
+    footerBg.setPosition(panelX + 2, panelY + panelHeight - FOOTER_HEIGHT - 2);
+    footerRule.setPosition(panelX + 2, panelY + panelHeight - FOOTER_HEIGHT - 2);
+  };
+
+  /**
+   * Grow the panel and list viewport so the measured rows fit, then shift the
+   * already-positioned content by the amount the re-centred panel moved. Text
+   * heights only exist once the objects do, so the true row heights cannot be
+   * known during the first positioning pass — without this second pass a row
+   * whose stat line wraps renders its description past the row edge and over
+   * the row below.
+   */
+  const fitListContent = (contentBottom: number): void => {
+    const requiredListHeight = Math.ceil(contentBottom - (panelY + HEADER_HEIGHT + 10));
+    const extra = requiredListHeight - listViewportHeight;
+    if (extra <= 0) return;
+
+    const previousX = panelX;
+    const previousY = panelY;
+    listViewportHeight += extra;
+    panelHeight = PANEL_HEIGHT + extra;
+    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight);
     effectiveResolution = Math.max(
       MIN_TEXT_RESOLUTION,
       Math.round(getRenderScale(scene) * uiScale),
     );
     overlay.setScale(uiScale);
-    const viewWidth = GAME.WIDTH / uiScale;
-    const viewHeight = GAME.HEIGHT / uiScale;
-    panelX = Math.round((viewWidth - PANEL_WIDTH) / 2);
-    panelY = Math.round((viewHeight - PANEL_HEIGHT) / 2);
+    layoutPanel();
 
-    backdrop.setSize(viewWidth, viewHeight);
-    panel.setPosition(panelX, panelY);
-    topBevel.setPosition(panelX, panelY);
-    leftBevel.setPosition(panelX, panelY);
-    bottomBevel.setPosition(panelX, panelY + PANEL_HEIGHT - 2);
-    rightBevel.setPosition(panelX + PANEL_WIDTH - 2, panelY);
-    headerBg.setPosition(panelX + 2, panelY + 2);
-    headerRule.setPosition(panelX + 2, panelY + HEADER_HEIGHT);
-    footerBg.setPosition(panelX + 2, panelY + PANEL_HEIGHT - FOOTER_HEIGHT - 2);
-    footerRule.setPosition(panelX + 2, panelY + PANEL_HEIGHT - FOOTER_HEIGHT - 2);
+    const dx = panelX - previousX;
+    const dy = panelY - previousY;
+    for (const object of dynamic) {
+      const node = object as Phaser.GameObjects.GameObject &
+        Phaser.GameObjects.Components.Transform;
+      node.setPosition(Math.round(node.x + dx), Math.round(node.y + dy));
+      if (object instanceof Phaser.GameObjects.Text) {
+        object.setResolution(effectiveResolution);
+      }
+    }
+  };
+
+  const render = (): void => {
+    clearDynamic();
+    if (!visible || !config) return;
+
+    // Row heights are only known after their text objects are measured below,
+    // so start from the authored sizes and grow in `fitListContent()`.
+    panelHeight = PANEL_HEIGHT;
+    listViewportHeight = NOMINAL_LIST_HEIGHT;
+    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight);
+    effectiveResolution = Math.max(
+      MIN_TEXT_RESOLUTION,
+      Math.round(getRenderScale(scene) * uiScale),
+    );
+    overlay.setScale(uiScale);
+    layoutPanel();
 
     const equippedCount = countEquipped(entries);
     const title = text(panelX + PANEL_PADDING, panelY + 18, 'ABILITIES', {
@@ -295,7 +365,13 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     const viewport = listViewportBounds();
     const visibleEntries = entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS);
     visibleSectionHeaderLabel = null;
-    let extraOffset = 0;
+    const pendingRows: {
+      id: string;
+      row: Phaser.GameObjects.Rectangle;
+      details: Phaser.GameObjects.Text;
+      description: Phaser.GameObjects.Text;
+    }[] = [];
+    let cursorY = viewport.y;
     for (let localIndex = 0; localIndex < visibleEntries.length; localIndex += 1) {
       const entry = visibleEntries[localIndex]!;
       const entryIndex = scrollIndex + localIndex;
@@ -309,7 +385,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       const previousEntry = entryIndex > 0 ? entries[entryIndex - 1] : undefined;
       const isSectionBoundary = entry.canToggle === false && previousEntry?.canToggle !== false;
       if (isSectionBoundary) {
-        const headerY = viewport.y + localIndex * (ROW_HEIGHT + ROW_GAP) + extraOffset;
+        const headerY = cursorY;
         const headerLabel = text(viewport.x, headerY + 1, SECTION_HEADER_LABEL, {
           fontFamily: 'monospace',
           fontSize: '11px',
@@ -321,35 +397,15 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
           .setOrigin(0, 0);
         dynamic.push(headerLabel, headerRuleLine);
         overlay.add([headerLabel, headerRuleLine]);
-        extraOffset += SECTION_HEADER_HEIGHT;
+        cursorY += SECTION_HEADER_HEIGHT;
         visibleSectionHeaderLabel = SECTION_HEADER_LABEL;
       }
 
-      const rowY = viewport.y + localIndex * (ROW_HEIGHT + ROW_GAP) + extraOffset;
-      const row = scene.add
-        .rectangle(
-          viewport.x,
-          rowY,
-          viewport.width,
-          ROW_HEIGHT,
-          selected ? COLORS.selected : COLORS.rowBg,
-          1,
-        )
-        .setOrigin(0, 0)
-        .setStrokeStyle(selected ? 2 : 1, selected ? COLORS.accent : COLORS.panelBorder)
-        .setInteractive({ useHandCursor: true });
-      row.on('pointerover', () => {
-        if (entryIndex !== selectedIndex) row.setFillStyle(COLORS.rowHover);
-      });
-      row.on('pointerout', () => {
-        if (entryIndex !== selectedIndex) row.setFillStyle(COLORS.rowBg);
-      });
-      row.on('pointerdown', () => {
-        selectedIndex = entryIndex;
-        clampSelectionIntoView();
-        render();
-      });
-
+      const rowY = cursorY;
+      // The row's content is created before its background rectangle so the
+      // rectangle can be sized to the measured text. Creating it last also
+      // keeps `setInteractive()` — which snapshots the hit area from the
+      // current size — consistent with the final geometry.
       const tile = scene.add
         .rectangle(viewport.x + 12, rowY + 20, 62, 62, categoryColor(entry.category), 0.95)
         .setOrigin(0, 0)
@@ -437,27 +493,70 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
         );
       }
 
-      const box = { x: viewport.x, y: rowY, width: viewport.width, height: ROW_HEIGHT };
-      const rowScreenBounds = scaledBounds(box);
-      rowBounds.push(rowScreenBounds);
-      rowLayouts.push({
-        id: entry.id,
-        row: rowScreenBounds,
-        details: scaledBounds({
-          x: details.x,
-          y: details.y,
-          width: details.width,
-          height: details.height,
-        }),
-        description: scaledBounds({
-          x: description.x,
-          y: description.y,
-          width: description.width,
-          height: description.height,
-        }),
+      const rowHeight = Math.max(
+        MIN_ROW_HEIGHT,
+        Math.ceil(description.y + description.height + ROW_CONTENT_PADDING - rowY),
+      );
+      const row = scene.add
+        .rectangle(
+          viewport.x,
+          rowY,
+          viewport.width,
+          rowHeight,
+          selected ? COLORS.selected : COLORS.rowBg,
+          1,
+        )
+        .setOrigin(0, 0)
+        .setStrokeStyle(selected ? 2 : 1, selected ? COLORS.accent : COLORS.panelBorder)
+        .setInteractive({ useHandCursor: true });
+      row.on('pointerover', () => {
+        if (entryIndex !== selectedIndex) row.setFillStyle(COLORS.rowHover);
       });
+      row.on('pointerout', () => {
+        if (entryIndex !== selectedIndex) row.setFillStyle(COLORS.rowBg);
+      });
+      row.on('pointerdown', () => {
+        selectedIndex = entryIndex;
+        clampSelectionIntoView();
+        render();
+      });
+
+      pendingRows.push({ id: entry.id, row, details, description });
       dynamic.push(row, tile, identity, name, details, description, action, actionLabel);
       overlay.add([row, tile, identity, name, details, description, action, actionLabel]);
+      cursorY = rowY + rowHeight + ROW_GAP;
+    }
+
+    // Grow the panel to the measured content before the scroll hint and footer
+    // are positioned, since both are anchored to the final panel geometry.
+    fitListContent(pendingRows.length > 0 ? cursorY - ROW_GAP : viewport.y);
+
+    // Probe bounds are derived from the live objects after the fit pass so they
+    // reflect the final scale and position rather than the first-pass guess.
+    for (const pending of pendingRows) {
+      const rowScreenBounds = scaledBounds({
+        x: pending.row.x,
+        y: pending.row.y,
+        width: pending.row.width,
+        height: pending.row.height,
+      });
+      rowBounds.push(rowScreenBounds);
+      rowLayouts.push({
+        id: pending.id,
+        row: rowScreenBounds,
+        details: scaledBounds({
+          x: pending.details.x,
+          y: pending.details.y,
+          width: pending.details.width,
+          height: pending.details.height,
+        }),
+        description: scaledBounds({
+          x: pending.description.x,
+          y: pending.description.y,
+          width: pending.description.width,
+          height: pending.description.height,
+        }),
+      });
     }
 
     if (entries.length > VISIBLE_ROWS) {
@@ -620,7 +719,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     close,
     isOpen: () => visible,
     getPanelScreenBounds: () =>
-      scaledBounds({ x: panelX, y: panelY, width: PANEL_WIDTH, height: PANEL_HEIGHT }),
+      scaledBounds({ x: panelX, y: panelY, width: PANEL_WIDTH, height: panelHeight }),
     getListViewportScreenBounds: () => scaledBounds(listViewportBounds()),
     getVisibleRowScreenBounds: () => [...rowBounds],
     getVisibleRowLayouts: () => rowLayouts.map((layout) => ({ ...layout })),

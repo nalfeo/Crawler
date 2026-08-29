@@ -11,24 +11,94 @@ import {
 import { FLOOR1_BOSS_REWARD_SPELL_IDS } from '../../src/shared/abilities.js';
 import type { CatalogEffect } from '../../src/shared/progression-effects.js';
 
+/**
+ * How each catalog effect behaves toward other entities, keyed exhaustively by
+ * effect type. Declared as a `Record` over `CatalogEffect['type']` so adding a
+ * new effect to the union is a **compile error** here rather than a silent
+ * `false` from a hand-maintained `||` chain — the previous shape let a new
+ * spell ship with no summary at all while these predicates quietly returned
+ * `false` and the coverage assertions below never ran for it.
+ */
+const EFFECT_BEHAVIOUR: Record<
+  CatalogEffect['type'],
+  { targetsOthers: boolean; damagesOthers: boolean }
+> = {
+  stat_add: { targetsOthers: false, damagesOthers: false },
+  stat_multiply: { targetsOthers: false, damagesOthers: false },
+  extra_projectile: { targetsOthers: false, damagesOthers: false },
+  aura: { targetsOthers: false, damagesOthers: false },
+  spell_fireball: { targetsOthers: true, damagesOthers: true },
+  spell_heal: { targetsOthers: false, damagesOthers: false },
+  spell_pulse_shield: { targetsOthers: true, damagesOthers: false },
+  spell_magic_missile: { targetsOthers: true, damagesOthers: true },
+  spell_frost_nova: { targetsOthers: true, damagesOthers: true },
+  spell_timed_buff: { targetsOthers: false, damagesOthers: false },
+  spell_enemy_slow_burst: { targetsOthers: true, damagesOthers: false },
+  spell_life_drain: { targetsOthers: true, damagesOthers: true },
+};
+
+type SpellEffectType = Extract<CatalogEffect['type'], `spell_${string}`>;
+
+const scalable = (base: number) => ({ base, scalesWithIntelligence: false });
+
+/**
+ * One representative effect per spell type, again keyed exhaustively so a new
+ * `spell_*` variant cannot be added without supplying a sample. The sample is
+ * fed through `formatSpellEffectSummary` below, which turns
+ * {@link summarizeEffect}'s `default: return []` arm from a silent no-summary
+ * into a failing test.
+ */
+const SPELL_EFFECT_SAMPLES: {
+  [K in SpellEffectType]: Extract<CatalogEffect, { type: K }>;
+} = {
+  spell_fireball: {
+    type: 'spell_fireball',
+    damage: scalable(15),
+    radiusTiles: scalable(3),
+  },
+  spell_heal: { type: 'spell_heal', heal: scalable(20) },
+  spell_pulse_shield: {
+    type: 'spell_pulse_shield',
+    knockbackForce: scalable(1),
+    radiusTiles: scalable(4),
+  },
+  spell_magic_missile: {
+    type: 'spell_magic_missile',
+    damage: scalable(9),
+    rangeTiles: scalable(6),
+  },
+  spell_frost_nova: {
+    type: 'spell_frost_nova',
+    damage: scalable(8),
+    radiusTiles: scalable(3),
+    slowMultiplier: scalable(0.5),
+    slowDurationMs: scalable(2000),
+  },
+  spell_timed_buff: {
+    type: 'spell_timed_buff',
+    durationFrames: scalable(300),
+    modifiers: [{ stat: 'damage', op: 'add', value: scalable(5) }],
+  },
+  spell_enemy_slow_burst: {
+    type: 'spell_enemy_slow_burst',
+    radiusTiles: scalable(4),
+    slowMultiplier: scalable(0.6),
+    slowDurationMs: scalable(1500),
+  },
+  spell_life_drain: {
+    type: 'spell_life_drain',
+    damage: scalable(7),
+    rangeTiles: scalable(5),
+    heal: scalable(4),
+  },
+};
+
 function effectTargetsOtherEntities(effect: CatalogEffect): boolean {
-  return (
-    effect.type === 'spell_fireball' ||
-    effect.type === 'spell_magic_missile' ||
-    effect.type === 'spell_frost_nova' ||
-    effect.type === 'spell_life_drain' ||
-    effect.type === 'spell_pulse_shield' ||
-    effect.type === 'spell_enemy_slow_burst'
-  );
+  return EFFECT_BEHAVIOUR[effect.type].targetsOthers;
 }
 
 function effectDamagesOtherEntities(effect: CatalogEffect): boolean {
-  return (
-    effect.type === 'spell_fireball' ||
-    effect.type === 'spell_magic_missile' ||
-    effect.type === 'spell_frost_nova' ||
-    effect.type === 'spell_life_drain'
-  );
+  return EFFECT_BEHAVIOUR[effect.type].damagesOthers;
 }
 
 describe('formatSpellEffectSummary', () => {
@@ -179,6 +249,21 @@ describe('formatSpellEffectSummary', () => {
     expect(formatSpellEffectSummary(effects, { tileSizeFt: DEFAULT_TILE_SIZE_FT })).toContain(
       'Radius 16 ft',
     );
+  });
+
+  it('summarises every spell effect type in the catalog', () => {
+    for (const [type, effect] of Object.entries(SPELL_EFFECT_SAMPLES)) {
+      const summary = formatSpellEffectSummary([effect]);
+      expect(summary, `${type} produces no summary`).toBeDefined();
+      expect(summary, `${type} produces an empty summary`).not.toBe('');
+      const behaviour = EFFECT_BEHAVIOUR[type as SpellEffectType];
+      if (behaviour.targetsOthers) {
+        expect(summary, `${type} never states its reach`).toMatch(/\d+(\.\d+)? ft/);
+      }
+      if (behaviour.damagesOthers) {
+        expect(summary, `${type} never states its damage`).toMatch(/Damage \d/);
+      }
+    }
   });
 });
 
