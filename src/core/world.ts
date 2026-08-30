@@ -57,6 +57,7 @@ import {
   DroppedItem,
   Owner,
   Team,
+  SiegeHero,
   SiegeMinion,
   SiegeStructure,
   Lifetime,
@@ -1051,6 +1052,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Team, stores.team);
   wireStore(ecs, SiegeMinion, stores.siegeMinion);
   wireStore(ecs, SiegeStructure, stores.siegeStructure);
+  wireStore(ecs, SiegeHero, stores.siegeHero);
   wireStore(ecs, Lifetime, stores.lifetime);
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);

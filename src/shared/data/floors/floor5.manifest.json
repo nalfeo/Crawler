@@ -86,6 +86,11 @@
       "heightTiles": 8
     },
     "borderThicknessTiles": 2,
+    "heroes": {
+      "activeSlots": 1,
+      "firstSpawnFrame": 600,
+      "respawnDelayFrames": 180
+    },
     "phase": {
       "initial": "MUSTER",
       "terminal": ["CAPTURED", "DEFEAT"]
