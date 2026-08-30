@@ -133,6 +133,16 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
   if (floor4Arena) {
     return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
   }
+  const floor5Siege = world.floorExtendedState?.floor5Siege;
+  if (floor5Siege) {
+    return (
+      floor5Siege.laneTelemetry.spawned.allied +
+      floor5Siege.laneTelemetry.spawned.enemy +
+      floor5Siege.laneTelemetry.legalDamageEvents +
+      floor5Siege.laneTelemetry.checkpointContests +
+      floor5Siege.laneTelemetry.waveCyclesCompleted
+    );
+  }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
 

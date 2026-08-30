@@ -3,6 +3,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
+import type { CombatEvent } from './combat-events.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -654,13 +655,85 @@ export interface Floor5SiegePhaseTraceEntry {
   readonly heroState: string;
 }
 
+export type Floor5SiegeTeam = 'allied' | 'enemy';
+export type Floor5SiegeCheckpointOwner = Floor5SiegeTeam | 'contested';
+export type Floor5SiegeStructureId =
+  | 'command-post'
+  | 'allied-checkpoint'
+  | 'enemy-checkpoint'
+  | 'outer-wall';
+
+export interface Floor5SiegeStructureState {
+  readonly id: Floor5SiegeStructureId;
+  readonly team: Floor5SiegeTeam;
+  eid: number;
+  health: number;
+  maxHealth: number;
+}
+
+export interface Floor5SiegeWaveManifestEntry {
+  readonly id: string;
+  readonly team: Floor5SiegeTeam;
+  readonly releaseFrame: number;
+  readonly count: number;
+}
+
+export interface Floor5SiegeLaneTelemetry {
+  waveCyclesCompleted: number;
+  checkpointContests: number;
+  legalDamageEvents: number;
+  illegalDamageEvents: number;
+  pathStalls: number;
+  spawned: Record<Floor5SiegeTeam, number>;
+  spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+}
+
+export type Floor5RatingsRamState =
+  | 'LOCKED'
+  | 'BUILDING'
+  | 'READY'
+  | 'ADVANCING'
+  | 'ATTACKING'
+  | 'BREACHED'
+  | 'DESTROYED';
+
+export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
+
+export type Floor5RequisitionMilestone =
+  | 'opening-push'
+  | 'siege-yard'
+  | 'components'
+  | 'checkpoint';
+
+export interface Floor5SiegeTaskState {
+  openingPushRepelled: boolean;
+  yardSecured: boolean;
+  recoveredComponents: Floor5RamComponentClass[];
+  checkpointCleared: boolean;
+}
+
+export interface Floor5SiegeConstructionState {
+  progressMs: number;
+  requiredMs: number;
+  lastProgressWorldElapsedMs: number;
+  buildSiteUnderAttack: boolean;
+  pausedMs: number;
+  attempts: number;
+  deniedAttempts: number;
+  startedFrame: number | null;
+  completedFrame: number | null;
+}
+
 export interface Floor5SiegeState {
   phase: Floor5SiegePhase;
   lastWorldElapsedMs: number;
   commandPostHealth: number;
-  engineState: string;
+  engineState: Floor5RatingsRamState;
   breachState: string;
   heroState: string;
+  tasks: Floor5SiegeTaskState;
+  requisitionMilestones: Floor5RequisitionMilestone[];
+  construction: Floor5SiegeConstructionState;
   readonly rngStreamKeys: {
     readonly waves: string;
     readonly heroes: string;
@@ -669,16 +742,57 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  waveCursor: Record<Floor5SiegeTeam, number>;
+  waveRemainder: Record<Floor5SiegeTeam, number>;
+  spawnDebt: Record<Floor5SiegeTeam, number>;
+  spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
+  liveMinions: Record<Floor5SiegeTeam, number>;
+  checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  combatEventCursor: number;
+  lastCombatEvent?: CombatEvent;
 }
 
 export interface Floor5SiegeRunStats {
   readonly phase: Floor5SiegePhase;
   readonly commandPostHealth: number;
-  readonly engineState: string;
+  readonly engineState: Floor5RatingsRamState;
   readonly breachState: string;
   readonly heroState: string;
+  readonly tasks: {
+    readonly openingPushRepelled: boolean;
+    readonly yardSecured: boolean;
+    readonly recoveredComponents: readonly Floor5RamComponentClass[];
+    readonly componentsReady: boolean;
+    readonly checkpointCleared: boolean;
+    readonly allPrerequisitesMet: boolean;
+  };
+  readonly requisition: {
+    readonly milestones: readonly Floor5RequisitionMilestone[];
+    readonly completedMilestones: number;
+    readonly requiredMilestones: number;
+    readonly ready: boolean;
+  };
+  readonly construction: {
+    readonly progressMs: number;
+    readonly requiredMs: number;
+    readonly buildSiteUnderAttack: boolean;
+    readonly pausedMs: number;
+    readonly attempts: number;
+    readonly deniedAttempts: number;
+    readonly startedFrame: number | null;
+    readonly completedFrame: number | null;
+  };
   readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
   readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+  readonly structures: Readonly<Record<Floor5SiegeStructureId, Floor5SiegeStructureState>>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
 }
 
 /**
