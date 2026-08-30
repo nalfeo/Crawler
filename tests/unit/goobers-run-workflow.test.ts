@@ -199,8 +199,12 @@ describe('Goobers automatic dispatch and recovery', () => {
       'workspaceBranch',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
+    // GOOBERS_INSTANCE is Actions-only (set + envPassthrough'd by goobers-run.yml);
+    // the documented local instance.yaml.example does not pass it through, so the
+    // fresh-claim command must fall back to GOOBERS_INSTANCE_ROOT (the value a local
+    // Goobers run always has) and finally '.' rather than crashing under `set -eu`.
     expect(tasks.get('query-backlog')?.run?.script).toContain(
-      'goobers backlog-query --claim "${GOOBERS_INSTANCE}"',
+      'goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"',
     );
     expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
     expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
