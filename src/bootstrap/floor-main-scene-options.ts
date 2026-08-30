@@ -88,6 +88,7 @@ export function createFloorMainSceneOptions(
       scenario.configureWorld(world, playerEid, initializationOptions);
     },
     selectLoadoutOption: scenario.selectLoadoutOption,
+    selectKeptCompanion: scenario.selectKeptCompanion,
     onStairDescend: scenario.onStairDescend,
     // Normalized presentation contract for this scenario (terminal outcome,
     // stair marker/proximity, stair-descend confirmation copy, ordered
