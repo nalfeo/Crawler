@@ -24,6 +24,7 @@ import {
   statusEffectSystem,
 } from '../../src/core/index.js';
 import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
+import { siegeDirectorSystem } from '../../src/game/floor5Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -72,6 +73,22 @@ describe('createFloor1MainSceneOptions', () => {
         emergentEventSystem,
         familyFeudSystem,
         floor3WildDirectorSystem,
+        siegeDirectorSystem,
+      ],
+    },
+    {
+      floorId: 'floor5',
+      beforeWeaponSystems: [],
+      beforeEnemyAISystems: [companionAISystem],
+      afterSpawnerSystems: [siegeDirectorSystem],
+      foreignSystems: [
+        floor1PlayerStatSystem,
+        floor1EnemyDirectorSystem,
+        floor2VictorySystem,
+        emergentEventSystem,
+        familyFeudSystem,
+        floor3WildDirectorSystem,
+        arenaDirectorSystem,
       ],
     },
   ])(
@@ -250,16 +267,19 @@ describe('createFloor1MainSceneOptions', () => {
     expect(nextWorld.playerGold).toBe(123);
   });
 
-  it('does not wire onFloor1Cleared for floor3 (last authored floor)', () => {
-    const options = createFloorMainSceneOptions('floor3');
-    expect(options.onFloor1Cleared).toBeUndefined();
-  });
+  it.each(['floor3', 'floor4', 'floor5'] as const)(
+    'does not wire onFloor1Cleared for terminal/unimplemented %s',
+    (floorId) => {
+      const options = createFloorMainSceneOptions(floorId);
+      expect(options.onFloor1Cleared).toBeUndefined();
+    },
+  );
 
   it("injects each scenario's presentation contract so the scene never branches on floor identity", () => {
     // Regression guard: the contract shipped once as an injected-but-unread
     // field, which left the engine's Floor 1/Floor 2 branches alive. Every
     // surface the scene renders must be reachable from these options.
-    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
       const options = createFloorMainSceneOptions(floorId);
       const scenario = getScenarioDefinition(floorId);
       const presentation = options.scenarioPresentation;

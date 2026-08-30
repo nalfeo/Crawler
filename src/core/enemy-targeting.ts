@@ -3,7 +3,7 @@ import { Enemy, Team } from './components.js';
 import type { GameWorld } from './world.js';
 import { TeamId } from '../shared/constants.js';
 
-export function isPlayerTeamEnemy(world: GameWorld, enemyEid: number): boolean {
+function isPlayerTeamEnemy(world: GameWorld, enemyEid: number): boolean {
   return (
     hasComponent(world.ecs, enemyEid, Enemy) &&
     hasComponent(world.ecs, enemyEid, Team) &&

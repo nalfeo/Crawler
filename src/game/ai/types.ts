@@ -8,7 +8,7 @@ import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
-import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
+import type { Floor4ArenaRunStats, Floor5SiegeRunStats } from '../../shared/floor-types.js';
 import type { EventSummary } from './event-log.js';
 import type { ObjectiveUtilityWeights } from './objective-route-planner.js';
 
@@ -790,6 +790,8 @@ export interface RunStats {
   floor2Progression?: Floor2ProgressionMetrics;
   /** Floor 4 arena clock and phase timeline evidence. */
   floor4Arena?: Floor4ArenaRunStats;
+  /** Floor 5 siege phase skeleton and transition trace evidence. */
+  floor5Siege?: Floor5SiegeRunStats;
   /**
    * Shared den-boss diagnostic rollup — the SAME contract emitted as `den`
    * telemetry records by the player / AI Runner session recorder, so a headless

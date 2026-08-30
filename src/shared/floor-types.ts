@@ -628,6 +628,59 @@ export interface Floor4ArenaRunStats {
   readonly actIncome: readonly Floor4ActIncomeEntry[];
 }
 
+export type Floor5SiegePhaseKind =
+  | 'MUSTER'
+  | 'CONTEST'
+  | 'BUILD'
+  | 'ESCORT'
+  | 'BREACH'
+  | 'COURTYARD'
+  | 'THRONE'
+  | 'CAPTURED'
+  | 'DEFEAT';
+
+export interface Floor5SiegePhase {
+  readonly kind: Floor5SiegePhaseKind;
+}
+
+export interface Floor5SiegePhaseTraceEntry {
+  readonly phase: Floor5SiegePhase;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly commandPostHealth: number;
+  readonly engineState: string;
+  readonly breachState: string;
+  readonly heroState: string;
+}
+
+export interface Floor5SiegeState {
+  phase: Floor5SiegePhase;
+  lastWorldElapsedMs: number;
+  commandPostHealth: number;
+  engineState: string;
+  breachState: string;
+  heroState: string;
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly heroes: string;
+    readonly tasks: string;
+    readonly dressing: string;
+    readonly rewards: string;
+  };
+  readonly trace: Floor5SiegePhaseTraceEntry[];
+}
+
+export interface Floor5SiegeRunStats {
+  readonly phase: Floor5SiegePhase;
+  readonly commandPostHealth: number;
+  readonly engineState: string;
+  readonly breachState: string;
+  readonly heroState: string;
+  readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
+  readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+}
+
 /**
  * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
  *
