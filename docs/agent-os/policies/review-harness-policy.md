@@ -22,16 +22,19 @@ finish the evidence.
 Required for **any code-touching change** you intend to PR. A diff is exempt only
 when **every** changed file is one of:
 
-- **Docs** — `docs/**`, or a root-level `*.md` / `*.txt`.
+- **Docs** — `docs/**`, or any `*.md` / `*.txt` outside `src/**` (this includes
+  `.specify/specs/**`, `.github/instructions/**`, and root-level docs — markdown
+  and plaintext cannot contain game logic).
 - **Art** — `public/assets/**`, `briefs/**`, `data/palettes/**`.
 - **Dependency lockfiles** — `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`.
 
-Everything else is **code**: `src/**` (never exempt), `scripts/**`,
-`.github/workflows/**`, `.github/extensions/**`, `.github/skills/**`,
-`.github/instructions/**`, `.github/copilot-instructions.md`, and build/tooling
-config (`eslint.config.js`, `vite`/`vitest`/`tsconfig`/`commitlint`, and
-`package.json`). The strict allowlist lives in
-`.github/extensions/copilot-guards/lib/pr-scope.mjs`.
+Every other **non-markdown** file is **code**: `src/**` (never exempt),
+`scripts/**`, `.github/workflows/**`, `.github/extensions/**`,
+`.github/skills/**`, and build/tooling config (`eslint.config.js`,
+`vite`/`vitest`/`tsconfig`/`commitlint`, and `package.json`). Markdown under
+those trees — `.github/instructions/*.md`, `.github/copilot-instructions.md`,
+`.specify/specs/*.md` — is docs. The strict allowlist lives in
+`.github/extensions/copilot-guards/lib/pr-scope.mjs`, which is authoritative.
 
 ### Investigation-only sessions
 
