@@ -36,12 +36,12 @@
       "completed": true,
       "grader_model": "claude-opus-4.8",
       "implementer_model": "gpt-5.4",
-      "head_sha": "4ce7685a287a81d7656222a379f24eae38efdb33",
+      "head_sha": "f63007f6cd150b094a6ac85cf575f95e79db80fd",
       "findings": [
         {
           "severity": "minor",
-          "file": "src/game/ai/headless-runner.ts",
-          "detail": "DEFAULT_CONFIG retains type-required fallback values for flags whose effective defaults now come from the registry; this is not a behavior bug but could confuse future edits."
+          "file": "src/game/ai/feature-flags.ts",
+          "detail": "In resolveAiFeatureFlags the `input[key] ?? definition.resolve?.(input) ?? defaultEnabled` chain is partially redundant for optionalPurchases: resolveOptionalPurchases already inspects input.optionalPurchases and always returns a non-undefined boolean, so the leading `input.optionalPurchases ??` term and the trailing defaultEnabled fallback can never both matter. Behavior is correct and consistent (default true either way); optionally simplify by documenting that resolve-owning flags bypass defaultEnabled to avoid future confusion."
         }
       ],
       "criteria": {
@@ -51,13 +51,9 @@
         "policy_compliance": 5,
         "maintainability": 4
       },
-      "verdict": "fail",
+      "verdict": "pass",
       "findings_count": 1,
-      "notes": "Prior findings are resolved. Final diff preserves all flag defaults and compatibility, uses registry-driven lab controls and runtime consumers, and passes focused coverage.",
-      "escalated_to_human": {
-        "reason": "grader returned a failing verdict",
-        "unresolved_findings": 1
-      }
+      "notes": "This is a clean, surgical centralization of the three AI-runner boolean gates into one typed registry. I verified the graded tree directly: typecheck:src passes and all 56 tests across the six changed test files pass. The registry's surface-aware defaults exactly reproduce prior behavior — lab defaults all true, headless floor1 settlement-routing true / floor2 false, weaponPersonas and optionalPurchases default true — and the CLI floor2 settlement-routing override is preserved via resolveHeadlessRunnerOptions. Backward compatibility is maintained: the lab reads legacy persisted aiConfig fields (including deprecated merchantWeaponPurchase/spellBrokerPurchase) through the resolver, and DEFAULT_CONFIG/mergedConfig no longer carry the removed flag fields (grep confirms no dangling mergedConfig.*/config.* references, and the Omit type keeps the compiler honest). CLI-omitted flags are correctly represented as undefined and dropped so the registry owns effective defaults, with tests asserting both omission and explicit opt-out forwarding. Scope is tight (ADR, ledger, registry, consumers, tests) with no unrelated refactors; layer boundaries hold (game/ai imports same-layer, lab is unrestricted); no determinism, Date.now, or Math.random concerns. The embedded review-ledger's independent_grade records a stale 'fail' about DEFAULT_CONFIG fallback values, but the graded tree already removed those values, so that concern is resolved. No criterion scores below 3 and no blocker/major findings, so the verdict is pass."
     }
   }
 }
