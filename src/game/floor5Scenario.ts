@@ -778,10 +778,10 @@ export function siegeMinionSystem(world: GameWorld): void {
     const lastX = world.stores.siegeMinion.lastX[eid] ?? x;
     const lastY = world.stores.siegeMinion.lastY[eid] ?? y;
     steerFloor5Minion(world, state, eid);
-    if (
-      Math.hypot(x - lastX, y - lastY) <= 0.01 &&
-      (world.stores.siegeMinion.targetEid[eid] ?? 0) > 0
-    ) {
+    const target = world.stores.siegeMinion.targetEid[eid] ?? 0;
+    const inAttackRange =
+      target > 0 && distanceBetween(world, eid, target) <= FLOOR5_MINION_ATTACK_RANGE_FT;
+    if (Math.hypot(x - lastX, y - lastY) <= 0.01 && target > 0 && !inAttackRange) {
       world.stores.siegeMinion.stillFrames[eid] =
         (world.stores.siegeMinion.stillFrames[eid] ?? 0) + 1;
       if (world.stores.siegeMinion.stillFrames[eid] === FLOOR5_PATH_STALL_FRAMES) {
@@ -805,6 +805,9 @@ export function getFloor5RunOutcome(world: GameWorld) {
 }
 
 function floor5ObjectiveTick(world: GameWorld): void {
+  if (world.state !== 'playing') {
+    return;
+  }
   const state = floor5SiegeState(world);
   if (!state || state.phase.kind === 'CAPTURED' || state.phase.kind === 'DEFEAT') {
     return;
