@@ -148,6 +148,25 @@ describe('attackWaveSystem', () => {
       expect(world.attackWaveState).toBeUndefined();
     });
 
+    it('is inert on a synthetic world with no floor assigned, even when enabled', () => {
+      // `getWorldFloorBehavior` falls back to `floor${world.floor}` and
+      // `world.floor` defaults to 1, so without an explicit `floorId` guard a
+      // floor-less world would inherit Floor 1's manifest and spawn waves.
+      const world = createTestWorld();
+      world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+      spawnPlayer(world, 400, 400);
+      world.attackWaveFlags.attackWaves = true;
+      world.elapsedMs = TUNING.attackWaves.intervalMs;
+
+      expect(world.floorId).toBe('');
+      expect(getWorldFloorBehavior(world).trashAttackWaves).toBe(true);
+
+      attackWaveSystem(world);
+
+      expect(enemyCount(world)).toBe(0);
+      expect(world.attackWaveState).toBeUndefined();
+    });
+
     it('spawns rats with always-aggro CHASE behavior so they close distance on the player', () => {
       const world = createTestWorld();
       world.floorId = 'floor1';

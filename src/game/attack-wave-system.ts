@@ -397,7 +397,12 @@ export function attackWaveSystem(world: GameWorld): void {
   if (!world.attackWaveFlags.attackWaves) {
     return;
   }
-  if (!getWorldFloorBehavior(world).trashAttackWaves) {
+  // Scoped by floor *config*, not by floor id — but only on a floor that has
+  // actually been entered. `getWorldFloorBehavior` falls back to
+  // `floor${world.floor}` and `world.floor` defaults to 1, so a synthetic world
+  // with no `floorId` would otherwise inherit Floor 1's manifest and start
+  // spawning waves (drawing RNG) where the previous floor-id check was inert.
+  if (!world.floorId || !getWorldFloorBehavior(world).trashAttackWaves) {
     return;
   }
   // This is a post-system, so an earlier post-system in the same frame can have

@@ -1,6 +1,6 @@
 import type { GameWorld } from '../../core/world.js';
 import { getWorldFloorBehavior } from '../../core/floor-behavior.js';
-import { UNPAID_SHOPKEEPER_STAGES } from '../../shared/quest-types.js';
+import { FLOOR1_SHOP_QUEST_ID, UNPAID_SHOPKEEPER_STAGES } from '../../shared/quest-types.js';
 import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floorScenario.js';
 
 /**
@@ -23,16 +23,23 @@ import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floorScenario.
  * `merchant-weapon-intent` ⇄ `spell-broker-intent` importing each other.
  *
  * Scoped by floor *config*, not by floor id: the reserve only applies on a floor
- * that has actually been entered (`floorId` assigned) and whose manifest declares
- * `merchantCharmGatesEquipment` — i.e. a floor where the merchant charm is a
- * required, progression-gating purchase. Anywhere else {@link getShopkeeperStage}
- * reports the unpaid `not-met` stage for an errand that floor never gates on, and
- * the AI would reserve gold forever. The explicit `floorId` requirement keeps
- * synthetic worlds (no floor assigned) from inheriting Floor 1's charm gate
- * through the numeric-floor fallback.
+ * that has actually been entered (`floorId` assigned) and whose manifest gates
+ * equipment behind the merchant charm errand this module can actually read.
+ * {@link getShopkeeperStage} and {@link SHOPKEEPER_EQUIPMENT_COST} are specific to
+ * {@link FLOOR1_SHOP_QUEST_ID}, so a floor that declares
+ * `merchantCharmGatesEquipment` with a *different* `prerequisiteQuestId` gets no
+ * reserve: its stage would read as the unpaid `not-met` stage for an errand it
+ * never runs, and the AI would hold back gold forever. Such a floor opts in by
+ * generalizing the stage/cost lookup here, not by declaring the flag alone. The
+ * explicit `floorId` requirement keeps synthetic worlds (no floor assigned) from
+ * inheriting Floor 1's charm gate through the numeric-floor fallback.
  */
 export function requiredShopPurchaseReserve(world: GameWorld): number {
-  if (!world.floorId || getWorldFloorBehavior(world).merchantCharmGatesEquipment === null) {
+  if (
+    !world.floorId ||
+    getWorldFloorBehavior(world).merchantCharmGatesEquipment?.prerequisiteQuestId !==
+      FLOOR1_SHOP_QUEST_ID
+  ) {
     return 0;
   }
   return UNPAID_SHOPKEEPER_STAGES.has(getShopkeeperStage(world)) ? SHOPKEEPER_EQUIPMENT_COST : 0;

@@ -55,11 +55,16 @@ Extend the two existing config channels; do not add a third.
   `CAMERA.BASE_ZOOM`.
 - **The required-purchase reserve keys on existing config.** It applies only
   when the world has an explicitly assigned `floorId` _and_ that floor's manifest
-  declares `merchantCharmGatesEquipment` — i.e. the floor genuinely gates
-  progression behind the merchant charm. The explicit-`floorId` requirement
-  matters because `getWorldFloorBehavior` falls back to `floor${world.floor}`,
-  and `world.floor` defaults to `1`; without it every synthetic world would
-  inherit Floor 1's charm gate.
+  gates equipment behind the _same_ errand this reserve can read
+  (`merchantCharmGatesEquipment.prerequisiteQuestId === FLOOR1_SHOP_QUEST_ID`).
+  `getShopkeeperStage` and `SHOPKEEPER_EQUIPMENT_COST` are specific to that
+  errand, so a floor declaring the gate with its own quest would read as the
+  unpaid `not-met` stage forever and hold gold back permanently; such a floor
+  opts in by generalizing the stage/cost lookup, not by declaring the flag
+  alone. The explicit-`floorId` requirement matters because
+  `getWorldFloorBehavior` falls back to `floor${world.floor}`, and `world.floor`
+  defaults to `1`; without it every synthetic world would inherit Floor 1's
+  charm gate.
 - **`ScenarioPresentationContract` gains an optional `starterLoadout` member**
   (`title`, `pausedNotice`, `prompt`, `optionDescriptionPrefix`).
   `src/game/scenarioDefinitions.ts` supplies Floor 1's copy;

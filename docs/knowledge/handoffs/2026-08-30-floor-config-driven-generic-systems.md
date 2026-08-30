@@ -22,12 +22,14 @@ three converted call sites, all behavior-preserving).
 Three generic call sites stopped branching on floor identity (issue #3902):
 
 1. `attackWaveSystem` gates on the new `FloorBehavior.trashAttackWaves` flag
-   instead of `world.floorId !== 'floor1'`, and sizes its off-screen spawn ring
+   (plus an explicitly assigned `world.floorId`) instead of
+   `world.floorId !== 'floor1'`, and sizes its off-screen spawn ring
    from the running floor's manifest camera zoom instead of `floor1Config`.
    `src/game/attack-wave-system.ts` no longer imports `floor-config.js`.
 2. `requiredShopPurchaseReserve` gates on
-   `behavior.merchantCharmGatesEquipment !== null` plus an explicitly assigned
-   `world.floorId`, instead of `world.floorId !== 'floor1'`.
+   `behavior.merchantCharmGatesEquipment?.prerequisiteQuestId === FLOOR1_SHOP_QUEST_ID`
+   (the errand its stage/cost lookup can actually read) plus an explicitly
+   assigned `world.floorId`, instead of `world.floorId !== 'floor1'`.
 3. `MainGameScene.openLoadoutModal` renders
    `ScenarioPresentationContract.starterLoadout` copy instead of the literal
    `'Floor 1 is paused until you confirm a starter weapon.'`.

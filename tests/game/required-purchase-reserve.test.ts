@@ -39,6 +39,8 @@ import {
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
 import { getWorldFloorBehavior } from '../../src/core/floor-behavior.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
+import { registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
@@ -136,6 +138,24 @@ describe('requiredShopPurchaseReserve — scoped by floor config, not floor id',
   it('reserves nothing on a synthetic world with no floor assigned', () => {
     const { world } = startFloor1();
     world.floorId = '';
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+
+  it('reserves nothing on a floor that gates equipment behind a different errand', () => {
+    // The flag alone is not sufficient opt-in: `getShopkeeperStage` and
+    // `SHOPKEEPER_EQUIPMENT_COST` only understand the Floor 1 errand. A floor
+    // that gates equipment behind its own quest would otherwise read as the
+    // unpaid `not-met` stage forever and hold back gold it never has to spend.
+    const otherFloorManifest = structuredClone(floor1Manifest);
+    otherFloorManifest.behavior.merchantCharmGatesEquipment = {
+      prerequisiteQuestId: 'floorN-other-errand',
+    };
+    registerFloorManifest('floor-other-charm-errand', otherFloorManifest);
+
+    const { world } = startFloor1();
+    world.floorId = 'floor-other-charm-errand';
+    expect(getWorldFloorBehavior(world).merchantCharmGatesEquipment).not.toBeNull();
+    expect(getShopkeeperStage(world)).toBe('not-met');
     expect(requiredShopPurchaseReserve(world)).toBe(0);
   });
 });
