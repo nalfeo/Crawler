@@ -199,6 +199,9 @@ describe('Goobers automatic dispatch and recovery', () => {
       'workspaceBranch',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
+    expect(tasks.get('query-backlog')?.run?.script).toContain(
+      'goobers backlog-query --claim "${GOOBERS_INSTANCE}"',
+    );
     expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
     expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RESUME_BRANCH');
@@ -343,6 +346,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
     expect(readGeneratedEnvPassthrough(materialize?.run)).toEqual([
+      'GOOBERS_INSTANCE',
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
       'GH_TOKEN',

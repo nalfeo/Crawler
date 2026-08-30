@@ -47,7 +47,7 @@ spec:
               workspaceBranch: $workspaceBranch
             }' > claimed-item.json
           else
-            goobers backlog-query --claim
+            goobers backlog-query --claim "${GOOBERS_INSTANCE}"
           fi
       inputs:
         trustLabel: 'goobers:approved'
