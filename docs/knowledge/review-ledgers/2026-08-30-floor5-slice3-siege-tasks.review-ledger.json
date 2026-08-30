@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "floor5-slice3-siege-tasks",
+  "task_title": "Floor 5 Slice 3 siege tasks",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review considered: Alt A state-only Slice 3 with quest integration deferred (rejected because issue explicitly requires quest-event projection, but we will avoid HUD overreach); Alt B programmatic TS quest-pack builder from constants (rejected as broader than needed; add drift validation for static pack instead); Alt C pure reducer/event seam (partially adopted by driving exported runtime helpers through the real floorObjectiveTick path instead of provider-only autoprogression). Adopted changes: do not call questSystem inside floor5ObjectiveTick, make terminal/non-playing ticks no-op so defeat precedence wins, avoid provider-only headless shortcut, add static-pack/goal-ID validation, add parity/idempotency coverage, and phrase Slice 3 completion as reaching all Slice 3 latches rather than floor victory."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

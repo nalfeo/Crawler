@@ -1,5 +1,6 @@
 import { addComponent, hasComponent, set, setComponent } from 'bitecs';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
+import { setGoalFlag } from '../core/door-lock.js';
 import { BroadcastScore, Health, Position, type GameWorld } from '../core/index.js';
 import {
   computeSiegeCastleLayout,
@@ -10,6 +11,8 @@ import { getFloorManifest } from '../shared/floor-registry.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import type {
+  Floor5RamComponentClass,
+  Floor5RequisitionMilestone,
   Floor5SiegePhase,
   Floor5SiegePhaseTraceEntry,
   Floor5SiegeRunStats,
@@ -21,8 +24,43 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
+import { acceptQuest, setTrackedQuest } from '../core/systems/questSystem.js';
 
 const FLOOR5_PLAYER_STAT_SOURCE_ID = 'floor5-manifest-player';
+export const FLOOR5_RAM_BUILD_REQUIRED_MS = 3_000;
+export const FLOOR5_RAM_COMPONENT_CLASSES = [
+  'chassis',
+  'plating',
+  'broadcast-array',
+] as const satisfies readonly Floor5RamComponentClass[];
+const FLOOR5_REQUISITION_MILESTONES = [
+  'opening-push',
+  'siege-yard',
+  'components',
+  'checkpoint',
+] as const satisfies readonly Floor5RequisitionMilestone[];
+
+export const FLOOR5_SIEGE_GOAL_IDS = {
+  openingPushRepelled: 'floor5.siege.openingPushRepelled',
+  yardSecured: 'floor5.siege.yardSecured',
+  componentsReady: 'floor5.siege.componentsReady',
+  ramBuilt: 'floor5.siege.ramBuilt',
+  checkpointCleared: 'floor5.siege.checkpointCleared',
+  wallBreached: 'floor5.siege.wallBreached',
+  courtyardCleared: 'floor5.siege.courtyardCleared',
+  regentDefeated: 'floor5.siege.regentDefeated',
+  castleCaptured: 'floor5.siege.castleCaptured',
+} as const;
+
+export const FLOOR5_SLICE3_QUEST_IDS = [
+  'floor5-hold-the-line',
+  'floor5-secure-synergy',
+  'floor5-recover-components',
+  'floor5-clear-checkpoint',
+  'floor5-build-ratings-ram',
+] as const;
+
+export type Floor5FieldTaskId = 'openingPush' | 'siegeYard' | 'checkpoint';
 
 function getFloor5Manifest() {
   const manifest = getFloorManifest('floor5');
@@ -85,6 +123,30 @@ function cloneTraceEntry(entry: Floor5SiegePhaseTraceEntry): Floor5SiegePhaseTra
   return { ...entry, phase: clonePhase(entry.phase) };
 }
 
+function hasAllFloor5RamComponents(state: Floor5SiegeState): boolean {
+  return FLOOR5_RAM_COMPONENT_CLASSES.every((componentClass) =>
+    state.tasks.recoveredComponents.includes(componentClass),
+  );
+}
+
+function hasFloor5RamPrerequisites(state: Floor5SiegeState): boolean {
+  return (
+    state.tasks.openingPushRepelled &&
+    state.tasks.yardSecured &&
+    hasAllFloor5RamComponents(state) &&
+    state.tasks.checkpointCleared
+  );
+}
+
+function latchFloor5RequisitionMilestone(
+  state: Floor5SiegeState,
+  milestone: Floor5RequisitionMilestone,
+): void {
+  if (!state.requisitionMilestones.includes(milestone)) {
+    state.requisitionMilestones.push(milestone);
+  }
+}
+
 function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
   const config = getFloor5Config();
   const rngStreamKeys = Object.fromEntries(
@@ -97,6 +159,24 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     engineState: 'LOCKED',
     breachState: 'SEALED',
     heroState: 'PENDING',
+    tasks: {
+      openingPushRepelled: false,
+      yardSecured: false,
+      recoveredComponents: [],
+      checkpointCleared: false,
+    },
+    requisitionMilestones: [],
+    construction: {
+      progressMs: 0,
+      requiredMs: FLOOR5_RAM_BUILD_REQUIRED_MS,
+      lastProgressWorldElapsedMs: world.elapsedMs,
+      buildSiteUnderAttack: false,
+      pausedMs: 0,
+      attempts: 0,
+      deniedAttempts: 0,
+      startedFrame: null,
+      completedFrame: null,
+    },
     rngStreamKeys,
     trace: [],
   };
@@ -125,6 +205,134 @@ function recordFloor5PhaseTransition(
   });
 }
 
+function transitionFloor5Phase(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  phase: Floor5SiegePhase,
+  reason: string,
+): void {
+  if (state.phase.kind === phase.kind) {
+    return;
+  }
+  recordFloor5PhaseTransition(world, state, phase, reason);
+}
+
+function isFloor5Terminal(state: Floor5SiegeState): boolean {
+  return state.phase.kind === 'CAPTURED' || state.phase.kind === 'DEFEAT';
+}
+
+export function completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTaskId): boolean {
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return false;
+  }
+
+  switch (taskId) {
+    case 'openingPush':
+      if (state.tasks.openingPushRepelled) return true;
+      state.tasks.openingPushRepelled = true;
+      latchFloor5RequisitionMilestone(state, 'opening-push');
+      transitionFloor5Phase(world, state, { kind: 'CONTEST' }, 'opening-push-repelled');
+      return true;
+    case 'siegeYard':
+      state.tasks.yardSecured = true;
+      latchFloor5RequisitionMilestone(state, 'siege-yard');
+      return true;
+    case 'checkpoint':
+      state.tasks.checkpointCleared = true;
+      latchFloor5RequisitionMilestone(state, 'checkpoint');
+      return true;
+  }
+  return false;
+}
+
+export function recoverFloor5RamComponent(
+  world: GameWorld,
+  componentClass: Floor5RamComponentClass,
+): boolean {
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return false;
+  }
+  if (!FLOOR5_RAM_COMPONENT_CLASSES.includes(componentClass)) {
+    return false;
+  }
+  if (!state.tasks.recoveredComponents.includes(componentClass)) {
+    state.tasks.recoveredComponents.push(componentClass);
+  }
+  if (hasAllFloor5RamComponents(state)) {
+    latchFloor5RequisitionMilestone(state, 'components');
+  }
+  return true;
+}
+
+export function setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return false;
+  }
+  state.construction.buildSiteUnderAttack = underAttack;
+  return true;
+}
+
+export function requestFloor5RamConstruction(world: GameWorld): boolean {
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return false;
+  }
+
+  state.construction.attempts += 1;
+  if (!hasFloor5RamPrerequisites(state)) {
+    state.construction.deniedAttempts += 1;
+    return false;
+  }
+
+  if (state.engineState === 'LOCKED' || state.engineState === 'DESTROYED') {
+    state.engineState = 'BUILDING';
+    state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
+    state.construction.startedFrame ??= world.frameCount;
+    transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ram-construction-authorized');
+  }
+  return true;
+}
+
+function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void {
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.openingPushRepelled, state.tasks.openingPushRepelled);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.yardSecured, state.tasks.yardSecured);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.componentsReady, hasAllFloor5RamComponents(state));
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.checkpointCleared, state.tasks.checkpointCleared);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.ramBuilt, state.engineState === 'READY');
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.wallBreached, state.breachState === 'BREACHED');
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.courtyardCleared, false);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.regentDefeated, false);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.castleCaptured, state.phase.kind === 'CAPTURED');
+}
+
+function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState): void {
+  const elapsedDeltaMs = Math.max(
+    0,
+    world.elapsedMs - state.construction.lastProgressWorldElapsedMs,
+  );
+  state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
+  if (state.engineState !== 'BUILDING' || elapsedDeltaMs === 0) {
+    return;
+  }
+
+  if (state.construction.buildSiteUnderAttack) {
+    state.construction.pausedMs += elapsedDeltaMs;
+    return;
+  }
+
+  state.construction.progressMs = Math.min(
+    state.construction.requiredMs,
+    state.construction.progressMs + elapsedDeltaMs,
+  );
+  if (state.construction.progressMs >= state.construction.requiredMs) {
+    state.engineState = 'READY';
+    state.construction.completedFrame ??= world.frameCount;
+  }
+}
+
 export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | undefined {
   const state = floor5SiegeState(world);
   if (!state) return undefined;
@@ -134,6 +342,32 @@ export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | 
     engineState: state.engineState,
     breachState: state.breachState,
     heroState: state.heroState,
+    tasks: {
+      openingPushRepelled: state.tasks.openingPushRepelled,
+      yardSecured: state.tasks.yardSecured,
+      recoveredComponents: [...state.tasks.recoveredComponents],
+      componentsReady: hasAllFloor5RamComponents(state),
+      checkpointCleared: state.tasks.checkpointCleared,
+      allPrerequisitesMet: hasFloor5RamPrerequisites(state),
+    },
+    requisition: {
+      milestones: [...state.requisitionMilestones],
+      completedMilestones: state.requisitionMilestones.length,
+      requiredMilestones: FLOOR5_REQUISITION_MILESTONES.length,
+      ready: FLOOR5_REQUISITION_MILESTONES.every((milestone) =>
+        state.requisitionMilestones.includes(milestone),
+      ),
+    },
+    construction: {
+      progressMs: state.construction.progressMs,
+      requiredMs: state.construction.requiredMs,
+      buildSiteUnderAttack: state.construction.buildSiteUnderAttack,
+      pausedMs: state.construction.pausedMs,
+      attempts: state.construction.attempts,
+      deniedAttempts: state.construction.deniedAttempts,
+      startedFrame: state.construction.startedFrame,
+      completedFrame: state.construction.completedFrame,
+    },
     rngStreamKeys: { ...state.rngStreamKeys },
     trace: state.trace.map(cloneTraceEntry),
   };
@@ -144,7 +378,7 @@ export function siegeDirectorSystem(world: GameWorld): void {
     return;
   }
   const state = floor5SiegeState(world);
-  if (!state || state.phase.kind === 'CAPTURED' || state.phase.kind === 'DEFEAT') {
+  if (!state || isFloor5Terminal(state)) {
     return;
   }
   state.lastWorldElapsedMs = world.elapsedMs;
@@ -162,7 +396,17 @@ export function getFloor5RunOutcome(world: GameWorld) {
   return phase === 'CAPTURED' ? 'cleared_floor' : phase === 'DEFEAT' ? 'failed_timeout' : null;
 }
 
-function floor5ObjectiveTick(_world: GameWorld): void {}
+function floor5ObjectiveTick(world: GameWorld): void {
+  if (world.floorId !== 'floor5' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return;
+  }
+  advanceFloor5RamConstruction(world, state);
+  projectFloor5GoalFlags(world, state);
+}
 
 function equipFloor5StarterWeapon(
   world: GameWorld,
@@ -243,6 +487,11 @@ export function initializeFloor5Scenario(
   } else {
     equipFloor5StarterWeapon(world, playerEid, manifest.starterWeapons);
   }
+
+  for (const questId of FLOOR5_SLICE3_QUEST_IDS) {
+    acceptQuest(world, questId);
+  }
+  setTrackedQuest(world, FLOOR5_SLICE3_QUEST_IDS[0]);
 
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
