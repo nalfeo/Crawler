@@ -4,7 +4,7 @@
   "description": "Implement Floor 5 as a deterministic MOBA-shaped castle siege: opposing autonomous waves, boss-strength enemy Heroes, field-task-gated siege construction, Command Post defense, a protected Ratings Ram breach, and a courtyard-to-throne capture finale.",
   "review": {
     "title_prefix": "[Epic Review]",
-    "body": "Source of truth: .specify/specs/floor5-hostile-takeover.md, docs/knowledge/game-design/floor5-hostile-takeover.md, and ADR 0094. HUMAN_GATE before approval: confirm terminal rules, ram recovery model, capture interaction, duration and completion-rate targets, Hero cadence, and performance budgets. Close this exact revision as completed only when the implementation graph and those deferred decisions are acceptable."
+    "body": "Source of truth: .specify/specs/floor5-hostile-takeover.md, docs/knowledge/game-design/floor5-hostile-takeover.md, and ADR 0094. HUMAN_GATE before approval (design decisions only, all answerable from the documents today): confirm terminal rules and their precedence, the ram recovery model, and the throne capture-interaction model. Numeric balance decisions — duration and completion-rate targets, Hero slot count and respawn cadence, and entity/frame performance budgets — are explicitly DEFERRED to slice-8-balance-verification, because the spec and content bible require them to be chosen from representative runtime evidence that only exists once the implementation slices have run; approving this review means accepting that deferral plan, not supplying those numbers. Close this exact revision as completed only when the implementation graph, the design decisions above, and the deferral plan are acceptable."
   },
   "labels": ["floor-5", "castle-siege", "hostile-takeover"],
   "nodes": [
@@ -32,7 +32,7 @@
     {
       "id": "slice-4-enemy-heroes",
       "title": "Floor 5 Slice 4: enemy Hero roster, strategic AI, and respawn contracts",
-      "body": "Author the append-only field-Hero roster and implement seeded without-replacement slots, siegeHeroSystem strategic modes, task/build-aware target priorities, abilities, telegraphs, defeat handling, and fixed-tick respawns. Done when headless reproduces the same Hero card, observes valid task-aware modes, defeats a Hero, and verifies its manifest-authored respawn or permanent defeat.",
+      "body": "Author the append-only field-Hero roster and implement seeded without-replacement slots, siegeHeroSystem role-scoped targeting, task/build-aware target priorities, abilities, telegraphs, defeat handling, and fixed-tick respawns. Done when headless reproduces the same Hero card, observes behavior consistent with each Hero's single declared role, defeats a Hero, and verifies its manifest-authored respawn or permanent defeat.",
       "labels": ["bosses", "ai", "floor-5"],
       "depends_on": ["slice-2-lane-war", "slice-3-field-tasks"]
     },
@@ -67,7 +67,7 @@
     {
       "id": "slice-8-balance-verification",
       "title": "Floor 5 Slice 8: integrated QA, performance, balance, and achievements",
-      "body": "Add integrated/property/E2E/headless gates, achievements, and telemetry for outcomes, phase durations, base health, ram lifecycle, breach, Heroes, path stalls, allegiance, and terminal integrity. Obtain human approval for completion-rate, duration, recovery, pressure, and entity/frame budgets, then tune against representative GitHub-backed sweeps. Done when approved thresholds pass with zero unreachable objectives, phase violations, invalid targets, navigation mismatches, unbounded debt, or non-terminal runs.",
+      "body": "Add integrated/property/E2E/headless gates, achievements, and telemetry for outcomes, phase durations, base health, ram lifecycle, breach, Heroes, path stalls, allegiance, and terminal integrity. Obtain every deferred numeric HUMAN_GATE approval here, now that representative runtime evidence exists: requisition component/checkpoint counts (HUMAN_GATE-1), ram HP, protection thresholds, advance speed and rebuild delay/cost (HUMAN_GATE-2), Hero slot count and respawn cadence (HUMAN_GATE-3), Regent summon cap and telegraph timing (HUMAN_GATE-6), stall-backstop duration (HUMAN_GATE-7), achievement thresholds (HUMAN_GATE-8), and completion-rate, duration, base-health cushion, ram survival and entity/frame budgets (spec FR10.4); then tune against representative GitHub-backed sweeps. Done when approved thresholds pass with zero unreachable objectives, phase violations, invalid targets, navigation mismatches, unbounded debt, or non-terminal runs.",
       "labels": ["balance", "qa", "floor-5"],
       "depends_on": [
         "slice-2-lane-war",

@@ -77,10 +77,15 @@ Exact health, damage, cadence, costs, time limits, and completion-rate targets r
 - **FR4.2** Task progress is durable scenario state backed by explicit events. Escort
   distance, structure health, lane control, construction progress, and timed occupation are
   system state, not overloaded quest booleans.
-- **FR4.3** The quest presentation consumes that state through stable goals:
-  `opening-push-repelled`, `yard-secured`, `components-ready`, `ram-built`,
-  `checkpoint-cleared`, `wall-breached`, `courtyard-cleared`, `regent-defeated`,
-  and `castle-captured`.
+- **FR4.3** The quest presentation consumes that state through these exact stable goal IDs,
+  which are the single canonical set for the floor and must be reproduced verbatim by both
+  the producing systems and the quest pack:
+  `floor5.siege.openingPushRepelled`, `floor5.siege.yardSecured`,
+  `floor5.siege.componentsReady`, `floor5.siege.ramBuilt`,
+  `floor5.siege.checkpointCleared`, `floor5.siege.wallBreached`,
+  `floor5.siege.courtyardCleared`, `floor5.siege.regentDefeated`, and
+  `floor5.siege.castleCaptured`. `questSystem` resolves objectives by exact
+  `world.goalFlags` key lookup, so no alternate spelling of these IDs is permitted.
 - **FR4.4** Build resources are floor-scoped requisition milestones, not inventory items,
   gold, or persistent materials. This prevents Floor 5 from consuming cross-floor gear
   economy and keeps headless decisions bounded.
@@ -111,11 +116,15 @@ Exact health, damage, cadence, costs, time limits, and completion-rate targets r
 
 - **FR6.1** Heroes are boss-strength named defenders selected without replacement from an
   append-only, stably ordered roster using a dedicated derived stream.
-- **FR6.2** Each Hero declares a tactical role and stable priorities: counter-push,
-  checkpoint defense, engine disruption, minion support, or artillery.
-- **FR6.3** `siegeHeroSystem` owns Hero strategic mode selection; existing combat systems
-  execute movement and attacks. It responds to latched task/build state and is wired into
-  both real simulation paths.
+- **FR6.2** Each Hero declares exactly one tactical role from a closed set: counter-push,
+  checkpoint defense, engine disruption, minion support, or artillery. In the MVP the declared
+  role **is** the Hero's strategic mode for its whole lifetime — there is no per-Hero
+  multi-mode set and no cross-role switching, so a headless test can assert a Hero's observed
+  behavior against its single declared role. Any future multi-mode Hero requires an explicit
+  role-to-allowed-modes contract added here first.
+- **FR6.3** `siegeHeroSystem` owns Hero target and stance selection **within** the declared
+  role; existing combat systems execute movement and attacks. It responds to latched
+  task/build state and is wired into both real simulation paths.
 - **FR6.4** Defeated field Heroes respawn at fixed manifest-authored ticks or remain defeated
   according to their slot. Respawn timing never depends on wall clock or RNG draws.
 - **FR6.5** The Crown Auditor is the fixed courtyard momentum check and Regent Emeritus is

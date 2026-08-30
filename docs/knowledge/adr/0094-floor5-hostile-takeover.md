@@ -30,8 +30,8 @@ durable architecture choices.
 
 `siegeDirectorSystem` is the sole phase/latch/manifest authority. It does not steer units,
 pathfind, apply damage, or instantiate individual entities. `siegeMinionSystem` owns
-lane-march targeting and `siegeHeroSystem` owns Hero strategic modes; existing systems retain
-movement, navigation, attacks, and damage.
+lane-march targeting and `siegeHeroSystem` owns Hero targeting within each Hero's single
+declared role; existing systems retain movement, navigation, attacks, and damage.
 
 All new systems register through the existing `ScenarioDefinition` slots so the windowed and
 headless floor-agnostic wrappers execute the same logic. Labs remain required but do not count

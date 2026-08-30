@@ -200,8 +200,16 @@ The spec already names the nine stable goal IDs the quest layer must consume as 
 projections of system state** (spec `FR4.2`–`FR4.3`) — the quest pack must never re-derive or
 duplicate that state as its own boolean:
 
-`opening-push-repelled → yard-secured → components-ready → ram-built → checkpoint-cleared →
-wall-breached → courtyard-cleared → regent-defeated → castle-captured`
+`floor5.siege.openingPushRepelled → floor5.siege.yardSecured → floor5.siege.componentsReady →
+floor5.siege.ramBuilt → floor5.siege.checkpointCleared → floor5.siege.wallBreached →
+floor5.siege.courtyardCleared → floor5.siege.regentDefeated → floor5.siege.castleCaptured`
+
+These nine strings are the canonical IDs from spec `FR4.3` and must appear verbatim in both
+the producing systems and every `goalId` below — `questSystem` resolves objectives by exact
+`world.goalFlags` key lookup, so a differently spelled ID silently never completes. Objective
+`id` values are pack-local labels and are unconstrained; any `onCompleteGoalFlag` the pack
+emits uses its own `floor5.siege.*` name that is deliberately **not** one of the nine
+canonical IDs, so a quest can never write the state it is supposed to observe.
 
 Proposed pack shape (illustrative, not shipped by this document):
 
@@ -266,7 +274,7 @@ Proposed pack shape (illustrative, not shipped by this document):
       "id": "floor5-escort-the-ram",
       "title": "Escort the Ratings Ram",
       "summary": "Construction's authorized. Now keep the thing alive until it opens the wall.",
-      "onCompleteGoalFlag": "floor5-ram-escort-complete",
+      "onCompleteGoalFlag": "floor5.siege.ramEscortComplete",
       "objectives": [
         {
           "id": "ram-built",
@@ -299,7 +307,7 @@ Proposed pack shape (illustrative, not shipped by this document):
       "id": "floor5-the-acquisition",
       "title": "Close the Acquisition",
       "summary": "Defeat the Regent, then walk up and take the chair. That's the whole deal.",
-      "onCompleteGoalFlag": "floor5-castle-captured",
+      "onCompleteGoalFlag": "floor5.siege.acquisitionClosed",
       "objectives": [
         {
           "id": "regent-defeated",
@@ -435,9 +443,13 @@ baseline: mirror Floor 4's Headliner-pool convention of **at least eight roster 
 above) with **one active field Hero at a time**, escalating to two only if representative sweeps
 (spec `R10`) show the single-Hero pressure is insufficient.
 
-`HUMAN_GATE-4`: Hero strategic-mode selection weighting (how often a Hero picks counter-push vs.
-checkpoint defense vs. engine disruption when its role allows more than one, per spec `FR6.3`)
-is Game AI Engineer tuning, not content. This bible only fixes the declared role per Hero.
+`HUMAN_GATE-4`: **within-role** Hero behavior tuning (engagement/disengagement thresholds and
+re-target cadence for the Hero's single declared role, per spec `FR6.3`) is Game AI Engineer
+tuning, not content. Per spec `FR6.2` a Hero's declared role is its sole strategic mode for its
+whole lifetime, so there is no cross-role mode weighting to decide: the roster column above is
+the complete mode assignment, and Slice 4 headless tests assert observed behavior against that
+one role. Introducing any multi-mode Hero would first require an explicit role-to-allowed-modes
+contract in the spec.
 
 ---
 
@@ -550,7 +562,7 @@ deterministic visual/runtime captures must prove, in the actual running game, no
 isolation —
 
 - primary-lane readability and opposing-wave direction without color-only cues (spec `FR9.3`)
-- Hero salience on arrival and during strategic-mode switches
+- Hero salience on arrival and while it acts out its declared role
 - Command Post danger state and the base-loss transition
 - field-task/build progress state on the HUD
 - Ram damage/destruction/rebuild states
@@ -580,7 +592,7 @@ gets silently decided during implementation:
 | `HUMAN_GATE-1`                     | Requisition component fetch count / checkpoint-clear condition (§6)                                        | 3 components, 1 checkpoint                                                            |
 | `HUMAN_GATE-2`                     | Ratings Ram HP, protection thresholds, advance speed, rebuild delay/cost (§7)                              | None — spec constrains only "never soft-locks"                                        |
 | `HUMAN_GATE-3`                     | Field-Hero respawn cadence and concurrent-active-Hero count (§9)                                           | One active Hero at a time; escalate only if sweeps show insufficient pressure         |
-| `HUMAN_GATE-4`                     | Hero strategic-mode selection weighting (§9)                                                               | None — AI tuning, not content                                                         |
+| `HUMAN_GATE-4`                     | Within-role Hero engage/disengage thresholds and re-target cadence (§9)                                    | None — AI tuning, not content; the declared role is the sole strategic mode           |
 | `HUMAN_GATE-5`                     | Throne capture: explicit interaction vs. timed occupation (§10)                                            | One explicit interaction (spec's own recommendation)                                  |
 | `HUMAN_GATE-6`                     | Regent Emeritus summon cap/telegraph timing (§10)                                                          | None — encounter balance                                                              |
 | `HUMAN_GATE-7`                     | Stall backstop duration (spec `FR2.5`)                                                                     | None — informed only by measured representative runs, never a player-facing countdown |

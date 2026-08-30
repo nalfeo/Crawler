@@ -60,8 +60,11 @@ done condition, and the presentation slice requires deterministic real-game capt
 
 - A human must review the epic revision and close its generated review issue as completed
   before any node materializes.
-- During review, explicitly approve or amend the terminal rules, rebuild model, capture
-  interaction, Hero cadence, duration/completion targets, and performance budgets.
+- During review, explicitly approve or amend the design decisions that are answerable today:
+  the terminal rules, the rebuild model, and the capture interaction. Numeric balance
+  decisions (Hero slot count/cadence, duration and completion targets, performance budgets)
+  are deferred to slice 8, where representative runtime evidence exists; the review approves
+  that deferral plan rather than the numbers.
 - After approval, start slice 1 only. Slices 2 and 3 then branch in parallel; all later
   dependencies are encoded in the epic file.
 - No implementation blocker is currently known, but allied objective pathing and the atomic
