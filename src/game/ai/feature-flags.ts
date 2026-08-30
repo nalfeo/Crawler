@@ -10,17 +10,20 @@ export const AI_FEATURE_FLAG_DEFINITIONS = [
     key: 'weaponPersonas',
     label: 'Weapon personas',
     defaultEnabled: (_context: AiFeatureFlagContext) => true,
+    resolve: undefined,
   },
   {
     key: 'optionalPurchases',
     label: 'Optional purchases (merchant + broker)',
     defaultEnabled: (_context: AiFeatureFlagContext) => true,
+    resolve: (input: OptionalPurchasesConfig) => resolveOptionalPurchases(input),
   },
   {
     key: 'settlementReturnRouting',
     label: 'Settlement return routing',
     defaultEnabled: (context: AiFeatureFlagContext) =>
       context.surface === 'lab' || context.floorId === 'floor1',
+    resolve: undefined,
   },
 ] as const;
 
@@ -42,9 +45,7 @@ export function resolveAiFeatureFlags(
   const resolved = {} as AiFeatureFlags;
   for (const definition of AI_FEATURE_FLAG_DEFINITIONS) {
     resolved[definition.key] =
-      definition.key === 'optionalPurchases'
-        ? resolveOptionalPurchases(input)
-        : (input[definition.key] ?? definition.defaultEnabled(context));
+      input[definition.key] ?? definition.resolve?.(input) ?? definition.defaultEnabled(context);
   }
   return resolved;
 }
