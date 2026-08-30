@@ -31,6 +31,8 @@ describe('Floor 5 lane-war real headless pipeline', () => {
   it('completes an opposing-wave cycle, contests a checkpoint, damages legal targets, and records no path stalls', async () => {
     let structureTeams: number[] = [];
     let minionTeams: number[] = [];
+    let liveMinionManifestIndexes: number[] = [];
+    let legalEventsAfterDrainedQueue = 0;
     const stats = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
@@ -43,6 +45,40 @@ describe('Floor 5 lane-war real headless pipeline', () => {
         minionTeams = Array.from(query(world.ecs, [SiegeMinion, Team]))
           .map((eid) => world.stores.team.id[eid] ?? -1)
           .sort((a, b) => a - b);
+        liveMinionManifestIndexes = Array.from(query(world.ecs, [SiegeMinion, Health]))
+          .filter((eid) => (world.stores.health.current[eid] ?? 0) > 0)
+          .map((eid) => world.stores.siegeMinion.manifestIndex[eid] ?? -1)
+          .sort((a, b) => a - b);
+        const state = world.floorExtendedState!.floor5Siege!;
+        const sourceEid = Array.from(query(world.ecs, [SiegeMinion, Health])).find(
+          (eid) =>
+            (world.stores.siegeMinion.team[eid] ?? 0) === 1 &&
+            (world.stores.health.current[eid] ?? 0) > 0,
+        )!;
+        const targetEid = state.structures['outer-wall'].eid;
+        const before = state.laneTelemetry.legalDamageEvents;
+        state.combatEventCursor = 1;
+        state.lastCombatEvent = {
+          type: 'hit',
+          x: 0,
+          y: 0,
+          amount: 1,
+          targetType: 'enemy',
+          timestamp: 0,
+        };
+        world.combatEvents.length = 0;
+        world.combatEvents.push({
+          type: 'hit',
+          x: world.stores.position.x[targetEid] ?? 0,
+          y: world.stores.position.y[targetEid] ?? 0,
+          amount: 1,
+          targetType: 'enemy',
+          timestamp: world.elapsedMs,
+          sourceEid,
+          targetEid,
+        });
+        world.floorObjectiveTick!(world);
+        legalEventsAfterDrainedQueue = state.laneTelemetry.legalDamageEvents - before;
       },
     });
 
@@ -72,6 +108,8 @@ describe('Floor 5 lane-war real headless pipeline', () => {
       TeamId.SIEGE_ENEMY,
     ]);
     expect(minionTeams).toContain(TeamId.SIEGE_ALLIED);
+    expect(liveMinionManifestIndexes).toEqual([0, 0]);
+    expect(legalEventsAfterDrainedQueue).toBeGreaterThan(0);
     expect(siege!.laneTelemetry.spawned.enemy).toBeGreaterThan(0);
     expect(stats.stallReason).toBeUndefined();
   });

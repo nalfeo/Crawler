@@ -242,6 +242,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     waveManifest,
     waveCursor: { allied: 0, enemy: 0 },
     spawnDebt: { allied: 0, enemy: 0 },
+    spawnDebtManifestQueue: { allied: [], enemy: [] },
     liveMinions: { allied: 0, enemy: 0 },
     checkpointOwner: 'enemy',
     laneTelemetry: {
@@ -265,18 +266,33 @@ function opposingTeam(team: Floor5SiegeTeam): Floor5SiegeTeam {
   return team === 'allied' ? 'enemy' : 'allied';
 }
 
+function floor5StructureMatchesEntity(
+  world: GameWorld,
+  structure: Floor5SiegeStructureState,
+): boolean {
+  const eid = structure.eid;
+  return (
+    eid > 0 &&
+    entityExists(world.ecs, eid) &&
+    hasComponent(world.ecs, eid, SiegeStructure) &&
+    hasComponent(world.ecs, eid, Team) &&
+    hasComponent(world.ecs, eid, Health) &&
+    (world.stores.siegeStructure.kind[eid] ?? 0) === FLOOR5_STRUCTURE_KIND[structure.id] &&
+    (world.stores.siegeStructure.team[eid] ?? 0) === FLOOR5_SIEGE_MARKER_TEAM[structure.team] &&
+    (world.stores.team.id[eid] ?? 0) === FLOOR5_TEAM_CODE[structure.team]
+  );
+}
+
 function structureIsAlive(world: GameWorld, structure: Floor5SiegeStructureState): boolean {
   return (
-    structure.eid > 0 &&
-    entityExists(world.ecs, structure.eid) &&
-    hasComponent(world.ecs, structure.eid, Health) &&
+    floor5StructureMatchesEntity(world, structure) &&
     (world.stores.health.current[structure.eid] ?? 0) > 0
   );
 }
 
 function syncFloor5StructureHealth(world: GameWorld, state: Floor5SiegeState): void {
   for (const structure of Object.values(state.structures)) {
-    if (structure.eid > 0 && entityExists(world.ecs, structure.eid)) {
+    if (floor5StructureMatchesEntity(world, structure)) {
       structure.health = Math.max(0, world.stores.health.current[structure.eid] ?? 0);
       structure.maxHealth = Math.max(
         structure.maxHealth,
@@ -284,6 +300,7 @@ function syncFloor5StructureHealth(world: GameWorld, state: Floor5SiegeState): v
       );
     } else {
       structure.health = 0;
+      structure.eid = 0;
     }
   }
   state.commandPostHealth = state.structures['command-post'].health;
@@ -503,7 +520,6 @@ function steerFloor5Minion(world: GameWorld, state: Floor5SiegeState, eid: numbe
   const path = findTilePath(floorMap, start, goal);
   if (path.length < 2) {
     setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
-    state.laneTelemetry.pathStalls += 1;
     return;
   }
   const next = floorMap.tileToWorld(path[1]!.x, path[1]!.y);
@@ -523,10 +539,15 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
       state.waveCursor[team] < entries.length &&
       world.frameCount >= entries[state.waveCursor[team]]!.releaseFrame
     ) {
-      state.spawnDebt[team] = Math.min(
-        FLOOR5_MINION_LIVE_CAP,
-        state.spawnDebt[team] + entries[state.waveCursor[team]]!.count,
+      const manifestIndex = state.waveCursor[team];
+      const queued = Math.min(
+        FLOOR5_MINION_LIVE_CAP - state.spawnDebt[team],
+        entries[manifestIndex]!.count,
       );
+      for (let i = 0; i < queued; i += 1) {
+        state.spawnDebtManifestQueue[team].push(manifestIndex);
+      }
+      state.spawnDebt[team] += queued;
       state.laneTelemetry.spawnDebtPeak[team] = Math.max(
         state.laneTelemetry.spawnDebtPeak[team],
         state.spawnDebt[team],
@@ -535,7 +556,7 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
     }
     state.liveMinions[team] = countLiveFloor5Minions(world, team);
     while (state.spawnDebt[team] > 0 && state.liveMinions[team] < FLOOR5_MINION_LIVE_CAP) {
-      spawnFloor5Minion(world, state, team, state.waveCursor[team]);
+      spawnFloor5Minion(world, state, team, state.spawnDebtManifestQueue[team].shift() ?? 0);
       state.spawnDebt[team] -= 1;
       state.liveMinions[team] += 1;
     }
@@ -594,8 +615,20 @@ function applyFloor5MinionAttacks(world: GameWorld, state: Floor5SiegeState): vo
     );
   }
 
-  const events = world.combatEvents.slice(state.combatEventCursor);
-  for (const event of events) {
+  const combatEvents = world.combatEvents;
+  if (
+    state.combatEventCursor > combatEvents.length ||
+    (state.combatEventCursor > 0 &&
+      combatEvents[state.combatEventCursor - 1] !== state.lastCombatEvent)
+  ) {
+    state.combatEventCursor = 0;
+  }
+  for (
+    let eventIndex = state.combatEventCursor;
+    eventIndex < combatEvents.length;
+    eventIndex += 1
+  ) {
+    const event = combatEvents[eventIndex]!;
     if (event.type !== 'hit' || event.sourceEid === undefined || event.targetEid === undefined) {
       continue;
     }
@@ -610,13 +643,16 @@ function applyFloor5MinionAttacks(world: GameWorld, state: Floor5SiegeState): vo
       state.laneTelemetry.illegalDamageEvents += 1;
     }
   }
-  state.combatEventCursor = world.combatEvents.length;
+  state.combatEventCursor = combatEvents.length;
+  state.lastCombatEvent = combatEvents.at(-1);
 }
 
 function updateFloor5Checkpoint(world: GameWorld, state: Floor5SiegeState): void {
-  const checkpoint = state.structures['enemy-checkpoint'];
-  const cx = world.stores.position.x[checkpoint.eid] ?? 0;
-  const cy = world.stores.position.y[checkpoint.eid] ?? 0;
+  const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+  const checkpointCenter = centerOf(layout.checkpointPocket);
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? buildFloor5MapConfig().tileSizeFt;
+  const cx = checkpointCenter.x * tileSizeFt + tileSizeFt / 2;
+  const cy = checkpointCenter.y * tileSizeFt + tileSizeFt / 2;
   const teamPresent = { allied: false, enemy: false };
   for (const eid of liveFloor5Minions(world)) {
     const team = teamForFloor5Entity(world, eid);

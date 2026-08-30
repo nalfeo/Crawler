@@ -3,6 +3,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
+import type { CombatEvent } from './combat-events.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -706,10 +707,12 @@ export interface Floor5SiegeState {
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   waveCursor: Record<Floor5SiegeTeam, number>;
   spawnDebt: Record<Floor5SiegeTeam, number>;
+  spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
   liveMinions: Record<Floor5SiegeTeam, number>;
   checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
   combatEventCursor: number;
+  lastCombatEvent?: CombatEvent;
 }
 
 export interface Floor5SiegeRunStats {

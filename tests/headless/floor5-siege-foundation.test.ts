@@ -157,6 +157,22 @@ describe('Floor 5 siege foundation real pipeline', () => {
     });
   });
 
+  it('does not trust a stale structure EID after the slot is reused by another health entity', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    state.structures['enemy-checkpoint'].eid = player;
+
+    const stats = getFloor5SiegeRunStats(world)!;
+    expect(stats.structures['enemy-checkpoint']).toMatchObject({
+      eid: 0,
+      health: 0,
+      maxHealth: 36,
+    });
+  });
+
   it('does not transition while the run is not playing or the Command Post survives', () => {
     const world = createTestWorld({ seed: 5 });
     const player = spawnPlayer(world, 0, 0);
