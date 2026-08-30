@@ -160,6 +160,11 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       settlementReturnRouting: true,
     });
     expect(
+      resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--no-settlement-return-routing')),
+    ).toEqual({
+      settlementReturnRouting: false,
+    });
+    expect(
       resolveHeadlessRunnerOptions(
         parseArgs(['node', 'headless-runner-cli.js', '--floor', 'floor2'], {
           AI_SETTLEMENT_RETURN_ROUTING: 'false',
@@ -182,6 +187,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: 'false' })
         .settlementReturnRouting,
     ).toBe(false);
+    expect(helpText()).toContain('--no-settlement-return-routing');
   });
 });
 
