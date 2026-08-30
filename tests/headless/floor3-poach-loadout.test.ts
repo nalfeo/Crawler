@@ -1,6 +1,6 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Companion, PartySlot, Team } from '../../src/core/index.js';
+import { Companion, PartySlot, Player, Position, Team } from '../../src/core/index.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import type { SimEvent } from '../../src/game/ai/event-log.js';
@@ -54,6 +54,44 @@ describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
       ),
     ).toBe(true);
     expect(partyAtFinish).toBe(1);
+  });
+
+  it('leaves the entrance without repeatedly interacting with Professor Thistle', async () => {
+    const events: SimEvent[] = [];
+    let professorEid: number | undefined;
+    let leftEntrance = false;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 33 }), {
+      seed: 33,
+      floorId: 'floor3',
+      maxFrames: 600,
+      questStallFrames: 0,
+      eventSampleInterval: 1,
+      recordEvent: (event) => events.push(event),
+      stopWhen: (world) => {
+        const playerEid = query(world.ecs, [Player, Position])[0];
+        const floorMap = world.floorMap;
+        if (playerEid === undefined || !floorMap?.spawnRoom) return false;
+        const tile = floorMap.worldToTile(
+          world.stores.position.x[playerEid] ?? 0,
+          world.stores.position.y[playerEid] ?? 0,
+        );
+        leftEntrance ||= floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== floorMap.spawnRoom.id;
+        return false;
+      },
+      onFinish: (world) => {
+        professorEid = world.floorExtendedState?.floor3CompanionProfessorNpcEid;
+      },
+    });
+
+    expect(professorEid).toBeDefined();
+    expect(leftEntrance).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'sample' && event.state === 'INTERACT' && event.targetEid === professorEid,
+      ),
+    ).toBe(false);
   });
 
   it('resolves the mid-run poach pause and keeps the floor simulating', async () => {
