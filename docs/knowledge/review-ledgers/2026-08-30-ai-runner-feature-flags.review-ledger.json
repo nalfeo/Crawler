@@ -33,13 +33,31 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.4",
+      "head_sha": "4ce7685a287a81d7656222a379f24eae38efdb33",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/ai/headless-runner.ts",
+          "detail": "DEFAULT_CONFIG retains type-required fallback values for flags whose effective defaults now come from the registry; this is not a behavior bug but could confuse future edits."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "fail",
+      "findings_count": 1,
+      "notes": "Prior findings are resolved. Final diff preserves all flag defaults and compatibility, uses registry-driven lab controls and runtime consumers, and passes focused coverage.",
+      "escalated_to_human": {
+        "reason": "grader returned a failing verdict",
+        "unresolved_findings": 1
+      }
     }
   }
 }

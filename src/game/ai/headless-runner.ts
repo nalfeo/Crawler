@@ -91,7 +91,7 @@ import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
-import { resolveAiFeatureFlags } from './feature-flags.js';
+import { resolveAiFeatureFlags, type AiFeatureFlags } from './feature-flags.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -403,6 +403,9 @@ const DEFAULT_CONFIG: Required<
     | 'planningMaxFrames'
     | 'playerCarryover'
     | 'onPlayerCarryoverCaptured'
+    | keyof AiFeatureFlags
+    | 'merchantWeaponPurchase'
+    | 'spellBrokerPurchase'
   >
 > = {
   seed: 12345,
@@ -417,11 +420,6 @@ const DEFAULT_CONFIG: Required<
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
-  weaponPersonas: true,
-  optionalPurchases: true,
-  merchantWeaponPurchase: false,
-  spellBrokerPurchase: false,
-  settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
 
