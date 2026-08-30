@@ -7,7 +7,11 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import { FLOOR5_AI_TASK_CONFIG } from '../../src/game/scenarios/floor5AiTasks.js';
 import { buildScenarioGoalGraph } from '../../src/game/ai/scenario-ai-tasks.js';
-import { getFloor5SiegeRunStats, siegeDirectorSystem } from '../../src/game/floor5Scenario.js';
+import {
+  getFloor5RunOutcome,
+  getFloor5SiegeRunStats,
+  siegeDirectorSystem,
+} from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
 
@@ -116,5 +120,61 @@ describe('Floor 5 siege foundation real pipeline', () => {
     ]);
     expect(graph.locations.has('commandPost')).toBe(true);
     expect(graph.locations.has('throneRoom')).toBe(true);
+  });
+
+  it('records exactly one DEFEAT transition when the Command Post is destroyed', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    world.frameCount = 42;
+    world.elapsedMs = 7_000;
+    state.commandPostHealth = 0;
+    siegeDirectorSystem(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.lastWorldElapsedMs).toBe(7_000);
+    expect(getFloor5SiegeRunStats(world)?.trace).toEqual([
+      {
+        phase: { kind: 'DEFEAT' },
+        reason: 'command-post-destroyed',
+        frame: 42,
+        worldElapsedMs: 7_000,
+        commandPostHealth: 0,
+        engineState: 'LOCKED',
+        breachState: 'SEALED',
+        heroState: 'PENDING',
+      },
+    ]);
+    expect(getFloor5RunOutcome(world)).toBe('failed_timeout');
+
+    // Terminal phases are absorbing: further ticks must not append trace entries
+    // or advance the recorded elapsed time.
+    world.frameCount = 43;
+    world.elapsedMs = 9_000;
+    siegeDirectorSystem(world);
+
+    expect(state.trace).toHaveLength(1);
+    expect(state.lastWorldElapsedMs).toBe(7_000);
+  });
+
+  it('does not transition while the run is not playing or the Command Post survives', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    state.commandPostHealth = 0;
+    world.state = 'paused';
+    siegeDirectorSystem(world);
+    expect(state.phase.kind).toBe('MUSTER');
+    expect(state.trace).toEqual([]);
+
+    world.state = 'playing';
+    state.commandPostHealth = 1;
+    siegeDirectorSystem(world);
+    expect(state.phase.kind).toBe('MUSTER');
+    expect(state.trace).toEqual([]);
   });
 });
