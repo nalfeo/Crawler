@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "packId": "floor5-siege",
+  "quests": [
+    {
+      "id": "floor5-hold-the-line",
+      "title": "Hold the Line",
+      "summary": "Repel the opening push before it reaches the Command Post. The board is watching the first exchange closely.",
+      "objectives": [
+        {
+          "id": "repel-opening-push",
+          "label": "Repel the opening push",
+          "kind": "goal",
+          "goalId": "floor5.siege.openingPushRepelled"
+        }
+      ]
+    },
+    {
+      "id": "floor5-secure-synergy",
+      "title": "Secure the Synergy Site",
+      "summary": "Take and hold the Siege Yard. Nothing gets built without it.",
+      "objectives": [
+        {
+          "id": "secure-yard",
+          "label": "Secure the Siege Yard",
+          "kind": "goal",
+          "goalId": "floor5.siege.yardSecured"
+        }
+      ]
+    },
+    {
+      "id": "floor5-recover-components",
+      "title": "Recover the Components",
+      "summary": "Three component classes, one Ratings Ram. Recover all three from the flank pocket.",
+      "objectives": [
+        {
+          "id": "components-ready",
+          "label": "Recover all Ratings Ram components",
+          "kind": "goal",
+          "goalId": "floor5.siege.componentsReady"
+        }
+      ]
+    },
+    {
+      "id": "floor5-clear-checkpoint",
+      "title": "Clear the Forward Checkpoint",
+      "summary": "The checkpoint gates construction as much as the components do. Clear it.",
+      "objectives": [
+        {
+          "id": "checkpoint-cleared",
+          "label": "Clear the forward checkpoint",
+          "kind": "goal",
+          "goalId": "floor5.siege.checkpointCleared"
+        }
+      ]
+    },
+    {
+      "id": "floor5-build-ratings-ram",
+      "title": "Build the Ratings Ram",
+      "summary": "Construction's authorized. Build the sponsor-branded problem solver before the wall segment.",
+      "objectives": [
+        {
+          "id": "ram-built",
+          "label": "Complete Ratings Ram construction",
+          "kind": "goal",
+          "goalId": "floor5.siege.ramBuilt"
+        }
+      ]
+    }
+  ]
+}

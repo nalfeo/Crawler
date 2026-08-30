@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import floor1QuestPack from './data/quests.floor1.json';
 import floor2QuestPack from './data/quests.floor2.json';
+import floor5SiegeQuestPack from './data/quests.floor5.siege.json';
 
 /**
  * How an objective is satisfied.
@@ -348,6 +349,7 @@ function buildRegistry(packs: readonly QuestPackDef[]): ReadonlyMap<string, Ques
 const DEFAULT_QUEST_PACKS: readonly QuestPackDef[] = Object.freeze([
   questPackSchema.parse(floor1QuestPack),
   questPackSchema.parse(floor2QuestPack),
+  questPackSchema.parse(floor5SiegeQuestPack),
 ]);
 
 let questRegistry: ReadonlyMap<string, QuestDef> = buildRegistry(DEFAULT_QUEST_PACKS);

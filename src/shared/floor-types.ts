@@ -688,13 +688,52 @@ export interface Floor5SiegeLaneTelemetry {
   spawnDebtPeak: Record<Floor5SiegeTeam, number>;
 }
 
+export type Floor5RatingsRamState =
+  | 'LOCKED'
+  | 'BUILDING'
+  | 'READY'
+  | 'ADVANCING'
+  | 'ATTACKING'
+  | 'BREACHED'
+  | 'DESTROYED';
+
+export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
+
+export type Floor5RequisitionMilestone =
+  | 'opening-push'
+  | 'siege-yard'
+  | 'components'
+  | 'checkpoint';
+
+export interface Floor5SiegeTaskState {
+  openingPushRepelled: boolean;
+  yardSecured: boolean;
+  recoveredComponents: Floor5RamComponentClass[];
+  checkpointCleared: boolean;
+}
+
+export interface Floor5SiegeConstructionState {
+  progressMs: number;
+  requiredMs: number;
+  lastProgressWorldElapsedMs: number;
+  buildSiteUnderAttack: boolean;
+  pausedMs: number;
+  attempts: number;
+  deniedAttempts: number;
+  startedFrame: number | null;
+  completedFrame: number | null;
+}
+
 export interface Floor5SiegeState {
   phase: Floor5SiegePhase;
   lastWorldElapsedMs: number;
   commandPostHealth: number;
-  engineState: string;
+  engineState: Floor5RatingsRamState;
   breachState: string;
   heroState: string;
+  tasks: Floor5SiegeTaskState;
+  requisitionMilestones: Floor5RequisitionMilestone[];
+  construction: Floor5SiegeConstructionState;
   readonly rngStreamKeys: {
     readonly waves: string;
     readonly heroes: string;
@@ -719,9 +758,33 @@ export interface Floor5SiegeState {
 export interface Floor5SiegeRunStats {
   readonly phase: Floor5SiegePhase;
   readonly commandPostHealth: number;
-  readonly engineState: string;
+  readonly engineState: Floor5RatingsRamState;
   readonly breachState: string;
   readonly heroState: string;
+  readonly tasks: {
+    readonly openingPushRepelled: boolean;
+    readonly yardSecured: boolean;
+    readonly recoveredComponents: readonly Floor5RamComponentClass[];
+    readonly componentsReady: boolean;
+    readonly checkpointCleared: boolean;
+    readonly allPrerequisitesMet: boolean;
+  };
+  readonly requisition: {
+    readonly milestones: readonly Floor5RequisitionMilestone[];
+    readonly completedMilestones: number;
+    readonly requiredMilestones: number;
+    readonly ready: boolean;
+  };
+  readonly construction: {
+    readonly progressMs: number;
+    readonly requiredMs: number;
+    readonly buildSiteUnderAttack: boolean;
+    readonly pausedMs: number;
+    readonly attempts: number;
+    readonly deniedAttempts: number;
+    readonly startedFrame: number | null;
+    readonly completedFrame: number | null;
+  };
   readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
   readonly trace: readonly Floor5SiegePhaseTraceEntry[];
   readonly structures: Readonly<Record<Floor5SiegeStructureId, Floor5SiegeStructureState>>;
