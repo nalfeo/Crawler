@@ -1,4 +1,7 @@
-import { computeSiegeCastleLayout } from '../../core/map/generators/SiegeCastleGenerator.js';
+import {
+  computeSiegeCastleLayout,
+  siegeCastleOptionsFromConfig,
+} from '../../core/map/generators/SiegeCastleGenerator.js';
 import type { LocationId } from '../ai/objective-route-planner.js';
 import {
   buildScenarioGoalGraph,
@@ -6,6 +9,7 @@ import {
   validateScenarioAiTaskConfig,
 } from '../ai/scenario-ai-tasks.js';
 import type { RunPlannerPoint } from '../ai/run-planner.js';
+import { buildFloor5MapConfig } from '../floor5Scenario.js';
 
 export interface Floor5AiRouteSnapshot {
   readonly openingPushRepelled: boolean;
@@ -14,6 +18,7 @@ export interface Floor5AiRouteSnapshot {
   readonly ramBuilt: boolean;
   readonly checkpointCleared: boolean;
   readonly wallBreached: boolean;
+  readonly breachEntered: boolean;
   readonly courtyardCleared: boolean;
   readonly regentDefeated: boolean;
   readonly castleCaptured: boolean;
@@ -115,6 +120,7 @@ const TASKS: readonly Floor5Task[] = [
     chainId: 'siege',
     present: (s) => !s.wallBreached,
     required: true,
+    unlockEffects: ['floor5.siege.wallBreached'],
     meta: { label: 'Escort Ratings Ram', kind: 'travel', phase: 'other' },
     detail: () => 'Escort the Ratings Ram along the primary lane',
     workCost: () => 0,
@@ -130,9 +136,9 @@ const TASKS: readonly Floor5Task[] = [
   {
     id: 'enter-breach',
     chainId: 'siege',
-    present: (s) => !s.courtyardCleared,
+    present: (s) => !s.breachEntered,
     required: true,
-    unlockEffects: ['floor5.siege.wallBreached'],
+    unlockEffects: ['floor5.siege.breachEntered'],
     meta: { label: 'Enter breach', kind: 'travel', phase: 'other' },
     detail: () => 'Move through the authored breach site',
     workCost: () => 0,
@@ -238,6 +244,7 @@ export const FLOOR5_AI_TASK_CONFIG: ScenarioAiTaskConfig<
     'floor5.siege.ramBuilt',
     'floor5.siege.checkpointCleared',
     'floor5.siege.wallBreached',
+    'floor5.siege.breachEntered',
     'floor5.siege.courtyardCleared',
     'floor5.siege.regentDefeated',
     'floor5.siege.castleCaptured',
@@ -246,7 +253,7 @@ export const FLOOR5_AI_TASK_CONFIG: ScenarioAiTaskConfig<
   interactionActionVocabulary: [],
   farmStrategyVocabulary: [],
   buildLocations: () => {
-    const layout = computeSiegeCastleLayout();
+    const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
     return new Map<LocationId, RunPlannerPoint>([
       ['commandPost', tileCenter(layout.commandPost)],
       ['siegeYard', tileCenter(layout.siegeYard)],

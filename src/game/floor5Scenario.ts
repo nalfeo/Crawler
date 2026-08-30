@@ -40,7 +40,7 @@ function getFloor5Config() {
   return floor5;
 }
 
-function buildFloor5MapConfig(): MapConfig {
+export function buildFloor5MapConfig(): MapConfig {
   const manifest = getFloor5Manifest();
   const geometry = manifest.floor5;
   return {
@@ -88,6 +88,9 @@ function cloneTraceEntry(entry: Floor5SiegePhaseTraceEntry): Floor5SiegePhaseTra
 
 function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
   const config = getFloor5Config();
+  const rngStreamKeys = Object.fromEntries(
+    config.rngStreams.map((label) => [label, `${world.seed}:floor5:${label}`]),
+  ) as Floor5SiegeState['rngStreamKeys'];
   return {
     phase: { kind: config.phase.initial },
     lastWorldElapsedMs: world.elapsedMs,
@@ -95,13 +98,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     engineState: 'LOCKED',
     breachState: 'SEALED',
     heroState: 'PENDING',
-    rngStreamKeys: {
-      waves: `${world.seed}:floor5:waves`,
-      heroes: `${world.seed}:floor5:heroes`,
-      tasks: `${world.seed}:floor5:tasks`,
-      dressing: `${world.seed}:floor5:dressing`,
-      rewards: `${world.seed}:floor5:rewards`,
-    },
+    rngStreamKeys,
     trace: [],
   };
 }

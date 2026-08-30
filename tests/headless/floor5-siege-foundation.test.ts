@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
@@ -32,6 +33,23 @@ class IdleFloor5Provider implements AIInputProvider {
   reset(): void {}
 }
 
+function serializeFloor5Map(map: FloorMap | null | undefined) {
+  expect(map).toBeDefined();
+  return {
+    config: map!.config,
+    playerSpawn: map!.playerSpawn,
+    rooms: map!.rooms.map((room) => ({
+      id: room.id,
+      bounds: room.bounds,
+      role: room.role,
+      label: room.label,
+      neighbors: [...room.neighbors],
+    })),
+    tileFlags: [...map!.tileMap.flags],
+    terrain: [...map!.terrain],
+  };
+}
+
 describe('Floor 5 siege foundation real pipeline', () => {
   it('wires siegeDirectorSystem through the windowed scene options', () => {
     const options = createFloorMainSceneOptions('floor5');
@@ -55,20 +73,20 @@ describe('Floor 5 siege foundation real pipeline', () => {
     createFloorMainSceneOptions('floor5').configureWorld!(windowedWorld, player);
     const windowedStats = getFloor5SiegeRunStats(windowedWorld);
 
-    let headlessMapLabels: readonly (string | undefined)[] = [];
+    let headlessMap: ReturnType<typeof serializeFloor5Map> | undefined;
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 5,
       questStallFrames: 0,
       onFinish: (world) => {
-        headlessMapLabels = world.floorMap?.rooms.map((room) => room.label) ?? [];
+        headlessMap = serializeFloor5Map(world.floorMap);
       },
     });
 
     expect(headless.floor5Siege).toEqual(windowedStats);
     expect(headless.floor5Siege?.trace).toEqual([]);
-    expect(headlessMapLabels).toEqual(windowedWorld.floorMap?.rooms.map((room) => room.label));
+    expect(headlessMap).toEqual(serializeFloor5Map(windowedWorld.floorMap));
   });
 
   it('declares a minimal scenario-AI route from base defense through throne capture', () => {
@@ -80,6 +98,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
       ramBuilt: false,
       checkpointCleared: false,
       wallBreached: false,
+      breachEntered: false,
       courtyardCleared: false,
       regentDefeated: false,
       castleCaptured: false,
