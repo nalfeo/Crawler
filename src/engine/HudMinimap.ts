@@ -29,6 +29,10 @@ import {
   shouldDrawTerritoryOverlayBands,
   shouldUseFamilyRoomTint,
 } from './minimap-territory-guards.js';
+import {
+  resolveFloor3OverworldMarkers,
+  type Floor3OverworldMarker,
+} from './floor3-overworld-markers.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -63,6 +67,13 @@ const DOT_BOSS_ROOM = 0xf59e0b;
 const DOT_SPAWN_ROOM = 0x60a5fa;
 const DOT_STAIRS = 0xf8fafc;
 const DOT_WAYPOINT = 0xfcd34d;
+const FLOOR3_MARKER_COLORS: Readonly<Record<Floor3OverworldMarker['kind'], number>> = {
+  biome: 0x38bdf8,
+  trainer: 0xfb7185,
+  studio: 0xc084fc,
+  'final-four-gate': 0xfacc15,
+  'rally-point': 0x2dd4bf,
+};
 const DOT_PLAYER_RADIUS = 0.8;
 const DOT_ENEMY_RADIUS = 0.55;
 const DOT_NPC_RADIUS = 0.62;
@@ -207,6 +218,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   /** Screen-space bounds of the docked radar waypoint edge arrow when drawn. */
   getRadarWaypointArrowBounds(): ScreenBounds | null;
   getRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
+  getFloor3MarkerStates(): readonly Floor3OverworldMarker[];
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -397,6 +409,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastRadarWaypointArrowBounds: MinimapWaypointArrowBounds[] = [];
   let lastTrackedOverlayWaypointArrowBounds: ScreenBounds | null = null;
   let lastTrackedRadarWaypointArrowBounds: ScreenBounds | null = null;
+  let lastFloor3Markers: readonly Floor3OverworldMarker[] = [];
   /**
    * Quest ids whose waypoint fell inside the overlay viewport on the most
    * recent `drawOverlayArrows` pass — i.e. ids rendered as an in-view
@@ -694,6 +707,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     visited: Uint8Array,
   ): void {
     dotGraphics.clear();
+    lastFloor3Markers = resolveFloor3OverworldMarkers(world);
     for (const room of floorMap.rooms) {
       const color = roleDotColor(room, world);
       if (color === null) {
@@ -733,6 +747,21 @@ export function createHudMinimap(scene: Phaser.Scene): {
         wpTile.y < floorMap.height
       ) {
         drawSquareMarker(dotGraphics, wpTile.x, wpTile.y, DOT_WAYPOINT, WAYPOINT_MARKER_SIZE);
+      }
+
+      // Floor 3 semantic markers intentionally remain visible beyond fog: they
+      // communicate the circuit structure, while normal enemies still require
+      // discovery below.
+      for (const marker of lastFloor3Markers) {
+        const tile = floorMap.worldToTile(marker.xFt, marker.yFt);
+        const color =
+          marker.state === 'cleared'
+            ? 0x4ade80
+            : marker.state === 'locked'
+              ? 0x64748b
+              : FLOOR3_MARKER_COLORS[marker.kind];
+        const size = marker.kind === 'final-four-gate' ? 2.6 : marker.kind === 'studio' ? 2.1 : 1.5;
+        drawSquareMarker(dotGraphics, tile.x, tile.y, color, size);
       }
     }
 
@@ -988,6 +1017,23 @@ export function createHudMinimap(scene: Phaser.Scene): {
         room.role === RoomRole.BOSS_DEN ? ROOM_MARKER_SIZE * 1.4 : ROOM_MARKER_SIZE;
       const half = markerSize * scale * 0.5;
       radarScratch.fillStyle(roomColor, 1);
+      radarScratch.fillRect(rx - half, ry - half, half * 2, half * 2);
+    }
+
+    for (const marker of lastFloor3Markers) {
+      const tile = floorMap.worldToTile(marker.xFt, marker.yFt);
+      const rx = localX(tile.x + 0.5);
+      const ry = localY(tile.y + 0.5);
+      if (!inDial(rx, ry)) continue;
+      const color =
+        marker.state === 'cleared'
+          ? 0x4ade80
+          : marker.state === 'locked'
+            ? 0x64748b
+            : FLOOR3_MARKER_COLORS[marker.kind];
+      const markerSize = marker.kind === 'final-four-gate' ? 2.6 : marker.kind === 'studio' ? 2.1 : 1.5;
+      const half = markerSize * scale * 0.5;
+      radarScratch.fillStyle(color, 1);
       radarScratch.fillRect(rx - half, ry - half, half * 2, half * 2);
     }
 
@@ -1513,6 +1559,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       !masterHidden && hudMapBg.visible ? lastTrackedRadarWaypointArrowBounds : null,
     getRadarWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
       !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : [],
+    getFloor3MarkerStates: () => lastFloor3Markers,
     destroy,
   };
 }

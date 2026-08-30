@@ -103,9 +103,9 @@ function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     };
   }
   return {
-    title: 'Victory!',
-    subtitle: 'Floor 3 complete!',
-    body: 'The Final Four are down — you are the Companion League champion!\nMore floors coming soon...',
+    title: 'Best in Show',
+    subtitle: 'Floor 3 complete · Companion League champion',
+    body: 'The Final Four are down and your kept Companion is signed for the next floor.',
   };
 }
 
