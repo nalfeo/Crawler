@@ -26,6 +26,8 @@ import { getFloorEnemyPack } from './enemy-packs.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
+const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
+
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
   readonly phase: {
@@ -978,7 +980,7 @@ export const floorManifestDefSchema = z
             terminal: z.array(z.enum(['CAPTURED', 'DEFEAT'])).length(2),
           })
           .strict(),
-        rngStreams: z.array(z.enum(['waves', 'heroes', 'tasks', 'dressing', 'rewards'])).length(5),
+        rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
       })
       .strict()
       .superRefine((floor5, ctx) => {
