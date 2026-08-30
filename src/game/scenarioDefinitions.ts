@@ -654,6 +654,16 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor5RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
+      // Authored route data only — NOT yet consumed by a runtime AI path. The
+      // BT provider's goal-graph planner is reached solely via
+      // `world.floorScenario.objective` (bt-ai-provider.ts's
+      // `if (!floorScenario || !objective) return null` guard), and
+      // `initializeFloor5Scenario` deliberately leaves `floorScenario` null
+      // because this foundation slice ships no siege gameplay to populate the
+      // route's ten latches. Wiring it belongs to the slice that makes
+      // `Floor5SiegeState` authoritative for those latches; until then this
+      // config is validated at import (`validateScenarioAiTaskConfig`) and
+      // covered by tests, but not evaluated during a run.
       aiTaskConfig: FLOOR5_AI_TASK_CONFIG,
     },
   ],
