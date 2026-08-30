@@ -1,0 +1,95 @@
+{
+  "id": "floor5",
+  "name": "Floor 5 - Hostile Takeover",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": false,
+    "released": false,
+    "winBudgetMs": 1200000
+  },
+  "timer": {
+    "durationMs": 3600000,
+    "stairSpawnCountdownMs": 0
+  },
+  "objectives": {
+    "requiredRats": 0,
+    "requiredSlimes": 0,
+    "requiredTotalKills": 0,
+    "requiredGold": 0,
+    "requiredJunk": 0,
+    "markerRadiusFt": 8.0
+  },
+  "map": {
+    "widthTiles": 140,
+    "heightTiles": 40,
+    "biome": "siege_castle",
+    "seed": 505,
+    "roomWidthRange": [8, 24],
+    "roomHeightRange": [6, 18],
+    "maxRooms": 8,
+    "floorDensity": 1.0,
+    "tileSizeFt": 4.0
+  },
+  "player": {
+    "hpBonus": 80,
+    "moveSpeedBonus": 0.05,
+    "pickupRangeBonus": 2.5
+  },
+  "camera": {
+    "zoom": 1.8
+  },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomPausesFloorTimer": false,
+    "safeRoomWeaponImmunity": false,
+    "safeRoomDoorsAutoClose": false,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": true
+  },
+  "lighting": {
+    "ambient": 0.4
+  },
+  "floor5": {
+    "commandPost": {
+      "widthTiles": 14,
+      "heightTiles": 12,
+      "health": 1000
+    },
+    "siegeYard": {
+      "widthTiles": 16,
+      "heightTiles": 10
+    },
+    "flankPockets": {
+      "widthTiles": 14,
+      "heightTiles": 10
+    },
+    "lane": {
+      "lengthTiles": 46,
+      "widthTiles": 8
+    },
+    "outerWall": {
+      "thicknessTiles": 3,
+      "breachWidthTiles": 6
+    },
+    "courtyard": {
+      "widthTiles": 20,
+      "heightTiles": 18
+    },
+    "throneRoom": {
+      "widthTiles": 18,
+      "heightTiles": 14
+    },
+    "winnersBalcony": {
+      "widthTiles": 14,
+      "heightTiles": 8
+    },
+    "borderThicknessTiles": 2,
+    "phase": {
+      "initial": "MUSTER",
+      "terminal": ["CAPTURED", "DEFEAT"]
+    },
+    "rngStreams": ["waves", "heroes", "tasks", "dressing", "rewards"]
+  }
+}

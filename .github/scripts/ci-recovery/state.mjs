@@ -9,6 +9,17 @@ export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 export const AUTOMATION_STALE_MINUTES = 30;
+// Hard ceiling on how long a still-running agent session may defer the
+// automation-stale ceiling. Past this age the session check is treated as hung
+// and the normal retry/release ladder resumes, so a wedged session can never
+// hold the ownership lock forever.
+export const AGENT_SESSION_MAX_MINUTES = 120;
+// GitHub publishes the Copilot coding-agent session as a check run on the PR
+// head SHA (see the `ci-failure` / id `copilot` fingerprint exclusion below).
+// Its status is the only first-party signal that a dispatched recovery session
+// is still executing.
+const AGENT_SESSION_CHECK_NAMES = new Set(['copilot', 'copilot-swe-agent']);
+const AGENT_SESSION_RUNNING_STATUSES = new Set(['queued', 'in_progress', 'pending', 'waiting']);
 
 // A check-run named "merge-train" is only real promotion provenance when it
 // was published by the trusted repository App and its external_id is a
@@ -661,12 +672,45 @@ export function isDuplicateDispatch(state, fingerprint) {
   );
 }
 
+/**
+ * True when the dispatched agent session for the current head is demonstrably
+ * still executing: GitHub publishes the Copilot coding-agent session as a
+ * `copilot` check run on the head SHA, and that check stays `queued` /
+ * `in_progress` for the lifetime of the session.
+ *
+ * Bounded by `maxMinutes` on purpose. Without a cap a wedged session check
+ * would hold CI recovery's ownership lock forever; with it, the normal
+ * retry/release ladder resumes once the session exceeds the cap.
+ *
+ * @param {Array<{name?: string, status?: string, started_at?: string, completed_at?: string|null}>} checkRuns
+ * @param {{now?: Date, maxMinutes?: number}} [options]
+ * @returns {boolean}
+ */
+export function isAgentSessionRunning(
+  checkRuns,
+  { now = new Date(), maxMinutes = AGENT_SESSION_MAX_MINUTES } = {},
+) {
+  if (!Array.isArray(checkRuns)) return false;
+  return checkRuns.some((check) => {
+    const name = compact(check?.name).toLowerCase();
+    if (!AGENT_SESSION_CHECK_NAMES.has(name)) return false;
+    const status = compact(check?.status).toLowerCase();
+    if (!AGENT_SESSION_RUNNING_STATUSES.has(status)) return false;
+    const startedAt = Date.parse(check?.started_at ?? '');
+    // An unparseable start time cannot be bounded, so it must not be trusted to
+    // defer the ceiling.
+    if (!Number.isFinite(startedAt)) return false;
+    return now.getTime() - startedAt < maxMinutes * 60 * 1000;
+  });
+}
+
 export function automationStallAction({
   state,
   headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
+  agentSessionRunning = false,
 }) {
   if (
     !state ||
@@ -689,6 +733,20 @@ export function automationStallAction({
 
   const progressAt = Date.parse(state.progressAt || state.updatedAt);
   if (now.getTime() - progressAt < staleMinutes * 60 * 1000) {
+    return 'wait';
+  }
+  // The head SHA and the blocker fingerprint are the only progress signals
+  // above, and review-thread churn is deliberately excluded from the
+  // fingerprint (see blockerFingerprint). A dispatched agent session that is
+  // still investigating therefore looks identical to a dead one, so a task that
+  // legitimately outlives `staleMinutes` could never converge: every window
+  // released and re-dispatched a fresh session until the attempt ceiling filed
+  // a loop incident. Observed in production on PR #3778 / incident #3796, where
+  // R34 fired four minutes before the live session pushed its repair commit.
+  // Keep waiting while the session check proves the agent is still running
+  // (bounded by AGENT_SESSION_MAX_MINUTES); the ceiling is deferred, never
+  // suppressed.
+  if (agentSessionRunning) {
     return 'wait';
   }
   // Legacy v1 automation comments pre-date `progressKey` and used `attempt`

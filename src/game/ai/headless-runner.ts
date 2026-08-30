@@ -30,6 +30,7 @@ import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weap
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
+import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -64,6 +65,7 @@ import {
 } from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
@@ -1291,7 +1293,9 @@ export async function runHeadless(
       );
 
       // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
-      const enemyEids = query(world.ecs, [Enemy]);
+      const enemyEids = query(world.ecs, [Enemy]).filter((eid) =>
+        isEnemyCombatEligible(world, eid),
+      );
 
       // Shared den-boss diagnostic contract — the SAME tracker the player /
       // AI Runner session recorder uses, so all three surfaces emit identical
@@ -1786,6 +1790,7 @@ export async function runHeadless(
         buildFloor2HuntMetrics(),
       ),
       floor4Arena: getFloor4ArenaRunStats(world),
+      floor5Siege: getFloor5SiegeRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -1897,6 +1902,7 @@ export async function runHeadless(
       buildFloor2HuntMetrics(),
     ),
     floor4Arena: getFloor4ArenaRunStats(world),
+    floor5Siege: getFloor5SiegeRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),

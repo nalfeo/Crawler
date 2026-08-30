@@ -14,6 +14,7 @@ import {
 import { getActiveWeaponDef } from '../core/active-weapon.js';
 import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
+import { getStatusEffects } from '../core/status-effects.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
 import { createAudioCueEngine } from './audio/audio-cue-engine.js';
@@ -23,6 +24,12 @@ import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
 import { createMobAbilityVfx } from './MobAbilityVfx.js';
+import { createStatusEffectVfx, type StatusAuraTarget } from './StatusEffectVfx.js';
+import {
+  hasActiveSpeedStatus,
+  resolveStatusVisual,
+  type StatusVisual,
+} from './status-effect-visuals.js';
 import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
@@ -123,7 +130,12 @@ const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
  */
 const PLAYER_WALK_SPEED_EPSILON = 0.05;
 const PLAYER_WALK_SPEED_EPSILON_SQ = PLAYER_WALK_SPEED_EPSILON ** 2;
-const SPEED_STATUS_TINT = 0xaadfff;
+/** Fallback sprite footprint when a status-affected enemy has no measurable display size. */
+const STATUS_AURA_FALLBACK_SIZE_PX = 16;
+/** Fraction of sprite height below its centre where the ground aura is drawn (the feet). */
+const STATUS_AURA_FOOT_OFFSET_RATIO = 0.42;
+/** Aura radius as a fraction of the sprite's half-width, so it reads as a footprint ring. */
+const STATUS_AURA_RADIUS_RATIO = 0.95;
 /** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
 export const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
@@ -620,12 +632,12 @@ function resolveMobMotionProfile(
   return getRuntimeMobMotionProfile(archetypeId);
 }
 
-function hasActiveSpeedStatus(world: GameWorld, eid: number): boolean {
-  return (
-    world.statusEffectsByEntity
-      .get(eid)
-      ?.some((effect) => effect.stat === 'speed' && effect.remainingMs > 0) === true
-  );
+function resolveEntityStatusVisual(world: GameWorld, eid: number): StatusVisual | null {
+  return resolveStatusVisual(getStatusEffects(world, eid));
+}
+
+function hasEntitySpeedStatus(world: GameWorld, eid: number): boolean {
+  return hasActiveSpeedStatus(getStatusEffects(world, eid));
 }
 
 function multiplyTint(left: number, right: number): number {
@@ -697,6 +709,7 @@ export function createPhaserBridge(
   const effectsVfx = createEffectsVfx(scene);
   const combatAudio = createCombatAudio(options?.combatAudioEngine ?? createAudioCueEngine());
   const mobAbilityVfx = createMobAbilityVfx(scene);
+  const statusEffectVfx = createStatusEffectVfx(scene);
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
@@ -764,6 +777,8 @@ export function createPhaserBridge(
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
+      /** Ground auras for status-affected enemies, collected during the entity pass. */
+      const statusAuraTargets: StatusAuraTarget[] = [];
       const preferredTextureCache = new Map<string, ResolvedTexture>();
       const generatedRegistry = getGeneratedSpriteRegistry(scene);
       if (generatedRegistry !== cachedGeneratedRegistry) {
@@ -1759,7 +1774,6 @@ export function createPhaserBridge(
         }
 
         let mobMotion: MobMotionTransform = NEUTRAL_MOB_MOTION;
-        let speedStatusActive = false;
         if (entityType === 'enemy' && !isDeadEnemy) {
           const profile = resolveMobMotionProfile(world, eid);
           const state = profile
@@ -1804,8 +1818,7 @@ export function createPhaserBridge(
               mobMotion = sampleMovementMotion(renderElapsedMs, profile.movementStyle);
             }
 
-            speedStatusActive = hasActiveSpeedStatus(world, eid);
-            if (speedStatusActive) {
+            if (hasEntitySpeedStatus(world, eid)) {
               mobMotion = combineMobMotion(mobMotion, sampleSpeedStatusMotion(renderElapsedMs));
             }
           }
@@ -2149,10 +2162,34 @@ export function createPhaserBridge(
 
         // Enemy tint policy from live identity: unwired spawners stay red,
         // then Rat Brute dark-grey. Dedicated spawner art opts out of the red wash.
+        // Any live status effect (not just a slow) then washes the sprite in its
+        // own colour and registers a ground aura, so a debuffed enemy is legible
+        // at a glance (issue #3690).
         if (entityType === 'enemy' && !corpseDecay) {
           const identityTint = enemyAppearanceTint(world.ecs, eid, appearanceKey, visualType);
           let tint = identityTint ?? 0xffffff;
-          if (speedStatusActive) tint = multiplyTint(tint, SPEED_STATUS_TINT);
+          const statusVisual = isDeadEnemy ? null : resolveEntityStatusVisual(world, eid);
+          if (statusVisual !== null) {
+            tint = multiplyTint(tint, statusVisual.tint);
+            // Gated on the SAME FOV/liveness checks as the sprite and health bar
+            // so an aura can never betray the position of a fog-hidden enemy.
+            if (isVisible) {
+              const displayWidth =
+                typeof img.displayWidth === 'number' && Number.isFinite(img.displayWidth)
+                  ? img.displayWidth
+                  : STATUS_AURA_FALLBACK_SIZE_PX;
+              const displayHeight =
+                typeof img.displayHeight === 'number' && Number.isFinite(img.displayHeight)
+                  ? img.displayHeight
+                  : STATUS_AURA_FALLBACK_SIZE_PX;
+              statusAuraTargets.push({
+                x,
+                y: y + displayHeight * STATUS_AURA_FOOT_OFFSET_RATIO,
+                radiusPx: (displayWidth / 2) * STATUS_AURA_RADIUS_RATIO,
+                color: statusVisual.auraColor,
+              });
+            }
+          }
           if (tint !== 0xffffff && typeof img.setTint === 'function') {
             img.setTint(tint);
           } else if (typeof img.clearTint === 'function') {
@@ -2723,6 +2760,10 @@ export function createPhaserBridge(
       // Boss/mob ability telegraphs, resolution bursts, Tarnished indicators.
       // Pure consumer of committed public cue state (world.mobAbilities).
       mobAbilityVfx.update(world);
+      // Persistent ground aura under every visible, living, status-affected
+      // enemy. Fed by the entity pass above, so it inherits that pass's
+      // FOV/corpse gating and holds no per-entity state of its own.
+      statusEffectVfx.update(statusAuraTargets, renderElapsedMs);
     },
 
     destroy(): void {
@@ -2806,6 +2847,7 @@ export function createPhaserBridge(
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();
       mobAbilityVfx.destroy();
+      statusEffectVfx.destroy();
       playerTrailVfx.destroy();
       combatVfx.destroy();
     },

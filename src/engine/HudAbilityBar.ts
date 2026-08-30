@@ -18,10 +18,32 @@ const SLOT_GAP = 6;
 const BAR_WIDTH =
   ACTIVE_ABILITY_SLOT_LIMIT * SLOT_WIDTH + (ACTIVE_ABILITY_SLOT_LIMIT - 1) * SLOT_GAP;
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
-const BAR_Y = GAME.HEIGHT - 140;
 const PANEL_PADDING = 8;
-const PANEL_TOP = BAR_Y - 30;
+/** Title strip + slot row. */
 const PANEL_HEIGHT = SLOT_HEIGHT + 38;
+/**
+ * Design-space clearance kept between the ability panel and the canvas bottom
+ * edge. The parent `bottomCenter` group additionally offsets the device
+ * safe-area bottom inset (see HudUI.applyScale), so this margin is purely the
+ * authored visual gutter.
+ */
+const PANEL_BOTTOM_MARGIN = 12;
+const PANEL_TOP = GAME.HEIGHT - PANEL_BOTTOM_MARGIN - PANEL_HEIGHT;
+/** Slot row sits below the panel title strip. */
+const BAR_Y = PANEL_TOP + 30;
+
+/**
+ * Authored bottom-center layout of the ability bar in design space. The bar is
+ * anchored to the bottom of the canvas; bottom-center affordances that must not
+ * cover it (the Talk/Descend interaction hint) stack *above* `panelTop`.
+ */
+export const ABILITY_BAR_LAYOUT = {
+  panelTop: PANEL_TOP,
+  panelHeight: PANEL_HEIGHT,
+  panelBottomMargin: PANEL_BOTTOM_MARGIN,
+  slotRowTop: BAR_Y,
+  slotHeight: SLOT_HEIGHT,
+} as const;
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -69,6 +91,8 @@ export function createHudAbilityBar(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld, playerEid: number): void;
+  /** Whether the bar is currently rendered (spells unlocked). */
+  isVisible(): boolean;
   getPanelScreenBounds(): ScreenBounds;
   getSlotScreenBounds(index: number): ScreenBounds | null;
   destroy(): void;
@@ -201,7 +225,9 @@ export function createHudAbilityBar(
     ...cooldownLabels,
   ]);
 
+  let barVisible = false;
   const setVisible = (visible: boolean): void => {
+    barVisible = visible;
     panel.setVisible(visible);
     title.setVisible(visible);
     manageHint.setVisible(visible);
@@ -321,6 +347,7 @@ export function createHudAbilityBar(
 
   return {
     sync,
+    isVisible: () => barVisible,
     getPanelScreenBounds: () => ({
       x: BAR_X - PANEL_PADDING,
       y: PANEL_TOP,

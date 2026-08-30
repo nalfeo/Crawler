@@ -79,29 +79,52 @@ export function computeFlowField(
   goal: TilePoint,
   options: FlowFieldOptions = {},
 ): FlowField {
+  return computeMultiSourceFlowField(floorMap, [goal], options);
+}
+
+/** Build one shortest-path field from all supplied goals. */
+export function computeMultiSourceFlowField(
+  floorMap: FloorMap,
+  goals: ReadonlyArray<TilePoint>,
+  options: FlowFieldOptions = {},
+): FlowField {
   const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
   const isTilePassable = options.isTilePassable;
   const width = floorMap.tileMap.width;
   const height = floorMap.tileMap.height;
   const distance = new Int32Array(width * height).fill(FLOW_UNREACHABLE);
 
-  const field: FlowField = { width, height, goalX: goal.x, goalY: goal.y, distance };
+  const firstGoal = goals[0] ?? { x: -1, y: -1 };
+  const field: FlowField = {
+    width,
+    height,
+    goalX: firstGoal.x,
+    goalY: firstGoal.y,
+    distance,
+  };
 
-  if (
-    !floorMap.tileMap.inBounds(goal.x, goal.y) ||
-    !isTileTraversable(floorMap, goal.x, goal.y, traversalMode, isTilePassable)
-  ) {
+  const queue = new Int32Array(width * height);
+  let tail = 0;
+  for (const goal of goals) {
+    if (
+      floorMap.tileMap.inBounds(goal.x, goal.y) &&
+      isTileTraversable(floorMap, goal.x, goal.y, traversalMode, isTilePassable)
+    ) {
+      const goalIndex = goal.y * width + goal.x;
+      if (distance[goalIndex] === FLOW_UNREACHABLE) {
+        distance[goalIndex] = 0;
+        queue[tail] = goalIndex;
+        tail += 1;
+      }
+    }
+  }
+
+  if (tail === 0) {
     return field;
   }
 
-  const goalIndex = goal.y * width + goal.x;
-  distance[goalIndex] = 0;
-
   // Fixed-size FIFO queue (every tile is enqueued at most once).
-  const queue = new Int32Array(width * height);
-  queue[0] = goalIndex;
   let head = 0;
-  let tail = 1;
 
   while (head < tail) {
     const idx = queue[head]!;

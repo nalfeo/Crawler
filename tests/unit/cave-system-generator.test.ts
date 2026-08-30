@@ -4,6 +4,8 @@ import { BiomeType, RoomRole, TerrainType } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system';
 import { getGenerator } from '../../src/core/map/generators/registry';
+import { isPointInSafeSpace } from '../../src/core/safe-space';
+import { createTestWorld } from '../helpers/world-factory';
 
 /** Small config for fast tests. */
 function smallConfig(seed: number, widthTiles = 80, heightTiles = 60): MapConfig {
@@ -142,7 +144,7 @@ describe('CaveSystemGenerator', () => {
     expect(a.playerSpawn).toEqual(b.playerSpawn);
   });
 
-  it('builds deterministic floor3 biome territory zones with no Floor 2-only rooms', () => {
+  it('builds deterministic floor3 biome territory zones with a dedicated Final Four arena', () => {
     const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
     const config = smallFloor3Config(4321);
     const left = generator.generate(config, new SeededRandom(4321));
@@ -152,6 +154,7 @@ describe('CaveSystemGenerator', () => {
     expect(left.playerSpawn).toEqual(right.playerSpawn);
     expect(left.territoryZones).toEqual(right.territoryZones);
     expect(left.territoryZones).toHaveLength(7);
+    expect(left.settlementHallwayTileIndices.size).toBe(0);
 
     const rooms = left.roomGraph.getAll();
     expect(rooms.filter((room) => room.role === RoomRole.SPAWN)).toHaveLength(1);
@@ -159,6 +162,40 @@ describe('CaveSystemGenerator', () => {
     expect(rooms.filter((room) => room.role === RoomRole.BOSS_DEN)).toHaveLength(0);
     expect(rooms.filter((room) => room.role === RoomRole.SETTLEMENT)).toHaveLength(0);
     expect(rooms.filter((room) => room.role === RoomRole.RESOURCE_HEART)).toHaveLength(0);
+    const arena = rooms.find(
+      (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+    );
+    expect(arena).toBeDefined();
+    expect(arena?.bounds).toMatchObject({ width: 10, height: 10 });
+    expect(arena?.doors).toHaveLength(1);
+  });
+
+  it('keeps the Final Four arena deterministic, sealed, and reachable across representative seeds', () => {
+    const generator = getGenerator(BiomeType.CAVE_SYSTEM_BIOMES);
+    for (const seed of [1, 42, 364, 412, 4321]) {
+      const config = smallFloor3Config(seed);
+      const left = generator.generate(config, new SeededRandom(seed));
+      const right = generator.generate(config, new SeededRandom(seed));
+      const arena = left.roomGraph
+        .getAll()
+        .find(
+          (room) => room.role === RoomRole.BOSS_STAIR && room.label === 'floor3_final_four_arena',
+        );
+      expect(arena, `seed=${seed} missing Final Four arena`).toBeDefined();
+      expectRoomPerimeterSealed(left, arena!, seed);
+      expect(right.roomGraph.get(arena!.id)?.bounds).toEqual(arena!.bounds);
+
+      const reached = bfsReachable(
+        left,
+        left.playerSpawn.x,
+        left.playerSpawn.y,
+        left.width,
+        left.height,
+      );
+      const centerX = arena!.bounds.x + Math.floor(arena!.bounds.width / 2);
+      const centerY = arena!.bounds.y + Math.floor(arena!.bounds.height / 2);
+      expect(reached[centerY * left.width + centerX], `seed=${seed} arena unreachable`).toBe(1);
+    }
   });
 
   it('enlarges the floor3 spawn/entrance room (issue: too small for the starter-pick UX) while staying reachable', () => {
@@ -639,6 +676,7 @@ describe('CaveSystemGenerator', () => {
 
     const barRoom = bar!;
     const annexRooms = settlements.filter((room) => room.id !== barRoom.id);
+    const expectedHallwayIndices = new Set<number>();
     for (const annex of annexRooms) {
       const annexDoorX =
         annex.bounds.x < barRoom.bounds.x
@@ -657,6 +695,8 @@ describe('CaveSystemGenerator', () => {
       const endX = Math.max(annexDoor!.x, barDoor!.x);
       for (let x = startX; x <= endX; x++) {
         const idx = y * floor.width + x;
+        expectedHallwayIndices.add(idx);
+        expect(floor.settlementHallwayTileIndices.has(idx)).toBe(true);
         expect(floor.tileMap.isPassable(x, y), `hallway floor blocked at (${x},${y})`).toBe(true);
         if (floor.terrain[idx] !== TerrainType.DOOR) {
           expect(floor.terrain[idx]).toBe(TerrainType.STONE_FLOOR);
@@ -671,6 +711,15 @@ describe('CaveSystemGenerator', () => {
           expect(floor.tileMap.isPassable(x, sideY)).toBe(false);
         }
       }
+    }
+    expect(floor.settlementHallwayTileIndices).toEqual(expectedHallwayIndices);
+
+    const world = createTestWorld({ seed: 77, floor: 2 });
+    world.floorMap = floor;
+    for (const idx of floor.settlementHallwayTileIndices) {
+      const tile = { x: idx % floor.width, y: Math.floor(idx / floor.width) };
+      const point = floor.tileToWorld(tile.x, tile.y);
+      expect(isPointInSafeSpace(world, point.x, point.y)).toBe(false);
     }
   });
 

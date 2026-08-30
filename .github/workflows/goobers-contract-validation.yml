@@ -1,0 +1,63 @@
+name: Goobers Contract Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci-recovery*.yml'
+      - '.github/workflows/merge-train*.yml'
+      - '.github/workflows/goobers-*.yml'
+      - '.github/scripts/ci-recovery/**'
+      - '.github/scripts/merge-train/**'
+      - '.github/scripts/validate-goobers-contracts*'
+      - '.goobers/**'
+      - 'tests/unit/goobers-contracts.test.ts'
+      - 'tests/unit/goobers-run-workflow.test.ts'
+  pull_request:
+    paths:
+      - '.github/workflows/ci-recovery*.yml'
+      - '.github/workflows/merge-train*.yml'
+      - '.github/workflows/goobers-*.yml'
+      - '.github/scripts/ci-recovery/**'
+      - '.github/scripts/merge-train/**'
+      - '.github/scripts/validate-goobers-contracts*'
+      - '.goobers/**'
+      - 'tests/unit/goobers-contracts.test.ts'
+      - 'tests/unit/goobers-run-workflow.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-contracts:
+    name: Validate Goobers contract schemas (v1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+        with:
+          install-playwright: 'false'
+
+      - name: Validate workflow inputs against invocation schema
+        run: |
+          set -euo pipefail
+          node .github/scripts/validate-goobers-contracts.mjs
+
+      - name: Run contract unit tests
+        run: npx vitest run tests/unit/goobers-contracts.test.ts tests/unit/goobers-run-workflow.test.ts --reporter=verbose
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "### Goobers Contract Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Contract schemas v1 validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Workflow inputs conform to invocation spec" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Output schemas enforce deterministic gates" >> "$GITHUB_STEP_SUMMARY"

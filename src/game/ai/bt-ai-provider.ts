@@ -1816,6 +1816,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -3804,6 +3805,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === undefined) continue;
       const hp = world.stores.health.current[eid] ?? 0;
       if (hp <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -3961,6 +3963,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === undefined) continue;
       const hp = world.stores.health.current[eid] ?? 0;
       if (hp <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -4782,6 +4785,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -5176,6 +5180,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === undefined) continue;
       const hp = world.stores.health.current[eid] ?? 0;
       if (hp <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
       const dx = x - playerX;
@@ -6635,6 +6640,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         return null;
       }
       if ((bossField[eid] ?? 0) !== 0 || (world.stores.health.current[eid] ?? 0) <= 0) {
+        return null;
+      }
+      if (!isEnemyCombatEligible(world, eid)) {
         return null;
       }
       const x = world.stores.position.x[eid] ?? 0;
@@ -9036,6 +9044,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         continue;
       }
       if ((world.stores.health.current[eid] ?? 0) <= 0) {
+        continue;
+      }
+      if (!isEnemyCombatEligible(world, eid)) {
         continue;
       }
       const ex = world.stores.position.x[eid] ?? 0;

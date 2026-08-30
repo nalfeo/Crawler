@@ -112,10 +112,10 @@ describe('questSystem', () => {
     questSystem(world);
     expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(false);
 
-    // Step 2: fetch the gross prize → inventory unlocks.
+    // Step 2: fetch the gross prize. The Bag remains locked until the errand ends.
     addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
     questSystem(world);
-    expect(world.featureUnlocks.inventory).toBe(true);
+    expect(world.featureUnlocks.inventory).toBe(false);
 
     // Step 3: return the prize (goal flag).
     world.inventories.set(player, createInventoryBag());
@@ -134,6 +134,30 @@ describe('questSystem', () => {
 
     expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(true);
     expect(world.goalFlags.get('floor1-shop-quest-complete')).toBe(true);
+    expect(world.featureUnlocks.inventory).toBe(true);
+  });
+
+  it('keeps the Bag locked when the merchant fetch item is picked up before the errand', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor1';
+    const player = spawnPlayer(world, 0, 0);
+
+    addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+    questSystem(world);
+
+    expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
+    expect(world.featureUnlocks.inventory).toBe(false);
+  });
+
+  it('unlocks the Bag from the merchant fetch item on floors without the inventory quest gate', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor-does-not-exist';
+    const player = spawnPlayer(world, 0, 0);
+
+    addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+    questSystem(world);
+
+    expect(world.featureUnlocks.inventory).toBe(true);
   });
 
   it('keeps the haveEquippable step latched once satisfied (equip removes the item)', () => {

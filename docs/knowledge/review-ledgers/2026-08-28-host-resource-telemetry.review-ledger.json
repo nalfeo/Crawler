@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "host-resource-telemetry",
+  "task_title": "Host resource profiling telemetry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.6-sol). Blocking: (1) container CPU must come from cpu.stat deltas normalized by effective CPUs, not os.cpus() -> now reported as a separate cgroup series with throttling counters; (2) cgroup discovery must resolve /proc/self/cgroup and walk ancestors, handling v2 max + v1 sentinels -> implemented via cgroupPathsFromProc + tightest-limit walk; (3) cloud-session capture was manual-only -> preflight.sh now emits a session-start headline snapshot; (4) final-only report loses data on timeout/cancel -> samples stream to a JSONL sidecar and the CI report step rebuilds via --from-jsonl. Non-blocking addressed: host vs cgroup memory terms separated, swap + PSI pressure added, --once defined as a two-snapshot measurement, counters converted to rates before summarizing (gauges only), artifact name carries label+run attempt and report is if:always()+continue-on-error, fixture tests cover nested/unlimited/malformed/fractional-quota/cpuset cases, hostname and RUNNER_NAME deliberately not collected. Not adopted: per-process attribution and disk-IO throughput (scope); install-phase profiling (sampler needs node_modules) is documented as an explicit scope limit."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "c6a8ad38edcbcaffab2942482639628ad979520e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation is exceptionally well-reasoned and robust. It correctly separates physical host metrics from cgroup limits, handles namespaces and v1/v2 layouts, and elegantly falls back on incomplete samples via the jsonl sidecar. Code is thoroughly tested, deeply commented, and fully adheres to repo guidelines."
+    }
+  }
+}

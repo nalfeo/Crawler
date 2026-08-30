@@ -1,6 +1,13 @@
 import { addComponent, hasComponent, query, set } from 'bitecs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Damage, EnemyProjectile, Owner, Position, Projectile } from '../../src/core/components.js';
+import {
+  Damage,
+  EnemyProjectile,
+  Owner,
+  Position,
+  Projectile,
+  Team,
+} from '../../src/core/components.js';
 import {
   collisionSystem,
   damageSystem,
@@ -10,6 +17,7 @@ import {
   spawnProjectile,
 } from '../../src/core/index.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('enemy ranged shooting', () => {
@@ -173,7 +181,25 @@ describe('enemy projectile damage', () => {
     expect(hasComponent(world.ecs, shooter, Position)).toBe(true);
   });
 
-  it('enemy projectile does NOT damage enemies', () => {
+  it('enemy projectile does NOT damage same-team enemies', () => {
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+
+    spawnPlayer(world, 200, 200); // far away
+    const shooter = spawnBehaviorEnemy(world, 45, 50, 30, AI_TYPE.RANGED, 2, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 50, 50, 30, AI_TYPE.CHASE, 2, 200, 0);
+    addComponent(world.ecs, shooter, set(Team, { id: TeamId.ENEMY }));
+    addComponent(world.ecs, enemy, set(Team, { id: TeamId.ENEMY }));
+    spawnEnemyProjectile(world, 50, 50, 1, 0, 20, shooter);
+
+    const collisionResult = collisionSystem(world);
+    damageSystem(world, collisionResult);
+
+    // Enemy should NOT take damage from friendly projectile
+    expect(world.stores.health.current[enemy]).toBe(30);
+  });
+
+  it('ownerless enemy projectile does NOT damage enemies', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
 
@@ -184,7 +210,6 @@ describe('enemy projectile damage', () => {
     const collisionResult = collisionSystem(world);
     damageSystem(world, collisionResult);
 
-    // Enemy should NOT take damage from friendly projectile
     expect(world.stores.health.current[enemy]).toBe(30);
   });
 

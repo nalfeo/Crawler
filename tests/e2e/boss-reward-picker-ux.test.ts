@@ -10,8 +10,17 @@ const VIEWPORTS = [
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
+// Sub-pixel tolerance: measured Phaser bounds accumulate float error, so boxes
+// that are laid out flush against each other must not read as overlapping.
+const OVERLAP_EPSILON = 0.5;
+
 function overlaps(a: Bounds, b: Bounds): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  return (
+    a.x < b.x + b.width - OVERLAP_EPSILON &&
+    a.x + a.width - OVERLAP_EPSILON > b.x &&
+    a.y < b.y + b.height - OVERLAP_EPSILON &&
+    a.y + a.height - OVERLAP_EPSILON > b.y
+  );
 }
 
 describe('real boss reward ability picker UX', () => {
@@ -76,6 +85,16 @@ describe('real boss reward ability picker UX', () => {
           expect(text.y + text.height).toBeLessThanOrEqual(rowBottom);
         }
         expect(overlaps(entry.label, entry.description)).toBe(false);
+      }
+
+      const content = await mainSceneProbe.getModalPickerContent(page);
+      expect(content, 'real boss reward picker content was unavailable').not.toBeNull();
+      expect(content!.options.length).toBeGreaterThan(0);
+      for (const option of content!.options) {
+        // Prose first, then the authored numbers the player is choosing between.
+        expect(option.description, `${option.id} shows no stat line`).toMatch(
+          /\n.*(Damage|Heals|Radius|Range|Slow|Duration|Knockback|Move Speed|Armor|Accuracy).*\d/,
+        );
       }
 
       await context.close();

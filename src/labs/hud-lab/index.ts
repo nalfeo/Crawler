@@ -14,13 +14,21 @@ import {
   createEmptyAbilityState,
   type AbilityState,
 } from '../../shared/abilities.js';
-import { createHudUI } from '../../engine/HudUI.js';
+import { createHudUI, type HudEncounterProbeBounds } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';
 import { setActiveWeaponDef } from '../../core/active-weapon.js';
 import { pxToFt } from '../../shared/units.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
+import { pushAnnouncement } from '../../shared/announcement-events.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import type {
+  Floor4ActIndex,
+  Floor4ArenaState,
+  Floor4HeadlinerEncounterState,
+  Floor4WaveManifest,
+} from '../../shared/floor-types.js';
+import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -38,6 +46,15 @@ interface HudLabSettings {
 export interface HudProbeApi {
   ready(): boolean;
   setBossFightActive(active: boolean): void;
+  setFloor4Surface(surface: 'waves' | 'headline' | 'overtime' | 'break' | 'winner'): void;
+  getFloor4HudState(): HudFloor4ArenaProbeState;
+  /**
+   * Pushes a real `world.announcements` entry and re-syncs the HUD so
+   * `HudAnnouncementBanner` renders it — used to make the encounter stack
+   * (boss bar / announcement banner) visible for layout probes.
+   */
+  pushTestAnnouncement(text: string): void;
+  getEncounterProbeBounds(): HudEncounterProbeBounds;
   setLootSkillStressState(): void;
   getLootSkillLayout(): HudLootSkillLayout;
   getGameSize(): { width: number; height: number };
@@ -64,6 +81,7 @@ const SCENE_KEY = 'HudLabScene';
 
 /** Boss max HP used by the lab so the boss bar can be exercised. */
 const LAB_BOSS_MAX_HP = 500;
+const LAB_FLOOR4_HEADLINER_MAX_HP = 800;
 
 /**
  * Equip a few active abilities so the bottom-center ability bar renders. The
@@ -81,6 +99,41 @@ function makeLabAbilityState(): AbilityState {
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
+  };
+}
+
+function createFloor4WaveManifests(act: Floor4ActIndex): readonly Floor4WaveManifest[] {
+  return Array.from({ length: 8 }, (_, waveIndex) => ({
+    act,
+    waveIndex,
+    releaseAtActMs: waveIndex * 12_000,
+    budget: 6 + waveIndex,
+    entries: [],
+  }));
+}
+
+function createFloor4Headliner(
+  act: Floor4ActIndex,
+  bossEid: number,
+): Floor4HeadlinerEncounterState {
+  return {
+    act,
+    slotId: `floor4-hud-lab-act-${act}`,
+    archetypeId: 'floor4-camera-kraken',
+    grade: act === 5 ? 'finale' : 'main-event',
+    displayName: act === 5 ? 'The Ratings Reaper' : 'Camera Kraken',
+    entranceAnnouncement: 'The Headliner enters the arena!',
+    appearanceFeeGold: 28,
+    contactDamage: 10,
+    fixedFinale: act === 5,
+    bossEid,
+    defeated: false,
+    feeGranted: false,
+    chestSpawned: false,
+    chestForceResolved: false,
+    baseSpeed: 1,
+    baseDamage: 18,
+    appliedOvertimeSteps: 0,
   };
 }
 
@@ -268,6 +321,96 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         inner.y >= outer.y &&
         inner.x + inner.width <= outer.x + outer.width &&
         inner.y + inner.height <= outer.y + outer.height;
+      const applyFloor4Surface = (
+        surface: 'waves' | 'headline' | 'overtime' | 'break' | 'winner',
+      ): void => {
+        if (!world || bossEid < 0) throw new Error('HUD lab world not ready');
+        world.floor = 4;
+        world.hideFloorTimer = true;
+        world.playerGold = 144;
+        world.stores.health.max[bossEid] = LAB_FLOOR4_HEADLINER_MAX_HP;
+        world.stores.health.current[bossEid] =
+          surface === 'overtime' ? 220 : LAB_FLOOR4_HEADLINER_MAX_HP * 0.62;
+        const act: Floor4ActIndex = surface === 'winner' ? 5 : 2;
+        const manifests = createFloor4WaveManifests(act);
+        const activeHeadliner = createFloor4Headliner(act, bossEid);
+        const base: Floor4ArenaState = {
+          phase: { kind: 'WAVES', act },
+          actIncome: [],
+          arenaElapsedMs: (act - 1) * 120_000 + 24_000,
+          phaseElapsedMs: 24_000,
+          overtimeFinisherAnnounced: false,
+          keptCompanionCoStarActive: false,
+          lastWorldElapsedMs: 0,
+          timeline: [],
+          headlinerCard: [activeHeadliner],
+          waveTelemetry: {
+            wavesReleased: 10,
+            enemiesSpawned: 30,
+            enemiesCut: 3,
+            debtDiscarded: 0,
+            gateTelegraphsArmed: 12,
+          },
+          headlinerTelemetry: {
+            spawned: 1,
+            defeated: surface === 'winner' ? 5 : 1,
+            appearanceFeeGoldGranted: 28,
+            chestsSpawned: 1,
+            chestsForceResolved: 1,
+            overtimeStarted: surface === 'overtime' ? 1 : 0,
+            overtimeStepsApplied: surface === 'overtime' ? 2 : 0,
+          },
+          actBaseline: { playerGold: 100, dropGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
+          breakGoldSnapshot: 144,
+          waves: {
+            act,
+            manifests,
+            releaseCursor: 3,
+            debt: [],
+            armedTelegraphs: [{ gateIndex: 1, waveIndex: 3, firesAtArenaMs: 156_000 }],
+            ownedEnemies: new Map(),
+          },
+        };
+        if (surface === 'headline') {
+          base.phase = { kind: 'HEADLINE', act, cleared: false };
+          base.phaseElapsedMs = 1_500;
+          base.arenaElapsedMs = (act - 1) * 120_000 + 90_000;
+          base.activeHeadliner = activeHeadliner;
+          base.waves = undefined;
+        } else if (surface === 'overtime') {
+          base.phase = { kind: 'OVERTIME', act };
+          base.phaseElapsedMs = 12_000;
+          base.arenaElapsedMs = act * 120_000;
+          base.activeHeadliner = activeHeadliner;
+          base.waves = undefined;
+        } else if (surface === 'break' || surface === 'winner') {
+          base.phase = { kind: 'INTERMISSION', act };
+          base.phaseElapsedMs = 0;
+          base.arenaElapsedMs = act * 120_000;
+          base.waves = undefined;
+        }
+        world.floorExtendedState = {
+          ...world.floorExtendedState,
+          floor4Arena: base,
+          floor4GreenRoom: {
+            retiredVisitCount: act - 1,
+            lastOpenedVisitIndex: act - 1,
+            currentVisit: {
+              visitIndex: act - 1,
+              tables: [
+                { tableId: 'arsenal', archetypeId: 'the-fence', streamKey: 'hud:s', offers: [] },
+                {
+                  tableId: 'supply',
+                  archetypeId: 'the-resource-broker',
+                  streamKey: 'hud:t',
+                  offers: [],
+                },
+              ],
+            },
+          },
+        };
+        hudUi?.sync(world, playerEid);
+      };
       const getLootSkillLayout = (): HudLootSkillLayout => {
         const regionNames = [
           'hud-loot-panel-bounds',
@@ -331,6 +474,33 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         ready: () => sceneBuilt,
         setBossFightActive: (active: boolean) => {
           settings.bossFightActive = active;
+        },
+        setFloor4Surface: applyFloor4Surface,
+        getFloor4HudState: () => {
+          const state = hudUi?.getFloor4ArenaState();
+          if (!state) throw new Error('Floor 4 HUD probe not ready');
+          return state;
+        },
+        pushTestAnnouncement: (text: string) => {
+          if (!world || !hudUi) throw new Error('HUD lab world not ready');
+          // +1: the running lab already drains world.announcements every
+          // frame, so an event stamped with the CURRENT elapsedMs can already
+          // equal `lastDrainedElapsedMs` and be silently skipped (drain uses
+          // a strict `>` check). Stamping one tick ahead guarantees this
+          // probe-pushed event is always picked up on the very next sync().
+          pushAnnouncement(world.announcements, {
+            kind: 'bossAbilityCast',
+            archetypeIndex: -1,
+            text,
+            eventId: `hud-lab-probe-${world.announcements.length}`,
+            durationMs: 10_000,
+            elapsedMs: world.elapsedMs + 1,
+          });
+          hudUi.sync(world, playerEid);
+        },
+        getEncounterProbeBounds: () => {
+          if (!hudUi) throw new Error('HUD lab world not ready');
+          return hudUi.getEncounterProbeBounds();
         },
         setLootSkillStressState: () => {
           if (!world?.floorScenario) throw new Error('HUD lab world not ready');

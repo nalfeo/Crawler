@@ -23,8 +23,10 @@ import {
   createRoomBarrier,
   dropBarrier,
   isBarrierPointBlocked,
+  isBarrierBlockingArea,
   isBarrierTile,
   pointInRingBand,
+  ringBandIntersectsRect,
 } from '../../../src/core/barriers/index.js';
 import { FloorMap } from '../../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../../src/core/map/RoomGraph.js';
@@ -321,5 +323,42 @@ describe('barrier ↔ FloorMap.isPassableAt integration', () => {
     expect(world.floorMap!.isPassableAt(xFt, yFt)).toBe(false);
     dropBarrier(world, handle);
     expect(world.floorMap!.isPassableAt(xFt, yFt)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBarrierBlockingArea / ringBandIntersectsRect
+// ---------------------------------------------------------------------------
+
+describe('isBarrierBlockingArea (sub-tile analytic ring walls)', () => {
+  it('detects a thin band that passes between two adjacent tile centres', () => {
+    // Band spans 9..10 ft from (42, 42). On a 4 ft grid the neighbouring tile
+    // centres sit at 8 ft and 12 ft from the centre, so a centre-only sample
+    // sees no wall at all even though the wall physically seals the arena.
+    const cx = 42;
+    const cy = 42;
+    expect(pointInRingBand(cx, cy, 9, 10, 50, 42)).toBe(false);
+    expect(pointInRingBand(cx, cy, 9, 10, 54, 42)).toBe(false);
+
+    // The tile square spanning 48..52 ft straddles the band, so the area test
+    // catches it.
+    expect(ringBandIntersectsRect(cx, cy, 9, 10, 48, 40, 52, 44)).toBe(true);
+  });
+
+  it('rejects rects wholly inside the inner disc or wholly outside the outer radius', () => {
+    expect(ringBandIntersectsRect(42, 42, 9, 10, 40, 40, 44, 44)).toBe(false);
+    expect(ringBandIntersectsRect(42, 42, 9, 10, 100, 100, 104, 104)).toBe(false);
+  });
+
+  it('is false for a world with no ring shapes and true for a createRingWallBarrier band', () => {
+    const world = makeBarrierWorld(makeRoomMap());
+    expect(isBarrierBlockingArea(world, 48, 40, 52, 44)).toBe(false);
+
+    const handle = createRingWallBarrier(world, 42, 42, 10, 1, 'fence');
+    expect(isBarrierBlockingArea(world, 48, 40, 52, 44)).toBe(true);
+    expect(isBarrierBlockingArea(world, 40, 40, 44, 44)).toBe(false);
+
+    dropBarrier(world, handle);
+    expect(isBarrierBlockingArea(world, 48, 40, 52, 44)).toBe(false);
   });
 });

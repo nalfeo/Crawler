@@ -542,6 +542,8 @@ interface AiRunnerLabState {
     playerPersona?: PlayerPersona;
     /** Single shared flag for both optional AI purchases. Replaces the former independent fields. */
     optionalPurchases?: boolean;
+    /** Enables the optional settlement-return routing objective. */
+    settlementReturnRouting?: boolean;
     /**
      * @deprecated Retained for reading old persisted state only.
      */
@@ -731,6 +733,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     playerPersona: PlayerPersona;
     /** Single shared flag for both optional AI purchases. Default true. */
     optionalPurchases: boolean;
+    /** Enables the optional settlement-return routing objective. Default true. */
+    settlementReturnRouting: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
     decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
@@ -741,6 +745,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     playerPersona:
       urlPersona ?? (isPlayerPersona(persistedPersona) ? persistedPersona : DEFAULT_PLAYER_PERSONA),
     optionalPurchases: resolveOptionalPurchases(persisted?.aiConfig ?? {}),
+    settlementReturnRouting: persisted?.aiConfig?.settlementReturnRouting ?? true,
   };
 
   /**
@@ -800,6 +805,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         weaponPersonas: aiConfig.weaponPersonas,
         playerPersona: aiConfig.playerPersona,
         optionalPurchases: aiConfig.optionalPurchases,
+        settlementReturnRouting: aiConfig.settlementReturnRouting,
       },
     });
   };
@@ -852,7 +858,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
-        syncAiRunnerSettlementReturnRouting(world, !manualControl);
+        syncAiRunnerSettlementReturnRouting(
+          world,
+          !manualControl,
+          aiConfig.settlementReturnRouting,
+        );
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -1330,6 +1340,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiFolder
     .add(aiConfig, 'optionalPurchases')
     .name('Optional purchases (merchant + broker)')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'settlementReturnRouting')
+    .name('Settlement return routing')
     .onChange(() => {
       persistLabState();
     });

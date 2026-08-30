@@ -18,8 +18,10 @@ import {
 } from '../../core/components.js';
 import { spawnProjectile } from '../../core/spawners/projectiles.js';
 import { tagDamageMeta } from '../../core/damage-meta.js';
+import { isEnemyHostileToPlayer } from '../../core/enemy-targeting.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { getSpellSkillId } from '../../shared/spell-skills.js';
+import { DEFAULT_TILE_SIZE_FT } from '../../shared/spell-effect-summary.js';
 
 interface ApplyCatalogEffectOptions {
   sourceType: StatModifier['sourceType'];
@@ -28,8 +30,6 @@ interface ApplyCatalogEffectOptions {
   expiresFrame?: number;
   holderEid?: number;
 }
-
-const DEFAULT_TILE_SIZE_FT = 4;
 
 const SPELL_SKILL_PER_LEVEL_BONUS = 0.02;
 const SPELL_SKILL_BREAKPOINT_BONUSES = [
@@ -152,6 +152,7 @@ function findNearestLivingEnemy(
   } | null = null;
 
   for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if (!isEnemyHostileToPlayer(world, enemyEid)) continue;
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
     const ex = world.stores.position.x[enemyEid] ?? 0;
     const ey = world.stores.position.y[enemyEid] ?? 0;
@@ -193,6 +194,7 @@ function findNearestLivingEnemies(
   const found: { eid: number; x: number; y: number; distSq: number }[] = [];
 
   for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if (!isEnemyHostileToPlayer(world, enemyEid)) continue;
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
     const ex = world.stores.position.x[enemyEid] ?? 0;
     const ey = world.stores.position.y[enemyEid] ?? 0;
@@ -229,7 +231,7 @@ function castFireball(
   );
 
   const enemies = [...query(world.ecs, [Enemy, Position, Health])].filter(
-    (eid) => (world.stores.health.current[eid] ?? 0) > 0,
+    (eid) => isEnemyHostileToPlayer(world, eid) && (world.stores.health.current[eid] ?? 0) > 0,
   );
   if (enemies.length === 0) return;
 
@@ -374,6 +376,7 @@ function castPulseShield(
 
   const enemies = [...query(world.ecs, [Enemy, Position, Health])];
   for (const enemyEid of enemies) {
+    if (!isEnemyHostileToPlayer(world, enemyEid)) continue;
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
     const ex = world.stores.position.x[enemyEid] ?? 0;
     const ey = world.stores.position.y[enemyEid] ?? 0;
@@ -600,6 +603,7 @@ function applyEnemySlowBurst(
     color: slowOutput.vfxColor,
   });
   for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if (!isEnemyHostileToPlayer(world, enemyEid)) continue;
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
     const ex = world.stores.position.x[enemyEid] ?? 0;
     const ey = world.stores.position.y[enemyEid] ?? 0;
@@ -666,6 +670,7 @@ function castFrostNova(
     radiusFt,
   });
   for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if (!isEnemyHostileToPlayer(world, enemyEid)) continue;
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
     const ex = world.stores.position.x[enemyEid] ?? 0;
     const ey = world.stores.position.y[enemyEid] ?? 0;

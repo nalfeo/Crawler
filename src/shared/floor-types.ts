@@ -387,6 +387,8 @@ export interface Floor4HeadlinerCardEntry {
   readonly displayName: string;
   readonly entranceAnnouncement: string;
   readonly appearanceFeeGold: number;
+  /** Authored per-act contact damage for this act's Headliner (spec FR8.2). */
+  readonly contactDamage: number;
   readonly fixedFinale: boolean;
 }
 
@@ -561,10 +563,58 @@ export interface Floor4ArenaState {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
   /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
   activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** True when Floor 4 successfully re-hosted an optional kept-companion co-star. */
+  keptCompanionCoStarActive: boolean;
   /** Cumulative wave counters, retained across acts for RunStats. */
   waveTelemetry: Floor4WaveTelemetry;
   /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */
   headlinerTelemetry: Floor4HeadlinerTelemetry;
+  /**
+   * Snapshot of the cumulative counters above, taken the instant the CURRENT
+   * act's `WAVES` phase was armed. The break-summary HUD (FR6/slice 6) reads
+   * this to project THIS act's gold-earned/enemies-engaged delta instead of
+   * the run-cumulative totals, which would otherwise re-report every prior
+   * act's numbers at every later break.
+   */
+  actBaseline: Floor4ActBreakBaseline;
+  /**
+   * Player gold at the instant the CURRENT break's `INTERMISSION` phase was
+   * entered. The break-summary HUD (FR6/slice 6) reads this instead of the
+   * live, continuously-mutating gold balance so "Gold earned" reports a
+   * locked, act-end figure rather than shrinking in real time as the player
+   * spends gold at sponsors during the break.
+   */
+  breakGoldSnapshot?: number;
+  /**
+   * Realised per-act income, appended once per act at its INTERMISSION entry
+   * (spec FR10.3). Recorded before any Green Room spend so it measures income,
+   * not net balance.
+   */
+  actIncome: Floor4ActIncomeEntry[];
+}
+
+/** See {@link Floor4ArenaState.actBaseline}. */
+export interface Floor4ActBreakBaseline {
+  readonly playerGold: number;
+  /** GoldLedger.earnedFromDrops snapshot at WAVES entry for this act. */
+  readonly dropGold: number;
+  readonly enemiesSpawned: number;
+  readonly enemiesCut: number;
+}
+
+/**
+ * Gold actually taken in during one act (spec FR10.3 / slice 7).
+ *
+ * `waveGold` is the drop income banked between the act's WAVES entry and its
+ * INTERMISSION entry; `appearanceFeeGold` is the act's authored Headliner fee.
+ * The two are reported separately because only the fee is guaranteed — the
+ * affordability invariant (FR6.8) is computed from fees alone.
+ */
+export interface Floor4ActIncomeEntry {
+  readonly act: Floor4ActIndex;
+  readonly waveGold: number;
+  readonly appearanceFeeGold: number;
+  readonly totalGold: number;
 }
 
 export interface Floor4ArenaRunStats {
@@ -574,6 +624,125 @@ export interface Floor4ArenaRunStats {
   readonly waveTelemetry: Floor4WaveTelemetry;
   readonly headlinerTelemetry: Floor4HeadlinerTelemetry;
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
+  /** Per-act realised income, in act order, for acts that reached a break. */
+  readonly actIncome: readonly Floor4ActIncomeEntry[];
+}
+
+export type Floor5SiegePhaseKind =
+  | 'MUSTER'
+  | 'CONTEST'
+  | 'BUILD'
+  | 'ESCORT'
+  | 'BREACH'
+  | 'COURTYARD'
+  | 'THRONE'
+  | 'CAPTURED'
+  | 'DEFEAT';
+
+export interface Floor5SiegePhase {
+  readonly kind: Floor5SiegePhaseKind;
+}
+
+export interface Floor5SiegePhaseTraceEntry {
+  readonly phase: Floor5SiegePhase;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly commandPostHealth: number;
+  readonly engineState: string;
+  readonly breachState: string;
+  readonly heroState: string;
+}
+
+export interface Floor5SiegeState {
+  phase: Floor5SiegePhase;
+  lastWorldElapsedMs: number;
+  commandPostHealth: number;
+  engineState: string;
+  breachState: string;
+  heroState: string;
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly heroes: string;
+    readonly tasks: string;
+    readonly dressing: string;
+    readonly rewards: string;
+  };
+  readonly trace: Floor5SiegePhaseTraceEntry[];
+}
+
+export interface Floor5SiegeRunStats {
+  readonly phase: Floor5SiegePhase;
+  readonly commandPostHealth: number;
+  readonly engineState: string;
+  readonly breachState: string;
+  readonly heroState: string;
+  readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
+  readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
+ *
+ * Mirrors {@link Floor2SettlementShopItem} but is produced by the pure
+ * catalog-based `generateShopInventory`, so it references a purchasable catalog
+ * `itemId` and carries NO generated-equipment registry instance. That is what
+ * makes retirement orphan-free: retiring a visit drops these offers and leaves
+ * `world.generatedEquipmentRegistry` untouched (spec §7.2).
+ */
+export interface Floor4GreenRoomOffer {
+  readonly itemId: string;
+  readonly unitPrice: number;
+  /** Units offered. Slice A always emits 1 (the roller's per-line stock). */
+  readonly stock: number;
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — the immutable rolled stock of one fixed
+ * sponsor-table identity for one visit. `streamKey` records the exact derived
+ * stream (`<seed>:floor4:stock:<visitIndex>:<tableId>`) the offers were rolled
+ * from, so path-independence is auditable.
+ */
+export interface Floor4GreenRoomTableStock {
+  /** Stable table identity (spec §7.2: fixed across the floor). */
+  readonly tableId: string;
+  /** Shop-archetype pool this table drew from. */
+  readonly archetypeId: string;
+  /** The derived stream key the offers were rolled from. */
+  readonly streamKey: string;
+  readonly offers: readonly Floor4GreenRoomOffer[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — one visit's fully rolled, immutable stock
+ * across every sponsor table. Path-independent: visit `visitIndex` for a floor
+ * seed always yields identical stock regardless of how the acts before it went.
+ */
+export interface Floor4GreenRoomVisitStock {
+  /** 0-based visit ordinal — one per Headliner, in `[0, phase.actCount - 1]`. */
+  readonly visitIndex: number;
+  readonly tables: readonly Floor4GreenRoomTableStock[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — floor/run-scoped shop lifecycle state, held
+ * on `world.floorExtendedState.floor4GreenRoom`. Deliberately NOT the Floor-2
+ * settlement/quartermaster state: the Green Room re-rolls every table every
+ * visit and retires unsold stock, which the Floor-2 single-restock model does
+ * not express. Transaction (purchase) and UI are owned by later slices; this
+ * state only holds the current visit's immutable offer and the lifecycle
+ * bookkeeping needed to guard against re-rolls and reopens.
+ */
+export interface Floor4GreenRoomState {
+  /** The open visit's rolled, immutable stock; undefined between visits. */
+  currentVisit?: Floor4GreenRoomVisitStock;
+  /** Count of visits retired so far — monotonic, for lifecycle assertions. */
+  retiredVisitCount: number;
+  /**
+   * Highest visitIndex ever opened, or -1 before the first visit. Guards
+   * against re-rolling an open visit and against reopening a retired one.
+   */
+  lastOpenedVisitIndex: number;
 }
 
 // Backward compatibility exports

@@ -13,6 +13,7 @@ import type {
   ScenarioRunOutcome,
   ScenarioStairConfirmationCopy,
   ScenarioStairMarkerState,
+  ScenarioStarterLoadoutCopy,
 } from '../shared/scenario-presentation.js';
 import {
   confirmFloor1StairDescend,
@@ -59,6 +60,12 @@ import {
   initializeFloor4Scenario,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
+import {
+  confirmFloor5StairDescend,
+  getFloor5RunOutcome,
+  initializeFloor5Scenario,
+  siegeDirectorSystem,
+} from './floor5Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -69,6 +76,21 @@ import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+}
+
+function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Takeover Failed',
+      subtitle: 'Floor 5 fell back',
+      body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
+    };
+  }
+  return {
+    title: 'Floor 5 Complete!',
+    subtitle: 'Hostile Takeover complete!',
+    body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
 }
 
 function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
@@ -219,6 +241,12 @@ export interface ScenarioDefinition {
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
   /**
+   * Presentation copy for the generic starter-loadout picker. Omitted by
+   * scenarios that present their own loadout surface (Floor 3) or offer no
+   * starter choice at all.
+   */
+  readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
    * unlock-effect, and runtime-eligibility policy lives here as validated
@@ -239,6 +267,7 @@ export function getScenarioPresentationContract(
     getCompletionCopy: scenario.getCompletionCopy,
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
+    starterLoadout: scenario.starterLoadout,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -390,6 +419,13 @@ function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
   }
 }
 
+const FLOOR_1_STARTER_LOADOUT: ScenarioStarterLoadoutCopy = {
+  title: 'Choose your opening loadout',
+  pausedNotice: 'Floor 1 is paused until you confirm a starter weapon.',
+  prompt: 'Pick the weapon you want to begin with.',
+  optionDescriptionPrefix: 'Starter weapon',
+};
+
 const FLOOR_1_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   title: 'Proceed to the next floor?',
   subtitle: 'You are at the stairs.',
@@ -483,6 +519,17 @@ const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
     world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
 };
 
+const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: 'Floor 5 opens: Hostile Takeover begins at the Command Post.',
+  victory: 'Floor 5 captured. The throne has changed management.',
+  timeout: 'The hostile takeover stalled out. The Director cuts the siege feed.',
+  milestones: [],
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
+};
+
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
   shopkeeper: {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
@@ -534,6 +581,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor1CompletionCopy,
       getStairMarkerState: getFloor1StairMarkerState,
       stairConfirmation: FLOOR_1_STAIR_CONFIRMATION,
+      starterLoadout: FLOOR_1_STARTER_LOADOUT,
       aiTaskConfig: FLOOR1_AI_TASK_CONFIG,
     },
   ],
@@ -585,11 +633,26 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
       onStairDescend: confirmFloor4StairDescend,
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+    },
+  ],
+  [
+    'floor5',
+    {
+      floorId: 'floor5',
+      configureWorld: initializeFloor5Scenario,
+      onStairDescend: confirmFloor5StairDescend,
+      beforeEnemyAISystems: [companionAISystem],
+      afterSpawnerSystems: [siegeDirectorSystem],
+      director: FLOOR_5_DIRECTOR,
+      getRunOutcome: getFloor5RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor5CompletionCopy,
     },
   ],
 ]);

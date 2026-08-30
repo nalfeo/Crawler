@@ -668,15 +668,16 @@ export class CaveSystemGenerator implements MapGenerator {
       h,
       subSeed,
     );
-    const settlementCluster = this.carveSettlementCluster(
-      tileMap,
-      terrain,
-      settlementRegion,
-      w,
-      h,
-      subSeed,
-      reservedSpecialBounds,
-    );
+    const { rooms: settlementCluster, hallwayTileIndices: settlementHallwayTileIndices } =
+      this.carveSettlementCluster(
+        tileMap,
+        terrain,
+        settlementRegion,
+        w,
+        h,
+        subSeed,
+        reservedSpecialBounds,
+      );
     const settlementBarClusterRoom = settlementCluster.find(
       (room) => room.label === 'settlement_bar',
     );
@@ -879,6 +880,8 @@ export class CaveSystemGenerator implements MapGenerator {
       playerSpawn,
       DEFAULT_FOV_SUB_FACTOR,
       territoryZones,
+      [],
+      settlementHallwayTileIndices,
     );
   }
 
@@ -942,6 +945,24 @@ export class CaveSystemGenerator implements MapGenerator {
         radius: territoryZoneRadius,
       });
       regionCenters.push({ x: synthRegion.centroidX, y: synthRegion.centroidY });
+    }
+
+    const finalFourArena = this.carveFloor3FinalFourArena(tileMap, terrain, w, h);
+    const finalFourArenaRoomId = roomGraph.add(
+      finalFourArena.bounds,
+      finalFourArena.doors,
+      [],
+      RoomRole.BOSS_STAIR,
+      'floor3_final_four_arena',
+      undefined,
+      finalFourArena.interiorCells,
+    );
+    const firstTerritoryRoom = roomGraph
+      .getAll()
+      .find((room) => room.role === RoomRole.TERRITORY && room.familyIndex === 0);
+    if (firstTerritoryRoom) {
+      roomGraph.addNeighbor(finalFourArenaRoomId, firstTerritoryRoom.id);
+      roomGraph.addNeighbor(firstTerritoryRoom.id, finalFourArenaRoomId);
     }
 
     const spacingCap = Math.max(0, Math.floor(Math.min(w, h) * 0.2));
@@ -1033,6 +1054,19 @@ export class CaveSystemGenerator implements MapGenerator {
           `unreachable floor3 territory[${zone.familyIndex}] at (${zone.centerX},${zone.centerY})`,
         );
       }
+    }
+    const arenaNear = this.findReachableWithin(
+      reached,
+      w,
+      h,
+      finalFourArena.centerX,
+      finalFourArena.centerY,
+      3,
+    );
+    if (!arenaNear) {
+      throw new Error(
+        `unreachable Floor 3 Final Four arena at (${finalFourArena.centerX},${finalFourArena.centerY})`,
+      );
     }
     this.cullDisconnectedPassable(tileMap, terrain, reached, w, h);
 
@@ -1570,9 +1604,13 @@ export class CaveSystemGenerator implements MapGenerator {
     h: number,
     seed: number,
     blockedBounds: readonly RoomBounds[] = [],
-  ): SettlementClusterRoom[] {
+  ): {
+    readonly rooms: SettlementClusterRoom[];
+    readonly hallwayTileIndices: ReadonlySet<number>;
+  } {
     const plan = this.planSettlementCluster(settlementRegion, w, h, seed, blockedBounds);
     const rooms: SettlementClusterRoom[] = [];
+    const hallwayTileIndices = new Set<number>();
     const addRoom = (bounds: RoomBounds, label: string): SettlementClusterRoom => {
       this.carveStoneRoom(tileMap, terrain, bounds, w);
       const interiorCells: Array<{ x: number; y: number }> = [];
@@ -1608,6 +1646,7 @@ export class CaveSystemGenerator implements MapGenerator {
       const endX = Math.max(aRight, bLeft);
       for (let x = startX; x <= endX; x++) {
         const idx = y * w + x;
+        hallwayTileIndices.add(idx);
         tileMap.flags[idx] = TilePresets.FLOOR;
         terrain[idx] = TerrainType.STONE_FLOOR;
         for (const sideY of [y - 1, y + 1]) {
@@ -1643,7 +1682,7 @@ export class CaveSystemGenerator implements MapGenerator {
       barRoom.doors.push({ x, y, connectsTo: -1 });
     }
 
-    return rooms;
+    return { rooms, hallwayTileIndices };
   }
 
   private carveStoneRoom(
@@ -2516,6 +2555,64 @@ export class CaveSystemGenerator implements MapGenerator {
       spawn: { x: bx + Math.floor(size / 2), y: by + Math.floor(size / 2) },
       bounds,
       doors,
+      interiorCells,
+    };
+  }
+
+  private carveFloor3FinalFourArena(
+    tileMap: TileMap,
+    terrain: Uint8Array,
+    w: number,
+    h: number,
+  ): {
+    centerX: number;
+    centerY: number;
+    bounds: RoomBounds;
+    doors: DoorLocation[];
+    interiorCells: Array<{ x: number; y: number }>;
+  } {
+    const size = 10;
+    const bounds = this.computeSmallRoomBounds(Math.floor(w / 2), Math.floor(h / 2), w, h, size);
+    this.carveStoneRoom(tileMap, terrain, bounds, w);
+
+    const centerX = bounds.x + Math.floor(bounds.width / 2);
+    const centerY = bounds.y + Math.floor(bounds.height / 2);
+    const doorX = centerX;
+    const doorY = bounds.y + bounds.height - 1;
+    tileMap.flags[doorY * w + doorX] = TilePresets.DOOR_OPEN;
+    terrain[doorY * w + doorX] = TerrainType.DOOR;
+    if (doorY + 1 < h - 1 && !tileMap.isPassable(doorX, doorY + 1)) {
+      tileMap.flags[(doorY + 1) * w + doorX] = TilePresets.FLOOR;
+      terrain[(doorY + 1) * w + doorX] = TerrainType.CAVE_FLOOR;
+    }
+    const ringLeft = bounds.x - 1;
+    const ringRight = bounds.x + bounds.width;
+    const ringTop = bounds.y - 1;
+    const ringBottom = bounds.y + bounds.height;
+    for (let x = ringLeft; x <= ringRight; x += 1) {
+      tileMap.flags[ringTop * w + x] = TilePresets.FLOOR;
+      terrain[ringTop * w + x] = TerrainType.CAVE_FLOOR;
+      tileMap.flags[ringBottom * w + x] = TilePresets.FLOOR;
+      terrain[ringBottom * w + x] = TerrainType.CAVE_FLOOR;
+    }
+    for (let y = ringTop + 1; y < ringBottom; y += 1) {
+      tileMap.flags[y * w + ringLeft] = TilePresets.FLOOR;
+      terrain[y * w + ringLeft] = TerrainType.CAVE_FLOOR;
+      tileMap.flags[y * w + ringRight] = TilePresets.FLOOR;
+      terrain[y * w + ringRight] = TerrainType.CAVE_FLOOR;
+    }
+
+    const interiorCells: Array<{ x: number; y: number }> = [];
+    for (let y = bounds.y + 1; y < bounds.y + bounds.height - 1; y += 1) {
+      for (let x = bounds.x + 1; x < bounds.x + bounds.width - 1; x += 1) {
+        interiorCells.push({ x, y });
+      }
+    }
+    return {
+      centerX,
+      centerY,
+      bounds,
+      doors: [{ x: doorX, y: doorY, connectsTo: -1 }],
       interiorCells,
     };
   }

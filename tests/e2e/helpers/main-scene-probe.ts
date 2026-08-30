@@ -29,6 +29,8 @@ import type {
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
   SafeAreaLayoutProbe,
+  StatusAuraEnemyProbe,
+  StatusAuraRenderSummary,
   TerrainRenderSummary,
   DoorRenderSummary,
   StaircaseMarkerRenderInfo,
@@ -153,8 +155,25 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
-  advanceSimulationFrames: (page: Page, frames: number): Promise<void> =>
-    page.evaluate((count) => window.__mainSceneProbe!.advanceSimulationFrames(count), frames),
+  advanceSimulationFrames: async (page: Page, frames: number): Promise<void> => {
+    await page.evaluate((count) => window.__mainSceneProbe!.advanceSimulationFrames(count), frames);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+  },
+  primeStatusAuraEnemy: (page: Page): Promise<StatusAuraEnemyProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeStatusAuraEnemy()),
+  getEntityCameraPosition: (page: Page, eid: number): Promise<ProbePoint | null> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getEntityCameraPosition(id), eid),
+  applyStatusAuraDebuff: (page: Page, enemyEid: number): Promise<boolean> =>
+    page.evaluate((eid) => window.__mainSceneProbe!.applyStatusAuraDebuff(eid), enemyEid),
+  getStatusAuraRenderSummary: (page: Page): Promise<StatusAuraRenderSummary> =>
+    page.evaluate(() => window.__mainSceneProbe!.getStatusAuraRenderSummary()),
+  setStatusAuraLayerAlpha: (page: Page, alpha: number): Promise<boolean> =>
+    page.evaluate((a) => window.__mainSceneProbe!.setStatusAuraLayerAlpha(a), alpha),
   setPlayerFeet: (page: Page, x: number, y: number): Promise<void> =>
     page.evaluate(({ x: fx, y: fy }) => window.__mainSceneProbe!.setPlayerFeet(fx, fy), { x, y }),
   seedBloodPool: (page: Page, x: number, y: number, color: number): Promise<number | null> =>

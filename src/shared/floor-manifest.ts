@@ -19,11 +19,14 @@ import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
+import floor5ManifestJson from './data/floors/floor5.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
+
+const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -53,6 +56,19 @@ interface Floor4WaveValidationInput {
       readonly eligibleGrades: readonly string[];
       readonly fixedArchetypeId?: string;
       readonly appearanceFeeGold: number;
+      readonly contactDamage: number;
+    }[];
+  };
+  readonly economy?: {
+    readonly actIncomeBudgetGold: readonly {
+      readonly act: number;
+      readonly minWaveGold: number;
+      readonly maxWaveGold: number;
+    }[];
+    readonly visitPriceBandGold: readonly {
+      readonly visitIndex: number;
+      readonly minGold: number;
+      readonly maxGold: number;
     }[];
   };
   readonly overtime?: {
@@ -517,6 +533,47 @@ export const floorManifestDefSchema = z
           .object({
             widthTiles: z.number().int().min(6),
             heightTiles: z.number().int().min(6),
+            /**
+             * Fixed sponsor-table identities (spec §7.2: "Tables are fixed
+             * identities across the floor"). Two-to-three tables; the same set
+             * exists at every break, only branding and stock change. `id` is the
+             * stable identity used in the per-visit stock stream key
+             * (`<seed>:floor4:stock:<visitIndex>:<tableId>`) and `archetypeId`
+             * names the shop-archetype pool the table draws from. Pool→archetype
+             * resolution is validated at stock-roll time in the game layer, not
+             * here, to keep this schema pure structural data.
+             */
+            tables: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    archetypeId: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .min(2)
+              .max(3),
+            /**
+             * Per-visit price-tier multiplier applied on top of each archetype's
+             * own `priceMultiplier` (fed to `generateShopInventory` as
+             * `tierMultiplier`). Indexed by 0-based visit (one per Headliner);
+             * length must equal `phase.actCount`. Later breaks carry higher
+             * prices so the gold curve stays coupled to the threat curve
+             * (spec §7.1). Slice A authors a single curve shared by all tables;
+             * per-table pricing is a later seam.
+             */
+            priceTierByVisit: z.array(z.number().positive()),
+            /**
+             * Per-visit worst-case gold-on-hand from guaranteed appearance fees
+             * alone (spec §8: "every Green Room must be able to buy something
+             * meaningful"). Every visit's rolled stock must contain at least one
+             * offer priced at or below this budget. Indexed by 0-based visit;
+             * length must equal `phase.actCount`, and every entry must match
+             * that act's authored Headliner `appearanceFeeGold` so the budget
+             * cannot drift away from the gold actually granted at runtime.
+             */
+            affordabilityBudgetByVisit: z.array(z.number().positive()),
           })
           .strict(),
         tunnel: z
@@ -646,6 +703,48 @@ export const floorManifestDefSchema = z
                       .min(1),
                     fixedArchetypeId: z.string().min(1).optional(),
                     appearanceFeeGold: z.number().int().nonnegative(),
+                    contactDamage: z.number().int().positive(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+        /**
+         * Slice-7 economy contract (spec FR6.7/FR6.8, FR10.3).
+         *
+         * `actIncomeBudgetGold` is the authored band of **wave drop income**
+         * one act may realise, excluding the guaranteed Headliner appearance
+         * fee (which is authored per slot and reported separately). The
+         * headless gate asserts realised per-act income against it, so a
+         * balance change that quietly inflates or starves the gold curve fails
+         * loudly instead of drifting.
+         *
+         * `visitPriceBandGold` is the authored price window each visit's rolled
+         * stock must land inside, derived from the archetype pools scaled by
+         * that visit's `priceTierByVisit`. Enforced when the visit rolls, so a
+         * pool or tier edit that pushes prices out of band cannot ship silently.
+         */
+        economy: z
+          .object({
+            actIncomeBudgetGold: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    minWaveGold: z.number().int().nonnegative(),
+                    maxWaveGold: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+            visitPriceBandGold: z
+              .array(
+                z
+                  .object({
+                    visitIndex: z.number().int().min(0).max(4),
+                    minGold: z.number().int().positive(),
+                    maxGold: z.number().int().positive(),
                   })
                   .strict(),
               )
@@ -702,6 +801,101 @@ export const floorManifestDefSchema = z
             message: 'Green Room is taller than the arena, so it would overflow the venue border',
           });
         }
+        // Green Room shop lifecycle (spec §7.1–§7.2): fixed table identities must
+        // be unique, and both per-visit arrays must cover exactly one entry per
+        // act so every break has authorized pricing and an affordability budget.
+        const tableIds = new Set<string>();
+        for (const table of greenRoom.tables) {
+          if (tableIds.has(table.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['greenRoom', 'tables'],
+              message: `duplicate Green Room table id "${table.id}"`,
+            });
+          }
+          tableIds.add(table.id);
+        }
+        if (greenRoom.priceTierByVisit.length !== floor4.phase.actCount) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['greenRoom', 'priceTierByVisit'],
+            message: `expected one price tier per act (${floor4.phase.actCount}), got ${greenRoom.priceTierByVisit.length}`,
+          });
+        }
+        if (greenRoom.affordabilityBudgetByVisit.length !== floor4.phase.actCount) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['greenRoom', 'affordabilityBudgetByVisit'],
+            message: `expected one affordability budget per act (${floor4.phase.actCount}), got ${greenRoom.affordabilityBudgetByVisit.length}`,
+          });
+        }
+        for (let index = 0; index < greenRoom.affordabilityBudgetByVisit.length; index += 1) {
+          const act = index + 1;
+          const slot = floor4.headliners.slots.find((entry) => entry.act === act);
+          if (slot && greenRoom.affordabilityBudgetByVisit[index] !== slot.appearanceFeeGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['greenRoom', 'affordabilityBudgetByVisit', index],
+              message: `expected Green Room affordability budget for act ${act} to match appearanceFeeGold ${slot.appearanceFeeGold}`,
+            });
+          }
+        }
+        // Slice-7 economy contract (FR6.7/FR6.8). Both bands must cover every
+        // act/visit exactly once, be ordered, and stay coupled to the
+        // affordability budget so an authored band can never make a break
+        // unshoppable.
+        const economy = floor4.economy;
+        const expectedIncomeActs = Array.from(
+          { length: floor4.phase.actCount },
+          (_unused, index) => index + 1,
+        );
+        if (
+          economy.actIncomeBudgetGold.map((entry) => entry.act).join(',') !==
+          expectedIncomeActs.join(',')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['economy', 'actIncomeBudgetGold'],
+            message: `income budgets must list acts ${expectedIncomeActs.join(',')} exactly once, in order`,
+          });
+        }
+        for (const [index, entry] of economy.actIncomeBudgetGold.entries()) {
+          if (entry.minWaveGold > entry.maxWaveGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'actIncomeBudgetGold', index],
+              message: `act ${entry.act} income budget is inverted (${entry.minWaveGold} > ${entry.maxWaveGold})`,
+            });
+          }
+        }
+        const expectedVisits = expectedIncomeActs.map((act) => act - 1);
+        if (
+          economy.visitPriceBandGold.map((entry) => entry.visitIndex).join(',') !==
+          expectedVisits.join(',')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['economy', 'visitPriceBandGold'],
+            message: `price bands must list visits ${expectedVisits.join(',')} exactly once, in order`,
+          });
+        }
+        for (const [index, band] of economy.visitPriceBandGold.entries()) {
+          if (band.minGold > band.maxGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'visitPriceBandGold', index],
+              message: `visit ${band.visitIndex} price band is inverted (${band.minGold} > ${band.maxGold})`,
+            });
+          }
+          const budget = greenRoom.affordabilityBudgetByVisit[band.visitIndex];
+          if (budget !== undefined && band.minGold > budget) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'visitPriceBandGold', index],
+              message: `visit ${band.visitIndex} cheapest authorized price ${band.minGold} exceeds its affordability budget ${budget}, so the break could not be shopped`,
+            });
+          }
+        }
         const border = arena.borderThicknessTiles;
         const arenaMidY = border + Math.floor(arena.heightTiles / 2);
         const tunnelY =
@@ -725,6 +919,86 @@ export const floorManifestDefSchema = z
         }
         validateFloor4Waves(floor4, ctx);
         validateFloor4Headliners(floor4, ctx);
+      })
+      .optional(),
+    /** Floor-5-specific authored siege geometry and phase skeleton config. */
+    floor5: z
+      .object({
+        commandPost: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+            health: z.number().int().positive(),
+          })
+          .strict(),
+        siegeYard: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+          })
+          .strict(),
+        flankPockets: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+          })
+          .strict(),
+        lane: z
+          .object({
+            lengthTiles: z.number().int().min(12),
+            widthTiles: z.number().int().min(4),
+          })
+          .strict(),
+        outerWall: z
+          .object({
+            thicknessTiles: z.number().int().min(1),
+            breachWidthTiles: z.number().int().min(1),
+          })
+          .strict(),
+        courtyard: z
+          .object({
+            widthTiles: z.number().int().min(8),
+            heightTiles: z.number().int().min(8),
+          })
+          .strict(),
+        throneRoom: z
+          .object({
+            widthTiles: z.number().int().min(8),
+            heightTiles: z.number().int().min(8),
+          })
+          .strict(),
+        winnersBalcony: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(4),
+          })
+          .strict(),
+        borderThicknessTiles: z.number().int().min(1),
+        phase: z
+          .object({
+            initial: z.literal('MUSTER'),
+            terminal: z.array(z.enum(['CAPTURED', 'DEFEAT'])).length(2),
+          })
+          .strict(),
+        rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
+      })
+      .strict()
+      .superRefine((floor5, ctx) => {
+        if (floor5.outerWall.breachWidthTiles > floor5.lane.widthTiles) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['outerWall', 'breachWidthTiles'],
+            message: 'breach width cannot exceed primary lane width',
+          });
+        }
+        const streamKeys = new Set(floor5.rngStreams);
+        if (streamKeys.size !== floor5.rngStreams.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rngStreams'],
+            message: 'Floor 5 RNG stream labels must be unique',
+          });
+        }
       })
       .optional(),
     /**
@@ -779,6 +1053,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor3ManifestJson;
   } else if (floorId === 'floor4') {
     manifestJson = floor4ManifestJson;
+  } else if (floorId === 'floor5') {
+    manifestJson = floor5ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -795,3 +1071,4 @@ export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
 export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
 export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');
+export const floor5Manifest: FloorManifestDef = loadFloorManifest('floor5');

@@ -25,10 +25,10 @@ import {
   SkillHolder,
   Velocity,
   Weight,
-  createGameWorld,
   spawnPlayer,
   type GameWorld,
 } from '../../src/core/index.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../../src/game/index.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
@@ -46,7 +46,7 @@ import type { SkillState } from '../../src/game/skills/types.js';
 const ARCANE_L5_USAGE = 600;
 
 function createPlayingFloor1World(seed: number): { world: GameWorld; playerEid: number } {
-  const world = createGameWorld({ seed });
+  const world = createTestWorld({ seed });
   const playerEid = spawnPlayer(world, 400, 400);
   initializeFloor1Scenario(world, playerEid);
   selectFloor1StarterWeapon(world, 0);

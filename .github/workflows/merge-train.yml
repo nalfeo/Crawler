@@ -98,6 +98,7 @@ jobs:
         if: steps.train-gate.outputs.enabled == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}

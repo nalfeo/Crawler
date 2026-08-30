@@ -31,6 +31,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
   generatedEquipmentBaseHasNonArmorStatBonus,
+  generatedEquipmentInstanceHasAffixDrivenStatBonus,
   _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
@@ -152,10 +153,11 @@ describe('resolvePlayerBuildAffinity', () => {
   });
 
   describe('post-generation Common contract', () => {
-    it('does not throw for a Common instance drawn from a base with inherent non-armor riders (decoupled model: stats from effects only)', () => {
-      // Under the decoupled model, no base non-armor stats are spread into
-      // generated instances. A Common item from a base with non-armor authoring
-      // riders generates ZERO non-armor stats (Common has zero effect units).
+    it('does not throw for a Common instance drawn from a base with inherent non-armor riders (rarity is affix-driven, identity is inherent)', () => {
+      // A non-weapon base spreads its authored non-armor line into every
+      // instance made from it (ADR 2026-08-27-generated-equipment-inherent-stat-line), so a Common item DOES carry those
+      // stats — what Common must not carry is an AFFIX-driven stat (Common has
+      // zero effect units).
       const baseWithNonArmorRiders = FLOOR2_REWARD_POOL_STABLE_IDS.find(
         generatedEquipmentBaseHasNonArmorStatBonus,
       );
@@ -170,12 +172,15 @@ describe('resolvePlayerBuildAffinity', () => {
         { baseId: baseWithNonArmorRiders, itemLevel: 1, rarity: 'common' },
         { rng: effectsRng, allowedEffectKinds: ['stat'] },
       );
-      // The decoupled model: no non-armor base stats flow into the instance.
       expect(() => assertGeneratedRewardInstanceLegal(instance, 'common')).not.toThrow();
+      // Zero affixes at Common …
+      expect(instance.resolvedEffects).toHaveLength(0);
+      // … but the base's inherent non-armor identity survives, so the item is
+      // never stat-less.
       const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
         ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
       );
-      expect(nonArmor).toHaveLength(0);
+      expect(nonArmor.length).toBeGreaterThan(0);
     });
   });
 
@@ -343,16 +348,13 @@ describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', ()
     }
   });
 
-  it('tier1 always yields Common with zero non-armor stat bonus and zero resolved effects', () => {
+  it('tier1 always yields Common with zero affix-driven stats and zero resolved effects', () => {
     const world = makeWorld();
     const bundle = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES, 'tier1');
     const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
     expect(instance.rarity).toBe('common');
     expect(instance.resolvedEffects).toHaveLength(0);
-    const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
-      ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-    );
-    expect(nonArmor).toHaveLength(0);
+    expect(generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)).toBe(false);
   });
 
   it('is idempotent — a second resolve returns the identical stored bundle without re-rolling', () => {
@@ -417,12 +419,11 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('allows non-armor base riders and still resolves a Common item with no non-armor bonus', () => {
-    // Under the decoupled model, bases with inherent non-armor riders are
-    // never excluded from Common candidacy — non-armor power is affix-driven.
-    // Common draws zero affix effects (RARITY_EFFECT_BUDGET.common === 0), so
-    // the generated instance carries no non-armor stats regardless of what
-    // the base's catalog definition contains.
+  it('allows non-armor base riders and resolves a Common item that keeps its inherent line and gains no affix', () => {
+    // Bases with inherent non-armor riders are never excluded from Common
+    // candidacy. Common draws zero affix effects
+    // (RARITY_EFFECT_BUDGET.common === 0), so the generated instance carries
+    // exactly the base's authored non-armor line — no more, and never nothing.
     const bases = [...MIXED_BASES, 'accessory.gearwork-locket'] as const;
     for (let seed = 0; seed < 24; seed += 1) {
       const world = createTestWorld({
@@ -433,18 +434,24 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier1');
       const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
       expect(instance.rarity).toBe('common');
-      const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
+      expect(generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)).toBe(false);
+      // The inherent line still reaches the item, so a Common reward from a
+      // base with authored non-armor stats is never stat-less.
+      const frozenNonArmor = Object.entries(instance.frozen.statBonuses).filter(
         ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
       );
-      expect(nonArmor).toHaveLength(0);
+      expect(frozenNonArmor.length > 0).toBe(
+        generatedEquipmentBaseHasNonArmorStatBonus(instance.baseId),
+      );
     }
   });
 
   it('a non-armor-bonus base drawn at Uncommon carries affix-driven non-armor stats', () => {
     // Same base, same candidate set, tier2 (common/uncommon pool) can roll
-    // Common or Uncommon. Under the decoupled model:
-    //   - Common draws have zero non-armor stats (0-effect budget).
-    //   - Uncommon draws have ≥1 affix-driven non-armor stat.
+    // Common or Uncommon:
+    //   - Common draws have zero affix-driven stats (0-effect budget).
+    //   - Uncommon draws have ≥1 affix-driven non-armor stat on top of the
+    //     base's inherent line.
     // (Rare is intentionally avoided here — the locket's effect catalog
     // has no legal 2-unit combination.)
     const bases = [...MIXED_BASES, 'accessory.gearwork-locket'] as const;
@@ -465,9 +472,10 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
           sawTravelersCloakUncommon = true;
           // Uncommon budget = 1 effect → at least one non-armor stat.
           expect(nonArmor.length).toBeGreaterThan(0);
+          expect(generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)).toBe(true);
         } else {
-          // Common budget = 0 effects → no non-armor stats.
-          expect(nonArmor.length).toBe(0);
+          // Common budget = 0 effects → inherent line only, no affix stats.
+          expect(generatedEquipmentInstanceHasAffixDrivenStatBonus(instance)).toBe(false);
         }
       }
     }

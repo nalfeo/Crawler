@@ -74,6 +74,11 @@ export enum BiomeType {
    * Headliner card and rotating shops, not from its geometry (ADR 0090).
    */
   SHOWCASE_ARENA = 'showcase_arena',
+  /**
+   * Floor 5 — authored Command Post-to-throne siege battlefield. Fully authored
+   * so the lane, breach, courtyard, throne, and task pockets are stable data.
+   */
+  SIEGE_CASTLE = 'siege_castle',
 }
 
 // --- Map Configuration ---
@@ -181,6 +186,26 @@ export interface MapConfig {
     /** Inset of each pillar from the arena interior corner, in tiles. */
     readonly pillarInsetTiles?: number;
     /** Venue outer wall thickness in tiles. */
+    readonly borderThicknessTiles?: number;
+  };
+  /** Optional authored-battlefield knobs for {@link BiomeType.SIEGE_CASTLE} (Floor 5). */
+  readonly siegeCastle?: {
+    readonly commandPostWidthTiles?: number;
+    readonly commandPostHeightTiles?: number;
+    readonly siegeYardWidthTiles?: number;
+    readonly siegeYardHeightTiles?: number;
+    readonly pocketWidthTiles?: number;
+    readonly pocketHeightTiles?: number;
+    readonly laneLengthTiles?: number;
+    readonly laneWidthTiles?: number;
+    readonly outerWallThicknessTiles?: number;
+    readonly breachWidthTiles?: number;
+    readonly courtyardWidthTiles?: number;
+    readonly courtyardHeightTiles?: number;
+    readonly throneRoomWidthTiles?: number;
+    readonly throneRoomHeightTiles?: number;
+    readonly balconyWidthTiles?: number;
+    readonly balconyHeightTiles?: number;
     readonly borderThicknessTiles?: number;
   };
 }
