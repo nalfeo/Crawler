@@ -42,13 +42,32 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "3bc72d5c967e40d802de992d38e742c5f7f5c5da",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "spawnFloor5Minion and updateFloor5Checkpoint each recompute computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig())) from scratch on every spawn/tick. It is deterministic and bounded (<=4 minions) so not a correctness bug, but it is redundant work; compute the layout once during initializeFloor5Scenario and store it on the siege state (or a memoized module cache) and reuse it."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "The combat-event audit resets combatEventCursor to 0 whenever combatEvents[cursor-1] !== lastCombatEvent. If the render layer drains and then refills world.combatEvents to the same length with different objects inside a single tick, the mismatch forces a full rescan and could re-count already-audited legal/illegal events (telemetry only, not gameplay). Consider keying staleness on a monotonic event id/sequence rather than the last-object reference to make the audit robust to same-length refills."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The diff implements the Floor 5 lane-war slice cleanly and stays tightly scoped to that task. siegeMinionSystem is wired into the real ScenarioDefinition beforeEnemyAISystems slot and floor5ObjectiveTick via floorObjectiveTick, so behavior runs through the shared game/headless pipeline rather than a lab only; the floor1-main-scene-options test is updated to match the wiring. Determinism is preserved (SeededRandom for the frozen wave manifest, world.elapsedMs/frameCount for timing, deterministic query+sort ordering, no Math.random/Date.now), layer boundaries hold, and siege actors avoid generic Enemy tagging per the ADR. Edge cases are handled and tested: same-post-damage-tick Command Post defeat precedence, stale/recycled structure EID revalidation, bounded per-team spawn debt with manifest-index preservation, and the drained combat-event cursor staleness reset. The new headless lane-war test and the two foundation tests exercise every changed behavior and would fail without the change. The only issues found are minor performance/robustness nits (redundant layout recomputation and a telemetry double-count edge on same-length event refills); no criterion scores below 3 and no blocker exists, so the verdict is pass."
     }
   }
 }
