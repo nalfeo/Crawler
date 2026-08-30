@@ -1,5 +1,39 @@
 [
   {
+    "commit": "e9f153af7fe027e43c9b3d7a73d190df848acca3",
+    "commitDate": "2026-08-30T06:02:28Z",
+    "commitSubject": "Design Floor 5 Hostile Takeover castle siege epic (#3906)",
+    "capturedAt": "2026-08-30T06:41:16.965Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33296026583",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/e9f153af7fe027e43c9b3d7a73d190df848acca3.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.96,
+        "totalWins": 144,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/e9f153af7fe027e43c9b3d7a73d190df848acca3.fun-report.json"
+    }
+  },
+  {
     "commit": "093cb981eba9e8a9b14c7ac8c4d26d0c3683a365",
     "commitDate": "2026-08-29T03:25:32Z",
     "commitSubject": "feat(game): add periodic rat attack waves (feature-flagged, safe-room suppressed) (#3878)",
