@@ -44,9 +44,27 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `engine=${siege?.engineState ?? '(none)'}`,
       `breach=${siege?.breachState ?? '(none)'}`,
       `hero=${siege?.heroState ?? '(none)'}`,
+      `checkpointOwner=${siege?.checkpointOwner ?? '(none)'}`,
+      `waveCycles=${siege?.laneTelemetry.waveCyclesCompleted ?? 0}`,
+      `checkpointContests=${siege?.laneTelemetry.checkpointContests ?? 0}`,
+      `legalDamage=${siege?.laneTelemetry.legalDamageEvents ?? 0}`,
+      `illegalDamage=${siege?.laneTelemetry.illegalDamageEvents ?? 0}`,
+      `pathStalls=${siege?.laneTelemetry.pathStalls ?? 0}`,
       '',
       'stream keys:',
       ...Object.entries(siege?.rngStreamKeys ?? {}).map(([key, value]) => `  ${key}: ${value}`),
+      '',
+      'structures:',
+      ...Object.values(siege?.structures ?? {}).map(
+        (structure) =>
+          `  ${structure.id} team=${structure.team} hp=${structure.health}/${structure.maxHealth}`,
+      ),
+      '',
+      'wave manifest:',
+      ...(siege?.waveManifest ?? []).map(
+        (entry) =>
+          `  ${entry.id} team=${entry.team} releaseFrame=${entry.releaseFrame} count=${entry.count}`,
+      ),
       '',
       'phase trace:',
       ...(siege?.trace ?? []).map(

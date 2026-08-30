@@ -83,6 +83,8 @@ export const TeamId = {
   PLAYER: 0,
   ENEMY: 1,
   NEUTRAL: 2,
+  SIEGE_ALLIED: 3,
+  SIEGE_ENEMY: 4,
 } as const;
 export type TeamIdValue = (typeof TeamId)[keyof typeof TeamId];
 
