@@ -38,6 +38,7 @@ import {
   ensureSpellBrokerDecision,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
+import { getWorldFloorBehavior } from '../../src/core/floor-behavior.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
@@ -91,6 +92,29 @@ describe('requiredShopPurchaseReserve — released once paid', () => {
     questSystem(world);
     expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
     questSystem(world);
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+});
+
+describe('requiredShopPurchaseReserve — scoped by floor config, not floor id', () => {
+  // `getShopkeeperStage` reports the unpaid `not-met` stage for any world with
+  // no shop errand at all, so the reserve MUST stay off unless the running
+  // floor's manifest declares `merchantCharmGatesEquipment` — otherwise the AI
+  // would hold gold back forever on a floor with no charm to buy.
+  it.each(['floor2', 'floor3', 'floor4'])(
+    'reserves nothing on %s, whose manifest declares no required merchant charm',
+    (floorId) => {
+      const { world } = startFloor1();
+      world.floorId = floorId;
+      expect(getWorldFloorBehavior(world).merchantCharmGatesEquipment).toBeNull();
+      expect(getShopkeeperStage(world)).toBe('not-met');
+      expect(requiredShopPurchaseReserve(world)).toBe(0);
+    },
+  );
+
+  it('reserves nothing on a synthetic world with no floor assigned', () => {
+    const { world } = startFloor1();
+    world.floorId = '';
     expect(requiredShopPurchaseReserve(world)).toBe(0);
   });
 });

@@ -1,4 +1,5 @@
 import type { GameWorld } from '../../core/world.js';
+import { getWorldFloorBehavior } from '../../core/floor-behavior.js';
 import { UNPAID_SHOPKEEPER_STAGES } from '../../shared/quest-types.js';
 import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floorScenario.js';
 
@@ -21,12 +22,17 @@ import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floorScenario.
  * its own module so both intent lifecycles can read it without
  * `merchant-weapon-intent` ⇄ `spell-broker-intent` importing each other.
  *
- * Scoped to Floor 1: the shop errand is a Floor 1 quest, and
- * {@link getShopkeeperStage} reports `not-met` for any world that simply has no
- * such quest, which would otherwise reserve gold on every other floor forever.
+ * Scoped by floor *config*, not by floor id: the reserve only applies on a floor
+ * that has actually been entered (`floorId` assigned) and whose manifest declares
+ * `merchantCharmGatesEquipment` — i.e. a floor where the merchant charm is a
+ * required, progression-gating purchase. Anywhere else {@link getShopkeeperStage}
+ * reports the unpaid `not-met` stage for an errand that floor never gates on, and
+ * the AI would reserve gold forever. The explicit `floorId` requirement keeps
+ * synthetic worlds (no floor assigned) from inheriting Floor 1's charm gate
+ * through the numeric-floor fallback.
  */
 export function requiredShopPurchaseReserve(world: GameWorld): number {
-  if (world.floorId !== 'floor1') {
+  if (!world.floorId || getWorldFloorBehavior(world).merchantCharmGatesEquipment === null) {
     return 0;
   }
   return UNPAID_SHOPKEEPER_STAGES.has(getShopkeeperStage(world)) ? SHOPKEEPER_EQUIPMENT_COST : 0;

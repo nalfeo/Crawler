@@ -40,6 +40,7 @@ import { floor1Config } from '../../src/shared/floor-config.js';
 import tuning from '../../src/shared/data/tuning.json';
 import { getRatTemplate } from '../../src/game/spawners/template-accessor.js';
 import { getBodyRadius } from '../../src/core/physics-body.js';
+import { getWorldFloorBehavior } from '../../src/core/floor-behavior.js';
 
 type TuningSchema = typeof tuning & {
   attackWaves: {
@@ -111,9 +112,31 @@ describe('attackWaveSystem', () => {
       expect(enemyCount(world)).toBe(TUNING.attackWaves.packSize * 2);
     });
 
-    it('is inert outside Floor 1 even when enabled', () => {
+    // The gate is the floor manifest's `trashAttackWaves` behavior flag, not a
+    // hardcoded floor id: every floor that does not declare it stays inert, and
+    // a new floor opts in through its manifest instead of a code edit here.
+    it.each(['floor2', 'floor3', 'floor4'])(
+      'is inert on %s, which does not declare trashAttackWaves, even when enabled',
+      (floorId) => {
+        const world = createTestWorld();
+        world.floorId = floorId;
+        world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
+        spawnPlayer(world, 400, 400);
+        world.attackWaveFlags.attackWaves = true;
+        world.elapsedMs = TUNING.attackWaves.intervalMs;
+
+        expect(getWorldFloorBehavior(world).trashAttackWaves).toBe(false);
+
+        attackWaveSystem(world);
+
+        expect(enemyCount(world)).toBe(0);
+        expect(world.attackWaveState).toBeUndefined();
+      },
+    );
+
+    it('is inert on an unregistered floor id, which has no manifest at all', () => {
       const world = createTestWorld();
-      world.floorId = 'floor2';
+      world.floorId = 'floor-does-not-exist';
       world.floorMap = makeMapWithSafeRoom({ widthTiles: 80, heightTiles: 80 });
       spawnPlayer(world, 400, 400);
       world.attackWaveFlags.attackWaves = true;

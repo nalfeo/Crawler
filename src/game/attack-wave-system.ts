@@ -20,9 +20,9 @@ import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { addComponent, query, setComponent } from 'bitecs';
 import { computeMultiSourceFlowField } from '../core/map/flow-field.js';
 import { RoomRole } from '../shared/map-types.js';
-import { GAME } from '../shared/constants.js';
+import { CAMERA, GAME } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
-import { floor1Config } from '../shared/floor-config.js';
+import { getWorldFloorBehavior, getWorldFloorManifest } from '../core/floor-behavior.js';
 import { buildDoorAwarePassable, getDoorNavInfos } from '../core/door-navigation.js';
 import { isBarrierBlockingArea } from '../core/barriers/index.js';
 
@@ -230,7 +230,7 @@ function resolveWaveSpawnPoint(
   const spawnRingRadiusFt = TUNING.attackWaves.spawnRingRadiusFt;
   const tileSizeFt = floorMap.config.tileSizeFt;
   if (spawnRingRadiusFt < minRingRadiusFt) {
-    throw new Error('attackWaves.spawnRingRadiusFt must cover the Floor 1 viewport diagonal');
+    throw new Error('attackWaves.spawnRingRadiusFt must cover the floor viewport diagonal');
   }
 
   // Randomized attempts preserve variety; the deterministic scan below ensures
@@ -306,8 +306,11 @@ function spawnWavePack(world: GameWorld): void {
   }
 
   // Compute minimum off-screen radius (half viewport diagonal)
-  const viewportWidthFt = pxToFt(GAME.WIDTH / floor1Config.camera.zoom);
-  const viewportHeightFt = pxToFt(GAME.HEIGHT / floor1Config.camera.zoom);
+  // Zoom comes from the running floor's manifest, not a hardcoded floor config:
+  // the off-screen ring must clear whatever viewport the active floor renders.
+  const cameraZoom = getWorldFloorManifest(world)?.camera.zoom ?? CAMERA.BASE_ZOOM;
+  const viewportWidthFt = pxToFt(GAME.WIDTH / cameraZoom);
+  const viewportHeightFt = pxToFt(GAME.HEIGHT / cameraZoom);
   const minRingRadiusFt = computeMinSpawnRingRadiusFt(viewportWidthFt, viewportHeightFt);
 
   const state = (world.attackWaveState ??= {
@@ -394,7 +397,7 @@ export function attackWaveSystem(world: GameWorld): void {
   if (!world.attackWaveFlags.attackWaves) {
     return;
   }
-  if (world.floorId !== 'floor1') {
+  if (!getWorldFloorBehavior(world).trashAttackWaves) {
     return;
   }
   // This is a post-system, so an earlier post-system in the same frame can have
