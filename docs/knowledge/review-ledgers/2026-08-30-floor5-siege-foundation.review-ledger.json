@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan critique approved the architecture with changes. Concern 1 fixed by adding explicit wallBreached/breachEntered route latches. Concern 2 fixed by serializing and comparing map config, spawn, rooms, tile flags, and terrain across windowed/headless paths. Concern 3 fixed by deriving AI locations from buildFloor5MapConfig manifest plumbing. Concern 4 fixed for RNG streams by deriving runtime keys from manifest labels; checkpointCount remains validated manifest geometry for later slice expansion and is intentionally not gameplay-authoritative in Slice 1. Concern 5 reviewed and deferred: DEFEAT uses existing ScenarioRunOutcome taxonomy only for abnormal command-post destruction in this skeleton; later loss taxonomy should widen with live damage gameplay."
     },
     "code_review": {
       "clean": false,
