@@ -210,6 +210,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RESUME_BRANCH');
     expect(tasks.get('query-backlog')?.expectedOutputs).toContain('workspaceBranch');
+    const recoveryStep = loadYaml<GoobersActionsWorkflow>(
+      '.github',
+      'workflows',
+      'goobers-run.yml',
+    ).jobs.run?.steps?.find((step) => step.name === 'Resolve Goobers recovery target');
+    expect(recoveryStep?.run).toContain("--state open --label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain('select((.assignees | length) == 0)');
+    expect(recoveryStep?.run).toContain('index("goobers/status:in-review")');
+    expect(recoveryStep?.run).toContain('should_run=false');
+    expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
     expect(hydrate?.inputsFrom).toEqual({
       issueNumber: 'query-backlog.id',
       issueTitle: 'query-backlog.title',
