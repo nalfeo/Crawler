@@ -3,6 +3,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
+import type { CombatEvent } from './combat-events.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -654,6 +655,39 @@ export interface Floor5SiegePhaseTraceEntry {
   readonly heroState: string;
 }
 
+export type Floor5SiegeTeam = 'allied' | 'enemy';
+export type Floor5SiegeCheckpointOwner = Floor5SiegeTeam | 'contested';
+export type Floor5SiegeStructureId =
+  | 'command-post'
+  | 'allied-checkpoint'
+  | 'enemy-checkpoint'
+  | 'outer-wall';
+
+export interface Floor5SiegeStructureState {
+  readonly id: Floor5SiegeStructureId;
+  readonly team: Floor5SiegeTeam;
+  eid: number;
+  health: number;
+  maxHealth: number;
+}
+
+export interface Floor5SiegeWaveManifestEntry {
+  readonly id: string;
+  readonly team: Floor5SiegeTeam;
+  readonly releaseFrame: number;
+  readonly count: number;
+}
+
+export interface Floor5SiegeLaneTelemetry {
+  waveCyclesCompleted: number;
+  checkpointContests: number;
+  legalDamageEvents: number;
+  illegalDamageEvents: number;
+  pathStalls: number;
+  spawned: Record<Floor5SiegeTeam, number>;
+  spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+}
+
 export type Floor5RatingsRamState =
   | 'LOCKED'
   | 'BUILDING'
@@ -708,6 +742,17 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  waveCursor: Record<Floor5SiegeTeam, number>;
+  waveRemainder: Record<Floor5SiegeTeam, number>;
+  spawnDebt: Record<Floor5SiegeTeam, number>;
+  spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
+  liveMinions: Record<Floor5SiegeTeam, number>;
+  checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  combatEventCursor: number;
+  lastCombatEvent?: CombatEvent;
 }
 
 export interface Floor5SiegeRunStats {
@@ -742,6 +787,12 @@ export interface Floor5SiegeRunStats {
   };
   readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
   readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+  readonly structures: Readonly<Record<Floor5SiegeStructureId, Floor5SiegeStructureState>>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
 }
 
 /**
