@@ -5,7 +5,7 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { Companion, Enemy, PartySlot, Prop, Size, Sprite } from '../../src/core/index.js';
+import { Companion, Enemy, PartySlot, Position, Prop, Size, Sprite } from '../../src/core/index.js';
 import {
   FLOOR3_TIMEOUT_GOAL_ID,
   _resolveFloor3AmbientSpawnPoint,
@@ -313,6 +313,14 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     const professorEid = world.floorExtendedState?.floor3CompanionProfessorNpcEid;
     expect(professorEid).toBeGreaterThan(0);
     expect(world.npcs.get(professorEid!)?.defId).toBe(FLOOR3_COMPANION_PROFESSOR_NPC_ID);
+    expect(hasComponent(world.ecs, professorEid!, Position)).toBe(true);
+    expect({
+      x: world.stores.position.x[professorEid!],
+      y: world.stores.position.y[professorEid!],
+    }).not.toEqual({
+      x: world.stores.position.x[playerEid],
+      y: world.stores.position.y[playerEid],
+    });
   });
 
   it('recruits the picked species into the party and resumes play', () => {

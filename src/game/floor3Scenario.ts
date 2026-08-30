@@ -960,7 +960,9 @@ function resolveFloor3AmbientSpawnPoint(
 
 export const _resolveFloor3AmbientSpawnPoint = resolveFloor3AmbientSpawnPoint;
 
-function resolveFloor3CompanionProfessorPosition(floorMap: FloorMap): { x: number; y: number } {
+function resolveFloor3CompanionProfessorPosition(
+  floorMap: FloorMap,
+): { x: number; y: number } | null {
   const spawnTile = floorMap.playerSpawn;
   const spawnRoom = floorMap.spawnRoom;
   const candidates = [
@@ -968,7 +970,6 @@ function resolveFloor3CompanionProfessorPosition(floorMap: FloorMap): { x: numbe
     { x: spawnTile.x, y: spawnTile.y + FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES },
     { x: spawnTile.x - FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES, y: spawnTile.y },
     { x: spawnTile.x, y: spawnTile.y - FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES },
-    spawnTile,
   ];
   for (const tile of candidates) {
     if (
@@ -982,7 +983,30 @@ function resolveFloor3CompanionProfessorPosition(floorMap: FloorMap): { x: numbe
     }
     return floorMap.tileToWorld(tile.x, tile.y);
   }
-  return floorMap.tileToWorld(spawnTile.x, spawnTile.y);
+  for (let radius = 1; radius <= 6; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) + Math.abs(dy) !== radius) {
+          continue;
+        }
+        const tile = { x: spawnTile.x + dx, y: spawnTile.y + dy };
+        if (tile.x === spawnTile.x && tile.y === spawnTile.y) {
+          continue;
+        }
+        if (
+          !floorMap.tileMap.inBounds(tile.x, tile.y) ||
+          !floorMap.tileMap.isPassable(tile.x, tile.y)
+        ) {
+          continue;
+        }
+        if (spawnRoom && floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== spawnRoom.id) {
+          continue;
+        }
+        return floorMap.tileToWorld(tile.x, tile.y);
+      }
+    }
+  }
+  return null;
 }
 
 export function floor3WildDirectorSystem(world: GameWorld): void {
@@ -1201,17 +1225,19 @@ export function initializeFloor3Scenario(
     addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
   }
   const professorPos = resolveFloor3CompanionProfessorPosition(floorMap);
-  const professorEid = spawnNpc(
-    world,
-    professorPos.x,
-    professorPos.y,
-    FLOOR3_COMPANION_PROFESSOR_NPC_ID,
-  );
-  if (professorEid >= 0 && world.floorExtendedState) {
-    world.floorExtendedState = {
-      ...world.floorExtendedState,
-      floor3CompanionProfessorNpcEid: professorEid,
-    };
+  if (professorPos) {
+    const professorEid = spawnNpc(
+      world,
+      professorPos.x,
+      professorPos.y,
+      FLOOR3_COMPANION_PROFESSOR_NPC_ID,
+    );
+    if (professorEid >= 0 && world.floorExtendedState) {
+      world.floorExtendedState = {
+        ...world.floorExtendedState,
+        floor3CompanionProfessorNpcEid: professorEid,
+      };
+    }
   }
 
   removeStatModifiers(world, 'floor', 'floor3-manifest-player');
