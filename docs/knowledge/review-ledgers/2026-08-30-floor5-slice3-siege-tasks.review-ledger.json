@@ -16,13 +16,37 @@
       "notes": "Adversarial review considered: Alt A state-only Slice 3 with quest integration deferred (rejected because issue explicitly requires quest-event projection, but we will avoid HUD overreach); Alt B programmatic TS quest-pack builder from constants (rejected as broader than needed; add drift validation for static pack instead); Alt C pure reducer/event seam (partially adopted by driving exported runtime helpers through the real floorObjectiveTick path instead of provider-only autoprogression). Adopted changes: do not call questSystem inside floor5ObjectiveTick, make terminal/non-playing ticks no-op so defeat precedence wins, avoid provider-only headless shortcut, add static-pack/goal-ID validation, add parity/idempotency coverage, and phrase Slice 3 completion as reaching all Slice 3 latches rather than floor victory."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
