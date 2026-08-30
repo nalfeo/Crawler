@@ -1521,7 +1521,12 @@ export async function runHeadless(
       // completing it. Replace this with a proximity-gated
       // `autoFloor3ProgressionSystem` once the AI can path to the Floor 3
       // exit. Headless-only: real play still walks to the stairs.
-      if (scenario.autoSelectKeptCompanion?.(world)) {
+      if (scenario.autoSelectKeptCompanion) {
+        // Note the sequencing: `autoSelectKeptCompanion` returns false when
+        // there is nothing left to pick (a post-victory party wipe, which the
+        // descend gate explicitly allows), so the descend attempt must not be
+        // conditional on it or those runs would stall instead of completing.
+        scenario.autoSelectKeptCompanion(world);
         scenario.onStairDescend?.(world, playerEid);
       }
       const scenarioOutcome = scenario.getRunOutcome(world);

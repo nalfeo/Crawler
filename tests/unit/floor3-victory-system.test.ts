@@ -699,6 +699,10 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
       visible: true,
       locked: false,
     });
+    // The non-interactive path has nothing left to pick here, so the headless
+    // runner must not make its descend attempt conditional on this returning
+    // true or a wiped-party win would stall instead of completing.
+    expect(getScenarioDefinition('floor3').autoSelectKeptCompanion?.(world)).toBe(false);
     expect(confirmFloor3StairDescend(world, 0)).toBe(true);
     expect(world.state).toBe('safe_room');
     expect(state.staircaseDiscovered).toBe(true);
