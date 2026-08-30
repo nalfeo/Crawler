@@ -1,0 +1,59 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "ai-runner-feature-flags",
+  "task_title": "Centralize AI runner feature flags",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Added surface-aware default resolution to preserve the lab/headless/CLI matrix; retained optional-purchase legacy precedence through the existing resolver; strengthened the hard gate with a pure registry-to-controls projection plus wiring assertions; required both lab and headless consumers to use one resolved featureFlags object; moved compatibility/default tests before migration. Scope remains AI-runner-specific."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.4",
+      "head_sha": "f63007f6cd150b094a6ac85cf575f95e79db80fd",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/ai/feature-flags.ts",
+          "detail": "In resolveAiFeatureFlags the `input[key] ?? definition.resolve?.(input) ?? defaultEnabled` chain is partially redundant for optionalPurchases: resolveOptionalPurchases already inspects input.optionalPurchases and always returns a non-undefined boolean, so the leading `input.optionalPurchases ??` term and the trailing defaultEnabled fallback can never both matter. Behavior is correct and consistent (default true either way); optionally simplify by documenting that resolve-owning flags bypass defaultEnabled to avoid future confusion."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "This is a clean, surgical centralization of the three AI-runner boolean gates into one typed registry. I verified the graded tree directly: typecheck:src passes and all 56 tests across the six changed test files pass. The registry's surface-aware defaults exactly reproduce prior behavior — lab defaults all true, headless floor1 settlement-routing true / floor2 false, weaponPersonas and optionalPurchases default true — and the CLI floor2 settlement-routing override is preserved via resolveHeadlessRunnerOptions. Backward compatibility is maintained: the lab reads legacy persisted aiConfig fields (including deprecated merchantWeaponPurchase/spellBrokerPurchase) through the resolver, and DEFAULT_CONFIG/mergedConfig no longer carry the removed flag fields (grep confirms no dangling mergedConfig.*/config.* references, and the Omit type keeps the compiler honest). CLI-omitted flags are correctly represented as undefined and dropped so the registry owns effective defaults, with tests asserting both omission and explicit opt-out forwarding. Scope is tight (ADR, ledger, registry, consumers, tests) with no unrelated refactors; layer boundaries hold (game/ai imports same-layer, lab is unrestricted); no determinism, Date.now, or Math.random concerns. The embedded review-ledger's independent_grade records a stale 'fail' about DEFAULT_CONFIG fallback values, but the graded tree already removed those values, so that concern is resolved. No criterion scores below 3 and no blocker/major findings, so the verdict is pass."
+    }
+  }
+}
