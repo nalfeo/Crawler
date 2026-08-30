@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   AI_FEATURE_FLAG_DEFINITIONS,
@@ -72,5 +73,13 @@ describe('AI feature flag registry', () => {
         { surface: 'lab', floorId: 'floor1' },
       ).optionalPurchases,
     ).toBe(false);
+  });
+
+  it('reports resolved headless flags in debug configuration', () => {
+    const source = readFileSync('src/game/ai/headless-runner.ts', 'utf8');
+
+    expect(source).toContain(
+      "logger.info('Starting headless run', { ...mergedConfig, ...featureFlags });",
+    );
   });
 });

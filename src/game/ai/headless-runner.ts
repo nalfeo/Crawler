@@ -639,7 +639,7 @@ export async function runHeadless(
   const startTime = Date.now();
 
   if (mergedConfig.debug) {
-    logger.info('Starting headless run', mergedConfig);
+    logger.info('Starting headless run', { ...mergedConfig, ...featureFlags });
   }
 
   // Create world and spawn player
