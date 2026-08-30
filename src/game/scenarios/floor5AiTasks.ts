@@ -207,13 +207,15 @@ const TASKS: readonly Floor5Task[] = [
   },
 ];
 
-function tileCenter(bounds: {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}): RunPlannerPoint {
-  const tileSizeFt = 4;
+function tileCenter(
+  bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+  tileSizeFt: number,
+): RunPlannerPoint {
   return {
     x: (bounds.x + Math.floor(bounds.width / 2)) * tileSizeFt,
     y: (bounds.y + Math.floor(bounds.height / 2)) * tileSizeFt,
@@ -253,15 +255,16 @@ export const FLOOR5_AI_TASK_CONFIG: ScenarioAiTaskConfig<
   interactionActionVocabulary: [],
   farmStrategyVocabulary: [],
   buildLocations: () => {
-    const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+    const mapConfig = buildFloor5MapConfig();
+    const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(mapConfig));
     return new Map<LocationId, RunPlannerPoint>([
-      ['commandPost', tileCenter(layout.commandPost)],
-      ['siegeYard', tileCenter(layout.siegeYard)],
-      ['componentPocket', tileCenter(layout.componentPocket)],
-      ['checkpointPocket', tileCenter(layout.checkpointPocket)],
-      ['breachSite', tileCenter(layout.breachSite)],
-      ['courtyard', tileCenter(layout.courtyard)],
-      ['throneRoom', tileCenter(layout.throneRoom)],
+      ['commandPost', tileCenter(layout.commandPost, mapConfig.tileSizeFt)],
+      ['siegeYard', tileCenter(layout.siegeYard, mapConfig.tileSizeFt)],
+      ['componentPocket', tileCenter(layout.componentPocket, mapConfig.tileSizeFt)],
+      ['checkpointPocket', tileCenter(layout.checkpointPocket, mapConfig.tileSizeFt)],
+      ['breachSite', tileCenter(layout.breachSite, mapConfig.tileSizeFt)],
+      ['courtyard', tileCenter(layout.courtyard, mapConfig.tileSizeFt)],
+      ['throneRoom', tileCenter(layout.throneRoom, mapConfig.tileSizeFt)],
     ]);
   },
 };

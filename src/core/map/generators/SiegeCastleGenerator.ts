@@ -58,6 +58,11 @@ const DEFAULT_SIEGE_CASTLE_OPTIONS: SiegeCastleOptions = {
   borderThicknessTiles: 2,
 };
 
+// Landmark offsets along the main push lane. Keep these authored constants here
+// so the slice-1 map reads as staged siege geography instead of generated noise.
+const SIEGE_YARD_LANE_OFFSET_TILES = 4;
+const TASK_POCKET_LANE_OFFSET_TILES = 24;
+
 export interface SiegeCastleSetPiece {
   readonly id: string;
   readonly bounds: RoomBounds;
@@ -153,19 +158,19 @@ export function computeSiegeCastleLayout(
     height: opts.balconyHeightTiles,
   };
   const siegeYard: RoomBounds = {
-    x: primaryLane.x + 4,
+    x: primaryLane.x + SIEGE_YARD_LANE_OFFSET_TILES,
     y: border,
     width: opts.siegeYardWidthTiles,
     height: opts.siegeYardHeightTiles,
   };
   const componentPocket: RoomBounds = {
-    x: primaryLane.x + 24,
+    x: primaryLane.x + TASK_POCKET_LANE_OFFSET_TILES,
     y: border,
     width: opts.pocketWidthTiles,
     height: opts.pocketHeightTiles,
   };
   const checkpointPocket: RoomBounds = {
-    x: primaryLane.x + 24,
+    x: primaryLane.x + TASK_POCKET_LANE_OFFSET_TILES,
     y: primaryLane.y + primaryLane.height + verticalGap,
     width: opts.pocketWidthTiles,
     height: opts.pocketHeightTiles,
