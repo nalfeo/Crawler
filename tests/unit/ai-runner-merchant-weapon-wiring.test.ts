@@ -23,8 +23,16 @@ describe('AI runner optional purchases wiring', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
     expect(source).toMatch(/\.add\(aiConfig,\s*'optionalPurchases'\)/);
+    expect(source).toMatch(/\.add\(aiConfig,\s*'settlementReturnRouting'\)/);
     // The two old independent fields must not have their own separate GUI toggles
     expect(source).not.toMatch(/\.add\(aiConfig,\s*'merchantWeaponPurchase'\)/);
     expect(source).not.toMatch(/\.add\(aiConfig,\s*'spellBrokerPurchase'\)/);
+  });
+
+  it('passes the settlement-return feature flag into policy sync', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
+    expect(source).toMatch(
+      /syncAiRunnerSettlementReturnRouting\(\s*world,\s*!manualControl,\s*aiConfig\.settlementReturnRouting,\s*\)/,
+    );
   });
 });
