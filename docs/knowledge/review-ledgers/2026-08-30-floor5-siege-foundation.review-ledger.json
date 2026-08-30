@@ -37,7 +37,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "1e5a440dee908d95f3884c812142537377d8b8a8",
+      "head_sha": "17433a954818ece06790e941b52e62e1f9c92fa7",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -48,7 +48,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The change cleanly implements the Floor 5 siege foundation without regressions. It preserves layer boundaries, avoids non-deterministic calls, includes required test coverage (unit and headless), properly wires the new generator, and correctly handles its state configuration. No correctness or architecture issues were found."
+      "notes": "The change cleanly implements the Floor 5 siege foundation. It establishes the map generator with deterministic behavior, properly sets up the scenario initialization, adds a dedicated lab, and includes thorough testing for the headless pipeline and map generation. Layer boundaries are respected, and new systems are correctly wired."
     }
   }
 }
