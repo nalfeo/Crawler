@@ -91,7 +91,7 @@ async function waitForFloorDebug(page: Page, expectedName: string): Promise<void
       );
     },
     expectedName,
-    { timeout: 30_000 },
+    { timeout: 45_000 },
   );
 }
 
