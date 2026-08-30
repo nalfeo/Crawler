@@ -213,6 +213,19 @@ describe('Floor 5 siege foundation real pipeline', () => {
     });
     expect(world.playerGold).toBe(77);
     expect(cloneInventoryBag(bag)).toEqual(inventoryBefore);
+
+    const state = world.floorExtendedState!.floor5Siege!;
+    state.engineState = 'DESTROYED';
+    state.construction.progressMs = state.construction.requiredMs;
+    state.construction.completedFrame = 42;
+    world.frameCount = 99;
+    expect(requestFloor5RamConstruction(world)).toBe(true);
+    expect(state.engineState).toBe('BUILDING');
+    expect(state.construction.progressMs).toBe(0);
+    expect(state.construction.startedFrame).toBe(99);
+    expect(state.construction.completedFrame).toBeNull();
+    expect(world.playerGold).toBe(77);
+    expect(cloneInventoryBag(bag)).toEqual(inventoryBefore);
   });
 
   it('pauses and resumes construction deterministically while the build site is under attack', async () => {

@@ -242,8 +242,11 @@ export function completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTas
       state.tasks.checkpointCleared = true;
       latchFloor5RequisitionMilestone(state, 'checkpoint');
       return true;
+    default: {
+      const exhaustive: never = taskId;
+      return exhaustive;
+    }
   }
-  return false;
 }
 
 export function recoverFloor5RamComponent(
@@ -289,8 +292,10 @@ export function requestFloor5RamConstruction(world: GameWorld): boolean {
 
   if (state.engineState === 'LOCKED' || state.engineState === 'DESTROYED') {
     state.engineState = 'BUILDING';
+    state.construction.progressMs = 0;
     state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
-    state.construction.startedFrame ??= world.frameCount;
+    state.construction.startedFrame = world.frameCount;
+    state.construction.completedFrame = null;
     transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ram-construction-authorized');
   }
   return true;
