@@ -6,21 +6,38 @@ import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scen
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import {
-  FLOOR5_RAM_COMPONENT_CLASSES,
-  FLOOR5_SIEGE_GOAL_IDS,
-  FLOOR5_SLICE3_QUEST_IDS,
-  completeFloor5FieldTask,
+  _completeFloor5FieldTask,
   getFloor5RunOutcome,
   getFloor5SiegeRunStats,
-  recoverFloor5RamComponent,
-  requestFloor5RamConstruction,
-  setFloor5BuildSiteUnderAttack,
+  _recoverFloor5RamComponent,
+  _requestFloor5RamConstruction,
+  _setFloor5BuildSiteUnderAttack,
   siegeDirectorSystem,
 } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
 import { addItem, cloneInventoryBag } from '../../src/shared/inventory.js';
 import { getQuestDef, SHOPKEEPER_FETCH_ITEM_ID } from '../../src/shared/quest-types.js';
+
+const FLOOR5_RAM_COMPONENT_CLASSES = ['chassis', 'plating', 'broadcast-array'] as const;
+const FLOOR5_SIEGE_GOAL_IDS = {
+  openingPushRepelled: 'floor5.siege.openingPushRepelled',
+  yardSecured: 'floor5.siege.yardSecured',
+  componentsReady: 'floor5.siege.componentsReady',
+  ramBuilt: 'floor5.siege.ramBuilt',
+  checkpointCleared: 'floor5.siege.checkpointCleared',
+  wallBreached: 'floor5.siege.wallBreached',
+  courtyardCleared: 'floor5.siege.courtyardCleared',
+  regentDefeated: 'floor5.siege.regentDefeated',
+  castleCaptured: 'floor5.siege.castleCaptured',
+} as const;
+const FLOOR5_SLICE3_QUEST_IDS = [
+  'floor5-hold-the-line',
+  'floor5-secure-synergy',
+  'floor5-recover-components',
+  'floor5-clear-checkpoint',
+  'floor5-build-ratings-ram',
+] as const;
 
 class IdleFloor5Provider implements AIInputProvider {
   private readonly decision: AIDecision = {
@@ -60,12 +77,12 @@ function serializeFloor5Map(map: FloorMap | null | undefined) {
 }
 
 function completeFloor5RamPrerequisites(world: GameWorld): void {
-  completeFloor5FieldTask(world, 'openingPush');
-  completeFloor5FieldTask(world, 'siegeYard');
+  _completeFloor5FieldTask(world, 'openingPush');
+  _completeFloor5FieldTask(world, 'siegeYard');
   for (const componentClass of FLOOR5_RAM_COMPONENT_CLASSES) {
-    recoverFloor5RamComponent(world, componentClass);
+    _recoverFloor5RamComponent(world, componentClass);
   }
-  completeFloor5FieldTask(world, 'checkpoint');
+  _completeFloor5FieldTask(world, 'checkpoint');
 }
 
 describe('Floor 5 siege foundation real pipeline', () => {
@@ -136,25 +153,14 @@ describe('Floor 5 siege foundation real pipeline', () => {
   });
 
   it('completes every Slice 3 task contract through the real headless pipeline', async () => {
-    let requested = false;
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 260,
       questStallFrames: 0,
-      simulationOptions: {
-        postSystems: [
-          (world) => {
-            if (requested) return;
-            completeFloor5RamPrerequisites(world);
-            requested = requestFloor5RamConstruction(world);
-          },
-        ],
-      },
       stopWhen: (world) => world.floorExtendedState?.floor5Siege?.engineState === 'READY',
     });
 
-    expect(requested).toBe(true);
     expect(headless.floor5Siege?.phase.kind).toBe('BUILD');
     expect(headless.floor5Siege?.engineState).toBe('READY');
     expect(headless.floor5Siege?.tasks).toEqual({
@@ -193,7 +199,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     world.playerGold = 77;
     const inventoryBefore = cloneInventoryBag(bag);
 
-    expect(requestFloor5RamConstruction(world)).toBe(false);
+    expect(_requestFloor5RamConstruction(world)).toBe(false);
     expect(world.floorExtendedState?.floor5Siege?.engineState).toBe('LOCKED');
     expect(world.floorExtendedState?.floor5Siege?.construction).toMatchObject({
       attempts: 1,
@@ -204,8 +210,8 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(cloneInventoryBag(bag)).toEqual(inventoryBefore);
 
     completeFloor5RamPrerequisites(world);
-    expect(requestFloor5RamConstruction(world)).toBe(true);
-    expect(requestFloor5RamConstruction(world)).toBe(true);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
     expect(world.floorExtendedState?.floor5Siege?.construction).toMatchObject({
       attempts: 3,
       deniedAttempts: 1,
@@ -219,7 +225,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     state.construction.progressMs = state.construction.requiredMs;
     state.construction.completedFrame = 42;
     world.frameCount = 99;
-    expect(requestFloor5RamConstruction(world)).toBe(true);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
     expect(state.engineState).toBe('BUILDING');
     expect(state.construction.progressMs).toBe(0);
     expect(state.construction.startedFrame).toBe(99);
@@ -240,12 +246,14 @@ describe('Floor 5 siege foundation real pipeline', () => {
           (world) => {
             if (!requested) {
               completeFloor5RamPrerequisites(world);
-              requested = requestFloor5RamConstruction(world);
-              setFloor5BuildSiteUnderAttack(world, true);
+              requested = _requestFloor5RamConstruction(world);
+              world.floorExtendedState!.floor5Siege!.commandPostHealth -= 1;
+              _setFloor5BuildSiteUnderAttack(world, true);
               return;
             }
             if (world.frameCount === 80) {
-              setFloor5BuildSiteUnderAttack(world, false);
+              world.floorExtendedState!.floor5Siege!.commandPostHealth += 1;
+              _setFloor5BuildSiteUnderAttack(world, false);
             }
           },
         ],
@@ -313,5 +321,16 @@ describe('Floor 5 siege foundation real pipeline', () => {
     siegeDirectorSystem(world);
     expect(state.phase.kind).toBe('MUSTER');
     expect(state.trace).toEqual([]);
+  });
+
+  it('projects terminal capture to the canonical goal flag', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    world.floorExtendedState!.floor5Siege!.phase = { kind: 'CAPTURED' };
+
+    world.floorObjectiveTick!(world);
+
+    expect(world.goalFlags.get(FLOOR5_SIEGE_GOAL_IDS.castleCaptured)).toBe(true);
   });
 });

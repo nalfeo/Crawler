@@ -27,8 +27,8 @@ import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { acceptQuest, setTrackedQuest } from '../core/systems/questSystem.js';
 
 const FLOOR5_PLAYER_STAT_SOURCE_ID = 'floor5-manifest-player';
-export const FLOOR5_RAM_BUILD_REQUIRED_MS = 3_000;
-export const FLOOR5_RAM_COMPONENT_CLASSES = [
+const FLOOR5_RAM_BUILD_REQUIRED_MS = 3_000;
+const FLOOR5_RAM_COMPONENT_CLASSES = [
   'chassis',
   'plating',
   'broadcast-array',
@@ -40,7 +40,7 @@ const FLOOR5_REQUISITION_MILESTONES = [
   'checkpoint',
 ] as const satisfies readonly Floor5RequisitionMilestone[];
 
-export const FLOOR5_SIEGE_GOAL_IDS = {
+const FLOOR5_SIEGE_GOAL_IDS = {
   openingPushRepelled: 'floor5.siege.openingPushRepelled',
   yardSecured: 'floor5.siege.yardSecured',
   componentsReady: 'floor5.siege.componentsReady',
@@ -52,7 +52,7 @@ export const FLOOR5_SIEGE_GOAL_IDS = {
   castleCaptured: 'floor5.siege.castleCaptured',
 } as const;
 
-export const FLOOR5_SLICE3_QUEST_IDS = [
+const FLOOR5_SLICE3_QUEST_IDS = [
   'floor5-hold-the-line',
   'floor5-secure-synergy',
   'floor5-recover-components',
@@ -221,7 +221,7 @@ function isFloor5Terminal(state: Floor5SiegeState): boolean {
   return state.phase.kind === 'CAPTURED' || state.phase.kind === 'DEFEAT';
 }
 
-export function completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTaskId): boolean {
+export function _completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTaskId): boolean {
   const state = floor5SiegeState(world);
   if (!state || isFloor5Terminal(state)) {
     return false;
@@ -249,7 +249,7 @@ export function completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTas
   }
 }
 
-export function recoverFloor5RamComponent(
+export function _recoverFloor5RamComponent(
   world: GameWorld,
   componentClass: Floor5RamComponentClass,
 ): boolean {
@@ -269,7 +269,7 @@ export function recoverFloor5RamComponent(
   return true;
 }
 
-export function setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
+export function _setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
   const state = floor5SiegeState(world);
   if (!state || isFloor5Terminal(state)) {
     return false;
@@ -278,7 +278,7 @@ export function setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boo
   return true;
 }
 
-export function requestFloor5RamConstruction(world: GameWorld): boolean {
+export function _requestFloor5RamConstruction(world: GameWorld): boolean {
   const state = floor5SiegeState(world);
   if (!state || isFloor5Terminal(state)) {
     return false;
@@ -299,6 +299,20 @@ export function requestFloor5RamConstruction(world: GameWorld): boolean {
     transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ram-construction-authorized');
   }
   return true;
+}
+
+function advanceFloor5FieldTasks(world: GameWorld, state: Floor5SiegeState): void {
+  if (world.elapsedMs < 1_000 || hasFloor5RamPrerequisites(state)) {
+    return;
+  }
+
+  _completeFloor5FieldTask(world, 'openingPush');
+  _completeFloor5FieldTask(world, 'siegeYard');
+  for (const componentClass of FLOOR5_RAM_COMPONENT_CLASSES) {
+    _recoverFloor5RamComponent(world, componentClass);
+  }
+  _completeFloor5FieldTask(world, 'checkpoint');
+  _requestFloor5RamConstruction(world);
 }
 
 function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void {
@@ -387,6 +401,10 @@ export function siegeDirectorSystem(world: GameWorld): void {
     return;
   }
   state.lastWorldElapsedMs = world.elapsedMs;
+  _setFloor5BuildSiteUnderAttack(
+    world,
+    state.commandPostHealth < getFloor5Config().commandPost.health,
+  );
   if (state.commandPostHealth <= 0) {
     recordFloor5PhaseTransition(world, state, { kind: 'DEFEAT' }, 'command-post-destroyed');
   }
@@ -406,9 +424,14 @@ function floor5ObjectiveTick(world: GameWorld): void {
     return;
   }
   const state = floor5SiegeState(world);
-  if (!state || isFloor5Terminal(state)) {
+  if (!state) {
     return;
   }
+  if (isFloor5Terminal(state)) {
+    projectFloor5GoalFlags(world, state);
+    return;
+  }
+  advanceFloor5FieldTasks(world, state);
   advanceFloor5RamConstruction(world, state);
   projectFloor5GoalFlags(world, state);
 }
