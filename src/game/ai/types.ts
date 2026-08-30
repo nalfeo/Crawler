@@ -839,6 +839,12 @@ export interface RunStats {
    * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /** Activation evidence for abilities explicitly forced into a headless run. */
+  abilityTelemetry?: {
+    readonly forcedAbilityIds: readonly string[];
+    readonly totalActivations: number;
+    readonly activationsByAbilityId: Readonly<Record<string, number>>;
+  };
   /** End-of-run deterministic equipment/reward playability metrics. */
   equipmentPlayability?: EquipmentPlayabilityMetrics;
   /**
