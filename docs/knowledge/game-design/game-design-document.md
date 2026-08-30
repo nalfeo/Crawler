@@ -55,6 +55,8 @@ Theme + gimmick + boss. "Broadcast Deadline" timer triggers boss. Sample: Shoppi
 
 **Floor 4 — "The Main Event"** (designed): the first non-exploration floor — a ten-minute survival arena in five two-minute acts, a Headliner boss closing each act, and a Green Room safe room between acts whose sponsor stock re-randomizes every visit. This is the clearest expression of the Brotato DNA above. Content bible: [floor4-arena.md](floor4-arena.md); system spec: [`.specify/specs/floor4-arena.md`](../../../.specify/specs/floor4-arena.md); architecture: [ADR 0090](../adr/0090-floor4-arena.md).
 
+**Floor 5 — "Hostile Takeover"** (designed): a castle siege framed as a corporate acquisition. Allied and enemy minion waves contest a primary lane while the player defends a Command Post, completes field tasks, builds and protects the Ratings Ram, opens a permanent breach, and captures the throne from boss-strength enemy Heroes. Content bible: [floor5-hostile-takeover.md](floor5-hostile-takeover.md); system spec: [`.specify/specs/floor5-hostile-takeover.md`](../../../.specify/specs/floor5-hostile-takeover.md); architecture: [ADR 0094](../adr/0094-floor5-hostile-takeover.md).
+
 ## Rogue-Lite Meta-Progression
 
 Persists: Ratings currency, item pool unlocks, character roster, season narrative, sponsor contracts, Production Office upgrades, cosmetics.
