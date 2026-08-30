@@ -4,7 +4,6 @@ import {
 } from '../../core/map/generators/SiegeCastleGenerator.js';
 import type { LocationId } from '../ai/objective-route-planner.js';
 import {
-  buildScenarioGoalGraph,
   type ScenarioAiTaskConfig,
   validateScenarioAiTaskConfig,
 } from '../ai/scenario-ai-tasks.js';
@@ -270,7 +269,3 @@ export const FLOOR5_AI_TASK_CONFIG: ScenarioAiTaskConfig<
 };
 
 validateScenarioAiTaskConfig(FLOOR5_AI_TASK_CONFIG);
-
-export function buildFloor5AiRouteGraph(snapshot: Floor5AiRouteSnapshot) {
-  return buildScenarioGoalGraph(FLOOR5_AI_TASK_CONFIG, snapshot);
-}

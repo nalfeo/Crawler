@@ -5,10 +5,8 @@ import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
-import {
-  buildFloor5AiRouteGraph,
-  FLOOR5_AI_TASK_CONFIG,
-} from '../../src/game/scenarios/floor5AiTasks.js';
+import { FLOOR5_AI_TASK_CONFIG } from '../../src/game/scenarios/floor5AiTasks.js';
+import { buildScenarioGoalGraph } from '../../src/game/ai/scenario-ai-tasks.js';
 import { getFloor5SiegeRunStats, siegeDirectorSystem } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
@@ -91,7 +89,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
 
   it('declares a minimal scenario-AI route from base defense through throne capture', () => {
     expect(FLOOR5_AI_TASK_CONFIG.scenarioId).toBe('floor5');
-    const graph = buildFloor5AiRouteGraph({
+    const graph = buildScenarioGoalGraph(FLOOR5_AI_TASK_CONFIG, {
       openingPushRepelled: false,
       yardSecured: false,
       componentsReady: false,
