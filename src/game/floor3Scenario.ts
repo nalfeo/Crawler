@@ -858,6 +858,26 @@ function hasValidFloor3KeptCompanion(world: GameWorld, partyEid: number | undefi
 }
 
 /**
+ * The Floor 3 kept-companion half of the descend gate, shared with the stair
+ * marker so the prompt and the confirmation can never disagree (a marker that
+ * reports `locked: false` while the descend is rejected offers the player an
+ * exit the game refuses).
+ *
+ * A party wipe after victory is deliberately NOT a loss here (the objective
+ * tick suppresses `game_over` once the win is latched), and lingering ambient
+ * wilds can knock out the last party Companion after the win — so the player
+ * can legitimately reach the stairs with nothing keepable left. Requiring a
+ * valid pick in that state would strand the run forever with the exit visibly
+ * unlocked, so the gate is skipped on a wiped party; `keptCompanion` is already
+ * optional in the carryover contract.
+ */
+export function floor3KeptCompanionDescendGateSatisfied(world: GameWorld): boolean {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState) return false;
+  return hasValidFloor3KeptCompanion(world, studiosState.keptCompanionEid) || _isPartyWiped(world);
+}
+
+/**
  * Called when the player confirms exit descent on Floor 3.
  * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.
  * Returns `true` on success, `false` if preconditions not met.
@@ -867,7 +887,7 @@ export function confirmFloor3StairDescend(world: GameWorld, _playerEid: number):
   if (!studiosState || world.state !== 'playing') return false;
   if (!studiosState.staircaseSpawned || !studiosState.staircaseUnlocked) return false;
   if (studiosState.staircaseDiscovered) return false;
-  if (!hasValidFloor3KeptCompanion(world, studiosState.keptCompanionEid)) return false;
+  if (!floor3KeptCompanionDescendGateSatisfied(world)) return false;
   studiosState.staircaseDiscovered = true;
   setGoalFlag(world, FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
   world.state = 'safe_room';

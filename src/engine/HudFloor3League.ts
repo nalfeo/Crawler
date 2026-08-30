@@ -1,10 +1,7 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
-import {
-  buildFloor3LeagueViewModel,
-  type Floor3LeagueViewModel,
-} from '../shared/floor3-ux.js';
+import { buildFloor3LeagueViewModel, type Floor3LeagueViewModel } from '../shared/floor3-ux.js';
 import { resolveFloor3LeagueView } from './floor3-league-state.js';
 import { createBeveledPanel, PIXEL_UI, PIXEL_UI_DEPTH } from './pixel-ui.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
@@ -12,7 +9,12 @@ import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 const WIDTH = 420;
 const HEIGHT = 76;
 const X = GAME.WIDTH / 2 - WIDTH / 2;
-const Y = 8;
+/**
+ * Floor 3 keeps the shared floor timer visible (unlike Floor 4, whose scenario
+ * sets `hideFloorTimer`), so this panel starts below the timer panel's
+ * `TOP_Y (12) + PANEL_HEIGHT (42) = 54` bottom edge instead of overlapping it.
+ */
+const Y = 58;
 const FONT = '"Press Start 2P", "Courier New", monospace';
 
 export interface HudFloor3LeagueState extends Floor3LeagueViewModel {
@@ -121,11 +123,14 @@ export function createHudFloor3League(
     },
     getState: () => ({
       ...state,
-      bounds: externallyVisible && state.visible ? { x: X, y: Y, width: WIDTH, height: HEIGHT } : null,
+      bounds:
+        externallyVisible && state.visible ? { x: X, y: Y, width: WIDTH, height: HEIGHT } : null,
       bracket: bracket(),
     }),
     getLayoutBounds: () =>
-      externallyVisible && state.visible ? { panel: { x: X, y: Y, width: WIDTH, height: HEIGHT } } : null,
+      externallyVisible && state.visible
+        ? { panel: { x: X, y: Y, width: WIDTH, height: HEIGHT } }
+        : null,
     destroy: () => {
       detachText();
       panel.destroy();

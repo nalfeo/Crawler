@@ -644,6 +644,12 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
     expect(confirmFloor3StairDescend(world, 0)).toBe(false);
     expect(world.state).toBe('playing');
     expect(state.staircaseDiscovered).not.toBe(true);
+    // The marker must agree with the confirmation, or the scene advertises a
+    // descend prompt for an exit the game then refuses.
+    expect(getScenarioDefinition('floor3').getStairMarkerState?.(world)).toMatchObject({
+      visible: true,
+      locked: true,
+    });
   });
 
   it('rejects a knocked-out Companion and makes the headless default choose a live party member', () => {
@@ -674,6 +680,28 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
     expect(getScenarioDefinition('floor3').autoSelectKeptCompanion?.(world)).toBe(true);
     expect(state.keptCompanionEid).toBe(livePartyEid);
     expect(confirmFloor3StairDescend(world, 0)).toBe(true);
+  });
+
+  it('still allows stair descent when the whole party is knocked out after victory latches', () => {
+    const { world } = createFloor3World(1018);
+    const state = world.floorExtendedState!.floor3Studios!;
+    defeatAllStudios(world, state);
+    defeatFinalFour(world, state);
+    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
+    // A post-victory wipe is not a loss, and lingering ambient wilds can still
+    // knock the party out — the exit must not become permanently undescendable.
+    for (const eid of query(world.ecs, [Companion, Team])) {
+      if ((world.stores.team.id[eid] ?? -1) !== TeamId.PLAYER) continue;
+      world.stores.companion.knockedOut[eid] = 1;
+    }
+
+    expect(getScenarioDefinition('floor3').getStairMarkerState?.(world)).toMatchObject({
+      visible: true,
+      locked: false,
+    });
+    expect(confirmFloor3StairDescend(world, 0)).toBe(true);
+    expect(world.state).toBe('safe_room');
+    expect(state.staircaseDiscovered).toBe(true);
   });
 
   it('returns false and does not mutate the pick when selectFloor3KeptCompanion is called before victory latches', () => {

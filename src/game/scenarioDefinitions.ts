@@ -48,6 +48,7 @@ import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
   FLOOR3_VICTORY_GOAL_ID,
+  floor3KeptCompanionDescendGateSatisfied,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
   autoDefaultFloor3KeptCompanion,
@@ -350,7 +351,11 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     visible: studiosState.staircaseSpawned === true && studiosState.staircaseDiscovered !== true,
     // Same rule as Floor 1/2: `confirmFloor3StairDescend` rejects unless
     // `staircaseUnlocked` is set, so the prompt must be withheld until then.
-    locked: studiosState.staircaseUnlocked !== true,
+    // Floor 3 additionally requires the kept-companion pick, so the marker
+    // reuses that exact predicate — otherwise a stale pick would advertise an
+    // unlocked exit the confirmation then refuses.
+    locked:
+      studiosState.staircaseUnlocked !== true || !floor3KeptCompanionDescendGateSatisfied(world),
     label: '▼ EXIT',
   };
 }

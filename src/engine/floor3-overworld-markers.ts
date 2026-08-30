@@ -20,9 +20,7 @@ export interface Floor3OverworldMarker {
 }
 
 /** Read-only semantic marker projection for Floor 3's existing minimap layers. */
-export function resolveFloor3OverworldMarkers(
-  world: GameWorld,
-): readonly Floor3OverworldMarker[] {
+export function resolveFloor3OverworldMarkers(world: GameWorld): readonly Floor3OverworldMarker[] {
   if (world.floorId !== 'floor3' || !world.floorMap) return [];
   const floorMap = world.floorMap;
   const state = world.floorExtendedState?.floor3Studios;

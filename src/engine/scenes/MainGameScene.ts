@@ -3967,9 +3967,16 @@ export class MainGameScene extends Phaser.Scene {
     const state = this.world.floorExtendedState?.floor3Studios;
     if (!state) return;
 
-    if (league.phase === 'best-in-show' && state.keptCompanionEid === undefined) {
+    if (league.phase === 'best-in-show') {
       const choices = resolveFloor3KeepCompanionOptions(this.world);
-      if (choices.length === 0) return;
+      // A stored pick can go stale between victory and the stairs (the picked
+      // Companion is knocked out by a straggler), and the scenario's descend
+      // gate rejects a stale pick — so the picker must reopen whenever the
+      // stored eid is absent from the current valid choices, not just when it
+      // is undefined, or the run is stranded with no way to re-pick.
+      const keptEid = state.keptCompanionEid;
+      const keptIsValid = keptEid !== undefined && choices.some((choice) => choice.eid === keptEid);
+      if (choices.length === 0 || keptIsValid) return;
       this.modalPicker.open(buildFloor3KeepCompanionPickerModel(choices), {
         onConfirm: ({ option }) => {
           const eid = Number(option.id);
@@ -3996,7 +4003,8 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     const studio = league.studios.find(
-      (candidate) => candidate.unlocked && !candidate.defeated && !this.announcedFloor3Studios.has(candidate.id),
+      (candidate) =>
+        candidate.unlocked && !candidate.defeated && !this.announcedFloor3Studios.has(candidate.id),
     );
     if (studio) {
       this.announcedFloor3Studios.add(studio.id);
@@ -5108,9 +5116,7 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = true;
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
-    this.gameOverUI?.show(
-      this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined,
-    );
+    this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {

@@ -1512,7 +1512,15 @@ export async function runHeadless(
         break;
       }
       // Non-interactive runs must still satisfy Floor 3's required keep-one
-      // reward before their carryover snapshot is captured.
+      // reward before their carryover snapshot is captured, and Floor 3 only
+      // reports `cleared_floor` once the descend is confirmed. Unlike Floors
+      // 1-2 (`autoFloor1/2ProgressionSystem`) this deliberately does NOT gate
+      // on stair proximity: the BT AI has no Floor 3 exit navigation yet
+      // (`isFloorClearedAwaitingSweep` covers Floors 1-2 only), so a proximity
+      // gate here would stall every headless Floor 3 run at the win instead of
+      // completing it. Replace this with a proximity-gated
+      // `autoFloor3ProgressionSystem` once the AI can path to the Floor 3
+      // exit. Headless-only: real play still walks to the stairs.
       if (scenario.autoSelectKeptCompanion?.(world)) {
         scenario.onStairDescend?.(world, playerEid);
       }

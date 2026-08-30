@@ -378,8 +378,16 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
-    getFloor3LeagueState: floor3League.getState,
-    getFloor3OverworldMarkers: minimap.getFloor3MarkerStates,
+    getFloor3LeagueState: () => {
+      const state = floor3League.getState();
+      if (hidden) {
+        return { ...state, visible: false, bounds: null };
+      }
+      // Reported in the same transformed screen space as the other top-center
+      // panels so overlap guards can compare them directly.
+      return state.bounds ? { ...state, bounds: transformBounds(state.bounds, topCenter) } : state;
+    },
+    getFloor3OverworldMarkers: () => (hidden ? [] : minimap.getFloor3MarkerStates()),
     getFloor4ArenaState: () => {
       const state = floor4Arena.getState();
       if (hidden) {

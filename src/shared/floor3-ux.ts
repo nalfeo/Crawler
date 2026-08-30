@@ -217,9 +217,7 @@ export function buildFloor3LeagueViewModel(input: Floor3LeagueViewInput): Floor3
   };
 }
 
-export function buildFloor3StudioVersusModel(
-  studio: Floor3LeagueStudioView,
-): ModalPickerConfig {
+export function buildFloor3StudioVersusModel(studio: Floor3LeagueStudioView): ModalPickerConfig {
   const affinity = studio.affinity ? `${capitalize(studio.affinity)} affinity · ` : '';
   return {
     kind: FLOOR3_STUDIO_VERSUS_KIND,
