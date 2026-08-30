@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Companion, PartySlot, Team } from '../../src/core/index.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import type { SimEvent } from '../../src/game/ai/event-log.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { TeamId } from '../../src/shared/constants.js';
 
@@ -29,6 +30,32 @@ function knockOutTeams(world: GameWorld, teamIds: readonly number[]): void {
 }
 
 describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
+  it('logs the initial starter pick while resolving the real Floor 3 loadout hook', async () => {
+    const events: SimEvent[] = [];
+    let partyAtFinish = 0;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 33 }), {
+      seed: 33,
+      floorId: 'floor3',
+      maxFrames: 1,
+      questStallFrames: 0,
+      recordEvent: (event) => events.push(event),
+      onFinish: (world) => {
+        partyAtFinish = countPartyCompanions(world);
+      },
+    });
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'control' &&
+          event.reason === 'loadout auto-selected through scenario.selectLoadoutOption' &&
+          event.note === 'floor3 initial loadout auto-selected option 0',
+      ),
+    ).toBe(true);
+    expect(partyAtFinish).toBe(1);
+  });
+
   it('resolves the mid-run poach pause and keeps the floor simulating', async () => {
     let sawPause = false;
     let partyBeforePoach = 0;

@@ -1,10 +1,14 @@
 import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { Companion, Enemy, PartySlot, Prop, Size, Sprite } from '../../src/core/index.js';
 import {
   FLOOR3_TIMEOUT_GOAL_ID,
+  _resolveFloor3AmbientSpawnPoint,
   _resolveFloor3WildSpawnWeights,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
@@ -23,6 +27,14 @@ import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { safeRoomSystem } from '../../src/core/safe-space.js';
 import { GAME } from '../../src/shared/constants.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
+import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../src/shared/npc-types.js';
 
 function createFloor3World(seed: number) {
   const world = createTestWorld({ seed, floor: 3 });
@@ -87,6 +99,35 @@ function findReachableUnlabeledTile(world: ReturnType<typeof createTestWorld>): 
     }
   }
   throw new Error('expected at least one unlabeled passable overworld tile');
+}
+
+function makeSpawnOnlyFloor3Map(): FloorMap {
+  const widthTiles = 30;
+  const heightTiles = 30;
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: 4,
+    biome: BiomeType.CAVE_SYSTEM_BIOMES,
+    seed: 1,
+    roomWidthRange: [8, 8],
+    roomHeightRange: [8, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  tileMap.fill(TilePresets.WALL);
+  const terrain = new Uint8Array(widthTiles * heightTiles).fill(TerrainType.CAVE_WALL);
+  const graph = new RoomGraph();
+  const roomId = graph.add({ x: 10, y: 10, width: 8, height: 8 }, [], [], RoomRole.SPAWN);
+  const room = graph.get(roomId)!;
+  for (let y = room.bounds.y + 1; y < room.bounds.y + room.bounds.height - 1; y += 1) {
+    for (let x = room.bounds.x + 1; x < room.bounds.x + room.bounds.width - 1; x += 1) {
+      tileMap.setFlags(x, y, TilePresets.FLOOR);
+      terrain[y * widthTiles + x] = TerrainType.CAVE_FLOOR;
+    }
+  }
+  return new FloorMap(config, tileMap, graph, terrain, { x: 12, y: 12 });
 }
 
 describe('Floor 3 overworld + wild spawns', () => {
@@ -207,6 +248,19 @@ describe('Floor 3 overworld + wild spawns', () => {
     expect(world.state).toBe('game_over');
   });
 
+  it('rejects shared ambient candidates inside the Floor 3 safe entrance room', () => {
+    const world = createTestWorld({ seed: 42, floor: 3 });
+    world.floorId = 'floor3';
+    world.floorMap = makeSpawnOnlyFloor3Map();
+    const player = spawnPlayer(world, 0, 0);
+    const playerX = world.stores.position.x[player] ?? 0;
+    const playerY = world.stores.position.y[player] ?? 0;
+
+    const spawnPoint = _resolveFloor3AmbientSpawnPoint(world, playerX, playerY);
+
+    expect(spawnPoint).toBeNull();
+  });
+
   it('still spawns ambient wilds when the player stands on an unlabeled overworld tile', () => {
     const { world, playerEid } = createFloor3World(1203);
     const unlabeled = findReachableUnlabeledTile(world);
@@ -256,6 +310,9 @@ describe('Floor 3 starter Companion pick (spec R5 §6.1)', () => {
     expect(offer.length).toBe(_STARTER_OFFER_SIZE);
     expect(new Set(offer).size).toBe(offer.length);
     expect(query(world.ecs, [Companion, PartySlot]).length).toBe(0);
+    const professorEid = world.floorExtendedState?.floor3CompanionProfessorNpcEid;
+    expect(professorEid).toBeGreaterThan(0);
+    expect(world.npcs.get(professorEid!)?.defId).toBe(FLOOR3_COMPANION_PROFESSOR_NPC_ID);
   });
 
   it('recruits the picked species into the party and resumes play', () => {

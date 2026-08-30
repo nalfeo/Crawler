@@ -120,6 +120,40 @@ function readRunState(world: GameWorld): GameWorld['state'] {
   return world.state;
 }
 
+function buildLoadoutControlEvent(
+  world: GameWorld,
+  playerEid: number,
+  frame: number,
+  kills: number,
+  note: string,
+): SimEvent {
+  const px = world.stores.position.x[playerEid] ?? 0;
+  const py = world.stores.position.y[playerEid] ?? 0;
+  return {
+    type: 'control',
+    frame,
+    gameMs: Math.round(world.elapsedMs),
+    px: Math.round(px),
+    py: Math.round(py),
+    state: readRunState(world),
+    reason: 'loadout auto-selected through scenario.selectLoadoutOption',
+    targetEid: null,
+    targetDist: null,
+    enemyCount: query(world.ecs, [Enemy]).length,
+    nearestEnemyDist: null,
+    level: world.playerLevel?.level ?? 0,
+    xp: world.playerLevel?.xp ?? 0,
+    kills,
+    health: Math.round(world.stores.health.current[playerEid] ?? 0),
+    stuckFrames: 0,
+    pathLen: 0,
+    netDisp: 0,
+    pathTravel: 0,
+    inSafe: world.playerInSafeRoom === true,
+    note,
+  };
+}
+
 function hasFloor2ExitCompleted(world: GameWorld): boolean {
   return (
     world.goalFlags.get(FLOOR2_STAIRS_DISCOVERED_GOAL_ID) === true ||
@@ -626,6 +660,7 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  const recordEvent = config.recordEvent;
   if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
     mergedConfig.settlementReturnRouting = true;
   }
@@ -709,6 +744,15 @@ export async function runHeadless(
       }
     }
     scenario.selectLoadoutOption(world, starterWeaponIndex);
+    recordEvent?.(
+      buildLoadoutControlEvent(
+        world,
+        playerEid,
+        0,
+        0,
+        `${mergedConfig.floorId} initial loadout auto-selected option ${starterWeaponIndex}`,
+      ),
+    );
   } else if (forceWeaponId !== undefined) {
     equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
   }
@@ -829,7 +873,6 @@ export async function runHeadless(
   let lastHealthPercent = 1.0;
 
   // Event-log / telemetry state
-  const recordEvent = config.recordEvent;
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
   const denSampleInterval = Math.max(1, sampleInterval * 4);
   // `RunStats.movementQuality` must read the same regardless of the caller's
@@ -1116,6 +1159,15 @@ export async function runHeadless(
       // for the rest of the run.
       if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
         scenario.selectLoadoutOption(world, 0);
+        recordEvent?.(
+          buildLoadoutControlEvent(
+            world,
+            playerEid,
+            frameCount,
+            totalKills,
+            `${mergedConfig.floorId} pending loadout auto-selected option 0`,
+          ),
+        );
       }
 
       // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though

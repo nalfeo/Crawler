@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "floor3-companion-kickoff",
+  "task_title": "Fix Floor 3 companion kickoff",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved with changes. Resolved by updating plan to prioritize the actual Floor 2→Floor 3 transition softlock path; require an explicit Oak-like NPC/event surface rather than modal-only copy; make AI-runner log evidence mandatory; reproduce the actual safe-room spawn source before patching; and preserve Floor 2 carryover state in regression coverage."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

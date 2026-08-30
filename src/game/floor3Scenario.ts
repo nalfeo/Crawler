@@ -24,7 +24,7 @@ import {
   _PARTY_MAX_SIZE,
   spawnRosterCompanion,
 } from '../core/spawners/companions.js';
-import { addSetPieceProp } from '../core/spawners/world-objects.js';
+import { addSetPieceProp, spawnNpc } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
@@ -99,6 +99,7 @@ import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { createLogger } from '../shared/logger.js';
+import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../shared/npc-types.js';
 
 const logger = createLogger('game:floor3-scenario');
 
@@ -107,6 +108,7 @@ const FLOOR3_BIOME_NEUTRAL_SPAWN_SHARE = 0.25;
 const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
 /** World-unit offset (one map tile) so the starter Companion doesn't spawn stacked on the player. */
 const FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES = 1;
+const FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES = 1;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
@@ -921,13 +923,28 @@ function resolveFloor3AmbientSpawnPoint(
   playerX: number,
   playerY: number,
 ): { x: number; y: number } | null {
-  const candidate = resolveAmbientSpawnPoint(world, playerX, playerY);
-  if (candidate) return candidate;
   const floorMap = world.floorMap;
   const pack = getFloor3WildPack();
   if (!floorMap) return null;
   const minDistanceSq = pack.spawnRadiusMin * pack.spawnRadiusMin;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
+  const candidate = resolveAmbientSpawnPoint(world, playerX, playerY);
+  if (candidate) {
+    const tile = floorMap.worldToTile(candidate.x, candidate.y);
+    if (
+      isValidFloor3AmbientSpawnTile(
+        world,
+        tile.x,
+        tile.y,
+        playerX,
+        playerY,
+        minDistanceSq,
+        maxDistanceSq,
+      )
+    ) {
+      return candidate;
+    }
+  }
   for (let i = 0; i < 256; i += 1) {
     const tx = world.rng.nextInt(0, floorMap.width - 1);
     const ty = world.rng.nextInt(0, floorMap.height - 1);
@@ -939,6 +956,33 @@ function resolveFloor3AmbientSpawnPoint(
     return floorMap.tileToWorld(tx, ty);
   }
   return null;
+}
+
+export const _resolveFloor3AmbientSpawnPoint = resolveFloor3AmbientSpawnPoint;
+
+function resolveFloor3CompanionProfessorPosition(floorMap: FloorMap): { x: number; y: number } {
+  const spawnTile = floorMap.playerSpawn;
+  const spawnRoom = floorMap.spawnRoom;
+  const candidates = [
+    { x: spawnTile.x + FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES, y: spawnTile.y },
+    { x: spawnTile.x, y: spawnTile.y + FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES },
+    { x: spawnTile.x - FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES, y: spawnTile.y },
+    { x: spawnTile.x, y: spawnTile.y - FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES },
+    spawnTile,
+  ];
+  for (const tile of candidates) {
+    if (
+      !floorMap.tileMap.inBounds(tile.x, tile.y) ||
+      !floorMap.tileMap.isPassable(tile.x, tile.y)
+    ) {
+      continue;
+    }
+    if (spawnRoom && floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== spawnRoom.id) {
+      continue;
+    }
+    return floorMap.tileToWorld(tile.x, tile.y);
+  }
+  return floorMap.tileToWorld(spawnTile.x, spawnTile.y);
 }
 
 export function floor3WildDirectorSystem(world: GameWorld): void {
@@ -1155,6 +1199,19 @@ export function initializeFloor3Scenario(
   }
   if (!hasComponent(world.ecs, playerEid, BroadcastScore)) {
     addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
+  }
+  const professorPos = resolveFloor3CompanionProfessorPosition(floorMap);
+  const professorEid = spawnNpc(
+    world,
+    professorPos.x,
+    professorPos.y,
+    FLOOR3_COMPANION_PROFESSOR_NPC_ID,
+  );
+  if (professorEid >= 0 && world.floorExtendedState) {
+    world.floorExtendedState = {
+      ...world.floorExtendedState,
+      floor3CompanionProfessorNpcEid: professorEid,
+    };
   }
 
   removeStatModifiers(world, 'floor', 'floor3-manifest-player');

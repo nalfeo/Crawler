@@ -145,6 +145,8 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /** ECS entity id of Floor 3's Professor-like onboarding host NPC. */
+  floor3CompanionProfessorNpcEid?: number;
   /**
    * Pending Floor 3 starter-Companion offer (spec R5 §6.1): the seeded 4
    * `speciesId`s presented while `world.state === 'loadout'` at floor start.
