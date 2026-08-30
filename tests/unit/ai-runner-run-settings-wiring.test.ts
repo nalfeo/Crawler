@@ -72,7 +72,9 @@ describe('AI runner run-settings wiring', () => {
 
   it('syncs settlement-return policy before polling and preserves achievement return signals', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
-    const syncIndex = source.indexOf('syncAiRunnerSettlementReturnRouting(world, !manualControl);');
+    const syncIndex = source.indexOf(
+      'syncAiRunnerSettlementReturnRouting(\n          world,\n          !manualControl,\n          aiConfig.settlementReturnRouting,\n        );',
+    );
     const manualBranchIndex = source.indexOf('if (manualControl) {', syncIndex);
     const aiPollIndex = source.indexOf('ai.poll(state, world);', syncIndex);
 
@@ -80,5 +82,6 @@ describe('AI runner run-settings wiring', () => {
     expect(manualBranchIndex).toBeGreaterThan(syncIndex);
     expect(aiPollIndex).toBeGreaterThan(manualBranchIndex);
     expect(source).toContain('skipAchievementClaims: isSettlementReturnRoutingEnabled(world)');
+    expect(source).toContain(".add(aiConfig, 'settlementReturnRouting')");
   });
 });

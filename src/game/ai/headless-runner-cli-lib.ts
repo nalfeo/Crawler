@@ -184,6 +184,8 @@ export function parseArgs(
       args.optionalPurchases = true;
     } else if (arg === '--settlement-return-routing') {
       args.settlementReturnRouting = true;
+    } else if (arg === '--no-settlement-return-routing') {
+      args.settlementReturnRouting = false;
     } else if (arg === '--persona') {
       // Handle unconditionally (no `&& next` guard) so a trailing `--persona`
       // fails fast instead of silently running as `experienced_player` and
@@ -273,6 +275,8 @@ Options:
                            utility; periodically returns to settlement to run the
                            maintenance planner — equip/shop/claim/abilities;
                            enabled by default for --floor floor2)
+  --no-settlement-return-routing
+                           Disable optional settlement-return route goal
   --pathing-mode <mode>   AI pathing A/B axis: ${PATHING_MODE_VALUES.join(', ')} (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: ${DECISION_MODE_VALUES.join(', ')} (default: ${AIDecisionMode.LEGACY})
   --persona <name>         Evaluator persona (default: experienced_player)
