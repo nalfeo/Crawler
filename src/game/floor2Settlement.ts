@@ -189,6 +189,7 @@ export function initializeFloor2Settlement(
     true /* includeQuartermaster */,
   );
   const spawnTiles = prepareSettlementMapAndPlacement(world, placementPlan, settlements, floorMap);
+  repaintSettlementHallwayFloor(world);
   const brokerTile = spawnTiles.get('broker');
   const defectorTile = spawnTiles.get('defector');
   const quartermasterTile = spawnTiles.get('quartermaster');
@@ -386,6 +387,17 @@ function repaintSafeRoomFloor(world: GameWorld, room: RoomData): void {
       if (t === TerrainType.STONE_FLOOR || t === TerrainType.CAVE_FLOOR) {
         floorMap.terrain[idx] = TerrainType.SAFE_ROOM_FLOOR;
       }
+    }
+  }
+}
+
+function repaintSettlementHallwayFloor(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  for (const idx of floorMap.settlementHallwayTileIndices) {
+    const terrain = floorMap.terrain[idx];
+    if (terrain === TerrainType.STONE_FLOOR || terrain === TerrainType.CAVE_FLOOR) {
+      floorMap.terrain[idx] = TerrainType.SAFE_ROOM_FLOOR;
     }
   }
 }

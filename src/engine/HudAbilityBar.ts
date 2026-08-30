@@ -3,6 +3,8 @@ import type { GameWorld } from '../core/world.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityPresentation } from '../shared/ability-presentation.js';
 import { GAME } from '../shared/constants.js';
+import { weaponSkillPrerequisiteMatches } from '../shared/weapon-skills.js';
+import { getActiveWeaponDef } from '../core/active-weapon.js';
 import { isAbilitySlotCastFlashing } from './ability-bar-flash-state.js';
 import { getAbilityIconEntry } from './ability-icon.js';
 import { createBeveledPanel } from './pixel-ui.js';
@@ -16,10 +18,32 @@ const SLOT_GAP = 6;
 const BAR_WIDTH =
   ACTIVE_ABILITY_SLOT_LIMIT * SLOT_WIDTH + (ACTIVE_ABILITY_SLOT_LIMIT - 1) * SLOT_GAP;
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
-const BAR_Y = GAME.HEIGHT - 140;
 const PANEL_PADDING = 8;
-const PANEL_TOP = BAR_Y - 30;
+/** Title strip + slot row. */
 const PANEL_HEIGHT = SLOT_HEIGHT + 38;
+/**
+ * Design-space clearance kept between the ability panel and the canvas bottom
+ * edge. The parent `bottomCenter` group additionally offsets the device
+ * safe-area bottom inset (see HudUI.applyScale), so this margin is purely the
+ * authored visual gutter.
+ */
+const PANEL_BOTTOM_MARGIN = 12;
+const PANEL_TOP = GAME.HEIGHT - PANEL_BOTTOM_MARGIN - PANEL_HEIGHT;
+/** Slot row sits below the panel title strip. */
+const BAR_Y = PANEL_TOP + 30;
+
+/**
+ * Authored bottom-center layout of the ability bar in design space. The bar is
+ * anchored to the bottom of the canvas; bottom-center affordances that must not
+ * cover it (the Talk/Descend interaction hint) stack *above* `panelTop`.
+ */
+export const ABILITY_BAR_LAYOUT = {
+  panelTop: PANEL_TOP,
+  panelHeight: PANEL_HEIGHT,
+  panelBottomMargin: PANEL_BOTTOM_MARGIN,
+  slotRowTop: BAR_Y,
+  slotHeight: SLOT_HEIGHT,
+} as const;
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -33,7 +57,27 @@ const COLORS = {
   slotCastFlash: 0xf0f9ff,
   slotCastFlashBorder: 0x22d3ee,
   cooldownRing: 0xfbbf24,
+  slotLocked: 0x1b2136,
+  slotLockedBorder: 0x5c4a2a,
 } as const;
+
+/**
+ * Whether an equipped ability's weapon prerequisite is currently satisfied.
+ * Mirrors `weaponPrerequisiteMet` in `src/game/systems/abilitySystem.ts`; the
+ * engine layer must not import `src/game`, so the prerequisite is read from the
+ * shared presentation table (the single source of truth both layers spread).
+ */
+function abilityPrerequisiteMet(world: GameWorld, abilityId: string): boolean {
+  const prereq = getAbilityPresentation(abilityId)?.weaponPrerequisite;
+  if (prereq === undefined) return true;
+  const weapon = getActiveWeaponDef(world);
+  if (weapon === undefined) return false;
+  return weaponSkillPrerequisiteMatches(
+    prereq,
+    weapon.weaponClassSkillId,
+    weapon.weaponTypeSkillId,
+  );
+}
 
 function abilityAccent(id: string): number {
   const category = getAbilityPresentation(id)?.category;
@@ -47,6 +91,8 @@ export function createHudAbilityBar(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld, playerEid: number): void;
+  /** Whether the bar is currently rendered (spells unlocked). */
+  isVisible(): boolean;
   getPanelScreenBounds(): ScreenBounds;
   getSlotScreenBounds(index: number): ScreenBounds | null;
   destroy(): void;
@@ -179,7 +225,9 @@ export function createHudAbilityBar(
     ...cooldownLabels,
   ]);
 
+  let barVisible = false;
   const setVisible = (visible: boolean): void => {
+    barVisible = visible;
     panel.setVisible(visible);
     title.setVisible(visible);
     manageHint.setVisible(visible);
@@ -194,12 +242,15 @@ export function createHudAbilityBar(
   setVisible(false);
 
   function sync(world: GameWorld, playerEid: number): void {
-    const visible = world.featureUnlocks.spells === true;
+    const state = world.abilityStatesByEntity.get(playerEid);
+    const equipped = state?.equippedActiveAbilityIds ?? [];
+    // The bar unlocks with the spellbook, but non-spell actives (e.g. the
+    // Arcane level-5 milestone unlock) can be equipped before that — the bar
+    // must be visible for those too or the ability is invisible to the player.
+    const visible = world.featureUnlocks.spells === true || equipped.length > 0;
     setVisible(visible);
     if (!visible) return;
 
-    const state = world.abilityStatesByEntity.get(playerEid);
-    const equipped = state?.equippedActiveAbilityIds ?? [];
     const cooldowns = state?.cooldownByAbilityId ?? new Map();
     const cooldownFrames = state?.cooldownFramesByAbilityId ?? new Map();
 
@@ -230,7 +281,15 @@ export function createHudAbilityBar(
       const lastTriggerFrame = cooldowns.get(id);
       const cooldownDuration = cooldownFrames.get(id) ?? 0;
       const flashing = isAbilitySlotCastFlashing(world.frameCount, lastTriggerFrame);
-      if (flashing) {
+      const prereqMet = abilityPrerequisiteMet(world, id);
+      if (!prereqMet) {
+        // Owned but unusable right now: the ability keeps its slot and stays
+        // readable, dimmed with a warning border until the required weapon is
+        // equipped again.
+        slot.setFillStyle(COLORS.slotLocked, 0.92).setStrokeStyle(2, COLORS.slotLockedBorder);
+        abilityLabel.setColor('#8a7a54');
+        keyLabel.setColor('#6d6146');
+      } else if (flashing) {
         slot.setFillStyle(COLORS.slotCastFlash, 0.98).setStrokeStyle(3, COLORS.slotCastFlashBorder);
         abilityLabel.setColor('#0c4a6e');
         keyLabel.setColor('#0c4a6e');
@@ -239,7 +298,7 @@ export function createHudAbilityBar(
         abilityLabel.setColor('#f4f7fb');
         keyLabel.setColor('#b8c7dc');
       }
-      accentBar.setFillStyle(abilityAccent(id), 1);
+      accentBar.setFillStyle(abilityAccent(id), prereqMet ? 1 : 0.35);
       abilityLabel.setText(presentation?.shortLabel ?? id.slice(0, 5).toUpperCase());
       abilityLabel.setFontSize(11);
       abilityLabel.setVisible(iconEntry === null);
@@ -247,6 +306,7 @@ export function createHudAbilityBar(
         abilityIcon.setTexture(iconEntry.textureKey);
         abilityIcon
           .setScale(fitScaleForBox(abilityIcon.width, abilityIcon.height, 30))
+          .setAlpha(prereqMet ? 1 : 0.45)
           .setVisible(true);
       } else {
         abilityIcon.setVisible(false);
@@ -287,6 +347,7 @@ export function createHudAbilityBar(
 
   return {
     sync,
+    isVisible: () => barVisible,
     getPanelScreenBounds: () => ({
       x: BAR_X - PANEL_PADDING,
       y: PANEL_TOP,

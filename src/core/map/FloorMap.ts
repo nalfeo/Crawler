@@ -109,6 +109,8 @@ export class FloorMap implements FloorMapData {
    * is actually running on instead of re-deriving geometry.
    */
   readonly feedGates: ReadonlyArray<ArenaFeedGate>;
+  /** Exact internal door-to-door connector tiles within the Floor 2 settlement. */
+  readonly settlementHallwayTileIndices: ReadonlySet<number>;
 
   /**
    * Bounding box of sub-tile cells set by the most recent FOV pass (sub-tile
@@ -132,6 +134,7 @@ export class FloorMap implements FloorMapData {
     subFactor: number = DEFAULT_FOV_SUB_FACTOR,
     territoryZones: ReadonlyArray<TerritoryZone> = [],
     feedGates: ReadonlyArray<ArenaFeedGate> = [],
+    settlementHallwayTileIndices: ReadonlySet<number> = new Set(),
   ) {
     this.config = config;
     this.tileMap = tileMap;
@@ -146,6 +149,7 @@ export class FloorMap implements FloorMapData {
     this.playerSpawn = playerSpawn;
     this.territoryZones = territoryZones;
     this.feedGates = feedGates;
+    this.settlementHallwayTileIndices = settlementHallwayTileIndices;
   }
 
   /** Delegate to TileMap for FloorMapData interface. */

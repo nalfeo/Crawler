@@ -88,6 +88,28 @@ describe('MainGameScene characterization guards', () => {
     expect(state.playerFeet, 'player should have a world position at boot').not.toBeNull();
   });
 
+  // Observe-before-done guard for the starter-loadout copy move: the renderer no
+  // longer owns the "Floor 1 is paused…" literal, it renders whatever
+  // `ScenarioPresentationContract.starterLoadout` supplies. Asserting the real
+  // booted scene's modal text pins that the contract-driven path produces the
+  // exact same player-visible copy the floor literal used to.
+  it('renders the starter-loadout copy supplied by the scenario contract', async () => {
+    await loadMainSceneProbeLab(page);
+    await waitForState(page, (s) => s.worldState === 'loadout' && s.modalOpen, {
+      label: 'loadout modal open',
+    });
+
+    const content = await mainSceneProbe.getModalPickerContent(page);
+    expect(content).not.toBeNull();
+    expect(content!.title).toBe('Choose your opening loadout');
+    expect(content!.subtitle).toMatch(/ · Floor 1 is paused until you confirm a starter weapon\.$/);
+    expect(content!.body).toMatch(/\nPick the weapon you want to begin with\.$/);
+    expect(content!.options.length).toBeGreaterThan(0);
+    for (const option of content!.options) {
+      expect(option.description).toMatch(/^Starter weapon: /);
+    }
+  });
+
   it('keeps the main camera centered on the player at ftToPx(feet) as the player moves', async () => {
     await loadMainSceneProbeLab(page);
 

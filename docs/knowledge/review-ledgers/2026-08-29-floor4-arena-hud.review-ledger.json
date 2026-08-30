@@ -1,0 +1,79 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-29",
+  "session_slug": "floor4-arena-hud",
+  "task_title": "Floor 4 arena HUD and feedback surfaces",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review considered: Alt A reuse existing encounter widgets; rejected because Floor 4 needs a combined act clock/wave pip/break-summary/Winner Circle panel and existing widgets do not expose that state. Alt B make the projection sim-owned; rejected for this slice because a pure shared read-only model gives deterministic reuse without expanding gameplay state. Alt C fold Floor 4 into the encounter layout resolver; deferred because the measured HudUI offset keeps this surgical and tests cover bounds. Resolved blockers by rendering all six summary lines and making probes assert renderedSummary parity; resolved data-authority concern by deriving wavesPerAct from the manifest; accepted current real-scene boot plus HUD-lab forced-state split as sufficient deterministic coverage for this slice."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1: gpt-5.4 raised 2 concerns (cut notice rendering alongside VICTORY LAP once the Headliner is cleared inside the 3s notice window; actBaseline per-act wiring lacked a real sim-driven regression test, only fixture-level coverage) and gemini-3.1-pro-preview independently raised 1 distinct concern (break-summary 'Gold earned' diffed against the live, continuously-mutating playerGold instead of a locked end-of-act snapshot, so it would shrink in real time as the player shopped during the break). All 3 resolved: added `!state.phase.cleared` to the cutNotice guard with a regression test; added a real sim-driven integration test in tests/unit/floor4-arena-director.test.ts driving arenaDirectorSystem through two acts; added a breakGoldSnapshot captured at INTERMISSION entry (src/game/floor4Scenario.ts, src/shared/floor-types.ts, src/shared/floor4-hud.ts) with a regression test proving the lock. Round 2: both models re-reviewed the fixed diff and reported 0 concerns / clean."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Same round-1/round-2 findings as code_review, viewed under the multi-model + adjudication lens. Adjudicator claude-opus-4.8 independently reviewed the fixed diff (traced determinism, the per-act delta math including the new breakGoldSnapshot lock, cut-notice suppression, real shipped-scene wiring via HudUI.sync()/MainGameScene, layer boundaries, and resource cleanup) and confirmed 0 actionable concerns, noting only one informational (non-defect) coverage nuance: the breakGoldSnapshot lock's real-sim proof point landed with no gold spent mid-break. That nuance was closed by extending the sim-driven director test to spend gold mid-INTERMISSION and assert the summary still reports the pre-spend delta. All 3 models (gpt-5.4, gemini-3.1-pro-preview, claude-opus-4.8) agree the final diff is clean."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "9e954c348eb36243f10c914832ba478338a58423",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff adds the Floor 4 arena HUD projection, rendering, lab probes, and deterministic coverage without introducing high-confidence correctness or policy issues. Focused unit tests, e2e coverage, typecheck, lint, and diff checks pass, and the changed state snapshots address the non-final break summary edge cases covered by the new tests."
+    }
+  }
+}

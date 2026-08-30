@@ -112,7 +112,7 @@ const BAG_COLS = 4;
  * rendering every registry entry: deprecated body-part slots must not remain as
  * hidden or accidental controls when the simulation registry evolves.
  */
-export const EQUIPMENT_UI_SLOT_IDS = [
+const EQUIPMENT_UI_SLOT_IDS = [
   'head',
   'neck',
   'mainHand',
@@ -171,7 +171,7 @@ function uiSlotId(slotId: EquipmentSlotId): EquipmentSlotId | null {
 }
 
 /** Visible slot definitions, with stable labels/positions independent of registry order. */
-export const EQUIPMENT_UI_SLOTS: readonly SlotDefinition[] = EQUIPMENT_UI_SLOT_IDS.map((id) => {
+const EQUIPMENT_UI_SLOTS: readonly SlotDefinition[] = EQUIPMENT_UI_SLOT_IDS.map((id) => {
   const registrySlot = SLOT_REGISTRY.find((entry) => entry.id === id);
   const fallbackSlot = SLOT_REGISTRY.find((entry) => entry.id === operationalSlotId(id));
   return {

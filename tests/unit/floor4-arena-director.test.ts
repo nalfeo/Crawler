@@ -9,6 +9,7 @@ import {
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import { buildFloor4HudState } from '../../src/shared/floor4-hud.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function setupFloor4(seed = 42) {
@@ -108,6 +109,28 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission + 1);
   });
 
+  it('opens Green Room stock on intermission entry and retires it on exit', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit?.visitIndex).toBe(0);
+    const firstVisit = world.floorExtendedState!.floor4GreenRoom!.currentVisit;
+
+    advance(world, phase.intermissionMs);
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
+    expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit).toBeUndefined();
+    expect(world.floorExtendedState!.floor4GreenRoom?.retiredVisitCount).toBe(1);
+    expect(world.floorExtendedState!.floor4GreenRoom?.lastOpenedVisitIndex).toBe(0);
+    expect(firstVisit).toBeDefined();
+  });
+
   it('allows stair descent only during the final intermission window', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;
@@ -200,6 +223,7 @@ describe('arenaDirectorSystem', () => {
     const goldBefore = world.playerGold;
     expect(encounter.slotId).toBe('floor4-headliner-act-1');
     expect(world.enemyAppearanceKeys.get(encounter.bossEid!)).toBe(encounter.archetypeId);
+    expect(world.stores.damage.amount[encounter.bossEid!]).toBe(encounter.contactDamage);
     expect(world.announcements.at(-1)?.kind).toBe('bossAbilityCast');
 
     defeatActiveHeadliner(world);
@@ -215,6 +239,35 @@ describe('arenaDirectorSystem', () => {
     arenaDirectorSystem(world);
     expect(world.playerGold).toBe(goldBefore + encounter.appearanceFeeGold);
     expect(state.headlinerTelemetry.chestsSpawned).toBe(1);
+  });
+
+  it('records act wave income from drop-ledger delta only (excluding non-drop gold)', () => {
+    const world = setupFloor4(404);
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+    const dropGoldEarned = 12;
+    const lootBoxGold = 6;
+
+    advance(world, phase.countdownMs);
+    const goldBeforeMutations = world.playerGold;
+    world.goldLedger.earnedFromDrops += dropGoldEarned;
+    world.playerGold += dropGoldEarned;
+    world.goldLedger.earnedFromLootBoxes += lootBoxGold;
+    world.playerGold += lootBoxGold;
+    advance(world, phase.waveWindowMs);
+    const appearanceFeeGold =
+      world.floorExtendedState!.floor4Arena!.activeHeadliner!.appearanceFeeGold;
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+    expect(world.playerGold).toBe(
+      goldBeforeMutations + dropGoldEarned + lootBoxGold + appearanceFeeGold,
+    );
+
+    const income = world.floorExtendedState!.floor4Arena!.actIncome[0];
+    expect(income).toBeDefined();
+    expect(income!.waveGold).toBe(dropGoldEarned);
+    expect(income!.waveGold).not.toBe(dropGoldEarned + lootBoxGold);
+    expect(income!.appearanceFeeGold).toBe(appearanceFeeGold);
+    expect(income!.totalGold).toBe(dropGoldEarned + appearanceFeeGold);
   });
 
   it('force-resolves an unopened boss chest when the act reaches intermission', () => {
@@ -325,5 +378,88 @@ describe('arenaDirectorSystem', () => {
     expect(state.phase).toEqual({ kind: 'DEFEAT' });
     expect(world.stores.health.current[playerEid]).toBe(0);
     expect(world.state).toBe('game_over');
+  });
+
+  it('projects a real, sim-captured per-act delta into the HUD summary (not the run-cumulative total)', () => {
+    const world = setupFloor4(7);
+    const floor4 = getFloorManifest('floor4')!.floor4!;
+    const phase = floor4.phase;
+    const waves = floor4.waves;
+
+    function runActWaves(): void {
+      // Release every authored wave on its cadence, then close the window so
+      // any still-live wave enemies are counted as cut (mirrors the release
+      // pattern used in tests/unit/floor4-arena-waves.test.ts).
+      for (let released = 1; released < waves.cadence.wavesPerAct; released += 1) {
+        advance(world, waves.cadence.intervalMs);
+      }
+      advance(world, phase.waveWindowMs);
+    }
+
+    advance(world, phase.countdownMs);
+    runActWaves();
+    defeatActiveHeadliner(world);
+    // Land exactly on the HEADLINE -> INTERMISSION boundary for act 1 without
+    // overshooting into act 2, mirroring the "holds the arena clock" test's
+    // ms-exact technique above.
+    advance(world, phase.headlineWindowMs - 1);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+
+    // Advancing through act 2's waves cascades through the rest of act 1's
+    // intermission and re-snapshots actBaseline from act 1's real,
+    // sim-produced cumulative totals (not a hand-authored fixture) the
+    // instant act 2's WAVES phase opens.
+    runActWaves();
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs - 1);
+
+    const arena = world.floorExtendedState!.floor4Arena!;
+    expect(arena.phase).toEqual({ kind: 'INTERMISSION', act: 2 });
+    const act1Baseline = arena.actBaseline;
+    expect(act1Baseline.enemiesSpawned).toBeGreaterThan(0);
+    expect(act1Baseline.enemiesCut).toBeGreaterThan(0);
+    expect(arena.waveTelemetry.enemiesSpawned).toBeGreaterThan(act1Baseline.enemiesSpawned);
+
+    const hud = buildFloor4HudState({
+      arena,
+      phaseConfig: {
+        actCount: phase.actCount,
+        actDurationMs: phase.actDurationMs,
+        waveWindowMs: phase.waveWindowMs,
+        overtimeCapMs: phase.overtimeCapMs,
+        wavesPerAct: waves.cadence.wavesPerAct,
+      },
+      playerGold: world.playerGold,
+    });
+
+    const expectedSpawnedThisAct = arena.waveTelemetry.enemiesSpawned - act1Baseline.enemiesSpawned;
+    const expectedCutThisAct = arena.waveTelemetry.enemiesCut - act1Baseline.enemiesCut;
+    const expectedGoldEarned = world.playerGold - act1Baseline.playerGold;
+    expect(hud.summary).toContain(`Enemies booked: ${expectedSpawnedThisAct}`);
+    expect(hud.summary).toContain(`Cuts: ${expectedCutThisAct}`);
+    expect(hud.summary).toContain(`Gold earned: ${expectedGoldEarned}`);
+    // The run-cumulative totals differ from the act-2-only deltas above,
+    // proving the summary is NOT simply echoing the cumulative counters.
+    expect(arena.waveTelemetry.enemiesSpawned).not.toBe(expectedSpawnedThisAct);
+
+    // Prove the gold snapshot is genuinely LOCKED against the real sim path
+    // (not just a hand-authored fixture): spend gold mid-break, as a sponsor
+    // purchase would, and confirm the summary still reports the pre-spend
+    // delta instead of re-diffing against the drained live balance.
+    const goldBeforeSpend = world.playerGold;
+    world.playerGold = Math.max(0, world.playerGold - 5);
+    const hudAfterSpend = buildFloor4HudState({
+      arena,
+      phaseConfig: {
+        actCount: phase.actCount,
+        actDurationMs: phase.actDurationMs,
+        waveWindowMs: phase.waveWindowMs,
+        overtimeCapMs: phase.overtimeCapMs,
+        wavesPerAct: waves.cadence.wavesPerAct,
+      },
+      playerGold: world.playerGold,
+    });
+    expect(world.playerGold).toBeLessThan(goldBeforeSpend);
+    expect(hudAfterSpend.summary).toContain(`Gold earned: ${expectedGoldEarned}`);
   });
 });

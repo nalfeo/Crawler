@@ -1,8 +1,32 @@
 import { query, hasComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Enemy, DeathTimer } from '../../src/core/index.js';
+import {
+  Companion,
+  Enemy,
+  DeathTimer,
+  PartySlot,
+  Player,
+  Position,
+  Team,
+} from '../../src/core/index.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import {
+  capturePlayerCarryover,
+  type PlayerCarryoverSnapshot,
+} from '../../src/game/playerCarryover.js';
+import {
+  companionAISystem,
+  getCompanionAIDecision,
+} from '../../src/game/systems/companionAISystem.js';
+import { isEnemyCombatEligible } from '../../src/game/floor2BossEligibility.js';
+import { buildKeptCompanionContract } from '../../src/shared/data/floor3/kept-companion-contract.js';
+import {
+  ABILITY_MILESTONE_LEVELS,
+  getPetSpecies,
+  speciesTokenForId,
+} from '../../src/shared/data/floor3/species.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { Floor4WaveWindowState } from '../../src/shared/floor-types.js';
@@ -11,11 +35,39 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const floor4 = getFloorManifest('floor4')!.floor4!;
 const phase = floor4.phase;
 const waves = floor4.waves;
+const FLOOR3_GRADUATE_LEVEL = ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
 
 function setupFloor4(seed = 42): GameWorld {
   const world = createTestWorld({ seed });
   const player = spawnPlayer(world, 0, 0);
   initializeFloor4Scenario(world, player);
+  return world;
+}
+
+function blankCarryoverSnapshot(seed = 42): PlayerCarryoverSnapshot {
+  const source = createTestWorld({ seed });
+  const sourcePlayer = spawnPlayer(source, 0, 0);
+  return capturePlayerCarryover(source, sourcePlayer);
+}
+
+function carryoverWithKeptCompanion(
+  seed = 42,
+  speciesId = 'ember-charger',
+): PlayerCarryoverSnapshot {
+  const species = getPetSpecies(speciesId);
+  if (!species) {
+    throw new Error(`Unknown test species ${speciesId}`);
+  }
+  return {
+    ...blankCarryoverSnapshot(seed),
+    keptCompanion: buildKeptCompanionContract(species),
+  };
+}
+
+function setupFloor4WithCarryover(playerCarryover: PlayerCarryoverSnapshot, seed = 42): GameWorld {
+  const world = createTestWorld({ seed });
+  const player = spawnPlayer(world, 0, 0);
+  initializeFloor4Scenario(world, player, { playerCarryover });
   return world;
 }
 
@@ -48,6 +100,12 @@ function defeatActiveHeadliner(world: GameWorld): void {
 /** Enemies actually standing in the arena (corpses excluded). */
 function liveEnemies(world: GameWorld): number[] {
   return [...query(world.ecs, [Enemy])].filter((eid) => !hasComponent(world.ecs, eid, DeathTimer));
+}
+
+function playerTeamCompanions(world: GameWorld): number[] {
+  return [...query(world.ecs, [Enemy, Companion, Team])].filter(
+    (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
+  );
 }
 
 /** Open the act-1 wave window and release exactly wave 0. */
@@ -154,6 +212,79 @@ describe('floor4 wave release', () => {
     expect([...waveWindow(left).ownedEnemies.values()]).toEqual([
       ...waveWindow(right).ownedEnemies.values(),
     ]);
+  });
+});
+
+describe('floor4 kept-companion co-star', () => {
+  it('keeps carryover-without-kept-companion wave behavior identical to cold Floor 4', () => {
+    const cold = setupFloor4(3547);
+    const carriedWithoutKept = setupFloor4WithCarryover(blankCarryoverSnapshot(3547), 3547);
+
+    expect(playerTeamCompanions(cold)).toHaveLength(0);
+    expect(playerTeamCompanions(carriedWithoutKept)).toHaveLength(0);
+
+    openWaveWindow(cold);
+    openWaveWindow(carriedWithoutKept);
+
+    expect(waveWindow(carriedWithoutKept).manifests).toEqual(waveWindow(cold).manifests);
+    expect(waveWindow(carriedWithoutKept).releaseCursor).toBe(waveWindow(cold).releaseCursor);
+    expect(arena(carriedWithoutKept).waveTelemetry).toEqual(arena(cold).waveTelemetry);
+    expect([...waveWindow(carriedWithoutKept).ownedEnemies.values()]).toEqual([
+      ...waveWindow(cold).ownedEnemies.values(),
+    ]);
+  });
+
+  it('re-hosts a valid kept companion as one optional allied non-party co-star', () => {
+    const world = setupFloor4WithCarryover(carryoverWithKeptCompanion(3547), 3547);
+    const coStars = playerTeamCompanions(world);
+
+    expect(coStars).toHaveLength(1);
+    const coStar = coStars[0]!;
+    const player = query(world.ecs, [Player, Position])[0];
+    expect(hasComponent(world.ecs, coStar, PartySlot)).toBe(false);
+    expect(world.stores.companion.speciesToken[coStar]).toBe(speciesTokenForId('ember-charger'));
+    expect(world.stores.companion.form[coStar]).toBe(2);
+    expect(world.stores.companion.level[coStar]).toBe(FLOOR3_GRADUATE_LEVEL);
+    expect(world.stores.companion.ownerTeam[coStar]).toBe(TeamId.PLAYER);
+    expect(isEnemyCombatEligible(world, coStar)).toBe(false);
+
+    const floorMap = world.floorMap!;
+    const coStarTile = floorMap.worldToTile(
+      world.stores.position.x[coStar] ?? 0,
+      world.stores.position.y[coStar] ?? 0,
+    );
+    const playerTile =
+      player === undefined
+        ? undefined
+        : floorMap.worldToTile(
+            world.stores.position.x[player] ?? 0,
+            world.stores.position.y[player] ?? 0,
+          );
+    expect(playerTile).toBeDefined();
+    expect(coStarTile).not.toEqual(playerTile);
+    expect(floorMap.tileMap.isPassable(coStarTile.x, coStarTile.y)).toBe(true);
+  });
+
+  it('keeps the co-star out of wave ownership while letting companion AI target wave enemies', () => {
+    const world = setupFloor4WithCarryover(carryoverWithKeptCompanion(3548, 'ember-slinger'), 3548);
+    const coStar = playerTeamCompanions(world)[0]!;
+
+    openWaveWindow(world);
+    const spawnedWaveEnemies = [...waveWindow(world).ownedEnemies.keys()];
+    expect(spawnedWaveEnemies).not.toContain(coStar);
+    expect(spawnedWaveEnemies.length).toBeGreaterThan(0);
+    for (const enemy of spawnedWaveEnemies) {
+      expect(world.stores.team.id[enemy]).toBe(TeamId.ENEMY);
+    }
+
+    const target = spawnedWaveEnemies[0]!;
+    world.stores.position.x[target] = (world.stores.position.x[coStar] ?? 0) + 1;
+    world.stores.position.y[target] = world.stores.position.y[coStar] ?? 0;
+
+    companionAISystem(world);
+    const decision = getCompanionAIDecision(world, coStar);
+    expect(decision?.kind).toBe('rival-primary');
+    expect(decision?.targetEid).toBe(target);
   });
 });
 

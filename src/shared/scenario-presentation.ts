@@ -66,6 +66,28 @@ export interface ScenarioStairConfirmationCopy {
 }
 
 /**
+ * Copy for the starter-loadout picker the presentation layer opens while the
+ * run is paused in `'loadout'` and the scenario offers `starterChoices`.
+ *
+ * Exists so the picker carries no floor identity: the "Floor 1 is paused until
+ * you confirm a starter weapon" line used to be a literal in the renderer, which
+ * would have narrated the wrong floor for any other scenario reusing the same
+ * generic picker.
+ */
+export interface ScenarioStarterLoadoutCopy {
+  readonly title: string;
+  /**
+   * Sentence appended after the protagonist name in the subtitle, e.g.
+   * `'Floor 1 is paused until you confirm a starter weapon.'`
+   */
+  readonly pausedNotice: string;
+  /** Line shown under the scenario's base-stat bonus summary. */
+  readonly prompt: string;
+  /** Prefix for an option's description, e.g. `'Starter weapon'`. */
+  readonly optionDescriptionPrefix: string;
+}
+
+/**
  * One ordered Director-commentary beat, shown strictly between `intro` and
  * `victory`/`timeout`. `id` is the stable identifier the presenting layer
  * latches "already shown" against — ids must never be reordered or reused for
@@ -132,6 +154,12 @@ export interface ScenarioPresentationContract<TWorld> {
   readonly getStairMarkerState?: (world: TWorld) => ScenarioStairMarkerState | null;
   /** Copy for the stair-descend confirmation prompt. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /**
+   * Copy for the starter-loadout picker. Absent for scenarios that present
+   * their own loadout surface or offer no starter choice, in which case the
+   * generic picker stays closed.
+   */
+  readonly starterLoadout?: ScenarioStarterLoadoutCopy;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }

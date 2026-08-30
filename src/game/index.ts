@@ -3,6 +3,7 @@ export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export { spawnerSystem } from './spawners/index.js';
 export { spawnerArenaSystem } from './spawners/index.js';
+export { attackWaveSystem } from './attack-wave-system.js';
 export {
   SPAWNER_ARCHETYPES,
   getSpawnerArchetype,
@@ -54,6 +55,7 @@ export {
   FLOOR3_TIMEOUT_GOAL_ID,
 } from './floor3Scenario.js';
 export { arenaDirectorSystem, initializeFloor4Scenario } from './floor4Scenario.js';
+export { initializeFloor5Scenario, siegeDirectorSystem } from './floor5Scenario.js';
 export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,

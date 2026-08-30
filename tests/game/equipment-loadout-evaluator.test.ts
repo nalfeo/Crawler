@@ -480,6 +480,30 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(snapshot([]).equippedActiveAbilityIds).toEqual([]);
   });
 
+  it('scores weapon-gated active abilities only for matching candidate weapons', () => {
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      activeAbilityGrantSources: new Map([
+        ['arcane-nova', [skillAbilityGrantSourceId('arcane', 5)]],
+      ]),
+      equippedActiveAbilityIds: ['arcane-nova'],
+    };
+
+    const sword = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [candidate(generated('iron-sword', 'erv-arcane-nova-sword'))], [CROWD]),
+      current,
+    }).ranked[0]!;
+    const fireWand = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [candidate(generated('fireball', 'erv-arcane-nova-fire-wand'))], [CROWD]),
+      current,
+    }).ranked[0]!;
+
+    expect(sword.nextScore.equippedActiveAbilityIds).toEqual(['arcane-nova']);
+    expect(sword.nextScore.components.activeAbility).toBe(0);
+    expect(fireWand.nextScore.equippedActiveAbilityIds).toEqual(['arcane-nova']);
+    expect(fireWand.nextScore.components.activeAbility).toBeGreaterThan(0);
+  });
+
   it('preserves learned and skill grant sources while evaluating generated equipment', () => {
     const activeSources: AbilityGrantSourceId[] = [learnedAbilityGrantSourceId('fireball')];
     const passiveSources: AbilityGrantSourceId[] = [skillAbilityGrantSourceId('unarmed', 0)];

@@ -3,6 +3,7 @@ import { createInventoryUI } from '../../src/engine/InventoryUI.js';
 import { emptyGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../../src/engine/generatedAssets/index.js';
 import { createInventoryBag } from '../../src/shared/inventory.js';
+import { getItemById } from '../../src/shared/items.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import { addGeneratedEquipmentToBag } from '../../src/core/systems/equipmentSystem.js';
@@ -136,7 +137,7 @@ function makeScene(record: RenderRecord): unknown {
   };
 }
 
-function seedWorldWithStaticAndGeneratedWeapons() {
+function seedWorldWithStaticAndGeneratedWeapons(options?: { readonly baseId?: string }) {
   const world = createTestWorld({
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(42),
   });
@@ -148,7 +149,11 @@ function seedWorldWithStaticAndGeneratedWeapons() {
 
   const generated = createGeneratedEquipmentInstance(
     world,
-    generatedEquipmentInput({ baseId: 'plasma-pistol', slots: ['mainHand'], weapon: true }),
+    generatedEquipmentInput({
+      baseId: options?.baseId ?? 'plasma-pistol',
+      slots: ['mainHand'],
+      weapon: true,
+    }),
   );
   const added = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
   expect(added.ok).toBe(true);
@@ -198,9 +203,10 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
 
     const generatedWeaponTooltip = hover(generatedWeaponIndex);
     expect(generatedWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
-    // The generated weapon also has bonus stat rows beyond DPS, so it grows
-    // taller than the static weapon's DPS-only stat list.
-    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(152);
+    // The generated weapon also carries slot/weight metadata and bonus stat
+    // rows beyond DPS, so it grows taller than the static weapon's DPS-only
+    // stat list.
+    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(166);
     // DPS must lead the stat-line array, not trail after the bonus stat rows.
     const dpsIndex = generatedWeaponTooltip.lines.findIndex((line) => line.startsWith('DPS: '));
     const firstBonusStatIndex = generatedWeaponTooltip.lines.findIndex(
@@ -208,9 +214,49 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     );
     expect(dpsIndex).toBeGreaterThanOrEqual(0);
     expect(firstBonusStatIndex).toBeGreaterThan(dpsIndex);
+    // Slot and carry weight stay visible as stat metadata now that they no
+    // longer squat in the flavor slot, and they sit between DPS and the bonus
+    // rows so the renderer's five-line stat cap can never drop them.
+    const metadataIndex = generatedWeaponTooltip.lines.findIndex((line) =>
+      /^Main Hand · \d+(\.\d+)? lb$/.test(line),
+    );
+    expect(metadataIndex).toBeGreaterThan(dpsIndex);
+    expect(metadataIndex).toBeLessThan(firstBonusStatIndex);
+    // Flavor copy reuses the authored catalog description of the generated
+    // base item instead of leaking slot/stat/weight metadata into that slot.
+    expect(generatedWeaponTooltip.lines).toContain(getItemById('plasma-pistol')?.description);
 
     const nonWeaponTooltip = hover(nonWeaponIndex);
     expect(nonWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(false);
     expect(nonWeaponTooltip.lastTooltipHeight).toBe(110);
+  });
+
+  it('uses neutral flavor fallback for generated-only bases in the tooltip render path', () => {
+    const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
+    const scene = makeScene(record);
+    const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons({
+      baseId: 'equipment/weapon/bone-saw',
+    });
+    const ui = createInventoryUI(scene as never, { height: 900 });
+    ui.toggle(world);
+
+    const generatedWeaponIndex = ui.getCellIndexForEntry({
+      kind: 'generated-instance',
+      instanceKey: generatedInstanceKey,
+    });
+
+    expect(generatedWeaponIndex).not.toBeNull();
+    if (generatedWeaponIndex === null) return;
+    const rect = record.cellRects[generatedWeaponIndex];
+    expect(rect).toBeDefined();
+    rect?.emit('pointerover');
+
+    expect(record.textStrings).toContain(
+      'A dungeon-forged reward with terms the producers refuse to print.',
+    );
+    expect(record.textStrings).not.toContain('equipment/weapon/bone-saw');
+    // The fallback flavor path must still surface slot/weight metadata; the
+    // neutral copy replaces mechanical text, it does not delete it.
+    expect(record.textStrings.some((line) => /^Main Hand · \d+(\.\d+)? lb$/.test(line))).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import {
   defaultCLIArgs,
   helpText,
   parseArgs,
+  resolveHeadlessRunnerOptions,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
 import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from '../../../src/game/ai/floor-run-budget.js';
@@ -148,9 +149,32 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
-  it('keeps settlement return routing off by default and enables it by flag or environment', () => {
-    expect(cli().settlementReturnRouting).toBe(false);
-    expect(cli('--settlement-return-routing').settlementReturnRouting).toBe(true);
+  it('resolves Floor 2 routing while preserving explicit overrides and other-floor defaults', () => {
+    expect(cli().settlementReturnRouting).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor2'))).toEqual({
+      settlementReturnRouting: true,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--settlement-return-routing')),
+    ).toEqual({
+      settlementReturnRouting: true,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--no-settlement-return-routing')),
+    ).toEqual({
+      settlementReturnRouting: false,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(
+        parseArgs(['node', 'headless-runner-cli.js', '--floor', 'floor2'], {
+          AI_SETTLEMENT_RETURN_ROUTING: 'false',
+        }),
+      ),
+    ).toEqual({
+      settlementReturnRouting: false,
+    });
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor1'))).toEqual({});
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor3'))).toEqual({});
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: '1' })
         .settlementReturnRouting,
@@ -163,6 +187,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: 'false' })
         .settlementReturnRouting,
     ).toBe(false);
+    expect(helpText()).toContain('--no-settlement-return-routing');
   });
 });
 

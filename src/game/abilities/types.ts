@@ -32,6 +32,14 @@ export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
   cooldownFrames: number;
   trigger: SharedAbilityTriggerCondition;
   effects: CatalogEffect[];
+  /**
+   * Optional weapon skill prerequisite, with the same class/type matching rules
+   * as {@link PassiveAbilityDefinition.weaponPrerequisite}. When set, the
+   * ability stays equipped on the bar but refuses to fire unless a qualifying
+   * weapon is equipped — this is how a weapon-class skill can reward an active
+   * without letting it leak onto unrelated builds after a weapon swap.
+   */
+  weaponPrerequisite?: WeaponSkillId;
 }
 
 export interface PassiveAbilityDefinition extends AbilityDefinitionBase {
@@ -259,17 +267,18 @@ const baseAbilitySchema = z
   })
   .strict();
 
+// All valid weapon skill prerequisite IDs — class skills union type skills.
+const WEAPON_PREREQ_IDS = [...WEAPON_CLASS_SKILL_IDS, ...WEAPON_TYPE_SKILL_IDS] as const;
+
 const activeAbilitySchema = baseAbilitySchema
   .extend({
     kind: z.enum(['active', 'spell']),
     cooldownFrames: z.number().int().positive(),
     trigger: triggerConditionSchema,
     effects: z.array(effectSchema).min(1),
+    weaponPrerequisite: z.enum(WEAPON_PREREQ_IDS).optional(),
   })
   .strict();
-
-// All valid weapon skill prerequisite IDs — class skills union type skills.
-const WEAPON_PREREQ_IDS = [...WEAPON_CLASS_SKILL_IDS, ...WEAPON_TYPE_SKILL_IDS] as const;
 
 const passiveAbilitySchema = baseAbilitySchema
   .extend({

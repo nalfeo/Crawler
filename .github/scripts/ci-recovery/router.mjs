@@ -1212,6 +1212,42 @@ export function recoveryTriggerForPr({
     : dispatchTrigger;
 }
 
+// Pure builders for the CI Recovery workflow_dispatch request body. Extracted
+// so the real dispatch payload shape (not a hand-authored fixture) can be
+// validated against the invocationV1 contract schema in
+// validate-goobers-contracts.mjs -- both dispatch call sites below import and
+// call these directly, so there is exactly one place that can drift from the
+// contract.
+export function buildReaperDispatchBody(reaperPrNumber, reaperTrigger, payload) {
+  return {
+    ref: payload.repository?.default_branch || 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: String(reaperPrNumber),
+      trigger: reaperTrigger,
+      lease_id: '',
+    },
+  };
+}
+
+export function buildRouterDispatchBody(prNumber, prTrigger, payload, expectedMetadata) {
+  return {
+    ref: payload.repository?.default_branch || 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: String(prNumber),
+      trigger: prTrigger,
+      ...(expectedMetadata
+        ? {
+            expected_head_sha: expectedMetadata.expectedHeadSha,
+            expected_base_ref: expectedMetadata.expectedBaseRef,
+          }
+        : {}),
+      lease_id: '',
+    },
+  };
+}
+
 export function isManagedCommentEvent(payload, eventName) {
   if (eventName !== 'issue_comment') return false;
   const body = String(payload.comment?.body || '').trimStart();
@@ -1769,15 +1805,7 @@ export async function runFromEnv(env = process.env) {
       // would create duplicate runs.
       await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
         method: 'POST',
-        body: {
-          ref: payload.repository?.default_branch || 'main',
-          inputs: {
-            operation: 'reconcile',
-            pr_number: String(reaperPrNumber),
-            trigger: reaperTrigger,
-            lease_id: '',
-          },
-        },
+        body: buildReaperDispatchBody(reaperPrNumber, reaperTrigger, payload),
       });
       reaperDispatchedSet.add(reaperPrNumber);
       process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=${reaperTrigger}\n`);
@@ -1898,21 +1926,7 @@ export async function runFromEnv(env = process.env) {
     // 10-minute scheduled sweep retries failed dispatches instead.
     await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
       method: 'POST',
-      body: {
-        ref: payload.repository?.default_branch || 'main',
-        inputs: {
-          operation: 'reconcile',
-          pr_number: String(prNumber),
-          trigger: prTrigger,
-          ...(expectedMetadata
-            ? {
-                expected_head_sha: expectedMetadata.expectedHeadSha,
-                expected_base_ref: expectedMetadata.expectedBaseRef,
-              }
-            : {}),
-          lease_id: '',
-        },
-      },
+      body: buildRouterDispatchBody(prNumber, prTrigger, payload, expectedMetadata),
     });
     process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }

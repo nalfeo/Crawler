@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -4542,5 +4543,28 @@ test('runFromEnv hydrates direct owned train PRs before suppressing repeated R06
     dispatches.length,
     0,
     `no dispatch expected after hydrating an unchanged R06 direct noop; stdout: ${stdout}`,
+  );
+});
+
+test('workflow dispatch path never uses in-process retries for non-idempotent POST dispatches', () => {
+  const source = readFileSync(new URL('./router.mjs', import.meta.url), 'utf8');
+  const normalDispatchBlock = source.slice(
+    source.indexOf('for (const prNumber of dispatchable) {'),
+    source.indexOf('if (deferred.length > 0) {'),
+  );
+  assert.match(
+    normalDispatchBlock,
+    /Use a direct request\(\) -- do NOT wrap in requestWithBackoff\./,
+    'router dispatch loop must document non-idempotent dispatch semantics',
+  );
+  assert.match(
+    normalDispatchBlock,
+    /await request\(token, `\/repos\/\$\{owner\}\/\$\{repo\}\/actions\/workflows\/ci-recovery\.yml\/dispatches`/,
+    'normal dispatch must call request() directly',
+  );
+  assert.doesNotMatch(
+    normalDispatchBlock,
+    /requestWithBackoff\(/,
+    'workflow_dispatch POST must not be retried in-process',
   );
 });

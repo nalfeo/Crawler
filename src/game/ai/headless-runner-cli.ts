@@ -13,7 +13,7 @@ import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { getPersonaConfig, personaConfigDivergence } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
-import { helpText, parseArgs } from './headless-runner-cli-lib.js';
+import { helpText, parseArgs, resolveHeadlessRunnerOptions } from './headless-runner-cli-lib.js';
 
 function printHelp(): void {
   console.log(helpText());
@@ -21,6 +21,7 @@ function printHelp(): void {
 
 async function main(): Promise<void> {
   const args = parseArgs();
+  const runnerOptions = resolveHeadlessRunnerOptions(args);
 
   if (args.help) {
     printHelp();
@@ -45,7 +46,9 @@ async function main(): Promise<void> {
   console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Persona: ${args.persona}`);
   console.log(
-    `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
+    `Settlement return routing: ${
+      (runnerOptions.settlementReturnRouting ?? args.floorId === 'floor1') ? 'enabled' : 'disabled'
+    }`,
   );
   console.log('');
 
@@ -92,7 +95,7 @@ async function main(): Promise<void> {
     weaponPersonas: args.weaponPersonas,
     optionalPurchases: args.optionalPurchases,
     ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
-    settlementReturnRouting: args.settlementReturnRouting,
+    ...runnerOptions,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
