@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "ai-runner-feature-flags",
+  "task_title": "Centralize AI runner feature flags",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Added surface-aware default resolution to preserve the lab/headless/CLI matrix; retained optional-purchase legacy precedence through the existing resolver; strengthened the hard gate with a pure registry-to-controls projection plus wiring assertions; required both lab and headless consumers to use one resolved featureFlags object; moved compatibility/default tests before migration. Scope remains AI-runner-specific."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

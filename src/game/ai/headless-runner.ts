@@ -91,7 +91,7 @@ import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
-import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
+import { resolveAiFeatureFlags } from './feature-flags.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -418,7 +418,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
-  optionalPurchases: DEFAULT_OPTIONAL_PURCHASES,
+  optionalPurchases: true,
   merchantWeaponPurchase: false,
   spellBrokerPurchase: false,
   settlementReturnRouting: false,
@@ -626,9 +626,10 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
-    mergedConfig.settlementReturnRouting = true;
-  }
+  const featureFlags = resolveAiFeatureFlags(config, {
+    surface: 'headless',
+    floorId: mergedConfig.floorId,
+  });
   aiProvider.configurePlanningDeadlineMs?.(
     planningDeadlineMsFromFrameBudget(
       config.planningMaxFrames ??
@@ -654,14 +655,9 @@ export async function runHeadless(
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
-  // `optionalPurchases` is the canonical single flag.  When supplied it
-  // overrides the individual deprecated fields; when absent the individual
-  // fields are used for backward compat with existing callers/tests. A caller
-  // that supplies no purchase flag inherits the canonical default.
-  const purchasesEnabled = resolveOptionalPurchases(config);
-  configureMerchantWeaponPurchase(world, purchasesEnabled);
-  configureSpellBrokerPurchase(world, purchasesEnabled);
-  configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
+  configureMerchantWeaponPurchase(world, featureFlags.optionalPurchases);
+  configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
+  configureSettlementReturnRouting(world, featureFlags.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
@@ -1160,7 +1156,7 @@ export async function runHeadless(
       captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
-      autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
+      autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1180,7 +1176,7 @@ export async function runHeadless(
       // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
       const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
       void _settlementResult;
-      autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
+      autoAllocateStatPoints(world, playerEid, featureFlags.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
       captureHeadlessRunDataFrame(
         runData,
@@ -1250,7 +1246,7 @@ export async function runHeadless(
       }
 
       const currentEnemyCount = enemyEids.length;
-      if (mergedConfig.settlementReturnRouting) {
+      if (featureFlags.settlementReturnRouting) {
         const settlementReturnIntent = getSettlementReturnIntent(world);
         if (settlementReturnIntent.status !== lastSettlementReturnStatus) {
           lastSettlementReturnStatus = settlementReturnIntent.status;
@@ -1611,7 +1607,7 @@ export async function runHeadless(
     );
     const playabilityViolations =
       world.floorId === 'floor2' &&
-      mergedConfig.settlementReturnRouting &&
+      featureFlags.settlementReturnRouting &&
       mergedConfig.enforcePlayabilityInvariants
         ? collectEquipmentPlayabilityViolations(equipmentPlayability)
         : [];
