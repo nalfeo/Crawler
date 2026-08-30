@@ -72,6 +72,7 @@ import {
   type QuestState,
 } from '../../shared/quest-types.js';
 import { getItemById, getItemByIndex } from '../../shared/items.js';
+import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../shared/npc-types.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
@@ -9613,6 +9614,9 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const floorScenario = world.floorScenario;
     if (!floorScenario) {
+      if (instance.defId === FLOOR3_COMPANION_PROFESSOR_NPC_ID) {
+        return null;
+      }
       return AINpcInteractionAction.GENERIC_INTERACTION;
     }
 
