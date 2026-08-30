@@ -49,13 +49,45 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.6-sol",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "89f64749cc76f4e01354aafc941370069bf59438",
+      "findings": [
+        {
+          "severity": "blocker",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Field tasks complete automatically after one second without player action or explicit task events."
+        },
+        {
+          "severity": "major",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Task and construction helpers write phases outside siegeDirectorSystem."
+        },
+        {
+          "severity": "major",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Build-site attack state is derived from Command Post health rather than build-site attack events."
+        },
+        {
+          "severity": "minor",
+          "file": "src/shared/data/quests.floor5.siege.json",
+          "detail": "Slice 3 ships quest content assigned to the later content slice."
+        }
+      ],
+      "criteria": {
+        "correctness": 2,
+        "scope_discipline": 3,
+        "test_coverage": 2,
+        "policy_compliance": 2,
+        "maintainability": 3
+      },
+      "verdict": "fail",
+      "findings_count": 4,
+      "escalated_to_human": {
+        "reason": "criteria below 3: correctness, test_coverage, policy_compliance; 1 blocker finding(s)",
+        "unresolved_findings": 4
+      }
     }
   }
 }
