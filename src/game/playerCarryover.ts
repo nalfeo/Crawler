@@ -2090,8 +2090,8 @@ function remapModifierHolder(
  * persisted {@link KeptCompanionContract}, or `undefined` when there is
  * nothing to carry (no Floor 3 state, no pick made yet, or the picked entity
  * is no longer a live Companion / has an unresolvable species token —
- * defensive, should never happen given `latchFloor3Victory`'s auto-default
- * and `selectFloor3KeptCompanion`'s validation, but must never throw here).
+ * defensive, should never happen after either real selection or the headless
+ * deterministic selection path, but must never throw here).
  */
 function resolveFloor3KeptCompanionContract(world: GameWorld): KeptCompanionContract | undefined {
   const keptEid = world.floorExtendedState?.floor3Studios?.keptCompanionEid;

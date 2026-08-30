@@ -20,6 +20,7 @@ import {
   selectFloor3KeptCompanion,
   selectFloor3LoadoutOption,
 } from '../../src/game/floor3Scenario.js';
+import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import {
   BiomeType,
   RoomRole,
@@ -139,6 +140,17 @@ function defeatAllStudios(
   drainPoachOffers(world, state);
 }
 
+/** Wipes all four Final Four rounds in order through the production objective tick. */
+function defeatFinalFour(
+  world: GameWorld,
+  state: NonNullable<GameWorld['floorExtendedState']>['floor3Studios'],
+): void {
+  for (let round = 0; round < state!.finalFourRounds.length; round += 1) {
+    knockOutTeams(world, state!.finalFour.teamIds);
+    floor3ObjectiveTick(world);
+  }
+}
+
 /**
  * Resolves the Trainer-poach pauses each defeated Studio produces (spec §6.2,
  * slice 12): the objective tick pauses on `'loadout'` once per defeated
@@ -246,7 +258,7 @@ describe('floor3 studios + final four objective tick', () => {
       setPieceId: stateB!.finalFour.setPieceId,
       setPieceCarved: stateB!.finalFour.setPieceCarved,
     });
-    expect(stateA!.finalFourPendingSpawns).toEqual(stateB!.finalFourPendingSpawns);
+    expect(stateA!.finalFourRounds).toEqual(stateB!.finalFourRounds);
   });
 
   it('assigns authored set-piece rooms to every selected Studio and the Final Four', () => {
@@ -273,13 +285,12 @@ describe('floor3 studios + final four objective tick', () => {
     const finalFourRoom = world.floorMap?.roomGraph.get(state.finalFour.roomId);
     expect(finalFourRoom?.role).toBe(RoomRole.BOSS_STAIR);
     expect(finalFourRoom?.label).toBe('floor3_final_four_arena');
-    for (const pending of state.finalFourPendingSpawns) {
+    const finalFourPendingSpawns = state.finalFourRounds.flatMap((round) => round.pendingSpawns);
+    for (const pending of finalFourPendingSpawns) {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();
     }
-    expect(distinctSpawnPositions(state.finalFourPendingSpawns)).toBe(
-      state.finalFourPendingSpawns.length,
-    );
+    expect(distinctSpawnPositions(finalFourPendingSpawns)).toBe(finalFourPendingSpawns.length);
   });
 
   it('keeps authored set-piece ids and spawn positions when territory rooms are too small to carve', () => {
@@ -302,7 +313,7 @@ describe('floor3 studios + final four objective tick', () => {
     expect(state.finalFour.roomId).toBeGreaterThanOrEqual(0);
     expect(state.finalFour.setPieceId).toBe('floor3-final-four-arena');
     expect(state.finalFour.setPieceCarved).toBe(false);
-    for (const pending of state.finalFourPendingSpawns) {
+    for (const pending of state.finalFourRounds.flatMap((round) => round.pendingSpawns)) {
       expect(pending.x).toBeDefined();
       expect(pending.y).toBeDefined();
     }
@@ -337,7 +348,8 @@ describe('floor3 studios + final four objective tick', () => {
       expect(studio.unlocked).toBe(false);
       expect(countCompanionsOnTeams(world, studio.teamIds)).toBe(0);
     }
-    expect(state.finalFourPendingSpawns.length).toBeGreaterThan(0);
+    expect(state.finalFourRounds).toHaveLength(4);
+    expect(state.finalFourRounds.every((round) => round.pendingSpawns.length > 0)).toBe(true);
     expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
 
     // At floor-start player level, only the 0-threshold Studio(s) unlock.
@@ -378,23 +390,36 @@ describe('floor3 studios + final four objective tick', () => {
     expect(world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID)).toBe(false);
   });
 
-  it('unlocks and spawns the Final Four once every Studio is defeated, then latches victory when it is wiped', () => {
+  it('completes four ordered Final Four handler rounds and latches victory only after wipe four', () => {
     const { world } = createFloor3World(303);
     const state = world.floorExtendedState!.floor3Studios!;
+    const seededHandlerOrder = state.finalFourRounds.map((round) => round.handlerId);
 
     defeatAllStudios(world, state);
 
     expect(state.studiosDefeatedCount).toBe(state.studios.length);
     expect(world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID)).toBe(true);
-    expect(state.finalFourPendingSpawns.length).toBe(0);
+    expect(state.finalFourRoundIndex).toBe(0);
+    expect(state.finalFourRounds[0]?.pendingSpawns).toHaveLength(0);
+    expect(state.finalFourRounds.slice(1).every((round) => round.pendingSpawns.length > 0)).toBe(
+      true,
+    );
     expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(false);
 
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    for (let round = 0; round < 4; round += 1) {
+      knockOutTeams(world, state.finalFour.teamIds);
+      floor3ObjectiveTick(world);
+      expect(state.finalFourRoundIndex).toBe(round + 1);
+      expect(state.finalFourRounds[round]?.defeated).toBe(true);
+      expect(state.finalFourRounds.map((entry) => entry.handlerId)).toEqual(seededHandlerOrder);
+      expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(round === 3);
+      if (round < 3) {
+        expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBeGreaterThan(0);
+      }
+    }
 
     expect(state.finalFour.defeated).toBe(true);
-    expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
     expect(world.goalFlags.get(FLOOR3_STAIRS_POPPED_GOAL_ID)).toBe(true);
     expect(state.staircaseSpawned).toBe(true);
     expect(state.staircaseUnlocked).toBe(true);
@@ -402,6 +427,12 @@ describe('floor3 studios + final four objective tick', () => {
       world.floorMap!.tileToWorld(world.floorMap!.playerSpawn.x, world.floorMap!.playerSpawn.y),
     );
 
+    expect(confirmFloor3StairDescend(world, 0)).toBe(false);
+    const keptEid = query(world.ecs, [Companion, Team]).find(
+      (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
+    );
+    expect(keptEid).toBeDefined();
+    expect(selectFloor3KeptCompanion(world, keptEid!)).toBe(true);
     const confirmed = confirmFloor3StairDescend(world, 0);
     expect(confirmed).toBe(true);
     expect(world.state).toBe('safe_room');
@@ -424,7 +455,7 @@ describe('floor3 studios + final four objective tick', () => {
     const { world, playerEid } = createFloor3World(404);
     const state = world.floorExtendedState!.floor3Studios!;
     const floorMap = world.floorMap!;
-    const occupied = state.finalFourPendingSpawns[0]!;
+    const occupied = state.finalFourRounds[0]!.pendingSpawns[0]!;
     expect(occupied.x).toBeDefined();
     // Park the player exactly on a pre-resolved arena spawn point before the
     // last Studio falls — the arena-backed path must still relocate.
@@ -478,8 +509,7 @@ describe('floor3 studios + final four objective tick', () => {
     const { world } = createFloor3World(606);
     const state = world.floorExtendedState!.floor3Studios!;
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    defeatFinalFour(world, state);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
     expect(world.state).toBe('playing');
 
@@ -531,8 +561,7 @@ describe('floor3 studios + final four objective tick', () => {
     const { world } = createFloor3World(909);
     const state = world.floorExtendedState!.floor3Studios!;
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    defeatFinalFour(world, state);
 
     expect(state.finalFour.defeated).toBe(true);
     expect(countCompanionsOnTeams(world, state.finalFour.teamIds)).toBe(0);
@@ -542,8 +571,7 @@ describe('floor3 studios + final four objective tick', () => {
     const { world } = createFloor3World(910);
     const state = world.floorExtendedState!.floor3Studios!;
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    defeatFinalFour(world, state);
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
 
     const before = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
@@ -557,21 +585,23 @@ describe('floor3 studios + final four objective tick', () => {
 });
 
 describe('floor3 kept-companion producer hook (slice 11)', () => {
-  it('auto-defaults keptCompanionEid to the first party slot the moment victory latches', () => {
+  it('leaves real-play selection empty at victory and offers an explicit deterministic headless default', () => {
     const { world } = createFloor3World(1010);
     const state = world.floorExtendedState!.floor3Studios!;
     expect(state.keptCompanionEid).toBeUndefined();
 
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    defeatFinalFour(world, state);
 
     expect(world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID)).toBe(true);
+    expect(state.keptCompanionEid).toBeUndefined();
+    expect(confirmFloor3StairDescend(world, 0)).toBe(false);
+    expect(getScenarioDefinition('floor3').autoSelectKeptCompanion?.(world)).toBe(true);
     expect(state.keptCompanionEid).toBeDefined();
     expect(query(world.ecs, [Companion, Team])).toContain(state.keptCompanionEid);
   });
 
-  it('lets selectFloor3KeptCompanion override the auto-defaulted pick with another live party Companion', () => {
+  it('lets selectFloor3KeptCompanion set the required pick to any live party Companion', () => {
     const { world } = createFloor3World(1011);
     const state = world.floorExtendedState!.floor3Studios!;
     const secondPartyEid = recruitPartyCompanion(world, {
@@ -589,16 +619,31 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
     expect(secondPartyEid).toBeDefined();
 
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
-    const autoDefaulted = state.keptCompanionEid;
-    expect(autoDefaulted).toBeDefined();
+    defeatFinalFour(world, state);
+    expect(state.keptCompanionEid).toBeUndefined();
 
     const result = selectFloor3KeptCompanion(world, secondPartyEid!);
 
     expect(result).toBe(true);
     expect(state.keptCompanionEid).toBe(secondPartyEid);
-    expect(state.keptCompanionEid).not.toBe(autoDefaulted);
+  });
+
+  it('blocks stair descent when a previously selected Companion is no longer a valid party member', () => {
+    const { world } = createFloor3World(1016);
+    const state = world.floorExtendedState!.floor3Studios!;
+    defeatAllStudios(world, state);
+    defeatFinalFour(world, state);
+    const keptEid = query(world.ecs, [Companion, Team]).find(
+      (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
+    );
+    expect(keptEid).toBeDefined();
+    expect(selectFloor3KeptCompanion(world, keptEid!)).toBe(true);
+
+    world.stores.team.id[keptEid!] = 999;
+
+    expect(confirmFloor3StairDescend(world, 0)).toBe(false);
+    expect(world.state).toBe('playing');
+    expect(state.staircaseDiscovered).not.toBe(true);
   });
 
   it('returns false and does not mutate the pick when selectFloor3KeptCompanion is called before victory latches', () => {
@@ -618,22 +663,20 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
     const { world } = createFloor3World(1013);
     const state = world.floorExtendedState!.floor3Studios!;
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
-    const autoDefaulted = state.keptCompanionEid;
+    defeatFinalFour(world, state);
 
     const result = selectFloor3KeptCompanion(world, 999_999);
 
     expect(result).toBe(false);
-    expect(state.keptCompanionEid).toBe(autoDefaulted);
+    expect(state.keptCompanionEid).toBeUndefined();
   });
 
   it('resolves the kept-companion pick into a valid KeptCompanionContract on capturePlayerCarryover', () => {
     const { world, playerEid } = createFloor3World(1014);
     const state = world.floorExtendedState!.floor3Studios!;
     defeatAllStudios(world, state);
-    knockOutTeams(world, state.finalFour.teamIds);
-    floor3ObjectiveTick(world);
+    defeatFinalFour(world, state);
+    expect(getScenarioDefinition('floor3').autoSelectKeptCompanion?.(world)).toBe(true);
     const keptEid = state.keptCompanionEid;
     expect(keptEid).toBeDefined();
     const expectedSpecies = speciesForToken(world.stores.companion.speciesToken[keptEid!] ?? 0);

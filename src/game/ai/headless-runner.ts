@@ -1511,6 +1511,11 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      // Non-interactive runs must still satisfy Floor 3's required keep-one
+      // reward before their carryover snapshot is captured.
+      if (scenario.autoSelectKeptCompanion?.(world)) {
+        scenario.onStairDescend?.(world, playerEid);
+      }
       const scenarioOutcome = scenario.getRunOutcome(world);
       if (
         scenarioOutcome === 'cleared_floor' ||

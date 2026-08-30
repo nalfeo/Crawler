@@ -275,10 +275,10 @@ export interface Floor3EncounterState {
   unlocked: boolean;
   /**
    * This Studio's Companions, deferred at floor init until `unlockLevel` is
-   * met (spec R6 soft-gate) — mirrors `Floor3StudiosState.finalFourPendingSpawns`.
+   * met (spec R6 soft-gate) — mirrors the Final Four rounds.
    * `floor3ObjectiveTick` spawns these once `unlocked` latches true and clears
    * the array so a re-tick never double-spawns. Unused by the Final Four,
-   * which has its own `finalFourPendingSpawns` field.
+   * which stores one pending roster per ordered round.
    */
   pendingSpawns: readonly Floor3PendingRosterSpawn[];
   /**
@@ -328,6 +328,16 @@ export interface Floor3PendingRosterSpawn {
   readonly y?: number;
 }
 
+/** One seeded Final Four handler round, kept in gauntlet order. */
+export interface Floor3FinalFourRoundState {
+  readonly handlerId: string;
+  readonly handlerName: string;
+  /** This handler's roster only; cleared after the round spawns. */
+  pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /** Latched when this handler's active roster is wiped. */
+  defeated: boolean;
+}
+
 /**
  * Floor 3 · Slice 8 — Studios + Final Four + objective-tick state written to
  * `world.floorExtendedState.floor3Studios` by `initializeFloor3Scenario`.
@@ -341,13 +351,13 @@ export interface Floor3StudiosState {
   readonly finalFour: Floor3EncounterState;
   /** Count of `studios` currently `defeated`. Convenience — always derivable from `studios`. */
   studiosDefeatedCount: number;
+  /** Four seeded handler rounds in the exact order selected for this run. */
+  readonly finalFourRounds: Floor3FinalFourRoundState[];
   /**
-   * The Final Four's Companions, deferred at floor init (spec R6: the Final
-   * Four is soft-gated behind the Studios-defeated counter, not present in
-   * the world until it unlocks). `floor3ObjectiveTick` spawns these once and
-   * clears the array so a re-tick never double-spawns.
+   * Active round index after Final Four unlock; also equals the number of
+   * defeated rounds. Reaches `finalFourRounds.length` only after the last wipe.
    */
-  finalFourPendingSpawns: readonly Floor3PendingRosterSpawn[];
+  finalFourRoundIndex: number;
   /** World-space (ft) position of the exit staircase. Set on victory. */
   staircasePos?: { x: number; y: number };
   /** True once the exit staircase tile has been spawned (Final Four defeated). */
@@ -358,10 +368,9 @@ export interface Floor3StudiosState {
   staircaseDiscovered?: boolean;
   /**
    * ECS entity id of the single party Companion the player will keep
-   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
-   * first party slot the moment victory latches, then overridable by
-   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
-   * floor-transition carryover is captured. `undefined` before victory.
+   * cross-floor (spec R7 §9.3, slice 11). Real play sets this through
+   * `selectFloor3KeptCompanion`; headless play may explicitly invoke the
+   * deterministic game-layer fallback. `undefined` before selection.
    */
   keptCompanionEid?: number;
 }
