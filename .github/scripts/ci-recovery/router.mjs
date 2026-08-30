@@ -46,8 +46,9 @@ export const RUNNER_CEILING = 20;
 
 /**
  * Label that explicitly declares a PR as an intentional child in a
- * stacked-PR chain.  Only Copilot may add this label, and only when
- * explicitly asked by a human (process policy:
+ * stacked-PR chain. Humans may add or remove this label at any time.
+ * Copilot automation may add it only when explicitly asked by a human
+ * (process policy:
  * docs/agent-os/policies/ci-policy.md#stacked-pr-label-policy).
  *
  * Presence of the label tells the stale-base classifier to leave the
@@ -56,6 +57,9 @@ export const RUNNER_CEILING = 20;
  * `main` at that point regardless of the label.
  */
 export const STACKED_PR_LABEL = 'stacked-pr';
+const STACKED_PR_LABEL_COLOR = '6f42c1';
+const STACKED_PR_LABEL_DESCRIPTION =
+  'Intentional stacked PR; retain non-main base while parent PR remains open.';
 
 /**
  * Grace window for newly-created unlabeled PRs whose base is a non-main
@@ -184,6 +188,40 @@ function parseClampedPositiveInt(raw, fallback, max) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function ensureLabel({
+  token,
+  owner,
+  repo,
+  name,
+  color,
+  description,
+  requestFn = request,
+}) {
+  try {
+    await requestFn(token, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: { name, color, description },
+    });
+  } catch (error) {
+    const alreadyExists = (error?.data?.errors || []).some(
+      (entry) => String(entry?.code || '') === 'already_exists',
+    );
+    if (!(error?.status === 422 && alreadyExists)) throw error;
+  }
+}
+
+export async function ensureRecoveryLabels({ token, owner, repo, requestFn = request }) {
+  await ensureLabel({
+    token,
+    owner,
+    repo,
+    name: STACKED_PR_LABEL,
+    color: STACKED_PR_LABEL_COLOR,
+    description: STACKED_PR_LABEL_DESCRIPTION,
+    requestFn,
+  });
 }
 
 function rotateList(values, rotation) {
@@ -819,6 +857,12 @@ export async function retargetStaleBasePulls({
   writeLog = (line) => process.stdout.write(`${line}\n`),
 }) {
   const [owner, repo] = repository.split('/');
+  await ensureRecoveryLabels({
+    token: mutationToken || token,
+    owner,
+    repo,
+    requestFn,
+  });
   const candidates = scheduledPulls.filter((pullRequest) =>
     isStaleBaseRecoveryCandidate(pullRequest, repository),
   );

@@ -19,6 +19,7 @@ import {
   countOutstandingRecoveryRuns,
   countOutstandingWorkflowRuns,
   DISPATCH_BLOCKED_LABEL_NAMES,
+  ensureRecoveryLabels,
   eventPrNumbers,
   GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
   GLOBAL_TRAIN_DISPATCH_CAP,
@@ -133,6 +134,57 @@ function makeError(status, message, headerMap = {}) {
   };
   return error;
 }
+
+test('ensureRecoveryLabels provisions stacked-pr label', async () => {
+  const calls = [];
+  await ensureRecoveryLabels({
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    requestFn: async (...args) => {
+      calls.push(args);
+      return { data: {} };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1], '/repos/nalfeo/Crawler/labels');
+  assert.equal(calls[0][2]?.method, 'POST');
+  assert.deepEqual(calls[0][2]?.body, {
+    name: STACKED_PR_LABEL,
+    color: '6f42c1',
+    description: 'Intentional stacked PR; retain non-main base while parent PR remains open.',
+  });
+});
+
+test('ensureRecoveryLabels ignores duplicate-label 422 responses', async () => {
+  await ensureRecoveryLabels({
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    requestFn: async () => {
+      const error = makeError(422, 'Validation Failed');
+      error.data = { message: 'Validation Failed', errors: [{ code: 'already_exists' }] };
+      throw error;
+    },
+  });
+});
+
+test('ensureRecoveryLabels does not suppress non-duplicate 422 responses', async () => {
+  await assert.rejects(
+    ensureRecoveryLabels({
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      requestFn: async () => {
+        const error = makeError(422, 'Validation Failed');
+        error.data = { message: 'Validation Failed', errors: [{ code: 'invalid' }] };
+        throw error;
+      },
+    }),
+    /Validation Failed/,
+  );
+});
 
 function automationOwnerState(prNumber, updatedAt, attempt = 1) {
   const fingerprint = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
@@ -355,7 +407,9 @@ test('stale-base retarget is idempotent on a repeat scan', async () => {
     if (options.method === 'PATCH') {
       return { data: stackedPullRequest({ base: { ref: 'main' } }) };
     }
-    if (options.method === 'POST') return { data: {} };
+    if (options.method === 'POST' && path.endsWith('/labels')) return { data: {} };
+    if (options.method === 'POST' && path.includes('/issues/') && path.endsWith('/comments'))
+      return { data: {} };
     if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
     if (path.includes('/compare/')) return { data: { status: 'diverged' } };
     throw new Error(`Unexpected request ${path}`);
@@ -382,7 +436,15 @@ test('stale-base retarget is idempotent on a repeat scan', async () => {
   assert.equal(first.length, 1);
   assert.deepEqual(second, []);
   assert.equal(calls.filter((call) => call.options.method === 'PATCH').length, 1);
-  assert.equal(calls.filter((call) => call.options.method === 'POST').length, 1);
+  assert.equal(
+    calls.filter(
+      (call) =>
+        call.options.method === 'POST' &&
+        call.path.includes('/issues/') &&
+        call.path.endsWith('/comments'),
+    ).length,
+    1,
+  );
 });
 
 test('stale-base retarget logs branch lookup API failures and continues the batch', async () => {
@@ -393,7 +455,8 @@ test('stale-base retarget logs branch lookup API failures and continues the batc
     token: 'read',
     mutationToken: 'write',
     paginateFn: async () => [mergedBasePull()],
-    requestFn: async () => {
+    requestFn: async (_token, path, options = {}) => {
+      if (options.method === 'POST' && path.endsWith('/labels')) return { data: {} };
       throw makeError(502, 'base lookup unavailable');
     },
     writeLog: (line) => logs.push(line),
@@ -583,6 +646,7 @@ test('stale-base retarget reports a failed native unstack without merging forwar
     mutationToken: 'write',
     paginateFn: async () => [mergedBasePull()],
     requestFn: async (_token, path, options = {}) => {
+      if (options.method === 'POST' && path.endsWith('/labels')) return { data: {} };
       if (options.method === 'PATCH') throw stackedRetargetError();
       if (path.includes('/stacks?pull_request=')) throw makeError(404, 'Not Found');
       if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
@@ -603,6 +667,7 @@ test('stale-base retarget skips the PR and continues on a non-stack 422', async 
     mutationToken: 'write',
     paginateFn: async () => [mergedBasePull()],
     requestFn: async (_token, path, options = {}) => {
+      if (options.method === 'POST' && path.endsWith('/labels')) return { data: {} };
       if (options.method === 'PATCH') {
         const error = makeError(422, 'Validation Failed');
         error.data = { message: 'Validation Failed', errors: [{ message: 'base is invalid' }] };
