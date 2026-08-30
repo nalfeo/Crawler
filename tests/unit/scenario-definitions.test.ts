@@ -52,18 +52,19 @@ describe('scenario definitions', () => {
     expect(floor2.nextFloorId).toBe('floor3');
     expect(floor2.isTerminalRunVictory).toBe(false);
     expect(floor2.stairConfirmation?.confirmDescription).toContain('Floor 3');
-    // Floor 3 is the last authored floor, so it must not advertise a next one.
+    // Floor 3 remains terminal until Floor 4/5 are promoted into the progression chain.
     expect(getScenarioDefinition('floor3').nextFloorId).toBeUndefined();
   });
 
   it('marks every registered floor playable, and only winnable floors implemented', () => {
-    for (const floorId of ['floor1', 'floor2', 'floor3'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
       expect(isFloorPlayable(floorId)).toBe(true);
     }
     expect(isFloorPlayable('floor-does-not-exist')).toBe(false);
     // Floor 3 is playable but has no attainable victory yet, so it must stay
     // OUT of the implemented (sweepable/winnable) set.
     expect(isFloorImplemented('floor3')).toBe(false);
+    expect(isFloorImplemented('floor5')).toBe(false);
   });
 
   it('returns floor3 scenario with the biome-overworld director copy', () => {

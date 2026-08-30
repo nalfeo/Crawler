@@ -19,6 +19,7 @@ import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
+import floor5ManifestJson from './data/floors/floor5.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
@@ -918,6 +919,87 @@ export const floorManifestDefSchema = z
         validateFloor4Headliners(floor4, ctx);
       })
       .optional(),
+    /** Floor-5-specific authored siege geometry and phase skeleton config. */
+    floor5: z
+      .object({
+        commandPost: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+            health: z.number().int().positive(),
+          })
+          .strict(),
+        siegeYard: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+          })
+          .strict(),
+        flankPockets: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(6),
+          })
+          .strict(),
+        lane: z
+          .object({
+            lengthTiles: z.number().int().min(12),
+            widthTiles: z.number().int().min(4),
+            checkpointCount: z.number().int().min(1),
+          })
+          .strict(),
+        outerWall: z
+          .object({
+            thicknessTiles: z.number().int().min(1),
+            breachWidthTiles: z.number().int().min(1),
+          })
+          .strict(),
+        courtyard: z
+          .object({
+            widthTiles: z.number().int().min(8),
+            heightTiles: z.number().int().min(8),
+          })
+          .strict(),
+        throneRoom: z
+          .object({
+            widthTiles: z.number().int().min(8),
+            heightTiles: z.number().int().min(8),
+          })
+          .strict(),
+        winnersBalcony: z
+          .object({
+            widthTiles: z.number().int().min(6),
+            heightTiles: z.number().int().min(4),
+          })
+          .strict(),
+        borderThicknessTiles: z.number().int().min(1),
+        phase: z
+          .object({
+            initial: z.literal('MUSTER'),
+            terminal: z.array(z.enum(['CAPTURED', 'DEFEAT'])).length(2),
+          })
+          .strict(),
+        rngStreams: z.array(z.enum(['waves', 'heroes', 'tasks', 'dressing', 'rewards'])).length(5),
+      })
+      .strict()
+      .superRefine((floor5, ctx) => {
+        if (floor5.outerWall.breachWidthTiles > floor5.lane.widthTiles) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['outerWall', 'breachWidthTiles'],
+            message: 'breach width cannot exceed primary lane width',
+          });
+        }
+        const streamKeys = new Set(floor5.rngStreams);
+        if (streamKeys.size !== floor5.rngStreams.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rngStreams'],
+            message: 'Floor 5 RNG stream labels must be unique',
+          });
+        }
+      })
+      .optional(),
     /**
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
@@ -970,6 +1052,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor3ManifestJson;
   } else if (floorId === 'floor4') {
     manifestJson = floor4ManifestJson;
+  } else if (floorId === 'floor5') {
+    manifestJson = floor5ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -986,3 +1070,4 @@ export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
 export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
 export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');
+export const floor5Manifest: FloorManifestDef = loadFloorManifest('floor5');

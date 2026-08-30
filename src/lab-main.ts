@@ -85,6 +85,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'floor3-ability-command-lab': '/src/labs/floor3-ux-lab/ability-command/index.ts',
   'floor3-matchup-lab': '/src/labs/floor3-ux-lab/matchup/index.ts',
   'floor4-arena-lab': '/src/labs/floor4-arena-lab/index.ts',
+  'floor5-siege-lab': '/src/labs/floor5-siege-lab/index.ts',
   'hud-family-relationships-lab': '/src/labs/hud-family-relationships-lab/index.ts',
   'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
   'attack-wave-lab': '/src/labs/attack-wave-lab/index.ts',

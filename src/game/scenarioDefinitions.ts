@@ -60,6 +60,12 @@ import {
   initializeFloor4Scenario,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
+import {
+  confirmFloor5StairDescend,
+  getFloor5RunOutcome,
+  initializeFloor5Scenario,
+  siegeDirectorSystem,
+} from './floor5Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -67,9 +73,25 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
 import type { ErasedScenarioAiTaskConfig } from './ai/scenario-ai-tasks.js';
 import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
+import { FLOOR5_AI_TASK_CONFIG } from './scenarios/floor5AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+}
+
+function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Takeover Failed',
+      subtitle: 'Floor 5 fell back',
+      body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
+    };
+  }
+  return {
+    title: 'Floor 5 Complete!',
+    subtitle: 'Hostile Takeover complete!',
+    body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
 }
 
 function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
@@ -498,6 +520,17 @@ const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
     world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
 };
 
+const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: 'Floor 5 opens: Hostile Takeover begins at the Command Post.',
+  victory: 'Floor 5 captured. The throne has changed management.',
+  timeout: 'The hostile takeover stalled out. The Director cuts the siege feed.',
+  milestones: [],
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
+};
+
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
   shopkeeper: {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
@@ -607,6 +640,21 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+    },
+  ],
+  [
+    'floor5',
+    {
+      floorId: 'floor5',
+      configureWorld: initializeFloor5Scenario,
+      onStairDescend: confirmFloor5StairDescend,
+      beforeEnemyAISystems: [companionAISystem],
+      afterSpawnerSystems: [siegeDirectorSystem],
+      director: FLOOR_5_DIRECTOR,
+      getRunOutcome: getFloor5RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor5CompletionCopy,
+      aiTaskConfig: FLOOR5_AI_TASK_CONFIG,
     },
   ],
 ]);

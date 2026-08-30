@@ -124,6 +124,7 @@ import {
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
 import type { Affinity } from '../shared/data/floor3/affinity.js';
+import type { Floor5SiegeState } from '../shared/floor-types.js';
 
 const logger = createLogger('core:world');
 
@@ -162,6 +163,8 @@ export interface FloorExtendedState {
   floor4Arena?: Floor4ArenaState;
   /** Floor 4 Green Room shop lifecycle (per-visit stock roll + retirement). */
   floor4GreenRoom?: Floor4GreenRoomState;
+  /** Floor 5 siege phase/latch skeleton state. */
+  floor5Siege?: Floor5SiegeState;
 }
 
 /**
