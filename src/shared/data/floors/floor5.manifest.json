@@ -67,8 +67,7 @@
     },
     "lane": {
       "lengthTiles": 46,
-      "widthTiles": 8,
-      "checkpointCount": 2
+      "widthTiles": 8
     },
     "outerWall": {
       "thicknessTiles": 3,

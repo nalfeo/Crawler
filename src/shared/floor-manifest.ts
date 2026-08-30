@@ -945,7 +945,6 @@ export const floorManifestDefSchema = z
           .object({
             lengthTiles: z.number().int().min(12),
             widthTiles: z.number().int().min(4),
-            checkpointCount: z.number().int().min(1),
           })
           .strict(),
         outerWall: z

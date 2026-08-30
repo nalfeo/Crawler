@@ -25,7 +25,6 @@ export interface SiegeCastleOptions {
   pocketHeightTiles: number;
   laneLengthTiles: number;
   laneWidthTiles: number;
-  checkpointCount: number;
   outerWallThicknessTiles: number;
   breachWidthTiles: number;
   courtyardWidthTiles: number;
@@ -46,7 +45,6 @@ const DEFAULT_SIEGE_CASTLE_OPTIONS: SiegeCastleOptions = {
   pocketHeightTiles: 10,
   laneLengthTiles: 46,
   laneWidthTiles: 8,
-  checkpointCount: 2,
   outerWallThicknessTiles: 3,
   breachWidthTiles: 6,
   courtyardWidthTiles: 20,

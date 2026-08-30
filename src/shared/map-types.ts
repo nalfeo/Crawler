@@ -198,7 +198,6 @@ export interface MapConfig {
     readonly pocketHeightTiles?: number;
     readonly laneLengthTiles?: number;
     readonly laneWidthTiles?: number;
-    readonly checkpointCount?: number;
     readonly outerWallThicknessTiles?: number;
     readonly breachWidthTiles?: number;
     readonly courtyardWidthTiles?: number;

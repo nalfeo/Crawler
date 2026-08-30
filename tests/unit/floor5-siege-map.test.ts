@@ -33,7 +33,6 @@ function floor5Config(overrides: Partial<MapConfig> = {}): MapConfig {
           pocketHeightTiles: geometry.flankPockets.heightTiles,
           laneLengthTiles: geometry.lane.lengthTiles,
           laneWidthTiles: geometry.lane.widthTiles,
-          checkpointCount: geometry.lane.checkpointCount,
           outerWallThicknessTiles: geometry.outerWall.thicknessTiles,
           breachWidthTiles: geometry.outerWall.breachWidthTiles,
           courtyardWidthTiles: geometry.courtyard.widthTiles,
