@@ -155,13 +155,13 @@ test('does not request review while another policy is blocking the PR', () => {
   );
 });
 
-test('review-ledger-only blockers do not prevent requesting review evidence', () => {
-  assert.deepEqual(
+test('any policy blocker prevents requesting review evidence', () => {
+  assert.equal(
     decision({
-      blockers: [{ kind: 'review-ledger' }],
+      blockers: [{ kind: 'policy' }],
       comments: [requestComment(HEADS[0], 'ready')],
     }),
-    { reason: 'synchronize', episode: null, requestReviewer: true },
+    null,
   );
 });
 

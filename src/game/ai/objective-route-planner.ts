@@ -14,7 +14,7 @@
  * separate modules (e.g. `floor1-goal-graph.ts`) that translate live game
  * state into {@link GoalNode}s and hand them to {@link planObjectiveRoute}.
  *
- * Design notes (see docs/knowledge/review-ledgers for the reviewed plan):
+ * Design notes:
  * - The search state is `(completedGoalMask, currentLocation)`. The satisfied
  *   *effect* mask is not a separate dimension — it is a pure function of the
  *   completed-goal mask (`initialSatisfiedEffects ∪ union(unlockEffects of

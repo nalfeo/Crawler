@@ -45,7 +45,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Start from the routing matrix; write the slice → persona → path plan before
   touching code, and record it in the handoff.
 - Use `report_progress` checklists that mirror the slice plan so progress is
@@ -67,7 +67,7 @@
 - [`producer`](../../../.github/skills/producer/SKILL.md) — the authoritative
   triage / decompose / delegate / publish playbook. Invoke it first.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — scale
-  review stages to the apple tier and write the ledger.
+  independent post-diff review to the apple tier.
 - [`pr-shepherd`](../../../.github/skills/pr-shepherd/SKILL.md) — when published
   PRs need driving to merge.
 - [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)

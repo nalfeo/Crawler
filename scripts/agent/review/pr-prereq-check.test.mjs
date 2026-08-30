@@ -13,59 +13,34 @@ import {
 
 const CODE_FILE = 'src/core/components/movement.ts';
 const HANDOFF = 'docs/knowledge/handoffs/2026-06-29-prereq-check.md';
-const LEDGER = 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json';
 
-test('summarizePrereqResult returns ok=true when both checks pass', () => {
-  const r = summarizePrereqResult({ decision: 'allow' }, { decision: 'allow' });
+test('summarizePrereqResult returns ok=true when preflight passes', () => {
+  const r = summarizePrereqResult({ decision: 'allow' });
   assert.equal(r.ok, true);
   assert.equal(r.failures.length, 0);
 });
 
-test('summarizePrereqResult surfaces both failure sections', () => {
-  const r = summarizePrereqResult(
-    { decision: 'deny', reason: 'handoff missing' },
-    { decision: 'deny', reason: 'ledger missing' },
-  );
+test('summarizePrereqResult surfaces the preflight failure section', () => {
+  const r = summarizePrereqResult({ decision: 'deny', reason: 'handoff missing' });
   assert.equal(r.ok, false);
-  assert.equal(r.failures.length, 2);
+  assert.equal(r.failures.length, 1);
   assert.match(r.failures[0], /\[pr-preflight\]/);
-  assert.match(r.failures[1], /\[pr-review-ledger\]/);
 });
 
-test('evaluatePrereqs fails on a missing handoff, but a missing ledger is only a note', () => {
+test('evaluatePrereqs fails on a missing handoff', () => {
   const r = evaluatePrereqs([CODE_FILE], [], '.');
   assert.equal(r.ok, false);
   assert.match(r.failures.join('\n'), /No new handoff file added/);
-  // A 1-2🍎 change legitimately has no ledger, so its absence cannot fail the
-  // prereq check — it surfaces as a reminder instead.
-  assert.doesNotMatch(r.failures.join('\n'), /review ledger/i);
-  assert.match(r.notes.join('\n'), /no review ledger on this code-touching branch/);
 });
 
-test('evaluatePrereqs reports an invalid ADDED ledger without blocking publication', () => {
-  const r = evaluatePrereqs([CODE_FILE, HANDOFF, LEDGER], [HANDOFF, LEDGER], '.', {
-    validateFile: () => ({
-      ok: false,
-      summary: 'invalid ledger: 1 problem(s)',
-      errors: ['plan_review.completed must be true'],
-    }),
-  });
-  assert.equal(r.ok, true);
-  assert.match(r.notes.join('\n'), /plan_review\.completed must be true/);
-  assert.match(r.notes.join('\n'), /publication is allowed/i);
-});
-
-test('evaluatePrereqs passes when handoff + valid 1-apple ledger are added', () => {
-  const r = evaluatePrereqs([CODE_FILE, HANDOFF, LEDGER], [HANDOFF, LEDGER], '.', {
-    validateFile: () => ({ ok: true, summary: 'valid 1-apple ledger', errors: [] }),
-  });
+test('evaluatePrereqs passes when a handoff is added', () => {
+  const r = evaluatePrereqs([CODE_FILE, HANDOFF], [HANDOFF], '.');
   assert.equal(r.ok, true);
 });
 
-test('evaluatePrereqs skips ledger for docs-only changes', () => {
+test('evaluatePrereqs passes docs-only changes', () => {
   const r = evaluatePrereqs(['docs/knowledge/handoffs/2026-06-29-note.md'], [], '.');
   assert.equal(r.ok, true);
-  assert.match(r.notes.join('\n'), /review ledger not required|docs\/art\/deps-only/);
 });
 
 test('evaluatePrereqs passes docs-update INDEX changes through to preflight', () => {
@@ -77,22 +52,13 @@ test('evaluatePrereqs passes docs-update INDEX changes through to preflight', ()
 
 test('inferTelemetrySessionSlug prefers the handoff slug when present', () => {
   assert.equal(
-    inferTelemetrySessionSlug(
-      [CODE_FILE, 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
-      ['docs/knowledge/handoffs/2026-06-29-prereq-check.md'],
-    ),
+    inferTelemetrySessionSlug([CODE_FILE], ['docs/knowledge/handoffs/2026-06-29-prereq-check.md']),
     'prereq-check',
   );
 });
 
-test('inferTelemetrySessionSlug falls back to the ledger slug', () => {
-  assert.equal(
-    inferTelemetrySessionSlug(
-      [CODE_FILE, 'docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
-      ['docs/knowledge/review-ledgers/2026-06-29-prereq-check.review-ledger.json'],
-    ),
-    'prereq-check',
-  );
+test('inferTelemetrySessionSlug returns null without a handoff', () => {
+  assert.equal(inferTelemetrySessionSlug([CODE_FILE], []), null);
 });
 
 function withTelemetryArtifact(fn) {

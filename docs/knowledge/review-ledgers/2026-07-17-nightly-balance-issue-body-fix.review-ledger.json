@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-17",
-  "session_slug": "nightly-balance-issue-body-fix",
-  "task_title": "Fix nightly balance issue body rendering",
-  "estimated_apples": 2,
-  "stages": {}
-}

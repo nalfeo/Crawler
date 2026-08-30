@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-11",
-  "session_slug": "fix-guard-telemetry-queryability",
-  "task_title": "Auto-capture guard telemetry during PR prereq checks",
-  "estimated_apples": 2,
-  "stages": {}
-}

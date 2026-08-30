@@ -120,7 +120,7 @@ Before publication:
 
 - run the fast verification appropriate to the changed paths;
 - run `npm run verify:pr-prereqs`;
-- run the apple-scaled review harness and validate its ledger;
+- run the apple-scaled post-diff review required for the tier;
 - run the lab gate for new or changed systems;
 - write exactly one coordinating handoff.
 

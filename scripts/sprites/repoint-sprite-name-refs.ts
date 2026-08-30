@@ -4,7 +4,7 @@
  *
  * Scope is deliberately narrow — runtime source, shipped data, tests, and
  * agent scripts. Historical records (docs/knowledge/handoffs, adr, metrics,
- * review-ledgers, agent-memory) are NOT rewritten: they describe what was true
+ * agent-memory) are NOT rewritten: they describe what was true
  * at the time, and rewriting them would falsify the project's own history.
  *
  * Usage: tsx scripts/sprites/repoint-sprite-name-refs.ts [--dry-run|--apply]

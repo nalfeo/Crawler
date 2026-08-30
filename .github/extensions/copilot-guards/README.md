@@ -10,21 +10,20 @@ Loaded automatically because it lives under `.github/extensions/`.
 
 ## What's enforced
 
-| Guard ID                     | Tool(s)                                 | Decision        | What it blocks                                                                                                                                                                                                                                      |
-| ---------------------------- | --------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shell-force-push-main`      | `powershell`, `bash`                    | **deny**        | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                                                                                                 |
-| `shell-main-branch-delete`   | `powershell`, `bash`                    | **deny**        | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                                                                                      |
-| `shell-blunt-merge-strategy` | `powershell`, `bash`                    | **deny**        | Side-wholesale merge resolution: `-X theirs/ours`, `--strategy-option=theirs/ours`, the `ours` strategy (`-s ours`), and unacknowledged `--allow-unrelated-histories` on `merge`/`rebase`/`cherry-pick`/`pull`.                                     |
-| `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny**        | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                                                                                              |
-| `shell-issue-comment`        | `powershell`, `bash`                    | **deny**        | `gh issue comment` / `gh pr comment` and REST/GraphQL issue-comment writes. Cloud sessions have no comment credentials; publish plans and status through the progress-report tool instead. PR review-thread replies and comment reads stay allowed. |
-| `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny**        | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`.                                                                   |
-| `shell-unsafe-port-kill`     | `powershell`                            | **deny**        | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                                                                                          |
-| `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny**        | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                                                                                             |
-| `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny**        | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                                                    |
-| `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny**        | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                                             |
-| `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**         | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                                                                                             |
-| `pr-preflight`               | `create_pull_request`                   | **deny**        | Aggregated PR checks plus a non-blocking pre-publish main-sync attempt.                                                                                                                                                                             |
-| `pr-review-ledger`           | `create_pull_request`                   | allow + context | Reports missing, invalid, or valid **review ledger** state without blocking publication. Required CI and CI Recovery enforce repair before merge. See [review-harness-policy](../../../docs/agent-os/policies/review-harness-policy.md).            |
+| Guard ID                     | Tool(s)                                 | Decision | What it blocks                                                                                                                                                                                                                                      |
+| ---------------------------- | --------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell-force-push-main`      | `powershell`, `bash`                    | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                                                                                                 |
+| `shell-main-branch-delete`   | `powershell`, `bash`                    | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                                                                                      |
+| `shell-blunt-merge-strategy` | `powershell`, `bash`                    | **deny** | Side-wholesale merge resolution: `-X theirs/ours`, `--strategy-option=theirs/ours`, the `ours` strategy (`-s ours`), and unacknowledged `--allow-unrelated-histories` on `merge`/`rebase`/`cherry-pick`/`pull`.                                     |
+| `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                                                                                              |
+| `shell-issue-comment`        | `powershell`, `bash`                    | **deny** | `gh issue comment` / `gh pr comment` and REST/GraphQL issue-comment writes. Cloud sessions have no comment credentials; publish plans and status through the progress-report tool instead. PR review-thread replies and comment reads stay allowed. |
+| `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`.                                                                   |
+| `shell-unsafe-port-kill`     | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                                                                                          |
+| `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                                                                                             |
+| `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                                                    |
+| `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                                             |
+| `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                                                                                             |
+| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks plus a non-blocking pre-publish main-sync attempt.                                                                                                                                                                             |
 
 ### `pr-preflight` checks in detail
 
@@ -39,20 +38,6 @@ Loaded automatically because it lives under `.github/extensions/`.
 For earlier feedback in the local completion loop (without waiting for
 `create_pull_request`), run `npm run verify:pr-prereqs` (included in
 `npm run verify`).
-
-### `pr-review-ledger` in detail
-
-Enforces the apple-scaled review harness (see
-[`review-harness-policy.md`](../../../docs/agent-os/policies/review-harness-policy.md)).
-It is a **standalone** advisory `pr` guard (it does not modify `pr-preflight`).
-Unexpected failures and git inspection failures allow publication with context;
-required PR CI is the fail-closed validator.
-
-| Step             | What                                                                                                                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Scope            | `lib/pr-scope.mjs` strict allowlist. Skips a diff only if **every** file is docs (`docs/**`, root `*.md`/`*.txt`), art (`public/assets/**`, `briefs/**`, `data/palettes/**`), or a dependency lockfile. `src/**` is never skippable. |
-| Ledger discovery | Looks for `docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json` **added on this branch** (an old ledger on `main` does not count).                                                                                        |
-| Validation       | Validates every added ledger via `scripts/agent/review/ledger.mjs` (the same module the CLI, CI, and recovery use). Missing or incomplete → allow with exact advisory feedback; required CI blocks merge.                            |
 
 ### `shell-blunt-merge-strategy` in detail
 
@@ -130,7 +115,6 @@ These exist for legitimate edge cases (hotfixes, intentional maintenance). Every
 - **Conventional commit / semantic PR title format.** Conventional commit enforcement was removed (PR #1109). Commit and PR title format is no longer enforced by CI or preflight.
 - **`gh pr merge --delete-branch`.** This deletes the PR head branch (cleanup), not `main`. Blocking it would block normal post-merge cleanup. We do block deletion of `main`/`master` itself.
 - **Co-authored-by trailer on commits.** Considered but deferred (modify-vs-warn ambiguity). Add a new `shell-commit-trailer` guard if you want this.
-- **Review-ledger _truthfulness_.** The `pr-review-ledger` guard validates that a review ledger is **complete** for its apple tier, not that the reviews honestly happened or that the reported counts are accurate. Like the handoff requirement, it is an honor-system artifact — the forcing function and audit trail are the value. Project rule #12 forbids weakening a stage to go green.
 
 ---
 
@@ -183,8 +167,8 @@ took it to 12 within seconds, with `authoring-main-sync` firing on the very next
 `grep` and `powershell` call.
 
 The fingerprint of this bug in the committed corpus: **68 of 71** per-session
-telemetry files contain only `pr-preflight`/`pr-review-ledger` events (2–14
-events), while the 3 files with real per-tool coverage (176/238/371 events) all
+telemetry files contain only PR-boundary guard events (2–14 events), while the
+3 files with real per-tool coverage (176/238/371 events) all
 contain `authoring-main-sync`. The two guard sets never co-occur — which is what
 "the session predates the guard" looks like at scale, not a sampling artifact.
 So near-empty telemetry is a **signal to reload**, not evidence of a quiet
@@ -211,7 +195,6 @@ parseable marker:
 ```text
 PR preflight failed. Fix the following before retrying create_pull_request:
   ❌ [copilot-guards/pr-preflight | tool:create_pull_request] <reason>
-  ❌ [copilot-guards/pr-review-ledger | tool:create_pull_request] <reason>
 ```
 
 This embeds both the guard id and the denied tool name so that Chronicle
@@ -269,15 +252,16 @@ Chronicle's cross-session fire-rate reports.
 npm run test:guards
 ```
 
-This is the CI-wired runner (the `check-format-and-labs` job and
-`scripts/agent/verify.sh` both call it). It runs the guard suite **and** the
-review-ledger validator + CLI suite:
+This is the CI-wired runner (the `check-lightweight` job and
+`scripts/agent/verify.sh` both call it). It runs the guard and agent-tooling
+node:test suites:
 
 ```sh
-node --test ".github/extensions/copilot-guards/tests/*.test.mjs" "scripts/agent/review/*.test.mjs"
+node scripts/agent/run-node-tests.mjs guards
 ```
 
-Pure-function guards, no harness needed. 182 tests across both suites cover normalization, individual guards (including `pr-review-ledger` scope classification, ledger decisioning, and the git-error allow-through), dispatcher behavior, and the review-ledger validator + CLI input hardening.
+Pure-function guards need no extension harness. Tests cover normalization,
+individual guards, dispatcher behavior, and adjacent agent tooling.
 
 ---
 
@@ -292,7 +276,6 @@ Pure-function guards, no harness needed. 182 tests across both suites cover norm
 │   ├── config.mjs             # config loader + COPILOT_GUARDS_DISABLE handling
 │   ├── dispatcher.mjs         # guard dispatch loop, pr aggregation, fail-closed/open
 │   ├── git.mjs                # cached merge-base / branch-files / branch-subjects
-│   ├── pr-scope.mjs           # strict-allowlist code-vs-(docs/art/deps) classifier (pr-review-ledger)
 │   ├── shell.mjs              # command normalization, tokenization, program detection
 │   └── strip-comments.mjs     # comment-only and comment+string strippers
 ├── guards/
@@ -307,8 +290,7 @@ Pure-function guards, no harness needed. 182 tests across both suites cover norm
 │   ├── edit-phaser-in-core.mjs
 │   ├── edit-repo-md-junk.mjs
 │   ├── edit-guard-self-protection.mjs
-│   ├── pr-preflight.mjs
-│   └── pr-review-ledger.mjs   # validates the review ledger (imports scripts/agent/review/ledger.mjs)
+│   └── pr-preflight.mjs
 └── tests/
     └── *.test.mjs             # 150 tests, node --test
 ```

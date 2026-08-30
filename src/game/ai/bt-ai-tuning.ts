@@ -772,7 +772,7 @@ export const ARENA_LOCKIN_ADD_PRESSURE_FT = CONTACT_SAFE_ORBIT_FT * 2;
 // objective direction and picks the safest forward-progressing arc. This
 // generalizes the excellent ENGAGE kite's spacing philosophy to travel so the
 // runner *dances around* mobs instead of bulldozing through them. Damage-agnostic
-// (nothing here scales with hostile damage) — see the review ledger 2026-07-02.
+// (nothing here scales with hostile damage) — see the travel-steering ADR.
 //
 // Master switch: when false the wrapper is skipped and the legacy additive dodge
 // path runs unchanged (safe rollback without deleting code).

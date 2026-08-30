@@ -215,7 +215,7 @@ Floor 4+ **consumes** this contract to re-host the companion; building that cons
 
 ## Epic decomposition (ordered, apple-estimated slices)
 
-Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices with a new
+Each slice ends with its own PR + apple-scaled post-diff review + handoff. Slices with a new
 `*System` require a lab **and** real-pipeline wiring (ADR 0039). Dependencies noted as `after:`.
 
 | #     | Slice                                                                      | 🍎          | Introduces / extends                                                                                                                                                                                                                | Deps      |

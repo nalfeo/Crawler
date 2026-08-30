@@ -104,7 +104,7 @@ PR / analysis write-up.
 
 - **Read-only analysis.** This skill produces numbers; it never edits balance
   data, AI, or map layout. Any follow-up tuning is a separate, deliberate
-  change with its own review-harness / apple accounting.
+  change with its own apple-scaled review and accounting.
 - **Never cherry-pick seeds to make a weapon look good.** Per the AGENTS.md
   rules, the whole point of running 100 seeds is to gate on win-**rate**, not
   on hand-picked comfortable seeds. If a weapon's win rate is bad on this

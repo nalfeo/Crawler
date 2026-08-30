@@ -34,7 +34,7 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Use the sprite generation pipeline at `scripts/sprites/` (Zod brief schema, palette extractor, deterministic post-processor, sensor suite at `scripts/sprites/sensors/`, unit-tested at `tests/unit/sprites/` and `tests/integration/`) to ship pixel-art sprites that satisfy hard invariants (palette membership, alpha-binary, opaque ratio, anchor, silhouette axis). See ADR `docs/knowledge/adr/0003-sprite-generation-pipeline.md` and palette data under `data/palettes/`.
 - Author briefs in YAML under `briefs/<family>/<name>.yaml`. **Briefs are minimal** — typically just `type`, `name`, and `description` (free-form prose) — and inherit defaults from `data/sprite-types/<type>.json` (size, palette, anchor, references, sheet layout, sensor thresholds). Override only when the sprite genuinely differs from the type's norm (e.g. `iron-sword.yaml` overrides `sensors.weapon.orientation: diagonal` because it is side-profile rather than the weapon-default vertical). See `briefs/README.md` for the full authoring shape and merge rules. Tune the global style preamble in `docs/agent-os/sprite-style.md` (concatenated verbatim into every generation prompt).
 - Run the pipeline non-interactively via `npm run sprites:run -- --brief <path>` (or `--all`), inspect the per-variant scores printed to the console, then mark the chosen variant with `--pick <variantIndex>` to write `selection.json`. Run artifacts land under `generated/runs/<brief-name>/<run-id>/` (gitignored).
@@ -56,8 +56,8 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
   — build a complete themed equipment collection.
 - [`visual-review`](../../../.github/skills/visual-review/SKILL.md) — confirm the
   art reads in the running game, not just in the sheet.
-- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  for **wiring** PRs. Art-only diffs are ledger-exempt.
+- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — apply the
+  apple-scaled post-diff review requirements to wiring changes.
 
 ## Observe Before Done
 

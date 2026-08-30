@@ -21,7 +21,6 @@ const CONFIGURED = new Set([
   'edit-determinism',
   'edit-guard-self-protection',
   'pr-preflight',
-  'pr-review-ledger',
   'shell-rm-rf-repo',
 ]);
 
@@ -370,7 +369,7 @@ describe('aggregateSources', () => {
 });
 
 describe('analyzeGuards (per-family dead-guard gating)', () => {
-  const configured = ['edit-determinism', 'pr-preflight', 'pr-review-ledger', 'shell-rm-rf-repo'];
+  const configured = ['edit-determinism', 'pr-preflight', 'shell-rm-rf-repo'];
 
   it('marks a guard alive when it has events', () => {
     const verdicts = analyzeGuards(
@@ -385,8 +384,7 @@ describe('analyzeGuards (per-family dead-guard gating)', () => {
       makeAggregate({ guards: { 'pr-preflight': { deny: 10 } }, cleanSessionCount: 3 }),
       configured,
     );
-    // pr-review-ledger shares the pr family (10 events, 3 sessions) → dead.
-    expect(verdicts.find((v) => v.guardId === 'pr-review-ledger')?.status).toBe('dead');
+    expect(verdicts.find((v) => v.guardId === 'pr-preflight')?.status).toBe('alive');
   });
 
   it('does not let one family vouch for another (edit traffic ≠ pr evidence)', () => {
@@ -394,8 +392,7 @@ describe('analyzeGuards (per-family dead-guard gating)', () => {
       makeAggregate({ guards: { 'edit-determinism': { allow: 40 } }, cleanSessionCount: 3 }),
       configured,
     );
-    // pr-review-ledger's family has 0 events → unobserved, never dead.
-    expect(verdicts.find((v) => v.guardId === 'pr-review-ledger')?.status).toBe('unobserved');
+    expect(verdicts.find((v) => v.guardId === 'pr-preflight')?.status).toBe('unobserved');
     expect(verdicts.find((v) => v.guardId === 'shell-rm-rf-repo')?.status).toBe('unobserved');
   });
 
@@ -404,7 +401,7 @@ describe('analyzeGuards (per-family dead-guard gating)', () => {
       makeAggregate({ guards: { 'pr-preflight': { deny: 20 } }, cleanSessionCount: 2 }),
       configured,
     );
-    expect(verdicts.find((v) => v.guardId === 'pr-review-ledger')?.status).toBe('unobserved');
+    expect(verdicts.find((v) => v.guardId === 'pr-preflight')?.status).toBe('alive');
   });
 });
 

@@ -39,7 +39,7 @@ else
   echo "   ⏭️  Skipped (advisory in CI). Set VERIFY_KNIP=1 to run locally — do so when refactoring files/exports."
 fi
 
-echo "🔍 Step 5/10: Guard + review-ledger tests..."
+echo "🔍 Step 5/10: Guard and agent-tooling tests..."
 npm run test:guards
 
 echo "🔍 Step 5b/10: Orphaned-system wiring guard..."
