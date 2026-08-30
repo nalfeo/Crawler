@@ -36,6 +36,9 @@ async function main(): Promise<void> {
   if (args.weapon !== null) {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
+  if (args.forceAbilityIds.length > 0) {
+    console.log(`Forced abilities: ${args.forceAbilityIds.join(', ')}`);
+  }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
   console.log(`Enemy telegraph: ${args.enemyTelegraphMs}ms`);
   console.log(`Floor: ${args.floorId}`);
@@ -91,6 +94,7 @@ async function main(): Promise<void> {
     debug: args.debug,
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
+    ...(args.forceAbilityIds.length > 0 ? { forceAbilityIds: args.forceAbilityIds } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
     enemyTelegraphMs: args.enemyTelegraphMs,
     floorId: args.floorId,
@@ -162,6 +166,16 @@ async function main(): Promise<void> {
     console.log(
       `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
     );
+  }
+  if (stats.abilityTelemetry) {
+    console.log('');
+    console.log('✨ Forced Ability Activations');
+    console.log(`  Total:        ${stats.abilityTelemetry.totalActivations}`);
+    for (const abilityId of stats.abilityTelemetry.forcedAbilityIds) {
+      console.log(
+        `  ${abilityId}: ${stats.abilityTelemetry.activationsByAbilityId[abilityId] ?? 0}`,
+      );
+    }
   }
   if (stats.goldEconomy) {
     const ge = stats.goldEconomy;

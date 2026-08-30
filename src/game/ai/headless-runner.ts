@@ -18,6 +18,7 @@ import {
   Spawner,
   type FamilyId,
   type GameWorld,
+  statSystem,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
 import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
@@ -103,6 +104,14 @@ import {
   collectEquipmentPlayabilityMetrics,
   collectEquipmentPlayabilityViolations,
 } from './headless-runner-invariants.js';
+import { getAbilityDefinition } from '../abilities/registry.js';
+import {
+  getOrCreateAbilityState,
+  grantAbilitySources,
+  synchronizeAbilityPassives,
+  weaponPrerequisiteMet,
+} from '../systems/abilitySystem.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, learnedAbilityGrantSourceId } from '../../shared/abilities.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -297,6 +306,11 @@ export interface HeadlessRunnerConfig {
    * present in the pool the run throws immediately.
    */
   forceWeaponId?: string;
+  /**
+   * Ability IDs granted with learned provenance before frame 0. Active abilities
+   * and spells take the first slots in this order; duplicates are ignored.
+   */
+  forceAbilityIds?: readonly string[];
   /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
   enemyDamageMultiplier?: number;
   /**
@@ -440,6 +454,7 @@ const DEFAULT_CONFIG: Required<
     | 'simulationOptions'
     | 'recordEvent'
     | 'forceWeaponId'
+    | 'forceAbilityIds'
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
@@ -466,6 +481,89 @@ const DEFAULT_CONFIG: Required<
   recordWeaponTelemetry: false,
   enforcePlayabilityInvariants: true,
 };
+
+function uniqueInFirstSeenOrder(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function applyForcedAbilities(
+  world: GameWorld,
+  playerEid: number,
+  requestedIds: readonly string[],
+  startingWeapon: string,
+): readonly string[] {
+  const forcedAbilityIds = uniqueInFirstSeenOrder(requestedIds);
+  if (forcedAbilityIds.length === 0) return forcedAbilityIds;
+  const definitions = forcedAbilityIds.map((abilityId) => {
+    const definition = getAbilityDefinition(abilityId);
+    if (definition === undefined) {
+      throw new Error(`Unknown forced ability id "${abilityId}"`);
+    }
+    return definition;
+  });
+  const forcedActiveIds = definitions
+    .filter((definition) => definition.kind !== 'passive')
+    .map((definition) => definition.id);
+  if (forcedActiveIds.length > ACTIVE_ABILITY_SLOT_LIMIT) {
+    throw new Error(
+      `Forced active/spell ability count ${forcedActiveIds.length} exceeds active ability slot limit ${ACTIVE_ABILITY_SLOT_LIMIT}`,
+    );
+  }
+  for (const definition of definitions) {
+    if (
+      definition.weaponPrerequisite !== undefined &&
+      !weaponPrerequisiteMet(world, playerEid, definition.id)
+    ) {
+      throw new Error(
+        `Forced ability "${definition.id}" requires weapon skill "${definition.weaponPrerequisite}", incompatible with selected weapon "${startingWeapon}"`,
+      );
+    }
+  }
+
+  const existingEquipped =
+    world.abilityStatesByEntity.get(playerEid)?.equippedActiveAbilityIds ?? [];
+  grantAbilitySources(
+    world,
+    playerEid,
+    definitions.map((definition) => ({
+      kind: definition.kind === 'passive' ? ('passive' as const) : ('active' as const),
+      abilityId: definition.id,
+      sourceId: learnedAbilityGrantSourceId(definition.id),
+    })),
+  );
+  const state = getOrCreateAbilityState(world, playerEid);
+  const forcedActiveSet = new Set(forcedActiveIds);
+  state.equippedActiveAbilityIds = [
+    ...forcedActiveIds,
+    ...existingEquipped.filter((abilityId) => !forcedActiveSet.has(abilityId)),
+  ].slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
+  if (definitions.some((definition) => definition.kind === 'spell')) {
+    world.featureUnlocks.spells = true;
+  }
+  synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
+  statSystem(world);
+  return forcedAbilityIds;
+}
+
+function buildAbilityTelemetry(
+  world: GameWorld,
+  forcedAbilityIds: readonly string[],
+): NonNullable<RunStats['abilityTelemetry']> {
+  const activationsByAbilityId = Object.fromEntries(
+    forcedAbilityIds.map((abilityId) => [abilityId, 0]),
+  );
+  let totalActivations = 0;
+  for (const activation of world.runEvents?.itemActivations ?? []) {
+    for (const abilityId of forcedAbilityIds) {
+      // recordAbilityRunEvent uses this learned-ability source for both `active`
+      // and `spell` definitions; the prefix is historical, not a kind filter.
+      if (!activation.itemSources.includes(`spell:${abilityId}`)) continue;
+      activationsByAbilityId[abilityId] = (activationsByAbilityId[abilityId] ?? 0) + 1;
+      totalActivations += 1;
+    }
+  }
+  return { forcedAbilityIds, totalActivations, activationsByAbilityId };
+}
 
 function applyConfiguredHostileDamageMultiplier(
   world: GameWorld,
@@ -766,6 +864,10 @@ export async function runHeadless(
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
+  const forcedAbilityIds =
+    config.forceAbilityIds === undefined
+      ? undefined
+      : applyForcedAbilities(world, playerEid, config.forceAbilityIds, startingWeapon);
   const runData = createHeadlessRunData(
     forceWeaponId !== undefined
       ? [startingWeapon]
@@ -1777,6 +1879,9 @@ export async function runHeadless(
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
+      ...(forcedAbilityIds
+        ? { abilityTelemetry: buildAbilityTelemetry(world, forcedAbilityIds) }
+        : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
       goldEconomy: computeGoldEconomy(world),
@@ -1885,6 +1990,9 @@ export async function runHeadless(
     skills: collectSkillMetrics(),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
+    ...(forcedAbilityIds
+      ? { abilityTelemetry: buildAbilityTelemetry(world, forcedAbilityIds) }
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
