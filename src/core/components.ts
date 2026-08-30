@@ -64,6 +64,10 @@ export const DamageMeta = {};
 export const Owner = {};
 /** Assigns a team to prevent friendly fire. */
 export const Team = {};
+/** Floor 5 lane-war minion marker. */
+export const SiegeMinion = {};
+/** Floor 5 damageable objective/structure marker. */
+export const SiegeStructure = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -341,6 +345,18 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     team: {
       id: new Uint8Array(maxEntities),
+    },
+    siegeMinion: {
+      team: new Uint8Array(maxEntities),
+      manifestIndex: new Uint16Array(maxEntities),
+      targetEid: new Uint32Array(maxEntities),
+      lastX: new Float32Array(maxEntities),
+      lastY: new Float32Array(maxEntities),
+      stillFrames: new Uint16Array(maxEntities),
+    },
+    siegeStructure: {
+      team: new Uint8Array(maxEntities),
+      kind: new Uint8Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),

@@ -24,7 +24,7 @@ import {
   statusEffectSystem,
 } from '../../src/core/index.js';
 import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
-import { siegeDirectorSystem } from '../../src/game/floor5Scenario.js';
+import { siegeDirectorSystem, siegeMinionSystem } from '../../src/game/floor5Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -79,7 +79,7 @@ describe('createFloor1MainSceneOptions', () => {
     {
       floorId: 'floor5',
       beforeWeaponSystems: [],
-      beforeEnemyAISystems: [companionAISystem],
+      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem],
       afterSpawnerSystems: [siegeDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,

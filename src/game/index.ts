@@ -55,7 +55,11 @@ export {
   FLOOR3_TIMEOUT_GOAL_ID,
 } from './floor3Scenario.js';
 export { arenaDirectorSystem, initializeFloor4Scenario } from './floor4Scenario.js';
-export { initializeFloor5Scenario, siegeDirectorSystem } from './floor5Scenario.js';
+export {
+  initializeFloor5Scenario,
+  siegeDirectorSystem,
+  siegeMinionSystem,
+} from './floor5Scenario.js';
 export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,
