@@ -77,6 +77,11 @@ const FLOOR5_STRUCTURE_HEALTH: Record<Floor5SiegeStructureId, number> = {
   'outer-wall': 140,
 };
 
+interface Floor5WaveEntryWithIndex {
+  readonly entry: Floor5SiegeWaveManifestEntry;
+  readonly manifestIndex: number;
+}
+
 function getFloor5Manifest() {
   const manifest = getFloorManifest('floor5');
   if (!manifest) {
@@ -241,6 +246,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     },
     waveManifest,
     waveCursor: { allied: 0, enemy: 0 },
+    waveRemainder: { allied: 0, enemy: 0 },
     spawnDebt: { allied: 0, enemy: 0 },
     spawnDebtManifestQueue: { allied: [], enemy: [] },
     liveMinions: { allied: 0, enemy: 0 },
@@ -380,8 +386,10 @@ function countLiveFloor5Minions(world: GameWorld, team: Floor5SiegeTeam): number
 function floor5WaveEntriesForTeam(
   state: Floor5SiegeState,
   team: Floor5SiegeTeam,
-): readonly Floor5SiegeWaveManifestEntry[] {
-  return state.waveManifest.filter((entry) => entry.team === team);
+): readonly Floor5WaveEntryWithIndex[] {
+  return state.waveManifest
+    .map((entry, manifestIndex) => ({ entry, manifestIndex }))
+    .filter(({ entry }) => entry.team === team);
 }
 
 function spawnFloor5Minion(
@@ -536,22 +544,25 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
   for (const team of ['allied', 'enemy'] as const) {
     const entries = floor5WaveEntriesForTeam(state, team);
     while (
+      state.spawnDebt[team] < FLOOR5_MINION_LIVE_CAP &&
       state.waveCursor[team] < entries.length &&
-      world.frameCount >= entries[state.waveCursor[team]]!.releaseFrame
+      world.frameCount >= entries[state.waveCursor[team]]!.entry.releaseFrame
     ) {
-      const manifestIndex = state.waveCursor[team];
-      const queued = Math.min(
-        FLOOR5_MINION_LIVE_CAP - state.spawnDebt[team],
-        entries[manifestIndex]!.count,
-      );
+      const pending = entries[state.waveCursor[team]]!;
+      const remaining = state.waveRemainder[team] || pending.entry.count;
+      const queued = Math.min(FLOOR5_MINION_LIVE_CAP - state.spawnDebt[team], remaining);
       for (let i = 0; i < queued; i += 1) {
-        state.spawnDebtManifestQueue[team].push(manifestIndex);
+        state.spawnDebtManifestQueue[team].push(pending.manifestIndex);
       }
       state.spawnDebt[team] += queued;
+      state.waveRemainder[team] = remaining - queued;
       state.laneTelemetry.spawnDebtPeak[team] = Math.max(
         state.laneTelemetry.spawnDebtPeak[team],
         state.spawnDebt[team],
       );
+      if (state.waveRemainder[team] > 0) {
+        break;
+      }
       state.waveCursor[team] += 1;
     }
     state.liveMinions[team] = countLiveFloor5Minions(world, team);

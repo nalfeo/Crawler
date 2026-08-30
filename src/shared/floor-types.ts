@@ -706,6 +706,7 @@ export interface Floor5SiegeState {
   readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   waveCursor: Record<Floor5SiegeTeam, number>;
+  waveRemainder: Record<Floor5SiegeTeam, number>;
   spawnDebt: Record<Floor5SiegeTeam, number>;
   spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
   liveMinions: Record<Floor5SiegeTeam, number>;
