@@ -1,0 +1,93 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "floor5-slice3-siege-tasks",
+  "task_title": "Floor 5 Slice 3 siege tasks",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review considered: Alt A state-only Slice 3 with quest integration deferred (rejected because issue explicitly requires quest-event projection, but we will avoid HUD overreach); Alt B programmatic TS quest-pack builder from constants (rejected as broader than needed; add drift validation for static pack instead); Alt C pure reducer/event seam (partially adopted by driving exported runtime helpers through the real floorObjectiveTick path instead of provider-only autoprogression). Adopted changes: do not call questSystem inside floor5ObjectiveTick, make terminal/non-playing ticks no-op so defeat precedence wins, avoid provider-only headless shortcut, add static-pack/goal-ID validation, add parity/idempotency coverage, and phrase Slice 3 completion as reaching all Slice 3 latches rather than floor victory."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-sol",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "89f64749cc76f4e01354aafc941370069bf59438",
+      "findings": [
+        {
+          "severity": "blocker",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Field tasks complete automatically after one second without player action or explicit task events."
+        },
+        {
+          "severity": "major",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Task and construction helpers write phases outside siegeDirectorSystem."
+        },
+        {
+          "severity": "major",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "Build-site attack state is derived from Command Post health rather than build-site attack events."
+        },
+        {
+          "severity": "minor",
+          "file": "src/shared/data/quests.floor5.siege.json",
+          "detail": "Slice 3 ships quest content assigned to the later content slice."
+        }
+      ],
+      "criteria": {
+        "correctness": 2,
+        "scope_discipline": 3,
+        "test_coverage": 2,
+        "policy_compliance": 2,
+        "maintainability": 3
+      },
+      "verdict": "fail",
+      "findings_count": 4,
+      "escalated_to_human": {
+        "reason": "criteria below 3: correctness, test_coverage, policy_compliance; 1 blocker finding(s)",
+        "unresolved_findings": 4
+      }
+    }
+  }
+}

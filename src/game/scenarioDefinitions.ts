@@ -67,6 +67,7 @@ import {
   getFloor5RunOutcome,
   initializeFloor5Scenario,
   siegeDirectorSystem,
+  siegeMinionSystem,
 } from './floor5Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -656,7 +657,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       floorId: 'floor5',
       configureWorld: initializeFloor5Scenario,
       onStairDescend: confirmFloor5StairDescend,
-      beforeEnemyAISystems: [companionAISystem],
+      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem],
       afterSpawnerSystems: [siegeDirectorSystem],
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,
