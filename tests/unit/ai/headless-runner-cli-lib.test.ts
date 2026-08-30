@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  defaultCLIArgs,
   helpText,
   parseArgs,
   resolveHeadlessRunnerOptions,
@@ -29,11 +28,10 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
     expect(args.maxFrames).toBe(FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES);
-    expect(args).toEqual(defaultCLIArgs({}));
   });
 
   it('prints the current default pathing mode in help text', () => {
-    expect(helpText()).toContain(`(default: ${defaultCLIArgs({}).pathingMode})`);
+    expect(helpText()).toContain(`(default: ${cli().pathingMode})`);
   });
 
   it('parses a valid --decision-mode', () => {
@@ -87,10 +85,12 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     );
   });
 
-  it('defaults weapon personas on and supports an explicit legacy control', () => {
-    expect(cli().weaponPersonas).toBe(true);
+  it('leaves weapon personas unset unless explicitly controlled, so the registry default applies', () => {
+    expect(cli().weaponPersonas).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli()).weaponPersonas).toBeUndefined();
     expect(cli('--weapon-personas').weaponPersonas).toBe(true);
     expect(cli('--no-weapon-personas').weaponPersonas).toBe(false);
+    expect(resolveHeadlessRunnerOptions(cli('--no-weapon-personas')).weaponPersonas).toBe(false);
   });
 
   it('defaults to the experienced evaluator persona and parses named personas', () => {
@@ -146,8 +146,9 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
   });
 
-  it('defaults optionalPurchases on and supports explicit CLI and environment controls', () => {
-    expect(cli().optionalPurchases).toBe(true);
+  it('leaves optionalPurchases unset by default and supports explicit CLI and environment controls', () => {
+    expect(cli().optionalPurchases).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli()).optionalPurchases).toBeUndefined();
     expect(cli('--optional-purchases').optionalPurchases).toBe(true);
     expect(cli('--no-optional-purchases').optionalPurchases).toBe(false);
     // New canonical env var
@@ -218,7 +219,6 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
 describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
   it('defaults to 250ms (production/headless default)', () => {
     expect(cli().enemyTelegraphMs).toBe(250);
-    expect(defaultCLIArgs({}).enemyTelegraphMs).toBe(250);
   });
 
   it('parses an explicit --enemy-telegraph-ms override', () => {

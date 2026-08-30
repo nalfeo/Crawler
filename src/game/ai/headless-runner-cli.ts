@@ -13,6 +13,7 @@ import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { getPersonaConfig, personaConfigDivergence } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
+import { getAiFeatureFlagControls, resolveAiFeatureFlags } from './feature-flags.js';
 import { helpText, parseArgs, resolveHeadlessRunnerOptions } from './headless-runner-cli-lib.js';
 
 function printHelp(): void {
@@ -46,13 +47,16 @@ async function main(): Promise<void> {
   }
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
-  console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Persona: ${args.persona}`);
-  console.log(
-    `Settlement return routing: ${
-      (runnerOptions.settlementReturnRouting ?? args.floorId === 'floor1') ? 'enabled' : 'disabled'
-    }`,
-  );
+  // Log the flags the runner will actually use: the registry — not the CLI —
+  // owns every default, so this stays truthful when a default changes.
+  const featureFlags = resolveAiFeatureFlags(runnerOptions, {
+    surface: 'headless',
+    floorId: args.floorId,
+  });
+  for (const control of getAiFeatureFlagControls()) {
+    console.log(`${control.label}: ${featureFlags[control.key] ? 'enabled' : 'disabled'}`);
+  }
   console.log('');
 
   // A persona label is only truthful while the run actually uses the preset.
@@ -96,8 +100,6 @@ async function main(): Promise<void> {
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
-    weaponPersonas: args.weaponPersonas,
-    optionalPurchases: args.optionalPurchases,
     ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
     ...runnerOptions,
     ...(recording

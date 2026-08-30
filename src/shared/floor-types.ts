@@ -3,6 +3,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
+import type { CombatEvent } from './combat-events.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -275,10 +276,10 @@ export interface Floor3EncounterState {
   unlocked: boolean;
   /**
    * This Studio's Companions, deferred at floor init until `unlockLevel` is
-   * met (spec R6 soft-gate) — mirrors `Floor3StudiosState.finalFourPendingSpawns`.
+   * met (spec R6 soft-gate) — mirrors the Final Four rounds.
    * `floor3ObjectiveTick` spawns these once `unlocked` latches true and clears
    * the array so a re-tick never double-spawns. Unused by the Final Four,
-   * which has its own `finalFourPendingSpawns` field.
+   * which stores one pending roster per ordered round.
    */
   pendingSpawns: readonly Floor3PendingRosterSpawn[];
   /**
@@ -328,6 +329,16 @@ export interface Floor3PendingRosterSpawn {
   readonly y?: number;
 }
 
+/** One seeded Final Four handler round, kept in gauntlet order. */
+export interface Floor3FinalFourRoundState {
+  readonly handlerId: string;
+  readonly handlerName: string;
+  /** This handler's roster only; cleared after the round spawns. */
+  pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /** Latched when this handler's active roster is wiped. */
+  defeated: boolean;
+}
+
 /**
  * Floor 3 · Slice 8 — Studios + Final Four + objective-tick state written to
  * `world.floorExtendedState.floor3Studios` by `initializeFloor3Scenario`.
@@ -341,13 +352,13 @@ export interface Floor3StudiosState {
   readonly finalFour: Floor3EncounterState;
   /** Count of `studios` currently `defeated`. Convenience — always derivable from `studios`. */
   studiosDefeatedCount: number;
+  /** Four seeded handler rounds in the exact order selected for this run. */
+  readonly finalFourRounds: Floor3FinalFourRoundState[];
   /**
-   * The Final Four's Companions, deferred at floor init (spec R6: the Final
-   * Four is soft-gated behind the Studios-defeated counter, not present in
-   * the world until it unlocks). `floor3ObjectiveTick` spawns these once and
-   * clears the array so a re-tick never double-spawns.
+   * Active round index after Final Four unlock; also equals the number of
+   * defeated rounds. Reaches `finalFourRounds.length` only after the last wipe.
    */
-  finalFourPendingSpawns: readonly Floor3PendingRosterSpawn[];
+  finalFourRoundIndex: number;
   /** World-space (ft) position of the exit staircase. Set on victory. */
   staircasePos?: { x: number; y: number };
   /** True once the exit staircase tile has been spawned (Final Four defeated). */
@@ -358,10 +369,9 @@ export interface Floor3StudiosState {
   staircaseDiscovered?: boolean;
   /**
    * ECS entity id of the single party Companion the player will keep
-   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
-   * first party slot the moment victory latches, then overridable by
-   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
-   * floor-transition carryover is captured. `undefined` before victory.
+   * cross-floor (spec R7 §9.3, slice 11). Real play sets this through
+   * `selectFloor3KeptCompanion`; headless play may explicitly invoke the
+   * deterministic game-layer fallback. `undefined` before selection.
    */
   keptCompanionEid?: number;
 }
@@ -654,13 +664,85 @@ export interface Floor5SiegePhaseTraceEntry {
   readonly heroState: string;
 }
 
+export type Floor5SiegeTeam = 'allied' | 'enemy';
+export type Floor5SiegeCheckpointOwner = Floor5SiegeTeam | 'contested';
+export type Floor5SiegeStructureId =
+  | 'command-post'
+  | 'allied-checkpoint'
+  | 'enemy-checkpoint'
+  | 'outer-wall';
+
+export interface Floor5SiegeStructureState {
+  readonly id: Floor5SiegeStructureId;
+  readonly team: Floor5SiegeTeam;
+  eid: number;
+  health: number;
+  maxHealth: number;
+}
+
+export interface Floor5SiegeWaveManifestEntry {
+  readonly id: string;
+  readonly team: Floor5SiegeTeam;
+  readonly releaseFrame: number;
+  readonly count: number;
+}
+
+export interface Floor5SiegeLaneTelemetry {
+  waveCyclesCompleted: number;
+  checkpointContests: number;
+  legalDamageEvents: number;
+  illegalDamageEvents: number;
+  pathStalls: number;
+  spawned: Record<Floor5SiegeTeam, number>;
+  spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+}
+
+export type Floor5RatingsRamState =
+  | 'LOCKED'
+  | 'BUILDING'
+  | 'READY'
+  | 'ADVANCING'
+  | 'ATTACKING'
+  | 'BREACHED'
+  | 'DESTROYED';
+
+export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
+
+export type Floor5RequisitionMilestone =
+  | 'opening-push'
+  | 'siege-yard'
+  | 'components'
+  | 'checkpoint';
+
+export interface Floor5SiegeTaskState {
+  openingPushRepelled: boolean;
+  yardSecured: boolean;
+  recoveredComponents: Floor5RamComponentClass[];
+  checkpointCleared: boolean;
+}
+
+export interface Floor5SiegeConstructionState {
+  progressMs: number;
+  requiredMs: number;
+  lastProgressWorldElapsedMs: number;
+  buildSiteUnderAttack: boolean;
+  pausedMs: number;
+  attempts: number;
+  deniedAttempts: number;
+  startedFrame: number | null;
+  completedFrame: number | null;
+}
+
 export interface Floor5SiegeState {
   phase: Floor5SiegePhase;
   lastWorldElapsedMs: number;
   commandPostHealth: number;
-  engineState: string;
+  engineState: Floor5RatingsRamState;
   breachState: string;
   heroState: string;
+  tasks: Floor5SiegeTaskState;
+  requisitionMilestones: Floor5RequisitionMilestone[];
+  construction: Floor5SiegeConstructionState;
   readonly rngStreamKeys: {
     readonly waves: string;
     readonly heroes: string;
@@ -669,16 +751,57 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  waveCursor: Record<Floor5SiegeTeam, number>;
+  waveRemainder: Record<Floor5SiegeTeam, number>;
+  spawnDebt: Record<Floor5SiegeTeam, number>;
+  spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
+  liveMinions: Record<Floor5SiegeTeam, number>;
+  checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  combatEventCursor: number;
+  lastCombatEvent?: CombatEvent;
 }
 
 export interface Floor5SiegeRunStats {
   readonly phase: Floor5SiegePhase;
   readonly commandPostHealth: number;
-  readonly engineState: string;
+  readonly engineState: Floor5RatingsRamState;
   readonly breachState: string;
   readonly heroState: string;
+  readonly tasks: {
+    readonly openingPushRepelled: boolean;
+    readonly yardSecured: boolean;
+    readonly recoveredComponents: readonly Floor5RamComponentClass[];
+    readonly componentsReady: boolean;
+    readonly checkpointCleared: boolean;
+    readonly allPrerequisitesMet: boolean;
+  };
+  readonly requisition: {
+    readonly milestones: readonly Floor5RequisitionMilestone[];
+    readonly completedMilestones: number;
+    readonly requiredMilestones: number;
+    readonly ready: boolean;
+  };
+  readonly construction: {
+    readonly progressMs: number;
+    readonly requiredMs: number;
+    readonly buildSiteUnderAttack: boolean;
+    readonly pausedMs: number;
+    readonly attempts: number;
+    readonly deniedAttempts: number;
+    readonly startedFrame: number | null;
+    readonly completedFrame: number | null;
+  };
   readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
   readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+  readonly structures: Readonly<Record<Floor5SiegeStructureId, Floor5SiegeStructureState>>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
 }
 
 /**

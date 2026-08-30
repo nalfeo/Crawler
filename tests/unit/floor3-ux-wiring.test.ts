@@ -51,6 +51,15 @@ describe('Floor 3 UX surface wiring', () => {
     );
   });
 
+  it('attempts the Floor 3 headless descend even when there is nothing left to keep', () => {
+    // `autoSelectKeptCompanion` returns false on a post-victory party wipe
+    // (nothing keepable left), which the descend gate explicitly allows — so
+    // gating the descend attempt on its return value would stall those runs.
+    expect(headlessRunnerSource).toMatch(
+      /if \(scenario\.autoSelectKeptCompanion\) \{[\s\S]*?scenario\.autoSelectKeptCompanion\(world\);\s*scenario\.onStairDescend\?\.\(world, playerEid\);/,
+    );
+  });
+
   it('never strands the loadout pause when a picked option is not in the offer', () => {
     // `selectLoadoutOption` is the only exit from `'loadout'`, so the confirm
     // handler must dispatch even for an unmatched option id.
