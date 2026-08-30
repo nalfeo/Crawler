@@ -218,10 +218,9 @@ function createFloor4HeadlinerTelemetry(): Floor4HeadlinerTelemetry {
 /**
  * Bank the act's realised income at the break (spec FR10.3 / slice 7).
  *
- * `waveGold` is the act's gold delta minus the act's authored appearance fee,
- * so drop income and the guaranteed fee stay separable: the affordability
- * invariant (FR6.8) is computed from fees alone, and the manifest's authored
- * per-act income budget is checked against `waveGold`.
+ * `waveGold` is the `goldLedger.earnedFromDrops` delta over the act window, so
+ * only wave/drop income is budgeted. Non-drop sources (e.g. achievement loot
+ * boxes) and the guaranteed appearance fee stay separable.
  */
 function recordFloor4ActIncome(
   world: GameWorld,
@@ -230,8 +229,8 @@ function recordFloor4ActIncome(
 ): void {
   const card = state.headlinerCard.find((entry) => entry.act === act);
   const appearanceFeeGold = card && state.activeHeadliner?.feeGranted ? card.appearanceFeeGold : 0;
-  const delta = world.playerGold - state.actBaseline.playerGold;
-  const waveGold = Math.max(0, delta - appearanceFeeGold);
+  const dropDelta = world.goldLedger.earnedFromDrops - state.actBaseline.dropGold;
+  const waveGold = Math.max(0, dropDelta);
   state.actIncome.push({
     act,
     waveGold,
@@ -280,6 +279,7 @@ function recordFloor4PhaseTransition(
     // the run-cumulative totals (spec slice 6 / FR6).
     state.actBaseline = {
       playerGold: world.playerGold,
+      dropGold: world.goldLedger.earnedFromDrops,
       enemiesSpawned: state.waveTelemetry.enemiesSpawned,
       enemiesCut: state.waveTelemetry.enemiesCut,
     };
@@ -312,7 +312,12 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     keptCompanionCoStarActive: false,
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
-    actBaseline: { playerGold: world.playerGold, enemiesSpawned: 0, enemiesCut: 0 },
+    actBaseline: {
+      playerGold: world.playerGold,
+      dropGold: world.goldLedger.earnedFromDrops,
+      enemiesSpawned: 0,
+      enemiesCut: 0,
+    },
     actIncome: [],
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');

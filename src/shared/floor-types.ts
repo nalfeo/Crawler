@@ -596,6 +596,8 @@ export interface Floor4ArenaState {
 /** See {@link Floor4ArenaState.actBaseline}. */
 export interface Floor4ActBreakBaseline {
   readonly playerGold: number;
+  /** GoldLedger.earnedFromDrops snapshot at WAVES entry for this act. */
+  readonly dropGold: number;
   readonly enemiesSpawned: number;
   readonly enemiesCut: number;
 }

@@ -65,7 +65,7 @@ function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
       overtimeStarted: 0,
       overtimeStepsApplied: 0,
     },
-    actBaseline: { playerGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
+    actBaseline: { playerGold: 20, dropGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
     waves: {
       act: 2,
       manifests: Array.from({ length: 8 }, (_, waveIndex) => ({

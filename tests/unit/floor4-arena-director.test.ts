@@ -223,6 +223,7 @@ describe('arenaDirectorSystem', () => {
     const goldBefore = world.playerGold;
     expect(encounter.slotId).toBe('floor4-headliner-act-1');
     expect(world.enemyAppearanceKeys.get(encounter.bossEid!)).toBe(encounter.archetypeId);
+    expect(world.stores.damage.amount[encounter.bossEid!]).toBe(encounter.contactDamage);
     expect(world.announcements.at(-1)?.kind).toBe('bossAbilityCast');
 
     defeatActiveHeadliner(world);
@@ -238,6 +239,35 @@ describe('arenaDirectorSystem', () => {
     arenaDirectorSystem(world);
     expect(world.playerGold).toBe(goldBefore + encounter.appearanceFeeGold);
     expect(state.headlinerTelemetry.chestsSpawned).toBe(1);
+  });
+
+  it('records act wave income from drop-ledger delta only (excluding non-drop gold)', () => {
+    const world = setupFloor4(404);
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+    const dropGoldEarned = 12;
+    const lootBoxGold = 6;
+
+    advance(world, phase.countdownMs);
+    const goldBeforeMutations = world.playerGold;
+    world.goldLedger.earnedFromDrops += dropGoldEarned;
+    world.playerGold += dropGoldEarned;
+    world.goldLedger.earnedFromLootBoxes += lootBoxGold;
+    world.playerGold += lootBoxGold;
+    advance(world, phase.waveWindowMs);
+    const appearanceFeeGold =
+      world.floorExtendedState!.floor4Arena!.activeHeadliner!.appearanceFeeGold;
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+    expect(world.playerGold).toBe(
+      goldBeforeMutations + dropGoldEarned + lootBoxGold + appearanceFeeGold,
+    );
+
+    const income = world.floorExtendedState!.floor4Arena!.actIncome[0];
+    expect(income).toBeDefined();
+    expect(income!.waveGold).toBe(dropGoldEarned);
+    expect(income!.waveGold).not.toBe(dropGoldEarned + lootBoxGold);
+    expect(income!.appearanceFeeGold).toBe(appearanceFeeGold);
+    expect(income!.totalGold).toBe(dropGoldEarned + appearanceFeeGold);
   });
 
   it('force-resolves an unopened boss chest when the act reaches intermission', () => {

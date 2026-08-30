@@ -360,7 +360,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
             overtimeStarted: surface === 'overtime' ? 1 : 0,
             overtimeStepsApplied: surface === 'overtime' ? 2 : 0,
           },
-          actBaseline: { playerGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
+          actBaseline: { playerGold: 100, dropGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
           breakGoldSnapshot: 144,
           waves: {
             act,
