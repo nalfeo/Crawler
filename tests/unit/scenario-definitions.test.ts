@@ -91,15 +91,20 @@ describe('scenario definitions', () => {
         expect(variant).toContain('First objective:');
       }
     }
+    for (const variant of getScenarioDefinition('floor1').director.introVariants ?? []) {
+      expect(variant).toContain('quest');
+      expect(variant).toContain('stairs');
+    }
+    for (const variant of getScenarioDefinition('floor5').director.introVariants ?? []) {
+      expect(variant).toContain('Command Post');
+      expect(variant).not.toMatch(/control point|capture node|capture exchange/i);
+    }
   });
 
   it('chooses intro variants deterministically per seed and floor', () => {
     const floor2 = getScenarioDefinition('floor2');
-    const floor3 = getScenarioDefinition('floor3');
     const variants = floor2.director.introVariants ?? [];
-    const floor3Variants = floor3.director.introVariants ?? [];
     expect(variants.length).toBeGreaterThan(0);
-    expect(floor3Variants.length).toBeGreaterThan(0);
     const sameA = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
     const sameB = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
     expect(sameA).toBe(sameB);
@@ -108,8 +113,8 @@ describe('scenario definitions', () => {
     let floorIdAffectsSelection = false;
     for (let seed = 1; seed <= 256; seed += 1) {
       const floor2Pick = selectScenarioDirectorIntro(floor2.director, seed, 'floor2');
-      const floor3Pick = selectScenarioDirectorIntro(floor3.director, seed, 'floor3');
-      if (floor2Pick !== floor3Pick) {
+      const otherFloorPick = selectScenarioDirectorIntro(floor2.director, seed, 'floor3');
+      if (floor2Pick !== otherFloorPick) {
         floorIdAffectsSelection = true;
         break;
       }

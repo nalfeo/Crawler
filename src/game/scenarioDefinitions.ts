@@ -466,11 +466,11 @@ function buildDirectorIntroVariants(
 
 const FLOOR_1_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
-    'Floor 1 opens. {playerName} steps into the dungeon and the cameras go live.',
-    'Floor 1 is live and {playerName} just entered the starter gauntlet.',
-    'Floor 1 starts now: {playerName} is on-air in the tutorial dungeon.',
-    'Floor 1 broadcast begins with {playerName} in the opening dungeon circuit.',
-    'Floor 1 kicks off and {playerName} is in the spotlight from the first room.',
+    'Floor 1 opens. {playerName} must clear the quest and boss chain to unlock the exit stairs.',
+    'Floor 1 is live: complete the tutorial quest chain, then defeat the boss for the stairs.',
+    'Floor 1 starts now: the escape stairs open after the quest chain ends in a boss defeat.',
+    'Floor 1 broadcast begins with one way out: finish the quests and unlock the boss stairs.',
+    'Floor 1 kicks off: advance the quest chain to the boss, then claim the exit stairs.',
   ],
   [
     'First objective: reach the Welcome Office and speak with Tutorial Goon to start your quota quest.',
@@ -482,11 +482,11 @@ const FLOOR_1_INTRO_VARIANTS = buildDirectorIntroVariants(
 
 const FLOOR_2_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
-    'Floor 2 opens with the Mother Lode feud active across the cave network.',
-    'Floor 2 goes live as rival families contest the Mother Lode.',
-    'Floor 2 starts in open faction warfare around the Mother Lode tunnels.',
-    'Floor 2 is on-air and every family wants control of the Mother Lode.',
-    'Floor 2 begins with a live territorial feud over the Mother Lode.',
+    'Floor 2 opens with the Mother Lode feud active across the cave network; resolve it to unlock the exit.',
+    'Floor 2 goes live as rival families contest the Mother Lode; settle the feud and take the stairs.',
+    'Floor 2 starts in open faction warfare around the Mother Lode tunnels; victory opens the exit route.',
+    'Floor 2 is on-air and every family wants control of the Mother Lode; end the conflict to reach the stairs.',
+    'Floor 2 begins with a live territorial feud over the Mother Lode; secure a win and unlock the exit.',
   ],
   [
     'First objective: reach the settlement Broker and take the opening feud directive.',
@@ -498,11 +498,11 @@ const FLOOR_2_INTRO_VARIANTS = buildDirectorIntroVariants(
 
 const FLOOR_3_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
-    'Floor 3 opens in the Companion League wilds across seven biome territories.',
-    'Floor 3 goes live with roaming squads in the Companion League wilds.',
-    'Floor 3 starts as a territory race through the Companion League wilds.',
-    'Floor 3 is on-air with seven-biome warfare in the Companion League wilds.',
-    'Floor 3 begins in a live Companion League wilds campaign for regional control.',
+    'Floor 3 opens in the Companion League wilds: defeat the Final Four to reach extraction.',
+    'Floor 3 goes live with roaming squads in the Companion League wilds; the Final Four guard the exit.',
+    'Floor 3 starts as a territory race through the Companion League wilds; winning the Final Four unlocks extraction.',
+    'Floor 3 is on-air with seven-biome warfare in the Companion League wilds; clear the Final Four for the exit.',
+    'Floor 3 begins in a live Companion League campaign for regional control; defeat the Final Four to escape.',
   ],
   [
     'First objective: confirm your starter companion loadout and secure your opening territory.',
@@ -514,11 +514,11 @@ const FLOOR_3_INTRO_VARIANTS = buildDirectorIntroVariants(
 
 const FLOOR_4_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
-    'Floor 4 opens with the Main Event stage reset for a five-act arena rehearsal.',
-    'Floor 4 goes live under house lights for a five-act Main Event trial.',
-    'Floor 4 starts as a broadcast arena rehearsal with five consecutive acts.',
-    'Floor 4 is on-air and the Main Event stage expects five clean acts.',
-    'Floor 4 begins with a timed five-act arena broadcast test.',
+    'Floor 4 opens with the Main Event stage reset: clear all five acts and the stairs open.',
+    'Floor 4 goes live under house lights for a five-act trial; finish every act to unlock the exit.',
+    'Floor 4 starts as a broadcast arena rehearsal with five consecutive acts; completion opens the stairs.',
+    'Floor 4 is on-air and the Main Event stage expects five clean acts before it releases the exit.',
+    'Floor 4 begins with a timed five-act arena test; survive the program to reach the stairs.',
   ],
   [
     'First objective: survive countdown and clear Act 1 waves to summon the first Headliner.',
@@ -530,17 +530,17 @@ const FLOOR_4_INTRO_VARIANTS = buildDirectorIntroVariants(
 
 const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
-    'Floor 5 opens with Hostile Takeover underway at the Command Post.',
-    'Floor 5 goes live as the takeover battle for the Command Post begins.',
-    'Floor 5 starts in full siege mode around the Command Post throne line.',
-    'Floor 5 is on-air with a live hostile takeover of the Command Post.',
-    'Floor 5 begins with a command-center siege and ownership on the line.',
+    'Floor 5 opens with Hostile Takeover at the Command Post; this foundation has no escape route yet.',
+    'Floor 5 goes live at the Command Post; no exit is active while the siege foundation is under construction.',
+    'Floor 5 starts in siege mode around the Command Post; survive its defense because extraction is not implemented.',
+    'Floor 5 is on-air with a hostile takeover of the Command Post; this foundation does not yet offer stairs.',
+    'Floor 5 begins with a command-center siege; there is no escape route until later siege systems arrive.',
   ],
   [
-    'First objective: stabilize your entry lane and seize the first control point.',
-    'First objective: break the opening defenders and lock down the initial capture node.',
-    'First objective: secure a foothold at the Command Post before pushing deeper phases.',
-    'First objective: win the first capture exchange to start the takeover momentum.',
+    'First objective: hold the Command Post; the siege ends in defeat if its health falls to zero.',
+    'First objective: keep the Command Post intact while the siege foundation is active.',
+    'First objective: defend the Command Post, because its destruction ends the run.',
+    'First objective: protect the Command Post and avoid the defeat state triggered by its destruction.',
   ],
 );
 
