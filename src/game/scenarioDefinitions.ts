@@ -467,10 +467,10 @@ function buildDirectorIntroVariants(
 const FLOOR_1_INTRO_VARIANTS = buildDirectorIntroVariants(
   [
     'Floor 1 opens. {playerName} must clear the quest and boss chain to unlock the exit stairs.',
-    'Floor 1 is live: complete the tutorial quest chain, then defeat the boss for the stairs.',
-    'Floor 1 starts now: the escape stairs open after the quest chain ends in a boss defeat.',
-    'Floor 1 broadcast begins with one way out: finish the quests and unlock the boss stairs.',
-    'Floor 1 kicks off: advance the quest chain to the boss, then claim the exit stairs.',
+    'Floor 1 is live: {playerName} must complete the tutorial quest chain, then defeat the boss for the stairs.',
+    'Floor 1 starts now: {playerName} opens the escape stairs after the quest chain ends in a boss defeat.',
+    'Floor 1 broadcast begins with one way out: {playerName} must finish the quests and unlock the boss stairs.',
+    'Floor 1 kicks off: {playerName} advances the quest chain to the boss, then claims the exit stairs.',
   ],
   [
     'First objective: reach the Welcome Office and speak with Tutorial Goon to start your quota quest.',

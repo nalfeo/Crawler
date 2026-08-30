@@ -92,6 +92,7 @@ describe('scenario definitions', () => {
       }
     }
     for (const variant of getScenarioDefinition('floor1').director.introVariants ?? []) {
+      expect(variant).toContain('{playerName}');
       expect(variant).toContain('quest');
       expect(variant).toContain('stairs');
     }
