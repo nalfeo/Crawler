@@ -3823,7 +3823,10 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    if (!this.world.floorScenario) {
+    // Copy comes from the scenario contract, never from a floor literal: a
+    // scenario without `starterLoadout` does not present this picker at all.
+    const loadoutCopy = this.options.scenarioPresentation?.starterLoadout;
+    if (!this.world.floorScenario || !loadoutCopy) {
       return;
     }
 
@@ -3832,7 +3835,7 @@ export class MainGameScene extends Phaser.Scene {
       return {
         id,
         label: weapon?.name ?? `Option ${index + 1}`,
-        description: weapon ? `Starter weapon: ${weapon.name}` : id,
+        description: weapon ? `${loadoutCopy.optionDescriptionPrefix}: ${weapon.name}` : id,
       };
     });
     const baseBonuses = this.world.floorScenario.baseStatBonuses;
@@ -3840,9 +3843,9 @@ export class MainGameScene extends Phaser.Scene {
 
     this.modalPicker.open(
       {
-        title: 'Choose your opening loadout',
-        subtitle: `${this.world.floorScenario.protagonistName} · Floor 1 is paused until you confirm a starter weapon.`,
-        body: `${baseBonusText}\nPick the weapon you want to begin with.`,
+        title: loadoutCopy.title,
+        subtitle: `${this.world.floorScenario.protagonistName} · ${loadoutCopy.pausedNotice}`,
+        body: `${baseBonusText}\n${loadoutCopy.prompt}`,
         options,
         allowCancel: true,
         initialSelectedId: this.world.floorScenario.starterChoices[0],

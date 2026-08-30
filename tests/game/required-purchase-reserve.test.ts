@@ -38,6 +38,9 @@ import {
   ensureSpellBrokerDecision,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
+import { getWorldFloorBehavior } from '../../src/core/floor-behavior.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
+import { registerFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
 
@@ -91,6 +94,68 @@ describe('requiredShopPurchaseReserve — released once paid', () => {
     questSystem(world);
     expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
     questSystem(world);
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+});
+
+describe('requiredShopPurchaseReserve — scoped by floor config, not floor id', () => {
+  // `getShopkeeperStage` reports the unpaid `not-met` stage for any world with
+  // no shop errand at all, so the reserve MUST stay off unless the running
+  // floor's manifest declares `merchantCharmGatesEquipment` — otherwise the AI
+  // would hold gold back forever on a floor with no charm to buy.
+  it.each(['floor2', 'floor3', 'floor4'])(
+    'reserves nothing on %s, whose manifest declares no required merchant charm',
+    (floorId) => {
+      const { world } = startFloor1();
+      world.floorId = floorId;
+      expect(getWorldFloorBehavior(world).merchantCharmGatesEquipment).toBeNull();
+      expect(getShopkeeperStage(world)).toBe('not-met');
+      expect(requiredShopPurchaseReserve(world)).toBe(0);
+    },
+  );
+
+  it('reserves nothing on a floor without the charm gate even while the errand is unpaid', () => {
+    // The floors 2/3/4 cases above start from a world with no quest progress, so
+    // on their own they cannot tell "the config gate turned the reserve off"
+    // apart from "there was nothing to reserve". Drive the errand to an unpaid
+    // stage that DOES reserve on Floor 1, then move the same world to a floor
+    // whose manifest declares no required charm.
+    const { world, player } = startFloor1();
+    meetShopkeeper(world);
+    questSystem(world);
+    addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+    questSystem(world);
+    returnShopkeeperPrize(world, player);
+    questSystem(world);
+    expect(getShopkeeperStage(world)).toBe('ready-to-buy');
+    expect(requiredShopPurchaseReserve(world)).toBe(SHOPKEEPER_EQUIPMENT_COST);
+
+    world.floorId = 'floor2';
+    expect(getShopkeeperStage(world)).toBe('ready-to-buy');
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+
+  it('reserves nothing on a synthetic world with no floor assigned', () => {
+    const { world } = startFloor1();
+    world.floorId = '';
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+
+  it('reserves nothing on a floor that gates equipment behind a different errand', () => {
+    // The flag alone is not sufficient opt-in: `getShopkeeperStage` and
+    // `SHOPKEEPER_EQUIPMENT_COST` only understand the Floor 1 errand. A floor
+    // that gates equipment behind its own quest would otherwise read as the
+    // unpaid `not-met` stage forever and hold back gold it never has to spend.
+    const otherFloorManifest = structuredClone(floor1Manifest);
+    otherFloorManifest.behavior.merchantCharmGatesEquipment = {
+      prerequisiteQuestId: 'floorN-other-errand',
+    };
+    registerFloorManifest('floor-other-charm-errand', otherFloorManifest);
+
+    const { world } = startFloor1();
+    world.floorId = 'floor-other-charm-errand';
+    expect(getWorldFloorBehavior(world).merchantCharmGatesEquipment).not.toBeNull();
+    expect(getShopkeeperStage(world)).toBe('not-met');
     expect(requiredShopPurchaseReserve(world)).toBe(0);
   });
 });
