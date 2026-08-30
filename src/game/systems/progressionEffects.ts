@@ -203,8 +203,32 @@ function findNearestLivingEnemies(
     found.push({ eid: enemyEid, x: ex, y: ey, distSq });
   }
 
-  found.sort((a, b) => a.distSq - b.distSq);
+  found.sort((a, b) => a.distSq - b.distSq || a.eid - b.eid);
   return found.slice(0, maxCount).map(({ eid, x, y }) => ({ eid, x, y }));
+}
+
+function applyActiveDamage(
+  world: GameWorld,
+  casterEid: number,
+  effect: CatalogEffect & { type: 'active_damage' },
+): void {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const targets = findNearestLivingEnemies(world, casterEid, effect.rangeFeet, effect.maxTargets);
+
+  for (const target of targets) {
+    applyDamage(world, target.eid, effect.damage, target.x, target.y, {
+      origin: 'player',
+      affinity: effect.affinity,
+      scaleWithPrimary: true,
+      canCrit: true,
+      sourceX: casterX,
+      sourceY: casterY,
+      sourceEid: casterEid,
+      delivery: effect.delivery,
+      fromActiveAbility: true,
+    });
+  }
 }
 
 function castFireball(
@@ -788,6 +812,12 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
         value: 0,
         expiresFrame,
       });
+      break;
+
+    case 'active_damage':
+      if (holderEid !== undefined) {
+        applyActiveDamage(world, holderEid, effect);
+      }
       break;
 
     case 'spell_fireball':

@@ -55,6 +55,36 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 import { KEPT_COMPANION_CONTRACT_SCHEMA_VERSION } from '../../src/shared/data/floor3/kept-companion-contract.js';
+
+const RETIRED_SKILL_MILESTONES = [
+  ['arcane', 'arcane-mastery-base', 'arcane-nova', 'arcane-nova-evolved'],
+  ['sword', 'sword-strike-base', 'sword-strike-active', 'sword-strike-active-evolved'],
+  [
+    'dagger',
+    'dagger-rapid-strike-base',
+    'dagger-rapid-strike-active',
+    'dagger-rapid-strike-active-evolved',
+  ],
+  ['hammer', 'hammer-crush-base', 'hammer-crush-active', 'hammer-crush-active-evolved'],
+  ['bow', 'bow-shot-base', 'bow-shot-active', 'bow-shot-active-evolved'],
+  ['crossbow', 'crossbow-bolt-base', 'crossbow-bolt-active', 'crossbow-bolt-active-evolved'],
+  ['pistol', 'pistol-shot-base', 'pistol-shot-active', 'pistol-shot-active-evolved'],
+  [
+    'throwing-weapons',
+    'throwing-toss-base',
+    'throwing-toss-active',
+    'throwing-toss-active-evolved',
+  ],
+  ['unarmed', 'unarmed-punch-base', 'unarmed-punch-active', 'unarmed-punch-active-evolved'],
+  [
+    'spellcraft',
+    'spellcraft-bolt-base',
+    'spellcraft-bolt-active',
+    'spellcraft-bolt-active-evolved',
+  ],
+  ['sports-equipment', 'sports-swing-base', 'sports-swing-active', 'sports-swing-active-evolved'],
+] as const;
+
 describe('player floor carryover', () => {
   it('drops retired disabled slots while migrating a saved snapshot', () => {
     const source = createTestWorld({ seed: 7 });
@@ -74,10 +104,65 @@ describe('player floor carryover', () => {
     );
   });
 
-  it('migrates a pre-change Arcane L5 grant before its L15 upgrade', () => {
+  it.each(RETIRED_SKILL_MILESTONES)(
+    'migrates a pre-change %s L5 grant before its L15 upgrade',
+    (skillId, retiredAbilityId, activeAbilityId, evolvedAbilityId) => {
+      const source = createTestWorld({ seed: 42 });
+      const sourcePlayer = spawnPlayer(source, 0, 0);
+      source.playerSkills.set(skillId, {
+        level: 5,
+        usage: 600,
+        itemBonus: 0,
+        triggeredMilestones: new Set([5]),
+      });
+      source.skillStatesByEntity.set(sourcePlayer, new Map(source.playerSkills));
+      grantPassiveAbility(source, sourcePlayer, 'veteran-instinct');
+      const snapshot = capturePlayerCarryover(source, sourcePlayer);
+      const legacySnapshot = {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          passiveAbilityIds: [retiredAbilityId],
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            activeSourcesByAbilityId: [],
+            passiveSourcesByAbilityId: [
+              [retiredAbilityId, [skillAbilityGrantSourceId(skillId, 5)]],
+            ],
+          },
+        },
+      };
+      const destination = createTestWorld({ seed: 42 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+      restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+      const restored = destination.abilityStatesByEntity.get(destinationPlayer)!;
+      expect(restored.grantOwnership!.activeSourcesByAbilityId.get(activeAbilityId)).toEqual(
+        new Set([skillAbilityGrantSourceId(skillId, 5)]),
+      );
+      expect(restored.passiveAbilityIds).not.toContain(retiredAbilityId);
+      expect(restored.equippedActiveAbilityIds).toContain(activeAbilityId);
+
+      destination.skillUsageEvents.push({
+        holderEid: destinationPlayer,
+        skillId,
+        metric: 'weapon_fired',
+        amount: 5_000,
+      });
+      expect(() => skillSystem(destination)).not.toThrow();
+      expect(
+        destination.abilityStatesByEntity
+          .get(destinationPlayer)
+          ?.equippedActiveAbilityIds.includes(evolvedAbilityId),
+      ).toBe(true);
+    },
+  );
+
+  it('migrates a retired skill passive without explicit grant ownership', () => {
     const source = createTestWorld({ seed: 42 });
     const sourcePlayer = spawnPlayer(source, 0, 0);
-    source.playerSkills.set('arcane', {
+    source.playerSkills.set('sword', {
       level: 5,
       usage: 600,
       itemBonus: 0,
@@ -90,41 +175,9 @@ describe('player floor carryover', () => {
       ...snapshot,
       abilityState: {
         ...snapshot.abilityState!,
-        passiveAbilityIds: ['arcane-mastery-base'],
-        grantOwnership: {
-          ...snapshot.abilityState!.grantOwnership!,
-          activeSourcesByAbilityId: [],
-          passiveSourcesByAbilityId: [
-            ['arcane-mastery-base', [skillAbilityGrantSourceId('arcane', 5)]],
-          ],
-        },
+        passiveAbilityIds: ['sword-strike-base'],
       },
     };
-    const destination = createTestWorld({ seed: 42 });
-    const destinationPlayer = spawnPlayer(destination, 0, 0);
-
-    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
-
-    const restored = destination.abilityStatesByEntity.get(destinationPlayer)!;
-    expect(restored.grantOwnership!.activeSourcesByAbilityId.get('arcane-nova')).toEqual(
-      new Set([skillAbilityGrantSourceId('arcane', 5)]),
-    );
-    expect(restored.passiveAbilityIds).not.toContain('arcane-mastery-base');
-    expect(restored.equippedActiveAbilityIds).toContain('arcane-nova');
-
-    destination.skillUsageEvents.push({
-      holderEid: destinationPlayer,
-      skillId: 'arcane',
-      metric: 'weapon_fired',
-      amount: 5_000,
-    });
-    expect(() => skillSystem(destination)).not.toThrow();
-    expect(
-      destination.abilityStatesByEntity
-        .get(destinationPlayer)
-        ?.equippedActiveAbilityIds.includes('arcane-nova-evolved'),
-    ).toBe(true);
-
     const { grantOwnership: _grantOwnership, ...withoutGrantOwnership } =
       legacySnapshot.abilityState;
     const legacyNoOwnershipSnapshot = {
@@ -137,12 +190,12 @@ describe('player floor carryover', () => {
     expect(
       legacyDestination.abilityStatesByEntity
         .get(legacyDestinationPlayer)
-        ?.grantOwnership?.activeSourcesByAbilityId.get('arcane-nova'),
-    ).toEqual(new Set([skillAbilityGrantSourceId('arcane', 5)]));
+        ?.grantOwnership?.activeSourcesByAbilityId.get('sword-strike-active'),
+    ).toEqual(new Set([skillAbilityGrantSourceId('sword', 5)]));
 
     legacyDestination.skillUsageEvents.push({
       holderEid: legacyDestinationPlayer,
-      skillId: 'arcane',
+      skillId: 'sword',
       metric: 'weapon_fired',
       amount: 5_000,
     });

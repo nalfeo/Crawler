@@ -191,6 +191,16 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
+      type: z.literal('active_damage'),
+      damage: z.number().positive(),
+      rangeFeet: z.number().positive(),
+      maxTargets: z.number().int().positive(),
+      affinity: z.enum(['physical', 'magic']),
+      delivery: z.enum(['contact', 'projectile']),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('spell_fireball'),
       damage: positiveScalableOutputSchema,
       radiusTiles: positiveScalableOutputSchema,

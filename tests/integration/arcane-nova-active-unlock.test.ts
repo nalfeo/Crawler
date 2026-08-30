@@ -91,6 +91,11 @@ function spawnStationaryEnemyNearPlayer(
     set(Size, { radius: 1, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: 120 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: 1.5, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
   addComponent(world.ecs, eid, Enemy);
   return eid;
 }

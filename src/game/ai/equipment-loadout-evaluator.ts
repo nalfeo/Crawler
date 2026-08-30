@@ -716,6 +716,17 @@ function activeEffectValue(
 ): number {
   const areaTargets = Math.max(1, fixture.clusteredEnemyCount);
   switch (effect.type) {
+    case 'active_damage':
+      return (
+        computeExpectedCritDamage(
+          computePlayerScaledDamage(effect.damage, stats, {
+            affinity: effect.affinity,
+            scaleWithPrimary: true,
+          }),
+          stats.critChance,
+          stats.critMultiplier,
+        ) * Math.min(effect.maxTargets, areaTargets)
+      );
     case 'spell_fireball':
     case 'spell_frost_nova':
       return (

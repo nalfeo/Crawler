@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-28",
+  "session_slug": "weapon-type-active-milestones",
+  "task_title": "Weapon-type level-5 and level-15 active ability grants",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "major_fork",
+      "notes": "The reviewer found that renaming to existing presentation IDs could lose carryover grants and VFX mappings, existing tests encoded the passive contract, Spellcraft needed an explicit pre-boss active decision, prerequisites had to be present in shared presentation, missing definitions must fail the regression, and multi-skill slot pressure needed coverage. The implementation uses new stable *-active IDs while retaining legacy passive definitions, maps VFX to the new grants, converts Spellcraft to kind active rather than spell, asserts catalog and presentation alignment, rewrites the old passive expectations, and covers 11 owned actives at the 10-slot cap.",
+      "adversarial": false,
+      "alternatives_considered": 0
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["github-code-review-tool"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Round 1 found one real test guard inversion and the expected incomplete-ledger scaffold. The guard was corrected; ledger completion continued through the required stages."
+        },
+        {
+          "models": ["github-code-review-tool"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Round 2 found no remaining code concern; its sole procedural finding was the still-in-progress review ledger, resolved by recording this review and the independent grade."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

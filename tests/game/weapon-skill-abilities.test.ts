@@ -1,9 +1,8 @@
 /**
- * Tests for level-5 weapon skill ability grants and the weapon-prerequisite
- * passive ability system.
+ * Tests for weapon skill ability grants and weapon prerequisites.
  *
  * Covers:
- * - All skill L5 milestones have abilityId entries
+ * - All weapon-type L5/L15 milestones grant real active abilities
  * - Ability definitions have correct weapon prerequisites
  * - skillSystem grants the ability at level 5
  * - abilitySystem applies passives when weapon prerequisite is met
@@ -22,6 +21,7 @@ import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/index.js';
 import {
   abilitySystem,
+  forceActivateAbility,
   grantPassiveAbility,
   getOrCreateAbilityState,
   weaponPrerequisiteMet,
@@ -76,6 +76,11 @@ function getL5AbilityId(skillId: string): string | undefined {
   return getSkillDefinition(skillId)?.milestones.find((m) => m.level === 5)?.abilityId;
 }
 
+function getMilestoneAbilityId(skillId: string, level: 5 | 15): string | undefined {
+  return getSkillDefinition(skillId)?.milestones.find((milestone) => milestone.level === level)
+    ?.abilityId;
+}
+
 // ---------------------------------------------------------------------------
 // Skill L5 milestone ability grants coverage
 // ---------------------------------------------------------------------------
@@ -105,27 +110,52 @@ describe('skill L5 milestone ability grants', () => {
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
       expect(def, `ability ${abilityId} (for skill ${skill.id}) not found`).toBeDefined();
-      // Arcane is the one class whose L5 milestone unlocks an ACTIVE ability
-      // (issue #3676); every other L5 milestone is still a passive.
-      expect(def!.kind).toBe(skill.id === 'arcane' ? 'active' : 'passive');
+      const shouldBeActive =
+        skill.id === 'arcane' || (WEAPON_TYPE_SKILL_IDS as readonly string[]).includes(skill.id);
+      expect(def!.kind).toBe(shouldBeActive ? 'active' : 'passive');
     }
   });
 
-  it('the arcane L5 and L15 milestones grant weapon-gated ACTIVE abilities', () => {
-    const arcane = getAllSkillDefinitions().find((s) => s.id === 'arcane');
-    expect(arcane).toBeDefined();
-    for (const level of [5, 15]) {
-      const abilityId = arcane!.milestones.find((m) => m.level === level)?.abilityId;
-      expect(abilityId, `arcane L${level} milestone should grant an ability`).toBeDefined();
-      const def = getAbilityDefinition(abilityId!);
-      expect(def?.kind, `arcane L${level} should be an active ability`).toBe('active');
-      if (def === undefined || def.kind === 'passive') {
-        throw new Error(`arcane L${level} ability should have an active definition`);
+  it('weapon-type and arcane L5/L15 milestones grant weapon-gated real active abilities', () => {
+    for (const skillId of [...WEAPON_TYPE_SKILL_IDS, 'arcane']) {
+      for (const level of [5, 15] as const) {
+        const abilityId = getMilestoneAbilityId(skillId, level);
+        expect(abilityId, `${skillId} L${level} milestone should grant an ability`).toBeDefined();
+        const def = getAbilityDefinition(abilityId!);
+        expect(def?.kind, `${skillId} L${level} should be an active ability`).toBe('active');
+        if (def === undefined || def.kind === 'passive') {
+          throw new Error(`${skillId} L${level} ability should have an active definition`);
+        }
+        expect(def.weaponPrerequisite).toBe(skillId);
+        expect(def.cooldownFrames).toBeGreaterThan(0);
+        expect(def.effects).not.toHaveLength(0);
+        if (skillId !== 'arcane') {
+          expect(def.effects).toEqual([
+            expect.objectContaining({
+              type: 'active_damage',
+              damage: expect.any(Number),
+              rangeFeet: expect.any(Number),
+              maxTargets: expect.any(Number),
+            }),
+          ]);
+        }
       }
-      expect(def?.weaponPrerequisite).toBe('arcane');
-      // 'active' (not 'spell') keeps the unlock out of the spellbook feature
-      // gate, which on Floor 1 only opens after the first boss.
-      expect(def.cooldownFrames).toBeGreaterThan(0);
+    }
+  });
+
+  it('every weapon-type L5/L15 active applies real damage through the ability runtime', () => {
+    for (const skillId of WEAPON_TYPE_SKILL_IDS) {
+      for (const level of [5, 15] as const) {
+        const { world, player } = setupPlayerWithSkills();
+        const enemy = spawnEnemy(world, 2, 0, 100);
+        const abilityId = getMilestoneAbilityId(skillId, level)!;
+
+        expect(forceActivateAbility(world, player, abilityId)).toBe(true);
+        expect(
+          world.stores.health.current[enemy],
+          `${skillId} L${level} active should damage a nearby enemy`,
+        ).toBeLessThan(100);
+      }
     }
   });
 });
@@ -134,7 +164,7 @@ describe('skill L5 milestone ability grants', () => {
 // Ability definition weapon prerequisites
 // ---------------------------------------------------------------------------
 
-describe('weapon-skill passive ability definitions', () => {
+describe('weapon-skill ability definitions', () => {
   it('weapon CLASS skill abilities have matching weaponPrerequisite', () => {
     for (const classSkillId of WEAPON_CLASS_SKILL_IDS) {
       const abilityId = getL5AbilityId(classSkillId);
@@ -149,14 +179,17 @@ describe('weapon-skill passive ability definitions', () => {
     }
   });
 
-  it('weapon TYPE skill abilities are passive stubs (active wiring is a follow-up)', () => {
+  it('weapon TYPE skill L5/L15 abilities have matching weaponPrerequisite', () => {
     for (const typeSkillId of WEAPON_TYPE_SKILL_IDS) {
-      const abilityId = getL5AbilityId(typeSkillId);
-      if (!abilityId) continue;
-      const def = getAbilityDefinition(abilityId);
-      // Weapon type skill L5 abilities are stubs: kind=passive, no weapon prerequisite yet.
-      // Active ability wiring is a follow-up task (see PR description).
-      expect(def?.kind).toBe('passive');
+      for (const level of [5, 15] as const) {
+        const abilityId = getMilestoneAbilityId(typeSkillId, level);
+        if (!abilityId) continue;
+        const def = getAbilityDefinition(abilityId);
+        expect(def?.kind).toBe('active');
+        if (def?.kind === 'active') {
+          expect(def?.weaponPrerequisite).toBe(typeSkillId);
+        }
+      }
     }
   });
 
@@ -180,7 +213,7 @@ describe('weapon-skill passive ability definitions', () => {
 // ---------------------------------------------------------------------------
 
 describe('skillSystem level-5 ability grants', () => {
-  it('grants the correct passive ability when sword skill reaches level 5', () => {
+  it('grants the correct active ability when sword skill reaches level 5', () => {
     const { world, player } = setupPlayerWithSkills();
     const swordDef = getSkillDefinition('sword')!;
     const threshold = swordDef.usageThresholds[4]!; // level 5 threshold
@@ -192,7 +225,8 @@ describe('skillSystem level-5 ability grants', () => {
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
       swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
-    expect(abilityState.passiveAbilityIds).toContain(expectedAbilityId);
+    expect(abilityState.equippedActiveAbilityIds).toContain(expectedAbilityId);
+    expect(abilityState.passiveAbilityIds).not.toContain(expectedAbilityId);
   });
 
   it('grants ability for sprint skill (general, no weapon prereq) at level 5', () => {
@@ -219,7 +253,7 @@ describe('skillSystem level-5 ability grants', () => {
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
       swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
-    expect(abilityState.passiveAbilityIds).not.toContain(expectedAbilityId);
+    expect(abilityState.equippedActiveAbilityIds).not.toContain(expectedAbilityId);
   });
 
   it('does not double-grant the ability if skill usage accumulates past level 5', () => {
@@ -234,8 +268,85 @@ describe('skillSystem level-5 ability grants', () => {
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
       swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
-    const count = abilityState.passiveAbilityIds.filter((id) => id === expectedAbilityId).length;
+    const count = abilityState.ownedActiveAbilityIds!.filter(
+      (id) => id === expectedAbilityId,
+    ).length;
     expect(count).toBe(1);
+  });
+
+  it('replaces every weapon-type L5 active with its L15 evolution', () => {
+    for (const skillId of WEAPON_TYPE_SKILL_IDS) {
+      const { world, player } = setupPlayerWithSkills();
+      const skill = getSkillDefinition(skillId)!;
+      world.skillUsageEvents.push({
+        holderEid: player,
+        skillId,
+        metric: skill.usageMetric,
+        amount: skill.usageThresholds[14]!,
+      });
+
+      skillSystem(world);
+
+      const state = world.abilityStatesByEntity.get(player)!;
+      const level5AbilityId = getMilestoneAbilityId(skillId, 5)!;
+      const level15AbilityId = getMilestoneAbilityId(skillId, 15)!;
+      expect(state.ownedActiveAbilityIds).toContain(level15AbilityId);
+      expect(state.ownedActiveAbilityIds).not.toContain(level5AbilityId);
+      expect(state.grantOwnership!.activeSourcesByAbilityId.get(level15AbilityId)).toEqual(
+        new Set([`skill:${skillId}:15`]),
+      );
+    }
+  });
+
+  it('auto-fires every granted weapon-type L5 active with a matching weapon', () => {
+    for (const skillId of WEAPON_TYPE_SKILL_IDS) {
+      const { world, player } = setupPlayerWithSkills();
+      const skill = getSkillDefinition(skillId)!;
+      const weapon = [...WEAPON_DEFS.values()].find(
+        (candidate) => candidate.weaponTypeSkillId === skillId,
+      );
+      expect(weapon, `missing weapon fixture for ${skillId}`).toBeDefined();
+      setActiveWeaponDef(world, weapon!);
+      const enemy = spawnEnemy(world, 2, 0, 100);
+      world.skillUsageEvents.push({
+        holderEid: player,
+        skillId,
+        metric: skill.usageMetric,
+        amount: skill.usageThresholds[4]!,
+      });
+
+      skillSystem(world);
+      world.frameCount = 1;
+      abilitySystem(world);
+
+      const abilityId = getMilestoneAbilityId(skillId, 5)!;
+      const state = world.abilityStatesByEntity.get(player)!;
+      expect(state.cooldownByAbilityId.has(abilityId), `${abilityId} should auto-fire`).toBe(true);
+      expect(world.stores.health.current[enemy]).toBeLessThan(100);
+    }
+  });
+
+  it('retains all milestone actives when weapon-type grants saturate the ability bar', () => {
+    const { world, player } = setupPlayerWithSkills();
+    for (const skillId of [...WEAPON_TYPE_SKILL_IDS, 'arcane']) {
+      const skill = getSkillDefinition(skillId)!;
+      world.skillUsageEvents.push({
+        holderEid: player,
+        skillId,
+        metric: skill.usageMetric,
+        amount: skill.usageThresholds[4]!,
+      });
+    }
+
+    skillSystem(world);
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    const expectedAbilityIds = [...WEAPON_TYPE_SKILL_IDS, 'arcane'].map(
+      (skillId) => getMilestoneAbilityId(skillId, 5)!,
+    );
+    expect(state.ownedActiveAbilityIds).toEqual(expect.arrayContaining(expectedAbilityIds));
+    expect(state.equippedActiveAbilityIds).toHaveLength(10);
+    expect(state.ownedActiveAbilityIds).toHaveLength(11);
   });
 });
 

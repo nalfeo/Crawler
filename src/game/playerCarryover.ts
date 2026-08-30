@@ -378,21 +378,41 @@ function restoreAbilityState(
   normalized.equippedActiveAbilityIds = [...snapshot.equippedActiveAbilityIds];
   normalized.activeAbilityGrantSources = legacyState.activeAbilityGrantSources;
   normalized.passiveAbilityGrantSources = legacyState.passiveAbilityGrantSources;
-  migrateRetiredArcaneSkillAbilities(normalized);
+  migrateRetiredSkillAbilities(normalized);
   return normalized;
 }
 
 /**
- * Converts Arcane's former L5/L15 passive milestones into their active
+ * Converts former L5/L15 passive skill milestones into their active
  * successors while retaining the milestone's ownership source for upgrades.
  */
-function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
+function migrateRetiredSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
   const replacements = [
-    ['arcane-mastery-base', 'arcane-nova', 5],
-    ['arcane-mastery-evolved', 'arcane-nova-evolved', 15],
+    ['arcane', 'arcane-mastery-base', 'arcane-nova', 5],
+    ['arcane', 'arcane-mastery-evolved', 'arcane-nova-evolved', 15],
+    ['sword', 'sword-strike-base', 'sword-strike-active', 5],
+    ['sword', 'sword-strike-evolved', 'sword-strike-active-evolved', 15],
+    ['dagger', 'dagger-rapid-strike-base', 'dagger-rapid-strike-active', 5],
+    ['dagger', 'dagger-rapid-strike-evolved', 'dagger-rapid-strike-active-evolved', 15],
+    ['hammer', 'hammer-crush-base', 'hammer-crush-active', 5],
+    ['hammer', 'hammer-crush-evolved', 'hammer-crush-active-evolved', 15],
+    ['bow', 'bow-shot-base', 'bow-shot-active', 5],
+    ['bow', 'bow-shot-evolved', 'bow-shot-active-evolved', 15],
+    ['crossbow', 'crossbow-bolt-base', 'crossbow-bolt-active', 5],
+    ['crossbow', 'crossbow-bolt-evolved', 'crossbow-bolt-active-evolved', 15],
+    ['pistol', 'pistol-shot-base', 'pistol-shot-active', 5],
+    ['pistol', 'pistol-shot-evolved', 'pistol-shot-active-evolved', 15],
+    ['throwing-weapons', 'throwing-toss-base', 'throwing-toss-active', 5],
+    ['throwing-weapons', 'throwing-toss-evolved', 'throwing-toss-active-evolved', 15],
+    ['unarmed', 'unarmed-punch-base', 'unarmed-punch-active', 5],
+    ['unarmed', 'unarmed-punch-evolved', 'unarmed-punch-active-evolved', 15],
+    ['spellcraft', 'spellcraft-bolt-base', 'spellcraft-bolt-active', 5],
+    ['spellcraft', 'spellcraft-bolt-evolved', 'spellcraft-bolt-active-evolved', 15],
+    ['sports-equipment', 'sports-swing-base', 'sports-swing-active', 5],
+    ['sports-equipment', 'sports-swing-evolved', 'sports-swing-active-evolved', 15],
   ] as const;
 
-  for (const [retiredId, activeId, milestoneLevel] of replacements) {
+  for (const [skillId, retiredId, activeId, milestoneLevel] of replacements) {
     const sources = state.grantOwnership.passiveSourcesByAbilityId.get(retiredId);
     if (sources === undefined) continue;
 
@@ -400,7 +420,7 @@ function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAb
     const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
     // The retired ability was exclusively its milestone's passive grant; recreate
     // that canonical source because legacy:passive sources cannot own an active.
-    activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
+    activeSources.add(skillAbilityGrantSourceId(skillId, milestoneLevel));
     state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
     state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);
     if (

@@ -522,14 +522,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     weaponPrerequisite: 'arcane',
   },
   // Weapon type actives (20 total)
-  'sword-strike-base': {
-    id: 'sword-strike-base',
+  'sword-strike-active': {
+    id: 'sword-strike-active',
     name: 'Sword Strike',
     shortLabel: 'STRIKE',
     description: 'Slash nearby enemies with your sword.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 360,
+    weaponPrerequisite: 'sword',
   },
   'sword-riposte': {
     id: 'sword-riposte',
@@ -540,14 +541,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 480,
   },
-  'sword-strike-evolved': {
-    id: 'sword-strike-evolved',
+  'sword-strike-active-evolved': {
+    id: 'sword-strike-active-evolved',
     name: 'Sword Strike (Evolved)',
     shortLabel: 'STRIKE+',
     description: 'Devastate nearby enemies with an enhanced slash.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 360,
+    cooldownFrames: 300,
+    weaponPrerequisite: 'sword',
   },
   'sword-mortal-strike': {
     id: 'sword-mortal-strike',
@@ -558,14 +560,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 600,
   },
-  'dagger-rapid-base': {
-    id: 'dagger-rapid-base',
+  'dagger-rapid-strike-active': {
+    id: 'dagger-rapid-strike-active',
     name: 'Rapid Strikes',
     shortLabel: 'RAPID',
     description: 'Quick succession of dagger thrusts.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 240,
+    weaponPrerequisite: 'dagger',
   },
   'dagger-poison': {
     id: 'dagger-poison',
@@ -576,14 +579,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 600,
   },
-  'dagger-rapid-evolved': {
-    id: 'dagger-rapid-evolved',
+  'dagger-rapid-strike-active-evolved': {
+    id: 'dagger-rapid-strike-active-evolved',
     name: 'Rapid Strikes (Evolved)',
     shortLabel: 'RAPID+',
     description: 'Blinding flurry of dagger strikes.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 240,
+    cooldownFrames: 180,
+    weaponPrerequisite: 'dagger',
   },
   'dagger-deathmark': {
     id: 'dagger-deathmark',
@@ -594,14 +598,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 720,
   },
-  'hammer-slam-base': {
-    id: 'hammer-slam-base',
+  'hammer-crush-active': {
+    id: 'hammer-crush-active',
     name: 'Hammer Slam',
     shortLabel: 'SLAM',
     description: 'Crush nearby enemies with your hammer.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 480,
+    weaponPrerequisite: 'hammer',
   },
   'hammer-whirlwind': {
     id: 'hammer-whirlwind',
@@ -612,14 +617,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 540,
   },
-  'hammer-slam-evolved': {
-    id: 'hammer-slam-evolved',
+  'hammer-crush-active-evolved': {
+    id: 'hammer-crush-active-evolved',
     name: 'Hammer Slam (Evolved)',
     shortLabel: 'SLAM+',
     description: 'Tremendous blow that stuns multiple enemies.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 480,
+    cooldownFrames: 420,
+    weaponPrerequisite: 'hammer',
   },
   'hammer-earthquake': {
     id: 'hammer-earthquake',
@@ -630,14 +636,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 720,
   },
-  'bow-piercing-base': {
-    id: 'bow-piercing-base',
+  'bow-shot-active': {
+    id: 'bow-shot-active',
     name: 'Piercing Shot',
     shortLabel: 'PIERCE',
     description: 'Fire an arrow that pierces through enemies.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 360,
+    weaponPrerequisite: 'bow',
   },
   'bow-multishot': {
     id: 'bow-multishot',
@@ -648,14 +655,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 600,
   },
-  'bow-piercing-evolved': {
-    id: 'bow-piercing-evolved',
+  'bow-shot-active-evolved': {
+    id: 'bow-shot-active-evolved',
     name: 'Piercing Shot (Evolved)',
     shortLabel: 'PIERCE+',
     description: 'Powerful arrow that pierces multiple foes.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 360,
+    cooldownFrames: 300,
+    weaponPrerequisite: 'bow',
   },
   'bow-rain-of-arrows': {
     id: 'bow-rain-of-arrows',
@@ -666,14 +674,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 720,
   },
-  'crossbow-bolt-base': {
-    id: 'crossbow-bolt-base',
+  'crossbow-bolt-active': {
+    id: 'crossbow-bolt-active',
     name: 'Bolt Shot',
     shortLabel: 'BOLT',
     description: 'Fire a crossbow bolt at nearby enemies.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 300,
+    weaponPrerequisite: 'crossbow',
   },
   'crossbow-ricochet': {
     id: 'crossbow-ricochet',
@@ -684,14 +693,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 480,
   },
-  'crossbow-bolt-evolved': {
-    id: 'crossbow-bolt-evolved',
+  'crossbow-bolt-active-evolved': {
+    id: 'crossbow-bolt-active-evolved',
     name: 'Bolt Shot (Evolved)',
     shortLabel: 'BOLT+',
     description: 'Rapid-fire crossbow bolts hitting multiple targets.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 300,
+    cooldownFrames: 240,
+    weaponPrerequisite: 'crossbow',
   },
   'crossbow-piercing-volley': {
     id: 'crossbow-piercing-volley',
@@ -702,14 +712,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 660,
   },
-  'pistol-shot-base': {
-    id: 'pistol-shot-base',
+  'pistol-shot-active': {
+    id: 'pistol-shot-active',
     name: 'Pistol Shot',
     shortLabel: 'SHOT',
     description: 'Fire a quick pistol round at nearby enemies.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 240,
+    weaponPrerequisite: 'pistol',
   },
   'pistol-rapid-fire': {
     id: 'pistol-rapid-fire',
@@ -720,14 +731,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 420,
   },
-  'pistol-shot-evolved': {
-    id: 'pistol-shot-evolved',
+  'pistol-shot-active-evolved': {
+    id: 'pistol-shot-active-evolved',
     name: 'Pistol Shot (Evolved)',
     shortLabel: 'SHOT+',
     description: 'Precise gunfire hitting multiple targets.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 240,
+    cooldownFrames: 180,
+    weaponPrerequisite: 'pistol',
   },
   'pistol-barrage': {
     id: 'pistol-barrage',
@@ -738,14 +750,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 720,
   },
-  'throwing-toss-base': {
-    id: 'throwing-toss-base',
+  'throwing-toss-active': {
+    id: 'throwing-toss-active',
     name: 'Throwing Toss',
     shortLabel: 'TOSS',
     description: 'Throw weapons at nearby enemies.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 300,
+    weaponPrerequisite: 'throwing-weapons',
   },
   'throwing-boomerang': {
     id: 'throwing-boomerang',
@@ -756,14 +769,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 480,
   },
-  'throwing-toss-evolved': {
-    id: 'throwing-toss-evolved',
+  'throwing-toss-active-evolved': {
+    id: 'throwing-toss-active-evolved',
     name: 'Throwing Toss (Evolved)',
     shortLabel: 'TOSS+',
     description: 'Rapid throwing strikes at multiple enemies.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 300,
+    cooldownFrames: 240,
+    weaponPrerequisite: 'throwing-weapons',
   },
   'throwing-scatter': {
     id: 'throwing-scatter',
@@ -774,14 +788,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 600,
   },
-  'unarmed-strike-base': {
-    id: 'unarmed-strike-base',
+  'unarmed-punch-active': {
+    id: 'unarmed-punch-active',
     name: 'Unarmed Strike',
     shortLabel: 'PUNCH',
     description: 'Strike nearby enemies with your fists.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 240,
+    weaponPrerequisite: 'unarmed',
   },
   'unarmed-combo': {
     id: 'unarmed-combo',
@@ -792,14 +807,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 360,
   },
-  'unarmed-strike-evolved': {
-    id: 'unarmed-strike-evolved',
+  'unarmed-punch-active-evolved': {
+    id: 'unarmed-punch-active-evolved',
     name: 'Unarmed Strike (Evolved)',
     shortLabel: 'PUNCH+',
     description: 'Powerful strikes hitting multiple enemies.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 240,
+    cooldownFrames: 180,
+    weaponPrerequisite: 'unarmed',
   },
   'unarmed-whirlwind-kick': {
     id: 'unarmed-whirlwind-kick',
@@ -810,14 +826,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 600,
   },
-  'spell-bolt-base': {
-    id: 'spell-bolt-base',
-    name: 'Spell Bolt',
+  'spellcraft-bolt-active': {
+    id: 'spellcraft-bolt-active',
+    name: 'Spellcraft Bolt',
     shortLabel: 'BOLT',
     description: 'Cast a bolt of magical energy.',
     category: 'utility',
-    kind: 'spell',
+    kind: 'active',
     cooldownFrames: 300,
+    weaponPrerequisite: 'spellcraft',
   },
   'spell-chain': {
     id: 'spell-chain',
@@ -828,14 +845,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'spell',
     cooldownFrames: 480,
   },
-  'spell-bolt-evolved': {
-    id: 'spell-bolt-evolved',
-    name: 'Spell Bolt (Evolved)',
+  'spellcraft-bolt-active-evolved': {
+    id: 'spellcraft-bolt-active-evolved',
+    name: 'Spellcraft Bolt (Evolved)',
     shortLabel: 'BOLT+',
     description: 'Powerful magical bolts hitting multiple targets.',
     category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 300,
+    kind: 'active',
+    cooldownFrames: 240,
+    weaponPrerequisite: 'spellcraft',
   },
   'spell-meteor': {
     id: 'spell-meteor',
@@ -846,14 +864,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'spell',
     cooldownFrames: 720,
   },
-  'sports-swing-base': {
-    id: 'sports-swing-base',
+  'sports-swing-active': {
+    id: 'sports-swing-active',
     name: 'Sports Swing',
     shortLabel: 'SWING',
     description: 'Swing sports equipment at nearby enemies.',
     category: 'combat',
     kind: 'active',
     cooldownFrames: 360,
+    weaponPrerequisite: 'sports-equipment',
   },
   'sports-home-run': {
     id: 'sports-home-run',
@@ -864,14 +883,15 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 540,
   },
-  'sports-swing-evolved': {
-    id: 'sports-swing-evolved',
+  'sports-swing-active-evolved': {
+    id: 'sports-swing-active-evolved',
     name: 'Sports Swing (Evolved)',
     shortLabel: 'SWING+',
     description: 'Devastating swing hitting multiple enemies.',
     category: 'combat',
     kind: 'active',
-    cooldownFrames: 360,
+    cooldownFrames: 300,
+    weaponPrerequisite: 'sports-equipment',
   },
   'sports-grand-slam': {
     id: 'sports-grand-slam',
