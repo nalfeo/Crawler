@@ -19,8 +19,12 @@ describe('quest content packs', () => {
     installDefaultQuestPacks();
   });
 
-  it('loads bundled floor1 quests from a validated data pack', () => {
-    expect(getQuestPacks()).toHaveLength(2);
+  it('loads bundled floor quest packs from validated data', () => {
+    expect(getQuestPacks().map((pack) => pack.packId)).toEqual([
+      'floor1',
+      'floor2',
+      'floor5-siege',
+    ]);
 
     expect(getQuestDef(FLOOR1_TUTORIAL_QUEST_ID)?.objectives).toEqual([
       {
