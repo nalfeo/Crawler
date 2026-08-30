@@ -814,9 +814,9 @@ export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
   ) {
     return false;
   }
-  const party = [..._partyMembers(world, TeamId.PLAYER)].sort(
-    (a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0),
-  );
+  const party = [..._partyMembers(world, TeamId.PLAYER)]
+    .filter((eid) => hasValidFloor3KeptCompanion(world, eid))
+    .sort((a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0));
   const firstEid = party[0];
   if (firstEid === undefined) return false;
   studiosState.keptCompanionEid = firstEid;
@@ -841,14 +841,7 @@ function latchFloor3Victory(world: GameWorld): void {
 export function selectFloor3KeptCompanion(world: GameWorld, partyEid: number): boolean {
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (!studiosState || world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) return false;
-  if (
-    !hasComponent(world.ecs, partyEid, Companion) ||
-    !hasComponent(world.ecs, partyEid, PartySlot) ||
-    !hasComponent(world.ecs, partyEid, Team) ||
-    (world.stores.team.id[partyEid] ?? -1) !== TeamId.PLAYER
-  ) {
-    return false;
-  }
+  if (!hasValidFloor3KeptCompanion(world, partyEid)) return false;
   studiosState.keptCompanionEid = partyEid;
   return true;
 }
@@ -859,7 +852,8 @@ function hasValidFloor3KeptCompanion(world: GameWorld, partyEid: number | undefi
     hasComponent(world.ecs, partyEid, Companion) &&
     hasComponent(world.ecs, partyEid, PartySlot) &&
     hasComponent(world.ecs, partyEid, Team) &&
-    (world.stores.team.id[partyEid] ?? -1) === TeamId.PLAYER
+    (world.stores.team.id[partyEid] ?? -1) === TeamId.PLAYER &&
+    (world.stores.companion.knockedOut[partyEid] ?? 0) !== 1
   );
 }
 

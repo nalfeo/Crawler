@@ -646,6 +646,36 @@ describe('floor3 kept-companion producer hook (slice 11)', () => {
     expect(state.staircaseDiscovered).not.toBe(true);
   });
 
+  it('rejects a knocked-out Companion and makes the headless default choose a live party member', () => {
+    const { world } = createFloor3World(1017);
+    const state = world.floorExtendedState!.floor3Studios!;
+    const livePartyEid = recruitPartyCompanion(world, {
+      x: 0,
+      y: 0,
+      hp: 10,
+      aiType: AI_TYPE.CHASE,
+      speed: 0.1,
+      aggroRange: 999,
+      attackRange: 0,
+      speciesToken: 1,
+      level: 2,
+      ownerTeam: TeamId.PLAYER,
+    });
+    defeatAllStudios(world, state);
+    defeatFinalFour(world, state);
+    const firstPartyEid = query(world.ecs, [Companion, Team]).find(
+      (eid) => (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER,
+    );
+    expect(firstPartyEid).toBeDefined();
+    expect(livePartyEid).toBeDefined();
+    world.stores.companion.knockedOut[firstPartyEid!] = 1;
+
+    expect(selectFloor3KeptCompanion(world, firstPartyEid!)).toBe(false);
+    expect(getScenarioDefinition('floor3').autoSelectKeptCompanion?.(world)).toBe(true);
+    expect(state.keptCompanionEid).toBe(livePartyEid);
+    expect(confirmFloor3StairDescend(world, 0)).toBe(true);
+  });
+
   it('returns false and does not mutate the pick when selectFloor3KeptCompanion is called before victory latches', () => {
     const { world } = createFloor3World(1012);
     const state = world.floorExtendedState!.floor3Studios!;

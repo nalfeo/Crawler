@@ -47,17 +47,17 @@ and exit remains blocked until one valid Companion is kept.
 - Baseline: `tests/unit/floor3-victory-system.test.ts` passed 21/21 while
   explicitly asserting one simultaneous Final Four roster and victory after its
   first wipe; victory also auto-selected the first party Companion.
-- After: the migrated unit suite passed 22/22 and asserts four ordered wipes,
+- After: the migrated unit suite passed 23/23 and asserts four ordered wipes,
   shared team identity, no premature victory, explicit real selection, and
-  stale-selection rejection.
+  stale, wrong-team, and knocked-out selection rejection.
 - Real shared runtime contract: the focused objective test drives the production
   `initializeFloor3Scenario` / `floor3ObjectiveTick` / stair-confirmation path.
 - Headless artifact: `tests/headless/floor3-poach-loadout.test.ts` passed 2/2
   through `runHeadless`; seed 3539 observed the exact four selected handler ids
   in order, ended at round index 4, selected a kept Companion, descended, and
   reported victory.
-- Focused regression set: 111/111 passed across Floor 3 victory, scenario
-  definitions, and player carryover.
+- Focused runtime regression set: 25/25 passed across Floor 3 victory and
+  headless completion.
 - `npm run verify:fast`: 147 files and 2,397 tests passed; all integrity checks
   were non-blocking/green.
 
