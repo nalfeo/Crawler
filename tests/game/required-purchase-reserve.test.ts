@@ -112,6 +112,27 @@ describe('requiredShopPurchaseReserve — scoped by floor config, not floor id',
     },
   );
 
+  it('reserves nothing on a floor without the charm gate even while the errand is unpaid', () => {
+    // The floors 2/3/4 cases above start from a world with no quest progress, so
+    // on their own they cannot tell "the config gate turned the reserve off"
+    // apart from "there was nothing to reserve". Drive the errand to an unpaid
+    // stage that DOES reserve on Floor 1, then move the same world to a floor
+    // whose manifest declares no required charm.
+    const { world, player } = startFloor1();
+    meetShopkeeper(world);
+    questSystem(world);
+    addItem(world.inventories.get(player)!, SHOPKEEPER_FETCH_ITEM_ID, 1);
+    questSystem(world);
+    returnShopkeeperPrize(world, player);
+    questSystem(world);
+    expect(getShopkeeperStage(world)).toBe('ready-to-buy');
+    expect(requiredShopPurchaseReserve(world)).toBe(SHOPKEEPER_EQUIPMENT_COST);
+
+    world.floorId = 'floor2';
+    expect(getShopkeeperStage(world)).toBe('ready-to-buy');
+    expect(requiredShopPurchaseReserve(world)).toBe(0);
+  });
+
   it('reserves nothing on a synthetic world with no floor assigned', () => {
     const { world } = startFloor1();
     world.floorId = '';
