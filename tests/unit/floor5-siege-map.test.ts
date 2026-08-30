@@ -176,11 +176,10 @@ describe('floor5 plumbing', () => {
     expect(getImplementedFloorIds()).not.toContain('floor5');
   });
 
-  it('has a registered scenario with barred stairs and a minimal AI route', () => {
+  it('has a registered scenario with barred stairs', () => {
     const scenario = getScenarioDefinition('floor5');
     expect(scenario.floorId).toBe('floor5');
     expect(scenario.onStairDescend?.({} as never, 0)).toBe(false);
-    expect(scenario.aiTaskConfig?.scenarioId).toBe('floor5');
     expect(scenario.nextFloorId).toBeUndefined();
   });
 });

@@ -5,8 +5,6 @@ import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
-import { FLOOR5_AI_TASK_CONFIG } from '../../src/game/scenarios/floor5AiTasks.js';
-import { buildScenarioGoalGraph } from '../../src/game/ai/scenario-ai-tasks.js';
 import {
   getFloor5RunOutcome,
   getFloor5SiegeRunStats,
@@ -89,37 +87,6 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(headless.floor5Siege).toEqual(windowedStats);
     expect(headless.floor5Siege?.trace).toEqual([]);
     expect(headlessMap).toEqual(serializeFloor5Map(windowedWorld.floorMap));
-  });
-
-  it('declares a minimal scenario-AI route from base defense through throne capture', () => {
-    expect(FLOOR5_AI_TASK_CONFIG.scenarioId).toBe('floor5');
-    const graph = buildScenarioGoalGraph(FLOOR5_AI_TASK_CONFIG, {
-      openingPushRepelled: false,
-      yardSecured: false,
-      componentsReady: false,
-      ramBuilt: false,
-      checkpointCleared: false,
-      wallBreached: false,
-      breachEntered: false,
-      courtyardCleared: false,
-      regentDefeated: false,
-      castleCaptured: false,
-    });
-
-    expect(graph.goals.map((goal) => goal.id)).toEqual([
-      'defend-command-post',
-      'secure-siege-yard',
-      'recover-ram-components',
-      'clear-forward-checkpoint',
-      'build-ratings-ram',
-      'escort-ratings-ram',
-      'enter-breach',
-      'clear-courtyard',
-      'defeat-regent',
-      'capture-throne',
-    ]);
-    expect(graph.locations.has('commandPost')).toBe(true);
-    expect(graph.locations.has('throneRoom')).toBe(true);
   });
 
   it('records exactly one DEFEAT transition when the Command Post is destroyed', () => {

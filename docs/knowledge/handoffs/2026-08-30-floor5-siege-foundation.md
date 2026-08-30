@@ -33,8 +33,6 @@ Implemented Floor 5 Slice 1 foundation for issue #3911.
 - Wired Floor 5 through `src/game/scenarioDefinitions.ts`, the windowed
   `createFloorMainSceneOptions` path, headless RunStats collection, and game
   exports.
-- Added `src/game/scenarios/floor5AiTasks.ts` with a minimal declarative
-  scenario-AI route from Command Post defense through throne capture.
 - Added and registered `src/labs/floor5-siege-lab/index.ts` for the required
   lab.
 - Added focused regression coverage in
@@ -66,8 +64,8 @@ after normal boot.
 
 - Plan review: `gpt-5.4` rubber-duck review approved the architecture with
   changes. It found route latch and parity-test gaps; both were fixed before
-  final validation. It also flagged geometry/RNG drift risks; AI route locations
-  and runtime RNG stream keys now derive from manifest-backed helpers.
+  final validation. It also flagged geometry/RNG drift risks; runtime RNG stream
+  keys now derive from manifest-backed helpers.
 - Code review: `claude-sonnet-4.6` code-review round found no code/runtime
   issues and only noted the then-incomplete review ledger, which was completed.
 - Independent grade: `gemini-3.1-pro-preview` passed the final diff with no

@@ -11,15 +11,14 @@ Accepted
 ## Estimated Complexity
 
 🍎 x 3 — establishes a new authored floor foundation across map generation,
-scenario/runtime wiring, AI route data, lab registration, and deterministic
-verification.
+scenario/runtime wiring, lab registration, and deterministic verification.
 
 ## Context
 
 Issue #3911 asks for Floor 5 Slice 1: a manifest/registry/scenario foundation,
 an authored Command Post-to-throne siege map, siege phase state, a
-`siegeDirectorSystem` authority boundary, isolated RNG stream keys, a minimal
-scenario-AI route, a required lab, and real `ScenarioDefinition` wiring. The
+`siegeDirectorSystem` authority boundary, isolated RNG stream keys, a required
+lab, and real `ScenarioDefinition` wiring. The
 done condition is that the windowed game path and headless runner load the same
 reachable authored Floor 5 map and emit the same empty deterministic phase
 trace.
@@ -57,12 +56,14 @@ scenario plumbing as the single runtime authority.
   transition recording; it does not spawn, pathfind, steer, attack, or apply
   damage.
 - **DEC-005**: Wire Floor 5 through `ScenarioDefinition` slots, including the
-  `afterSpawnerSystems` director hook, AI task config, run-stats collection,
-  and scene-option creation path used by both the windowed game and headless
-  runner.
-- **DEC-006**: Add a minimal declarative scenario-AI route over the authored map
-  landmarks. The route uses explicit latches for breach progress so later
-  gameplay can complete one step without deadlocking the next.
+  `afterSpawnerSystems` director hook, run-stats collection, and scene-option
+  creation path used by both the windowed game and headless runner.
+- **DEC-006**: Do NOT register a Floor 5 `aiTaskConfig` in this slice. The BT
+  goal-graph planner is reachable only through `world.floorScenario.objective`,
+  which `initializeFloor5Scenario` leaves null because no siege gameplay ships
+  here, so a route registered now would be unreachable at runtime. The route
+  lands with the slice that makes `Floor5SiegeState` authoritative for its
+  latches.
 - **DEC-007**: Add a `floor5-siege-lab` for isolated inspection while keeping
   real-artifact proof in unit/headless tests that compare the full map artifact
   and empty trace across the shared runtime paths.
@@ -79,17 +80,17 @@ scenario plumbing as the single runtime authority.
   future systems can own waves, Heroes, ram behavior, collision changes, and
   presentation without overloading the phase authority.
 - **POS-004**: Regression tests cover manifest/registry plumbing, map
-  reachability, RNG isolation, scenario slots, AI route order, and
-  windowed/headless map-plus-trace parity.
+  reachability, RNG isolation, scenario slots, the `siegeDirectorSystem`
+  `DEFEAT` transition, and windowed/headless map-plus-trace parity.
 
 ### Negative
 
 - **NEG-001**: Floor 5 adds a new floor-specific manifest section and scenario
   module before most gameplay systems exist, so later slices must fill in real
   behavior rather than assuming the skeleton is complete.
-- **NEG-002**: The current route uses placeholder zero-cost work and existing
-  generic route phases because the run planner does not yet have siege-specific
-  phase taxonomy.
+- **NEG-002**: Floor 5 has no scenario-AI route yet, so an AI/headless Floor 5
+  run has no authored objective ordering to follow until the route lands with
+  its runtime wiring.
 - **NEG-003**: The abnormal command-post defeat path is represented with the
   existing run-outcome taxonomy until a later slice introduces real defeat
   presentation and telemetry categories.

@@ -40,7 +40,7 @@ function getFloor5Config() {
   return floor5;
 }
 
-export function buildFloor5MapConfig(): MapConfig {
+function buildFloor5MapConfig(): MapConfig {
   const manifest = getFloor5Manifest();
   const geometry = manifest.floor5;
   return {
