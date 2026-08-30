@@ -77,7 +77,7 @@ describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
           world.stores.position.y[playerEid] ?? 0,
         );
         leftEntrance ||= floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== floorMap.spawnRoom.id;
-        return false;
+        return leftEntrance;
       },
       onFinish: (world) => {
         professorEid = world.floorExtendedState?.floor3CompanionProfessorNpcEid;
