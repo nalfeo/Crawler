@@ -48,6 +48,7 @@
     "lineOfSightAggro": false,
     "equipmentEconomy": true,
     "bossChests": true,
+    "trashAttackWaves": true,
     "merchantCharmGatesEquipment": {
       "prerequisiteQuestId": "floor1-shopkeeper-errand"
     },
