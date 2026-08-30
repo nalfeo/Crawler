@@ -335,6 +335,7 @@ jobs:
             # hand it to every deterministic and agentic stage regardless of the
             # capabilities that stage declared.
             envPassthrough:
+              - GOOBERS_INSTANCE
               - GOOBERS_RECOVERY_ISSUE
               - GOOBERS_RESUME_BRANCH
               - GH_TOKEN
