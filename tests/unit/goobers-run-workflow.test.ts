@@ -412,9 +412,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     });
     expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
     expect(recovery?.run).toContain('cross-referenced');
-    expect(recovery?.run).toContain(
-      'Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required',
-    );
+    expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required');
     expect(recovery?.run).toContain('goobers/status:in-review');
     expect(recovery?.run).toContain('Scheduled recovery selected issue');
     expect(recovery?.run).toContain('goobers/crawler/*');
