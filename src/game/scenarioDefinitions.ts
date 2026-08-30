@@ -13,6 +13,7 @@ import type {
   ScenarioRunOutcome,
   ScenarioStairConfirmationCopy,
   ScenarioStairMarkerState,
+  ScenarioStarterLoadoutCopy,
 } from '../shared/scenario-presentation.js';
 import {
   confirmFloor1StairDescend,
@@ -219,6 +220,12 @@ export interface ScenarioDefinition {
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
   /**
+   * Presentation copy for the generic starter-loadout picker. Omitted by
+   * scenarios that present their own loadout surface (Floor 3) or offer no
+   * starter choice at all.
+   */
+  readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
    * unlock-effect, and runtime-eligibility policy lives here as validated
@@ -239,6 +246,7 @@ export function getScenarioPresentationContract(
     getCompletionCopy: scenario.getCompletionCopy,
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
+    starterLoadout: scenario.starterLoadout,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -390,6 +398,13 @@ function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
   }
 }
 
+const FLOOR_1_STARTER_LOADOUT: ScenarioStarterLoadoutCopy = {
+  title: 'Choose your opening loadout',
+  pausedNotice: 'Floor 1 is paused until you confirm a starter weapon.',
+  prompt: 'Pick the weapon you want to begin with.',
+  optionDescriptionPrefix: 'Starter weapon',
+};
+
 const FLOOR_1_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   title: 'Proceed to the next floor?',
   subtitle: 'You are at the stairs.',
@@ -534,6 +549,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor1CompletionCopy,
       getStairMarkerState: getFloor1StairMarkerState,
       stairConfirmation: FLOOR_1_STAIR_CONFIRMATION,
+      starterLoadout: FLOOR_1_STARTER_LOADOUT,
       aiTaskConfig: FLOOR1_AI_TASK_CONFIG,
     },
   ],

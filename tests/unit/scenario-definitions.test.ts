@@ -437,7 +437,33 @@ describe('scenario definitions', () => {
       expect(contract.getCompletionCopy).toBe(scenario.getCompletionCopy);
       expect(contract.getStairMarkerState).toBe(scenario.getStairMarkerState);
       expect(contract.stairConfirmation).toBe(scenario.stairConfirmation);
+      expect(contract.starterLoadout).toBe(scenario.starterLoadout);
       expect(contract.nextFloorId).toBe(scenario.nextFloorId);
     });
+
+    // The generic starter-loadout picker in `MainGameScene` renders this copy
+    // verbatim, so the "Floor 1 is paused…" line is scenario config rather than
+    // a floor literal in the renderer.
+    it('carries Floor 1 starter-loadout copy the renderer used to hardcode', () => {
+      expect(
+        getScenarioPresentationContract(getScenarioDefinition('floor1')).starterLoadout,
+      ).toEqual({
+        title: 'Choose your opening loadout',
+        pausedNotice: 'Floor 1 is paused until you confirm a starter weapon.',
+        prompt: 'Pick the weapon you want to begin with.',
+        optionDescriptionPrefix: 'Starter weapon',
+      });
+    });
+
+    // Floor 3 presents its own loadout surface; omitting the copy is what keeps
+    // the generic picker from opening for it.
+    it.each(['floor2', 'floor3', 'floor4'])(
+      'omits starter-loadout copy for %s, which does not use the generic picker',
+      (floorId) => {
+        expect(
+          getScenarioPresentationContract(getScenarioDefinition(floorId)).starterLoadout,
+        ).toBeUndefined();
+      },
+    );
   });
 });
