@@ -29,6 +29,12 @@ function knockOutTeams(world: GameWorld, teamIds: readonly number[]): void {
   }
 }
 
+function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
+  return query(world.ecs, [Companion, Team]).filter((eid) =>
+    teamIds.includes(world.stores.team.id[eid] ?? -1),
+  ).length;
+}
+
 describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
   it('logs the initial starter pick while resolving the real Floor 3 loadout hook', async () => {
     const events: SimEvent[] = [];
@@ -150,5 +156,60 @@ describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
     expect(pendingOfferAtEnd).toBe(false);
     // ...and the pick actually recruited the poached Companion.
     expect(partyAfterPoach).toBe(partyBeforePoach + 1);
+  });
+
+  it('runs four ordered Final Four rounds and deterministically keeps one Companion', async () => {
+    const observedHandlerOrder: string[] = [];
+    let lastWipedRound = -1;
+    let finalRoundIndex = -1;
+    let keptCompanionEid: number | undefined;
+    let victoryLatched = false;
+    let selectedHandlerOrder: string[] = [];
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 3539 }), {
+      seed: 3539,
+      floorId: 'floor3',
+      maxFrames: 300,
+      questStallFrames: 0,
+      startPlayerLevel: 20,
+      stopWhen: (world) => {
+        const state = world.floorExtendedState?.floor3Studios;
+        if (!state) return false;
+
+        // Deterministic combat stand-in: clear every spawned Studio roster.
+        for (const studio of state.studios) {
+          if (studio.unlocked && !studio.defeated) knockOutTeams(world, studio.teamIds);
+        }
+
+        // Clear each Final Four roster once, only after the production tick has
+        // advanced and spawned that round.
+        const round = state.finalFourRounds[state.finalFourRoundIndex];
+        if (
+          round &&
+          state.finalFour.unlocked &&
+          state.finalFourRoundIndex !== lastWipedRound &&
+          countCompanionsOnTeams(world, state.finalFour.teamIds) > 0
+        ) {
+          observedHandlerOrder.push(round.handlerId);
+          lastWipedRound = state.finalFourRoundIndex;
+          knockOutTeams(world, state.finalFour.teamIds);
+        }
+        return false;
+      },
+      onFinish: (world) => {
+        const state = world.floorExtendedState?.floor3Studios;
+        finalRoundIndex = state?.finalFourRoundIndex ?? -1;
+        keptCompanionEid = state?.keptCompanionEid;
+        selectedHandlerOrder = state?.finalFourRounds.map((round) => round.handlerId) ?? [];
+        victoryLatched = world.goalFlags.get('floor3-victory') === true;
+      },
+    });
+
+    expect(observedHandlerOrder).toHaveLength(4);
+    expect(observedHandlerOrder).toEqual(selectedHandlerOrder);
+    expect(finalRoundIndex).toBe(4);
+    expect(victoryLatched).toBe(true);
+    expect(keptCompanionEid).toBeDefined();
+    expect(stats.outcome).toBe('victory');
   });
 });

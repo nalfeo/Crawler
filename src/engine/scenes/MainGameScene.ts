@@ -153,14 +153,22 @@ import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
 import {
+  buildFloor3FinalFourVersusModel,
   buildFloor3IntroModel,
+  buildFloor3KeepCompanionPickerModel,
+  buildFloor3LoseModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
+  buildFloor3StudioVersusModel,
 } from '../../shared/floor3-ux.js';
 import type { ModalPickerConfig } from '../../shared/modal-picker.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
+import {
+  resolveFloor3KeepCompanionOptions,
+  resolveFloor3LeagueView,
+} from '../floor3-league-state.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
 import { listStaticInventorySlots } from '../../shared/inventory.js';
@@ -342,6 +350,8 @@ export interface MainGameSceneOptions {
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
+  /** Injected scenario mutation for the required Floor 3 end-of-season choice. */
+  selectKeptCompanion?: (world: GameWorld, partyEid: number) => boolean;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
    * Called when a cleared floor should transition in-process to the next floor.
@@ -637,6 +647,9 @@ export class MainGameScene extends Phaser.Scene {
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
   /** True once the Floor 3 rules briefing (UX surface #1) has been acknowledged this floor. */
   private floor3IntroAcknowledged = false;
+  /** UX-only show-once latches; gameplay ordering remains scenario-owned. */
+  private readonly announcedFloor3Studios = new Set<string>();
+  private readonly announcedFloor3FinalFourRounds = new Set<number>();
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
@@ -1158,6 +1171,9 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
+    this.floor3IntroAcknowledged = false;
+    this.announcedFloor3Studios.clear();
+    this.announcedFloor3FinalFourRounds.clear();
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -2250,6 +2266,7 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    this.showFloor3ProgressSurfaceIfNeeded();
     const blockingSurfaceOpen = this.isNonConversationBlockingSurfaceOpen();
     if (blockingSurfaceOpen !== this.blockingSurfaceWasOpen) {
       this.blockingSurfaceWasOpen = blockingSurfaceOpen;
@@ -3932,6 +3949,71 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Presents Floor 3's scenario-owned progression as thin, blocking versus
+   * cards and routes the required season-win choice through the injected
+   * `ScenarioDefinition.selectKeptCompanion` seam.
+   */
+  private showFloor3ProgressSurfaceIfNeeded(): void {
+    if (
+      this.world.floorId !== 'floor3' ||
+      this.world.state !== 'playing' ||
+      !this.modalPicker ||
+      this.modalPicker.isOpen()
+    ) {
+      return;
+    }
+    const league = resolveFloor3LeagueView(this.world);
+    const state = this.world.floorExtendedState?.floor3Studios;
+    if (!state) return;
+
+    if (league.phase === 'best-in-show') {
+      const choices = resolveFloor3KeepCompanionOptions(this.world);
+      // A stored pick can go stale between victory and the stairs (the picked
+      // Companion is knocked out by a straggler), and the scenario's descend
+      // gate rejects a stale pick — so the picker must reopen whenever the
+      // stored eid is absent from the current valid choices, not just when it
+      // is undefined, or the run is stranded with no way to re-pick.
+      const keptEid = state.keptCompanionEid;
+      const keptIsValid = keptEid !== undefined && choices.some((choice) => choice.eid === keptEid);
+      if (choices.length === 0 || keptIsValid) return;
+      this.modalPicker.open(buildFloor3KeepCompanionPickerModel(choices), {
+        onConfirm: ({ option }) => {
+          const eid = Number(option.id);
+          if (Number.isInteger(eid)) {
+            this.options.selectKeptCompanion?.(this.world, eid);
+          }
+          this.updateOverlayText();
+        },
+      });
+      return;
+    }
+
+    if (league.phase === 'final-four' && league.activeRoundIndex !== null) {
+      const roundIndex = league.activeRoundIndex;
+      const round = league.rounds[roundIndex];
+      if (round && !this.announcedFloor3FinalFourRounds.has(roundIndex)) {
+        this.announcedFloor3FinalFourRounds.add(roundIndex);
+        this.modalPicker.open(
+          buildFloor3FinalFourVersusModel(round, roundIndex, league.rounds.length),
+          { onConfirm: () => this.updateOverlayText() },
+        );
+      }
+      return;
+    }
+
+    const studio = league.studios.find(
+      (candidate) =>
+        candidate.unlocked && !candidate.defeated && !this.announcedFloor3Studios.has(candidate.id),
+    );
+    if (studio) {
+      this.announcedFloor3Studios.add(studio.id);
+      this.modalPicker.open(buildFloor3StudioVersusModel(studio), {
+        onConfirm: () => this.updateOverlayText(),
+      });
+    }
+  }
+
   private openSpellSelectionModal(): void {
     if (!this.modalPicker || this.world.state !== 'playing') {
       return;
@@ -5034,7 +5116,7 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = true;
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
-    this.gameOverUI?.show();
+    this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {

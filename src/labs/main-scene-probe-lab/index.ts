@@ -223,6 +223,15 @@ interface MainSceneInternals {
       commandsInUse: number;
     };
     getFloor4ArenaState?(): HudFloor4ArenaProbeState;
+    getFloor3LeagueState?(): {
+      visible: boolean;
+      phase: string;
+      headline: string;
+      detail: string;
+      bracket: readonly string[];
+      bounds: ScreenBounds | null;
+    };
+    getFloor3OverworldMarkers?(): readonly { kind: string }[];
     /**
      * The currently-rendered announcement banner content (kind + exact
      * text), or `null` when no banner is showing. Real rendered projection,
@@ -630,6 +639,23 @@ export interface Floor3PartyHudProbeState {
   readonly rosterDetailLineCount: number;
 }
 
+/**
+ * Mounted Floor-3 league bracket HUD read-back plus the real floor-timer panel
+ * bounds, so an e2e can prove the two top-center panels never overlap in the
+ * shipped scene, and the semantic minimap markers the docked radar projects.
+ */
+export interface Floor3LeagueHudProbeState {
+  readonly visible: boolean;
+  readonly phase: string;
+  readonly headline: string;
+  readonly detail: string;
+  readonly bracket: readonly string[];
+  readonly bounds: ScreenBounds | null;
+  readonly timerPanel: ScreenBounds | null;
+  readonly mapOverlayOpen: boolean;
+  readonly markerKinds: readonly string[];
+}
+
 export interface FamilyHudProbeState {
   readonly mapOverlayOpen: boolean;
   readonly visible: boolean;
@@ -895,6 +921,8 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
+  /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
+  getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
@@ -1774,6 +1802,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         rosterCursor: roster?.cursor ?? -1,
         rosterEntries: roster?.entries ?? [],
         rosterDetailLineCount: roster?.detailLines.length ?? 0,
+      };
+    },
+
+    getFloor3LeagueHudState: (): Floor3LeagueHudProbeState => {
+      const hud = getScene()?.hudUi;
+      const league = hud?.getFloor3LeagueState?.();
+      return {
+        visible: league?.visible ?? false,
+        phase: league?.phase ?? '',
+        headline: league?.headline ?? '',
+        detail: league?.detail ?? '',
+        bracket: league?.bracket ?? [],
+        bounds: league?.bounds ?? null,
+        timerPanel: hud?.getEncounterProbeBounds?.()?.timerPanel ?? null,
+        mapOverlayOpen: hud?.isMapOverlayOpen() ?? false,
+        markerKinds: (hud?.getFloor3OverworldMarkers?.() ?? []).map((marker) => marker.kind),
       };
     },
 

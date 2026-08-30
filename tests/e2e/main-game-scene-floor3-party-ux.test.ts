@@ -36,6 +36,18 @@ async function waitForPartyHud(
   }
 }
 
+async function waitForModalKind(page: Page, kind: string, label: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const content = await mainSceneProbe.getModalPickerContent(page);
+    if (content?.kind === kind) return;
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}; last content: ${JSON.stringify(content)}`);
+    }
+    await page.waitForTimeout(80);
+  }
+}
+
 async function waitForModalTitle(page: Page, title: string, label: string): Promise<void> {
   const deadline = Date.now() + 10_000;
   for (;;) {
@@ -88,6 +100,11 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         label: 'Floor 3 loadout confirmed',
       });
       await mainSceneProbe.setSimulationPaused(page, false);
+
+      // The first unlocked Studio announces itself with a blocking versus card
+      // (UX surface #10), which hides the HUD until it is acknowledged.
+      await waitForModalKind(page, 'floor3-studio-versus', 'Floor 3 Studio versus card');
+      await page.keyboard.press('Enter');
 
       // AFTER: the mounted HUD shows the recruited starter.
       const docked = await waitForPartyHud(

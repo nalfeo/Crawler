@@ -563,8 +563,8 @@ function findFloor3RelocatedSpawnTile(
  * its own per-Studio unlock threshold (`unlockLevel`) — spec R6's "any-order
  * soft-gated" contract — and only physically spawns once
  * `floor3ObjectiveTick` observes `world.playerLevel.level >= unlockLevel`.
- * The Final Four roster is deferred (`finalFourPendingSpawns`) the same way,
- * gated on the Studios-defeated counter instead of a level threshold.
+ * The four Final Four rosters are deferred as ordered rounds, gated on the
+ * Studios-defeated counter instead of a level threshold.
  */
 function initializeFloor3Studios(
   world: GameWorld,
@@ -635,7 +635,7 @@ function initializeFloor3Studios(
 
   // One team id shared by every Handler's Companions in the Final Four.
   const finalFourTeamId = FLOOR3_FINAL_FOUR_TEAM_BASE;
-  const finalFourPendingSpawns: Floor3PendingRosterSpawn[] = [];
+  const finalFourRounds: Floor3StudiosState['finalFourRounds'] = [];
   const finalFourRoom =
     floorMap.roomGraph
       .getAll()
@@ -650,19 +650,26 @@ function initializeFloor3Studios(
     ? collectFloor3RosterSpawnTiles(floorMap, finalFourPlacement.room)
     : undefined;
   selectedFinalFour.forEach((handler) => {
+    const pendingSpawns: Floor3PendingRosterSpawn[] = [];
     for (const companion of handler.companions) {
       const tile = finalFourSpawnTiles
         ? pickFloor3RosterSpawnTile(finalFourSpawnTiles, finalFourCellIndex)
         : undefined;
       finalFourCellIndex += 1;
       const spawnPos = tile ? floorMap.tileToWorld(tile.x, tile.y) : undefined;
-      finalFourPendingSpawns.push({
+      pendingSpawns.push({
         speciesId: companion.speciesId,
         level: companion.level,
         teamId: finalFourTeamId,
         ...(spawnPos ? { x: spawnPos.x, y: spawnPos.y } : {}),
       });
     }
+    finalFourRounds.push({
+      handlerId: handler.handlerId,
+      handlerName: handler.name,
+      pendingSpawns,
+      defeated: false,
+    });
   });
 
   for (const studio of studios) {
@@ -691,15 +698,17 @@ function initializeFloor3Studios(
       poachRoster: [],
       poachOffered: true,
     },
-    finalFourPendingSpawns,
+    finalFourRounds,
+    finalFourRoundIndex: 0,
     studiosDefeatedCount: 0,
   };
 }
 
-/** Spawns the deferred Final Four roster fanned across arena tiles and clears the pending list. */
+/** Spawns only the active Final Four handler roster and clears that round's pending list. */
 function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3StudiosState): void {
   const floorMap = world.floorMap;
-  if (!floorMap || studiosState.finalFourPendingSpawns.length === 0) return;
+  const round = studiosState.finalFourRounds[studiosState.finalFourRoundIndex];
+  if (!floorMap || !round || round.pendingSpawns.length === 0) return;
   // Production Floor 3 maps pre-resolve the roster's positions from the
   // dedicated arena chamber at floor build time, and map overrides used by
   // focused tests fall back to a centre scan. Either way the player can be
@@ -716,12 +725,8 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
           );
           return (x: number, y: number): boolean => x === playerTile.x && y === playerTile.y;
         })();
-  const arenaTiles = findFloor3ArenaTiles(
-    floorMap,
-    studiosState.finalFourPendingSpawns.length,
-    avoidPlayerTile,
-  );
-  const plannedTiles = studiosState.finalFourPendingSpawns.map((pending, index) =>
+  const arenaTiles = findFloor3ArenaTiles(floorMap, round.pendingSpawns.length, avoidPlayerTile);
+  const plannedTiles = round.pendingSpawns.map((pending, index) =>
     pending.x !== undefined && pending.y !== undefined
       ? floorMap.worldToTile(pending.x, pending.y)
       : arenaTiles[index % arenaTiles.length]!,
@@ -736,7 +741,7 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
     claimedTiles.add(tileKey(relocated));
     return relocated;
   });
-  studiosState.finalFourPendingSpawns.forEach((pending, index) => {
+  round.pendingSpawns.forEach((pending, index) => {
     const tile = spawnTiles[index]!;
     const arenaPos = floorMap.tileToWorld(tile.x, tile.y);
     const eid = spawnFloor3RosterCompanion(
@@ -755,7 +760,7 @@ function spawnFloor3FinalFourRoster(world: GameWorld, studiosState: Floor3Studio
       );
     }
   });
-  studiosState.finalFourPendingSpawns = [];
+  round.pendingSpawns = [];
 }
 
 /**
@@ -799,36 +804,35 @@ function popFloor3ExitStairs(world: GameWorld): void {
 }
 
 /**
- * Auto-defaults the kept-companion pick (spec R7 §9.3, slice 11) to the
- * player's first party slot the moment victory latches, so every run always
- * carries a deterministic pick into `capturePlayerCarryover` even before the
- * future keep-companion picker UI (slice 14) exists —
- * `selectFloor3KeptCompanion` can still override it before the floor
- * transition. A no-op if a pick already exists or the party is empty (never
- * expected — the starter pick is mandatory).
+ * Explicit deterministic kept-companion path for non-interactive/headless
+ * completion. Real play must call `selectFloor3KeptCompanion` instead.
  */
-function autoDefaultFloor3KeptCompanion(world: GameWorld): void {
+export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
   const studiosState = world.floorExtendedState?.floor3Studios;
-  if (!studiosState || studiosState.keptCompanionEid !== undefined) return;
-  const party = [..._partyMembers(world, TeamId.PLAYER)].sort(
-    (a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0),
-  );
-  const firstEid = party[0];
-  if (firstEid !== undefined) {
-    studiosState.keptCompanionEid = firstEid;
+  if (
+    !studiosState ||
+    world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true ||
+    studiosState.keptCompanionEid !== undefined
+  ) {
+    return false;
   }
+  const party = [..._partyMembers(world, TeamId.PLAYER)]
+    .filter((eid) => hasValidFloor3KeptCompanion(world, eid))
+    .sort((a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0));
+  const firstEid = party[0];
+  if (firstEid === undefined) return false;
+  studiosState.keptCompanionEid = firstEid;
+  return true;
 }
 
 function latchFloor3Victory(world: GameWorld): void {
   setGoalFlag(world, FLOOR3_VICTORY_GOAL_ID, true);
   popFloor3ExitStairs(world);
-  autoDefaultFloor3KeptCompanion(world);
 }
 
 /**
- * End-of-floor picker hook (spec R7 §9.3, slice 11): lets the player
- * override the auto-defaulted kept-companion pick with any of their own live
- * party Companions before the floor-transition carryover is captured
+ * End-of-floor picker hook (spec R7 §9.3, slice 11): lets the player select any
+ * of their own live party Companions before floor-transition carryover is captured
  * (`capturePlayerCarryover` resolves `studiosState.keptCompanionEid` into the
  * persisted `KeptCompanionContract`). The actual picker UI is a separate,
  * later slice (14) — this only wires the underlying selection.
@@ -839,16 +843,40 @@ function latchFloor3Victory(world: GameWorld): void {
 export function selectFloor3KeptCompanion(world: GameWorld, partyEid: number): boolean {
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (!studiosState || world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) return false;
-  if (
-    !hasComponent(world.ecs, partyEid, Companion) ||
-    !hasComponent(world.ecs, partyEid, PartySlot) ||
-    !hasComponent(world.ecs, partyEid, Team) ||
-    (world.stores.team.id[partyEid] ?? -1) !== TeamId.PLAYER
-  ) {
-    return false;
-  }
+  if (!hasValidFloor3KeptCompanion(world, partyEid)) return false;
   studiosState.keptCompanionEid = partyEid;
   return true;
+}
+
+function hasValidFloor3KeptCompanion(world: GameWorld, partyEid: number | undefined): boolean {
+  return (
+    partyEid !== undefined &&
+    hasComponent(world.ecs, partyEid, Companion) &&
+    hasComponent(world.ecs, partyEid, PartySlot) &&
+    hasComponent(world.ecs, partyEid, Team) &&
+    (world.stores.team.id[partyEid] ?? -1) === TeamId.PLAYER &&
+    (world.stores.companion.knockedOut[partyEid] ?? 0) !== 1
+  );
+}
+
+/**
+ * The Floor 3 kept-companion half of the descend gate, shared with the stair
+ * marker so the prompt and the confirmation can never disagree (a marker that
+ * reports `locked: false` while the descend is rejected offers the player an
+ * exit the game refuses).
+ *
+ * A party wipe after victory is deliberately NOT a loss here (the objective
+ * tick suppresses `game_over` once the win is latched), and lingering ambient
+ * wilds can knock out the last party Companion after the win — so the player
+ * can legitimately reach the stairs with nothing keepable left. Requiring a
+ * valid pick in that state would strand the run forever with the exit visibly
+ * unlocked, so the gate is skipped on a wiped party; `keptCompanion` is already
+ * optional in the carryover contract.
+ */
+export function floor3KeptCompanionDescendGateSatisfied(world: GameWorld): boolean {
+  const studiosState = world.floorExtendedState?.floor3Studios;
+  if (!studiosState) return false;
+  return hasValidFloor3KeptCompanion(world, studiosState.keptCompanionEid) || _isPartyWiped(world);
 }
 
 /**
@@ -861,6 +889,7 @@ export function confirmFloor3StairDescend(world: GameWorld, _playerEid: number):
   if (!studiosState || world.state !== 'playing') return false;
   if (!studiosState.staircaseSpawned || !studiosState.staircaseUnlocked) return false;
   if (studiosState.staircaseDiscovered) return false;
+  if (!floor3KeptCompanionDescendGateSatisfied(world)) return false;
   studiosState.staircaseDiscovered = true;
   setGoalFlag(world, FLOOR3_STAIRS_DISCOVERED_GOAL_ID, true);
   world.state = 'safe_room';
@@ -1137,18 +1166,26 @@ export function floor3ObjectiveTick(world: GameWorld): void {
       world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID) !== true
     ) {
       setGoalFlag(world, FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID, true);
+      studiosState.finalFour.unlocked = true;
       spawnFloor3FinalFourRoster(world, studiosState);
     }
 
     if (
       !studiosState.finalFour.defeated &&
-      studiosState.finalFourPendingSpawns.length === 0 &&
       world.goalFlags.get(FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID) === true &&
+      studiosState.finalFourRoundIndex < studiosState.finalFourRounds.length &&
       _isEncounterTeamsWiped(world, studiosState.finalFour.teamIds)
     ) {
-      studiosState.finalFour.defeated = true;
       despawnFloor3EncounterRoster(world, studiosState.finalFour.teamIds);
-      latchFloor3Victory(world);
+      const completedRound = studiosState.finalFourRounds[studiosState.finalFourRoundIndex]!;
+      completedRound.defeated = true;
+      studiosState.finalFourRoundIndex += 1;
+      if (studiosState.finalFourRoundIndex >= studiosState.finalFourRounds.length) {
+        studiosState.finalFour.defeated = true;
+        latchFloor3Victory(world);
+      } else {
+        spawnFloor3FinalFourRoster(world, studiosState);
+      }
     }
 
     if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true && _isPartyWiped(world)) {
