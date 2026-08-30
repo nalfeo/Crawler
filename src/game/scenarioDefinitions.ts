@@ -451,6 +451,99 @@ const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   confirmDescription: 'You win!',
 };
 
+function buildDirectorIntroVariants(
+  concepts: readonly string[],
+  firstObjectives: readonly string[],
+): readonly string[] {
+  const variants: string[] = [];
+  for (const concept of concepts) {
+    for (const firstObjective of firstObjectives) {
+      variants.push(`${concept} ${firstObjective}`);
+    }
+  }
+  return variants;
+}
+
+const FLOOR_1_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 1 opens. {playerName} steps into the dungeon and the cameras go live.',
+    'Floor 1 is live and {playerName} just entered the starter gauntlet.',
+    'Floor 1 starts now: {playerName} is on-air in the tutorial dungeon.',
+    'Floor 1 broadcast begins with {playerName} in the opening dungeon circuit.',
+    'Floor 1 kicks off and {playerName} is in the spotlight from the first room.',
+  ],
+  [
+    'First objective: reach the Welcome Office and speak with Tutorial Goon to start your quota quest.',
+    'First objective: find Tutorial Goon in the Welcome Office and accept the opening mission.',
+    'First objective: locate the Welcome Office, talk to Tutorial Goon, and trigger your first quest.',
+    'First objective: make contact in the Welcome Office with Tutorial Goon before pushing combat milestones.',
+  ],
+);
+
+const FLOOR_2_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 2 opens with the Mother Lode feud active across the cave network.',
+    'Floor 2 goes live as rival families contest the Mother Lode.',
+    'Floor 2 starts in open faction warfare around the Mother Lode tunnels.',
+    'Floor 2 is on-air and every family wants control of the Mother Lode.',
+    'Floor 2 begins with a live territorial feud over the Mother Lode.',
+  ],
+  [
+    'First objective: reach the settlement Broker and take the opening feud directive.',
+    'First objective: find the Broker in settlement to unlock your first territory objective.',
+    'First objective: report to the Broker and choose how you will break the family stalemate.',
+    'First objective: secure Broker contact in settlement so the first den objective can begin.',
+  ],
+);
+
+const FLOOR_3_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 3 opens in the Companion League wilds across seven biome territories.',
+    'Floor 3 goes live with roaming squads in the Companion League wilds.',
+    'Floor 3 starts as a territory race through the Companion League wilds.',
+    'Floor 3 is on-air with seven-biome warfare in the Companion League wilds.',
+    'Floor 3 begins in a live Companion League wilds campaign for regional control.',
+  ],
+  [
+    'First objective: confirm your starter companion loadout and secure your opening territory.',
+    'First objective: lock in the starter companion choice, then claim your first biome node.',
+    'First objective: finalize your opening party and win the first territorial matchup.',
+    'First objective: complete the starter companion pick and take control of an initial zone.',
+  ],
+);
+
+const FLOOR_4_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 4 opens with the Main Event stage reset for a five-act arena rehearsal.',
+    'Floor 4 goes live under house lights for a five-act Main Event trial.',
+    'Floor 4 starts as a broadcast arena rehearsal with five consecutive acts.',
+    'Floor 4 is on-air and the Main Event stage expects five clean acts.',
+    'Floor 4 begins with a timed five-act arena broadcast test.',
+  ],
+  [
+    'First objective: survive countdown and clear Act 1 waves to summon the first Headliner.',
+    'First objective: enter Act 1, beat the opening wave set, and drop the first Headliner.',
+    'First objective: push through the first wave window and finish the Act 1 Headliner fight.',
+    'First objective: convert the opening act into a clear by defeating the first Headliner.',
+  ],
+);
+
+const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 5 opens with Hostile Takeover underway at the Command Post.',
+    'Floor 5 goes live as the takeover battle for the Command Post begins.',
+    'Floor 5 starts in full siege mode around the Command Post throne line.',
+    'Floor 5 is on-air with a live hostile takeover of the Command Post.',
+    'Floor 5 begins with a command-center siege and ownership on the line.',
+  ],
+  [
+    'First objective: stabilize your entry lane and seize the first control point.',
+    'First objective: break the opening defenders and lock down the initial capture node.',
+    'First objective: secure a foothold at the Command Post before pushing deeper phases.',
+    'First objective: win the first capture exchange to start the takeover momentum.',
+  ],
+);
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -483,7 +576,8 @@ const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
 ];
 
 const FLOOR_1_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
+  intro: FLOOR_1_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_1_INTRO_VARIANTS,
   victory: 'Floor 1 cleared. Queueing the transfer to the next floor.',
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
   milestones: FLOOR_1_MILESTONES,
@@ -493,7 +587,8 @@ const FLOOR_1_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 2 opens: families feud over the Mother Lode. Pick allies or wipe the board.',
+  intro: FLOOR_2_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_2_INTRO_VARIANTS,
   victory: 'Floor 2 secured. The tunnel network is yours — roll stairs for the next segment.',
   timeout: 'The floor collapsed before a side won. The Director calls the run.',
   milestones: [],
@@ -502,7 +597,8 @@ const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 3 opens: the Companion League wilds are live across seven biome territories.',
+  intro: FLOOR_3_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_3_INTRO_VARIANTS,
   victory: 'The Final Four are down. The Companion League crowns its champion.',
   timeout: 'The Companion League timer expired. The Director calls the run.',
   milestones: [],
@@ -511,7 +607,8 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
+  intro: FLOOR_4_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_4_INTRO_VARIANTS,
   victory: 'Floor 4 rehearsal complete. Five acts ran clean and the stairs opened on cue.',
   timeout: 'The Main Event never started. The Director cuts the feed.',
   milestones: [],
@@ -521,7 +618,8 @@ const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 5 opens: Hostile Takeover begins at the Command Post.',
+  intro: FLOOR_5_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_5_INTRO_VARIANTS,
   victory: 'Floor 5 captured. The throne has changed management.',
   timeout: 'The hostile takeover stalled out. The Director cuts the siege feed.',
   milestones: [],

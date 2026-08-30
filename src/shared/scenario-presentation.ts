@@ -1,3 +1,5 @@
+import { hashStringToSeed } from './random.js';
+
 /**
  * The scenario → presentation contract.
  *
@@ -101,6 +103,15 @@ export interface ScenarioDirectorMilestone<TWorld> {
 
 export interface ScenarioDirectorContract<TWorld> {
   readonly intro: string;
+  /**
+   * Optional authored intro pool. When present, the presenter chooses one
+   * deterministic variant per run seed/floor to increase replay variety.
+   *
+   * Authoring contract: each variant should explain the floor concept and
+   * explicitly state the first objective (the current authored set uses a
+   * `First objective:` sentence for that cue).
+   */
+  readonly introVariants?: readonly string[];
   readonly victory: string;
   readonly timeout?: string;
   /**
@@ -188,4 +199,23 @@ export function selectScenarioCompletionVariant(
     return 'transition_to_next_floor';
   }
   return scenario.isTerminalRunVictory === true ? 'terminal_victory' : 'terminal_complete';
+}
+
+/**
+ * Deterministically choose one authored Director intro variant for a run.
+ *
+ * Selection is stable for a `(seed, floorId)` pair and never consumes a shared
+ * RNG stream. Falls back to `director.intro` when no variants are authored.
+ */
+export function selectScenarioDirectorIntro<TWorld>(
+  director: ScenarioDirectorContract<TWorld>,
+  seed: number,
+  floorId: string,
+): string {
+  const variants = director.introVariants;
+  if (!variants || variants.length === 0) {
+    return director.intro;
+  }
+  const h = hashStringToSeed(`${seed}:${floorId}:scenario-director-intro`) >>> 0;
+  return variants[h % variants.length] ?? director.intro;
 }

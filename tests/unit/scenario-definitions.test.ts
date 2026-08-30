@@ -6,6 +6,7 @@ import {
   type ScenarioDefinition,
 } from '../../src/game/scenarioDefinitions.js';
 import {
+  selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
   type ScenarioCompletionVariant,
   type ScenarioRunOutcome,
@@ -34,6 +35,7 @@ describe('scenario definitions', () => {
     expect(typeof scenario.configureWorld).toBe('function');
     expect(typeof scenario.selectLoadoutOption).toBe('function');
     expect(scenario.director.intro.length).toBeGreaterThan(0);
+    expect(scenario.director.introVariants?.length ?? 0).toBeGreaterThanOrEqual(20);
   });
 
   it('returns floor2 scenario with director copy', () => {
@@ -76,6 +78,43 @@ describe('scenario definitions', () => {
     expect(scenario.director.intro).toContain('wilds');
     expect(scenario.director.victory).toContain('Final Four');
     expect(scenario.isTerminalRunVictory).toBe(true);
+  });
+
+  it('authors at least twenty intro variants for every registered floor', () => {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
+      const scenario = getScenarioDefinition(floorId);
+      const variants = scenario.director.introVariants ?? [];
+      expect(variants.length).toBeGreaterThanOrEqual(20);
+      expect(new Set(variants).size).toBe(variants.length);
+      for (const variant of variants) {
+        expect(variant.length).toBeGreaterThan(0);
+        expect(variant).toContain('First objective:');
+      }
+    }
+  });
+
+  it('chooses intro variants deterministically per seed and floor', () => {
+    const floor2 = getScenarioDefinition('floor2');
+    const floor3 = getScenarioDefinition('floor3');
+    const variants = floor2.director.introVariants ?? [];
+    const floor3Variants = floor3.director.introVariants ?? [];
+    expect(variants.length).toBeGreaterThan(0);
+    expect(floor3Variants.length).toBeGreaterThan(0);
+    const sameA = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
+    const sameB = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
+    expect(sameA).toBe(sameB);
+    expect(variants).toContain(sameA);
+
+    let floorIdAffectsSelection = false;
+    for (let seed = 1; seed <= 256; seed += 1) {
+      const floor2Pick = selectScenarioDirectorIntro(floor2.director, seed, 'floor2');
+      const floor3Pick = selectScenarioDirectorIntro(floor3.director, seed, 'floor3');
+      if (floor2Pick !== floor3Pick) {
+        floorIdAffectsSelection = true;
+        break;
+      }
+    }
+    expect(floorIdAffectsSelection).toBe(true);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {
