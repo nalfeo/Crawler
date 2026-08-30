@@ -155,10 +155,10 @@ test('does not request review while another policy is blocking the PR', () => {
   );
 });
 
-test('any policy blocker prevents requesting review evidence', () => {
+test('a non-review-thread policy blocker prevents requesting review evidence', () => {
   assert.equal(
     decision({
-      blockers: [{ kind: 'policy' }],
+      blockers: [{ kind: 'missing-handoff' }],
       comments: [requestComment(HEADS[0], 'ready')],
     }),
     null,
