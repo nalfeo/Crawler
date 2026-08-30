@@ -113,6 +113,27 @@ describe('headless-runner-cli — runner wiring', () => {
     expect(config.settlementReturnRouting).toBe(false);
   });
 
+  it('omits weaponPersonas/optionalPurchases unless explicitly overridden so the registry owns the defaults', async () => {
+    const config = await captureRunnerConfig(['--floor', 'floor1', '--max-frames', '1']);
+
+    expect('weaponPersonas' in config).toBe(false);
+    expect('optionalPurchases' in config).toBe(false);
+  });
+
+  it('forwards explicit weaponPersonas/optionalPurchases opt-outs to the runner', async () => {
+    const config = await captureRunnerConfig([
+      '--floor',
+      'floor1',
+      '--max-frames',
+      '1',
+      '--no-weapon-personas',
+      '--no-optional-purchases',
+    ]);
+
+    expect(config.weaponPersonas).toBe(false);
+    expect(config.optionalPurchases).toBe(false);
+  });
+
   it('leaves enforcePlayabilityInvariants unset so Floor 2 CLI runs keep the invariant gate', async () => {
     const config = await captureRunnerConfig(['--floor', 'floor2', '--max-frames', '1']);
 

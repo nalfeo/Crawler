@@ -11,6 +11,7 @@ import { ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
 import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { PLAYER_PERSONAS } from './personas.js';
+import type { AiFeatureFlags } from './feature-flags.js';
 
 export interface CLIArgs {
   seed: number;
@@ -34,11 +35,15 @@ export interface CLIArgs {
   floorId: string;
   startPlayerLevel: number;
   weaponTelemetry: boolean;
-  weaponPersonas: boolean;
+  /** Explicit override; omitted inherits the canonical feature-flag registry default. */
+  weaponPersonas: boolean | undefined;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
-  /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default true. */
-  optionalPurchases: boolean;
+  /**
+   * Single shared flag for both optional AI purchases (merchant weapon + Spell
+   * Broker). Explicit override; omitted inherits the registry default.
+   */
+  optionalPurchases: boolean | undefined;
   /** Explicit routing override; omitted inherits the selected floor's default. */
   settlementReturnRouting: boolean | undefined;
   persona: PlayerPersona;
@@ -47,9 +52,7 @@ export interface CLIArgs {
 const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
 const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
 
-export function defaultCLIArgs(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): CLIArgs {
+function defaultCLIArgs(env: Readonly<Record<string, string | undefined>> = process.env): CLIArgs {
   const optionalPurchasesEnv = env.AI_OPTIONAL_PURCHASES ?? env.AI_MERCHANT_WEAPON_PURCHASE;
   return {
     seed: 12345,
@@ -68,17 +71,21 @@ export function defaultCLIArgs(
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
-    weaponPersonas: true,
+    // `undefined` (not `true`): absent CLI overrides must fall through to the
+    // canonical registry defaults in `feature-flags.ts` instead of pinning a
+    // duplicate default here.
+    weaponPersonas: undefined,
     // Kept in sync with the game-runtime DEFAULT_CONFIG (bt-ai-tuning.ts) so the
     // manual `npm run ai:headless` CLI matches production unless a caller
     // explicitly passes --pathing-mode/--decision-mode.
     pathingMode: DEFAULT_CONFIG.pathingMode,
     decisionMode: DEFAULT_CONFIG.decisionMode,
-    // Legacy env var still honoured so existing scripts keep working.
+    // Legacy env var still honoured so existing scripts keep working; absent
+    // means "no override" so the registry default applies.
     optionalPurchases:
-      optionalPurchasesEnv === undefined ||
-      optionalPurchasesEnv === '1' ||
-      optionalPurchasesEnv.toLowerCase() === 'true',
+      optionalPurchasesEnv === undefined
+        ? undefined
+        : optionalPurchasesEnv === '1' || optionalPurchasesEnv.toLowerCase() === 'true',
     settlementReturnRouting:
       env.AI_SETTLEMENT_RETURN_ROUTING === undefined
         ? undefined
@@ -226,13 +233,24 @@ export function parseArgs(
   return args;
 }
 
-/** Resolve CLI-only Floor 2 routing without changing other runner defaults. */
+/**
+ * Collect the CLI's explicit feature-flag overrides. Flags the caller did not
+ * set are omitted entirely (never passed as `undefined`) so the canonical
+ * registry defaults in `feature-flags.ts` own the effective values.
+ */
 export function resolveHeadlessRunnerOptions(
-  args: Pick<CLIArgs, 'floorId' | 'settlementReturnRouting'>,
-): { settlementReturnRouting?: boolean } {
+  args: Pick<
+    CLIArgs,
+    'floorId' | 'settlementReturnRouting' | 'weaponPersonas' | 'optionalPurchases'
+  >,
+): Partial<AiFeatureFlags> {
   const settlementReturnRouting =
     args.settlementReturnRouting ?? (args.floorId === 'floor2' ? true : undefined);
-  return settlementReturnRouting === undefined ? {} : { settlementReturnRouting };
+  return {
+    ...(args.weaponPersonas === undefined ? {} : { weaponPersonas: args.weaponPersonas }),
+    ...(args.optionalPurchases === undefined ? {} : { optionalPurchases: args.optionalPurchases }),
+    ...(settlementReturnRouting === undefined ? {} : { settlementReturnRouting }),
+  };
 }
 
 export function helpText(): string {
