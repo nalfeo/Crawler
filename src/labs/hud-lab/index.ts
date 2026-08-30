@@ -124,6 +124,7 @@ function createFloor4Headliner(
     displayName: act === 5 ? 'The Ratings Reaper' : 'Camera Kraken',
     entranceAnnouncement: 'The Headliner enters the arena!',
     appearanceFeeGold: 28,
+    contactDamage: 10,
     fixedFinale: act === 5,
     bossEid,
     defeated: false,
@@ -335,6 +336,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         const activeHeadliner = createFloor4Headliner(act, bossEid);
         const base: Floor4ArenaState = {
           phase: { kind: 'WAVES', act },
+          actIncome: [],
           arenaElapsedMs: (act - 1) * 120_000 + 24_000,
           phaseElapsedMs: 24_000,
           overtimeFinisherAnnounced: false,
@@ -358,7 +360,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
             overtimeStarted: surface === 'overtime' ? 1 : 0,
             overtimeStepsApplied: surface === 'overtime' ? 2 : 0,
           },
-          actBaseline: { playerGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
+          actBaseline: { playerGold: 100, dropGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
           breakGoldSnapshot: 144,
           waves: {
             act,

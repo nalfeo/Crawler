@@ -387,6 +387,8 @@ export interface Floor4HeadlinerCardEntry {
   readonly displayName: string;
   readonly entranceAnnouncement: string;
   readonly appearanceFeeGold: number;
+  /** Authored per-act contact damage for this act's Headliner (spec FR8.2). */
+  readonly contactDamage: number;
   readonly fixedFinale: boolean;
 }
 
@@ -583,13 +585,36 @@ export interface Floor4ArenaState {
    * spends gold at sponsors during the break.
    */
   breakGoldSnapshot?: number;
+  /**
+   * Realised per-act income, appended once per act at its INTERMISSION entry
+   * (spec FR10.3). Recorded before any Green Room spend so it measures income,
+   * not net balance.
+   */
+  actIncome: Floor4ActIncomeEntry[];
 }
 
 /** See {@link Floor4ArenaState.actBaseline}. */
 export interface Floor4ActBreakBaseline {
   readonly playerGold: number;
+  /** GoldLedger.earnedFromDrops snapshot at WAVES entry for this act. */
+  readonly dropGold: number;
   readonly enemiesSpawned: number;
   readonly enemiesCut: number;
+}
+
+/**
+ * Gold actually taken in during one act (spec FR10.3 / slice 7).
+ *
+ * `waveGold` is the drop income banked between the act's WAVES entry and its
+ * INTERMISSION entry; `appearanceFeeGold` is the act's authored Headliner fee.
+ * The two are reported separately because only the fee is guaranteed — the
+ * affordability invariant (FR6.8) is computed from fees alone.
+ */
+export interface Floor4ActIncomeEntry {
+  readonly act: Floor4ActIndex;
+  readonly waveGold: number;
+  readonly appearanceFeeGold: number;
+  readonly totalGold: number;
 }
 
 export interface Floor4ArenaRunStats {
@@ -599,6 +624,8 @@ export interface Floor4ArenaRunStats {
   readonly waveTelemetry: Floor4WaveTelemetry;
   readonly headlinerTelemetry: Floor4HeadlinerTelemetry;
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
+  /** Per-act realised income, in act order, for acts that reached a break. */
+  readonly actIncome: readonly Floor4ActIncomeEntry[];
 }
 
 /**

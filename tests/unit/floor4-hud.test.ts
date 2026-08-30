@@ -24,6 +24,7 @@ function headliner(
     displayName: 'Camera Kraken',
     entranceAnnouncement: 'CAMERA KRAKEN — all angles are bad angles!',
     appearanceFeeGold: 28,
+    contactDamage: 10,
     fixedFinale: false,
     bossEid: 123,
     defeated: false,
@@ -40,6 +41,7 @@ function headliner(
 function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
   return {
     phase: { kind: 'WAVES', act: 2 },
+    actIncome: [],
     arenaElapsedMs: 120_000 + 24_000,
     phaseElapsedMs: 24_000,
     overtimeFinisherAnnounced: false,
@@ -63,7 +65,7 @@ function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
       overtimeStarted: 0,
       overtimeStepsApplied: 0,
     },
-    actBaseline: { playerGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
+    actBaseline: { playerGold: 20, dropGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
     waves: {
       act: 2,
       manifests: Array.from({ length: 8 }, (_, waveIndex) => ({

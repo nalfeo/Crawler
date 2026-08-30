@@ -53,6 +53,19 @@ interface Floor4WaveValidationInput {
       readonly eligibleGrades: readonly string[];
       readonly fixedArchetypeId?: string;
       readonly appearanceFeeGold: number;
+      readonly contactDamage: number;
+    }[];
+  };
+  readonly economy?: {
+    readonly actIncomeBudgetGold: readonly {
+      readonly act: number;
+      readonly minWaveGold: number;
+      readonly maxWaveGold: number;
+    }[];
+    readonly visitPriceBandGold: readonly {
+      readonly visitIndex: number;
+      readonly minGold: number;
+      readonly maxGold: number;
     }[];
   };
   readonly overtime?: {
@@ -687,6 +700,48 @@ export const floorManifestDefSchema = z
                       .min(1),
                     fixedArchetypeId: z.string().min(1).optional(),
                     appearanceFeeGold: z.number().int().nonnegative(),
+                    contactDamage: z.number().int().positive(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict(),
+        /**
+         * Slice-7 economy contract (spec FR6.7/FR6.8, FR10.3).
+         *
+         * `actIncomeBudgetGold` is the authored band of **wave drop income**
+         * one act may realise, excluding the guaranteed Headliner appearance
+         * fee (which is authored per slot and reported separately). The
+         * headless gate asserts realised per-act income against it, so a
+         * balance change that quietly inflates or starves the gold curve fails
+         * loudly instead of drifting.
+         *
+         * `visitPriceBandGold` is the authored price window each visit's rolled
+         * stock must land inside, derived from the archetype pools scaled by
+         * that visit's `priceTierByVisit`. Enforced when the visit rolls, so a
+         * pool or tier edit that pushes prices out of band cannot ship silently.
+         */
+        economy: z
+          .object({
+            actIncomeBudgetGold: z
+              .array(
+                z
+                  .object({
+                    act: z.number().int().min(1).max(5),
+                    minWaveGold: z.number().int().nonnegative(),
+                    maxWaveGold: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+            visitPriceBandGold: z
+              .array(
+                z
+                  .object({
+                    visitIndex: z.number().int().min(0).max(4),
+                    minGold: z.number().int().positive(),
+                    maxGold: z.number().int().positive(),
                   })
                   .strict(),
               )
@@ -779,6 +834,62 @@ export const floorManifestDefSchema = z
               code: z.ZodIssueCode.custom,
               path: ['greenRoom', 'affordabilityBudgetByVisit', index],
               message: `expected Green Room affordability budget for act ${act} to match appearanceFeeGold ${slot.appearanceFeeGold}`,
+            });
+          }
+        }
+        // Slice-7 economy contract (FR6.7/FR6.8). Both bands must cover every
+        // act/visit exactly once, be ordered, and stay coupled to the
+        // affordability budget so an authored band can never make a break
+        // unshoppable.
+        const economy = floor4.economy;
+        const expectedIncomeActs = Array.from(
+          { length: floor4.phase.actCount },
+          (_unused, index) => index + 1,
+        );
+        if (
+          economy.actIncomeBudgetGold.map((entry) => entry.act).join(',') !==
+          expectedIncomeActs.join(',')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['economy', 'actIncomeBudgetGold'],
+            message: `income budgets must list acts ${expectedIncomeActs.join(',')} exactly once, in order`,
+          });
+        }
+        for (const [index, entry] of economy.actIncomeBudgetGold.entries()) {
+          if (entry.minWaveGold > entry.maxWaveGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'actIncomeBudgetGold', index],
+              message: `act ${entry.act} income budget is inverted (${entry.minWaveGold} > ${entry.maxWaveGold})`,
+            });
+          }
+        }
+        const expectedVisits = expectedIncomeActs.map((act) => act - 1);
+        if (
+          economy.visitPriceBandGold.map((entry) => entry.visitIndex).join(',') !==
+          expectedVisits.join(',')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['economy', 'visitPriceBandGold'],
+            message: `price bands must list visits ${expectedVisits.join(',')} exactly once, in order`,
+          });
+        }
+        for (const [index, band] of economy.visitPriceBandGold.entries()) {
+          if (band.minGold > band.maxGold) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'visitPriceBandGold', index],
+              message: `visit ${band.visitIndex} price band is inverted (${band.minGold} > ${band.maxGold})`,
+            });
+          }
+          const budget = greenRoom.affordabilityBudgetByVisit[band.visitIndex];
+          if (budget !== undefined && band.minGold > budget) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['economy', 'visitPriceBandGold', index],
+              message: `visit ${band.visitIndex} cheapest authorized price ${band.minGold} exceeds its affordability budget ${budget}, so the break could not be shopped`,
             });
           }
         }

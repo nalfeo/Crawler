@@ -207,29 +207,50 @@
         {
           "act": 1,
           "eligibleGrades": ["warmup"],
-          "appearanceFeeGold": 18
+          "appearanceFeeGold": 18,
+          "contactDamage": 8
         },
         {
           "act": 2,
           "eligibleGrades": ["warmup", "midcard"],
-          "appearanceFeeGold": 28
+          "appearanceFeeGold": 28,
+          "contactDamage": 10
         },
         {
           "act": 3,
           "eligibleGrades": ["midcard"],
-          "appearanceFeeGold": 40
+          "appearanceFeeGold": 40,
+          "contactDamage": 12
         },
         {
           "act": 4,
           "eligibleGrades": ["main-event"],
-          "appearanceFeeGold": 55
+          "appearanceFeeGold": 55,
+          "contactDamage": 14
         },
         {
           "act": 5,
           "eligibleGrades": ["finale"],
           "fixedArchetypeId": "floor4-showrunner",
-          "appearanceFeeGold": 75
+          "appearanceFeeGold": 75,
+          "contactDamage": 16
         }
+      ]
+    },
+    "economy": {
+      "actIncomeBudgetGold": [
+        { "act": 1, "minWaveGold": 0, "maxWaveGold": 24 },
+        { "act": 2, "minWaveGold": 4, "maxWaveGold": 50 },
+        { "act": 3, "minWaveGold": 8, "maxWaveGold": 56 },
+        { "act": 4, "minWaveGold": 8, "maxWaveGold": 64 },
+        { "act": 5, "minWaveGold": 4, "maxWaveGold": 80 }
+      ],
+      "visitPriceBandGold": [
+        { "visitIndex": 0, "minGold": 5, "maxGold": 36 },
+        { "visitIndex": 1, "minGold": 7, "maxGold": 50 },
+        { "visitIndex": 2, "minGold": 11, "maxGold": 79 },
+        { "visitIndex": 3, "minGold": 15, "maxGold": 108 },
+        { "visitIndex": 4, "minGold": 20, "maxGold": 144 }
       ]
     },
     "overtime": {

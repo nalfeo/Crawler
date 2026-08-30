@@ -215,6 +215,30 @@ function createFloor4HeadlinerTelemetry(): Floor4HeadlinerTelemetry {
   };
 }
 
+/**
+ * Bank the act's realised income at the break (spec FR10.3 / slice 7).
+ *
+ * `waveGold` is the `goldLedger.earnedFromDrops` delta over the act window, so
+ * only wave/drop income is budgeted. Non-drop sources (e.g. achievement loot
+ * boxes) and the guaranteed appearance fee stay separable.
+ */
+function recordFloor4ActIncome(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  act: Floor4ActIndex,
+): void {
+  const card = state.headlinerCard.find((entry) => entry.act === act);
+  const appearanceFeeGold = card && state.activeHeadliner?.feeGranted ? card.appearanceFeeGold : 0;
+  const dropDelta = world.goldLedger.earnedFromDrops - state.actBaseline.dropGold;
+  const waveGold = Math.max(0, dropDelta);
+  state.actIncome.push({
+    act,
+    waveGold,
+    appearanceFeeGold,
+    totalGold: waveGold + appearanceFeeGold,
+  });
+}
+
 function recordFloor4PhaseTransition(
   world: GameWorld,
   state: Floor4ArenaState,
@@ -255,6 +279,7 @@ function recordFloor4PhaseTransition(
     // the run-cumulative totals (spec slice 6 / FR6).
     state.actBaseline = {
       playerGold: world.playerGold,
+      dropGold: world.goldLedger.earnedFromDrops,
       enemiesSpawned: state.waveTelemetry.enemiesSpawned,
       enemiesCut: state.waveTelemetry.enemiesCut,
     };
@@ -266,6 +291,7 @@ function recordFloor4PhaseTransition(
     // must not diff against the live, still-mutating balance or "Gold
     // earned" would shrink in real time as the player shops at sponsors.
     state.breakGoldSnapshot = world.playerGold;
+    recordFloor4ActIncome(world, state, phase.act);
     const opened = openFloor4GreenRoomVisit(world, phase.act - 1);
     if (!opened.ok) {
       throw new Error(opened.message);
@@ -286,7 +312,13 @@ function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
     keptCompanionCoStarActive: false,
     waveTelemetry: createFloor4WaveTelemetry(),
     headlinerTelemetry: createFloor4HeadlinerTelemetry(),
-    actBaseline: { playerGold: world.playerGold, enemiesSpawned: 0, enemiesCut: 0 },
+    actBaseline: {
+      playerGold: world.playerGold,
+      dropGold: world.goldLedger.earnedFromDrops,
+      enemiesSpawned: 0,
+      enemiesCut: 0,
+    },
+    actIncome: [],
   };
   recordFloor4PhaseTransition(world, state, { kind: 'COUNTDOWN' }, 'floor4-initialized');
   return state;
@@ -962,7 +994,10 @@ function spawnFloor4Headliner(
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
   });
-  const baseDamage = 12 + act * 3;
+  // Authored, not derived (FR8.2): the per-act contact damage curve is a
+  // balance knob owned by the manifest, so the slice-7 tuning pass can move it
+  // without editing the director.
+  const baseDamage = card.contactDamage;
   addComponent(world.ecs, eid, set(Damage, { amount: baseDamage, cooldownMs: 0, lastFireMs: 0 }));
   setEnemyAppearanceKey(world, eid, archetype.id);
   state.activeHeadliner = {
@@ -1160,6 +1195,7 @@ export function getFloor4ArenaRunStats(world: GameWorld): Floor4ArenaRunStats | 
     waveTelemetry: { ...state.waveTelemetry },
     headlinerTelemetry: { ...state.headlinerTelemetry },
     headlinerCard: state.headlinerCard.map((entry) => ({ ...entry })),
+    actIncome: state.actIncome.map((entry) => ({ ...entry })),
   };
 }
 
