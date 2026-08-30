@@ -23,7 +23,8 @@ The AI Runner lab exposes three boolean behavior gates: weapon personas, optiona
 - **DEC-003**: Resolve all runtime reads into one complete `AiFeatureFlags` record before consumers execute.
 - **DEC-004**: Generate the AI Runner lab's dedicated Feature Flags folder from the registry rather than declaring controllers individually.
 - **DEC-005**: Preserve old lab persistence and headless caller compatibility on reads while writing only the canonical feature-flag record.
-- **DEC-006**: Keep unrelated world feature families, including Floor 2 equipment and attack-wave flags, outside this AI-runner registry.
+- **DEC-006**: Represent an absent headless-CLI flag as `undefined` and omit it from the runner config, so the registry — not the CLI parser — owns every effective default (explicit flags and env vars still override).
+- **DEC-007**: Keep unrelated world feature families, including Floor 2 equipment and attack-wave flags, outside this AI-runner registry.
 
 ## Consequences
 
@@ -33,6 +34,7 @@ The AI Runner lab exposes three boolean behavior gates: weapon personas, optiona
 - **POS-002**: Type checking keeps registry keys, resolved state, persistence, and runtime consumers aligned.
 - **POS-003**: Surface-aware defaults make existing behavior differences explicit and testable.
 - **POS-004**: Legacy optional-purchase state continues to resolve through its established precedence rules.
+- **POS-005**: The headless CLI banner is generated from the registry, so it reports the flags the run actually uses.
 
 ### Negative
 

@@ -19,7 +19,6 @@ export { AIState, AIPathingMode, AIDecisionMode } from './types.js';
 export { runHeadless } from './headless-runner.js';
 export { PLAYER_PERSONAS, getPersonaConfig } from './personas.js';
 export {
-  AI_FEATURE_FLAG_DEFINITIONS,
   getAiFeatureFlagControls,
   resolveAiFeatureFlags,
   type AiFeatureFlagKey,

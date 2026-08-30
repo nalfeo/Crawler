@@ -1,21 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  AI_FEATURE_FLAG_DEFINITIONS,
   getAiFeatureFlagControls,
   resolveAiFeatureFlags,
 } from '../../../src/game/ai/feature-flags.js';
 
 describe('AI feature flag registry', () => {
   it('is the complete ordered source for AI runner feature controls', () => {
-    expect(AI_FEATURE_FLAG_DEFINITIONS.map(({ key }) => key)).toEqual([
+    expect(getAiFeatureFlagControls().map(({ key }) => key)).toEqual([
       'weaponPersonas',
       'optionalPurchases',
       'settlementReturnRouting',
     ]);
-    expect(getAiFeatureFlagControls()).toEqual(
-      AI_FEATURE_FLAG_DEFINITIONS.map(({ key, label }) => ({ key, label })),
-    );
+    expect(getAiFeatureFlagControls().every(({ label }) => label.length > 0)).toBe(true);
   });
 
   it('preserves lab defaults', () => {
@@ -81,5 +78,13 @@ describe('AI feature flag registry', () => {
     expect(source).toContain(
       "logger.info('Starting headless run', { ...mergedConfig, ...featureFlags });",
     );
+  });
+
+  it('drives the headless CLI banner from the registry instead of CLI-local defaults', () => {
+    const source = readFileSync('src/game/ai/headless-runner-cli.ts', 'utf8');
+
+    expect(source).toContain('for (const control of getAiFeatureFlagControls())');
+    expect(source).not.toContain('weaponPersonas: args.weaponPersonas');
+    expect(source).not.toContain('optionalPurchases: args.optionalPurchases');
   });
 });

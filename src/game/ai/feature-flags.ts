@@ -5,7 +5,7 @@ export interface AiFeatureFlagContext {
   floorId: string;
 }
 
-export const AI_FEATURE_FLAG_DEFINITIONS = [
+const AI_FEATURE_FLAG_DEFINITIONS = [
   {
     key: 'weaponPersonas',
     label: 'Weapon personas',
