@@ -77,6 +77,24 @@ function resolveMarkdownPath(source: string): string {
   return path.normalize(path.join(path.dirname(LORE_BIBLE_PATH), source)).replaceAll(path.sep, '/');
 }
 
+/**
+ * Repository-relative paths the Lore Bible cites as provenance. Anything in
+ * this set must keep resolving: `check-lore-canon` hard-blocks on a dangling
+ * citation, so mutators of cited files (e.g. the handoff archiver) read this
+ * to leave them in place instead of breaking canon provenance.
+ */
+export function loreCitedPaths(loreText?: string): string[] {
+  let text = loreText;
+  if (text === undefined) {
+    try {
+      text = readFileSync(fromRepo(LORE_BIBLE_PATH), 'utf8');
+    } catch {
+      return [];
+    }
+  }
+  return [...new Set(sourcePaths(text).map(resolveMarkdownPath))];
+}
+
 export function validateLoreCanon(
   loreText: string,
   contradictionText: string,

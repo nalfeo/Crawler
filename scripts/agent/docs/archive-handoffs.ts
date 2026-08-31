@@ -10,6 +10,10 @@
  * Dry-run by default. Pass `--apply` (or set `AUTOMATION_APPLY=1`) to actually
  * move files. Workflow uses `--apply` then opens a PR with the moves.
  *
+ * Handoffs cited by the Lore Bible are pinned in place: `check-lore-canon`
+ * hard-blocks on a dangling canon citation, so archiving one would break the
+ * docs loop permanently rather than only reshuffling directories.
+ *
  * Exit code is always 0; "did anything change" is reported via stdout summary
  * + the file count, which the workflow uses to decide whether to open a PR.
  */
@@ -18,6 +22,7 @@ import { mkdirSync, readdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { loreCitedPaths } from './check-lore-canon.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
 const ARCHIVE_DIR = 'docs/knowledge/handoffs/archive';
@@ -54,6 +59,8 @@ async function main(): Promise<void> {
 
   mkdirSync(absArchive, { recursive: true });
 
+  const pinned = new Set(loreCitedPaths());
+
   let moved = 0;
   let wouldMove = 0;
 
@@ -71,6 +78,10 @@ async function main(): Promise<void> {
     }
     const age = daysBetween(today, date);
     if (age <= MAX_AGE_DAYS) continue;
+    if (pinned.has(`${HANDOFFS_DIR}/${entry}`)) {
+      report.info(`Pinned ${entry} (age ${age}d): cited by the Lore Bible.`);
+      continue;
+    }
     const dest = path.join(absArchive, entry);
     if (apply) {
       renameSync(abs, dest);

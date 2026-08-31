@@ -1,5 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
+import { loreCitedPaths, validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
 
 describe('lore canon validation', () => {
   it('requires the canonical sections and rejects unresolved escalation records', () => {
@@ -89,5 +90,36 @@ describe('lore canon validation', () => {
     );
 
     expect(result.unresolvedContradictions).toBe(true);
+  });
+});
+
+describe('lore citation pinning', () => {
+  it('resolves cited handoff paths relative to the repository root', () => {
+    const cited = loreCitedPaths(
+      '**Sources:** [handoff](../handoffs/2026-07-24-example.md), [gdd](game-design-document.md)',
+    );
+
+    expect(cited).toContain('docs/knowledge/handoffs/2026-07-24-example.md');
+    expect(cited).toContain('docs/knowledge/game-design/game-design-document.md');
+  });
+
+  it('keeps the real Lore Bible citations inside the live handoffs directory', () => {
+    const cited = loreCitedPaths().filter((source) =>
+      source.startsWith('docs/knowledge/handoffs/'),
+    );
+
+    expect(cited.length).toBeGreaterThan(0);
+    for (const source of cited) {
+      expect(existsSync(source)).toBe(true);
+      expect(source.startsWith('docs/knowledge/handoffs/archive/')).toBe(false);
+    }
+  });
+
+  it('makes the handoff archiver skip Lore-Bible-cited handoffs', () => {
+    const source = readFileSync('scripts/agent/docs/archive-handoffs.ts', 'utf8');
+
+    expect(source).toContain("import { loreCitedPaths } from './check-lore-canon.js'");
+    expect(source).toContain('const pinned = new Set(loreCitedPaths());');
+    expect(source).toMatch(/if \(pinned\.has\(`\$\{HANDOFFS_DIR\}\/\$\{entry\}`\)\) \{/);
   });
 });
