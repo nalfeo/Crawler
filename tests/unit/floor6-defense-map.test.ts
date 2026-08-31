@@ -43,7 +43,7 @@ function footprintFits(
   return true;
 }
 
-function canReachRelay(
+function canReach(
   map: FloorMap,
   start: Floor6TilePoint,
   target: Floor6TilePoint,
@@ -70,6 +70,33 @@ function canReachRelay(
     }
   }
   return false;
+}
+
+function centerOf(bounds: {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}): Floor6TilePoint {
+  return {
+    x: bounds.x + Math.floor(bounds.width / 2),
+    y: bounds.y + Math.floor(bounds.height / 2),
+  };
+}
+
+function siteBlockers(
+  map: FloorMap,
+  layout: ReturnType<typeof computeBroadcastRelaySetLayout>,
+): Set<number> {
+  const blocked = new Set<number>();
+  for (const site of layout.buildSites) {
+    for (let y = site.bounds.y; y < site.bounds.y + site.bounds.height; y += 1) {
+      for (let x = site.bounds.x; x < site.bounds.x + site.bounds.width; x += 1) {
+        blocked.add(tileKey(map, x, y));
+      }
+    }
+  }
+  return blocked;
 }
 
 describe('Floor 6 authored defense map', () => {
@@ -100,7 +127,7 @@ describe('Floor 6 authored defense map', () => {
       expect(entrance, `missing entrance for ${route.id}`).toBeDefined();
       for (const footprint of layout.supportedFootprints) {
         expect(
-          canReachRelay(map, entrance!.spawn, layout.broadcastRelay.target, footprint),
+          canReach(map, entrance!.spawn, layout.broadcastRelay.target, footprint),
           `${route.id} must reach the Relay for ${footprint.id}`,
         ).toBe(true);
       }
@@ -142,9 +169,59 @@ describe('Floor 6 authored defense map', () => {
       const entrance = layout.entrances.find((candidate) => candidate.id === route.entranceId)!;
       for (const footprint of layout.supportedFootprints) {
         expect(
-          canReachRelay(map, entrance.spawn, layout.broadcastRelay.target, footprint, blockedSites),
+          canReach(map, entrance.spawn, layout.broadcastRelay.target, footprint, blockedSites),
           `${route.id} must remain open when every site is occupied for ${footprint.id}`,
         ).toBe(true);
+      }
+    }
+  });
+
+  it('keeps every player destination reachable for every supported footprint', () => {
+    const map = generate();
+    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const blockedSites = siteBlockers(map, layout);
+    const destinations = [layout.pickupAccess, layout.breakEnclosure, layout.victoryExit] as const;
+
+    for (const footprint of layout.supportedFootprints) {
+      for (const destination of destinations) {
+        expect(
+          canReach(map, map.playerSpawn, centerOf(destination.bounds), footprint, blockedSites),
+          `player ingress must reach ${destination.id} for ${footprint.id}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('does not add a non-lane enemy entrance-to-Relay route', () => {
+    const map = generate();
+    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const routeTiles = getBroadcastRelayRouteTiles(layout);
+    const routeTileKeys = new Set(routeTiles.map((point) => tileKey(map, point.x, point.y)));
+
+    for (const point of routeTiles) {
+      expect(
+        point.x >= layout.breakAccess.bounds.x &&
+          point.x < layout.breakAccess.bounds.x + layout.breakAccess.bounds.width &&
+          point.y >= layout.breakAccess.bounds.y &&
+          point.y < layout.breakAccess.bounds.y + layout.breakAccess.bounds.height,
+      ).toBe(false);
+    }
+
+    for (const route of layout.routes) {
+      const entrance = layout.entrances.find((candidate) => candidate.id === route.entranceId)!;
+      for (const footprint of layout.supportedFootprints) {
+        const blockedRoutes = new Set(routeTileKeys);
+        for (const endpoint of [entrance.spawn, layout.broadcastRelay.target]) {
+          for (let dy = 0; dy < footprint.heightTiles; dy += 1) {
+            for (let dx = 0; dx < footprint.widthTiles; dx += 1) {
+              blockedRoutes.delete(tileKey(map, endpoint.x + dx, endpoint.y + dy));
+            }
+          }
+        }
+        expect(
+          canReach(map, entrance.spawn, layout.broadcastRelay.target, footprint, blockedRoutes),
+          `${route.id} must not gain an off-lane path for ${footprint.id}`,
+        ).toBe(false);
       }
     }
   });

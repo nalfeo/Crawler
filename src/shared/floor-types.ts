@@ -971,6 +971,7 @@ export interface Floor6DefenseGeometry {
   readonly routes: readonly Floor6Route[];
   readonly buildSites: readonly Floor6SemanticArea[];
   readonly pickupAccess: Floor6SemanticArea;
+  readonly breakAccess: Floor6SemanticArea;
   readonly breakEnclosure: Floor6SemanticArea;
   readonly victoryExit: Floor6SemanticArea;
   readonly supportedFootprints: readonly Floor6SupportedFootprint[];

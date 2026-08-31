@@ -164,6 +164,7 @@ export function computeBroadcastRelaySetLayout(
     routes,
     buildSites,
     pickupAccess: area('pickup-access', { x: 46, y: 36, width: 8, height: 8 }),
+    breakAccess: area('pickup-break-access', { x: 53, y: 38, width: 6, height: 3 }),
     breakEnclosure: area('break-enclosure', { x: 58, y: 35, width: 10, height: 9 }),
     victoryExit: area('victory-exit', { x: 66, y: 20, width: 4, height: 9 }),
     supportedFootprints: Object.freeze(supportedFootprints),
@@ -266,6 +267,7 @@ export class BroadcastRelaySetGenerator implements MapGenerator {
     carve(layout.broadcastRelay.bounds, TerrainType.WOOD_FLOOR);
     carve(layout.playerIngress.bounds, TerrainType.STONE_FLOOR);
     carve(layout.pickupAccess.bounds, TerrainType.SAFE_ROOM_FLOOR);
+    carve(layout.breakAccess.bounds, TerrainType.CORRIDOR);
     carve(layout.breakEnclosure.bounds, TerrainType.SAFE_ROOM_FLOOR);
     carve(layout.victoryExit.bounds, TerrainType.BOSS_STAIR_FLOOR);
     for (const site of layout.buildSites) carve(site.bounds, TerrainType.WOOD_FLOOR);
@@ -293,8 +295,8 @@ export class BroadcastRelaySetGenerator implements MapGenerator {
       RoomRole.NORMAL,
       layout.entrances[1]!.id,
     );
-    roomGraph.add(layout.pickupAccess.bounds, [], [1], RoomRole.NORMAL, layout.pickupAccess.id);
-    roomGraph.add(layout.breakEnclosure.bounds, [], [], RoomRole.NORMAL, layout.breakEnclosure.id);
+    roomGraph.add(layout.pickupAccess.bounds, [], [1, 5], RoomRole.NORMAL, layout.pickupAccess.id);
+    roomGraph.add(layout.breakEnclosure.bounds, [], [4], RoomRole.NORMAL, layout.breakEnclosure.id);
     roomGraph.add(layout.victoryExit.bounds, [], [1], RoomRole.NORMAL, layout.victoryExit.id);
 
     const spawn = {
