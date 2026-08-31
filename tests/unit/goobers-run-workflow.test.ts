@@ -221,10 +221,13 @@ describe('Goobers automatic dispatch and recovery', () => {
     // older eligible issue and falsely report "no work" when the fetched
     // page happens to be all assigned/in-review.
     expect(recoveryStep?.run).toContain('gh search issues');
-    expect(recoveryStep?.run).toContain('is:issue is:open label:\\"goobers:approved\\"');
-    expect(recoveryStep?.run).toContain('-label:\\"goobers/status:in-review\\"');
-    expect(recoveryStep?.run).toContain('no:assignee');
+    expect(recoveryStep?.run).toContain('--repo "${GITHUB_REPOSITORY}"');
+    expect(recoveryStep?.run).toContain('--state open');
+    expect(recoveryStep?.run).toContain("--label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain('--no-assignee');
+    expect(recoveryStep?.run).toContain('-- \'-label:"goobers/status:in-review"\'');
     expect(recoveryStep?.run).toContain('--sort created --order asc');
+    expect(recoveryStep?.run).not.toContain('"repo:${GITHUB_REPOSITORY} is:issue');
     expect(recoveryStep?.run).toContain('should_run=false');
     expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
     // An empty backlog sweep must skip every costly setup step (binary
