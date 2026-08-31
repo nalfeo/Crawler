@@ -30,5 +30,19 @@ windowed/headless scenario initialization across core, shared data, game wiring,
 
 ## Verification
 
-Per the task request, no lint, build, or test command was run after implementation. The parent
-session owns verification and real-artifact observation.
+- `npm run verify:pr-prereqs` — passed after ADR 0098 was added for the cross-layer decision.
+- Independent post-diff review ran the Floor 6 parity test and reported it passing; it also ran
+  TypeScript and ESLint checks plus the relevant manifest/registry suites clean.
+- A second independent review found the initially isolated break enclosure and a vacuous
+  off-lane regression assertion. Both were corrected in `5ec5869` and `477eb94`.
+- CodeQL reported no alerts, but skipped JavaScript analysis because the database exceeded its
+  size limit.
+
+## Runtime observation
+
+- Before: static map review found the break enclosure was an isolated passable island, so neither
+  supported footprint could enter it from the production map.
+- After: the real generated `BroadcastRelaySetGenerator` map has a fixed pickup-to-break
+  connector; the focused footprint traversal checks cover ingress to pickup access, break
+  enclosure, and exit, while the shared windowed/headless initialization parity artifact remains
+  byte-equivalent.
