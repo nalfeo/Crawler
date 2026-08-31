@@ -254,7 +254,9 @@ describe('MainGameScene characterization guards', () => {
       expect(new URL(page.url()).searchParams.get('floor')).toBe('floor3');
       expect(floor3State.floorId).toBe('floor3');
       expect(floor3LoadoutState.worldState).toBe('loadout');
-      expect(floor3LoadoutContent?.title).toBe('Welcome to the Companion League');
+      const floor3Npcs = await mainSceneProbe.getNpcRenderInfo(page);
+      expect(floor3Npcs.some((npc) => npc.defId === 'floor3-companion-professor')).toBe(true);
+      expect(floor3LoadoutContent?.title).toBe("Professor Thistle's Companion Briefing");
       expect(floor3LoadoutContent?.options).toHaveLength(1);
 
       await page.keyboard.press('Enter');
@@ -265,7 +267,7 @@ describe('MainGameScene characterization guards', () => {
       );
       const floor3StarterContent = await mainSceneProbe.getModalPickerContent(page);
 
-      expect(floor3StarterContent?.title).toBe('Choose your starter Companion');
+      expect(floor3StarterContent?.title).toBe('Professor Thistle: Choose your starter Companion');
       expect(floor3StarterContent?.options).toHaveLength(4);
       expect(
         floor3StarterContent?.options.every(

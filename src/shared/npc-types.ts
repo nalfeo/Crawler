@@ -319,6 +319,28 @@ const THE_BROKER_DEF: NpcDef = {
   heightFt: 3.5,
 };
 
+export const FLOOR3_COMPANION_PROFESSOR_NPC_ID = 'floor3-companion-professor';
+
+const FLOOR3_COMPANION_PROFESSOR_DEF: NpcDef = {
+  id: FLOOR3_COMPANION_PROFESSOR_NPC_ID,
+  name: 'Professor Thistle',
+  dialogue: [
+    {
+      text: "Welcome to the Companion League, Wrangler. Network says you don't fight on this floor — your sponsored Companion does.",
+    },
+    {
+      text: 'Pick one starter, keep them breathing, then poach talent from every Trainer foolish enough to lose on camera.',
+    },
+    {
+      text: 'Choose carefully. The safe-room door stays shut until you have a Companion signed to your roster.',
+    },
+  ],
+  quests: [],
+  textureId: 10,
+  widthFt: 2.5,
+  heightFt: 3.5,
+};
+
 export const FLOOR2_DEFECTOR_NPC_ID = 'floor2-defector';
 
 function formatFloor2FamilyName(familyId: string): string {
@@ -393,6 +415,7 @@ const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],
   [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
   [THE_BROKER_DEF.id, THE_BROKER_DEF],
+  [FLOOR3_COMPANION_PROFESSOR_DEF.id, FLOOR3_COMPANION_PROFESSOR_DEF],
   [FLOOR2_DEFECTOR_DEF.id, FLOOR2_DEFECTOR_DEF],
   [SHOP_THE_FENCE_DEF.id, SHOP_THE_FENCE_DEF],
   [SHOP_THE_APOTHECARY_DEF.id, SHOP_THE_APOTHECARY_DEF],

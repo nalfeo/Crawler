@@ -29,7 +29,7 @@ const FLOOR3_INTRO_ACKNOWLEDGE_ID = 'floor3-intro-ack';
  * the win condition.
  */
 const FLOOR3_INTRO_RULES: readonly string[] = [
-  'The format: you are a Wrangler in the Companion League. Your Companions battle; you command.',
+  'Professor Thistle: you are a Wrangler in the Companion League. Your Companions battle; you command.',
   'You never fight. Wranglers and handlers are insured non-combatants — only Companions take damage.',
   'Recruit: pick 1 starter now, then poach 1 Companion from every Trainer you beat.',
   'The lock: starter + 5 poaches = 6 Companions, then your roster signs for the season.',
@@ -63,8 +63,8 @@ function speciesOption(speciesId: string, index: number, level: number): ModalPi
 export function buildFloor3IntroModel(): ModalPickerConfig {
   return {
     kind: FLOOR3_INTRO_PICKER_KIND,
-    title: 'Welcome to the Companion League',
-    subtitle: 'Floor 3 · Season rules briefing',
+    title: "Professor Thistle's Companion Briefing",
+    subtitle: 'Floor 3 · Pick a starter before the safe-room door opens',
     body: FLOOR3_INTRO_RULES.join('\n'),
     options: [
       {
@@ -84,9 +84,9 @@ export function buildFloor3StarterPickerModel(
 ): ModalPickerConfig {
   return {
     kind: FLOOR3_STARTER_PICKER_KIND,
-    title: 'Choose your starter Companion',
+    title: 'Professor Thistle: Choose your starter Companion',
     subtitle: 'Floor 3 is paused until you confirm a starter.',
-    body: 'Pick the Companion you want to begin the Companion League with.',
+    body: 'Pick the Companion Professor Thistle signs to your roster for the Companion League.',
     options: offerSpeciesIds.map((speciesId, index) => speciesOption(speciesId, index, 1)),
     allowCancel: true,
     ...(offerSpeciesIds[0] !== undefined ? { initialSelectedId: offerSpeciesIds[0] } : {}),

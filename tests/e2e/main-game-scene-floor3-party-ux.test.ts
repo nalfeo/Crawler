@@ -90,7 +90,7 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       await page.keyboard.press('Enter');
       await waitForModalTitle(
         page,
-        'Choose your starter Companion',
+        'Professor Thistle: Choose your starter Companion',
         'Floor 3 starter-companion modal after intro',
       );
 
