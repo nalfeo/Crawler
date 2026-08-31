@@ -346,6 +346,9 @@ export function normalizeBlockers(blockers) {
         : {}),
       ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
       ...(blocker.scopeMismatchTrusted === true ? { scopeMismatchTrusted: true } : {}),
+      ...(blocker.protectedPathCapabilityDenied === true
+        ? { protectedPathCapabilityDenied: true }
+        : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -980,11 +983,36 @@ export function isScopeMismatchReviewBlocker(blocker) {
   if (scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise)) {
     return true;
   }
+
   const namesScopeCreepReference = scopeCreepScopeReferencePattern.test(text);
   return (
     scopeCreepUndeclaredPattern.test(text) &&
     scopeCreepRemedyPattern.test(text) &&
     namesScopeCreepReference
+  );
+}
+
+export function isProtectedPathCapabilityDenial(body) {
+  const text = compact(body);
+  if (!/(?:^|[^a-z0-9_.-])\.github[\\/]agents(?:[\\/]|\b)/i.test(text)) return false;
+  const namesCapabilityLimit =
+    /\b(?:environment|session|permissions?|policy|instructions?)\b.{0,120}\b(?:disallow(?:s|ed)?|forbid(?:s|den)?|prevent(?:s|ed)?|cannot|can't|unable|not\s+permitted|no\s+access)\b/i.test(
+      text,
+    );
+  const namesBlockedRepair =
+    /\b(?:cannot|can't|unable\s+to)\s+(?:complete|address|fix|update|read|edit|access|modify)\b/i.test(
+      text,
+    );
+  return namesCapabilityLimit && namesBlockedRepair;
+}
+
+export function shouldQuarantineProtectedPathBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) =>
+        blocker.kind === 'review-thread' && blocker.protectedPathCapabilityDenied === true,
+    )
   );
 }
 

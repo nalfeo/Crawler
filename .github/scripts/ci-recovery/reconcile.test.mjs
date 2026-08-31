@@ -12632,6 +12632,119 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
   );
 });
 
+test('trusted protected-path denial quarantines instead of repeating an impossible dispatch', async (t) => {
+  const threadId = 'PRRT_protected_path_denial';
+  const recoveryReply =
+    'I fixed the currently-failing `Lightweight Checks` job: it was caused by two in-flight PRs (#3927, #3929) that merged to `main` after this branch diverged and added new `review-ledger.json` files (still following the old convention). Rebased onto `main` and removed those files in a9068d8e to restore the "no `docs/knowledge/review-ledgers` directory" invariant. ' +
+    "I can't complete the `.github/agents` portion of this request in this session — my environment explicitly disallows reading or editing files in that directory.";
+  assert.ok(
+    recoveryReply.indexOf("I can't complete") > 300,
+    'fixture must prove capability detection reads beyond the bounded 300-character hint',
+  );
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'scripts/agent/review/review-policy.test.mjs',
+    line: 14,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_protected_path_finding',
+          body: 'Include `.github/agents` in the retirement scan and update those definitions.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3939`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          id: 'PRIC_protected_path_denial',
+          body: recoveryReply,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3940`,
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      body: { name: 'ci-lifecycle-quarantined' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 6000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('protected-path denial must not discover or assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('protected-path denial must not resolve threads or run assignment mutations');
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined protected-path pr=#42/);
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  const quarantineComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-quarantine:v1 -->'),
+  );
+  assert.match(String(quarantineComment?.body), /protected path.*cannot read or edit/i);
+  const stateComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
+  );
+  assert.equal(parseStateComment(stateComment?.body)?.trigger, 'protected-path-quarantined');
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'protected-path denial must not post another Copilot repair task',
+  );
+});
+
 test('a later top-level marker reply for the same fingerprint clears an earlier non-marker hint', async (t) => {
   // Regression: a non-marker top-level reply (e.g. "Blocked outside this
   // branch") stores a stale hint keyed by blocker ID / stable thread ID. If a

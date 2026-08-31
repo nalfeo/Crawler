@@ -9,6 +9,7 @@ import {
   collapseCheckRunsByName,
   isAgentSessionRunning,
   isDuplicateDispatch,
+  isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
@@ -21,6 +22,7 @@ import {
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   shouldMutateRecoveryState,
+  shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ownerLabel,
   parseDispositionCommand,
@@ -2528,6 +2530,8 @@ const priorTopLevelReplyByBlockerId = new Map();
 // reviewer follow-up that changes the comment digest between the prior task
 // dispatch and the current run does not lose the top-level-reply hint.
 const priorTopLevelReplyByStableThreadId = new Map();
+const protectedPathDenialByBlockerId = new Set();
+const protectedPathDenialByStableThreadId = new Set();
 for (const comment of comments) {
   const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
   if (!KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) continue;
@@ -2555,8 +2559,12 @@ for (const comment of comments) {
     if (resolvedBlockerIds?.length) {
       for (const blockerId of resolvedBlockerIds) {
         priorTopLevelReplyByBlockerId.delete(blockerId);
+        protectedPathDenialByBlockerId.delete(blockerId);
         const stableThreadId = extractStableReviewThreadId(blockerId);
-        if (stableThreadId) priorTopLevelReplyByStableThreadId.delete(stableThreadId);
+        if (stableThreadId) {
+          priorTopLevelReplyByStableThreadId.delete(stableThreadId);
+          protectedPathDenialByStableThreadId.delete(stableThreadId);
+        }
       }
     }
     continue;
@@ -2566,13 +2574,18 @@ for (const comment of comments) {
   if (!blockerIds?.length) continue;
   const priorReply = summarizePriorRecoveryIssueComment(comment?.body);
   if (!priorReply) continue;
+  const protectedPathDenied = isProtectedPathCapabilityDenial(unquotedBody);
   // Keep the newest top-level recovery reply for a blocker ID: later dispatches
   // supersede older task attempts, so the most recent prior-attempt context is
   // the least misleading hint for the next recovery run.
   for (const blockerId of blockerIds) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
+    if (protectedPathDenied) protectedPathDenialByBlockerId.add(blockerId);
     const stableThreadId = extractStableReviewThreadId(blockerId);
-    if (stableThreadId) priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
+    if (stableThreadId) {
+      priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
+      if (protectedPathDenied) protectedPathDenialByStableThreadId.add(stableThreadId);
+    }
   }
 }
 
@@ -2590,6 +2603,7 @@ for (const comment of comments) {
 // (those have their own targeted hint) and contain a known recovery reply after
 // the most recent ✅ Addressed marker.
 const priorUnresolvedReplyByThread = new Map();
+const protectedPathDenialByThread = new Set();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
@@ -2601,6 +2615,9 @@ for (const thread of unresolvedThreads) {
     (blockerId ? priorTopLevelReplyByBlockerId.get(blockerId) : null) ??
     priorTopLevelReplyByStableThreadId.get(thread.id) ??
     null;
+  const topLevelProtectedPathDenied =
+    (blockerId ? protectedPathDenialByBlockerId.has(blockerId) : false) ||
+    protectedPathDenialByStableThreadId.has(thread.id);
   if (comments.length >= 2) {
     const last = comments[comments.length - 1];
     // Skip if the last comment already has a trusted marker (handled by stale
@@ -2630,7 +2647,11 @@ for (const thread of unresolvedThreads) {
         break;
       }
       if (KNOWN_RECOVERY_REPLY_LOGINS.has(login)) {
-        priorUnresolvedReplyByThread.set(thread.id, String(c?.body ?? '').slice(0, 300));
+        const replyBody = String(c?.body ?? '');
+        priorUnresolvedReplyByThread.set(thread.id, replyBody.slice(0, 300));
+        if (isProtectedPathCapabilityDenial(replyBody)) {
+          protectedPathDenialByThread.add(thread.id);
+        }
         break;
       }
     }
@@ -2638,6 +2659,7 @@ for (const thread of unresolvedThreads) {
   }
   if (topLevelPriorReply) {
     priorUnresolvedReplyByThread.set(thread.id, topLevelPriorReply);
+    if (topLevelProtectedPathDenied) protectedPathDenialByThread.add(thread.id);
   }
 }
 
@@ -3062,6 +3084,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     summary,
     isOutdated: thread.isOutdated === true,
     scopeMismatchTrusted: isTrustedComment(root),
+    protectedPathCapabilityDenied: protectedPathDenialByThread.has(thread.id),
     url: root?.url,
   });
 }
@@ -3210,6 +3233,55 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
       `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
     );
   }
+}
+
+if (shouldQuarantineProtectedPathBlockers(normalized)) {
+  const reason = 'protected-path-capability-denied';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted recovery agent reported that every remaining review blocker requires changes under `.github/agents/**`, a protected path that its session cannot read or edit. Re-dispatching the same task cannot make progress, and CI Recovery will not resolve the review thread without a valid marker.',
+    nextActions: [
+      'Use a maintainer or other authorized session to complete the `.github/agents/**` changes and post a valid `✅ Addressed in <sha>: <note>` reply on each blocked review thread.',
+      'After the protected-path review threads are resolved, post the exact standalone owner comment `KEEP` to resume this PR.',
+      'Abandon/close this PR by posting the exact standalone owner comment `ABANDON`.',
+    ],
+    keepOutcome:
+      'resume this PR after its protected-path review threads have been addressed by an authorized session',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('protected-path-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post protected-path quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'protected-path-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('protected-path-quarantined', quarantinedState));
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(`quarantined protected-path pr=#${prNumber}\n`);
+  process.exit(0);
 }
 
 const scopeMismatchBlocker =
