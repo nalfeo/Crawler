@@ -627,10 +627,21 @@ export async function findEpicPullRequestNumber({ requestFn, token, owner, repo,
   if (!sha) return null;
   const pulls = await requestFn(token, `/repos/${owner}/${repo}/commits/${sha}/pulls`);
   const candidates = pulls?.data || [];
-  // A squash-merged commit reports exactly one PR; prefer a merged one if a
-  // commit is somehow associated with several (e.g. an also-open backport).
-  const chosen = candidates.find((pullRequest) => pullRequest?.merged_at) || candidates[0];
-  return chosen?.number ?? null;
+  // GitHub can associate a commit SHA with several old/merged PRs (e.g. a
+  // cherry-pick or backport), so a merged association alone doesn't prove
+  // that PR is the one that actually carried this commit. Require the exact
+  // relationship the repo's other landed-PR resolver relies on: the PR's own
+  // merge commit must be this commit (see
+  // .github/scripts/merge-train/resolve-landed-pr.mjs:75-93).
+  const exact = candidates
+    .filter(
+      (pullRequest) =>
+        pullRequest?.merge_commit_sha === sha &&
+        typeof pullRequest?.merged_at === 'string' &&
+        Number.isInteger(pullRequest?.number),
+    )
+    .sort((left, right) => left.number - right.number)[0];
+  return exact?.number ?? null;
 }
 
 /**
@@ -639,9 +650,10 @@ export async function findEpicPullRequestNumber({ requestFn, token, owner, repo,
  * or already existed.
  */
 function epicIssueNumbers(result) {
-  return (result?.outcomes || [])
+  const numbers = (result?.outcomes || [])
     .map((outcome) => outcome.issueNumber)
     .filter((issueNumber) => Number.isInteger(issueNumber));
+  return Array.from(new Set(numbers));
 }
 
 export function buildEpicIssuesComment({

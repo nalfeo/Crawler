@@ -50,10 +50,13 @@ on:
 
 permissions:
   contents: read
+  # `issues: write` also authorizes posting the "issues created for this
+  # epic" summary comment on the pull request that carried the *.epic.json
+  # file: PR comments are issue comments under the REST API
+  # (`POST /issues/{pullNumber}/comments`), and GitHub accepts either
+  # Issues-write or Pull-requests-write for that endpoint — adding
+  # `pull-requests: write` too would only broaden the token unnecessarily.
   issues: write
-  # Needed to post the "issues created for this epic" summary comment on the
-  # pull request that carried the *.epic.json file.
-  pull-requests: write
 
 # Serialize runs so two overlapping triggers (e.g. a push and an issue close)
 # can never both observe "issue not yet created" and both create it.

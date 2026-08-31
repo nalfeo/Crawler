@@ -31,9 +31,10 @@ describe('epic workflows', () => {
 
   it('can comment created issue numbers back onto the epic pull request', () => {
     const workflow = loadWorkflow('epic-create.yml');
-    // The summary comment is posted as an issue comment on the PR, which needs
-    // the pull-requests scope in addition to issues.
-    expect(workflow.permissions?.['pull-requests']).toBe('write');
+    // The summary comment is posted as an issue comment on the PR
+    // (`POST /issues/{pullNumber}/comments`), which `issues: write` already
+    // authorizes — no separate pull-requests scope is needed or granted.
+    expect(workflow.permissions?.['pull-requests']).toBeUndefined();
     expect(workflow.jobs?.create?.env?.ISSUE_OWNER).toBe('nalfeo');
   });
 

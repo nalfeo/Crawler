@@ -658,7 +658,7 @@ test('planAndCreateEpic does not try to recreate labels that already exist', asy
  */
 function prHarness({
   commits = [{ sha: 'abc123' }],
-  pulls = [{ number: 42 }],
+  pulls = [{ number: 42, merge_commit_sha: 'abc123', merged_at: '2026-01-01T00:00:00Z' }],
   comments = [],
 } = {}) {
   const calls = [];
@@ -780,6 +780,56 @@ test('commentEpicIssuesOnPullRequest lists the created issue numbers on the epic
   );
 });
 
+test('commentEpicIssuesOnPullRequest dedupes a review issue counted twice in outcomes', async () => {
+  // The non-human-close retry path can record the review issue via both an
+  // `exists` outcome and a `closed-by-non-human` outcome for the same run; the
+  // marker's issue-number set must not double-count it, or reopening the
+  // review issue would post a duplicate summary comment for an unchanged set.
+  const epic = exampleEpic();
+  const h = prHarness();
+  const result = {
+    epicId: 'example-epic',
+    reviewIssueNumber: 100,
+    reviewApproved: false,
+    outcomes: [
+      { kind: 'review', action: 'exists', issueNumber: 100 },
+      { kind: 'review', action: 'closed-by-non-human', issueNumber: 100 },
+    ],
+  };
+
+  const posted = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result,
+    maintainerLogin: 'nalfeo',
+  });
+  assert.deepEqual(posted, { posted: true, pullNumber: 42, issueNumbers: [100] });
+  assert.ok(
+    h.comments[0].body.startsWith(
+      epicIssuesCommentMarker('example-epic', epicContentHash(epic), [100]),
+    ),
+  );
+
+  const repeat = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result,
+    maintainerLogin: 'nalfeo',
+  });
+  assert.equal(repeat.posted, false);
+  assert.equal(h.comments.length, 1);
+});
+
 test('the PR summary comment is idempotent for the same issue set but posts again once nodes materialize', async () => {
   const epic = exampleEpic();
   const h = prHarness();
@@ -824,8 +874,14 @@ test('no PR comment is attempted when the epic file has no associated pull reque
   assert.equal(h.comments.length, 0);
 });
 
-test('findEpicPullRequestNumber prefers the merged pull request for the file commit', async () => {
-  const h = prHarness({ pulls: [{ number: 7 }, { number: 8, merged_at: '2026-01-01T00:00:00Z' }] });
+test('findEpicPullRequestNumber requires the PR whose own merge commit is this commit', async () => {
+  const h = prHarness({
+    commits: [{ sha: 'abc123' }],
+    pulls: [
+      { number: 7, merge_commit_sha: 'other-sha', merged_at: '2025-01-01T00:00:00Z' },
+      { number: 8, merge_commit_sha: 'abc123', merged_at: '2026-01-01T00:00:00Z' },
+    ],
+  });
   assert.equal(
     await findEpicPullRequestNumber({
       requestFn: h.requestFn,
@@ -839,6 +895,28 @@ test('findEpicPullRequestNumber prefers the merged pull request for the file com
   assert.equal(
     await findEpicPullRequestNumber({
       requestFn: prHarness({ commits: [] }).requestFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    }),
+    null,
+  );
+});
+
+test('findEpicPullRequestNumber returns null when no associated PR has a matching merge commit', async () => {
+  // GitHub can associate a reusable commit SHA (e.g. an empty tree commit)
+  // with several old/merged PRs, none of which actually landed it.
+  const h = prHarness({
+    commits: [{ sha: 'abc123' }],
+    pulls: [
+      { number: 7, merge_commit_sha: 'other-sha-1', merged_at: '2025-01-01T00:00:00Z' },
+      { number: 9, merge_commit_sha: 'other-sha-2', merged_at: '2025-02-01T00:00:00Z' },
+    ],
+  });
+  assert.equal(
+    await findEpicPullRequestNumber({
+      requestFn: h.requestFn,
       token: 'tok',
       owner: 'nalfeo',
       repo: 'Crawler',
