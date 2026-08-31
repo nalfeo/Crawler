@@ -3402,13 +3402,15 @@ if (scopeMismatchBlocker) {
 // human-decision quarantine the other terminal blockers use. An explicit owner
 // `KEEP` overrides the escalation and lets automated repair resume.
 const hasHumanEscalationDeclarations = humanEscalationByThread.size > 0;
+const humanEscalationDeclaredAtMsValues = Array.from(humanEscalationByThread.values()).filter(
+  Number.isFinite,
+);
 const newestHumanEscalationDeclaredAtMs = hasHumanEscalationDeclarations
-  ? Math.max(
-      // If every escalation lacks createdAt, keep -Infinity so
-      // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
-      -Infinity,
-      ...Array.from(humanEscalationByThread.values()).filter(Number.isFinite),
-    )
+  ? // If every escalation lacks createdAt, pass null so
+    // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
+    humanEscalationDeclaredAtMsValues.length > 0
+    ? Math.max(...humanEscalationDeclaredAtMsValues)
+    : null
   : null;
 if (
   hasHumanEscalationDeclarations &&
