@@ -12907,13 +12907,22 @@ test('a trusted human-escalation reply quarantines instead of re-dispatching Cop
             'The fix required is not a bounded correction — it is the entire feature this PR was opened to deliver, which is owner-session implementation work outside the review-validator scope boundary.\n\n' +
             'Thread intentionally left unresolved for human escalation.',
           url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3892727061`,
+          createdAt: '2026-08-31T12:00:00Z',
           authorAssociation: 'NONE',
           author: { login: 'copilot-swe-agent' },
         },
       ],
     },
   };
-  const comments = [];
+  const comments = [
+    {
+      id: 6999,
+      body: 'KEEP',
+      created_at: '2026-08-31T11:59:00Z',
+      user: { login: 'nalfeo' },
+      author_association: 'OWNER',
+    },
+  ];
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
@@ -12991,6 +13000,229 @@ test('a trusted human-escalation reply quarantines instead of re-dispatching Cop
     ),
     false,
     'an escalated thread must not post another Copilot repair task',
+  );
+});
+
+test('a stale KEEP before the human escalation does not suppress quarantine', async (t) => {
+  const threadId = 'PRRT_human_escalation_stale_keep';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    line: 5,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_stale_keep_finding',
+          body: 'The linked issue requires the complete lifecycle, but this PR currently adds only the planning ledger.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r4101`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          id: 'PRIC_stale_keep_escalation',
+          body: 'Validator verdict: VALID. Leaving this thread UNRESOLVED and escalating to a human.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r4102`,
+          createdAt: '2026-08-31T12:00:00Z',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  const comments = [
+    {
+      id: 7100,
+      body: 'KEEP',
+      created_at: '2026-08-31T11:59:00Z',
+      user: { login: 'nalfeo' },
+      author_association: 'OWNER',
+    },
+  ];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7101 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('a stale KEEP must not let an escalated thread assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('a stale KEEP must not resolve or reassign an escalated thread');
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined human-escalation pr=#42/);
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'a stale KEEP must not post another Copilot repair task',
+  );
+});
+
+test('a KEEP after the human escalation resumes automated repair', async (t) => {
+  const thread = {
+    id: 'PRRT_human_escalation_fresh_keep',
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    line: 5,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_fresh_keep_finding',
+          body: 'The linked issue requires the complete lifecycle, but this PR currently adds only the planning ledger.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r4201`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          id: 'PRIC_fresh_keep_escalation',
+          body: 'Validator verdict: VALID. Leaving this thread UNRESOLVED and escalating to a human.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r4202`,
+          createdAt: '2026-08-31T12:00:00Z',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  const comments = [
+    {
+      id: 7200,
+      body: 'KEEP',
+      created_at: '2026-08-31T12:01:00Z',
+      user: { login: 'nalfeo' },
+      author_association: 'OWNER',
+    },
+  ];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7201 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /quarantined human-escalation pr=#42/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    'a fresh KEEP should let automated repair resume',
   );
 });
 

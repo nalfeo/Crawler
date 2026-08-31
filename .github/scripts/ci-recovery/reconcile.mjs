@@ -1546,6 +1546,33 @@ function latestOwnerDispositionCommand() {
   return null;
 }
 
+function timestampMs(value) {
+  const ms = Date.parse(String(value ?? ''));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function commentTimestampMs(comment) {
+  return timestampMs(comment?.created_at ?? comment?.createdAt);
+}
+
+function latestOwnerDispositionCommandAfter(afterMs) {
+  if (!Number.isFinite(afterMs)) return null;
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const comment = comments[index];
+    if (
+      String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase() !==
+      'OWNER'
+    ) {
+      continue;
+    }
+    const createdMs = commentTimestampMs(comment);
+    if (!Number.isFinite(createdMs) || createdMs <= afterMs) continue;
+    const command = parseDispositionCommand(comment?.body);
+    if (command) return command;
+  }
+  return null;
+}
+
 async function handleQuarantineDispositionIfAny() {
   if (currentLifecycleRecord()?.phase !== PHASE.QUARANTINED) return false;
   const command = latestOwnerDispositionCommand();
@@ -2628,7 +2655,7 @@ const protectedPathDenialByThread = new Set();
 // Threads whose newest trusted recovery reply explicitly escalates the finding to
 // a human and leaves the thread unresolved. This is the review-validator's
 // designed terminal outcome; re-dispatching it can never converge.
-const humanEscalationByThread = new Set();
+const humanEscalationByThread = new Map();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
@@ -2678,7 +2705,7 @@ for (const thread of unresolvedThreads) {
           protectedPathDenialByThread.add(thread.id);
         }
         if (isHumanEscalationDeclaration(replyBody)) {
-          humanEscalationByThread.add(thread.id);
+          humanEscalationByThread.set(thread.id, timestampMs(c?.createdAt));
         }
         break;
       }
@@ -3372,8 +3399,12 @@ if (scopeMismatchBlocker) {
 // reaching a stable state (PR #3958 / loop incident #3969). Route it to the same
 // human-decision quarantine the other terminal blockers use. An explicit owner
 // `KEEP` overrides the escalation and lets automated repair resume.
+const newestHumanEscalationDeclaredAtMs = Math.max(
+  -Infinity,
+  ...Array.from(humanEscalationByThread.values()).filter(Number.isFinite),
+);
 if (
-  latestOwnerDispositionCommand() !== 'KEEP' &&
+  latestOwnerDispositionCommandAfter(newestHumanEscalationDeclaredAtMs) !== 'KEEP' &&
   shouldQuarantineHumanEscalatedBlockers(normalized)
 ) {
   const reason = 'human-escalation-requested';

@@ -1032,6 +1032,8 @@ const humanEscalationHandoffPattern =
   /\b(?:escalat(?:e|es|ed|ing|ion)\b[^.!?\n]{0,60}?\b(?:to\s+)?(?:a\s+|the\s+)?(?:human|maintainer|owner)|(?:human|maintainer|owner)\s+escalation)\b/i;
 const humanEscalationUnresolvedPattern =
   /\b(?:leav(?:e|es|ing)|left|leaving|keep(?:ing)?|remain(?:s|ing)?|stays?)\b[^.!?\n]{0,80}?\bunresolved\b/i;
+const humanEscalationConditionalPattern =
+  /\b(?:if|when|should|would|could|might|may|maybe|later|future|next\s+time|recurs?)\b/i;
 
 /**
  * Detect a trusted recovery agent's explicit declaration that it is escalating a
@@ -1053,7 +1055,12 @@ export function isHumanEscalationDeclaration(body) {
       .join('\n'),
   );
   if (!text) return false;
-  return humanEscalationHandoffPattern.test(text) && humanEscalationUnresolvedPattern.test(text);
+  return text.split(/(?:[;!?\n]+|\.(?=\s|$))/).some((clause) => {
+    if (humanEscalationConditionalPattern.test(clause)) return false;
+    return (
+      humanEscalationHandoffPattern.test(clause) && humanEscalationUnresolvedPattern.test(clause)
+    );
+  });
 }
 
 /**

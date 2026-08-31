@@ -2177,6 +2177,20 @@ test('human escalation requires both a human hand-off and an explicit unresolved
     isHumanEscalationDeclaration('Leaving this thread unresolved until the rebase lands.'),
     false,
   );
+  // The hand-off and unresolved phrases must be one present-tense declaration,
+  // not two unrelated repairable statements concatenated together.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs we should escalate to a human. Leaving this thread unresolved until the rebase lands.',
+    ),
+    false,
+  );
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs, leave this thread unresolved and escalate to a human.',
+    ),
+    false,
+  );
   // A quoted escalation from an earlier task body is not this author's declaration.
   assert.equal(
     isHumanEscalationDeclaration(
