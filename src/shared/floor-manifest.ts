@@ -974,6 +974,22 @@ export const floorManifestDefSchema = z
           })
           .strict(),
         borderThicknessTiles: z.number().int().min(1),
+        /**
+         * Field-Hero slot cadence (spec `FR6.4`, `HUMAN_GATE-3`).
+         *
+         * Frame-authored on purpose: respawn timing must be a fixed tick offset
+         * and must never derive from the wall clock or an RNG draw.
+         */
+        heroes: z
+          .object({
+            /** How many field Heroes are alive at once. MVP baseline: 1. */
+            activeSlots: z.literal(1),
+            /** Frame at which the first field Hero takes the slot. */
+            firstSpawnFrame: z.number().int().positive(),
+            /** Fixed frame offset from a defeat to the next Hero's spawn. */
+            respawnDelayFrames: z.number().int().positive(),
+          })
+          .strict(),
         phase: z
           .object({
             initial: z.literal('MUSTER'),
