@@ -133,9 +133,13 @@ jobs:
             # assigned/in-review.
             ISSUE_NUMBER="$(
               gh search issues \
-                "repo:${GITHUB_REPOSITORY} is:issue is:open label:\"goobers:approved\" -label:\"goobers/status:in-review\" no:assignee" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --state open \
+                --label 'goobers:approved' \
+                --no-assignee \
                 --sort created --order asc --limit 1 \
-                --json number --jq '.[0].number // empty'
+                --json number --jq '.[0].number // empty' \
+                -- '-label:"goobers/status:in-review"'
             )"
             if [ -z "${ISSUE_NUMBER}" ]; then
               echo "No eligible goobers:approved issue found; skipping this run."
