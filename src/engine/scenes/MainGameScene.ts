@@ -721,6 +721,7 @@ export class MainGameScene extends Phaser.Scene {
    * screen is already showing).
    */
   private actionStatusText?: Phaser.GameObjects.Text;
+  private actionStatusDisplayToken = 0;
   /** Last observed run-bundle upload outcome, exposed for e2e/test probes. */
   private lastRunBundleUploadStatus?: 'ok' | 'failed' | 'disabled';
   private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
@@ -2956,10 +2957,11 @@ export class MainGameScene extends Phaser.Scene {
     if (!this.actionStatusText) {
       return;
     }
+    const displayToken = ++this.actionStatusDisplayToken;
     this.actionStatusText.setText(message).setVisible(true);
     this.time.delayedCall(4000, () => {
-      if (this.actionStatusText?.text === message) {
-        this.actionStatusText.setVisible(false);
+      if (this.actionStatusDisplayToken === displayToken) {
+        this.actionStatusText?.setVisible(false);
       }
     });
   }
@@ -5374,7 +5376,13 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runBundleEmitted = true;
     this.lastRunBundle = bundle;
-    const upload = Promise.resolve(this.options.onRunBundle?.(bundle));
+    const upload = (() => {
+      try {
+        return Promise.resolve(this.options.onRunBundle?.(bundle));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    })();
     this.lastRunBundleUpload = upload;
     // Report success/failure to the player once the upload settles. Chained
     // separately from `lastRunBundleUpload` (rather than replacing it) so the
