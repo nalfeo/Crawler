@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-31",
+  "session_slug": "floor6-tower-defense-epic",
+  "task_title": "Floor 6 tower-defense epic manifest",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted all concerns: make each node self-contained because no Floor 6 spec/ADR is in scope; front-load foundation and put presentation after depicted mechanics with balance last; use epic-create committed-file tests and epic-workflow tests rather than the bespoke Floor 2 epic:status/materialize control plane."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Reviewer completed schema, DAG, implementability, canon/provenance, policy, and scope passes; no validated findings."
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
