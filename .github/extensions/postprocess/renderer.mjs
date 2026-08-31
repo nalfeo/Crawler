@@ -42,7 +42,12 @@
 
 import * as overlay from './lib/slice-overlay.mjs';
 import * as anchorFns from './lib/anchor.mjs';
-import { isDestructivePersist } from './lib/postprocess-client.mjs';
+import {
+  isDestructivePersist,
+  COMPASS_DIRECTIONS,
+  DEFAULT_COMPASS_DIRECTION,
+  normalizeCompassDirection,
+} from './lib/postprocess-client.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -204,7 +209,7 @@ const CLIENT_SCRIPT = String.raw`
 
   // ── Authoring / persist state (reset + reseeded from persisted overrides in
   //    render(); the POST fires ONLY on "Apply changes") ──────────────────
-  var currentFacing = 'right';       // 'left' | 'right'
+  var currentFacing = DEFAULT_COMPASS_DIRECTION; // one of COMPASS_DIRECTIONS
   var currentScope = 'variant';      // 'variant' | 'all'
   var currentAnchor = null;          // {x,y} in final-image pixels, or null
   var currentDisabledModules = new Set(); // canonical run-global template module IDs
@@ -632,14 +637,14 @@ const CLIENT_SCRIPT = String.raw`
 
   function makeAuthoringPanel(state) {
     var facingSel = h('select', { id: 'postprocess-facing', title: 'Facing direction to persist' });
-    ['right', 'left'].forEach(function (dir) {
+    COMPASS_DIRECTIONS.forEach(function (dir) {
       var o = document.createElement('option');
       o.value = dir; o.textContent = dir;
       if (dir === currentFacing) o.selected = true;
       facingSel.appendChild(o);
     });
     facingSel.addEventListener('change', function () {
-      currentFacing = facingSel.value === 'left' ? 'left' : 'right';
+      currentFacing = normalizeCompassDirection(facingSel.value) ?? DEFAULT_COMPASS_DIRECTION;
       pendingMode = 'replace';
     });
 
@@ -705,7 +710,7 @@ const CLIENT_SCRIPT = String.raw`
       if (tuningFringeInput) tuningFringeInput.value = String(currentTweaks.fringeToleranceSq);
       currentLiveUpscaleFactor = DEFAULT_UPSCALE_FACTOR;
       if (tuningUpscaleInput) tuningUpscaleInput.value = String(currentLiveUpscaleFactor);
-      currentFacing = 'right'; facingSel.value = 'right';
+      currentFacing = DEFAULT_COMPASS_DIRECTION; facingSel.value = DEFAULT_COMPASS_DIRECTION;
       currentScope = 'variant'; scopeSel.value = 'variant';
       currentDisabledModules = new Set();
       currentAnchor = null; pendingClear = false;
@@ -1078,7 +1083,7 @@ const CLIENT_SCRIPT = String.raw`
     // (default-first seeding — mirrors the monolith read-back at ~5939-6022). A
     // fresh render always starts from a clean authoring slate; nothing is staged
     // (pendingMode 'default') until the user edits a control.
-    currentFacing = 'right';
+    currentFacing = DEFAULT_COMPASS_DIRECTION;
     currentScope = 'variant';
     currentAnchor = null;
     currentDisabledModules = new Set(
@@ -1092,8 +1097,9 @@ const CLIENT_SCRIPT = String.raw`
     anchorYInput = null;
     var appliedFacing = state.selected && state.selected.appliedFacing;
     if (appliedFacing) {
-      if (appliedFacing.direction === 'left' || appliedFacing.direction === 'right') {
-        currentFacing = appliedFacing.direction;
+      var normalized = normalizeCompassDirection(appliedFacing.direction);
+      if (normalized) {
+        currentFacing = normalized;
       }
       if (appliedFacing.applyToAllVariants === true) currentScope = 'all';
     }

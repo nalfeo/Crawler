@@ -64,12 +64,43 @@ test('normalizePersistRequest: replace requires a non-negative integer variantIn
   assert.match(out.error, /variantIndex must be a non-negative integer/);
 });
 
-test('normalizePersistRequest: replace requires a left/right facingDirection', () => {
+test('normalizePersistRequest: replace requires a valid compass facingDirection', () => {
   const base = { briefId: 'b', runId: 'r', mode: 'replace', variantIndex: 0 };
   assert.equal(normalizePersistRequest({ ...base, facingDirection: 'up' }).ok, false);
   assert.equal(normalizePersistRequest({ ...base }).ok, false); // missing
   const out = normalizePersistRequest({ ...base, facingDirection: 'up' });
-  assert.match(out.error, /facingDirection must be "left" or "right"/);
+  assert.match(out.error, /facingDirection must be a compass direction/);
+});
+
+test('normalizePersistRequest: accepts all 8 canonical compass directions', () => {
+  const base = { briefId: 'b', runId: 'r', mode: 'replace', variantIndex: 0 };
+  const directions = [
+    'north',
+    'northEast',
+    'east',
+    'southEast',
+    'south',
+    'southWest',
+    'west',
+    'northWest',
+  ];
+  for (const facingDirection of directions) {
+    const out = normalizePersistRequest({ ...base, facingDirection });
+    assert.equal(out.ok, true, `expected ${facingDirection} to be accepted`);
+    assert.equal(out.args.facingDirection, facingDirection);
+  }
+});
+
+test('normalizePersistRequest: normalizes legacy left/right aliases to west/east', () => {
+  const base = { briefId: 'b', runId: 'r', mode: 'replace', variantIndex: 0 };
+  assert.equal(
+    normalizePersistRequest({ ...base, facingDirection: 'left' }).args.facingDirection,
+    'west',
+  );
+  assert.equal(
+    normalizePersistRequest({ ...base, facingDirection: 'right' }).args.facingDirection,
+    'east',
+  );
 });
 
 test('normalizePersistRequest: replace with defaults (no anchor, no applyToAll, no tolerances)', () => {
@@ -87,7 +118,7 @@ test('normalizePersistRequest: replace with defaults (no anchor, no applyToAll, 
     mode: 'replace',
     variantIndex: 3,
     applyToAll: false,
-    facingDirection: 'left',
+    facingDirection: 'west',
     manualAnchorClear: false,
     manualAnchor: undefined,
     colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
@@ -283,7 +314,7 @@ test('normalize→build: a this-variant replace produces the monolith body shape
       background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
       disabledModules: [],
     },
-    facing: { variantIndex: 0, direction: 'right' },
+    facing: { variantIndex: 0, direction: 'east' },
     manualAnchor: { variantIndex: 0, x: 8, y: 8 },
     variantIndexes: [0],
   });

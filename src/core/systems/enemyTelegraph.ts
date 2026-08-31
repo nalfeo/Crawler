@@ -19,6 +19,7 @@
  * behavior exactly: no cue, no added delay, no locked-trajectory dodge logic.
  */
 import { ENEMY_PROJECTILE } from '../../shared/constants.js';
+import { compassDirectionFacesEast } from '../../shared/facing-direction.js';
 import {
   DEFAULT_GENERATED_VISUAL_WIDTH_FT,
   getEntityNormalizedWeaponAnchor,
@@ -160,7 +161,7 @@ export function startEnemyProjectileTelegraph(
   const baseY = position.y[eid] ?? 0;
   if (wa) {
     const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
-    const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
+    const needsMirror = compassDirectionFacesEast(wa.artFacing) !== facingRight;
     enemyBehavior.telegraphOriginX[eid] =
       baseX + (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
     enemyBehavior.telegraphOriginY[eid] = baseY + wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;

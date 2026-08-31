@@ -22,6 +22,13 @@ import {
 } from './devtools/art-plan-model.js';
 import { briefKey } from './shared/art-plan-status.js';
 import {
+  COMPASS_DIRECTIONS,
+  DEFAULT_COMPASS_DIRECTION,
+  normalizeCompassDirection,
+  COMPASS_DIRECTION_LABELS,
+  type CompassDirection,
+} from './shared/facing-direction.js';
+import {
   extractVariantIndices,
   fetchLatestRunForBriefSince,
   fetchRunSummary,
@@ -403,7 +410,7 @@ interface LivePostprocessOptions {
   };
 }
 
-type FacingDirection = 'left' | 'right';
+type FacingDirection = CompassDirection;
 
 // NOTE: These defaults MUST stay identical to the generation-side post-process
 // constants BACKGROUND_B_COLOR_TOLERANCE_SQ / BACKGROUND_B_FRINGE_TOLERANCE_SQ
@@ -3078,13 +3085,12 @@ function render(): void {
   facingDirectionSelect.style.border = '1px solid rgba(148,163,184,0.4)';
   facingDirectionSelect.style.borderRadius = '6px';
   facingDirectionSelect.style.fontSize = '11px';
-  const facingRightOption = document.createElement('option');
-  facingRightOption.value = 'right';
-  facingRightOption.textContent = 'Facing right →';
-  const facingLeftOption = document.createElement('option');
-  facingLeftOption.value = 'left';
-  facingLeftOption.textContent = 'Facing left ←';
-  facingDirectionSelect.append(facingRightOption, facingLeftOption);
+  COMPASS_DIRECTIONS.forEach((dir) => {
+    const option = document.createElement('option');
+    option.value = dir;
+    option.textContent = COMPASS_DIRECTION_LABELS[dir];
+    facingDirectionSelect.append(option);
+  });
   const applyChangesBtn = el('button', {
     text: 'Apply changes',
     style: {
@@ -3163,7 +3169,7 @@ function render(): void {
   let manualAnchorOverride: ManualAnchorState | null = null;
   let manualWeaponAnchorOverride: ManualAnchorState | null = null;
   let pendingManualWeaponAnchorClear = false;
-  let facingDirection: FacingDirection = 'right';
+  let facingDirection: FacingDirection = DEFAULT_COMPASS_DIRECTION;
   let applyScopeSelection: 'variant' | 'all' = 'variant';
   let pendingManualAnchorClear = false;
   let derivedAnchorForDebugVariant: AnchorMarkerState | null = null;
@@ -3430,8 +3436,7 @@ function render(): void {
     };
     manualAnchorOverride = null;
     manualWeaponAnchorOverride = null;
-    facingDirection = 'right';
-    pendingPostprocessMode = 'reset';
+    facingDirection = DEFAULT_COMPASS_DIRECTION;
     syncTweakInputsFromState();
     tweakStatus.textContent = 'Reset to defaults.';
     tweakStatus.style.color = '#93c5fd';
@@ -3493,7 +3498,8 @@ function render(): void {
     }
   });
   facingDirectionSelect.addEventListener('change', () => {
-    facingDirection = facingDirectionSelect.value === 'left' ? 'left' : 'right';
+    facingDirection =
+      normalizeCompassDirection(facingDirectionSelect.value) ?? DEFAULT_COMPASS_DIRECTION;
     pendingPostprocessMode = 'replace';
     rerenderDebuggerAfterTweaks();
   });
@@ -5901,7 +5907,7 @@ function render(): void {
         }
       };
       const facingArrow = el('div', {
-        text: facingDirection === 'left' ? '← facing left' : 'facing right →',
+        text: `facing ${COMPASS_DIRECTION_LABELS[facingDirection].toLowerCase()}`,
         style: { fontSize: '11px', color: '#bae6fd', marginTop: '6px' },
       });
       controlPanel.append(topRow, anchorRow, weaponAnchorRow, facingArrow, actionRow);
@@ -6061,7 +6067,7 @@ function render(): void {
             : null;
         const briefPathStr =
           typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
-        facingDirection = 'right';
+        facingDirection = DEFAULT_COMPASS_DIRECTION;
         applyScopeSelection = 'variant';
         manualAnchorOverride = null;
         pendingManualAnchorClear = false;
@@ -6117,8 +6123,9 @@ function render(): void {
               (facing as { applyToAllVariants?: unknown }).applyToAllVariants === true;
             if (facing && typeof facing === 'object') {
               const direction = (facing as { direction?: unknown }).direction;
-              if (direction === 'left' || direction === 'right') {
-                facingDirection = direction;
+              const normalized = normalizeCompassDirection(direction);
+              if (normalized) {
+                facingDirection = normalized;
               }
             }
             const manual = (post as { manualAnchor?: unknown }).manualAnchor;

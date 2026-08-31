@@ -542,7 +542,7 @@ describe('weapon anchor — telegraph origin consumers', () => {
     // Velocity rightward so facing is right.
     world.stores.velocity.x[enemy] = 1;
     // Inject a normalized weapon anchor: relX=0.1, relY=-0.05, right-art.
-    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'east' });
 
     startEnemyProjectileTelegraph(world, enemy, 1, 0);
 
@@ -562,7 +562,7 @@ describe('weapon anchor — telegraph origin consumers', () => {
     // Velocity leftward so facing is left.
     world.stores.velocity.x[enemy] = -1;
     // Right-art anchor: relX=0.1 → mirrored to -0.1 → originX = 5 + (-0.1) * 3.2 = 4.68
-    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'east' });
 
     startEnemyProjectileTelegraph(world, enemy, 1, 0);
 

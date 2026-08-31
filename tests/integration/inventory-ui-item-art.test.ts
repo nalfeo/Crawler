@@ -285,7 +285,7 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
           variantIndex: 0,
           sensorScore: '0.99',
           judgeScore: '0.99',
-          facingDirection: 'right',
+          facingDirection: 'east',
         },
       },
     });

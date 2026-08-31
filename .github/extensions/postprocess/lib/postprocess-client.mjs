@@ -179,12 +179,47 @@ export function extractAppliedDisabledModules(summary) {
 }
 
 /**
+ * Canonical 8-direction facing contract — MUST stay identical to
+ * `COMPASS_DIRECTIONS`/`LEGACY_ALIAS_MAP` in `src/shared/facing-direction.ts`.
+ * Legacy persisted `'left'|'right'` values are accepted and normalized to
+ * `'west'|'east'` respectively; canonical values pass through unchanged.
+ */
+export const COMPASS_DIRECTIONS = Object.freeze([
+  'north',
+  'northEast',
+  'east',
+  'southEast',
+  'south',
+  'southWest',
+  'west',
+  'northWest',
+]);
+
+const LEGACY_FACING_ALIASES = Object.freeze({ left: 'west', right: 'east' });
+
+export const DEFAULT_COMPASS_DIRECTION = 'east';
+
+/**
+ * Normalize a raw facing value (canonical compass direction, or legacy
+ * `'left'/'right'` alias) to a canonical `CompassDirection`, or `null` if the
+ * value isn't a recognized facing direction.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function normalizeCompassDirection(value) {
+  if (typeof value !== 'string') return null;
+  if (COMPASS_DIRECTIONS.includes(value)) return value;
+  return LEGACY_FACING_ALIASES[value] ?? null;
+}
+
+/**
  * Extract the run's persisted facing override, if any. Reads
  * `summary.postprocessOverrides.facing.{direction,applyToAllVariants}` (monolith
- * `src/devtools-main.ts` ~5988-5998). `direction` must be `'left'|'right'` or
- * `null` is returned (caller then seeds the default `'right'`).
+ * `src/devtools-main.ts` ~5988-5998). `direction` is normalized from either a
+ * canonical compass direction or a legacy `'left'/'right'` alias; `null` is
+ * returned when absent/invalid (caller then seeds the default `'east'`).
  * @param {unknown} summary
- * @returns {{direction:'left'|'right', applyToAllVariants:boolean}|null}
+ * @returns {{direction:string, applyToAllVariants:boolean}|null}
  */
 export function extractAppliedFacing(summary) {
   if (!summary || typeof summary !== 'object') return null;
@@ -192,8 +227,7 @@ export function extractAppliedFacing(summary) {
   if (!overrides || typeof overrides !== 'object') return null;
   const facing = overrides.facing;
   if (!facing || typeof facing !== 'object') return null;
-  const direction =
-    facing.direction === 'left' ? 'left' : facing.direction === 'right' ? 'right' : null;
+  const direction = normalizeCompassDirection(facing.direction);
   if (!direction) return null;
   return { direction, applyToAllVariants: facing.applyToAllVariants === true };
 }
@@ -239,7 +273,8 @@ export function isDestructivePersist(args) {
  * `{ok:true, args}` or `{ok:false, error}`.
  *
  * A `reset` needs only `briefId`/`runId`. A `replace` additionally requires a
- * non-negative integer `variantIndex` and a `facingDirection` of `'left'|'right'`;
+ * non-negative integer `variantIndex` and a `facingDirection` (canonical compass
+ * direction, or legacy `'left'/'right'` alias, normalized to `'west'/'east'`);
  * `manualAnchor` is honored only when NOT clearing and both coords are finite
  * (mirrors the monolith `syncManualAnchorFromInputs` no-op on NaN), and tolerances
  * are clamped with the shared defaults.
@@ -259,9 +294,13 @@ export function normalizePersistRequest(body) {
   if (!Number.isInteger(variantIndex) || variantIndex < 0) {
     return { ok: false, error: 'variantIndex must be a non-negative integer' };
   }
-  const facingDirection =
-    body.facingDirection === 'left' ? 'left' : body.facingDirection === 'right' ? 'right' : null;
-  if (!facingDirection) return { ok: false, error: 'facingDirection must be "left" or "right"' };
+  const facingDirection = normalizeCompassDirection(body.facingDirection);
+  if (!facingDirection) {
+    return {
+      ok: false,
+      error: 'facingDirection must be a compass direction (or legacy "left"/"right")',
+    };
+  }
   const applyToAll = body.applyToAll === true;
   const manualAnchorClear = body.manualAnchorClear === true;
   let manualAnchor;

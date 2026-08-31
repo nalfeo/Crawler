@@ -92,7 +92,7 @@ describe('AchievementsUI generated-icon render path', () => {
       variantIndex: 0,
       sensorScore: '1/1',
       judgeScore: null,
-      facingDirection: 'right' as const,
+      facingDirection: 'east' as const,
     };
     const entries = Object.freeze([entry]);
     const registry: GeneratedSpriteRegistry = {
@@ -135,7 +135,7 @@ describe('AchievementsUI generated-icon render path', () => {
       variantIndex: 0,
       sensorScore: '1/1',
       judgeScore: null,
-      facingDirection: 'right' as const,
+      facingDirection: 'east' as const,
     };
     const entries = Object.freeze([entry]);
     const registry: GeneratedSpriteRegistry = {

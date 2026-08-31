@@ -44,6 +44,7 @@ import {
 } from '../shared/generated-assets.js';
 import { ftToPx, PIXELS_PER_FOOT } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
+import { compassDirectionFacesEast, type CompassDirection } from '../shared/facing-direction.js';
 import {
   combineMobMotion,
   CONTACT_ATTACK_MOTION_MS,
@@ -709,7 +710,7 @@ export function createPhaserBridge(
    * skip `resolveBaseScale` on frames where the registry has not changed.
    */
   let registryRevision = 0;
-  const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
+  const generatedFacingByTexture = new Map<string, CompassDirection>();
   /**
    * Animation descriptor per generated texture key, so the player render
    * branch can decide whether to create a Sprite (animatable) instead of a
@@ -2033,8 +2034,9 @@ export function createPhaserBridge(
             if (entityType === 'enemy') {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
-              const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
-              const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+              const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'east';
+              const baseFacesEast = compassDirectionFacesEast(baseFacing);
+              const shouldMirror = baseFacesEast ? !movingRight : movingRight;
               const signedOffsetX = shouldMirror ? -mobMotion.offsetX : mobMotion.offsetX;
               const signedRotation = shouldMirror ? -mobMotion.rotation : mobMotion.rotation;
               img.setPosition(x + ftToPx(signedOffsetX), y + ftToPx(mobMotion.offsetY));
@@ -2060,8 +2062,9 @@ export function createPhaserBridge(
                 if (Math.abs(vx) > ENEMY_RIGHTWARD_FLIP_EPSILON) {
                   const movingRight = vx > 0;
                   playerFacingRightByEid.set(eid, movingRight);
-                  const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
-                  const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                  const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'east';
+                  const baseFacesEast = compassDirectionFacesEast(baseFacing);
+                  const shouldMirror = baseFacesEast ? !movingRight : movingRight;
                   if (typeof img.setFlipX === 'function') {
                     img.setFlipX(shouldMirror);
                   }

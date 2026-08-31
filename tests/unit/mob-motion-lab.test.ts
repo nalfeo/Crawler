@@ -32,7 +32,7 @@ function manifestEntry(briefId: string, variantIndex: number, type: 'enemy' | 'i
     sensorScore: '7/7',
     judgeScore: '2',
     type,
-    facingDirection: 'right' as const,
+    facingDirection: 'east' as const,
   };
 }
 

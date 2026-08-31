@@ -29,6 +29,7 @@ import {
 } from '../../../scripts/sprites/generated-shards.js';
 import { deriveGeneratedCatalogRow } from '../../../src/shared/generated-catalog.js';
 import type { ManifestEntry as GeneratedManifestEntry } from '../../../src/shared/generated-assets.js';
+import type { FacingDirectionInput } from '../../../src/shared/facing-direction.js';
 
 interface FakeRunOptions {
   readonly briefId?: string;
@@ -52,7 +53,7 @@ interface FakeRunOptions {
   readonly judgeFailedFor?: ReadonlyArray<number>;
   readonly facingOverride?: {
     variantIndex: number;
-    direction: 'left' | 'right';
+    direction: FacingDirectionInput;
     applyToAllVariants?: boolean;
   } | null;
 }
@@ -582,7 +583,7 @@ describe('approveVariant', () => {
     expect(entry.spriteName).toBe('iron-sword-var-3');
   });
 
-  it('writes facingDirection from postprocess facing override and defaults to right otherwise', () => {
+  it('writes facingDirection from postprocess facing override and defaults to east otherwise', () => {
     const targeted = writeFakeRun(repoRoot, {
       runId: '2026-06-08T16-00-00-faceleft',
       variantIndices: [0, 1],
@@ -606,8 +607,8 @@ describe('approveVariant', () => {
       repoRoot,
       now: fixedNow,
     });
-    expect(targetedVariant.facingDirection).toBe('left');
-    expect(untargetedVariant.facingDirection).toBe('right');
+    expect(targetedVariant.facingDirection).toBe('west');
+    expect(untargetedVariant.facingDirection).toBe('east');
 
     const allVariants = writeFakeRun(repoRoot, {
       runId: '2026-06-08T17-00-00-faceall',
@@ -623,7 +624,25 @@ describe('approveVariant', () => {
       repoRoot,
       now: fixedNow,
     });
-    expect(allVariantsEntry.facingDirection).toBe('left');
+    expect(allVariantsEntry.facingDirection).toBe('west');
+  });
+
+  it('accepts canonical 8-direction facing overrides and preserves them verbatim', () => {
+    const run = writeFakeRun(repoRoot, {
+      runId: '2026-06-08T18-00-00-facenortheast',
+      variantIndices: [0],
+      facingOverride: { variantIndex: 0, direction: 'northEast' },
+    });
+    const entry = approveVariant({
+      runDir: run.runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect(entry.facingDirection).toBe('northEast');
   });
 
   it('does not persist machine-local postprocess provenance paths', () => {

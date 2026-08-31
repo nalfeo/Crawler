@@ -15,6 +15,13 @@
 import { z } from 'zod';
 import { SeededRandom } from './random.js';
 import { SPRITE_TYPES } from './sprite-types.js';
+import {
+  COMPASS_DIRECTIONS,
+  DEFAULT_COMPASS_DIRECTION,
+  compassDirectionFacesEast,
+  normalizeCompassDirection,
+  type CompassDirection,
+} from './facing-direction.js';
 
 /**
  * Default anchor used when a manifest entry's `anchor` is `null` — i.e.
@@ -124,7 +131,17 @@ export const manifestEntrySchema = z
     contentHash: z.string().optional(),
     opaqueBounds: opaqueBoundsSchema.optional(),
     effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
-    facingDirection: z.enum(['left', 'right']).optional(),
+    /**
+     * Static art facing, in canonical eight-compass-direction form. Accepts
+     * legacy `'left'`/`'right'` values from older manifests and normalizes
+     * them to `'west'`/`'east'` respectively — see `facing-direction.ts`.
+     */
+    facingDirection: z
+      .preprocess(
+        (value) => normalizeCompassDirection(value) ?? value,
+        z.enum(COMPASS_DIRECTIONS as [CompassDirection, ...CompassDirection[]]),
+      )
+      .optional(),
     /**
      * Optional multi-frame animation descriptor. Present only on entries whose
      * PNG is a spritesheet rather than a single frame. Absent
@@ -269,7 +286,7 @@ export interface GeneratedSpriteEntry {
   readonly variantIndex: number;
   readonly sensorScore: string;
   readonly judgeScore: string | null;
-  readonly facingDirection: 'left' | 'right';
+  readonly facingDirection: CompassDirection;
   /**
    * Present when this variant's PNG is a horizontal multi-frame walk/anim
    * strip rather than a single frame. See `GeneratedSpriteAnimation`.
@@ -394,7 +411,7 @@ function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSp
     variantIndex: entry.variantIndex,
     sensorScore: entry.sensorScore,
     judgeScore: entry.judgeScore,
-    facingDirection: entry.facingDirection ?? 'right',
+    facingDirection: entry.facingDirection ?? DEFAULT_COMPASS_DIRECTION,
     ...(entry.animation !== undefined ? { animation: entry.animation } : {}),
   };
 }
@@ -612,9 +629,10 @@ export const DEFAULT_GENERATED_VISUAL_WIDTH_FT = 3.2;
  *
  * `relX` / `relY` are dimensionless fractions of the sprite frame: positive X
  * is toward the right of the canonical art, positive Y is downward.
- * `artFacing` records whether the authored art faces right or left so
+ * `artFacing` records the authored eight-compass-direction facing so
  * consumers can mirror the sign of `relX` when the entity's current facing
- * differs from the authored direction.
+ * differs from the authored direction. Render-time mirroring only cares
+ * about the east/west component — see `compassDirectionFacesEast`.
  */
 export interface NormalizedWeaponAnchor {
   /** (wpX − cogX) / frameWidth — dimensionless, canonical art orientation. */
@@ -622,7 +640,7 @@ export interface NormalizedWeaponAnchor {
   /** (wpY − cogY) / frameHeight — dimensionless. */
   readonly relY: number;
   /** Canonical art facing direction stored in the manifest entry. */
-  readonly artFacing: 'left' | 'right';
+  readonly artFacing: CompassDirection;
 }
 
 /**
@@ -896,7 +914,7 @@ export function resolveWeaponAnchorWorldPos(
   // Mirror whenever the canonical art facing differs from the entity's current
   // facing. We negate the *relative* offset (weapon − COG) rather than the
   // absolute pixel coordinate so the magnitude is preserved symmetrically.
-  const needsMirror = entry.facingDirection !== (facingRight ? 'right' : 'left');
+  const needsMirror = compassDirectionFacesEast(entry.facingDirection) !== facingRight;
   const offsetX = ((needsMirror ? -relX : relX) / framePixelWidth) * spriteWidthFt;
   const offsetY = (relY / framePixelHeight) * spriteHeightFt;
   return { x: entityX + offsetX, y: entityY + offsetY };

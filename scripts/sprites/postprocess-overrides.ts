@@ -3,6 +3,11 @@ import type { Brief } from './brief-schema.js';
 import type { PostprocessOptions } from './postprocess.js';
 import { getActiveModules, getPipelineForType } from './template-pipeline.js';
 import type { RunStore } from './store/types.js';
+import {
+  normalizeCompassDirection,
+  type CompassDirection,
+  type FacingDirectionInput,
+} from '../../src/shared/facing-direction.js';
 
 export const POSTPROCESS_PROFILE_KEY = 'postprocess.overrides.json';
 export const EFFECTIVE_PIPELINE_JSON_KEY = 'postprocess.pipeline.effective.json';
@@ -36,7 +41,7 @@ export interface ManualWeaponAnchorOverride {
 
 export interface FacingOverride {
   readonly variantIndex: number;
-  readonly direction: 'left' | 'right';
+  readonly direction: CompassDirection;
   readonly applyToAllVariants?: boolean;
   readonly updatedAt: string;
 }
@@ -179,15 +184,16 @@ export async function readFacingOverride(
   if (!(await store.has(key))) return null;
   try {
     const parsed = JSON.parse((await store.get(key)).toString('utf8')) as Partial<FacingOverride>;
+    const direction = normalizeCompassDirection(parsed?.direction);
     if (
       parsed &&
       Number.isInteger(parsed.variantIndex) &&
-      (parsed.direction === 'left' || parsed.direction === 'right') &&
+      direction &&
       typeof parsed.updatedAt === 'string'
     ) {
       return {
         variantIndex: parsed.variantIndex as number,
-        direction: parsed.direction,
+        direction,
         ...(parsed.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
         updatedAt: parsed.updatedAt,
       };
@@ -201,12 +207,16 @@ export async function readFacingOverride(
 export async function writeFacingOverride(
   store: RunStore,
   baseKey: string,
-  facing: { variantIndex: number; direction: 'left' | 'right'; applyToAllVariants?: boolean },
+  facing: { variantIndex: number; direction: FacingDirectionInput; applyToAllVariants?: boolean },
   nowIso: string,
 ): Promise<FacingOverride> {
+  const direction = normalizeCompassDirection(facing.direction);
+  if (!direction) {
+    throw new Error(`Invalid facing direction: ${String(facing.direction)}`);
+  }
   const payload: FacingOverride = {
     variantIndex: facing.variantIndex,
-    direction: facing.direction,
+    direction,
     ...(facing.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
     updatedAt: nowIso,
   };

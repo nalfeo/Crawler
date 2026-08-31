@@ -72,6 +72,11 @@ import {
 import type { VisionProvider } from './provider/vision-types.js';
 import { sliceSheetFromBrief, sliceSheetWithGrid, type BriefSliceResult } from './slice-sheet.js';
 import type { RunStore } from './store/types.js';
+import {
+  DEFAULT_COMPASS_DIRECTION,
+  normalizeCompassDirection,
+  type FacingDirectionInput,
+} from '../../src/shared/facing-direction.js';
 
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
@@ -198,7 +203,7 @@ export interface RepostprocessArgs {
   readonly manualWeaponAnchor?: ManualWeaponAnchorOverride | null;
   readonly facing?: {
     variantIndex: number;
-    direction: 'left' | 'right';
+    direction: FacingDirectionInput;
     applyToAllVariants?: boolean;
   } | null;
 }
@@ -301,7 +306,8 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
         ? args.facing
           ? {
               variantIndex: args.facing.variantIndex,
-              direction: args.facing.direction,
+              direction:
+                normalizeCompassDirection(args.facing.direction) ?? DEFAULT_COMPASS_DIRECTION,
               ...(args.facing.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
               updatedAt: nowIso,
             }

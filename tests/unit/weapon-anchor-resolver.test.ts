@@ -19,7 +19,7 @@ function makeEntry(overrides: Partial<GeneratedSpriteEntry> = {}): GeneratedSpri
     variantIndex: 0,
     sensorScore: 'pass',
     judgeScore: null,
-    facingDirection: 'right',
+    facingDirection: 'east',
     ...overrides,
   };
 }
@@ -89,7 +89,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
-      facingDirection: 'right',
+      facingDirection: 'east',
     });
     const result = resolveWeaponAnchorWorldPos(
       entry,
@@ -111,7 +111,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
-      facingDirection: 'left',
+      facingDirection: 'west',
     });
     const result = resolveWeaponAnchorWorldPos(
       entry,
@@ -133,7 +133,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
-      facingDirection: 'left',
+      facingDirection: 'west',
     });
     const result = resolveWeaponAnchorWorldPos(
       entry,
@@ -219,23 +219,23 @@ describe('computeNormalizedWeaponAnchor', () => {
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 28 },
-      facingDirection: 'right',
+      facingDirection: 'east',
     });
     const result = computeNormalizedWeaponAnchor(entry, 64, 64);
     expect(result).not.toBeNull();
     expect(result!.relX).toBeCloseTo(0.125);
     expect(result!.relY).toBeCloseTo(-0.0625);
-    expect(result!.artFacing).toBe('right');
+    expect(result!.artFacing).toBe('east');
   });
 
   it('preserves left artFacing for left-art sprites', () => {
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 24, y: 32 },
-      facingDirection: 'left',
+      facingDirection: 'west',
     });
     const result = computeNormalizedWeaponAnchor(entry, 64, 64);
-    expect(result!.artFacing).toBe('left');
+    expect(result!.artFacing).toBe('west');
     expect(result!.relX).toBeCloseTo(-0.125); // weapon left of COG
   });
 

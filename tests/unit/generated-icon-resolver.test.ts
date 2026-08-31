@@ -20,7 +20,7 @@ function makeEntry(overrides: Partial<GeneratedSpriteEntry> & { textureKey: stri
     variantIndex: 0,
     sensorScore: '1',
     judgeScore: null,
-    facingDirection: 'right',
+    facingDirection: 'east',
     ...rest,
     textureKey,
   } as GeneratedSpriteEntry;

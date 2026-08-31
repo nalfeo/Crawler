@@ -152,7 +152,7 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
       variantIndex: 0,
       sensorScore: '1/1',
       judgeScore: null,
-      facingDirection: 'right' as const,
+      facingDirection: 'east' as const,
     };
     const byBrief = Object.freeze([entry]);
     const registry: GeneratedSpriteRegistry = {

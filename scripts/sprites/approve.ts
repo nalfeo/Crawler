@@ -68,6 +68,12 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
+import {
+  DEFAULT_COMPASS_DIRECTION,
+  normalizeCompassDirection,
+  type CompassDirection,
+  type FacingDirectionInput,
+} from '../../src/shared/facing-direction.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import { shardPathForKey, shardsDir } from './generated-shards.js';
 import { bareConcept, hasResidualLineageTag } from './sprite-name-taxonomy.js';
@@ -187,7 +193,7 @@ export interface ManifestEntry {
    */
   readonly opaqueBounds?: DerivedBounds;
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
-  readonly facingDirection?: 'left' | 'right';
+  readonly facingDirection?: CompassDirection;
   /**
    * Present only on entries approved via `approveFrameSequence` (Slice B
    * walk-cycle animation sheets). Mirrors the shared descriptor Slice A's
@@ -313,7 +319,7 @@ interface RunSummaryShape {
     readonly snapshotYamlPath?: string | null;
     readonly facing?: {
       readonly variantIndex?: number;
-      readonly direction?: 'left' | 'right';
+      readonly direction?: FacingDirectionInput;
       readonly applyToAllVariants?: boolean;
     } | null;
   } | null;
@@ -954,16 +960,13 @@ export function loadApprovedFrameSequenceEntry(options: {
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
-function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
+function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): CompassDirection {
   const facing = summary.postprocessOverrides?.facing;
-  if (
-    facing &&
-    (facing.applyToAllVariants === true || facing.variantIndex === variantIndex) &&
-    (facing.direction === 'left' || facing.direction === 'right')
-  ) {
-    return facing.direction;
-  }
-  return 'right';
+  const direction =
+    facing && (facing.applyToAllVariants === true || facing.variantIndex === variantIndex)
+      ? normalizeCompassDirection(facing.direction)
+      : null;
+  return direction ?? DEFAULT_COMPASS_DIRECTION;
 }
 
 /**

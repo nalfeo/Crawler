@@ -148,6 +148,10 @@ import { resolveReferenceSelection } from '../resolve-reference-selection.js';
 import { SELECTOR_VERSION } from '../reference-selector.js';
 import { resolveGeneratedAssetPath } from '../generated-asset-path.js';
 import { isSpriteType } from '../../../src/shared/sprite-types.js';
+import {
+  normalizeCompassDirection,
+  type CompassDirection,
+} from '../../../src/shared/facing-direction.js';
 import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
@@ -1659,16 +1663,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   const parseFacingPayload = (
     value: unknown,
-  ): { variantIndex: number; direction: 'left' | 'right'; applyToAllVariants?: boolean } | null => {
+  ): { variantIndex: number; direction: CompassDirection; applyToAllVariants?: boolean } | null => {
     if (!value || typeof value !== 'object') return null;
     const candidate = value as {
       variantIndex?: unknown;
       direction?: unknown;
       applyToAllVariants?: unknown;
     };
+    const direction = normalizeCompassDirection(candidate.direction);
     if (
       !Number.isInteger(candidate.variantIndex) ||
-      (candidate.direction !== 'left' && candidate.direction !== 'right') ||
+      direction === null ||
       (candidate.applyToAllVariants !== undefined &&
         typeof candidate.applyToAllVariants !== 'boolean')
     ) {
@@ -1676,7 +1681,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     return {
       variantIndex: candidate.variantIndex as number,
-      direction: candidate.direction,
+      direction,
       ...(candidate.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
     };
   };

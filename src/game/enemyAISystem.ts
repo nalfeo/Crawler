@@ -32,6 +32,7 @@ import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
+import { compassDirectionFacesEast } from '../shared/facing-direction.js';
 import {
   DEFAULT_GENERATED_VISUAL_WIDTH_FT,
   getEntityNormalizedWeaponAnchor,
@@ -1352,7 +1353,7 @@ function tryFireEnemyProjectile(
     let originY = position.y[eid]!;
     if (wa) {
       const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
-      const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
+      const needsMirror = compassDirectionFacesEast(wa.artFacing) !== facingRight;
       originX += (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
       originY += wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
     }
