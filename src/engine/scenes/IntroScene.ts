@@ -47,9 +47,7 @@ const GENDER_OPTIONS: ReadonlyArray<{ id: PlayerGender; label: string }> = [
 
 /** Director introduction text shown at the top of the screen. */
 const DIRECTOR_WELCOME =
-  'Welcome, Contestant. The dungeon cameras are hot and the\n' +
-  'audience is watching. Before you descend, tell us who you\n' +
-  'are, and how you want the show to address you.';
+  "Your planet was conquered, so we dragged you from cold storage. Fight through our dungeon for the galaxy's viewing pleasure. High ratings earn revival next season. Beat the dungeon to win your release.";
 
 /**
  * Rounds a CSS pixel value to the nearest integer. Native DOM elements
@@ -105,7 +103,7 @@ const NAME_INPUT_ARIA_LABEL = 'Player name';
 const GENDER_GROUP_ARIA_LABEL = 'Player gender';
 
 const PANEL_W = 700;
-const PANEL_H = 476;
+const PANEL_H = 516;
 const PANEL_X = (GAME.WIDTH - PANEL_W) / 2;
 const PANEL_Y = (GAME.HEIGHT - PANEL_H) / 2;
 const DEPTH = 2000;
@@ -193,7 +191,7 @@ export class IntroScene extends Phaser.Scene {
 
     // Director commentary box.
     this.add
-      .rectangle(boxX, y, boxW, 96, 0x0d1520, 1)
+      .rectangle(boxX, y, boxW, 130, 0x0d1520, 1)
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setStrokeStyle(1, 0x1e3354, 1);
@@ -215,13 +213,13 @@ export class IntroScene extends Phaser.Scene {
         fontSize: '16px',
         color: SLATE_LIGHT,
         wordWrap: { width: boxW - 24 },
-        lineSpacing: 8,
+        lineSpacing: 10,
       })
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2);
     texts.push(directorBody);
 
-    y += 118;
+    y += 152;
 
     // Name label.
     const nameLabel = this.add

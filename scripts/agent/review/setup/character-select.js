@@ -49,17 +49,17 @@
   window.__visualReview = {
     surface: 'Character Select',
     regions: [
-      { id: 'character-panel', box: { x: 290, y: 122, width: 700, height: 476 }, kind: 'panel' },
+      { id: 'character-panel', box: { x: 290, y: 102, width: 700, height: 516 }, kind: 'panel' },
       {
         id: 'director-commentary',
-        box: { x: 314, y: 198, width: 652, height: 96 },
+        box: { x: 314, y: 178, width: 652, height: 130 },
         kind: 'content',
       },
       { id: 'contestant-name-label', box: nameLabelBox, kind: 'text' },
       { id: 'contestant-name', box: nameBox, kind: 'control' },
       { id: 'pronoun-controls-label', box: pronounLabelBox, kind: 'text' },
       { id: 'pronoun-controls', box: pronounBox, kind: 'control' },
-      { id: 'primary-action', box: { x: 500, y: 530, width: 280, height: 46 }, kind: 'action' },
+      { id: 'primary-action', box: { x: 500, y: 544, width: 280, height: 46 }, kind: 'action' },
     ],
     expect: {},
   };

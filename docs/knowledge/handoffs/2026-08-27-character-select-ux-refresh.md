@@ -330,3 +330,29 @@ name field".
 Branch: `nalfeo-character-select-refresh-1c8` (5 commits total this session).
 Gate still met: 80.0/100, 0 evidence-backed blockers. Per standing
 instruction, still **no PR opened** — held locally for the creator session.
+
+## Round 6: lore-rich Director introduction
+
+Expanded the Director introduction after feedback that the original three-line
+welcome left too much unused horizontal space and did not establish the show's
+premise. The new copy states that the contestant's planet was conquered, they
+were dragged from cold storage to fight for the galaxy's viewing pleasure, high
+ratings can earn revival for another season, and beating the dungeon can earn
+release.
+
+The commentary panel now uses a 130px-tall region with 10px line spacing. The
+overall Character Select panel grows to 516px and remains centered, preserving
+the established name, pronoun, hint, and action spacing. The first-class
+scenario geometry in `scripts/agent/review/setup/character-select.js` was
+updated to match the shipped layout.
+
+Observed in the real game at 1600x1000 and captured as
+`files/visual-review/after/v1.5.2/character-select.png`. The final three-line
+copy uses the commentary width without clipping. Visual review: **PASS,
+80.0/100 anchored score, 0 deterministic blockers, 0 evidence-backed
+blockers**. The open A|B viewer was refreshed and lists the v1.5.2 capture and
+review.
+
+`npm run typecheck` and targeted ESLint passed. `npm run verify:fast` reaches
+the previously documented `health-silent-reverts` blocker inherited from merge
+commit `67592f9f8`; the Character Select checks preceding it pass.
