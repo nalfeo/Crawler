@@ -86,11 +86,7 @@ function resolveMarkdownPath(source: string): string {
 export function loreCitedPaths(loreText?: string): string[] {
   let text = loreText;
   if (text === undefined) {
-    try {
-      text = readFileSync(fromRepo(LORE_BIBLE_PATH), 'utf8');
-    } catch {
-      return [];
-    }
+    text = readFileSync(fromRepo(LORE_BIBLE_PATH), 'utf8');
   }
   return [...new Set(sourcePaths(text).map(resolveMarkdownPath))];
 }

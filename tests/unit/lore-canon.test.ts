@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HANDOFFS_DIR, decideHandoff } from '../../scripts/agent/docs/archive-handoffs';
 import { fromRepo } from '../../scripts/agent/shared/report';
 import { loreCitedPaths, validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
@@ -114,6 +114,30 @@ describe('lore citation pinning', () => {
     for (const source of cited) {
       expect(existsSync(fromRepo(source))).toBe(true);
       expect(source.startsWith('docs/knowledge/handoffs/archive/')).toBe(false);
+    }
+  });
+
+  it('fails closed when the Lore Bible cannot be read', async () => {
+    vi.resetModules();
+    vi.doMock('node:fs', async (importOriginal) => {
+      const fs = await importOriginal<typeof import('node:fs')>();
+      return {
+        ...fs,
+        readFileSync: vi.fn((file) => {
+          expect(String(file)).toMatch(/lore-bible\.md$/);
+          throw new Error('missing lore bible');
+        }),
+      };
+    });
+
+    try {
+      const { loreCitedPaths: mockedLoreCitedPaths } =
+        await import('../../scripts/agent/docs/check-lore-canon');
+
+      expect(() => mockedLoreCitedPaths()).toThrow('missing lore bible');
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
     }
   });
 
