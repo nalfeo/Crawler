@@ -18,7 +18,7 @@
  * via the hand-written `visual-review-lib.d.mts`.
  *
  * @typedef {{ x: number, y: number, width: number, height: number }} VisualReviewBox
- * @typedef {'slot' | 'icon' | 'panel' | 'tooltip' | 'text' | 'other'} VisualReviewRegionKind
+ * @typedef {'slot' | 'icon' | 'panel' | 'tooltip' | 'text' | 'row' | 'button' | 'label' | 'other'} VisualReviewRegionKind
  * @typedef {{ id: string, box: VisualReviewBox, kind?: VisualReviewRegionKind, parentId?: string }} VisualReviewRegion
  * @typedef {{ score: number, raw: unknown, normalized: boolean }} NormalizedScore
  * @typedef {{ new: string[], recurring: string[] }} FindingDiff
@@ -34,7 +34,14 @@
  */
 
 /** Kinds that are containers/overlays and must NOT participate in sibling overlap/touch. */
-const OVERLAP_EXCLUDED_KINDS = new Set(['panel', 'tooltip', 'icon']);
+/**
+ * Kinds that are containers rather than content, so they are excluded from
+ * sibling overlap/touch comparison. `row` is a list-item container: its
+ * children (icon, chest, CTA) are compared against each other, but the row
+ * itself is not compared against sibling rows, which legitimately stack
+ * edge-to-edge in a scrolling list.
+ */
+const OVERLAP_EXCLUDED_KINDS = new Set(['panel', 'tooltip', 'icon', 'row']);
 
 /**
  * @param {unknown} box

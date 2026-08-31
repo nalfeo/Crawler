@@ -12,6 +12,7 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel, createStatBar } from './pixel-ui.js';
 import { resolveBossHealthBar } from './boss-health-bar-state.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import { HUD_FONT_FAMILY, HUD_TEXT } from './ui-theme.js';
 import {
   BOSS_PANEL_HEIGHT,
   ENCOUNTER_PANEL_WIDTH,
@@ -54,24 +55,12 @@ export function createHudBossBar(
     parent: wrapper,
   });
 
-  const label = scene.add
-    .text(PANEL_X + 10, 17, 'BOSS', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+  const nameText = scene.add
+    .text(PANEL_X + 10, 17, '', {
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.value,
       fontStyle: 'bold',
       color: '#fde68a',
-    })
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(PIXEL_UI_DEPTH.overlay)
-    .setVisible(false);
-  wrapper.add(label);
-
-  const nameText = scene.add
-    .text(PANEL_X + 58, 17, '', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: '#f8fafc',
     })
     .setOrigin(0, 0.5)
     .setScrollFactor(0)
@@ -81,8 +70,8 @@ export function createHudBossBar(
 
   const hpText = scene.add
     .text(PANEL_X + PANEL_WIDTH - 10, 17, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
+      fontFamily: HUD_FONT_FAMILY,
+      fontSize: HUD_TEXT.label,
       color: '#cbd5e1',
     })
     .setOrigin(1, 0.5)
@@ -90,7 +79,7 @@ export function createHudBossBar(
     .setDepth(PIXEL_UI_DEPTH.overlay)
     .setVisible(false);
   wrapper.add(hpText);
-  const detachCrispText = applyCrispText(scene, [label, nameText, hpText]);
+  const detachCrispText = applyCrispText(scene, [nameText, hpText]);
 
   function sync(world: GameWorld): void {
     const state = resolveBossHealthBar(
@@ -102,7 +91,6 @@ export function createHudBossBar(
     const visible = state !== null;
     panel.setVisible(visible);
     bar.setVisible(visible);
-    label.setVisible(visible);
     nameText.setVisible(visible);
     hpText.setVisible(visible);
     if (!state) {
@@ -119,30 +107,19 @@ export function createHudBossBar(
     detachCrispText();
     panel.destroy();
     bar.destroy();
-    label.destroy();
     nameText.destroy();
     hpText.destroy();
     wrapper.destroy();
   }
 
   function getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null {
-    if (!label.visible) return null;
-    const textLeft = Math.min(label.x, nameText.x, hpText.x - hpText.width);
-    const textRight = Math.max(label.x + label.width, nameText.x + nameText.width, hpText.x);
+    if (!nameText.visible) return null;
+    const textLeft = Math.min(nameText.x, hpText.x - hpText.width);
+    const textRight = Math.max(nameText.x + nameText.width, hpText.x);
     const textTop =
-      wrapper.y +
-      Math.min(
-        label.y - label.height / 2,
-        nameText.y - nameText.height / 2,
-        hpText.y - hpText.height / 2,
-      );
+      wrapper.y + Math.min(nameText.y - nameText.height / 2, hpText.y - hpText.height / 2);
     const textBottom =
-      wrapper.y +
-      Math.max(
-        label.y + label.height / 2,
-        nameText.y + nameText.height / 2,
-        hpText.y + hpText.height / 2,
-      );
+      wrapper.y + Math.max(nameText.y + nameText.height / 2, hpText.y + hpText.height / 2);
     return {
       panel: {
         x: PANEL_X,

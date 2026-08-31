@@ -191,6 +191,41 @@ describe('Release UX Baselines', () => {
         'an unknown --surface id should fail loudly instead of silently capturing everything',
       );
     });
+
+    test('capture script dispatches every enabled manifest capture source', () => {
+      const scriptPath = resolve('scripts/agent/release/capture-ux-baselines.ts');
+      const manifestPath = resolve('docs/knowledge/ux-baselines/manifest.json');
+      const content = readFileSync(scriptPath, 'utf-8');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const enabledSources = new Set(
+        manifest.filter((surface) => surface.enabled).map((surface) => surface.captureSource),
+      );
+
+      for (const source of enabledSources) {
+        assert.match(
+          content,
+          new RegExp(`case ['"]${source}['"]`),
+          `capture script should handle enabled source ${source}`,
+        );
+      }
+      assert.doesNotMatch(
+        content,
+        /Unsupported surface: \\$\\{surface\\.id\\} \\(skipped\\)/,
+        'enabled manifest entries should not be silently skipped by captureSource',
+      );
+    });
+
+    test('awards scenario setup reads the manifest uxScenario id', () => {
+      const setupPath = resolve('scripts/agent/review/setup/awards-pane-scenarios.js');
+      const content = readFileSync(setupPath, 'utf-8');
+
+      assert.match(content, /get\('uxScenario'\)/, 'setup should read uxScenario');
+      assert.match(
+        content,
+        /startsWith\('awards-'\)/,
+        'setup should derive scenario names from awards-* manifest IDs',
+      );
+    });
   });
 
   describe('npm script integration', () => {

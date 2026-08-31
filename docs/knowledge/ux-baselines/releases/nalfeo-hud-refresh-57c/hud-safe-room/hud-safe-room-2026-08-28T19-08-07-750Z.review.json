@@ -1,0 +1,185 @@
+{
+  "overall": {
+    "score": 71.9,
+    "verdict": "pass",
+    "summary": "Deterministic contract is unscoped. 0 evidence-backed blocker(s); 1 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional and readable but suffers from minor alignment, spacing, and hierarchy issues that detract from its polish and usability. Improvements to spacing, alignment, and visual hierarchy would elevate the design.",
+    "raw_score": 72
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 70,
+      "strengths": [
+        "Consistent panel framing and alignment of grouped elements.",
+        "Minimap and vitals are positioned logically."
+      ],
+      "issues": [
+        "The 'Floor 1' banner is slightly off-center horizontally relative to the screen.",
+        "The 'Auto Abilities' panel feels disconnected from the rest of the HUD due to its low placement."
+      ]
+    },
+    "spacing_balance": {
+      "score": 65,
+      "strengths": [
+        "Adequate spacing between ability slots.",
+        "Minimap has sufficient breathing room."
+      ],
+      "issues": [
+        "The 'Auto Abilities' panel text ('AUTO ABILITIES') is cramped vertically within its container.",
+        "The health bar text ('250 / 250') is slightly too close to the top of the bar."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 68,
+      "strengths": [
+        "Key elements like the minimap and health bar are visually distinct.",
+        "Ability slots are clearly labeled and numbered."
+      ],
+      "issues": [
+        "The 'Floor 1' banner does not stand out enough as a primary indicator.",
+        "The coin and gear counters lack visual emphasis compared to other elements."
+      ]
+    },
+    "readability": {
+      "score": 75,
+      "strengths": [
+        "Text is legible and uses a pixel font consistent with the game's style.",
+        "Ability labels are clear and easy to read."
+      ],
+      "issues": [
+        "The 'MAP (M)' label under the minimap is slightly small and could be hard to read on smaller screens.",
+        "The health bar text could use more contrast against the green background."
+      ]
+    },
+    "icon_usage": {
+      "score": 80,
+      "strengths": [
+        "Icons for coins and gears are clear and recognizable.",
+        "Minimap frame and compass are visually distinct."
+      ],
+      "issues": ["The icons for coins and gears could be slightly larger to improve visibility."]
+    },
+    "typography_clarity": {
+      "score": 70,
+      "strengths": [
+        "Consistent use of pixel font across the interface.",
+        "Ability labels are clear and well-aligned."
+      ],
+      "issues": [
+        "The 'AUTO ABILITIES' label is slightly cramped within its container.",
+        "The 'Floor 1' banner text could be larger for better emphasis."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 75,
+      "strengths": [
+        "Pixel art style is consistent across all elements.",
+        "Color palette matches the game's theme."
+      ],
+      "issues": [
+        "The 'Floor 1' banner feels slightly plain and could use more thematic embellishment.",
+        "The 'MAP (M)' label under the minimap feels slightly out of place stylistically."
+      ]
+    }
+  },
+  "blocking_findings": [],
+  "recommended_fixes": [
+    "Center the 'Floor 1' banner horizontally relative to the screen.",
+    "Increase the vertical padding for the 'AUTO ABILITIES' label to improve readability.",
+    "Add more contrast to the health bar text ('250 / 250') for better visibility.",
+    "Increase the size of the 'MAP (M)' label under the minimap for better readability.",
+    "Consider increasing the size of the coin and gear icons to improve their visibility."
+  ],
+  "precise_fixes": [
+    {
+      "element": "floorBanner",
+      "action": "move",
+      "dx": -10,
+      "dy": 0,
+      "reason": "The 'Floor 1' banner is slightly off-center horizontally; move it left by 10px to center it."
+    },
+    {
+      "element": "autoAbilitiesLabel",
+      "action": "pad",
+      "dx": 0,
+      "dy": 0,
+      "dw": 0,
+      "dh": 4,
+      "reason": "The 'AUTO ABILITIES' label is cramped vertically; add 4px of padding to improve readability."
+    },
+    {
+      "element": "healthBarText",
+      "action": "move",
+      "dx": 0,
+      "dy": -2,
+      "reason": "The health bar text ('250 / 250') is too close to the top of the bar; move it up by 2px for better spacing."
+    },
+    {
+      "element": "mapLabel",
+      "action": "resize",
+      "dx": 0,
+      "dy": 0,
+      "dw": 2,
+      "dh": 2,
+      "reason": "The 'MAP (M)' label is too small; increase its size by 2px in both width and height for better readability."
+    },
+    {
+      "element": "coinIcon",
+      "action": "resize",
+      "dx": 0,
+      "dy": 0,
+      "dw": 4,
+      "dh": 4,
+      "reason": "The coin icon is too small; increase its size by 4px in both width and height for better visibility."
+    },
+    {
+      "element": "gearIcon",
+      "action": "resize",
+      "dx": 0,
+      "dy": 0,
+      "dw": 4,
+      "dh": 4,
+      "reason": "The gear icon is too small; increase its size by 4px in both width and height for better visibility."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [],
+  "advisory_taste_notes": [
+    "Increase the vertical padding for the 'AUTO ABILITIES' label to improve readability."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD (Safe Room, All Systems Unlocked)"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "ce5ebb4ca28db47f96811913874d7247d3a69789b641ca84404cbff5cad78394",
+  "capture_unchanged_from_prior": true,
+  "score_derivation": {
+    "axis_mean": 71.9,
+    "penalty": 0,
+    "deterministic_blockers": 0,
+    "llm_blockers": 0,
+    "model_reported_score": 72,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": [],
+    "recurring": []
+  }
+}

@@ -21,15 +21,15 @@ import Phaser from 'phaser';
 
 export const PIXEL_UI = {
   /** Panel body fill. */
-  panelFill: 0x161c2c,
+  panelFill: 0x111a2b,
   /** Inset track (behind bar fills). */
   trackFill: 0x0a0e18,
   /** Top/left bevel highlight. */
-  bevelLight: 0x4a5878,
+  bevelLight: 0x647aa5,
   /** Bottom/right bevel shadow. */
-  bevelDark: 0x080b14,
+  bevelDark: 0x050812,
   /** Outer 1px border. */
-  border: 0x02040a,
+  border: 0x0a1220,
   /** Glossy shine overlaid on bar fills. */
   shine: 0xffffff,
   /** Accent gold for titles/markers. */
@@ -283,6 +283,99 @@ export function createStatBar(
       fill.destroy();
       shine.destroy();
       for (const t of ticks) t.destroy();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Beveled button
+// ---------------------------------------------------------------------------
+
+export interface BeveledButtonOptions {
+  fill?: number;
+  fillHover?: number;
+  highlight?: number;
+  shadow?: number;
+  border?: number;
+  depth?: number;
+  scrollFactor?: number;
+  parent?: Phaser.GameObjects.Container;
+}
+
+export interface BeveledButton {
+  readonly rectangle: Phaser.GameObjects.Rectangle;
+  setFillStyle(fill: number): void;
+  destroy(): void;
+}
+
+/**
+ * Build a raised pixel button matching {@link createBeveledPanel}'s bevel
+ * language (light top/left, dark bottom/right, 1px border) so buttons read as
+ * pressable chrome rather than a flat debug rectangle. `pointerover`/`pointerout`
+ * swap fill (and bevels) between `fill` and `fillHover`; the returned handle
+ * lets callers still drive their own hover/press logic via the raw rectangle.
+ */
+export function createBeveledButton(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: BeveledButtonOptions = {},
+): BeveledButton {
+  const fill = options.fill ?? PIXEL_UI.panelFill;
+  const fillHover = options.fillHover ?? fill;
+  const highlight = options.highlight ?? PIXEL_UI.bevelLight;
+  const shadow = options.shadow ?? PIXEL_UI.bevelDark;
+  const border = options.border ?? PIXEL_UI.border;
+  const depth = options.depth ?? PIXEL_UI_DEPTH.content;
+  const scrollFactor = options.scrollFactor ?? 0;
+
+  const body = scene.add
+    .rectangle(x, y, width, height, fill, 1)
+    .setOrigin(0, 0)
+    .setStrokeStyle(2, border, 1)
+    .setScrollFactor(scrollFactor)
+    .setDepth(depth)
+    .setInteractive({ useHandCursor: true });
+
+  const top = scene.add
+    .rectangle(x, y, width, 2, highlight)
+    .setOrigin(0, 0)
+    .setScrollFactor(scrollFactor)
+    .setDepth(depth + 1);
+  const left = scene.add
+    .rectangle(x, y, 2, height, highlight)
+    .setOrigin(0, 0)
+    .setScrollFactor(scrollFactor)
+    .setDepth(depth + 1);
+  const bottom = scene.add
+    .rectangle(x, y + height - 2, width, 2, shadow)
+    .setOrigin(0, 0)
+    .setScrollFactor(scrollFactor)
+    .setDepth(depth + 1);
+  const right = scene.add
+    .rectangle(x + width - 2, y, 2, height, shadow)
+    .setOrigin(0, 0)
+    .setScrollFactor(scrollFactor)
+    .setDepth(depth + 1);
+
+  options.parent?.add([body, top, left, bottom, right]);
+
+  body.on('pointerover', () => body.setFillStyle(fillHover, 1));
+  body.on('pointerout', () => body.setFillStyle(fill, 1));
+
+  return {
+    rectangle: body,
+    setFillStyle(newFill: number): void {
+      body.setFillStyle(newFill, 1);
+    },
+    destroy(): void {
+      body.destroy();
+      top.destroy();
+      left.destroy();
+      bottom.destroy();
+      right.destroy();
     },
   };
 }

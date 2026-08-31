@@ -1,0 +1,16 @@
+{
+  "surface": "hud-safe-room",
+  "release": "nalfeo-hud-refresh-57c",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "captureSource": "ui-probe-lab",
+  "sourceCommit": "cc8a393acf4e1758c84567caa519f0aec4b83d70",
+  "capturedAt": "2026-08-28T18:17:25.226Z",
+  "screenshotPath": "before/live-dev/hud-safe-room.png",
+  "reviewPath": "before/live-dev/hud-safe-room.review.json",
+  "screenshotHash": "8a260b4f55281c17e965a4ccde55e4229388d7f154ec35d9720942e4313840ae",
+  "determinismCheck": "passed",
+  "llmReviewed": false
+}
