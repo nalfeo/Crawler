@@ -57,6 +57,7 @@ import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { formatStatLabel, formatStatValue, renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
+import { PIXEL_UI } from './pixel-ui.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -72,19 +73,28 @@ const COLS = 5;
 const BORDER_WIDTH = 2;
 const FONT_FAMILY = UI_FONT_FAMILY;
 
+// Aligned to the shared pixel-ui vocabulary (see engine/pixel-ui.ts): dark
+// slate panel body + gold accent for emphasis/active state, matching the
+// Wave 1 HUD/Character-Select/Awards chrome instead of the older blue-steel
+// palette. Rarity-colored cell borders (RARITY_COLORS) remain the primary
+// item-identification affordance and are layered on top of cellBg untouched.
 const COLORS = {
   ...BLUE_STEEL,
-  tabBg: 0x394c74,
-  tabActive: 0x4a6699,
-  tabActiveBorder: 0xf2c14e,
-  tabText: 0xaebdd5,
-  tabTextActive: 0xd9e2ef,
-  searchBg: 0x2b3c61,
-  searchBorder: 0x3f5f93,
-  cellBg: 0x445c89,
-  cellHover: 0x5472ab,
-  emptyCellBg: 0x37496f,
-  emptyCellBorder: 0x3f5f93,
+  panelBg: PIXEL_UI.panelFill,
+  panelBorder: PIXEL_UI.border,
+  sectionHeader: PIXEL_UI.trackFill,
+  accent: PIXEL_UI.gold,
+  tabBg: PIXEL_UI.trackFill,
+  tabActive: 0x1c2a45,
+  tabActiveBorder: PIXEL_UI.gold,
+  tabText: 0x8fa0c2,
+  tabTextActive: PIXEL_UI.gold,
+  searchBg: PIXEL_UI.trackFill,
+  searchBorder: PIXEL_UI.bevelLight,
+  cellBg: 0x1a2740,
+  cellHover: 0x24365a,
+  emptyCellBg: PIXEL_UI.trackFill,
+  emptyCellBorder: PIXEL_UI.bevelDark,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -446,6 +456,24 @@ export function createInventoryUI(
   );
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
+
+  // Raised pixel-bevel edges (pixel-ui.ts createBeveledPanel idiom): a 2px
+  // lightened top/left edge and a 2px darkened bottom/right edge give the
+  // panel the same "raised metal plate" read as the Wave 1 HUD/Character
+  // Select surfaces, instead of a flat fill+stroke rectangle.
+  const bevelTop = scene.add
+    .rectangle(panelX, panelY, panelWidth, 2, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0);
+  const bevelLeft = scene.add
+    .rectangle(panelX, panelY, 2, panelHeight, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0);
+  const bevelBottom = scene.add
+    .rectangle(panelX, panelY + panelHeight - 2, panelWidth, 2, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0);
+  const bevelRight = scene.add
+    .rectangle(panelX + panelWidth - 2, panelY, 2, panelHeight, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0);
+  container.add([bevelTop, bevelLeft, bevelBottom, bevelRight]);
 
   // Corner pixel accent decorations (same idiom as EquipmentUI).
   const cornerPixelPoints = [

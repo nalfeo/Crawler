@@ -50,14 +50,13 @@ import type { ScreenBounds } from '../../src/engine/ui-scale.js';
 // resize-to-fit path, so an over-scaled icon can't silently overflow its cell.
 const PROBE_ICON_MAGENTA = { r: 0xff, g: 0x2f, b: 0xd0 };
 
-// InventoryUI's panel background after the equipment design-language port
-// (COLORS.panelBg = 0x2f3f61, "blue-steel"). Before the port the panel filled
-// with dark-navy 0x0d0d1a, so asserting this colour renders in the panel's
-// left padding gutter is a genuine before/after discriminator for the palette
-// swap: the old panel/cell fills are >70 away in RGB space and the new cellBg
-// (0x445c89) is ~54 away, so a match at threshold 30 specifically indicates the
-// blue-steel panel background.
-const PANEL_BLUE_STEEL = { r: 0x2f, g: 0x3f, b: 0x61 };
+// InventoryUI's panel background after the pixel-ui design-language pass
+// (COLORS.panelBg = PIXEL_UI.panelFill = 0x111a2b), aligning Inventory with the
+// Wave 1 HUD/Character-Select/Awards dark-slate chrome. The new cellBg
+// (0x1a2740) is close in tone but distinct, so asserting this colour renders
+// in the panel's left padding gutter (no cells, item icons, rarity borders, or
+// corner pixels there) remains a genuine palette discriminator.
+const PANEL_BLUE_STEEL = { r: 0x11, g: 0x1a, b: 0x2b };
 
 const EQUIPMENT_UI_SLOTS = [
   { id: 'head', label: 'Head' },
@@ -177,7 +176,7 @@ describe('inventory flow (e2e)', () => {
     ).toBe(false);
   });
 
-  it('renders the panel with the blue-steel equipment design language', async () => {
+  it('renders the panel with the pixel-ui dark-slate design language', async () => {
     await loadUiProbeLab(page);
     await hideLabChrome(page);
 
@@ -214,9 +213,9 @@ describe('inventory flow (e2e)', () => {
 
     expect(
       regionContainsColor(png, region, PANEL_BLUE_STEEL, 30),
-      'Expected the inventory panel to render the blue-steel background ' +
-        '(COLORS.panelBg = 0x2f3f61) ported from EquipmentUI. If this fails, the ' +
-        'panel is still using the old dark-navy palette.',
+      'Expected the inventory panel to render the pixel-ui dark-slate ' +
+        'background (COLORS.panelBg = PIXEL_UI.panelFill = 0x111a2b). If this ' +
+        'fails, the panel is still using the old blue-steel palette.',
     ).toBe(true);
   });
 

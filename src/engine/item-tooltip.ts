@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { type ItemDef, RARITY_COLORS } from '../shared/items.js';
 import type { StatId } from '../shared/stats.js';
 import { fitScaleForBox } from './ui-scale.js';
+import { PIXEL_UI } from './pixel-ui.js';
 
 const PERCENT_STAT_IDS = new Set<StatId>([
   'damagePercent',
@@ -42,8 +43,11 @@ export function formatStatLabel(statId: string): string {
     .replace('Cooldown Reduction', 'CD Reduction');
 }
 
-const TOOLTIP_BG = 0x0a0a16;
-const TOOLTIP_BORDER = 0xe9c46a;
+// Aligned to the shared pixel-ui vocabulary (see engine/pixel-ui): dark slate
+// fill + gold border, matching the HUD/Character-Select/Awards chrome instead
+// of a bespoke tooltip palette.
+const TOOLTIP_BG = PIXEL_UI.panelFill;
+const TOOLTIP_BORDER = PIXEL_UI.gold;
 const TOOLTIP_WIDTH = 200;
 const TOOLTIP_BASE_HEIGHT = 110;
 const TOOLTIP_STAT_HEIGHT_BONUS = 18;

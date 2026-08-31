@@ -71,6 +71,7 @@ import {
   type TooltipStatLine,
 } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
+import { PIXEL_UI } from './pixel-ui.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -182,21 +183,26 @@ const EQUIPMENT_UI_SLOTS: readonly SlotDefinition[] = EQUIPMENT_UI_SLOT_IDS.map(
   };
 });
 
+// Aligned to the shared pixel-ui vocabulary (see engine/pixel-ui.ts): dark
+// slate panel body + gold accent, matching Wave 1 HUD/Character-Select/Awards
+// chrome and the sibling InventoryUI panel this pane visually pairs with.
 const COLORS = {
   ...BLUE_STEEL,
+  panelBg: PIXEL_UI.panelFill,
+  panelBorder: PIXEL_UI.border,
+  headerAccent: PIXEL_UI.gold,
   // Contrast lift: the judge flagged "light blue text on a dark blue background
   // has limited contrast". Body/secondary text is pushed toward white so the
   // stat rows and slot labels clear a comfortable ratio against panelBg/dollBg.
   textPrimary: 0xf3f8ff,
   textSecondary: 0xd3dfef,
-  headerAccent: 0xf2c14e,
-  dollBg: 0x394c74,
-  panelInset: 0x2b3c61,
-  slotBg: 0x445c89,
-  slotHover: 0x5472ab,
-  slotSelected: 0x4a6699,
-  slotSelectedBorder: 0xf2c14e,
-  slotEmptyBorder: 0x90a7ca,
+  dollBg: PIXEL_UI.trackFill,
+  panelInset: PIXEL_UI.trackFill,
+  slotBg: 0x1a2740,
+  slotHover: 0x24365a,
+  slotSelected: 0x1c2a45,
+  slotSelectedBorder: PIXEL_UI.gold,
+  slotEmptyBorder: PIXEL_UI.bevelLight,
   statBuff: 0x49d06f,
   statNerf: 0xe8695b,
 } as const;
@@ -492,6 +498,24 @@ export function createEquipmentUI(
   );
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
+
+  // Raised pixel-bevel edges (pixel-ui.ts createBeveledPanel idiom), matching
+  // the same treatment applied to InventoryUI.ts's panel so the two shared
+  // surfaces read as one consistent "raised metal plate" family.
+  const bevelTop = scene.add
+    .rectangle(panelX, panelY, panelWidth, 2, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0);
+  const bevelLeft = scene.add
+    .rectangle(panelX, panelY, 2, panelHeight, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0);
+  const bevelBottom = scene.add
+    .rectangle(panelX, panelY + panelHeight - 2, panelWidth, 2, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0);
+  const bevelRight = scene.add
+    .rectangle(panelX + panelWidth - 2, panelY, 2, panelHeight, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0);
+  container.add([bevelTop, bevelLeft, bevelBottom, bevelRight]);
+
   const cornerPixelPoints = [
     [panelX + 6, panelY + 6],
     [panelX + panelWidth - 6, panelY + 6],
