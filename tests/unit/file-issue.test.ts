@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildFileIssuePayload,
   serializeIssueScreenshot,
@@ -84,6 +84,10 @@ describe('issue screenshot serialization', () => {
 });
 
 describe('file issue submission', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('posts the PR2 contract and returns the created issue URL', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ runId: 'run-1', issueUrl: 'https://example.test/issues/1' }), {
@@ -98,6 +102,25 @@ describe('file issue submission', () => {
     });
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://ingest.test/runs',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('uses the shared dev-build endpoint resolver when no explicit endpoint is passed', async () => {
+    vi.stubEnv('VITE_CRAWLER_RUNS_API_ENDPOINT', 'https://configured.test/runs');
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ runId: 'run-1', issueUrl: 'https://example.test/issues/1' }), {
+        status: 201,
+      }),
+    );
+    const payload = buildFileIssuePayload(bundle, 'Configured issue', { includeLogs: true });
+
+    await expect(submitFileIssue(payload, undefined, fetchImpl)).resolves.toEqual({
+      runId: 'run-1',
+      issueUrl: 'https://example.test/issues/1',
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://configured.test/runs',
       expect.objectContaining({ method: 'POST' }),
     );
   });
