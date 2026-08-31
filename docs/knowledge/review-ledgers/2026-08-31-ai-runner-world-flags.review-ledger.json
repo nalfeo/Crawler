@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-31",
+  "session_slug": "ai-runner-world-flags",
+  "task_title": "Expose AI runner world feature flags",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Revised plan adds CLI parse/help/forwarding, explicit selected-vs-applied flag snapshots, floor/target applicability metadata, enabled and independence-matrix coverage, and uses ScenarioInitializationOptions as the shared seam. Reuses the existing Apply staged + restart button, with flag-specific stale status and labeling, rather than adding a competing restart mechanism."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

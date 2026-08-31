@@ -20,7 +20,9 @@ export { runHeadless } from './headless-runner.js';
 export { PLAYER_PERSONAS, getPersonaConfig } from './personas.js';
 export {
   getAiFeatureFlagControls,
+  isAiFeatureFlagApplicable,
   resolveAiFeatureFlags,
+  type AiFeatureFlagContext,
   type AiFeatureFlagKey,
   type AiFeatureFlags,
 } from './feature-flags.js';

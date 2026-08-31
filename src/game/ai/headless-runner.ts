@@ -64,11 +64,15 @@ import {
   denBossTransitionPayload,
 } from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
-import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import {
+  getScenarioDefinition,
+  type ScenarioInitializationOptions,
+} from '../scenarioDefinitions.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { configureAttackWaves } from '../attack-wave-system.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -446,6 +450,21 @@ export interface HeadlessRunnerConfig {
    * serviced inventory outcome.
    */
   enforcePlayabilityInvariants?: boolean;
+  /**
+   * Enable the default-off periodic rat attack-wave system. Applied to
+   * `world.attackWaveFlags.attackWaves` before scenario configuration runs.
+   * Only fires on a floor whose manifest declares the `trashAttackWaves`
+   * behavior flag (Floor 1 only, as of writing) — inert elsewhere. Default
+   * `false`.
+   */
+  attackWaves?: boolean;
+  /**
+   * Enable Floor 1's static spawners (two `rats-nest` + two `slime-pool`
+   * spawner archetypes). Only consulted when `floorId` is `'floor1'`; every
+   * other floor ignores this field. Default `false` (Floor 1 stays
+   * spawner-free per ADR 0049 unless explicitly enabled here).
+   */
+  floor1Spawners?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -799,6 +818,10 @@ export async function runHeadless(
   configureMerchantWeaponPurchase(world, featureFlags.optionalPurchases);
   configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
   configureSettlementReturnRouting(world, featureFlags.settlementReturnRouting);
+  // "Before play": applied ahead of scenario configuration below, mirroring
+  // the visual pipeline's `createFloorMainSceneOptions` wrapper. Inert on any
+  // floor whose manifest doesn't declare `trashAttackWaves`.
+  configureAttackWaves(world, featureFlags.attackWaves);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
@@ -817,11 +840,13 @@ export async function runHeadless(
 
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
-  scenario.configureWorld(
-    world,
-    playerEid,
-    config.playerCarryover ? { playerCarryover: config.playerCarryover } : undefined,
-  );
+  const scenarioInitOptions: ScenarioInitializationOptions = {
+    ...(config.playerCarryover ? { playerCarryover: config.playerCarryover } : {}),
+    // Only consulted by Floor 1's `initializeFloor1Scenario`; every other
+    // floor ignores this field, so it's always safe to forward.
+    floor1Spawners: featureFlags.floor1Spawners,
+  };
+  scenario.configureWorld(world, playerEid, scenarioInitOptions);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
