@@ -15,6 +15,9 @@ import {
   hasTrustedTrainPromotionCheck,
   isAgentSessionRunning,
   isDuplicateDispatch,
+  isHumanEscalationDeclaration,
+  isImplementationMissingReviewBlocker,
+  isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
   isLeaseExpired,
@@ -38,6 +41,8 @@ import {
   shouldSkipSubstantiveReview,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  shouldQuarantineHumanEscalatedBlockers,
+  shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ABANDON_CANDIDATE_LABEL,
   QUARANTINE_COMMENT_MARKER,
@@ -2006,6 +2011,40 @@ test('isScopeMismatchReviewBlocker matches active-voice "does not implement" fin
   }
 });
 
+test('isImplementationMissingReviewBlocker detects trusted empty-implementation findings', () => {
+  for (const summary of [
+    "reviewer: This PR didn't actually implement the feature.",
+    'reviewer: The change adds only the planning ledger; none of the runtime or test changes are present.',
+    'reviewer: This is an empty PR for the requested behavior.',
+  ]) {
+    assert.equal(
+      isImplementationMissingReviewBlocker({
+        kind: 'review-thread',
+        scopeMismatchTrusted: true,
+        summary,
+      }),
+      true,
+      summary,
+    );
+  }
+
+  assert.equal(
+    isImplementationMissingReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary: 'reviewer: Please add a missing unit test for this implementation.',
+    }),
+    false,
+  );
+  assert.equal(
+    isImplementationMissingReviewBlocker({
+      kind: 'review-thread',
+      summary: "drive-by: This PR didn't actually implement the feature.",
+    }),
+    false,
+  );
+});
+
 test('isScopeMismatchReviewBlocker matches undeclared-scope (scope-creep) findings', () => {
   // Verbatim finding from PR #3735 (loop incident #3807), truncated the same way
   // reconcile.mjs truncates a root review comment into a blocker summary.
@@ -2075,6 +2114,111 @@ test('isScopeMismatchReviewBlocker does not quarantine ordinary inline repairs p
     }),
     false,
   );
+});
+
+test('protected-path capability denial requires a specific path and explicit session limitation', () => {
+  const reply =
+    "I can't complete the `.github/agents` portion in this session — my environment explicitly disallows reading or editing files in that directory.";
+  assert.equal(isProtectedPathCapabilityDenial(reply), true);
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      "I can't complete the test update because the current assertion is unclear.",
+    ),
+    false,
+  );
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      'Please update `.github/agents` and the related deterministic tests.',
+    ),
+    false,
+  );
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      "I updated `.github/agents`; I can't complete the tests because this environment cannot run npm.",
+    ),
+    false,
+  );
+});
+
+test('protected-path quarantine waits until every remaining blocker is terminal', () => {
+  const protectedBlocker = {
+    kind: 'review-thread',
+    protectedPathCapabilityDenied: true,
+  };
+  assert.equal(shouldQuarantineProtectedPathBlockers([protectedBlocker]), true);
+  assert.equal(
+    shouldQuarantineProtectedPathBlockers([
+      protectedBlocker,
+      { kind: 'ci-failure', id: 'unit-tests' },
+    ]),
+    false,
+  );
+  assert.equal(shouldQuarantineProtectedPathBlockers([]), false);
+});
+
+test('human escalation requires both a human hand-off and an explicit unresolved declaration', () => {
+  // Verbatim excerpt of the validator reply that stalled PR #3958 (loop
+  // incident #3969): recovery re-dispatched this thread until attempts
+  // exhausted because the declared hand-off had no representation.
+  const validatorReply =
+    '**Validator verdict: VALID \u2014 confirmed by an independent second model. Leaving this thread UNRESOLVED and escalating to a human.**\n\n' +
+    'Why the validator is not fixing this here: the fix required is not a bounded correction \u2014 it is the entire 5\u{1F34E} feature this PR was opened to deliver.\n\n' +
+    'Thread intentionally left unresolved for human escalation.';
+  assert.equal(isHumanEscalationDeclaration(validatorReply), true);
+  // A hand-off mention alone must not park a PR that inline repair can still fix.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs we should escalate to a human, but I fixed it in a9068d8.',
+    ),
+    false,
+  );
+  // An unresolved note alone (no human hand-off) is an ordinary repairable reply.
+  assert.equal(
+    isHumanEscalationDeclaration('Leaving this thread unresolved until the rebase lands.'),
+    false,
+  );
+  // The hand-off and unresolved phrases must be one present-tense declaration,
+  // not two unrelated repairable statements concatenated together.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs we should escalate to a human. Leaving this thread unresolved until the rebase lands.',
+    ),
+    false,
+  );
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs, leave this thread unresolved and escalate to a human.',
+    ),
+    false,
+  );
+  // A quoted escalation from an earlier task body is not this author's declaration.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      '> Leaving this thread UNRESOLVED and escalating to a human.\n\nAddressed the finding instead.',
+    ),
+    false,
+  );
+  assert.equal(isHumanEscalationDeclaration(''), false);
+});
+
+test('human-escalation quarantine waits until every remaining blocker is terminal', () => {
+  const escalatedBlocker = {
+    kind: 'review-thread',
+    humanEscalationDeclared: true,
+  };
+  assert.equal(shouldQuarantineHumanEscalatedBlockers([escalatedBlocker]), true);
+  assert.equal(
+    shouldQuarantineHumanEscalatedBlockers([
+      escalatedBlocker,
+      { kind: 'ci-failure', id: 'unit-tests' },
+    ]),
+    false,
+  );
+  assert.equal(
+    shouldQuarantineHumanEscalatedBlockers([escalatedBlocker, { kind: 'review-thread' }]),
+    false,
+  );
+  assert.equal(shouldQuarantineHumanEscalatedBlockers([]), false);
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {

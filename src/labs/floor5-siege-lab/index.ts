@@ -4,6 +4,7 @@ import {
   getFloor5SiegeRunStats,
   initializeFloor5Scenario,
   siegeDirectorSystem,
+  siegeHeroSystem,
 } from '../../game/floor5Scenario.js';
 import { registerLab } from '../registry.js';
 
@@ -30,7 +31,9 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
   function step(): void {
     world.elapsedMs += state.stepMs;
+    world.frameCount += Math.max(1, Math.round(state.stepMs / 16));
     siegeDirectorSystem(world);
+    siegeHeroSystem(world);
     render();
   }
 
@@ -44,6 +47,12 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `engine=${siege?.engineState ?? '(none)'}`,
       `breach=${siege?.breachState ?? '(none)'}`,
       `hero=${siege?.heroState ?? '(none)'}`,
+      `heroSlot=${siege?.heroes.status ?? '(none)'} cursor=${siege?.heroes.cursor ?? -1}`,
+      `heroActive=${siege?.heroes.activeHeroId ?? '(none)'} role=${siege?.heroes.activeRole ?? '(none)'}`,
+      `heroHp=${siege?.heroes.health ?? 0}/${siege?.heroes.maxHealth ?? 0} target=${siege?.heroes.targetEid ?? 0}`,
+      `heroFrames spawned=${siege?.heroes.spawnedFrame ?? '-'} defeated=${siege?.heroes.defeatedFrame ?? '-'} respawn=${siege?.heroes.respawnFrame ?? '-'}`,
+      `heroTotals spawns=${siege?.heroes.spawns ?? 0} defeats=${siege?.heroes.defeats ?? 0} abilityCasts=${siege?.heroes.abilityCasts ?? 0} buildStallMs=${siege?.heroes.buildStallMs ?? 0}`,
+      `heroCard=${(siege?.heroes.card ?? []).map((entry) => `${entry.order}:${entry.heroId}(${entry.role})`).join(' -> ') || '(none)'}`,
       `checkpointOwner=${siege?.checkpointOwner ?? '(none)'}`,
       `waveCycles=${siege?.laneTelemetry.waveCyclesCompleted ?? 0}`,
       `checkpointContests=${siege?.laneTelemetry.checkpointContests ?? 0}`,

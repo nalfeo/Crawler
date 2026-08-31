@@ -1,4 +1,12 @@
-import { addComponent, entityExists, hasComponent, query, set, setComponent } from 'bitecs';
+import {
+  addComponent,
+  entityExists,
+  hasComponent,
+  query,
+  removeEntity,
+  set,
+  setComponent,
+} from 'bitecs';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import {
@@ -8,6 +16,7 @@ import {
   Health,
   Immovable,
   Position,
+  SiegeHero,
   SiegeMinion,
   SiegeStructure,
   Size,
@@ -15,9 +24,15 @@ import {
   Team,
   Velocity,
   Weight,
+  activateMobAbilityEncounter,
   createEntity,
+  registerMobAbility,
+  setMobAbilitiesEnabled,
   type GameWorld,
 } from '../core/index.js';
+import { clearEntityStores } from '../core/helpers.js';
+import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { clearMobAbility } from '../core/mob-abilities/runtime.js';
 import {
   computeSiegeCastleLayout,
   siegeCastleOptionsFromConfig,
@@ -31,6 +46,8 @@ import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { TeamId } from '../shared/constants.js';
 import type {
+  Floor5FieldHeroCardEntry,
+  Floor5FieldHeroRole,
   Floor5RamComponentClass,
   Floor5RequisitionMilestone,
   Floor5SiegeCheckpointOwner,
@@ -43,6 +60,11 @@ import type {
   Floor5SiegeTeam,
   Floor5SiegeWaveManifestEntry,
 } from '../shared/floor-types.js';
+import { FLOOR5_FIELD_HERO_ROSTER, buildFloor5FieldHeroCard } from '../shared/floor5-heroes.js';
+import {
+  createFloor5HeroAbilityDefinition,
+  floor5HeroArchetypeKey,
+} from './floor5HeroAbilities.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
@@ -74,6 +96,20 @@ const FLOOR5_MINION_SPEED_FT_PER_FRAME = 0.85;
 const FLOOR5_MINION_ATTACK_RANGE_FT = 2.5;
 const FLOOR5_CHECKPOINT_RADIUS_FT = 8;
 const FLOOR5_PATH_STALL_FRAMES = 90;
+/**
+ * Encoded {@link Floor5FieldHeroRole} stored on the `SiegeHero` marker so ECS
+ * consumers (tests, labs, future slices) can read a Hero's single declared role
+ * straight off the entity without going through the sidecar state.
+ */
+const FLOOR5_HERO_ROLE_CODE: Record<Floor5FieldHeroRole, number> = {
+  'counter-push': 1,
+  'checkpoint-defense': 2,
+  'engine-disruption': 3,
+  'minion-support': 4,
+  artillery: 5,
+};
+/** Feet of slack allowed around a role anchor before the Hero re-centres. */
+const FLOOR5_HERO_ANCHOR_SLACK_FT = 2;
 const FLOOR5_STRUCTURE_HEALTH: Record<Floor5SiegeStructureId, number> = {
   'command-post': 90,
   'allied-checkpoint': 36,
@@ -262,6 +298,48 @@ function latchFloor5RequisitionMilestone(
   }
 }
 
+function getFloor5HeroConfig() {
+  return getFloor5Config().heroes;
+}
+
+function createFloor5HeroSlotState(streamKey: string): Floor5SiegeState['heroes'] {
+  return {
+    card: buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, streamKey),
+    status: 'pending',
+    cursor: -1,
+    eid: 0,
+    health: 0,
+    maxHealth: 0,
+    targetEid: 0,
+    spawnedFrame: null,
+    defeatedFrame: null,
+    respawnFrame: null,
+    fieldedHeroIds: [],
+    spawns: 0,
+    defeats: 0,
+    abilityCasts: 0,
+    buildStallMs: 0,
+  };
+}
+
+/**
+ * Project the typed field-Hero slot onto the flat `heroState` trace/display
+ * string. Derived only — `state.heroes` stays the single source of truth.
+ */
+function floor5HeroStateLabel(heroes: Floor5SiegeState['heroes']): string {
+  const card = heroes.cursor >= 0 ? heroes.card[heroes.cursor] : undefined;
+  switch (heroes.status) {
+    case 'active':
+      return card ? `ACTIVE:${card.heroId}` : 'ACTIVE';
+    case 'down':
+      return card ? `DOWN:${card.heroId}@${heroes.respawnFrame ?? -1}` : 'DOWN';
+    case 'retired':
+      return 'RETIRED';
+    default:
+      return 'PENDING';
+  }
+}
+
 function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
   const config = getFloor5Config();
   const rngStreamKeys = Object.fromEntries(
@@ -275,6 +353,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     engineState: 'LOCKED',
     breachState: 'SEALED',
     heroState: 'PENDING',
+    heroes: createFloor5HeroSlotState(rngStreamKeys.heroes),
     tasks: {
       openingPushRepelled: false,
       yardSecured: false,
@@ -575,31 +654,39 @@ function selectFloor5Target(
       return structure.eid;
     }
   }
+
+  // Last resort only. The active field Hero is a legal target for the opposing
+  // side, but it sits BEHIND the lane objective on purpose: a boss-strength
+  // named defender parked on the lane would otherwise soak every allied minion
+  // indefinitely and stall the Slice-2 push contract. Heroes are meant to be
+  // worn down by the player, not by minion chaff.
+  const heroEid = state.heroes.eid;
+  if (team === 'allied' && floor5HeroEntityIsAlive(world, heroEid)) {
+    return heroEid;
+  }
   return null;
 }
 
-function steerFloor5Minion(world: GameWorld, state: Floor5SiegeState, eid: number): void {
-  const team =
-    (world.stores.siegeMinion.team[eid] ?? 0) === FLOOR5_SIEGE_MARKER_TEAM.allied
-      ? 'allied'
-      : 'enemy';
-  const target = selectFloor5Target(world, state, eid, team);
-  world.stores.siegeMinion.targetEid[eid] = target ?? 0;
-  if (target === null || distanceBetween(world, eid, target) <= FLOOR5_MINION_ATTACK_RANGE_FT) {
-    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
-    return;
-  }
-
+/**
+ * Shared deterministic steering: walk `eid` one step toward `(tx, ty)` using the
+ * same tile pathfinder every Floor 5 actor uses. Reused by minions and Heroes so
+ * there is exactly one navigation implementation on this floor.
+ */
+function stepFloor5Movement(
+  world: GameWorld,
+  eid: number,
+  tx: number,
+  ty: number,
+  speedFtPerFrame: number,
+): void {
   const floorMap = world.floorMap;
   const sx = world.stores.position.x[eid] ?? 0;
   const sy = world.stores.position.y[eid] ?? 0;
-  const tx = world.stores.position.x[target] ?? sx;
-  const ty = world.stores.position.y[target] ?? sy;
   if (!floorMap) {
     const len = Math.hypot(tx - sx, ty - sy);
     setComponent(world.ecs, eid, Velocity, {
-      x: len > 0 ? ((tx - sx) / len) * FLOOR5_MINION_SPEED_FT_PER_FRAME : 0,
-      y: len > 0 ? ((ty - sy) / len) * FLOOR5_MINION_SPEED_FT_PER_FRAME : 0,
+      x: len > 0 ? ((tx - sx) / len) * speedFtPerFrame : 0,
+      y: len > 0 ? ((ty - sy) / len) * speedFtPerFrame : 0,
     });
     return;
   }
@@ -616,9 +703,429 @@ function steerFloor5Minion(world: GameWorld, state: Floor5SiegeState, eid: numbe
   const dy = next.y - sy;
   const len = Math.hypot(dx, dy);
   setComponent(world.ecs, eid, Velocity, {
-    x: len > 0 ? (dx / len) * FLOOR5_MINION_SPEED_FT_PER_FRAME : 0,
-    y: len > 0 ? (dy / len) * FLOOR5_MINION_SPEED_FT_PER_FRAME : 0,
+    x: len > 0 ? (dx / len) * speedFtPerFrame : 0,
+    y: len > 0 ? (dy / len) * speedFtPerFrame : 0,
   });
+}
+
+function steerFloor5Minion(world: GameWorld, state: Floor5SiegeState, eid: number): void {
+  const team =
+    (world.stores.siegeMinion.team[eid] ?? 0) === FLOOR5_SIEGE_MARKER_TEAM.allied
+      ? 'allied'
+      : 'enemy';
+  const target = selectFloor5Target(world, state, eid, team);
+  world.stores.siegeMinion.targetEid[eid] = target ?? 0;
+  if (target === null || distanceBetween(world, eid, target) <= FLOOR5_MINION_ATTACK_RANGE_FT) {
+    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  stepFloor5Movement(
+    world,
+    eid,
+    world.stores.position.x[target] ?? world.stores.position.x[eid] ?? 0,
+    world.stores.position.y[target] ?? world.stores.position.y[eid] ?? 0,
+    FLOOR5_MINION_SPEED_FT_PER_FRAME,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Field Heroes (spec R6)
+// ---------------------------------------------------------------------------
+
+function floor5HeroEntityIsAlive(world: GameWorld, eid: number): boolean {
+  return (
+    eid > 0 &&
+    entityExists(world.ecs, eid) &&
+    hasComponent(world.ecs, eid, SiegeHero) &&
+    hasComponent(world.ecs, eid, Health) &&
+    (world.stores.health.current[eid] ?? 0) > 0
+  );
+}
+
+function floor5HeroRosterEntry(card: Floor5FieldHeroCardEntry) {
+  const entry = FLOOR5_FIELD_HERO_ROSTER.find((candidate) => candidate.heroId === card.heroId);
+  if (!entry) {
+    throw new Error(`Floor 5 field-Hero roster is missing "${card.heroId}"`);
+  }
+  return entry;
+}
+
+function floor5StructurePosition(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  id: Floor5SiegeStructureId,
+): { x: number; y: number } | null {
+  const structure = state.structures[id];
+  if (!floor5StructureMatchesEntity(world, structure)) {
+    return null;
+  }
+  return {
+    x: world.stores.position.x[structure.eid] ?? 0,
+    y: world.stores.position.y[structure.eid] ?? 0,
+  };
+}
+
+/** True once the Ratings Ram is being built or moved (spec `FR6.3` latch read). */
+function floor5EngineEngaged(state: Floor5SiegeState): boolean {
+  return (
+    state.phase.kind === 'BUILD' ||
+    state.phase.kind === 'ESCORT' ||
+    state.engineState === 'BUILDING' ||
+    state.engineState === 'READY' ||
+    state.engineState === 'ADVANCING' ||
+    state.engineState === 'ATTACKING'
+  );
+}
+
+/**
+ * The world-space point a Hero's declared role holds. This is the whole of a
+ * Hero's "stance": each role has exactly one anchor rule for its whole
+ * lifetime, so a headless test can assert observed position against the role
+ * (spec `FR6.2`).
+ */
+function floor5HeroAnchor(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  role: Floor5FieldHeroRole,
+): { x: number; y: number } | null {
+  const enemyCheckpoint = floor5StructurePosition(world, state, 'enemy-checkpoint');
+  switch (role) {
+    case 'counter-push':
+      // Push onto the ground the castle lost: the allied-held checkpoint.
+      return floor5StructurePosition(world, state, 'allied-checkpoint') ?? enemyCheckpoint;
+    case 'engine-disruption': {
+      // Task/build-aware: only commits to the build site once BUILD/ESCORT latches.
+      if (floor5EngineEngaged(state)) {
+        return floor5StructurePosition(world, state, 'command-post') ?? enemyCheckpoint;
+      }
+      return enemyCheckpoint;
+    }
+    case 'minion-support': {
+      const friends = liveFloor5Minions(world, 'enemy');
+      if (friends.length === 0) return enemyCheckpoint;
+      let sx = 0;
+      let sy = 0;
+      for (const friend of friends) {
+        sx += world.stores.position.x[friend] ?? 0;
+        sy += world.stores.position.y[friend] ?? 0;
+      }
+      return { x: sx / friends.length, y: sy / friends.length };
+    }
+    case 'checkpoint-defense':
+    case 'artillery':
+    default:
+      return enemyCheckpoint;
+  }
+}
+
+/**
+ * Role-scoped target selection (spec `FR6.3`). Chooses only WITHIN the Hero's
+ * single declared role — there is no cross-role fallback ladder.
+ *
+ * Heroes engage MINIONS only. Structures are role anchors (where a Hero holds),
+ * never Hero damage targets: demolishing structures is the lane-war minion and
+ * Ratings Ram contract from Slices 2/3, and a Hero that could level a checkpoint
+ * would silently rewrite checkpoint-ownership and build-site rules it does not
+ * own. A Hero's pressure on an objective is expressed through position and its
+ * telegraphed role ability instead.
+ */
+function selectFloor5HeroTarget(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  eid: number,
+  card: Floor5FieldHeroCardEntry,
+): number | null {
+  const roster = floor5HeroRosterEntry(card);
+  const nearestAlliedMinion = liveFloor5Minions(world, 'allied')
+    .map((candidate) => ({ eid: candidate, distance: distanceBetween(world, eid, candidate) }))
+    .filter((candidate) => candidate.distance <= roster.aggroRadiusFt)
+    .sort((a, b) => a.distance - b.distance || a.eid - b.eid)[0];
+  if (!nearestAlliedMinion) {
+    return null;
+  }
+
+  // Engine disruption is the one role whose objective OVERRIDES a nearby
+  // skirmisher: once BUILD/ESCORT latches it refuses to be pulled off the build
+  // site, holding its anchor instead of chasing. That refusal is the observable
+  // signature of the role (spec FR6.2 — one strategic mode for its lifetime).
+  if (card.role === 'engine-disruption' && floor5EngineEngaged(state)) {
+    const buildSite = floor5StructurePosition(world, state, 'command-post');
+    if (buildSite) {
+      const tx = world.stores.position.x[nearestAlliedMinion.eid] ?? 0;
+      const ty = world.stores.position.y[nearestAlliedMinion.eid] ?? 0;
+      if (Math.hypot(tx - buildSite.x, ty - buildSite.y) > roster.engageRangeFt) {
+        return null;
+      }
+    }
+  }
+  return nearestAlliedMinion.eid;
+}
+
+/** Stance: hold at engage range, close on target, or re-centre on the anchor. */
+function steerFloor5Hero(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  eid: number,
+  card: Floor5FieldHeroCardEntry,
+): void {
+  const roster = floor5HeroRosterEntry(card);
+  const anchor = floor5HeroAnchor(world, state, card.role);
+  if (anchor) {
+    world.stores.siegeHero.anchorX[eid] = anchor.x;
+    world.stores.siegeHero.anchorY[eid] = anchor.y;
+  }
+
+  let target = selectFloor5HeroTarget(world, state, eid, card);
+  if (target !== null && anchor) {
+    const tx = world.stores.position.x[target] ?? 0;
+    const ty = world.stores.position.y[target] ?? 0;
+    // Leash: a Hero never abandons its role anchor to chase.
+    if (Math.hypot(tx - anchor.x, ty - anchor.y) > roster.leashRadiusFt) {
+      target = null;
+    }
+  }
+  world.stores.siegeHero.targetEid[eid] = target ?? 0;
+  state.heroes.targetEid = target ?? 0;
+
+  if (target !== null) {
+    if (distanceBetween(world, eid, target) <= roster.engageRangeFt) {
+      setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+      return;
+    }
+    stepFloor5Movement(
+      world,
+      eid,
+      world.stores.position.x[target] ?? 0,
+      world.stores.position.y[target] ?? 0,
+      roster.speedFtPerFrame,
+    );
+    return;
+  }
+
+  if (!anchor) {
+    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  const distanceToAnchor = Math.hypot(
+    (world.stores.position.x[eid] ?? 0) - anchor.x,
+    (world.stores.position.y[eid] ?? 0) - anchor.y,
+  );
+  if (distanceToAnchor <= FLOOR5_HERO_ANCHOR_SLACK_FT) {
+    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  stepFloor5Movement(world, eid, anchor.x, anchor.y, roster.speedFtPerFrame);
+}
+
+function spawnFloor5Hero(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  card: Floor5FieldHeroCardEntry,
+): void {
+  const roster = floor5HeroRosterEntry(card);
+  const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+  const spawn = tileCenterToWorld(
+    layout,
+    'enemy-spawn',
+    world.floorMap?.config.tileSizeFt ?? buildFloor5MapConfig().tileSizeFt,
+  );
+  const eid = createEntity(world);
+  const body = PHYSICS_BODIES['mob-baseline'];
+  addComponent(world.ecs, eid, set(Position, spawn));
+  addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+  addComponent(world.ecs, eid, set(Health, { current: roster.hp, max: roster.hp }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Damage, {
+      amount: roster.attackDamage,
+      cooldownMs: roster.attackCooldownMs,
+      lastFireMs: -roster.attackCooldownMs,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(world.ecs, eid, set(Team, { id: FLOOR5_TEAM_CODE.enemy }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: body.radius, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: body.weight * 1.5 }));
+  const anchor = floor5HeroAnchor(world, state, card.role) ?? spawn;
+  addComponent(
+    world.ecs,
+    eid,
+    set(SiegeHero, {
+      team: FLOOR5_SIEGE_MARKER_TEAM.enemy,
+      rosterOrder: card.order,
+      role: FLOOR5_HERO_ROLE_CODE[card.role],
+      targetEid: 0,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
+    }),
+  );
+  // Bind the shared mob-ability runtime's caster-validity key to this role, then
+  // register the role's one telegraphed ability (spec FR6.3).
+  setEnemyAppearanceKey(world, eid, floor5HeroArchetypeKey(card.role));
+  registerMobAbility(world, eid, createFloor5HeroAbilityDefinition(card));
+
+  state.heroes.eid = eid;
+  state.heroes.status = 'active';
+  state.heroes.health = roster.hp;
+  state.heroes.maxHealth = roster.hp;
+  state.heroes.targetEid = 0;
+  state.heroes.spawnedFrame = world.frameCount;
+  state.heroes.defeatedFrame = null;
+  state.heroes.respawnFrame = null;
+  state.heroes.spawns += 1;
+  state.heroes.fieldedHeroIds.push(card.heroId);
+}
+
+function despawnFloor5Hero(world: GameWorld, state: Floor5SiegeState): void {
+  const eid = state.heroes.eid;
+  state.heroes.eid = 0;
+  state.heroes.targetEid = 0;
+  state.heroes.health = 0;
+  if (eid > 0 && entityExists(world.ecs, eid)) {
+    clearMobAbility(world, eid);
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+  }
+}
+
+/**
+ * Post-damage defeat authority for the field-Hero slot (spec `FR6.4`).
+ *
+ * Runs from `floor5ObjectiveTick`, after damage has been applied this tick, so
+ * the recorded defeat frame is the frame of the killing blow. The respawn frame
+ * is a FIXED manifest-authored offset from that frame — never wall-clock, never
+ * an RNG draw. When the without-replacement card is exhausted the slot is
+ * `retired` and never refills: that is the spec's "remain defeated according to
+ * their slot" outcome.
+ */
+function resolveFloor5HeroDefeat(world: GameWorld, state: Floor5SiegeState): void {
+  const heroes = state.heroes;
+  if (heroes.status !== 'active') {
+    return;
+  }
+  if (floor5HeroEntityIsAlive(world, heroes.eid)) {
+    heroes.health = Math.max(0, world.stores.health.current[heroes.eid] ?? 0);
+    return;
+  }
+
+  despawnFloor5Hero(world, state);
+  heroes.defeats += 1;
+  heroes.defeatedFrame = world.frameCount;
+  const hasNextSlot = heroes.cursor + 1 < heroes.card.length;
+  if (hasNextSlot) {
+    heroes.status = 'down';
+    heroes.respawnFrame = world.frameCount + getFloor5HeroConfig().respawnDelayFrames;
+  } else {
+    heroes.status = 'retired';
+    heroes.respawnFrame = null;
+  }
+}
+
+/**
+ * Hero attacks, executed on the same post-damage authority tick as minion
+ * attacks so both siege actors resolve through one `applyDamage` path.
+ */
+function applyFloor5HeroAttacks(world: GameWorld, state: Floor5SiegeState): void {
+  const heroes = state.heroes;
+  const eid = heroes.eid;
+  if (heroes.status !== 'active' || !floor5HeroEntityIsAlive(world, eid)) {
+    return;
+  }
+  const card = heroes.card[heroes.cursor];
+  if (!card) return;
+  const roster = floor5HeroRosterEntry(card);
+  const target = world.stores.siegeHero.targetEid[eid] ?? 0;
+  if (
+    target <= 0 ||
+    !entityExists(world.ecs, target) ||
+    !hasComponent(world.ecs, target, Health) ||
+    (world.stores.health.current[target] ?? 0) <= 0 ||
+    teamForFloor5Entity(world, target) === 'enemy' ||
+    distanceBetween(world, eid, target) > roster.engageRangeFt
+  ) {
+    return;
+  }
+  const lastFireMs = world.stores.damage.lastFireMs[eid] ?? -Infinity;
+  if (world.elapsedMs - lastFireMs < roster.attackCooldownMs) {
+    return;
+  }
+  world.stores.damage.lastFireMs[eid] = world.elapsedMs;
+  applyDamage(
+    world,
+    target,
+    roster.attackDamage,
+    world.stores.position.x[target] ?? 0,
+    world.stores.position.y[target] ?? 0,
+    {
+      origin: 'environment',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      delivery: roster.engageRangeFt > FLOOR5_MINION_ATTACK_RANGE_FT ? 'projectile' : 'contact',
+      sourceX: world.stores.position.x[eid] ?? 0,
+      sourceY: world.stores.position.y[eid] ?? 0,
+      sourceEid: eid,
+    },
+  );
+}
+
+/**
+ * Floor 5 field-Hero authority (spec `FR6.1`–`FR6.4`).
+ *
+ * Owns exactly: which drawn Hero occupies the single field slot, when it takes
+ * the field, its role-scoped target, and its role-scoped stance. Movement,
+ * damage resolution, and telegraphed abilities are executed by the existing
+ * shared systems (`stepFloor5Movement` → tile pathfinder, `applyDamage`,
+ * `mobAbilitySystem`).
+ */
+export function siegeHeroSystem(world: GameWorld): void {
+  if (world.floorId !== 'floor5' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) {
+    return;
+  }
+  const heroes = state.heroes;
+  const config = getFloor5HeroConfig();
+
+  // Fail-closed liveness: an entity lost outside the defeat path (recycled EID,
+  // external despawn) drops the slot to `down` rather than steering a ghost.
+  if (heroes.status === 'active' && !floor5HeroEntityIsAlive(world, heroes.eid)) {
+    resolveFloor5HeroDefeat(world, state);
+  }
+
+  const dueFrame =
+    heroes.status === 'pending'
+      ? config.firstSpawnFrame
+      : heroes.status === 'down'
+        ? heroes.respawnFrame
+        : null;
+  if (dueFrame !== null && world.frameCount >= dueFrame) {
+    const nextCursor = heroes.cursor + 1;
+    const nextCard = heroes.card[nextCursor];
+    if (nextCard) {
+      heroes.cursor = nextCursor;
+      spawnFloor5Hero(world, state, nextCard);
+    } else {
+      heroes.status = 'retired';
+      heroes.respawnFrame = null;
+    }
+  }
+
+  if (heroes.status === 'active' && floor5HeroEntityIsAlive(world, heroes.eid)) {
+    const card = heroes.card[heroes.cursor];
+    if (card) {
+      heroes.health = Math.max(0, world.stores.health.current[heroes.eid] ?? 0);
+      steerFloor5Hero(world, state, heroes.eid, card);
+    }
+  }
+  state.heroState = floor5HeroStateLabel(heroes);
 }
 
 function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void {
@@ -857,7 +1364,7 @@ export function _recoverFloor5RamComponent(
   return true;
 }
 
-export function _setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
+function _setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
   const state = floor5SiegeState(world);
   if (!state || isFloor5Terminal(state)) {
     return false;
@@ -921,12 +1428,42 @@ function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState)
     world.elapsedMs - state.construction.lastProgressWorldElapsedMs,
   );
   state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
-  if (state.engineState !== 'BUILDING' || elapsedDeltaMs === 0) {
+  if (elapsedDeltaMs === 0) {
+    return;
+  }
+
+  // Engine-disruption Hero ability: a telegraphed window that stalls the Ram's
+  // advance (spec R6 gimmick). The window is a REAL-TIME window, so it burns
+  // down against the fixed-step clock unconditionally — whether or not the Ram
+  // is building and whether or not the build site is simultaneously under
+  // attack. That is what stops repeated casts from banking deferred stall debt
+  // that would be applied long after the telegraph (or after the Hero dies).
+  const stalled = Math.min(state.heroes.buildStallMs, elapsedDeltaMs);
+  state.heroes.buildStallMs -= stalled;
+
+  if (state.engineState !== 'BUILDING') {
     return;
   }
 
   if (state.construction.buildSiteUnderAttack) {
     state.construction.pausedMs += elapsedDeltaMs;
+    return;
+  }
+
+  if (stalled > 0) {
+    // Booked through the same paused-progress accounting as build-site pressure.
+    state.construction.pausedMs += stalled;
+    if (stalled >= elapsedDeltaMs) {
+      return;
+    }
+    state.construction.progressMs = Math.min(
+      state.construction.requiredMs,
+      state.construction.progressMs + (elapsedDeltaMs - stalled),
+    );
+    if (state.construction.progressMs >= state.construction.requiredMs) {
+      state.engineState = 'READY';
+      state.construction.completedFrame ??= world.frameCount;
+    }
     return;
   }
 
@@ -944,12 +1481,32 @@ export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | 
   const state = floor5SiegeState(world);
   if (!state) return undefined;
   syncFloor5StructureHealth(world, state);
+  const activeCard = state.heroes.cursor >= 0 ? state.heroes.card[state.heroes.cursor] : undefined;
   return {
     phase: clonePhase(state.phase),
     commandPostHealth: state.commandPostHealth,
     engineState: state.engineState,
     breachState: state.breachState,
     heroState: state.heroState,
+    heroes: {
+      card: state.heroes.card.map((entry) => ({ ...entry })),
+      status: state.heroes.status,
+      cursor: state.heroes.cursor,
+      activeHeroId: state.heroes.status === 'active' ? (activeCard?.heroId ?? null) : null,
+      activeRole: state.heroes.status === 'active' ? (activeCard?.role ?? null) : null,
+      eid: state.heroes.eid,
+      health: state.heroes.health,
+      maxHealth: state.heroes.maxHealth,
+      targetEid: state.heroes.targetEid,
+      spawnedFrame: state.heroes.spawnedFrame,
+      defeatedFrame: state.heroes.defeatedFrame,
+      respawnFrame: state.heroes.respawnFrame,
+      fieldedHeroIds: [...state.heroes.fieldedHeroIds],
+      spawns: state.heroes.spawns,
+      defeats: state.heroes.defeats,
+      abilityCasts: state.heroes.abilityCasts,
+      buildStallMs: state.heroes.buildStallMs,
+    },
     tasks: {
       openingPushRepelled: state.tasks.openingPushRepelled,
       yardSecured: state.tasks.yardSecured,
@@ -1075,7 +1632,10 @@ function floor5ObjectiveTick(world: GameWorld): void {
     return;
   }
   applyFloor5MinionAttacks(world, state);
+  applyFloor5HeroAttacks(world, state);
   syncFloor5StructureHealth(world, state);
+  resolveFloor5HeroDefeat(world, state);
+  state.heroState = floor5HeroStateLabel(state.heroes);
   if (state.commandPostHealth <= 0) {
     recordFloor5PhaseTransition(world, state, { kind: 'DEFEAT' }, 'command-post-destroyed');
     projectFloor5GoalFlags(world, state);
@@ -1131,6 +1691,11 @@ export function initializeFloor5Scenario(
   const siegeState = createFloor5SiegeState(world);
   world.floorExtendedState = { floor5Siege: siegeState };
   world.hideFloorTimer = true;
+  // Floor 5 field Heroes are the first production users of the shared
+  // mob-ability runtime, so this floor explicitly opts in. Nothing casts until
+  // `siegeHeroSystem` registers a Hero: registration is the real gate.
+  setMobAbilitiesEnabled(world, true);
+  activateMobAbilityEncounter(world);
 
   const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {

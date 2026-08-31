@@ -664,6 +664,103 @@ export interface Floor5SiegePhaseTraceEntry {
   readonly heroState: string;
 }
 
+/**
+ * Closed tactical-role set for Floor 5 field Heroes (spec `FR6.2`).
+ *
+ * A Hero's declared role is its SOLE strategic mode for its whole lifetime —
+ * there is no per-Hero multi-mode set and no cross-role switching. Adding a
+ * multi-mode Hero requires an explicit role-to-allowed-modes contract in
+ * `.specify/specs/floor5-hostile-takeover.md` first.
+ */
+export type Floor5FieldHeroRole =
+  | 'counter-push'
+  | 'checkpoint-defense'
+  | 'engine-disruption'
+  | 'minion-support'
+  | 'artillery';
+
+/**
+ * One append-only candidate in the Floor 5 field-Hero roster
+ * (spec `FR6.1`/`FR8.3`).
+ *
+ * `order` is the stable 1-based roster ordinal from the design bible §9 table.
+ * Names/roles/gimmicks are content (design bible); the combat and stance
+ * numbers below are Game AI Engineer tuning per `HUMAN_GATE-4`.
+ */
+export interface Floor5FieldHeroPoolEntry {
+  /** Stable 1-based roster ordinal. Never renumbered, never reused. */
+  readonly order: number;
+  /** Stable kebab-case identity, e.g. `turnaround-consultant`. */
+  readonly heroId: string;
+  readonly displayName: string;
+  readonly role: Floor5FieldHeroRole;
+  /** One-line gimmick, verbatim from the design bible §9 roster table. */
+  readonly gimmick: string;
+  readonly hp: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+  readonly speedFtPerFrame: number;
+  /** Reach at which this Hero stops closing and starts attacking. */
+  readonly engageRangeFt: number;
+  /** How far the Hero will look for a target from its own position. */
+  readonly aggroRadiusFt: number;
+  /** How far from its role anchor the Hero will travel before disengaging. */
+  readonly leashRadiusFt: number;
+}
+
+/** One drawn slot in the run's seeded field-Hero card (spec `FR6.1`). */
+export interface Floor5FieldHeroCardEntry {
+  /** 0-based draw ordinal within the run. */
+  readonly slotIndex: number;
+  /** Stable slot identity, `floor5-field-hero-slot-<slotIndex>`. */
+  readonly slotId: string;
+  readonly order: number;
+  readonly heroId: string;
+  readonly displayName: string;
+  readonly role: Floor5FieldHeroRole;
+  readonly hp: number;
+  readonly attackDamage: number;
+}
+
+/**
+ * Lifecycle of the single field-Hero slot (`HUMAN_GATE-3`: one active Hero at
+ * a time).
+ *
+ * `retired` is the terminal `FR6.4` "remain defeated according to their slot"
+ * outcome: the card is drawn without replacement and never cycles, so once the
+ * last roster entry is defeated the slot stays permanently empty.
+ */
+export type Floor5FieldHeroSlotStatus = 'pending' | 'active' | 'down' | 'retired';
+
+/** Runtime state of the one active field-Hero slot. */
+export interface Floor5FieldHeroSlotState {
+  /** Seeded without-replacement draw order for this run (spec `FR6.1`). */
+  readonly card: readonly Floor5FieldHeroCardEntry[];
+  status: Floor5FieldHeroSlotStatus;
+  /** Index into `card` of the Hero occupying the slot; `-1` when none has been drawn. */
+  cursor: number;
+  /** Live Hero entity id, or `0` when the slot is empty. */
+  eid: number;
+  health: number;
+  maxHealth: number;
+  /** Target entity committed by `siegeHeroSystem` this tick; `0` when holding. */
+  targetEid: number;
+  spawnedFrame: number | null;
+  defeatedFrame: number | null;
+  /** Fixed manifest-authored respawn frame (spec `FR6.4`); never wall-clock/RNG. */
+  respawnFrame: number | null;
+  /** Hero ids actually fielded this run, in draw order (reproducibility). */
+  readonly fieldedHeroIds: string[];
+  spawns: number;
+  defeats: number;
+  abilityCasts: number;
+  /**
+   * Remaining engine-disruption stall budget (ms) applied to Ratings Ram
+   * construction progress by the `engine-disruption` role ability.
+   */
+  buildStallMs: number;
+}
+
 export type Floor5SiegeTeam = 'allied' | 'enemy';
 export type Floor5SiegeCheckpointOwner = Floor5SiegeTeam | 'contested';
 export type Floor5SiegeStructureId =
@@ -739,7 +836,14 @@ export interface Floor5SiegeState {
   commandPostHealth: number;
   engineState: Floor5RatingsRamState;
   breachState: string;
+  /**
+   * Derived display/trace projection of {@link Floor5SiegeState.heroes}:
+   * `PENDING` | `ACTIVE:<heroId>` | `DOWN:<heroId>@<respawnFrame>` | `RETIRED`.
+   * The authoritative typed state is `heroes`; this string exists so the phase
+   * trace and lab readout stay flat and stable.
+   */
   heroState: string;
+  heroes: Floor5FieldHeroSlotState;
   tasks: Floor5SiegeTaskState;
   requisitionMilestones: Floor5RequisitionMilestone[];
   construction: Floor5SiegeConstructionState;
@@ -770,6 +874,25 @@ export interface Floor5SiegeRunStats {
   readonly engineState: Floor5RatingsRamState;
   readonly breachState: string;
   readonly heroState: string;
+  readonly heroes: {
+    readonly card: readonly Floor5FieldHeroCardEntry[];
+    readonly status: Floor5FieldHeroSlotStatus;
+    readonly cursor: number;
+    readonly activeHeroId: string | null;
+    readonly activeRole: Floor5FieldHeroRole | null;
+    readonly eid: number;
+    readonly health: number;
+    readonly maxHealth: number;
+    readonly targetEid: number;
+    readonly spawnedFrame: number | null;
+    readonly defeatedFrame: number | null;
+    readonly respawnFrame: number | null;
+    readonly fieldedHeroIds: readonly string[];
+    readonly spawns: number;
+    readonly defeats: number;
+    readonly abilityCasts: number;
+    readonly buildStallMs: number;
+  };
   readonly tasks: {
     readonly openingPushRepelled: boolean;
     readonly yardSecured: boolean;

@@ -346,6 +346,10 @@ export function normalizeBlockers(blockers) {
         : {}),
       ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
       ...(blocker.scopeMismatchTrusted === true ? { scopeMismatchTrusted: true } : {}),
+      ...(blocker.protectedPathCapabilityDenied === true
+        ? { protectedPathCapabilityDenied: true }
+        : {}),
+      ...(blocker.humanEscalationDeclared === true ? { humanEscalationDeclared: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -935,6 +939,20 @@ const scopeMismatchUnsupportedPattern =
   /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
   /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+const implementationMissingPattern =
+  /\b(?:did(?:\s+not|n't)\s+(?:actually\s+)?implement|do(?:es)?(?:\s+not|n't)\s+(?:actually\s+)?implement|not\s+actually\s+implement(?:ed|ing)?|not\s+implement(?:ed|ing)?|no\s+(?:implementation|runtime\s+or\s+test\s+changes)|none\s+of\s+the\s+[^.!?\n]{0,120}\s+(?:changes|work|implementation)[^.!?\n]{0,80}\s+(?:are|is)\s+present|only\s+(?:adds?|changes?)\s+[^.!?\n]{0,100}\b(?:ledger|plan|planning|docs?|documentation|metadata)\b|empty\s+pr|empty\s+diff)\b/i;
+
+/**
+ * Detect a trusted review finding that says the PR does not actually implement
+ * the requested feature. Unlike scope mismatch, this is still an implementation
+ * task when the requested behavior is knowable from the issue/PR context, so it
+ * should make the repair prompt more direct rather than immediately quarantine.
+ */
+export function isImplementationMissingReviewBlocker(blocker) {
+  if (blocker?.kind !== 'review-thread') return false;
+  if (blocker.scopeMismatchTrusted !== true) return false;
+  return implementationMissingPattern.test(compact(blocker.summary));
+}
 
 // The inverse direction of the same finding: the diff carries substantial work
 // the PR never declared (scope creep) rather than promising work the diff lacks.
@@ -980,11 +998,92 @@ export function isScopeMismatchReviewBlocker(blocker) {
   if (scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise)) {
     return true;
   }
+
   const namesScopeCreepReference = scopeCreepScopeReferencePattern.test(text);
   return (
     scopeCreepUndeclaredPattern.test(text) &&
     scopeCreepRemedyPattern.test(text) &&
     namesScopeCreepReference
+  );
+}
+
+export function isProtectedPathCapabilityDenial(body) {
+  const text = compact(body);
+  return text.split(/(?:[;!?\n]+|\.(?=\s|$))/).some((clause) => {
+    if (!/(?:^|[^a-z0-9_.-])\.github[\\/]agents(?:[\\/]|\b)/i.test(clause)) return false;
+    const namesCapabilityLimit =
+      /\b(?:environment|session|permissions?|policy|instructions?)\b.{0,120}\b(?:disallow(?:s|ed)?|forbid(?:s|den)?|prevent(?:s|ed)?|cannot|can't|unable|not\s+permitted|no\s+access)\b/i.test(
+        clause,
+      );
+    const namesBlockedRepair =
+      /\b(?:cannot|can't|unable\s+to)\s+(?:complete|address|fix|update|read|edit|access|modify)\b/i.test(
+        clause,
+      );
+    return namesCapabilityLimit && namesBlockedRepair;
+  });
+}
+
+// A recovery/validator agent declares a human escalation by stating BOTH that it
+// is handing the finding to a human AND that it is deliberately leaving the
+// thread unresolved. Requiring the conjunction keeps a passing mention ("escalate
+// to a human if this recurs") from parking a PR that inline repair could still
+// fix, mirroring the two-condition style of isProtectedPathCapabilityDenial.
+const humanEscalationHandoffPattern =
+  /\b(?:escalat(?:e|es|ed|ing|ion)\b[^.!?\n]{0,60}?\b(?:to\s+)?(?:a\s+|the\s+)?(?:human|maintainer|owner)|(?:human|maintainer|owner)\s+escalation)\b/i;
+const humanEscalationUnresolvedPattern =
+  /\b(?:leav(?:e|es|ing)|left|leaving|keep(?:ing)?|remain(?:s|ing)?|stays?)\b[^.!?\n]{0,80}?\bunresolved\b/i;
+const humanEscalationConditionalPattern =
+  /\b(?:if|when|should|would|could|might|may|maybe|later|future|next\s+time|recurs?)\b/i;
+
+/**
+ * Detect a trusted recovery agent's explicit declaration that it is escalating a
+ * review thread to a human and deliberately leaving it unresolved.
+ *
+ * This is the CI review-validator's designed terminal outcome for a finding it
+ * confirms as VALID but cannot fix within its scope. Without recognising it the
+ * reconciler re-dispatches the identical task until attempts exhaust and files a
+ * loop incident (PR #3958 / loop incident #3969), so the declaration must instead
+ * route the PR to a human-decision quarantine.
+ */
+export function isHumanEscalationDeclaration(body) {
+  // A recovery reply may quote an earlier task or reviewer comment; a quoted
+  // escalation must not be read as this author's own declaration.
+  const text = compact(
+    String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n'),
+  );
+  if (!text) return false;
+  return text.split(/(?:[;!?\n]+|\.(?=\s|$))/).some((clause) => {
+    if (humanEscalationConditionalPattern.test(clause)) return false;
+    return (
+      humanEscalationHandoffPattern.test(clause) && humanEscalationUnresolvedPattern.test(clause)
+    );
+  });
+}
+
+/**
+ * Quarantine only when EVERY remaining blocker is a review thread a trusted
+ * recovery agent has escalated to a human. Any other blocker (a CI failure, a
+ * repairable thread) is still actionable by automated recovery.
+ */
+export function shouldQuarantineHumanEscalatedBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) => blocker.kind === 'review-thread' && blocker.humanEscalationDeclared === true,
+    )
+  );
+}
+
+export function shouldQuarantineProtectedPathBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) =>
+        blocker.kind === 'review-thread' && blocker.protectedPathCapabilityDenied === true,
+    )
   );
 }
 
