@@ -18,6 +18,11 @@ name: Epic Create
 # push, on the review issue's closed/reopened events, or manually) is safe —
 # it is idempotent via marker comments embedded in each managed issue body
 # and never edits or duplicates an issue that already exists.
+#
+# Every issue it creates is assigned to and @-mentions the maintainer, and the
+# pull request that carried the `*.epic.json` file gets one summary comment
+# listing the resulting issue numbers — the GitHub mobile app has no repo-wide
+# issue browser, so those are the only ways the issues are findable there.
 
 on:
   push:
@@ -45,6 +50,12 @@ on:
 
 permissions:
   contents: read
+  # `issues: write` also authorizes posting the "issues created for this
+  # epic" summary comment on the pull request that carried the *.epic.json
+  # file: PR comments are issue comments under the REST API
+  # (`POST /issues/{pullNumber}/comments`), and GitHub accepts either
+  # Issues-write or Pull-requests-write for that endpoint — adding
+  # `pull-requests: write` too would only broaden the token unnecessarily.
   issues: write
 
 # Serialize runs so two overlapping triggers (e.g. a push and an issue close)
@@ -63,6 +74,8 @@ jobs:
     timeout-minutes: 10
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Maintainer assigned to and @-mentioned on every created epic issue.
+      ISSUE_OWNER: nalfeo
     steps:
       - uses: actions/checkout@v4
 
