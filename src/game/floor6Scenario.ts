@@ -25,7 +25,7 @@ function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
   return config;
 }
 
-export function buildFloor6MapConfig(): MapConfig {
+export function _buildFloor6MapConfig(): MapConfig {
   const manifest = floor6Manifest;
   const config = getFloor6Config();
   return {
@@ -75,7 +75,7 @@ export function initializeFloor6Scenario(
   playerEid: number,
   options?: { readonly playerCarryover?: PlayerCarryoverSnapshot },
 ): void {
-  const mapConfig = buildFloor6MapConfig();
+  const mapConfig = _buildFloor6MapConfig();
   const defenseState = createFloor6DefenseState(world, mapConfig);
   const floorMap = getGenerator(mapConfig.biome).generate(
     mapConfig,
@@ -129,7 +129,7 @@ export function getFloor6RunOutcome(world: GameWorld): ScenarioRunOutcome | null
 }
 
 /** JSON-stable initialization artifact used by parity tests and the parity lab. */
-export function getFloor6InitializationArtifact(world: GameWorld) {
+export function _getFloor6InitializationArtifact(world: GameWorld) {
   const map = world.floorMap;
   const defense = world.floorExtendedState?.floor6Defense;
   if (!map || !defense) return null;

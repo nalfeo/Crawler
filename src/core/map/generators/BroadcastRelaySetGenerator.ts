@@ -214,7 +214,7 @@ function routeTiles(routeDef: Floor6Route): readonly { readonly x: number; reado
 }
 
 /** Stable tile footprint reserved by every authored enemy route. */
-export function getBroadcastRelayRouteTiles(
+export function _getBroadcastRelayRouteTiles(
   layout: BroadcastRelaySetLayout,
 ): readonly { readonly x: number; readonly y: number }[] {
   const seen = new Set<string>();
@@ -260,7 +260,7 @@ export class BroadcastRelaySetGenerator implements MapGenerator {
       }
     };
 
-    for (const point of getBroadcastRelayRouteTiles(layout)) {
+    for (const point of _getBroadcastRelayRouteTiles(layout)) {
       carveTile(point.x, point.y, TerrainType.CORRIDOR);
     }
     for (const entrance of layout.entrances) carve(entrance.bounds, TerrainType.DIRT);

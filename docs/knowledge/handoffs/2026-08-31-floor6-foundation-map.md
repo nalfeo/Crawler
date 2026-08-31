@@ -35,6 +35,12 @@ windowed/headless scenario initialization across core, shared data, game wiring,
   TypeScript and ESLint checks plus the relevant manifest/registry suites clean.
 - A second independent review found the initially isolated break enclosure and a vacuous
   off-lane regression assertion. Both were corrected in `5ec5869` and `477eb94`.
+- CI recovery for the Lightweight Checks `check:test-only-exports` blocker renamed
+  Floor 6 test/lab-only diagnostic exports with `_` prefixes and removed direct test
+  imports of shared point/footprint types.
+- `npm run check:test-only-exports`, targeted Floor 6 unit/headless tests,
+  `npm run typecheck`, `npm run format:check`, `npm run verify:fast`, and
+  `npm run verify:pr-prereqs` passed after that recovery.
 - CodeQL reported no alerts, but skipped JavaScript analysis because the database exceeded its
   size limit.
 

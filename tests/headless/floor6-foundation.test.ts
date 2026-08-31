@@ -4,7 +4,7 @@ import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
-import { getFloor6InitializationArtifact } from '../../src/game/floor6Scenario.js';
+import { _getFloor6InitializationArtifact } from '../../src/game/floor6Scenario.js';
 import type { InputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -34,16 +34,16 @@ describe('Floor 6 foundation real-pipeline parity', () => {
     const untouchedWorld = createTestWorld({ seed: 606 });
     const player = spawnPlayer(windowedWorld, 0, 0);
     createFloorMainSceneOptions('floor6').configureWorld!(windowedWorld, player);
-    const windowedArtifact = getFloor6InitializationArtifact(windowedWorld);
+    const windowedArtifact = _getFloor6InitializationArtifact(windowedWorld);
 
-    let headlessArtifact: ReturnType<typeof getFloor6InitializationArtifact> = null;
+    let headlessArtifact: ReturnType<typeof _getFloor6InitializationArtifact> = null;
     await runHeadless(new IdleFloor6Provider(), {
       floorId: 'floor6',
       seed: 606,
       maxFrames: 0,
       questStallFrames: 0,
       onFinish: (world) => {
-        headlessArtifact = getFloor6InitializationArtifact(world);
+        headlessArtifact = _getFloor6InitializationArtifact(world);
       },
     });
 

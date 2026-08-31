@@ -1,7 +1,7 @@
 import GUI from 'lil-gui';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
-import { getFloor6InitializationArtifact } from '../../game/floor6Scenario.js';
+import { _getFloor6InitializationArtifact } from '../../game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
 import { registerLab } from '../registry.js';
 
@@ -32,8 +32,8 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
   canvasHost.append(panel);
 
   function render(): void {
-    const windowed = getFloor6InitializationArtifact(initializeViaWindowedPath(state.seed));
-    const shared = getFloor6InitializationArtifact(initializeViaSharedScenario(state.seed));
+    const windowed = _getFloor6InitializationArtifact(initializeViaWindowedPath(state.seed));
+    const shared = _getFloor6InitializationArtifact(initializeViaSharedScenario(state.seed));
     const windowedBytes = JSON.stringify(windowed);
     const sharedBytes = JSON.stringify(shared);
     const geometry = windowed?.geometry;

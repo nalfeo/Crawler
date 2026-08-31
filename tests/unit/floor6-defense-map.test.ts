@@ -2,24 +2,30 @@ import { describe, expect, it } from 'vitest';
 import {
   BroadcastRelaySetGenerator,
   computeBroadcastRelaySetLayout,
-  getBroadcastRelayRouteTiles,
+  _getBroadcastRelayRouteTiles,
 } from '../../src/core/map/generators/BroadcastRelaySetGenerator.js';
 import { getGenerator } from '../../src/core/map/generators/registry.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
-import { buildFloor6MapConfig } from '../../src/game/floor6Scenario.js';
+import { _buildFloor6MapConfig } from '../../src/game/floor6Scenario.js';
 import { floor6Manifest } from '../../src/shared/floor-manifest.js';
 import {
   getAvailableFloorIds,
   getFloorManifest,
   getImplementedFloorIds,
 } from '../../src/shared/floor-registry.js';
-import type { Floor6SupportedFootprint, Floor6TilePoint } from '../../src/shared/floor-types.js';
 import { BiomeType } from '../../src/shared/map-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { getScenarioDefinition, isFloorPlayable } from '../../src/game/scenarioDefinitions.js';
 
+type Floor6TilePoint = { readonly x: number; readonly y: number };
+type Floor6SupportedFootprint = {
+  readonly id: string;
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+};
+
 function generate(): FloorMap {
-  const config = buildFloor6MapConfig();
+  const config = _buildFloor6MapConfig();
   return new BroadcastRelaySetGenerator().generate(config, new SeededRandom(606));
 }
 
@@ -115,13 +121,13 @@ describe('Floor 6 authored defense map', () => {
       },
     }) as SeededRandom;
 
-    new BroadcastRelaySetGenerator().generate(buildFloor6MapConfig(), rng);
+    new BroadcastRelaySetGenerator().generate(_buildFloor6MapConfig(), rng);
     expect(draws).toBe(0);
   });
 
   it('keeps every authored route reachable to the Broadcast Relay for every supported footprint', () => {
     const map = generate();
-    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
     for (const route of layout.routes) {
       const entrance = layout.entrances.find((candidate) => candidate.id === route.entranceId);
       expect(entrance, `missing entrance for ${route.id}`).toBeDefined();
@@ -136,9 +142,9 @@ describe('Floor 6 authored defense map', () => {
 
   it('authors legal non-overlapping sites that cannot block any supported route', () => {
     const map = generate();
-    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
     const routeTiles = new Set(
-      getBroadcastRelayRouteTiles(layout).map((point) => tileKey(map, point.x, point.y)),
+      _getBroadcastRelayRouteTiles(layout).map((point) => tileKey(map, point.x, point.y)),
     );
     const blockedSites = new Set<number>();
 
@@ -178,7 +184,7 @@ describe('Floor 6 authored defense map', () => {
 
   it('keeps every player destination reachable for every supported footprint', () => {
     const map = generate();
-    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
     const blockedSites = siteBlockers(map, layout);
     const destinations = [layout.pickupAccess, layout.breakEnclosure, layout.victoryExit] as const;
 
@@ -194,8 +200,8 @@ describe('Floor 6 authored defense map', () => {
 
   it('does not add a non-lane enemy entrance-to-Relay route', () => {
     const map = generate();
-    const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
-    const routeTiles = getBroadcastRelayRouteTiles(layout);
+    const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const routeTiles = _getBroadcastRelayRouteTiles(layout);
 
     for (const point of routeTiles) {
       expect(
