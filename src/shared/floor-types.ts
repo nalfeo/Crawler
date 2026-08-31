@@ -927,6 +927,69 @@ export interface Floor5SiegeRunStats {
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
 }
 
+export type Floor6DefensePhaseKind = 'SETUP' | 'DEFEND' | 'BREAK' | 'FINALE' | 'VICTORY' | 'DEFEAT';
+
+export interface Floor6DefensePhase {
+  readonly kind: Floor6DefensePhaseKind;
+}
+
+export interface Floor6TilePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface Floor6SemanticArea {
+  readonly id: string;
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+export interface Floor6Route {
+  readonly id: string;
+  readonly entranceId: string;
+  readonly widthTiles: number;
+  readonly waypoints: readonly Floor6TilePoint[];
+}
+
+export interface Floor6SupportedFootprint {
+  readonly id: string;
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+}
+
+/** Immutable authored geometry consumed by later Floor 6 systems. */
+export interface Floor6DefenseGeometry {
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+  readonly playerIngress: Floor6SemanticArea;
+  readonly broadcastRelay: Floor6SemanticArea & { readonly target: Floor6TilePoint };
+  readonly entrances: readonly (Floor6SemanticArea & { readonly spawn: Floor6TilePoint })[];
+  readonly routes: readonly Floor6Route[];
+  readonly buildSites: readonly Floor6SemanticArea[];
+  readonly pickupAccess: Floor6SemanticArea;
+  readonly breakEnclosure: Floor6SemanticArea;
+  readonly victoryExit: Floor6SemanticArea;
+  readonly supportedFootprints: readonly Floor6SupportedFootprint[];
+}
+
+export interface Floor6DefenseState {
+  phase: Floor6DefensePhase;
+  readonly phaseTrace: Floor6DefensePhase[];
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly routes: string;
+    readonly rewards: string;
+    readonly upgrades: string;
+    readonly dressing: string;
+    readonly bosses: string;
+  };
+  readonly geometry: Floor6DefenseGeometry;
+}
+
 /**
  * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
  *
