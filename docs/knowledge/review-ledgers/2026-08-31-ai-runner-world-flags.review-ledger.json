@@ -29,7 +29,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "56ae19da9268dbf355b6f4bd14ebb0ca1181105f",
+      "head_sha": "f62559b39a895b7f4550a7d9e28be99ecddc23d0",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -40,7 +40,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The change expertly implements the two AI runner world feature flags, 'attackWaves' and 'floor1Spawners', cleanly threading them through both the headless CLI and Lab UI. It preserves required system isolation via ScenarioInitializationOptions and correctly models applicability and reload-required semantics for UI controls. Test coverage is exceptionally thorough across both unit and headless integration layers, and the fix to the overlapping CLI default discrepancy for `settlementReturnRouting` is well-scoped."
+      "notes": "The implementation expertly introduces the attackWaves and floor1Spawners feature flags, cleanly threading them through the headless CLI and lab UI. It handles the reload-required semantics gracefully, appropriately applies targets, and correctly centralizes defaults in the feature flag registry instead of the CLI layer. Test coverage is robust across unit and headless integration layers, and the code maintains high clarity and strict adherence to architectural policies."
     }
   }
 }
