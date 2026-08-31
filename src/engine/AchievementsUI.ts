@@ -120,9 +120,9 @@ function rewardLabel(reward: AchievementReward): string {
 function rewardReveal(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
-      return `Opened: ${reward.tier} loot`;
+      return 'Opened';
     case 'item':
-      return `Opened: ${reward.itemId}`;
+      return 'Opened';
     case 'directorMessage':
       return `Director: ${reward.message}`;
     case 'none':
@@ -167,6 +167,7 @@ export function createAchievementsUI(
   claimReward(achievementId: string): void;
   setFilterForProbe(filter: AwardsFilter): void;
   setExpandedForProbe(achievementId: string, expanded: boolean): void;
+  setScrollIndexForProbe(index: number): void;
   isOpen(): boolean;
   getScrollIndex(): number;
   /**
@@ -975,6 +976,12 @@ export function createAchievementsUI(
     setExpandedForProbe(achievementId: string, expanded: boolean) {
       if (expanded) expandedIds.add(achievementId);
       else expandedIds.delete(achievementId);
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
+    setScrollIndexForProbe(index: number) {
+      const max = Math.max(0, lastWorld ? unlockedDefs(lastWorld).length - 1 : 0);
+      scrollIndex = Math.max(0, Math.min(index, max));
       lastSignature = null;
       if (lastWorld) refresh(lastWorld);
     },

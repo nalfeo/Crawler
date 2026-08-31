@@ -38,6 +38,13 @@
   if (!probe.getState().achievementsOpen)
     throw new Error('Awards pane closed after reward acknowledgement');
 
+  // Claimed/opened rewards sort toward the bottom. Scroll to the end of the
+  // unlocked list so the opened row is guaranteed to be in-frame.
+  // Unlock list size is deterministic here (the seven IDs above); scrolling to
+  // the final index guarantees the bottom-sorted claimed row is visible.
+  probe.setAchievementsScrollIndex(6);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
   window.dispatchEvent(new Event('resize'));
   await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -69,14 +76,21 @@
     regions,
     expect: {},
   };
+  // Zoom the judge onto JUST the panel (plus a small margin), matching the
+  // primary awards-pane scenario. Clamp against the canvas' own rendered
+  // bounds (not window.innerWidth/innerHeight) so a canvas that is smaller
+  // than the browser viewport can't silently truncate the clip before it
+  // reaches the full panel height.
   const margin = 16;
-  const clipX = Math.max(0, panel.box.x - margin);
-  const clipY = Math.max(0, panel.box.y - margin);
+  const clipX = Math.max(rect.left, panel.box.x - margin);
+  const clipY = Math.max(rect.top, panel.box.y - margin);
+  const maxRight = rect.left + rect.width;
+  const maxBottom = rect.top + rect.height;
   window.__visualReviewClip = {
     x: clipX,
     y: clipY,
-    width: Math.min(window.innerWidth - clipX, panel.box.width + margin * 2),
-    height: Math.min(window.innerHeight - clipY, panel.box.height + margin * 2),
+    width: Math.min(maxRight - clipX, panel.box.width + margin * 2),
+    height: Math.min(maxBottom - clipY, panel.box.height + margin * 2),
   };
   window.__visualReviewHoverPoint = null;
 })();

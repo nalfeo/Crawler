@@ -236,6 +236,7 @@ interface MainSceneInternals {
     claimReward(achievementId: string): void;
     setFilterForProbe(filter: 'all' | 'global' | `floor:${number}`): void;
     setExpandedForProbe(achievementId: string, expanded: boolean): void;
+    setScrollIndexForProbe(index: number): void;
     getLayoutRegions(): {
       id: string;
       box: { x: number; y: number; width: number; height: number };
@@ -820,6 +821,7 @@ export interface MainSceneProbeApi {
   setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
   /** Expand or collapse an achievement through the scene-owned UI. */
   setAchievementExpanded(achievementId: string, expanded: boolean): void;
+  setAchievementsScrollIndex(index: number): void;
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -2473,6 +2475,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     setAchievementExpanded: (achievementId: string, expanded: boolean) => {
       getScene()?.achievementsUI?.setExpandedForProbe(achievementId, expanded);
+    },
+    setAchievementsScrollIndex: (index: number) => {
+      getScene()?.achievementsUI?.setScrollIndexForProbe(index);
     },
 
     claimAchievementReward: (achievementId: string) => {
