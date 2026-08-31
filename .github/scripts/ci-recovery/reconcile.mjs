@@ -9,6 +9,7 @@ import {
   collapseCheckRunsByName,
   isAgentSessionRunning,
   isDuplicateDispatch,
+  isHumanEscalationDeclaration,
   isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isLeaseExpired,
@@ -22,6 +23,7 @@ import {
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   shouldMutateRecoveryState,
+  shouldQuarantineHumanEscalatedBlockers,
   shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ownerLabel,
@@ -2622,6 +2624,10 @@ for (const comment of comments) {
 // the most recent ✅ Addressed marker.
 const priorUnresolvedReplyByThread = new Map();
 const protectedPathDenialByThread = new Set();
+// Threads whose newest trusted recovery reply explicitly escalates the finding to
+// a human and leaves the thread unresolved. This is the review-validator's
+// designed terminal outcome; re-dispatching it can never converge.
+const humanEscalationByThread = new Set();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
@@ -2669,6 +2675,9 @@ for (const thread of unresolvedThreads) {
         priorUnresolvedReplyByThread.set(thread.id, replyBody.slice(0, 300));
         if (requiresProtectedPath(thread.path) && isProtectedPathCapabilityDenial(replyBody)) {
           protectedPathDenialByThread.add(thread.id);
+        }
+        if (isHumanEscalationDeclaration(replyBody)) {
+          humanEscalationByThread.add(thread.id);
         }
         break;
       }
@@ -3103,6 +3112,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     isOutdated: thread.isOutdated === true,
     scopeMismatchTrusted: isTrustedComment(root),
     protectedPathCapabilityDenied: protectedPathDenialByThread.has(thread.id),
+    humanEscalationDeclared: humanEscalationByThread.has(thread.id),
     url: root?.url,
   });
 }
@@ -3351,6 +3361,67 @@ if (scopeMismatchBlocker) {
   process.stdout.write(
     `quarantined scope-mismatch pr=#${prNumber} blocker=${scopeMismatchBlocker.id}\n`,
   );
+  process.exit(0);
+}
+
+// A trusted recovery agent (the review validator) confirmed a finding as VALID,
+// declared it outside its repair scope, and deliberately left the thread
+// unresolved for a human. Re-dispatching the identical task cannot converge, so
+// recovery previously burned every attempt and filed a loop incident instead of
+// reaching a stable state (PR #3958 / loop incident #3969). Route it to the same
+// human-decision quarantine the other terminal blockers use. An explicit owner
+// `KEEP` overrides the escalation and lets automated repair resume.
+if (
+  latestOwnerDispositionCommand() !== 'KEEP' &&
+  shouldQuarantineHumanEscalatedBlockers(normalized)
+) {
+  const reason = 'human-escalation-requested';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted recovery agent confirmed every remaining review finding as valid, declared the required fix outside its repair scope, and explicitly escalated the thread to a human while leaving it unresolved. Re-dispatching the same task cannot make progress, and CI Recovery will not resolve the review thread without a valid marker.',
+    nextActions: [
+      'Read the escalated review thread(s) and land the requested work from an owner session, then post a valid `✅ Addressed in <sha>: <note>` reply on each thread.',
+      'After the escalated review threads are resolved, post the exact standalone owner comment `KEEP` to resume this PR.',
+      'Abandon/close this PR (and restart the linked issue) by posting the exact standalone owner comment `ABANDON`.',
+    ],
+    keepOutcome:
+      'resume this PR after its escalated review threads have been addressed (the escalation itself is not re-checked)',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('human-escalation-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post human-escalation quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'human-escalation-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(
+      await release('human-escalation-quarantined', quarantinedState),
+    );
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(`quarantined human-escalation pr=#${prNumber}\n`);
   process.exit(0);
 }
 

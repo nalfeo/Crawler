@@ -349,6 +349,7 @@ export function normalizeBlockers(blockers) {
       ...(blocker.protectedPathCapabilityDenied === true
         ? { protectedPathCapabilityDenied: true }
         : {}),
+      ...(blocker.humanEscalationDeclared === true ? { humanEscalationDeclared: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -1006,6 +1007,53 @@ export function isProtectedPathCapabilityDenial(body) {
       );
     return namesCapabilityLimit && namesBlockedRepair;
   });
+}
+
+// A recovery/validator agent declares a human escalation by stating BOTH that it
+// is handing the finding to a human AND that it is deliberately leaving the
+// thread unresolved. Requiring the conjunction keeps a passing mention ("escalate
+// to a human if this recurs") from parking a PR that inline repair could still
+// fix, mirroring the two-condition style of isProtectedPathCapabilityDenial.
+const humanEscalationHandoffPattern =
+  /\b(?:escalat(?:e|es|ed|ing|ion)\b[^.!?\n]{0,60}?\b(?:to\s+)?(?:a\s+|the\s+)?(?:human|maintainer|owner)|(?:human|maintainer|owner)\s+escalation)\b/i;
+const humanEscalationUnresolvedPattern =
+  /\b(?:leav(?:e|es|ing)|left|leaving|keep(?:ing)?|remain(?:s|ing)?|stays?)\b[^.!?\n]{0,80}?\bunresolved\b/i;
+
+/**
+ * Detect a trusted recovery agent's explicit declaration that it is escalating a
+ * review thread to a human and deliberately leaving it unresolved.
+ *
+ * This is the CI review-validator's designed terminal outcome for a finding it
+ * confirms as VALID but cannot fix within its scope. Without recognising it the
+ * reconciler re-dispatches the identical task until attempts exhaust and files a
+ * loop incident (PR #3958 / loop incident #3969), so the declaration must instead
+ * route the PR to a human-decision quarantine.
+ */
+export function isHumanEscalationDeclaration(body) {
+  // A recovery reply may quote an earlier task or reviewer comment; a quoted
+  // escalation must not be read as this author's own declaration.
+  const text = compact(
+    String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n'),
+  );
+  if (!text) return false;
+  return humanEscalationHandoffPattern.test(text) && humanEscalationUnresolvedPattern.test(text);
+}
+
+/**
+ * Quarantine only when EVERY remaining blocker is a review thread a trusted
+ * recovery agent has escalated to a human. Any other blocker (a CI failure, a
+ * repairable thread) is still actionable by automated recovery.
+ */
+export function shouldQuarantineHumanEscalatedBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) => blocker.kind === 'review-thread' && blocker.humanEscalationDeclared === true,
+    )
+  );
 }
 
 export function shouldQuarantineProtectedPathBlockers(blockers) {

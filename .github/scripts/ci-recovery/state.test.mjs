@@ -15,6 +15,7 @@ import {
   hasTrustedTrainPromotionCheck,
   isAgentSessionRunning,
   isDuplicateDispatch,
+  isHumanEscalationDeclaration,
   isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
@@ -39,6 +40,7 @@ import {
   shouldSkipSubstantiveReview,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  shouldQuarantineHumanEscalatedBlockers,
   shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ABANDON_CANDIDATE_LABEL,
@@ -2117,6 +2119,57 @@ test('protected-path quarantine waits until every remaining blocker is terminal'
     false,
   );
   assert.equal(shouldQuarantineProtectedPathBlockers([]), false);
+});
+
+test('human escalation requires both a human hand-off and an explicit unresolved declaration', () => {
+  // Verbatim excerpt of the validator reply that stalled PR #3958 (loop
+  // incident #3969): recovery re-dispatched this thread until attempts
+  // exhausted because the declared hand-off had no representation.
+  const validatorReply =
+    '**Validator verdict: VALID \u2014 confirmed by an independent second model. Leaving this thread UNRESOLVED and escalating to a human.**\n\n' +
+    'Why the validator is not fixing this here: the fix required is not a bounded correction \u2014 it is the entire 5\u{1F34E} feature this PR was opened to deliver.\n\n' +
+    'Thread intentionally left unresolved for human escalation.';
+  assert.equal(isHumanEscalationDeclaration(validatorReply), true);
+  // A hand-off mention alone must not park a PR that inline repair can still fix.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'If this recurs we should escalate to a human, but I fixed it in a9068d8.',
+    ),
+    false,
+  );
+  // An unresolved note alone (no human hand-off) is an ordinary repairable reply.
+  assert.equal(
+    isHumanEscalationDeclaration('Leaving this thread unresolved until the rebase lands.'),
+    false,
+  );
+  // A quoted escalation from an earlier task body is not this author's declaration.
+  assert.equal(
+    isHumanEscalationDeclaration(
+      '> Leaving this thread UNRESOLVED and escalating to a human.\n\nAddressed the finding instead.',
+    ),
+    false,
+  );
+  assert.equal(isHumanEscalationDeclaration(''), false);
+});
+
+test('human-escalation quarantine waits until every remaining blocker is terminal', () => {
+  const escalatedBlocker = {
+    kind: 'review-thread',
+    humanEscalationDeclared: true,
+  };
+  assert.equal(shouldQuarantineHumanEscalatedBlockers([escalatedBlocker]), true);
+  assert.equal(
+    shouldQuarantineHumanEscalatedBlockers([
+      escalatedBlocker,
+      { kind: 'ci-failure', id: 'unit-tests' },
+    ]),
+    false,
+  );
+  assert.equal(
+    shouldQuarantineHumanEscalatedBlockers([escalatedBlocker, { kind: 'review-thread' }]),
+    false,
+  );
+  assert.equal(shouldQuarantineHumanEscalatedBlockers([]), false);
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
