@@ -196,7 +196,6 @@ describe('Floor 6 authored defense map', () => {
     const map = generate();
     const layout = computeBroadcastRelaySetLayout(buildFloor6MapConfig().broadcastRelaySet ?? {});
     const routeTiles = getBroadcastRelayRouteTiles(layout);
-    const routeTileKeys = new Set(routeTiles.map((point) => tileKey(map, point.x, point.y)));
 
     for (const point of routeTiles) {
       expect(
@@ -207,19 +206,27 @@ describe('Floor 6 authored defense map', () => {
       ).toBe(false);
     }
 
+    const finalApproachX = layout.broadcastRelay.bounds.x - 1;
+    const halfRouteWidth = Math.floor(layout.routes[0]!.widthTiles / 2);
+    const relayApproachCut = new Set<number>();
+    for (
+      let y = layout.broadcastRelay.target.y - halfRouteWidth;
+      y <= layout.broadcastRelay.target.y + halfRouteWidth;
+      y += 1
+    ) {
+      relayApproachCut.add(tileKey(map, finalApproachX, y));
+    }
+    const convergence = { x: 48, y: layout.broadcastRelay.target.y };
+
     for (const route of layout.routes) {
       const entrance = layout.entrances.find((candidate) => candidate.id === route.entranceId)!;
       for (const footprint of layout.supportedFootprints) {
-        const blockedRoutes = new Set(routeTileKeys);
-        for (const endpoint of [entrance.spawn, layout.broadcastRelay.target]) {
-          for (let dy = 0; dy < footprint.heightTiles; dy += 1) {
-            for (let dx = 0; dx < footprint.widthTiles; dx += 1) {
-              blockedRoutes.delete(tileKey(map, endpoint.x + dx, endpoint.y + dy));
-            }
-          }
-        }
         expect(
-          canReach(map, entrance.spawn, layout.broadcastRelay.target, footprint, blockedRoutes),
+          canReach(map, entrance.spawn, convergence, footprint, relayApproachCut),
+          `${route.id} must still enter the wider map for ${footprint.id}`,
+        ).toBe(true);
+        expect(
+          canReach(map, entrance.spawn, layout.broadcastRelay.target, footprint, relayApproachCut),
           `${route.id} must not gain an off-lane path for ${footprint.id}`,
         ).toBe(false);
       }
