@@ -56,7 +56,7 @@ describe('run bundle upload browser configuration', () => {
     await closeQuietly(browser);
   });
 
-  it('injects the dev ingest endpoint into browser run and survey uploads', async () => {
+  it('injects the dev ingest endpoint into browser run, survey, and issue uploads', async () => {
     const requests: { url: string; mode: string | undefined }[] = [];
     await page.route(INGEST_URL, async (route) => {
       const request = route.request();
@@ -77,17 +77,30 @@ describe('run bundle upload browser configuration', () => {
       await route.fulfill({
         status: 202,
         headers: { 'access-control-allow-origin': '*' },
+        json: { runId: 'browser-run' },
       });
     });
 
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
     const result = await page.evaluate(async () => {
-      const [{ submitRunBundleUpload, submitRunSurvey }, { createRunBundle }] = (await new Function(
-        'return Promise.all([import("/src/engine/run-bundle-upload.ts"), import("/src/shared/run-bundle.ts")])',
+      const [
+        { submitRunBundleUpload, submitRunSurvey },
+        { buildFileIssuePayload, submitFileIssue },
+        { createRunBundle },
+      ] = (await new Function(
+        'return Promise.all([import("/src/engine/run-bundle-upload.ts"), import("/src/engine/file-issue.ts"), import("/src/shared/run-bundle.ts")])',
       )()) as [
         {
           submitRunBundleUpload: (bundle: unknown) => Promise<unknown>;
           submitRunSurvey: (bundle: unknown, survey: unknown) => Promise<unknown>;
+        },
+        {
+          buildFileIssuePayload: (
+            bundle: unknown,
+            description: string,
+            options: { includeLogs: boolean },
+          ) => unknown;
+          submitFileIssue: (payload: unknown) => Promise<unknown>;
         },
         { createRunBundle: (options: unknown) => unknown },
       ];
@@ -107,16 +120,21 @@ describe('run bundle upload browser configuration', () => {
           tension: 5,
           comment: '',
         }),
+        submitFileIssue(
+          buildFileIssuePayload(bundle, 'Browser issue report', { includeLogs: true }),
+        ),
       ]);
     });
 
     expect(result).toEqual([
       { ok: true, used: 'fetch', status: 202 },
       { ok: true, used: 'fetch', status: 202 },
+      { runId: 'browser-run' },
     ]);
     expect(requests).toEqual([
       { url: INGEST_URL, mode: 'silent' },
       { url: INGEST_URL, mode: 'survey' },
+      { url: INGEST_URL, mode: undefined },
     ]);
   });
 });
