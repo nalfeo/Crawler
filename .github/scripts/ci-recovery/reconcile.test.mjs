@@ -12197,6 +12197,12 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   const originalConcern = 'Issue #9999 explicitly required a detailed plan comment before code.';
   const priorBlockedReply =
     'Blocked outside this branch: issue #9999 still lacks the required pre-code plan comment.';
+  const supersededProtectedPathReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '',
+    "I can't complete the `.github/agents` work because this session's policy prevents access.",
+  ].join('\n');
   const thread = {
     id: threadId,
     isResolved: false,
@@ -12220,7 +12226,7 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
     `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
     '',
-    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1073\``,
+    `1. **review-thread** \`${blockerId}\``,
     `   copilot-pull-request-reviewer: ${originalConcern}`,
   ].join('\n');
   const priorTopLevelReply = [
@@ -12243,6 +12249,11 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
         },
         {
           id: 10031,
+          body: supersededProtectedPathReply,
+          user: { login: 'Copilot' },
+        },
+        {
+          id: 10032,
           body: priorTopLevelReply,
           user: { login: 'Copilot' },
         },
@@ -12629,6 +12640,147 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
     ),
     false,
     'scope mismatch must not post a Copilot repair task',
+  );
+});
+
+test('protected-path denial does not quarantine a mixed blocker set', async (t) => {
+  const threadId = 'PRRT_protected_path_denial';
+  const recoveryReply =
+    'I fixed the currently-failing `Lightweight Checks` job: it was caused by two in-flight PRs (#3927, #3929) that merged to `main` after this branch diverged and added new `review-ledger.json` files (still following the old convention). Rebased onto `main` and removed those files in a9068d8e to restore the "no `docs/knowledge/review-ledgers` directory" invariant. ' +
+    "I can't complete the `.github/agents` portion of this request in this session — my environment explicitly disallows reading or editing files in that directory.";
+  assert.ok(
+    recoveryReply.indexOf("I can't complete") > 300,
+    'fixture must prove capability detection reads beyond the bounded 300-character hint',
+  );
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/agents/retired.agent.md',
+    line: 14,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_protected_path_finding',
+          body: 'Include `.github/agents` in the retirement scan and update those definitions.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3939`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          id: 'PRIC_protected_path_denial',
+          body: recoveryReply,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3940`,
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  const repairableThread = {
+    id: 'PRRT_repairable_thread',
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/scripts/ci-recovery/reconcile.mjs',
+    line: 2584,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_repairable_finding',
+          body: 'Keep ordinary review blockers repairable.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3941`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      body: { name: 'ci-lifecycle-quarantined' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 6000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([thread, repairableThread]) };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /quarantined protected-path pr=#42/);
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    true,
+    'a repairable blocker must keep the recovery task dispatchable',
   );
 });
 

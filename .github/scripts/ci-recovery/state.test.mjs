@@ -15,6 +15,7 @@ import {
   hasTrustedTrainPromotionCheck,
   isAgentSessionRunning,
   isDuplicateDispatch,
+  isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
   isLeaseExpired,
@@ -38,6 +39,7 @@ import {
   shouldSkipSubstantiveReview,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ABANDON_CANDIDATE_LABEL,
   QUARANTINE_COMMENT_MARKER,
@@ -2075,6 +2077,46 @@ test('isScopeMismatchReviewBlocker does not quarantine ordinary inline repairs p
     }),
     false,
   );
+});
+
+test('protected-path capability denial requires a specific path and explicit session limitation', () => {
+  const reply =
+    "I can't complete the `.github/agents` portion in this session — my environment explicitly disallows reading or editing files in that directory.";
+  assert.equal(isProtectedPathCapabilityDenial(reply), true);
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      "I can't complete the test update because the current assertion is unclear.",
+    ),
+    false,
+  );
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      'Please update `.github/agents` and the related deterministic tests.',
+    ),
+    false,
+  );
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      "I updated `.github/agents`; I can't complete the tests because this environment cannot run npm.",
+    ),
+    false,
+  );
+});
+
+test('protected-path quarantine waits until every remaining blocker is terminal', () => {
+  const protectedBlocker = {
+    kind: 'review-thread',
+    protectedPathCapabilityDenied: true,
+  };
+  assert.equal(shouldQuarantineProtectedPathBlockers([protectedBlocker]), true);
+  assert.equal(
+    shouldQuarantineProtectedPathBlockers([
+      protectedBlocker,
+      { kind: 'ci-failure', id: 'unit-tests' },
+    ]),
+    false,
+  );
+  assert.equal(shouldQuarantineProtectedPathBlockers([]), false);
 });
 
 test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {

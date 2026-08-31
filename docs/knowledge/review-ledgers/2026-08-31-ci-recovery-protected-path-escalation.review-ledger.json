@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-31",
+  "session_slug": "ci-recovery-protected-path-escalation",
+  "task_title": "Escalate unfulfillable CI recovery protected-path blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted normalized current-thread-bound capability signal from full trusted recovery reply; distinct protected-path quarantine reason/operator copy; quarantine only when all remaining blockers are capability-denied; explicit trust boundary; full reconcile mutation-sequence regression. No architectural fork: reuse lifecycle quarantine."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "80025050cc3a755a488f39c6487feb801db6e774",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation fulfills the requirement. Capability-denial detection targets protected-path constraints, avoids the 300-character hint truncation, and ignores quoted prior comments. Quarantine waits until every remaining blocker is unfulfillable, allowing partial progress on other blockers. Tests cover detection, state tracking, and quarantine sequencing."
+    }
+  }
+}
