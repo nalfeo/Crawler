@@ -35,7 +35,7 @@ const emitRunBundle = new Function(
   `return function emitRunBundle(endReason) {${extractMethodBody(
     source,
     'private emitRunBundle(endReason: RunEndReason): void',
-  )}};`,
+  ).replace(/\(error: unknown\)/g, '(error)')}};`,
 )(createRunBundle, readLogsSince) as (this: unknown, endReason: RunEndReason) => void;
 
 const showRunSurveyIfNeeded = new Function(

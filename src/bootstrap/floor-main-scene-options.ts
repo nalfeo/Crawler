@@ -19,10 +19,7 @@ import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/fl
 import { getAbilityEffectSummary } from '../game/abilities/effect-summary.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
-import {
-  resolveRunBundleUploadConfig,
-  submitRunBundleUpload,
-} from '../engine/run-bundle-upload.js';
+import { submitRunBundleUpload, type RunBundleUploadResult } from '../engine/run-bundle-upload.js';
 import {
   statSystem,
   statusEffectSystem,
@@ -38,25 +35,49 @@ import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
-function defaultRunBundleSink(bundle: RunBundle): Promise<unknown> | void {
+/**
+ * Default `onRunBundle` sink used by the shipped game. Always resolves with a
+ * well-formed {@link RunBundleUploadResult} (never `undefined`, and never a
+ * rejected promise) so `MainGameScene`'s completion-telemetry status toast can
+ * reliably tell the player whether their RunStats payload actually reached
+ * the ingest endpoint. `submitRunBundleUpload` already reports its own
+ * disabled/ok/failed states via the `ok`/`used`/`reason` fields — this sink
+ * defers to that single source of truth instead of re-checking
+ * `resolveRunBundleUploadConfig()` itself, so the two can no longer drift.
+ *
+ * Previously an unexpected throw from `submitRunBundleUpload` (which normally
+ * catches its own fetch/network errors and resolves instead of rejecting) was
+ * swallowed into a bare `console.warn` with no return value, silently
+ * discarding the failure from any caller that awaited this sink's result.
+ */
+function defaultRunBundleSink(bundle: RunBundle): Promise<RunBundleUploadResult> | void {
   if (typeof window === 'undefined') {
     return;
   }
   window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
-  const config = resolveRunBundleUploadConfig();
-  if (!config.enabled || !config.endpoint) {
-    if (typeof console !== 'undefined') {
-      console.warn(
-        config.reason ?? 'Run bundle upload is disabled because no endpoint is configured.',
-      );
-    }
-    return;
-  }
-  return submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
-    if (typeof console !== 'undefined') {
-      console.warn('Silent run-bundle upload failed', error);
-    }
-  });
+  return submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).then(
+    (result) => {
+      if (!result.ok && typeof console !== 'undefined') {
+        console.warn(
+          result.used === 'disabled'
+            ? (result.reason ?? 'Run bundle upload is disabled because no endpoint is configured.')
+            : 'Silent run-bundle upload failed',
+          result.reason,
+        );
+      }
+      return result;
+    },
+    (error: unknown): RunBundleUploadResult => {
+      if (typeof console !== 'undefined') {
+        console.warn('Silent run-bundle upload failed', error);
+      }
+      return {
+        ok: false,
+        used: 'fetch',
+        reason: error instanceof Error ? error.message : 'run bundle upload failed',
+      };
+    },
+  );
 }
 
 /**
