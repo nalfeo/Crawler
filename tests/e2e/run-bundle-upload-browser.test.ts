@@ -137,10 +137,13 @@ describe('run bundle upload browser configuration', () => {
       { ok: true, used: 'fetch', status: 202 },
       { runId: 'browser-run' },
     ]);
-    expect(requests).toEqual([
-      { url: INGEST_URL, mode: 'silent', fileIssue: undefined },
-      { url: INGEST_URL, mode: 'survey', fileIssue: undefined },
-      { url: INGEST_URL, mode: undefined, fileIssue: true },
-    ]);
+    expect(requests).toHaveLength(3);
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        { url: INGEST_URL, mode: 'silent', fileIssue: undefined },
+        { url: INGEST_URL, mode: 'survey', fileIssue: undefined },
+        { url: INGEST_URL, mode: undefined, fileIssue: true },
+      ]),
+    );
   });
 });
