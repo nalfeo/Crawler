@@ -85,6 +85,23 @@ import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+  /**
+   * Enable the default-off periodic rat attack-wave system. Applied to
+   * `world.attackWaveFlags.attackWaves` (via `configureAttackWaves`) before
+   * `configureWorld` runs, independent of which floor is active — a floor
+   * whose manifest doesn't declare the `trashAttackWaves` behavior flag (see
+   * `floor-behavior.ts`) stays inert regardless of this setting. Default
+   * `false`.
+   */
+  readonly attackWaves?: boolean;
+  /**
+   * Enable Floor 1's static spawners (two `rats-nest` + two `slime-pool`
+   * spawner archetypes, placed by `spawnFloor1StaticSpawners`). Only consulted
+   * by Floor 1's `initializeFloor1Scenario`; every other floor ignores this
+   * field. Default `false` — Floor 1 stays spawner-free per ADR 0049 unless
+   * explicitly enabled here.
+   */
+  readonly floor1Spawners?: boolean;
 }
 
 function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {

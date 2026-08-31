@@ -7,6 +7,7 @@ import {
   spawnerArenaSystem,
   spawnerSystem,
   attackWaveSystem,
+  configureAttackWaves,
   weaponSystem,
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
@@ -85,6 +86,11 @@ export function createFloorMainSceneOptions(
     onRunBundle: onRunBundle ?? defaultRunBundleSink,
     configureWorld: (world: GameWorld, playerEid: number) => {
       world.runEvents ??= createRunEventCollector();
+      // Applied before scenario configuration ("before play") independent of
+      // which floor is active — a floor whose manifest doesn't declare the
+      // `trashAttackWaves` behavior flag stays inert regardless (see
+      // `attack-wave-system.ts`).
+      configureAttackWaves(world, initializationOptions?.attackWaves ?? false);
       scenario.configureWorld(world, playerEid, initializationOptions);
     },
     selectLoadoutOption: scenario.selectLoadoutOption,
